@@ -12,6 +12,7 @@ use state::*;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use storage::StorageManager;
+use tauri::Manager;
 use tauri::State;
 use terminal::TerminalManager;
 
@@ -35,41 +36,40 @@ impl AppStateWrapper {
     }
 }
 
-// 目录选择对话框
+// 目录选择对话框 —— 使用 tauri-plugin-dialog，跨平台支持 Windows/macOS/Linux
 #[tauri::command]
-async fn open_directory_dialog() -> Result<Option<String>, String> {
-    use std::process::Command;
-    let output = Command::new("zenity")
-        .args(["--file-selection", "--directory", "--title=Select Project Directory"])
-        .output();
-
-    match output {
-        Ok(output) if output.status.success() => {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Ok(Some(path));
-            }
-            Ok(None)
-        }
-        Ok(_) => Ok(None),
-        Err(_) => Err("Dialog not available. Please install zenity or enter path manually.".into()),
-    }
+async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let folder = app_handle
+        .dialog()
+        .file()
+        .set_title("Select Project Directory")
+        .blocking_pick_folder();
+    Ok(folder.map(|p| p.to_string()))
 }
 
 // 项目管理命令
 #[tauri::command]
-fn add_project(path: String, state: State<AppStateWrapper>) -> Result<Project, String> {
+fn add_project(
+    path: String,
+    agent_id: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<Project, String> {
     state
         .project_manager
         .lock()
         .unwrap()
-        .add_project(PathBuf::from(path))
+        .add_project(PathBuf::from(path), agent_id)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn remove_project(project_id: String, state: State<AppStateWrapper>) {
-    state.project_manager.lock().unwrap().remove_project(&project_id);
+    state
+        .project_manager
+        .lock()
+        .unwrap()
+        .remove_project(&project_id);
     state.terminal_manager.close_session(&project_id);
 }
 
@@ -112,7 +112,11 @@ fn get_active_project(state: State<AppStateWrapper>) -> Option<String> {
 // 视图切换命令
 #[tauri::command]
 fn set_view_terminal(project_id: String, state: State<AppStateWrapper>) {
-    state.project_manager.lock().unwrap().set_view_terminal(&project_id);
+    state
+        .project_manager
+        .lock()
+        .unwrap()
+        .set_view_terminal(&project_id);
 }
 
 #[tauri::command]
@@ -124,9 +128,50 @@ fn set_view_diff(project_id: String, file_path: String, state: State<AppStateWra
         .set_view_diff(&project_id, PathBuf::from(file_path));
 }
 
+#[tauri::command]
+fn create_worktree(
+    project_id: String,
+    worktree_path: String,
+    branch_name: String,
+    new_branch: bool,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let manager = state.project_manager.lock().unwrap();
+    if let Some(project) = manager.get_project(&project_id) {
+        git::create_worktree(
+            &project.path,
+            &PathBuf::from(&worktree_path),
+            &branch_name,
+            new_branch,
+        )
+        .map_err(|e| e.to_string())
+    } else {
+        Err("Project not found".into())
+    }
+}
+
+#[tauri::command]
+fn remove_worktree(
+    project_id: String,
+    worktree_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let manager = state.project_manager.lock().unwrap();
+    if let Some(project) = manager.get_project(&project_id) {
+        git::remove_worktree(&project.path, &PathBuf::from(&worktree_path))
+            .map_err(|e| e.to_string())
+    } else {
+        Err("Project not found".into())
+    }
+}
+
 // Git 命令
 #[tauri::command]
-fn checkout_branch(project_id: String, branch_name: String, state: State<AppStateWrapper>) -> Result<(), String> {
+fn checkout_branch(
+    project_id: String,
+    branch_name: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
     let manager = state.project_manager.lock().unwrap();
     if let Some(project) = manager.get_project(&project_id) {
         git::checkout_branch(&project.path, &branch_name).map_err(|e| e.to_string())
@@ -136,7 +181,11 @@ fn checkout_branch(project_id: String, branch_name: String, state: State<AppStat
 }
 
 #[tauri::command]
-fn create_branch(project_id: String, branch_name: String, state: State<AppStateWrapper>) -> Result<(), String> {
+fn create_branch(
+    project_id: String,
+    branch_name: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
     let manager = state.project_manager.lock().unwrap();
     if let Some(project) = manager.get_project(&project_id) {
         git::create_branch(&project.path, &branch_name, None).map_err(|e| e.to_string())
@@ -146,7 +195,11 @@ fn create_branch(project_id: String, branch_name: String, state: State<AppStateW
 }
 
 #[tauri::command]
-fn get_file_diff_command(project_id: String, file_path: String, state: State<AppStateWrapper>) -> Result<DiffResult, String> {
+fn get_file_diff_command(
+    project_id: String,
+    file_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<DiffResult, String> {
     let manager = state.project_manager.lock().unwrap();
     if let Some(project) = manager.get_project(&project_id) {
         get_file_diff(&project.path, &file_path).map_err(|e| e.to_string())
@@ -177,6 +230,19 @@ fn create_terminal_session(
 #[tauri::command]
 fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
     state.terminal_manager.close_session(&session_id);
+}
+
+#[tauri::command]
+fn resize_terminal(
+    session_id: String,
+    cols: u16,
+    rows: u16,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    state
+        .terminal_manager
+        .resize_session(&session_id, cols, rows)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -220,22 +286,51 @@ fn set_project_agent(project_id: String, agent_id: Option<String>, state: State<
         .set_selected_agent(&project_id, agent_id);
 }
 
+// 配置命令
+#[tauri::command]
+fn save_config(config: serde_json::Value, state: State<AppStateWrapper>) -> Result<(), String> {
+    state
+        .storage_manager
+        .save_config(&config)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_config(state: State<AppStateWrapper>) -> Result<serde_json::Value, String> {
+    state
+        .storage_manager
+        .load_config()
+        .map_err(|e| e.to_string())
+}
+
 // 持久化命令
 #[tauri::command]
 fn save_session(state: State<AppStateWrapper>) -> Result<(), String> {
     let projects = state.project_manager.lock().unwrap().list_projects();
-    let session = state.storage_manager.create_session_from_projects(&projects);
-    state.storage_manager.save_session(&session).map_err(|e| e.to_string())
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects);
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn load_session(state: State<AppStateWrapper>) -> Result<SessionStore, String> {
-    state.storage_manager.load_session().map_err(|e| e.to_string())
+    state
+        .storage_manager
+        .load_session()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn get_config_dir(state: State<AppStateWrapper>) -> String {
-    state.storage_manager.get_config_dir().to_string_lossy().to_string()
+    state
+        .storage_manager
+        .get_config_dir()
+        .to_string_lossy()
+        .to_string()
 }
 
 #[tauri::command]
@@ -245,7 +340,23 @@ fn greet(name: &str) -> String {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppStateWrapper::new())
+        .setup(|app| {
+            // 启动时恢复上次的项目列表和 agent 设置
+            let state = app.handle().state::<AppStateWrapper>();
+            if let Ok(session) = state.storage_manager.load_session() {
+                let mut pm = state.project_manager.lock().unwrap();
+                for p in &session.projects {
+                    let _ = pm.add_project_from_session(
+                        p.id.clone(),
+                        p.path.clone(),
+                        p.selected_agent.clone(),
+                    );
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             // 项目管理
@@ -265,10 +376,13 @@ pub fn run() {
             checkout_branch,
             create_branch,
             get_file_diff_command,
+            create_worktree,
+            remove_worktree,
             // 终端管理
             create_terminal_session,
             close_terminal_session,
             list_terminal_sessions,
+            resize_terminal,
             // Agent 管理
             list_agents,
             get_agent,
@@ -279,6 +393,9 @@ pub fn run() {
             save_session,
             load_session,
             get_config_dir,
+            // 配置
+            save_config,
+            load_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

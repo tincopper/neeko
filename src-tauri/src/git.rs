@@ -14,8 +14,8 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
         "HEAD (detached)".to_string()
     };
 
-    // 获取所有分支
-    let branches = repo.branches(None)?;
+    // 只获取本地分支
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
     let mut branch_names = Vec::new();
     for branch_result in branches {
         if let Ok((branch, _)) = branch_result {
@@ -282,6 +282,59 @@ fn get_head_content(repo: &Repository, file_path: &str) -> Result<String> {
         },
         Err(_) => Ok(String::new()),
     }
+}
+
+pub fn create_worktree(
+    repo_path: &Path,
+    worktree_path: &Path,
+    branch_name: &str,
+    new_branch: bool,
+) -> Result<()> {
+    use std::process::Command;
+
+    let mut args = vec!["worktree", "add"];
+    if new_branch {
+        args.push("-b");
+        args.push(branch_name);
+    }
+    let wt_path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+    args.push(wt_path_str);
+    if !new_branch {
+        args.push(branch_name);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git worktree add")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git worktree add failed: {}", stderr.trim());
+    }
+    Ok(())
+}
+
+pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
+    use std::process::Command;
+
+    let wt_path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+    let output = Command::new("git")
+        .args(["worktree", "remove", "--force", wt_path_str])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git worktree remove")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git worktree remove failed: {}", stderr.trim());
+    }
+    Ok(())
 }
 
 pub fn is_git_repo(path: &Path) -> bool {

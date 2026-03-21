@@ -37,17 +37,6 @@ impl AgentManager {
             enabled: true,
         });
 
-        // cursor-agent
-        self.agents.push(AgentConfig {
-            id: "cursor-agent".to_string(),
-            name: "cursor-agent".to_string(),
-            command: "cursor-agent".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-            icon: Some("🖱️".to_string()),
-            enabled: true,
-        });
-
         // aider
         self.agents.push(AgentConfig {
             id: "aider".to_string(),
@@ -56,6 +45,39 @@ impl AgentManager {
             args: vec![],
             env: HashMap::new(),
             icon: Some("💡".to_string()),
+            enabled: true,
+        });
+
+        // qwen
+        self.agents.push(AgentConfig {
+            id: "qwen".to_string(),
+            name: "qwen".to_string(),
+            command: "qwen".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("🌟".to_string()),
+            enabled: true,
+        });
+
+        // gemini
+        self.agents.push(AgentConfig {
+            id: "gemini".to_string(),
+            name: "gemini".to_string(),
+            command: "gemini".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("♊".to_string()),
+            enabled: true,
+        });
+
+        // codex
+        self.agents.push(AgentConfig {
+            id: "codex".to_string(),
+            name: "codex".to_string(),
+            command: "codex".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("⚡".to_string()),
             enabled: true,
         });
     }

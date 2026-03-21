@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { fileIconSrc } from "../utils/fileIcons";
 
 interface DiffLine {
   Context?: string;
@@ -19,17 +20,97 @@ interface DiffResult {
   hunks: DiffHunk[];
 }
 
+type ViewMode = "unified" | "split";
+
 interface DiffViewProps {
   projectId: string;
   filePath: string;
+  initialMode?: ViewMode;
   onBack: () => void;
 }
 
-const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
+interface SplitRow {
+  type: "hunk-header" | "change" | "context";
+  hunkHeader?: string;
+  oldLineNum?: number;
+  newLineNum?: number;
+  oldContent?: string;
+  newContent?: string;
+  oldType?: "removed" | "context" | "empty";
+  newType?: "added" | "context" | "empty";
+}
+
+function buildSplitRows(hunk: DiffHunk): SplitRow[] {
+  const rows: SplitRow[] = [];
+  rows.push({
+    type: "hunk-header",
+    hunkHeader: `@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`,
+  });
+
+  const getType = (l: DiffLine) =>
+    l.Added !== undefined ? "added" : l.Removed !== undefined ? "removed" : "context";
+  const getContent = (l: DiffLine) =>
+    l.Added ?? l.Removed ?? l.Context ?? "";
+
+  let i = 0;
+  let oldNum = hunk.old_start;
+  let newNum = hunk.new_start;
+
+  while (i < hunk.lines.length) {
+    const line = hunk.lines[i];
+    const t = getType(line);
+
+    if (t === "context") {
+      rows.push({
+        type: "context",
+        oldLineNum: oldNum,
+        newLineNum: newNum,
+        oldContent: getContent(line),
+        newContent: getContent(line),
+        oldType: "context",
+        newType: "context",
+      });
+      oldNum++;
+      newNum++;
+      i++;
+    } else {
+      // 收集连续的 removed / added 块，配对显示
+      const removed: DiffLine[] = [];
+      const added: DiffLine[] = [];
+      while (i < hunk.lines.length && getType(hunk.lines[i]) === "removed") {
+        removed.push(hunk.lines[i++]);
+      }
+      while (i < hunk.lines.length && getType(hunk.lines[i]) === "added") {
+        added.push(hunk.lines[i++]);
+      }
+      const maxLen = Math.max(removed.length, added.length);
+      for (let j = 0; j < maxLen; j++) {
+        const r = removed[j];
+        const a = added[j];
+        rows.push({
+          type: "change",
+          oldLineNum: r ? oldNum : undefined,
+          newLineNum: a ? newNum : undefined,
+          oldContent: r ? getContent(r) : undefined,
+          newContent: a ? getContent(a) : undefined,
+          oldType: r ? "removed" : "empty",
+          newType: a ? "added" : "empty",
+        });
+        if (r) oldNum++;
+        if (a) newNum++;
+      }
+    }
+  }
+
+  return rows;
+}
+
+const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, initialMode, onBack }) => {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentHunkIndex, setCurrentHunkIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "unified");
 
   useEffect(() => {
     loadDiff();
@@ -53,10 +134,7 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
   };
 
   const getLineContent = (line: DiffLine): string => {
-    if (line.Context !== undefined) return line.Context;
-    if (line.Added !== undefined) return line.Added;
-    if (line.Removed !== undefined) return line.Removed;
-    return "";
+    return line.Context ?? line.Added ?? line.Removed ?? "";
   };
 
   const getLineType = (line: DiffLine): string => {
@@ -68,27 +146,19 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
 
   const navigateHunk = (direction: "prev" | "next") => {
     if (!diffResult) return;
-
     if (direction === "prev" && currentHunkIndex > 0) {
       setCurrentHunkIndex(currentHunkIndex - 1);
-    } else if (
-      direction === "next" &&
-      currentHunkIndex < diffResult.hunks.length - 1
-    ) {
+    } else if (direction === "next" && currentHunkIndex < diffResult.hunks.length - 1) {
       setCurrentHunkIndex(currentHunkIndex + 1);
     }
   };
 
   const getFileName = (path: string): string => {
-    return path.split("/").pop() || path;
+    return path.split(/[\\/]/).pop() || path;
   };
 
   if (loading) {
-    return (
-      <div className="diff-container">
-        <div className="diff-loading">Loading diff...</div>
-      </div>
-    );
+    return <div className="diff-container"><div className="diff-loading">Loading diff...</div></div>;
   }
 
   if (error) {
@@ -106,7 +176,13 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
     <div className="diff-container">
       <div className="diff-header">
         <div className="diff-title">
-          <span className="file-icon">📄</span>
+          <img
+            src={fileIconSrc(getFileName(filePath))}
+            alt=""
+            width={16}
+            height={16}
+            style={{ flexShrink: 0 }}
+          />
           <span className="file-name">{getFileName(filePath)}</span>
           <span className="file-path">{filePath}</span>
           {diffResult && (
@@ -116,6 +192,23 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
           )}
         </div>
         <div className="diff-actions">
+          {/* 模式切换 */}
+          <div className="diff-mode-toggle">
+            <button
+              className={`mode-btn ${viewMode === "unified" ? "active" : ""}`}
+              onClick={() => setViewMode("unified")}
+              title="Unified view"
+            >
+              Unified
+            </button>
+            <button
+              className={`mode-btn ${viewMode === "split" ? "active" : ""}`}
+              onClick={() => setViewMode("split")}
+              title="Split view"
+            >
+              Split
+            </button>
+          </div>
           <button
             className="nav-btn"
             onClick={() => navigateHunk("prev")}
@@ -132,67 +225,98 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, onBack }) => {
           <button
             className="nav-btn"
             onClick={() => navigateHunk("next")}
-            disabled={
-              !diffResult || currentHunkIndex >= diffResult.hunks.length - 1
-            }
+            disabled={!diffResult || currentHunkIndex >= diffResult.hunks.length - 1}
             title="Next Change"
           >
             ▶
           </button>
-          <button className="back-btn" onClick={onBack} title="Back to Terminal">
-            ✕
-          </button>
+          <button className="back-btn" onClick={onBack} title="Back to Terminal">✕</button>
         </div>
       </div>
 
       <div className="diff-content">
         {diffResult && diffResult.hunks.length > 0 ? (
-          <table className="diff-table">
-            <tbody>
-              {diffResult.hunks.map((hunk, hunkIndex) => (
-                <React.Fragment key={hunkIndex}>
-                  <tr className="hunk-header">
-                    <td colSpan={4}>
-                      @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},
-                      {hunk.new_lines} @@
-                    </td>
-                  </tr>
-                  {hunk.lines.map((line, lineIndex) => {
-                    const lineType = getLineType(line);
-                    const content = getLineContent(line);
-                    let oldLineNum = hunk.old_start;
-                    let newLineNum = hunk.new_start;
-
-                    // 计算行号
-                    for (let i = 0; i < lineIndex; i++) {
-                      const prevLine = hunk.lines[i];
-                      const prevType = getLineType(prevLine);
-                      if (prevType !== "added") oldLineNum++;
-                      if (prevType !== "removed") newLineNum++;
+          viewMode === "unified" ? (
+            /* ── Unified 模式 ── */
+            <table className="diff-table">
+              <tbody>
+                {diffResult.hunks.map((hunk, hunkIndex) => {
+                  let oldNum = hunk.old_start;
+                  let newNum = hunk.new_start;
+                  return (
+                    <React.Fragment key={hunkIndex}>
+                      <tr className="hunk-header">
+                        <td colSpan={4}>
+                          @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},{hunk.new_lines} @@
+                        </td>
+                      </tr>
+                      {hunk.lines.map((line, lineIndex) => {
+                        const lineType = getLineType(line);
+                        const content = getLineContent(line);
+                        const curOld = oldNum;
+                        const curNew = newNum;
+                        if (lineType !== "added") oldNum++;
+                        if (lineType !== "removed") newNum++;
+                        return (
+                          <tr key={`${hunkIndex}-${lineIndex}`} className={`diff-line ${lineType}`}>
+                            <td className="line-number old">{lineType !== "added" ? curOld : ""}</td>
+                            <td className="line-number new">{lineType !== "removed" ? curNew : ""}</td>
+                            <td className="line-indicator">
+                              {lineType === "added" ? "+" : lineType === "removed" ? "-" : " "}
+                            </td>
+                            <td className="line-content">{content}</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            /* ── Split 模式 ── */
+            <table className="diff-table diff-table-split">
+              <colgroup>
+                <col className="col-linenum" />
+                <col className="col-code" />
+                <col className="col-linenum" />
+                <col className="col-code" />
+              </colgroup>
+              <tbody>
+                {diffResult.hunks.map((hunk, hunkIndex) =>
+                  buildSplitRows(hunk).map((row, rowIndex) => {
+                    if (row.type === "hunk-header") {
+                      return (
+                        <tr key={`${hunkIndex}-${rowIndex}`} className="hunk-header">
+                          <td colSpan={4}>{row.hunkHeader}</td>
+                        </tr>
+                      );
                     }
-
                     return (
-                      <tr
-                        key={`${hunkIndex}-${lineIndex}`}
-                        className={`diff-line ${lineType}`}
-                      >
-                        <td className="line-number old">
-                          {lineType !== "added" ? oldLineNum : ""}
+                      <tr key={`${hunkIndex}-${rowIndex}`} className="diff-line split-row">
+                        {/* 左侧：旧代码 */}
+                        <td className={`line-number old split-linenum ${row.oldType}`}>
+                          {row.oldLineNum ?? ""}
                         </td>
-                        <td className="line-number new">
-                          {lineType !== "removed" ? newLineNum : ""}
+                        <td className={`line-content split-cell ${row.oldType}`}>
+                          {row.oldType === "removed" && <span className="split-indicator">-</span>}
+                          {row.oldContent ?? ""}
                         </td>
-                        <td className="line-indicator">
-                          {lineType === "added" ? "+" : lineType === "removed" ? "-" : " "}
+                        {/* 右侧：新代码 */}
+                        <td className={`line-number new split-linenum ${row.newType}`}>
+                          {row.newLineNum ?? ""}
                         </td>
-                        <td className="line-content">{content}</td>
+                        <td className={`line-content split-cell ${row.newType}`}>
+                          {row.newType === "added" && <span className="split-indicator">+</span>}
+                          {row.newContent ?? ""}
+                        </td>
                       </tr>
                     );
-                  })}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
+                  })
+                )}
+              </tbody>
+            </table>
+          )
         ) : (
           <div className="no-changes">No changes to display</div>
         )}

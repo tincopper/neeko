@@ -15,7 +15,7 @@ impl ProjectManager {
         }
     }
 
-    pub fn add_project(&mut self, path: PathBuf) -> Result<Project> {
+    pub fn add_project(&mut self, path: PathBuf, agent_id: Option<String>) -> Result<Project> {
         // 检查路径是否存在
         if !path.exists() {
             anyhow::bail!("Project path does not exist");
@@ -47,10 +47,49 @@ impl ProjectManager {
             path: path.clone(),
             git_info,
             terminal: terminal_session,
-            selected_agent: None,
+            selected_agent: agent_id,
             active_view: ViewMode::Terminal,
         };
 
+        self.projects.push(project.clone());
+        Ok(project)
+    }
+
+    pub fn add_project_from_session(
+        &mut self,
+        id: String,
+        path: PathBuf,
+        agent_id: Option<String>,
+    ) -> Result<Project> {
+        if !path.exists() {
+            anyhow::bail!("Project path does not exist: {}", path.display());
+        }
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let git_info = if git::is_git_repo(&path) {
+            git::get_git_info(&path).ok()
+        } else {
+            None
+        };
+        let terminal_session = TerminalSession {
+            id: Uuid::new_v4().to_string(),
+            pid: None,
+            status: TerminalStatus::Idle,
+            history: Vec::new(),
+            agent: None,
+        };
+        let project = Project {
+            id,
+            name,
+            path,
+            git_info,
+            terminal: terminal_session,
+            selected_agent: agent_id,
+            active_view: ViewMode::Terminal,
+        };
         self.projects.push(project.clone());
         Ok(project)
     }

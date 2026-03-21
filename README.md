@@ -1,133 +1,161 @@
-# Neeko - 多CLI Agent工具管理桌面应用
+# Neeko
 
-一款基于 Rust + Tauri 的跨平台桌面应用，用于统一管理多个 AI CLI Agent 工具。
+多 AI CLI Agent 工具管理桌面应用。基于 Tauri 2.0 + Rust + React，为每个项目提供独立的 PTY 终端会话，集成 Git 管理与文件 Diff 查看。
 
 ## 功能特性
 
-- 📁 **多项目管理** - 同时打开和管理多个项目
-- 💻 **独立终端** - 每个项目绑定独立的终端会话
-- 🤖 **多Agent支持** - 内置 opencode、claude code 等 Agent
-- 🔀 **Git集成** - 分支展示、worktree 支持、diff 查看
-- 📊 **状态标识** - 🟢空闲 / 🟡运行中 / 🔴失败
-- 💾 **会话持久化** - 重启后恢复历史和状态
+- **多项目管理** — 同时管理多个本地项目，支持重启后自动恢复
+- **独立终端** — 每个项目绑定独立 PTY 终端，切换项目时会话不中断
+- **Agent 集成** — 内置 opencode、claude-code、aider、qwen、gemini、codex，切换后自动执行命令
+- **Git 管理** — 本地分支切换、新建分支、Worktree 管理
+- **Diff 查看** — 统一模式与并排模式，支持 Hunk 导航
+- **全局字体缩放** — 10–24px，实时生效，配置持久化
+- **自定义窗口装饰** — 无系统边框，自定义标题栏，可拖拽调整边栏宽度（180–480px）
+- **键盘快捷键** — `Ctrl+1~9` 跳转项目，`Ctrl+Q` 循环切换
 
-## 系统依赖
-
-### Ubuntu/Debian
-
-```bash
-sudo apt update
-sudo apt install -y build-essential \
-  libwebkit2gtk-4.1-dev \
-  libappindicator3-dev \
-  librsvg2-dev \
-  patchelf \
-  libgtk-3-dev \
-  libwebkit2gtk-4.0-dev \
-  libayatana-appindicator3-dev
-```
-
-### Fedora
-
-```bash
-sudo dnf install -y gcc gcc-c++ \
-  webkit2gtk4.1-devel \
-  libappindicator-gtk3-devel \
-  librsvg2-devel
-```
-
-### Arch Linux
-
-```bash
-sudo pacman -S base-devel \
-  webkit2gtk-4.1 \
-  libappindicator-gtk3 \
-  librsvg
-```
-
-## 开发环境
+## 快速开始
 
 ### 前置要求
 
-- Node.js 18+
-- Rust 1.70+
-- pnpm (推荐)
+- [Node.js](https://nodejs.org/) 18+
+- [Rust](https://rustup.rs/) 1.70+
+- [pnpm](https://pnpm.io/)（推荐）
 
-### 安装依赖
+### Linux 系统依赖
+
+**Ubuntu / Debian**
+```bash
+sudo apt install -y build-essential libwebkit2gtk-4.1-dev \
+  libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+```
+
+**Fedora**
+```bash
+sudo dnf install -y gcc gcc-c++ webkit2gtk4.1-devel \
+  libappindicator-gtk3-devel librsvg2-devel
+```
+
+**Arch Linux**
+```bash
+sudo pacman -S base-devel webkit2gtk-4.1 libappindicator-gtk3 librsvg
+```
+
+### 安装与运行
 
 ```bash
 # 安装前端依赖
-npm install
-
-# 或使用 pnpm
 pnpm install
-```
 
-### 运行开发模式
+# 开发模式
+pnpm tauri dev
 
-```bash
-npm run tauri dev
-```
-
-### 构建
-
-```bash
-npm run tauri build
+# 构建发行版
+pnpm tauri build
 ```
 
 ## 项目结构
 
 ```
 neeko/
-├── src/                    # 前端 React 代码
-│   ├── components/         # React 组件
-│   │   ├── ProjectSidebar.tsx
-│   │   ├── TerminalView.tsx
-│   │   ├── DiffView.tsx
-│   │   └── AgentSelector.tsx
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── styles.css
-├── src-tauri/              # Rust 后端代码
+├── src/                          # 前端 React 代码
+│   ├── App.tsx                   # 根组件，统一标题栏，全局状态
+│   ├── types.ts                  # TypeScript 类型定义
+│   ├── styles.css                # 全局样式（One Dark Pro 主题）
+│   ├── utils/
+│   │   └── fileIcons.ts          # 文件名 → Charmed Icons SVG 映射
+│   └── components/
+│       ├── AgentSelector.tsx     # Agent 选择下拉
+│       ├── DiffView.tsx          # Diff 视图（统一/并排）
+│       ├── SettingsPanel.tsx     # 浮动设置面板
+│       ├── TerminalView.tsx      # xterm.js 终端 + 会话缓存
+│       ├── WindowControls.tsx    # 最小化/最大化/关闭按钮
+│       └── project/
+│           ├── ProjectSidebar.tsx  # 可拖拽宽度边栏
+│           ├── ProjectItem.tsx     # 项目行（分支/Worktree/文件）
+│           ├── FileTree.tsx        # 递归文件树
+│           └── GitDialog.tsx       # 新建分支/Worktree 对话框
+├── src-tauri/
 │   ├── src/
-│   │   ├── lib.rs          # Tauri 命令入口
-│   │   ├── main.rs
-│   │   ├── state.rs        # 数据结构定义
-│   │   ├── git.rs          # Git 操作
-│   │   ├── terminal.rs     # 终端管理
-│   │   ├── agent.rs        # Agent 管理
-│   │   ├── project.rs      # 项目管理
-│   │   └── storage.rs      # 持久化存储
-│   └── Cargo.toml
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── REQUIREMENTS.md         # 需求文档
+│   │   ├── lib.rs               # Tauri 命令入口（29个命令）
+│   │   ├── state.rs             # Rust 数据结构
+│   │   ├── agent.rs             # AgentManager + 预置 Agent
+│   │   ├── project.rs           # ProjectManager
+│   │   ├── git.rs               # git2-rs Git 操作 + Diff
+│   │   ├── terminal.rs          # portable-pty PTY 管理
+│   │   └── storage.rs           # ~/.neeko/ JSON 持久化
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── public/
+│   └── icons/                   # Charmed Icons SVG 文件
+└── REQUIREMENTS.md
 ```
 
 ## 技术栈
 
-- **前端**: React 18 + TypeScript + Vite + xterm.js
-- **后端**: Rust + Tauri 2.0
-- **Git**: git2-rs
-- **终端**: portable-pty
-- **存储**: serde_json + 本地文件
+| 层级 | 技术 |
+|------|------|
+| 应用框架 | Tauri 2.0 |
+| 后端 | Rust + tokio + anyhow |
+| 前端 | React 18 + TypeScript + Vite |
+| 终端后端 | portable-pty |
+| 终端前端 | xterm.js 5 + xterm-addon-fit |
+| Git | git2-rs（libgit2 绑定） |
+| 对话框 | tauri-plugin-dialog |
+| 序列化 | serde + serde_json |
+| 图标 | Charmed Icons SVG |
+| 样式 | 纯 CSS，One Dark Pro 主题 |
 
-## 配置目录
+## 预置 Agent
 
-应用配置存储在 `~/.neeko/` 目录：
+| ID | 命令 | 图标 |
+|----|------|------|
+| `opencode` | `opencode` | 🤖 |
+| `claude-code` | `claude` | 🧠 |
+| `aider` | `aider` | 💡 |
+| `qwen` | `qwen` | 🌟 |
+| `gemini` | `gemini` | ♊ |
+| `codex` | `codex` | ⚡ |
 
-- `sessions.json` - 会话数据
-- `config.json` - 用户配置
+通过 `add_agent` 命令可在运行时注册自定义 Agent。
 
-## 预设 Agent
+## 键盘快捷键
 
-| Agent | 命令 | 图标 |
-|-------|------|------|
-| opencode | `opencode` | 🤖 |
-| claude-code | `claude` | 🧠 |
-| cursor-agent | `cursor-agent` | 🖱️ |
-| aider | `aider` | 💡 |
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+1` ~ `Ctrl+9` | 直接跳转到第 N 个项目 |
+| `Ctrl+Q` | 循环切换到下一个项目 |
+
+> 快捷键通过事件捕获阶段（`capture: true`）注册，绕过 xterm.js 的键盘拦截。
+
+## 配置与持久化
+
+所有数据存储在 `~/.neeko/` 目录：
+
+| 文件 | 内容 |
+|------|------|
+| `sessions.json` | 项目列表、Agent 绑定、终端历史、最后状态 |
+| `config.json` | 字体大小、Diff 模式 |
+
+`config.json` 示例：
+```json
+{ "fontSize": 14, "diffMode": "unified" }
+```
+
+## PTY 事件通信
+
+终端使用 Tauri 事件（非 IPC 命令）进行双向通信：
+
+| 方向 | 事件名 | Payload |
+|------|--------|---------|
+| 后端 → 前端 | `terminal-output-<sessionId>` | `Vec<u8>` |
+| 前端 → 后端 | `terminal-input-<sessionId>` | `Vec<u8>` |
+
+## 已知事项
+
+- Windows PTY 使用 `powershell.exe`
+- Worktree 操作（`create_worktree` / `remove_worktree`）调用系统 `git` CLI，不依赖 git2-rs
+- Diff 使用逐行比对实现，对大规模重排场景结果可能不精确
+- `TitleBar.tsx` 为遗留文件，实际标题栏内联在 `App.tsx` 中
 
 ## License
 

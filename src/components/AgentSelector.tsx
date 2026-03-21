@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface AgentConfig {
@@ -13,16 +13,38 @@ interface AgentConfig {
 
 interface AgentSelectorProps {
   projectId: string;
+  currentAgentId: string | null;
+  onSelectAgent: (agent: AgentConfig | null) => void;
 }
 
-const AgentSelector: React.FC<AgentSelectorProps> = ({ projectId }) => {
+const AgentSelector: React.FC<AgentSelectorProps> = ({
+  projectId,
+  currentAgentId,
+  onSelectAgent,
+}) => {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgentId);
   const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadAgents();
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+
+  useEffect(() => {
+    setSelectedAgentId(currentAgentId);
+  }, [projectId, currentAgentId]);
 
   const loadAgents = async () => {
     try {
@@ -34,32 +56,33 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({ projectId }) => {
   };
 
   const handleSelectAgent = async (agentId: string | null) => {
+    if (agentId === selectedAgentId) {
+      setIsOpen(false);
+      return;
+    }
     setSelectedAgentId(agentId);
+    setIsOpen(false);
     try {
-      await invoke("set_project_agent", {
-        projectId,
-        agentId,
-      });
+      await invoke("set_project_agent", { projectId, agentId });
     } catch (error) {
       console.error("Failed to set agent:", error);
     }
-    setIsOpen(false);
+    const agent = agentId ? agents.find((a) => a.id === agentId) ?? null : null;
+    onSelectAgent(agent);
   };
 
-  const getSelectedAgent = (): AgentConfig | undefined => {
-    return agents.find((a) => a.id === selectedAgentId);
-  };
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
 
   return (
-    <div className="agent-selector">
+    <div className="agent-selector" ref={containerRef}>
       <button
         className="agent-dropdown-btn"
         onClick={() => setIsOpen(!isOpen)}
       >
-        {getSelectedAgent() ? (
+        {selectedAgent ? (
           <>
-            <span className="agent-icon">{getSelectedAgent()?.icon || "🤖"}</span>
-            <span className="agent-name">{getSelectedAgent()?.name}</span>
+            <span className="agent-icon">{selectedAgent.icon || "🤖"}</span>
+            <span className="agent-name">{selectedAgent.name}</span>
           </>
         ) : (
           <>
