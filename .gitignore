@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+target/
+
+# Build output
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Rust
+*.lock
+!Cargo.lock
+
+# Tauri
+src-tauri/target/
+
+# Debug
+*.log
+
+# Config
+.neeko/
