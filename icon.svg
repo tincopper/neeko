@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background: One Dark Pro dark -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2c313a"/>
+      <stop offset="100%" style="stop-color:#21252b"/>
+    </linearGradient>
+    <!-- N letter: blue-purple gradient -->
+    <linearGradient id="nGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#61afef"/>
+      <stop offset="100%" style="stop-color:#c678dd"/>
+    </linearGradient>
+    <!-- Subtle inner glow on N -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="0" y="0" width="512" height="512" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Subtle border -->
+  <rect x="2" y="2" width="508" height="508" rx="94" ry="94"
+        fill="none" stroke="#61afef" stroke-width="3" stroke-opacity="0.25"/>
+
+  <!-- Letter N — bold, centered, with glow -->
+  <text
+    x="256" y="360"
+    font-family="'Segoe UI', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif"
+    font-size="320"
+    font-weight="700"
+    text-anchor="middle"
+    fill="url(#nGrad)"
+    filter="url(#glow)"
+    letter-spacing="-8"
+  >N</text>
+</svg>
