@@ -125,38 +125,6 @@ neeko/
 | `Ctrl+1` ~ `Ctrl+9` | 直接跳转到第 N 个项目 |
 | `Ctrl+Q` | 循环切换到下一个项目 |
 
-> 快捷键通过事件捕获阶段（`capture: true`）注册，绕过 xterm.js 的键盘拦截。
-
-## 配置与持久化
-
-所有数据存储在 `~/.neeko/` 目录：
-
-| 文件 | 内容 |
-|------|------|
-| `sessions.json` | 项目列表、Agent 绑定、终端历史、最后状态 |
-| `config.json` | 字体大小、Diff 模式 |
-
-`config.json` 示例：
-```json
-{ "fontSize": 14, "diffMode": "unified" }
-```
-
-## PTY 事件通信
-
-终端使用 Tauri 事件（非 IPC 命令）进行双向通信：
-
-| 方向 | 事件名 | Payload |
-|------|--------|---------|
-| 后端 → 前端 | `terminal-output-<sessionId>` | `Vec<u8>` |
-| 前端 → 后端 | `terminal-input-<sessionId>` | `Vec<u8>` |
-
-## 已知事项
-
-- Windows PTY 使用 `powershell.exe`
-- Worktree 操作（`create_worktree` / `remove_worktree`）调用系统 `git` CLI，不依赖 git2-rs
-- Diff 使用逐行比对实现，对大规模重排场景结果可能不精确
-- `TitleBar.tsx` 为遗留文件，实际标题栏内联在 `App.tsx` 中
-
 ## License
 
-MIT
+Apache 2.0
