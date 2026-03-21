@@ -1,17 +1,35 @@
+<div align="center">
+
 # Neeko
 
-多 AI CLI Agent 工具管理桌面应用。基于 Tauri 2.0 + Rust + React，为每个项目提供独立的 PTY 终端会话，集成 Git 管理与文件 Diff 查看。
+**为 AI 编程时代打造的多项目终端管理器**
+
+在同一个窗口里管理所有项目的 AI Agent 会话，让 opencode、claude-code、aider 等工具触手可及。
+
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-blue?logo=tauri)](https://tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-1.70+-orange?logo=rust)](https://rustup.rs)
+[![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
+[![License](https://img.shields.io/badge/License-Apache_2.0-green)](LICENSE)
+
+</div>
+
+---
+
+## 这是什么
+
+当你同时用 AI Agent 驱动多个项目时，反复在终端窗口间切换、重新启动 Agent、找回上下文，会打断开发节奏。
+
+Neeko 把所有项目的 Agent 终端整合进一个桌面应用：左侧边栏管理项目与 Git 状态，右侧是每个项目的独立终端——切换项目，会话始终在线。
 
 ## 功能特性
 
-- **多项目管理** — 同时管理多个本地项目，支持重启后自动恢复
-- **独立终端** — 每个项目绑定独立 PTY 终端，切换项目时会话不中断
-- **Agent 集成** — 内置 opencode、claude-code、aider、qwen、gemini、codex，切换后自动执行命令
-- **Git 管理** — 本地分支切换、新建分支、Worktree 管理
-- **Diff 查看** — 统一模式与并排模式，支持 Hunk 导航
-- **全局字体缩放** — 10–24px，实时生效，配置持久化
-- **自定义窗口装饰** — 无系统边框，自定义标题栏，可拖拽调整边栏宽度（180–480px）
-- **键盘快捷键** — `Ctrl+1~9` 跳转项目，`Ctrl+Q` 循环切换
+- **多项目终端** — 每个项目绑定独立 PTY 终端，切换时会话不中断，无需重启 Agent
+- **Agent 一键启动** — 内置 opencode、claude-code、aider、qwen、gemini、codex，选中即启动
+- **Git 侧边栏** — 查看变更文件、切换分支、管理 Worktree，无需离开应用
+- **Diff 查看** — 点击变更文件即可查看 Diff，支持统一/并排两种模式
+- **会话持久化** — 重启后自动恢复项目列表与 Agent 配置
+- **键盘驱动** — `Ctrl+1~9` 跳转项目，`Ctrl+Q` 循环切换，不打断键盘流
+- **沉浸式界面** — One Dark Pro 配色，无系统边框，边栏宽度可拖拽调整
 
 ## 快速开始
 
