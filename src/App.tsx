@@ -7,6 +7,7 @@ import DiffView from "./components/DiffView";
 import AgentSelector from "./components/AgentSelector";
 import WindowControls from "./components/WindowControls";
 import SettingsPanel, { AppConfig } from "./components/SettingsPanel";
+import { IDE_PRESETS, getIdeCommand } from "./utils/idePresets";
 import "./styles.css";
 
 interface Project {
@@ -28,6 +29,7 @@ interface Project {
     agent: any;
   };
   selected_agent: string | null;
+  selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
 }
 
@@ -45,6 +47,8 @@ const DEFAULT_CONFIG: AppConfig = {
   diffMode: "unified",
   shell: "",
   fontFamily: "",
+  customIdes: [],
+  ideCommandOverrides: {},
 };
 
 function App() {
@@ -53,12 +57,56 @@ function App() {
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Toast 通知
+  const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string, type: "info" | "error" = "info") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  };
+
   // 全局配置（持久化）
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Side Terminal 状态（每个项目独立）
   const [sideTerminalOpen, setSideTerminalOpen] = useState(false);
+
+  // Side Terminal 宽度（拖拽调整）
+  const [sideTerminalWidth, setSideTerminalWidth] = useState(480);
+  const sideResizingRef = useRef(false);
+  const sideResizeStartX = useRef(0);
+  const sideResizeStartWidth = useRef(480);
+  const MIN_SIDE_WIDTH = 200;
+  const MAX_SIDE_WIDTH = 1200;
+
+  const handleSideDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    sideResizingRef.current = true;
+    sideResizeStartX.current = e.clientX;
+    sideResizeStartWidth.current = sideTerminalWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!sideResizingRef.current) return;
+      // 向左拖动增大宽度（divider 在 side terminal 左侧）
+      const delta = sideResizeStartX.current - ev.clientX;
+      const next = Math.min(MAX_SIDE_WIDTH, Math.max(MIN_SIDE_WIDTH, sideResizeStartWidth.current + delta));
+      setSideTerminalWidth(next);
+    };
+    const onMouseUp = () => {
+      sideResizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
   // 切换项目时关闭 side terminal
   const prevProjectIdRef = useRef<string | null>(null);
 
@@ -77,12 +125,26 @@ function App() {
     }
   };
 
-  // 添加项目时的 agent 选择 modal
+  // 添加项目时的 agent / IDE 选择 modal
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [selectedNewAgentId, setSelectedNewAgentId] = useState<string | null>(null);
   const [pendingAgentOpen, setPendingAgentOpen] = useState(false);
   const pendingAgentRef = useRef<HTMLDivElement>(null);
+  const [selectedNewIdeId, setSelectedNewIdeId] = useState<string | null>(null);
+  const [pendingIdeOpen, setPendingIdeOpen] = useState(false);
+  const pendingIdeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pendingIdeOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pendingIdeRef.current && !pendingIdeRef.current.contains(e.target as Node)) {
+        setPendingIdeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [pendingIdeOpen]);
 
   useEffect(() => {
     if (!pendingAgentOpen) return;
@@ -111,6 +173,26 @@ function App() {
   // 同步 ref，让快捷键 handler 能读到最新状态（闭包中不更新）
   useEffect(() => { sideTerminalOpenRef.current = sideTerminalOpen; }, [sideTerminalOpen]);
 
+  // 打开当前项目 IDE
+  const activeProjectRef = useRef<Project | null>(null);
+  useEffect(() => { activeProjectRef.current = activeProject; }, [activeProject]);
+
+  const handleOpenIde = async (project: Project) => {
+    if (!project.selected_ide) {
+      showToast("No IDE configured for this project", "error");
+      return;
+    }
+    showToast(`Opening ${project.selected_ide}...`, "info");
+    try {
+      await invoke("open_ide", {
+        ideCommand: project.selected_ide,
+        projectPath: project.path,
+      });
+    } catch (e: any) {
+      showToast(String(e), "error");
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+Alt+T：在终端视图中打开 side terminal
@@ -127,6 +209,16 @@ function App() {
         if (sideTerminalOpenRef.current) {
           e.preventDefault();
           setSideTerminalOpen(false);
+        }
+        return;
+      }
+
+      // Ctrl+O：打开当前项目 IDE
+      if (e.ctrlKey && !e.altKey && e.code === "KeyO") {
+        const p = activeProjectRef.current;
+        if (p) {
+          e.preventDefault();
+          handleOpenIde(p);
         }
         return;
       }
@@ -165,6 +257,10 @@ function App() {
             diffMode: saved.diffMode === "split" ? "split" : "unified",
             shell: typeof saved.shell === "string" ? saved.shell : DEFAULT_CONFIG.shell,
             fontFamily: typeof saved.fontFamily === "string" ? saved.fontFamily : DEFAULT_CONFIG.fontFamily,
+            customIdes: Array.isArray(saved.customIdes) ? saved.customIdes : DEFAULT_CONFIG.customIdes,
+            ideCommandOverrides: (saved.ideCommandOverrides && typeof saved.ideCommandOverrides === "object")
+              ? saved.ideCommandOverrides
+              : DEFAULT_CONFIG.ideCommandOverrides,
           });
         }
       } catch (e) {
@@ -214,6 +310,7 @@ function App() {
           return;
         }
         setSelectedNewAgentId(null);
+        setSelectedNewIdeId(null);
         setPendingPath(selected);
       }
     } catch (error) {
@@ -227,9 +324,24 @@ function App() {
     if (!pendingPath) return;
     try {
       setLoading(true);
+      // 将预设 ID 或自定义 ID 转换为实际命令字符串
+      let ideCommand: string | null = null;
+      if (selectedNewIdeId) {
+        if (selectedNewIdeId.startsWith("custom:")) {
+          const idx = parseInt(selectedNewIdeId.replace("custom:", ""));
+          ideCommand = config.customIdes?.[idx]?.command ?? null;
+        } else {
+          const preset = IDE_PRESETS.find(i => i.id === selectedNewIdeId);
+          if (preset) {
+            // 优先使用用户覆盖的命令
+            ideCommand = config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset);
+          }
+        }
+      }
       const project = await invoke<Project>("add_project", {
         path: pendingPath,
         agentId: selectedNewAgentId,
+        ide: ideCommand,
       });
       await invoke("save_session").catch(() => {});
       setProjects(prev => [...prev, project]);
@@ -348,6 +460,10 @@ function App() {
           onSelectFile={handleSelectFile}
           onRefreshGit={handleRefreshGit}
           onOpenSettings={() => setSettingsOpen(v => !v)}
+          onOpenIde={(projectId) => {
+            const p = projects.find(proj => proj.id === projectId);
+            if (p) handleOpenIde(p);
+          }}
           loading={loading}
         />
 
@@ -359,13 +475,17 @@ function App() {
                   <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} fontFamily={config.fontFamily} />
                   {sideTerminalOpen && (
                     <>
-                      <div className="terminal-pane-divider" />
+                      <div
+                        className="terminal-pane-divider"
+                        onMouseDown={handleSideDividerMouseDown}
+                      />
                       <SideTerminalView
                         project={activeProject}
                         fontSize={config.fontSize}
                         shell={config.shell}
                         fontFamily={config.fontFamily}
                         onClose={() => setSideTerminalOpen(false)}
+                        width={sideTerminalWidth}
                       />
                     </>
                   )}
@@ -417,7 +537,7 @@ function App() {
                       <span className="agent-name">None</span>
                     </>
                   )}
-                  <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{pendingAgentOpen ? "▲" : "▼"}</span>
+                  <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{pendingAgentOpen ? "−" : "+"}</span>
                 </button>
                 {pendingAgentOpen && (
                   <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
@@ -442,6 +562,76 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {/* IDE 选择 */}
+              <label className="gh-dialog-label" style={{ marginTop: 12 }}>IDE</label>
+              <div className="agent-selector" ref={pendingIdeRef} style={{ width: "100%", marginTop: 4 }}>
+                <button
+                  className="agent-dropdown-btn"
+                  style={{ width: "100%" }}
+                  onClick={() => setPendingIdeOpen(v => !v)}
+                >
+                  {selectedNewIdeId ? (
+                    <>
+                      <span className="agent-icon">
+                        {selectedNewIdeId.startsWith("custom:")
+                          ? "💻"
+                          : IDE_PRESETS.find(i => i.id === selectedNewIdeId)?.icon}
+                      </span>
+                      <span className="agent-name">
+                        {selectedNewIdeId.startsWith("custom:")
+                          ? config.customIdes?.[parseInt(selectedNewIdeId.replace("custom:", ""))]?.name
+                          : IDE_PRESETS.find(i => i.id === selectedNewIdeId)?.name}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="agent-icon">💻</span>
+                      <span className="agent-name">None</span>
+                    </>
+                  )}
+                  <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{pendingIdeOpen ? "−" : "+"}</span>
+                </button>
+                {pendingIdeOpen && (
+                  <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                    <div
+                      className={`agent-option${!selectedNewIdeId ? " selected" : ""}`}
+                      onClick={() => { setSelectedNewIdeId(null); setPendingIdeOpen(false); }}
+                    >
+                      <span className="agent-icon">💻</span>
+                      <span className="agent-name">None</span>
+                    </div>
+                    {IDE_PRESETS.map(ide => (
+                      <div
+                        key={ide.id}
+                        className={`agent-option${selectedNewIdeId === ide.id ? " selected" : ""}`}
+                        onClick={() => { setSelectedNewIdeId(ide.id); setPendingIdeOpen(false); }}
+                      >
+                        <span className="agent-icon">{ide.icon}</span>
+                        <span className="agent-name">{ide.name}</span>
+                        <span className="agent-command">
+                          {config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide)}
+                        </span>
+                      </div>
+                    ))}
+                    {(config.customIdes || []).map((ide, idx) => {
+                      const customId = `custom:${idx}`;
+                      return (
+                        <div
+                          key={customId}
+                          className={`agent-option${selectedNewIdeId === customId ? " selected" : ""}`}
+                          onClick={() => { setSelectedNewIdeId(customId); setPendingIdeOpen(false); }}
+                        >
+                          <span className="agent-icon">💻</span>
+                          <span className="agent-name">{ide.name}</span>
+                          <span className="agent-command">{ide.command}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="modal-actions">
                 <button className="cancel-btn" onClick={() => setPendingPath(null)}>
                   Cancel
@@ -462,6 +652,22 @@ function App() {
           onConfigChange={saveConfig}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {/* Toast 通知 */}
+      {toast && (
+        <div className={`app-toast app-toast--${toast.type}`}>
+          {toast.type === "info" ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm.75 4.5a.75.75 0 0 0-1.5 0v4a.75.75 0 0 0 1.5 0v-4Zm0 7a.75.75 0 0 0-1.5 0 .75.75 0 0 0 1.5 0Z"/>
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"/>
+            </svg>
+          )}
+          <span>{toast.message}</span>
+        </div>
       )}
     </div>
   );

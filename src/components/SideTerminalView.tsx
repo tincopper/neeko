@@ -20,6 +20,7 @@ interface SideTerminalViewProps {
   shell?: string;
   fontFamily?: string;
   onClose: () => void;
+  width?: number;
 }
 
 // Side 终端的 cache key 格式：projectId + ":side"
@@ -33,6 +34,7 @@ export default function SideTerminalView({
   shell = "",
   fontFamily = "",
   onClose,
+  width,
 }: SideTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -152,7 +154,10 @@ export default function SideTerminalView({
   }, [project.id]);
 
   return (
-    <div className="side-terminal-container">
+    <div
+      className="side-terminal-container"
+      style={width ? { flex: "none", width } : undefined}
+    >
       <div className="side-terminal-header">
         <span className="side-terminal-title">Terminal</span>
         <span className="side-terminal-hint">Ctrl+W to close</span>

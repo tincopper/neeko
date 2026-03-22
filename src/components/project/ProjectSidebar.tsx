@@ -15,6 +15,7 @@ interface ProjectSidebarProps {
   onSelectFile: (projectId: string, filePath: string) => void;
   onRefreshGit: (projectId: string) => void;
   onOpenSettings: () => void;
+  onOpenIde?: (projectId: string) => void;
   loading: boolean;
 }
 
@@ -27,6 +28,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onSelectFile,
   onRefreshGit,
   onOpenSettings,
+  onOpenIde,
   loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -84,6 +86,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 onSelectFile={onSelectFile}
                 onRefreshGit={onRefreshGit}
                 onOpenDialog={setDialog}
+                onOpenIde={onOpenIde}
               />
             ))
           )}

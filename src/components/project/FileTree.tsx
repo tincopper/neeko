@@ -72,21 +72,27 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
     setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
   };
 
+  // 基础左边距：第一级文件/文件夹相对于分支行多缩进一级
+  // gh-branch-list padding-left(16) + 额外缩进(8) = 24px 作为起点
+  // 但 FileTree 已在 gh-branch-children 内，gh-branch-list 的 16px 不计入
+  // 所以 BASE = 8 让文件树第一级比分支名多缩进 8px
+  const BASE = 8;
+  const STEP = 14;
+
   return (
     <>
       {nodes.map((node) => {
         const isCollapsed = collapsed[node.path] ?? false;
-        const indent = depth * 12;
+        const indent = BASE + depth * STEP;
 
         if (node.isDir) {
           return (
             <React.Fragment key={node.path}>
               <div
                 className="gh-tree-dir"
-                style={{ paddingLeft: 8 + indent }}
+                style={{ paddingLeft: indent }}
                 onClick={(e) => toggle(node.path, e)}
               >
-                <span className="gh-chevron">{isCollapsed ? "▶" : "▼"}</span>
                 <img
                   className="gh-dir-icon"
                   src={`/icons/${isCollapsed ? "_folder" : "_folder_open"}.svg`}
@@ -114,7 +120,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
           <div
             key={node.path}
             className="gh-tree-file"
-            style={{ paddingLeft: 8 + indent }}
+            style={{ paddingLeft: indent }}
             onClick={(e) => {
               e.stopPropagation();
               onSelectFile(projectId, file.path);

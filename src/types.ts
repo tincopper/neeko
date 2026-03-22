@@ -32,6 +32,7 @@ export interface Project {
     agent: any;
   };
   selected_agent: string | null;
+  selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
 }
 

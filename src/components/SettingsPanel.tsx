@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
 
 export type DiffMode = "unified" | "split";
 
@@ -8,6 +9,8 @@ export interface AppConfig {
   diffMode: DiffMode;
   shell: string;
   fontFamily: string;
+  customIdes: { name: string; command: string }[];
+  ideCommandOverrides: Record<string, string>; // preset id -> 自定义命令
 }
 
 // 内置等宽字体预设（系统通常包含其中之一）
@@ -41,7 +44,7 @@ export const PRESET_SHELLS: { label: string; value: string }[] = (
       ]
 );
 
-type NavCategory = "editor" | "terminal" | "git";
+type NavCategory = "editor" | "terminal" | "ide" | "git";
 
 interface NavItem {
   id: NavCategory;
@@ -66,6 +69,15 @@ const NAV_ITEMS: NavItem[] = [
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
         <path d="M6 9a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9.5H6.5A.5.5 0 0 1 6 9Zm-2.354-4.854a.5.5 0 0 1 0 .708L2.707 6l.939.939a.5.5 0 1 1-.707.707l-1.25-1.25a.5.5 0 0 1 0-.707l1.25-1.25a.5.5 0 0 1 .707 0z"/>
         <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
+      </svg>
+    ),
+  },
+  {
+    id: "ide",
+    label: "IDE",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zm1.5-.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM5.354 5.354a.5.5 0 1 0-.708-.708L2.793 6.5l1.853 1.854a.5.5 0 1 0 .708-.708L4.207 6.5l1.147-1.146zm5 0L11.5 6.5l-1.146 1.146a.5.5 0 0 0 .708.708L12.914 6.5l-1.853-1.854a.5.5 0 0 0-.707.708zM7.854 10.854a.5.5 0 0 1-.707-.707l1.5-3a.5.5 0 0 1 .906.42l-1.5 3a.5.5 0 0 1-.199.287z"/>
       </svg>
     ),
   },
@@ -96,6 +108,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   const [fontsLoading, setFontsLoading] = useState(false);
   const [fontListOpen, setFontListOpen] = useState(false);
   const fontDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 自定义 IDE 相关状态
+  const [newIdeName, setNewIdeName] = useState("");
+  const [newIdeCommand, setNewIdeCommand] = useState("");
+
+  // 预设 IDE 双击编辑状态
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   useEffect(() => { setShellInput(config.shell); }, [config.shell]);
 
@@ -152,6 +172,54 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     setFontListOpen(false);
     setFontSearch("");
   };
+
+  const addCustomIde = () => {
+    const name = newIdeName.trim();
+    const command = newIdeCommand.trim();
+    if (!name || !command) return;
+    const exists = (config.customIdes || []).some(
+      i => i.name.toLowerCase() === name.toLowerCase() || i.command === command
+    );
+    if (exists) return;
+    onConfigChange({ ...config, customIdes: [...(config.customIdes || []), { name, command }] });
+    setNewIdeName("");
+    setNewIdeCommand("");
+  };
+
+  const removeCustomIde = (idx: number) => {
+    const next = [...(config.customIdes || [])];
+    next.splice(idx, 1);
+    onConfigChange({ ...config, customIdes: next });
+  };
+
+  const startEditPreset = (ide: import("../utils/idePresets").IdePreset) => {
+    const current = config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
+    setEditingPresetId(ide.id);
+    setEditingValue(current);
+  };
+
+  const savePresetOverride = (ideId: string) => {
+    const trimmed = editingValue.trim();
+    const preset = IDE_PRESETS.find(i => i.id === ideId)!;
+    const defaultCmd = getIdeCommand(preset);
+    const overrides = { ...(config.ideCommandOverrides || {}) };
+    if (trimmed && trimmed !== defaultCmd) {
+      overrides[ideId] = trimmed;
+    } else {
+      delete overrides[ideId]; // 恢复默认，移除覆盖
+    }
+    onConfigChange({ ...config, ideCommandOverrides: overrides });
+    setEditingPresetId(null);
+  };
+
+  const cancelPresetEdit = () => {
+    setEditingPresetId(null);
+    setEditingValue("");
+  };
+
+  // 获取某个预设的实际命令（考虑覆盖）
+  const getEffectiveCommand = (ide: import("../utils/idePresets").IdePreset) =>
+    config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
 
   const isCustomShell = shellInput !== "" && !PRESET_SHELLS.some(s => s.value === shellInput);
 
@@ -272,7 +340,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                             title="Reset to default"
                           >✕</span>
                         )}
-                        <span className="settings-font-arrow">{fontListOpen ? "▲" : "▼"}</span>
+                        <span className="settings-font-arrow">{fontListOpen ? "−" : "+"}</span>
                       </span>
                     </button>
 
@@ -347,6 +415,122 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                     onKeyDown={e => { if (e.key === "Enter") applyShell(shellInput.trim()); }}
                     spellCheck={false}
                   />
+                </div>
+              </>
+            )}
+
+            {activeNav === "ide" && (
+              <>
+                <div className="settings-content-title">IDE</div>
+
+                {/* 预设 IDE 列表 */}
+                <div className="settings-item settings-item-col">
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Preset IDEs</div>
+                    <div className="settings-item-desc">
+                      Built-in IDE presets. Select one when adding a project, or use Ctrl+O to open.
+                    </div>
+                  </div>
+                  <div className="settings-ide-list">
+                    {IDE_PRESETS.map(ide => {
+                      const isEditing = editingPresetId === ide.id;
+                      const effectiveCmd = getEffectiveCommand(ide);
+                      const isOverridden = !!config.ideCommandOverrides?.[ide.id];
+                      return (
+                        <div key={ide.id} className="settings-ide-item">
+                          <span className="settings-ide-icon">{ide.icon}</span>
+                          <span className="settings-ide-name">{ide.name}</span>
+                          {isEditing ? (
+                            <input
+                              className="settings-ide-command-input"
+                              value={editingValue}
+                              autoFocus
+                              spellCheck={false}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => savePresetOverride(ide.id)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") savePresetOverride(ide.id);
+                                if (e.key === "Escape") cancelPresetEdit();
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className={`settings-ide-command${isOverridden ? " overridden" : ""}`}
+                              title="Double-click to edit"
+                              onDoubleClick={() => startEditPreset(ide)}
+                            >
+                              {effectiveCmd}
+                            </span>
+                          )}
+                          {isOverridden && !isEditing && (
+                            <button
+                              className="settings-ide-reset"
+                              title="Reset to default"
+                              onClick={() => {
+                                const overrides = { ...(config.ideCommandOverrides || {}) };
+                                delete overrides[ide.id];
+                                onConfigChange({ ...config, ideCommandOverrides: overrides });
+                              }}
+                            >↺</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 自定义 IDE */}
+                <div className="settings-item settings-item-col" style={{ marginTop: 8 }}>
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Custom IDEs</div>
+                    <div className="settings-item-desc">
+                      Add custom IDEs by specifying a name and executable path or command.
+                    </div>
+                  </div>
+
+                  {/* 已添加的自定义 IDE */}
+                  {(config.customIdes || []).length > 0 && (
+                    <div className="settings-ide-list">
+                      {(config.customIdes || []).map((ide, idx) => (
+                        <div key={idx} className="settings-ide-item">
+                          <span className="settings-ide-icon">💻</span>
+                          <span className="settings-ide-name">{ide.name}</span>
+                          <span className="settings-ide-command">{ide.command}</span>
+                          <button
+                            className="settings-ide-remove"
+                            onClick={() => removeCustomIde(idx)}
+                            title="Remove"
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 添加新自定义 IDE */}
+                  <div className="settings-ide-add">
+                    <input
+                      className="settings-shell-input"
+                      type="text"
+                      placeholder="Name, e.g. My Editor"
+                      value={newIdeName}
+                      onChange={e => setNewIdeName(e.target.value)}
+                      spellCheck={false}
+                    />
+                    <input
+                      className="settings-shell-input"
+                      type="text"
+                      placeholder="Command or path, e.g. D:/zed.exe"
+                      value={newIdeCommand}
+                      onChange={e => setNewIdeCommand(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addCustomIde(); }}
+                      spellCheck={false}
+                    />
+                    <button
+                      className="settings-ide-add-btn"
+                      onClick={addCustomIde}
+                      disabled={!newIdeName.trim() || !newIdeCommand.trim()}
+                    >Add IDE</button>
+                  </div>
                 </div>
               </>
             )}

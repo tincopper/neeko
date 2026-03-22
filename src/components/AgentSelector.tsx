@@ -90,7 +90,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             <span className="agent-name">Select Agent</span>
           </>
         )}
-        <span className="dropdown-arrow">{isOpen ? "▲" : "▼"}</span>
+        <span className="dropdown-arrow">{isOpen ? "−" : "+"}</span>
       </button>
 
       {isOpen && (

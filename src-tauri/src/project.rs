@@ -15,7 +15,12 @@ impl ProjectManager {
         }
     }
 
-    pub fn add_project(&mut self, path: PathBuf, agent_id: Option<String>) -> Result<Project> {
+    pub fn add_project(
+        &mut self,
+        path: PathBuf,
+        agent_id: Option<String>,
+        ide: Option<String>,
+    ) -> Result<Project> {
         // 检查路径是否存在
         if !path.exists() {
             anyhow::bail!("Project path does not exist");
@@ -48,6 +53,7 @@ impl ProjectManager {
             git_info,
             terminal: terminal_session,
             selected_agent: agent_id,
+            selected_ide: ide,
             active_view: ViewMode::Terminal,
         };
 
@@ -60,6 +66,7 @@ impl ProjectManager {
         id: String,
         path: PathBuf,
         agent_id: Option<String>,
+        ide: Option<String>,
     ) -> Result<Project> {
         if !path.exists() {
             anyhow::bail!("Project path does not exist: {}", path.display());
@@ -88,10 +95,17 @@ impl ProjectManager {
             git_info,
             terminal: terminal_session,
             selected_agent: agent_id,
+            selected_ide: ide,
             active_view: ViewMode::Terminal,
         };
         self.projects.push(project.clone());
         Ok(project)
+    }
+
+    pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.selected_ide = ide;
+        }
     }
 
     pub fn remove_project(&mut self, project_id: &str) {

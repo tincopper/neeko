@@ -76,6 +76,7 @@ pub struct Project {
     pub git_info: Option<GitInfo>,
     pub terminal: TerminalSession,
     pub selected_agent: Option<String>,
+    pub selected_ide: Option<String>, // IDE 可执行路径或命令
     pub active_view: ViewMode,
 }
 
@@ -105,6 +106,7 @@ pub struct ProjectSession {
     pub name: String,
     pub path: PathBuf,
     pub selected_agent: Option<String>,
+    pub selected_ide: Option<String>,
     pub terminal_history: Vec<String>,
     pub last_status: TerminalStatus,
 }

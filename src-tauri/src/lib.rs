@@ -53,13 +53,14 @@ async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<St
 fn add_project(
     path: String,
     agent_id: Option<String>,
+    ide: Option<String>,
     state: State<AppStateWrapper>,
 ) -> Result<Project, String> {
     state
         .project_manager
         .lock()
         .unwrap()
-        .add_project(PathBuf::from(path), agent_id)
+        .add_project(PathBuf::from(path), agent_id, ide)
         .map_err(|e| e.to_string())
 }
 
@@ -379,6 +380,107 @@ fn get_monospace_fonts() -> Vec<String> {
     }
 }
 
+// IDE 命令
+#[tauri::command]
+fn set_project_ide(project_id: String, ide: Option<String>, state: State<AppStateWrapper>) {
+    state
+        .project_manager
+        .lock()
+        .unwrap()
+        .set_selected_ide(&project_id, ide);
+}
+
+/// 用指定 IDE 打开项目目录。
+#[tauri::command]
+fn open_ide(ide_command: String, project_path: String) -> Result<(), String> {
+    use std::process::Command;
+
+    let trimmed = ide_command.trim();
+    if trimmed.is_empty() {
+        return Err("No IDE configured for this project".into());
+    }
+
+    // 解析可执行文件路径和额外参数：
+    //
+    // 优先级：
+    // 1. 若整个字符串（去掉首尾空格）本身就是一个存在的文件路径，直接使用
+    //    （处理路径含空格但用户没有加引号的情况，如 D:\app\GoLand 2023.3.2\bin\goland64.exe）
+    // 2. 否则走 shell-style 分词（支持引号、带额外参数的命令）
+    let (exe, extra_args): (String, Vec<String>) = {
+        let unquoted = trimmed.trim_matches('"').trim_matches('\'');
+        if std::path::Path::new(unquoted).exists() {
+            // 整个字符串是有效路径，无额外参数
+            (unquoted.to_string(), vec![])
+        } else if std::path::Path::new(trimmed).exists() {
+            (trimmed.to_string(), vec![])
+        } else {
+            // 尝试 shell-style 分词
+            let parts = split_command(trimmed);
+            if parts.is_empty() {
+                return Err("Empty IDE command".into());
+            }
+            let mut it = parts.into_iter();
+            let exe = it.next().unwrap();
+            (exe, it.collect())
+        }
+    };
+
+    let mut cmd = Command::new(&exe);
+    cmd.args(&extra_args);
+    // project_path 通过 arg() 传递，Rust 在系统层正确处理空格，无需手动转义
+    cmd.arg(&project_path);
+
+    // Windows：后台 detached 启动，不等待，不弹出 cmd 窗口
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+
+    cmd.spawn().map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
+    Ok(())
+}
+
+/// Shell-style 简单分词：支持单引号和双引号包裹含空格的路径
+/// 例如：`"D:/My Apps/zed.exe" --arg` → `["D:/My Apps/zed.exe", "--arg"]`
+fn split_command(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                // 读取直到下一个 "
+                for inner in chars.by_ref() {
+                    if inner == '"' { break; }
+                    current.push(inner);
+                }
+            }
+            '\'' => {
+                // 读取直到下一个 '
+                for inner in chars.by_ref() {
+                    if inner == '\'' { break; }
+                    current.push(inner);
+                }
+            }
+            ' ' | '\t' => {
+                if !current.is_empty() {
+                    parts.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
+}
+
 // 配置命令
 #[tauri::command]
 fn save_config(config: serde_json::Value, state: State<AppStateWrapper>) -> Result<(), String> {
@@ -445,6 +547,7 @@ pub fn run() {
                         p.id.clone(),
                         p.path.clone(),
                         p.selected_agent.clone(),
+                        p.selected_ide.clone(),
                     );
                 }
             }
@@ -489,6 +592,9 @@ pub fn run() {
             add_agent,
             remove_agent,
             set_project_agent,
+            // IDE
+            set_project_ide,
+            open_ide,
             // 持久化
             save_session,
             load_session,
