@@ -360,6 +360,13 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // 窗口销毁时清理所有 PTY session，确保子进程不残留
+            if let tauri::WindowEvent::Destroyed = event {
+                let state = window.state::<AppStateWrapper>();
+                state.terminal_manager.close_all_sessions();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             // 项目管理

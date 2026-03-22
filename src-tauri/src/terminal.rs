@@ -5,13 +5,17 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tauri::{Emitter, Listener};
+use std::time::{Duration, Instant};
+use tauri::{Emitter, EventId, Listener};
 use uuid::Uuid;
 
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
-    // 保存子进程句柄，用于 close 时 wait() 回收，避免僵尸进程
     child: Box<dyn Child + Send + Sync>,
+    /// Tauri event listener ID for terminal-input-{id}，关闭时需注销
+    input_listener_id: EventId,
+    /// 用于跨线程 kill 子进程
+    app_handle: tauri::AppHandle,
 }
 
 pub struct TerminalManager {
@@ -97,20 +101,45 @@ impl TerminalManager {
             .unwrap()
             .insert(id.clone(), session.clone());
 
-        // 保存 master 和 child 供 resize / close / watcher 使用
+        // === 监听 Frontend 输入事件: Frontend -> PTY 写入 ===
+        // 保存 listener_id，关闭 session 时注销，避免 writer Arc 泄漏
+        let writer_mutex = Arc::new(Mutex::new(writer));
+        let writer_clone = writer_mutex.clone();
+        let input_listener_id =
+            app_handle.listen(&format!("terminal-input-{}", id), move |event| {
+                match serde_json::from_str::<Vec<u8>>(event.payload()) {
+                    Ok(data) => {
+                        if let Ok(mut w) = writer_clone.lock() {
+                            if let Err(e) = w.write_all(&data) {
+                                log_error(&format!("[PTY-WRITER] Write error: {}", e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log_error(&format!(
+                            "[PTY-WRITER] Parse error: {} payload={}",
+                            e,
+                            event.payload()
+                        ));
+                    }
+                }
+            });
+
+        // 保存 master、child、listener_id 和 app_handle
         self.pty_handles.lock().unwrap().insert(
             id.clone(),
             PtyHandle {
                 master: pair.master,
                 child,
+                input_listener_id,
+                app_handle: app_handle.clone(),
             },
         );
 
-        // === Watcher 线程: wait() 子进程退出 -> 主动 drop master 解除 reader 阻塞 ===
+        // === Watcher 线程: 检测子进程退出 -> drop master 解除 reader 阻塞 ===
         //
-        // Windows ConPTY 问题：shell 退出后 master read() 不会自动返回 EOF，
-        // 会永久阻塞。通过独立 watcher 线程 wait() 子进程，退出后从 pty_handles
-        // 移除 PtyHandle（drop master），使 reader 线程的 read() 收到错误并退出。
+        // Windows ConPTY：shell 退出后 master read() 永久阻塞，
+        // watcher 检测到退出后主动 drop master 使 read() 返回错误。
         let watch_id = id.clone();
         let watch_pty_handles = self.pty_handles.clone();
         let watch_sessions = self.sessions.clone();
@@ -118,43 +147,43 @@ impl TerminalManager {
         thread::Builder::new()
             .name(format!("pty-watcher-{}", &id[..8]))
             .spawn(move || {
-                // 从 pty_handles 取出 child 来 wait（不取 master，resize 还可能在用）
-                // 用一个单独的 Mutex 包裹 child，watcher 和 close_session 竞争取走它
                 log_info(&format!(
                     "[PTY-WATCHER] Thread started for {}",
                     &watch_id[..8]
                 ));
 
-                // 轮询子进程是否退出（portable_pty 的 try_wait 在 Windows 可用）
                 loop {
                     let exited = {
                         let mut handles = watch_pty_handles.lock().unwrap();
                         if let Some(handle) = handles.get_mut(&watch_id) {
                             match handle.child.try_wait() {
-                                Ok(Some(_)) => true, // 已退出
-                                Ok(None) => false,   // 还在运行
-                                Err(_) => true,      // 出错，视为已退出
+                                Ok(Some(_)) => true,
+                                Ok(None) => false,
+                                Err(_) => true,
                             }
                         } else {
-                            // PtyHandle 已被 close_session 移除，直接退出 watcher
+                            // PtyHandle 已被 close_session 移除，直接退出
+                            log_info(&format!(
+                                "[PTY-WATCHER] Handle gone, exiting for {}",
+                                &watch_id[..8]
+                            ));
                             return;
                         }
                     };
 
                     if exited {
                         log_info(&format!(
-                            "[PTY-WATCHER] Child exited for {}, dropping master to unblock reader",
+                            "[PTY-WATCHER] Child exited for {}, cleaning up",
                             &watch_id[..8]
                         ));
-                        // 移除 PtyHandle：drop master 使 reader read() 返回错误
-                        // drop child 完成进程资源回收
+                        // 取出 PtyHandle，注销 input 监听器，drop master 和 child
                         if let Some(handle) = watch_pty_handles.lock().unwrap().remove(&watch_id) {
+                            handle.app_handle.unlisten(handle.input_listener_id);
                             drop(handle.master);
                             drop(handle.child);
                         }
-                        // 清理 session
                         watch_sessions.lock().unwrap().remove(&watch_id);
-                        // 通知前端
+                        // 通知前端重建终端
                         let close_event = format!("terminal-closed-{}", watch_id);
                         if let Err(e) = watch_handle.emit(&close_event, ()) {
                             log_error(&format!("[PTY-WATCHER] Failed to emit close event: {}", e));
@@ -162,15 +191,11 @@ impl TerminalManager {
                         return;
                     }
 
-                    // 子进程还在运行，100ms 后再检查
-                    thread::sleep(std::time::Duration::from_millis(100));
+                    thread::sleep(Duration::from_millis(100));
                 }
             })?;
 
-        // === Reader 线程: PTY 读取 -> 发送到 Frontend ===
-        //
-        // Reader 只负责转发输出，不再负责清理（watcher 负责）。
-        // 当 watcher drop master 后，read() 会返回错误，reader 静默退出。
+        // === Reader 线程: PTY 输出 -> Frontend ===
         let read_id = id.clone();
         let read_handle = app_handle.clone();
         thread::Builder::new()
@@ -196,7 +221,6 @@ impl TerminalManager {
                             }
                         }
                         Err(e) => {
-                            // watcher drop master 后 read() 返回错误，属正常退出流程
                             log_info(&format!("[PTY-READER] Read ended: {}", e));
                             break;
                         }
@@ -207,30 +231,6 @@ impl TerminalManager {
                     &read_id[..8]
                 ));
             })?;
-
-        // === 监听 Frontend 输入事件: Frontend -> PTY 写入 ===
-        let writer_mutex = Arc::new(Mutex::new(writer));
-        let writer_clone = writer_mutex.clone();
-
-        app_handle.listen(
-            &format!("terminal-input-{}", id),
-            move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
-                Ok(data) => {
-                    if let Ok(mut w) = writer_clone.lock() {
-                        if let Err(e) = w.write_all(&data) {
-                            log_error(&format!("[PTY-WRITER] Write error: {}", e));
-                        }
-                    }
-                }
-                Err(e) => {
-                    log_error(&format!(
-                        "[PTY-WRITER] Parse error: {} payload={}",
-                        e,
-                        event.payload()
-                    ));
-                }
-            },
-        );
 
         log_info(&format!("[PTY] Session {} ready", &id[..8]));
         Ok(session)
@@ -254,18 +254,35 @@ impl TerminalManager {
         Ok(())
     }
 
+    /// 关闭单个 session：方案 B 优雅退出
+    /// 1. 先发优雅退出信号（Linux: SIGTERM，Windows: TerminateProcess 前先等）
+    /// 2. 最多等待 GRACEFUL_TIMEOUT_SECS 秒
+    /// 3. 超时后强制 kill
     pub fn close_session(&self, session_id: &str) {
         log_info(&format!(
             "[PTY] Closing session {}",
             &session_id[..8.min(session_id.len())]
         ));
         self.sessions.lock().unwrap().remove(session_id);
-        // 移除 PtyHandle：drop master 使 reader read() 返回错误；
-        // watcher 线程会检测到 PtyHandle 已不存在而自行退出
+
         if let Some(mut handle) = self.pty_handles.lock().unwrap().remove(session_id) {
+            // 注销 input 监听器，释放 writer Arc
+            handle.app_handle.unlisten(handle.input_listener_id);
+            // drop master：关闭 PTY master 端，通知子进程 HUP，同时解除 reader 阻塞
             drop(handle.master);
-            let _ = handle.child.wait();
+            // 优雅退出子进程
+            graceful_kill(&mut *handle.child);
         }
+    }
+
+    /// 关闭所有存活 session，用于应用退出时统一清理
+    pub fn close_all_sessions(&self) {
+        log_info("[PTY] Closing all sessions...");
+        let ids: Vec<String> = self.pty_handles.lock().unwrap().keys().cloned().collect();
+        for id in ids {
+            self.close_session(&id);
+        }
+        log_info("[PTY] All sessions closed");
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<TerminalSession> {
@@ -328,6 +345,92 @@ impl TerminalManager {
             log_info(&format!("[PTY] Using default shell: {}", shell));
             CommandBuilder::new(shell)
         }
+    }
+}
+
+/// 方案 B 优雅终止：
+/// - Linux/macOS：先 SIGTERM，等待最多 3 秒，超时后 SIGKILL
+/// - Windows：portable_pty kill() 即 TerminateProcess（无 SIGTERM 等价），
+///   先等待最多 3 秒让进程自然退出（PTY master 已关闭，shell 应收到 HUP），
+///   超时后强制 TerminateProcess
+const GRACEFUL_TIMEOUT_SECS: u64 = 3;
+
+fn graceful_kill(child: &mut dyn Child) {
+    let pid = match child.process_id() {
+        Some(p) => p,
+        None => {
+            // 没有 pid，直接强杀
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        }
+    };
+
+    #[cfg(unix)]
+    {
+        // Linux/macOS：发 SIGTERM，等待最多 3 秒，超时后 SIGKILL
+        unsafe {
+            libc::kill(pid as i32, libc::SIGTERM);
+        }
+        log_info(&format!("[PTY] Sent SIGTERM to PID {}", pid));
+
+        let deadline = Instant::now() + Duration::from_secs(GRACEFUL_TIMEOUT_SECS);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    log_info(&format!("[PTY] PID {} exited after SIGTERM", pid));
+                    return;
+                }
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Err(_) => return,
+            }
+        }
+        // 超时，SIGKILL
+        log_info(&format!(
+            "[PTY] PID {} did not exit after {}s, sending SIGKILL",
+            pid, GRACEFUL_TIMEOUT_SECS
+        ));
+        unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+        let _ = child.wait();
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows：PTY master 已 drop（发送了 HUP），等待子进程自然退出最多 3 秒
+        log_info(&format!(
+            "[PTY] Waiting up to {}s for PID {} to exit gracefully",
+            GRACEFUL_TIMEOUT_SECS, pid
+        ));
+        let deadline = Instant::now() + Duration::from_secs(GRACEFUL_TIMEOUT_SECS);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    log_info(&format!("[PTY] PID {} exited gracefully", pid));
+                    return;
+                }
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+                Err(_) => return,
+            }
+        }
+        // 超时，TerminateProcess
+        log_info(&format!(
+            "[PTY] PID {} did not exit after {}s, force killing",
+            pid, GRACEFUL_TIMEOUT_SECS
+        ));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 
