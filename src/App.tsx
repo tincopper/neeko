@@ -338,15 +338,6 @@ function App() {
           )}
         </div>
 
-        {/* Settings Panel */}
-        {settingsOpen && (
-          <SettingsPanel
-            config={config}
-            onConfigChange={saveConfig}
-            onClose={() => setSettingsOpen(false)}
-          />
-        )}
-
         {/* 添加项目时选择 Agent 的 modal */}
         {pendingPath && (
           <div className="modal-overlay">
@@ -408,6 +399,15 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Settings Dialog — fixed overlay, outside app-container */}
+      {settingsOpen && (
+        <SettingsPanel
+          config={config}
+          onConfigChange={saveConfig}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -190,78 +190,194 @@ body {
 }
 
 /* Settings Panel */
-.settings-panel {
-  position: absolute;
-  top: 41px;
-  left: 8px;
-  width: 260px;
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  z-index: 500;
-  padding: 0 0 8px 0;
-  user-select: none;
+/* ── Settings Dialog ── */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
 }
 
-.settings-header {
+.settings-dialog {
+  width: 720px;
+  height: 480px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 8px;
+  padding: 14px 20px 12px;
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
-.settings-title {
-  font-size: 0.86em;
+.settings-dialog-title {
+  font-size: 0.93em;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
 }
 
-.settings-close-btn {
+.settings-dialog-close {
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.86em;
-  padding: 2px 4px;
-  border-radius: 3px;
-  line-height: 1;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.settings-close-btn:hover {
-  color: var(--text-primary);
+.settings-dialog-close:hover {
   background-color: var(--bg-hover);
+  color: var(--text-primary);
 }
 
-.settings-section {
-  padding: 8px 14px;
+.settings-dialog-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
-.settings-label {
-  font-size: 0.79em;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-  font-weight: 500;
+/* Left navigation */
+.settings-nav {
+  width: 168px;
+  flex-shrink: 0;
+  background-color: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
 }
 
-.settings-row {
+.settings-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.86em;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s, color 0.15s;
+  width: 100%;
 }
 
+.settings-nav-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-nav-item.active {
+  background-color: var(--accent-blue);
+  color: #fff;
+}
+
+.settings-nav-item.active .settings-nav-icon {
+  color: #fff;
+}
+
+.settings-nav-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.settings-nav-label {
+  font-weight: 500;
+}
+
+/* Right content pane */
+.settings-content {
+  flex: 1;
+  padding: 24px 28px;
+  overflow-y: auto;
+}
+
+.settings-content-title {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Each settings row */
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  gap: 24px;
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+/* Stacked variant (shell section) */
+.settings-item-col {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.settings-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-item-name {
+  font-size: 0.86em;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.settings-item-desc {
+  font-size: 0.79em;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.settings-item-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* +/- step buttons */
 .settings-step-btn {
   width: 28px;
   height: 28px;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--text-primary);
-  font-size: 1.14em;
+  font-size: 1.07em;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -274,60 +390,66 @@ body {
 }
 
 .settings-step-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-.settings-value {
-  flex: 1;
+.settings-step-value {
+  min-width: 44px;
   text-align: center;
-  font-size: 0.93em;
+  font-size: 0.86em;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.settings-toggle-row {
+/* Segmented control */
+.settings-segmented {
   display: flex;
-  gap: 6px;
-}
-
-.settings-toggle-btn {
-  flex: 1;
-  padding: 6px 0;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.settings-seg-btn {
+  padding: 5px 14px;
+  background: none;
+  border: none;
   color: var(--text-secondary);
   font-size: 0.86em;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.settings-toggle-btn:hover {
+.settings-seg-btn + .settings-seg-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+.settings-seg-btn:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
 }
 
-.settings-toggle-btn.active {
+.settings-seg-btn.active {
   background-color: var(--accent-blue);
-  border-color: var(--accent-blue);
   color: #fff;
 }
 
-/* Shell selector in settings */
+/* Shell preset buttons */
 .settings-shell-presets {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
+  gap: 6px;
+  width: 100%;
 }
 
 .settings-shell-btn {
-  padding: 4px 10px;
+  padding: 5px 12px;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--text-secondary);
-  font-size: 0.79em;
+  font-size: 0.82em;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
@@ -336,6 +458,7 @@ body {
 .settings-shell-btn:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+  border-color: var(--text-muted);
 }
 
 .settings-shell-btn.active {
@@ -344,17 +467,14 @@ body {
   color: #fff;
 }
 
-.settings-shell-custom {
-  margin-bottom: 6px;
-}
-
+/* Shell custom input */
 .settings-shell-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 5px 8px;
+  padding: 7px 10px;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--text-primary);
   font-size: 0.86em;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -368,12 +488,18 @@ body {
 
 .settings-shell-input.custom-active {
   border-color: var(--accent-blue);
-  color: var(--accent-blue);
 }
 
-.settings-shell-hint {
-  font-size: 0.75em;
+/* Empty placeholder for sections with no content yet */
+.settings-empty-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 0;
   color: var(--text-muted);
+  font-size: 0.86em;
 }
 
 /* Sidebar */
