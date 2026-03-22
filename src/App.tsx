@@ -464,6 +464,7 @@ function App() {
             const p = projects.find(proj => proj.id === projectId);
             if (p) handleOpenIde(p);
           }}
+          onOpenSideTerminal={() => setSideTerminalOpen(true)}
           loading={loading}
         />
 

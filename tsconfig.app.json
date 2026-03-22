@@ -9,7 +9,7 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
-    "noEmit": true
+    "noEmit": false,
   },
-  "include": ["src"]
+  "include": ["src"],
 }

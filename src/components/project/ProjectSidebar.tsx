@@ -16,6 +16,7 @@ interface ProjectSidebarProps {
   onRefreshGit: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenIde?: (projectId: string) => void;
+  onOpenSideTerminal?: (projectId: string) => void;
   loading: boolean;
 }
 
@@ -29,6 +30,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onRefreshGit,
   onOpenSettings,
   onOpenIde,
+  onOpenSideTerminal,
   loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -87,6 +89,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 onRefreshGit={onRefreshGit}
                 onOpenDialog={setDialog}
                 onOpenIde={onOpenIde}
+                onOpenSideTerminal={onOpenSideTerminal}
               />
             ))
           )}

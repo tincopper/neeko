@@ -13,6 +13,7 @@ interface ProjectItemProps {
   onRefreshGit: (projectId: string) => void;
   onOpenDialog: (dialog: DialogState) => void;
   onOpenIde?: (projectId: string) => void;
+  onOpenSideTerminal?: (projectId: string) => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -24,6 +25,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onRefreshGit,
   onOpenDialog,
   onOpenIde,
+  onOpenSideTerminal,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -95,27 +97,32 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         </span>
         <div className="gh-project-meta">
           <span className="gh-project-name">{project.name}</span>
-          {project.selected_ide && onOpenIde && (
+        </div>
+        {/* IDE 按钮（始终可见） */}
+        {project.selected_ide && onOpenIde && (
+          <button
+            className="gh-icon-btn gh-ide-btn"
+            title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
+            onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M10.604 1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1ZM3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5Z"/>
+            </svg>
+          </button>
+        )}
+        <div className="gh-project-actions">
+          {/* Side Terminal 按钮 */}
+          {onOpenSideTerminal && isActive && project.active_view === "Terminal" && (
             <button
-              className="gh-icon-btn gh-ide-btn"
-              title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
-              onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
+              className="gh-icon-btn"
+              onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
+              title="Open side terminal (Ctrl+Alt+T)"
             >
               <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M10.604 1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1ZM3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5Z"/>
+                <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z"/>
               </svg>
             </button>
           )}
-        </div>
-        {project.git_info && (
-          <span className="gh-branch-inline">
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-            </svg>
-            {project.git_info.current_branch}
-          </span>
-        )}
-        <div className="gh-project-actions">
           {/* Git 操作下拉菜单 */}
           {project.git_info && (
             <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
@@ -156,6 +163,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             </svg>
           </button>
         </div>
+        {project.git_info && (
+          <span className="gh-branch-inline">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
+            </svg>
+            {project.git_info.current_branch}
+          </span>
+        )}
       </div>
 
       {isExpanded && (

@@ -797,17 +797,12 @@ body {
 
 /* Open IDE button in project header */
 .gh-ide-btn {
-  opacity: 0;
-  transition: opacity 0.15s;
+  opacity: 1;
   padding: 2px 4px;
-  margin-left: 4px;
+  margin-left: 2px;
   color: var(--text-muted);
 }
 
-.gh-project-header:hover .gh-ide-btn,
-.gh-project.active .gh-ide-btn {
-  opacity: 1;
-}
 
 .gh-ide-btn:hover {
   color: var(--accent-blue) !important;
@@ -917,6 +912,7 @@ body {
   align-items: center;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .gh-project-name {
@@ -946,9 +942,7 @@ body {
   white-space: nowrap;
 }
 
-.gh-project-header:hover .gh-branch-inline {
-  display: none;
-}
+/* branch inline is always visible as rightmost element */
 
 .gh-change-count {
   font-size: 0.79em;
@@ -963,14 +957,9 @@ body {
 .gh-project-actions {
   display: flex;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
   flex-shrink: 0;
 }
 
-.gh-project-header:hover .gh-project-actions {
-  opacity: 1;
-}
 
 .gh-icon-btn {
   background: none;
