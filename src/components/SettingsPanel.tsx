@@ -94,6 +94,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
   const [fontSearch, setFontSearch] = useState("");
   const [fontsLoading, setFontsLoading] = useState(false);
+  const [fontListOpen, setFontListOpen] = useState(false);
+  const fontDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setShellInput(config.shell); }, [config.shell]);
 
@@ -115,6 +117,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     if (activeNav === "terminal") loadFonts();
   }, [activeNav, loadFonts]);
 
+  // 点击字体下拉外部时关闭
+  useEffect(() => {
+    if (!fontListOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(e.target as Node)) {
+        setFontListOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [fontListOpen]);
+
   // Esc 关闭
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -135,6 +149,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
 
   const applyFont = (font: string) => {
     onConfigChange({ ...config, fontFamily: font });
+    setFontListOpen(false);
+    setFontSearch("");
   };
 
   const isCustomShell = shellInput !== "" && !PRESET_SHELLS.some(s => s.value === shellInput);
@@ -236,44 +252,66 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                     </div>
                   </div>
 
-                  {/* 当前选中字体预览 */}
-                  <div className="settings-font-preview" style={{ fontFamily: config.fontFamily || "monospace" }}>
-                    {config.fontFamily || "Default (JetBrains Mono / Fira Code)"}
-                    {config.fontFamily && (
-                      <button className="settings-font-clear" onClick={() => applyFont("")} title="Reset to default">✕</button>
-                    )}
-                  </div>
+                  {/* 下拉触发器 + 弹出列表 */}
+                  <div className="settings-font-dropdown" ref={fontDropdownRef}>
+                    {/* 触发器：点击展开/收起 */}
+                    <button
+                      className={`settings-font-trigger${fontListOpen ? " open" : ""}`}
+                      onClick={() => setFontListOpen(v => !v)}
+                      style={{ fontFamily: config.fontFamily ? `'${config.fontFamily}', monospace` : "monospace" }}
+                    >
+                      <span className="settings-font-trigger-text">
+                        {config.fontFamily || "Default (JetBrains Mono / Fira Code)"}
+                      </span>
+                      <span className="settings-font-trigger-actions">
+                        {config.fontFamily && (
+                          <span
+                            className="settings-font-clear"
+                            role="button"
+                            onClick={e => { e.stopPropagation(); applyFont(""); setFontListOpen(false); }}
+                            title="Reset to default"
+                          >✕</span>
+                        )}
+                        <span className="settings-font-arrow">{fontListOpen ? "▲" : "▼"}</span>
+                      </span>
+                    </button>
 
-                  {/* 搜索框 */}
-                  <input
-                    className="settings-shell-input"
-                    type="text"
-                    placeholder="Search fonts..."
-                    value={fontSearch}
-                    onChange={e => setFontSearch(e.target.value)}
-                    spellCheck={false}
-                  />
-
-                  {/* 字体列表 */}
-                  <div className="settings-font-list">
-                    {fontsLoading ? (
-                      <div className="settings-font-loading">Loading system fonts...</div>
-                    ) : filteredFonts.length === 0 ? (
-                      <div className="settings-font-loading">No fonts found</div>
-                    ) : (
-                      filteredFonts.map(font => (
-                        <button
-                          key={font}
-                          className={`settings-font-item${config.fontFamily === font ? " active" : ""}${BUILTIN_FONTS.includes(font) ? " builtin" : ""}`}
-                          onClick={() => applyFont(font)}
-                          title={font}
-                        >
-                          <span className="settings-font-name">{font}</span>
-                          <span className="settings-font-sample" style={{ fontFamily: `'${font}', monospace` }}>
-                            AaBbCc 中文
-                          </span>
-                        </button>
-                      ))
+                    {/* 下拉面板 */}
+                    {fontListOpen && (
+                      <div className="settings-font-panel">
+                        <div className="settings-font-search-wrap">
+                          <input
+                            className="settings-font-search"
+                            type="text"
+                            placeholder="Search fonts..."
+                            value={fontSearch}
+                            onChange={e => setFontSearch(e.target.value)}
+                            autoFocus
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="settings-font-list">
+                          {fontsLoading ? (
+                            <div className="settings-font-loading">Loading system fonts...</div>
+                          ) : filteredFonts.length === 0 ? (
+                            <div className="settings-font-loading">No fonts found</div>
+                          ) : (
+                            filteredFonts.map(font => (
+                              <button
+                                key={font}
+                                className={`settings-font-item${config.fontFamily === font ? " active" : ""}${BUILTIN_FONTS.includes(font) ? " builtin" : ""}`}
+                                onClick={() => applyFont(font)}
+                                title={font}
+                              >
+                                <span className="settings-font-name">{font}</span>
+                                <span className="settings-font-sample" style={{ fontFamily: `'${font}', monospace` }}>
+                                  AaBbCc 中文
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
