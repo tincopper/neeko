@@ -1,6 +1,6 @@
 use crate::state::{AgentConfig, TerminalSession, TerminalStatus};
 use anyhow::Result;
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
+    // 保存子进程句柄，用于 close 时 wait() 回收，避免僵尸进程
+    child: Box<dyn Child + Send + Sync>,
 }
 
 pub struct TerminalManager {
@@ -54,19 +56,32 @@ impl TerminalManager {
         })?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
-        // 启动 shell
+        // 检测 shell：Windows 用 powershell，Linux/macOS 优先读 $SHELL，
+        // fallback 链：$SHELL -> /bin/bash（若存在）-> /bin/sh
         let shell = if cfg!(target_os = "windows") {
-            "cmd.exe"
+            "powershell.exe".to_string()
         } else {
-            "bash"
+            std::env::var("SHELL").unwrap_or_else(|_| {
+                if std::path::Path::new("/bin/bash").exists() {
+                    "/bin/bash".to_string()
+                } else {
+                    "/bin/sh".to_string()
+                }
+            })
         };
-        let mut cmd = CommandBuilder::new(shell);
+        log_info(&format!("[PTY] Using shell: {}", shell));
+
+        let mut cmd = CommandBuilder::new(&shell);
         cmd.env("TERM", "xterm-256color");
         cmd.cwd(project_path);
 
         let child = pair.slave.spawn_command(cmd)?;
         let pid = child.process_id();
         log_info(&format!("[PTY] Shell spawned, PID: {:?}", pid));
+
+        // 问题三：spawn_command 后立即 drop slave，确保 Linux 上
+        // 所有 slave fd 关闭后 master read() 能在子进程退出时返回 EOF
+        drop(pair.slave);
 
         // 获取 reader 和 writer
         let mut reader = pair.master.try_clone_reader()?;
@@ -86,11 +101,12 @@ impl TerminalManager {
             .unwrap()
             .insert(id.clone(), session.clone());
 
-        // 保存 master 供 resize 使用
+        // 保存 master 和 child 供 resize / close 使用
         self.pty_handles.lock().unwrap().insert(
             id.clone(),
             PtyHandle {
                 master: pair.master,
+                child,
             },
         );
 
@@ -127,13 +143,23 @@ impl TerminalManager {
                         }
                     }
                 }
-                // 管道关闭/EOF，清理 session 并通知前端
+                // 管道关闭/EOF：
+                // 1. 从 pty_handles 取出 PtyHandle，drop master + wait child 回收进程
+                // 2. 清理 session
+                // 3. 通知前端重建终端
                 log_info(&format!(
                     "[PTY-READER] Session {} closed, cleaning up",
                     &read_id[..8]
                 ));
+                if let Some(mut handle) = read_pty_handles.lock().unwrap().remove(&read_id) {
+                    // 先 drop master（关闭 PTY master 端）
+                    drop(handle.master);
+                    // 再 wait child 回收僵尸进程
+                    if let Err(e) = handle.child.wait() {
+                        log_error(&format!("[PTY-READER] wait() error: {}", e));
+                    }
+                }
                 read_sessions.lock().unwrap().remove(&read_id);
-                read_pty_handles.lock().unwrap().remove(&read_id);
                 let close_event = format!("terminal-closed-{}", read_id);
                 if let Err(e) = read_handle.emit(&close_event, ()) {
                     log_error(&format!("[PTY-READER] Failed to emit close event: {}", e));
@@ -141,7 +167,6 @@ impl TerminalManager {
             })?;
 
         // === 监听 Frontend 输入事件: Frontend -> PTY 写入 ===
-        let write_id = id.clone();
         let writer_mutex = Arc::new(Mutex::new(writer));
         let writer_clone = writer_mutex.clone();
 
@@ -193,7 +218,15 @@ impl TerminalManager {
             &session_id[..8.min(session_id.len())]
         ));
         self.sessions.lock().unwrap().remove(session_id);
-        self.pty_handles.lock().unwrap().remove(session_id);
+        // 从 pty_handles 移除时，PtyHandle drop 会关闭 master；
+        // child 的 drop 在 reader 线程中已通过 wait() 处理，
+        // 若 close_session 先于 reader 线程退出被调用，这里的 drop
+        // 会关闭 master，促使 reader 的 read() 返回 EOF 并完成 wait()
+        if let Some(mut handle) = self.pty_handles.lock().unwrap().remove(session_id) {
+            drop(handle.master);
+            // 非阻塞尝试 wait，若子进程尚未退出则忽略错误
+            let _ = handle.child.wait();
+        }
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<TerminalSession> {

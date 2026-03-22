@@ -175,13 +175,22 @@ async function createTerminalForProject(
       }
     );
 
+    // IME 合成状态标志：Linux/WebView 上 compositionstart 和 onData 可能同时触发，
+    // composing 期间屏蔽 onData 发送，避免中文输入重复显示（如「我是我」现象）
+    let isComposing = false;
+    const textarea = term.textarea;
+    if (textarea) {
+      textarea.addEventListener('compositionstart', () => { isComposing = true; });
+      textarea.addEventListener('compositionend', () => { isComposing = false; });
+    }
+
     term.onData((data) => {
+      if (isComposing) return;
       const bytes = Array.from(new TextEncoder().encode(data));
       emit(`terminal-input-${sid}`, bytes).catch((err) => {
         log(`Input emit error: ${err}`);
       });
     });
-
     // 如果项目有预设 agent，连接成功后自动启动
     if (selectedAgentId) {
       try {
