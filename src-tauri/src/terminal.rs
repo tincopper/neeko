@@ -29,6 +29,8 @@ impl TerminalManager {
     pub fn create_session(
         &self,
         project_path: &str,
+        cols: u16,
+        rows: u16,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -45,12 +47,12 @@ impl TerminalManager {
         // 创建 PTY
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
-            rows: 24,
-            cols: 80,
+            rows,
+            cols,
             pixel_width: 0,
             pixel_height: 0,
         })?;
-        log_info("[PTY] PTY opened");
+        log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
         // 启动 shell
         let shell = if cfg!(target_os = "windows") {
@@ -95,6 +97,8 @@ impl TerminalManager {
         // === Reader 线程: PTY 读取 -> 发送到 Frontend ===
         let read_id = id.clone();
         let read_handle = app_handle.clone();
+        let read_sessions = self.sessions.clone();
+        let read_pty_handles = self.pty_handles.clone();
         thread::Builder::new()
             .name(format!("pty-reader-{}", &id[..8]))
             .spawn(move || {
@@ -122,6 +126,17 @@ impl TerminalManager {
                             break;
                         }
                     }
+                }
+                // 管道关闭/EOF，清理 session 并通知前端
+                log_info(&format!(
+                    "[PTY-READER] Session {} closed, cleaning up",
+                    &read_id[..8]
+                ));
+                read_sessions.lock().unwrap().remove(&read_id);
+                read_pty_handles.lock().unwrap().remove(&read_id);
+                let close_event = format!("terminal-closed-{}", read_id);
+                if let Err(e) = read_handle.emit(&close_event, ()) {
+                    log_error(&format!("[PTY-READER] Failed to emit close event: {}", e));
                 }
             })?;
 

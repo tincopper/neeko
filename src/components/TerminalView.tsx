@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { invoke } from "@tauri-apps/api/core";
@@ -42,9 +42,21 @@ interface TerminalCache {
 // 全局缓存，切换项目时保留会话
 const terminalCache = new Map<string, TerminalCache>();
 
+// 存储每个 projectId 对应的"需要重建"回调，管道关闭时调用
+const terminalRebuildCallbacks = new Map<string, () => void>();
+
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString();
   console.log(`[${ts}] [Terminal] ${msg}`);
+}
+
+function destroyTerminalCache(projectId: string) {
+  const cache = terminalCache.get(projectId);
+  if (!cache) return;
+  cache.unlistenOutput?.();
+  cache.term.dispose();
+  terminalCache.delete(projectId);
+  log(`Cache destroyed for ${projectId}`);
 }
 
 function sendToTerminal(projectId: string, text: string) {
@@ -72,6 +84,7 @@ async function createTerminalForProject(
   projectName: string,
   selectedAgentId: string | null,
   fontSize: number,
+  wrapper: HTMLElement,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -111,7 +124,14 @@ async function createTerminalForProject(
 
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
+
+  // 先挂载到 DOM，再 open，这样 fitAddon.fit() 能拿到真实容器尺寸
+  wrapper.appendChild(element);
   term.open(element);
+  fitAddon.fit();
+  const initCols = term.cols;
+  const initRows = term.rows;
+  log(`Initial size: ${initCols}x${initRows}`);
 
   const cache: TerminalCache = {
     term,
@@ -127,7 +147,7 @@ async function createTerminalForProject(
   try {
     const session = await invoke<{ id: string; pid: number | null }>(
       "create_terminal_session",
-      { projectId }
+      { projectId, cols: initCols, rows: initRows }
     );
     const sid = session.id;
     cache.sessionId = sid;
@@ -142,6 +162,18 @@ async function createTerminalForProject(
       }
     );
     cache.unlistenOutput = unlistenOutput;
+
+    // 监听管道关闭事件：清理 cache，触发重建
+    const unlistenClosed = await listen<null>(
+      `terminal-closed-${sid}`,
+      async () => {
+        log(`Session ${sid} closed by backend, destroying cache for ${projectId}`);
+        unlistenClosed();
+        destroyTerminalCache(projectId);
+        // 通知组件重建终端
+        terminalRebuildCallbacks.get(projectId)?.();
+      }
+    );
 
     term.onData((data) => {
       const bytes = Array.from(new TextEncoder().encode(data));
@@ -173,6 +205,8 @@ async function createTerminalForProject(
 export default function TerminalView({ project, fontSize = 14 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentProjectIdRef = useRef<string | null>(null);
+  // 管道关闭时递增，触发 useEffect 重建终端
+  const [rebuildCount, setRebuildCount] = useState(0);
 
   // fontSize 变化时更新已有终端实例
   useEffect(() => {
@@ -189,6 +223,16 @@ export default function TerminalView({ project, fontSize = 14 }: TerminalViewPro
 
     const projectId = project.id;
     currentProjectIdRef.current = projectId;
+
+    // 注册重建回调：管道关闭时，backend 会清理 session 并发 terminal-closed 事件，
+    // createTerminalForProject 监听到后调用此 callback 触发 rebuildCount 递增，
+    // 进而使当前 useEffect 重新运行，此时 cache 已被清除，会创建新终端
+    terminalRebuildCallbacks.set(projectId, () => {
+      if (currentProjectIdRef.current === projectId) {
+        log(`Rebuild triggered for ${projectId}`);
+        setRebuildCount((c) => c + 1);
+      }
+    });
 
     const attach = (cache: TerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -220,10 +264,22 @@ export default function TerminalView({ project, fontSize = 14 }: TerminalViewPro
       log(`Reattaching existing terminal for ${project.name}`);
       attach(terminalCache.get(projectId)!);
     } else {
-      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize).then((cache) => {
+      // 传入 wrapper，让函数内先挂载 element 再 fit，确保初始尺寸正确
+      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize, wrapper).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return;
-        detachAll();
-        attach(cache);
+        // element 已在函数内挂载，只需 focus 并同步后端尺寸
+        requestAnimationFrame(() => {
+          if (currentProjectIdRef.current !== projectId) return;
+          cache.fitAddon.fit();
+          if (cache.sessionId) {
+            invoke("resize_terminal", {
+              sessionId: cache.sessionId,
+              cols: cache.term.cols,
+              rows: cache.term.rows,
+            }).catch(() => {});
+          }
+          cache.term.focus();
+        });
       });
     }
 
@@ -244,8 +300,9 @@ export default function TerminalView({ project, fontSize = 14 }: TerminalViewPro
     return () => {
       window.removeEventListener("resize", handleResize);
       detachAll();
+      terminalRebuildCallbacks.delete(projectId);
     };
-  }, [project.id]);
+  }, [project.id, rebuildCount]);
 
   return (
     <div className="terminal-container">

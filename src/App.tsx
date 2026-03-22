@@ -73,6 +73,19 @@ function App() {
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [selectedNewAgentId, setSelectedNewAgentId] = useState<string | null>(null);
+  const [pendingAgentOpen, setPendingAgentOpen] = useState(false);
+  const pendingAgentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pendingAgentOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pendingAgentRef.current && !pendingAgentRef.current.contains(e.target as Node)) {
+        setPendingAgentOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [pendingAgentOpen]);
 
   // 快捷键：Ctrl+1~9 切换到对应项目，Ctrl+Q 循环切换
   const selectProjectRef = useRef<(id: string) => void>(() => {});
@@ -339,18 +352,48 @@ function App() {
               <h3>Add Project</h3>
               <p className="modal-path">{pendingPath}</p>
               <label className="gh-dialog-label" style={{ marginTop: 12 }}>Agent</label>
-              <select
-                className="agent-select"
-                value={selectedNewAgentId ?? ""}
-                onChange={(e) => setSelectedNewAgentId(e.target.value || null)}
-              >
-                <option value="">None</option>
-                {agents.filter(a => a.enabled).map(agent => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.icon ? `${agent.icon} ` : ""}{agent.name}
-                  </option>
-                ))}
-              </select>
+              <div className="agent-selector" ref={pendingAgentRef} style={{ width: "100%", marginTop: 4 }}>
+                <button
+                  className="agent-dropdown-btn"
+                  style={{ width: "100%" }}
+                  onClick={() => setPendingAgentOpen(v => !v)}
+                >
+                  {selectedNewAgentId ? (
+                    <>
+                      <span className="agent-icon">{agents.find(a => a.id === selectedNewAgentId)?.icon || "🤖"}</span>
+                      <span className="agent-name">{agents.find(a => a.id === selectedNewAgentId)?.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="agent-icon">⚡</span>
+                      <span className="agent-name">None</span>
+                    </>
+                  )}
+                  <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{pendingAgentOpen ? "▲" : "▼"}</span>
+                </button>
+                {pendingAgentOpen && (
+                  <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                    <div
+                      className={`agent-option${!selectedNewAgentId ? " selected" : ""}`}
+                      onClick={() => { setSelectedNewAgentId(null); setPendingAgentOpen(false); }}
+                    >
+                      <span className="agent-icon">⚡</span>
+                      <span className="agent-name">None</span>
+                    </div>
+                    {agents.filter(a => a.enabled).map(agent => (
+                      <div
+                        key={agent.id}
+                        className={`agent-option${selectedNewAgentId === agent.id ? " selected" : ""}`}
+                        onClick={() => { setSelectedNewAgentId(agent.id); setPendingAgentOpen(false); }}
+                      >
+                        <span className="agent-icon">{agent.icon || "🤖"}</span>
+                        <span className="agent-name">{agent.name}</span>
+                        <span className="agent-command">{agent.command}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="modal-actions">
                 <button className="cancel-btn" onClick={() => setPendingPath(null)}>
                   Cancel

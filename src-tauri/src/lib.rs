@@ -212,6 +212,8 @@ fn get_file_diff_command(
 #[tauri::command]
 fn create_terminal_session(
     project_id: String,
+    cols: u16,
+    rows: u16,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, String> {
@@ -220,7 +222,7 @@ fn create_terminal_session(
         let path = project.path.to_string_lossy().to_string();
         state
             .terminal_manager
-            .create_session(&path, app_handle)
+            .create_session(&path, cols, rows, app_handle)
             .map_err(|e| e.to_string())
     } else {
         Err("Project not found".into())
