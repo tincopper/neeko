@@ -165,15 +165,18 @@ async function createTerminalForProject(
     );
     cache.unlistenOutput = unlistenOutput;
 
-    // 监听管道关闭事件：清理 cache，触发重建
+    // 监听管道关闭事件：显示提示后清理 cache 并触发重建
     const unlistenClosed = await listen<null>(
       `terminal-closed-${sid}`,
       async () => {
-        log(`Session ${sid} closed by backend, destroying cache for ${projectId}`);
+        log(`Session ${sid} closed by backend`);
         unlistenClosed();
-        destroyTerminalCache(projectId);
-        // 通知组件重建终端
-        terminalRebuildCallbacks.get(projectId)?.();
+        // 在终端上显示退出提示，3 秒后自动重建
+        term.write("\r\n\x1b[33m[Terminal] Session ended. Restarting in 3 seconds...\x1b[0m\r\n");
+        setTimeout(() => {
+          destroyTerminalCache(projectId);
+          terminalRebuildCallbacks.get(projectId)?.();
+        }, 3000);
       }
     );
 
