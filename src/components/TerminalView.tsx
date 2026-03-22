@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+import { Unicode11Addon } from "xterm-addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import "xterm/css/xterm.css";
@@ -127,6 +128,11 @@ async function createTerminalForProject(
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
 
+  // Unicode11：正确处理中文等宽字符的宽度计算
+  const unicode11 = new Unicode11Addon();
+  term.loadAddon(unicode11);
+  term.unicode.activeVersion = "11";
+
   // 先挂载到 DOM，再 open，这样 fitAddon.fit() 能拿到真实容器尺寸
   wrapper.appendChild(element);
   term.open(element);
@@ -180,21 +186,73 @@ async function createTerminalForProject(
       }
     );
 
-    // IME 合成状态标志：Linux/WebView 上 compositionstart 和 onData 可能同时触发，
-    // composing 期间屏蔽 onData 发送，避免中文输入重复显示（如「我是我」现象）
+    // ── IME 输入处理 ──────────────────────────────────────────────────────
+    // 问题：Linux 下 keydown(229) 先于 compositionstart 触发，xterm.js 的
+    // onData 在 compositionstart 之前就会被调用，导致中间文本被发送到 PTY，
+    // 同时 PTY 回显与前端显示叠加，产生「我是我」式重复输入。
+    //
+    // 解决方案（Unix）：
+    //   1. Rust 端已禁用 PTY 回显（ECHO），由前端负责显示用户输入
+    //   2. keydown(229) 时立即设 isComposing=true，阻断 onData 提前发送
+    //   3. compositionend 时手动发送最终字符到 PTY，并在前端显示
+    //   4. onData 用 compositionPendingText 过滤 compositionend 后的重复触发
+    //
+    // Windows：PTY 回显由系统负责，onData 正常发送即可（IME 行为不同）
+    const isUnix = !navigator.platform.toLowerCase().includes("win");
     let isComposing = false;
-    const textarea = term.textarea;
-    if (textarea) {
-      textarea.addEventListener('compositionstart', () => { isComposing = true; });
-      textarea.addEventListener('compositionend', () => { isComposing = false; });
-    }
+    let compositionPendingText = "";
 
-    term.onData((data) => {
-      if (isComposing) return;
-      const bytes = Array.from(new TextEncoder().encode(data));
+    const sendInput = (text: string) => {
+      if (isUnix) {
+        // Unix：PTY 已禁用回显，前端手动显示
+        term.write(text);
+      }
+      const bytes = Array.from(new TextEncoder().encode(text));
       emit(`terminal-input-${sid}`, bytes).catch((err) => {
         log(`Input emit error: ${err}`);
       });
+    };
+
+    const textarea = term.textarea;
+    if (textarea) {
+      // keyCode 229：IME 组合开始的信号，在 compositionstart 之前触发
+      // Linux 下必须在此处提前设置 isComposing，否则 onData 会先一步发出
+      textarea.addEventListener("keydown", (e: KeyboardEvent) => {
+        if (e.keyCode === 229 && !isComposing) {
+          isComposing = true;
+          compositionPendingText = "";
+        }
+      });
+      textarea.addEventListener("compositionstart", () => {
+        isComposing = true;
+        compositionPendingText = "";
+      });
+      textarea.addEventListener("compositionend", (e: CompositionEvent) => {
+        const committed = e.data || "";
+        if (committed) {
+          compositionPendingText = committed;
+          sendInput(committed);
+          // 延迟重置，防止 compositionend 后 onData 立即触发时误发
+          setTimeout(() => {
+            isComposing = false;
+            compositionPendingText = "";
+          }, 50);
+        } else {
+          isComposing = false;
+          compositionPendingText = "";
+        }
+      });
+    }
+
+    term.onData((data) => {
+      // composing 期间阻断
+      if (isComposing) return;
+      // compositionend 后 onData 可能携带相同文本，跳过避免重复发送
+      if (compositionPendingText && data === compositionPendingText) {
+        compositionPendingText = "";
+        return;
+      }
+      sendInput(data);
     });
     // 如果项目有预设 agent，连接成功后自动启动
     if (selectedAgentId) {

@@ -73,6 +73,13 @@ impl TerminalManager {
             Self::default_shell_cmd()
         };
         cmd.env("TERM", "xterm-256color");
+        // Unix：设置 UTF-8 环境变量，确保中文字符正确处理
+        #[cfg(unix)]
+        {
+            cmd.env("LANG", "en_US.UTF-8");
+            cmd.env("LC_ALL", "en_US.UTF-8");
+            cmd.env("LC_CTYPE", "en_US.UTF-8");
+        }
         cmd.cwd(project_path);
 
         let child = pair.slave.spawn_command(cmd)?;
@@ -82,6 +89,19 @@ impl TerminalManager {
         // spawn_command 后立即 drop slave，确保 Linux 上
         // 所有 slave fd 关闭后 master read() 能在子进程退出时返回 EOF
         drop(pair.slave);
+
+        // Unix：禁用 PTY master 的本地回显，由前端负责显示用户输入，
+        // 避免 IME 中文输入重复显示问题
+        #[cfg(unix)]
+        {
+            if let Some(fd) = pair.master.as_raw_fd() {
+                if let Err(e) = disable_echo(fd) {
+                    log_error(&format!("[PTY] Failed to disable echo: {}", e));
+                } else {
+                    log_info("[PTY] Echo disabled for IME support");
+                }
+            }
+        }
 
         // 获取 reader 和 writer
         let mut reader = pair.master.try_clone_reader()?;
@@ -346,6 +366,26 @@ impl TerminalManager {
             CommandBuilder::new(shell)
         }
     }
+}
+
+/// Unix 专用：禁用 PTY master 的本地回显（ECHO/ECHOE/ECHOK/ECHONL）
+/// 前端接管用户输入显示，避免 IME 中文输入与 PTY 回显叠加导致重复字符
+#[cfg(unix)]
+fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
+    use std::mem::MaybeUninit;
+    unsafe {
+        let mut termios = MaybeUninit::<libc::termios>::uninit();
+        if libc::tcgetattr(fd, termios.as_mut_ptr()) != 0 {
+            return Err(anyhow::anyhow!("tcgetattr failed"));
+        }
+        let mut termios = termios.assume_init();
+        // 禁用本地回显相关标志
+        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
+        if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
+            return Err(anyhow::anyhow!("tcsetattr failed"));
+        }
+    }
+    Ok(())
 }
 
 /// 方案 B 优雅终止：

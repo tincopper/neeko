@@ -29,6 +29,9 @@ importers:
       xterm-addon-fit:
         specifier: ^0.8.0
         version: 0.8.0(xterm@5.3.0)
+      xterm-addon-unicode11:
+        specifier: ^0.6.0
+        version: 0.6.0(xterm@5.3.0)
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.0.0-beta.0
@@ -637,6 +640,12 @@ packages:
     peerDependencies:
       xterm: ^5.0.0
 
+  xterm-addon-unicode11@0.6.0:
+    resolution: {integrity: sha512-5pkb8YoS/deRtNqQRw8t640mu+Ga8B2MG3RXGQu0bwgcfr8XiXIRI880TWM49ICAHhTmnOLPzIIBIjEnCq7k2A==}
+    deprecated: This package is now deprecated. Move to @xterm/addon-unicode11 instead.
+    peerDependencies:
+      xterm: ^5.0.0
+
   xterm@5.3.0:
     resolution: {integrity: sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==}
     deprecated: This package is now deprecated. Move to @xterm/xterm instead.
@@ -1141,6 +1150,10 @@ snapshots:
       fsevents: 2.3.3
 
   xterm-addon-fit@0.8.0(xterm@5.3.0):
+    dependencies:
+      xterm: 5.3.0
+
+  xterm-addon-unicode11@0.6.0(xterm@5.3.0):
     dependencies:
       xterm: 5.3.0
 
