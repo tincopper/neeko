@@ -63,7 +63,7 @@ impl TerminalManager {
         let mut cmd = if let Some(ref s) = shell_override {
             if !s.is_empty() {
                 log_info(&format!("[PTY] Using configured shell: {}", s));
-                CommandBuilder::new(s)
+                Self::build_shell_cmd(s)
             } else {
                 Self::default_shell_cmd()
             }
@@ -190,6 +190,26 @@ impl TerminalManager {
 
         log_info(&format!("[PTY] Session {} ready", &id[..8]));
         Ok(session)
+    }
+
+    /// 根据 shell 路径构建 CommandBuilder，PowerShell 系列自动追加必要参数
+    fn build_shell_cmd(shell: &str) -> CommandBuilder {
+        let name = std::path::Path::new(shell)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(shell)
+            .to_lowercase();
+
+        if name == "powershell.exe" || name == "powershell" || name == "pwsh.exe" || name == "pwsh"
+        {
+            let mut c = CommandBuilder::new(shell);
+            c.arg("-ExecutionPolicy");
+            c.arg("Bypass");
+            c.arg("-NoLogo");
+            c
+        } else {
+            CommandBuilder::new(shell)
+        }
     }
 
     /// 根据平台返回默认 shell CommandBuilder
