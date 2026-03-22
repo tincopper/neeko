@@ -34,7 +34,11 @@ interface TerminalViewProps {
   fontFamily?: string;
 }
 
-const DEFAULT_FONT_FAMILY = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
+// Linux 默认使用 Cascadia Code，其他平台保持原有 fallback 链
+const isLinux = navigator.platform.toLowerCase().startsWith("linux");
+const DEFAULT_FONT_FAMILY = isLinux
+  ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
+  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 interface TerminalCache {
   term: Terminal;
