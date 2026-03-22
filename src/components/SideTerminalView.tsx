@@ -53,6 +53,25 @@ export default function SideTerminalView({
     cache.fitAddon.fit();
   }, [fontSize, fontFamily, project.id]);
 
+  // side terminal 宽度变化时重算 PTY 尺寸
+  useEffect(() => {
+    const key = sideKey(project.id);
+    const cache = terminalCache.get(key);
+    if (!cache) return;
+    // 延迟执行以确保浏览器完成布局
+    const timer = setTimeout(() => {
+      cache.fitAddon.fit();
+      if (cache.sessionId) {
+        invoke("resize_terminal", {
+          sessionId: cache.sessionId,
+          cols: cache.term.cols,
+          rows: cache.term.rows,
+        }).catch(() => {});
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [width]);
+
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;

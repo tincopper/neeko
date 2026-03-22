@@ -1,5 +1,6 @@
 mod agent;
 mod git;
+mod logger;
 mod project;
 mod state;
 mod storage;
@@ -534,6 +535,9 @@ fn greet(name: &str) -> String {
 }
 
 pub fn run() {
+    logger::init_logger();
+    log::info!("Neeko starting");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppStateWrapper::new())

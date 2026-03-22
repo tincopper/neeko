@@ -2016,6 +2016,7 @@ dependencies = [
  "dirs 5.0.1",
  "git2",
  "libc",
+ "log",
  "portable-pty",
  "serde",
  "serde_json",

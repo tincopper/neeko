@@ -475,9 +475,9 @@ fn graceful_kill(child: &mut dyn Child) {
 }
 
 fn log_info(msg: &str) {
-    println!("{}", msg);
+    log::info!("{}", msg);
 }
 
 fn log_error(msg: &str) {
-    eprintln!("{}", msg);
+    log::error!("{}", msg);
 }

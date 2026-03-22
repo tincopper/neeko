@@ -383,7 +383,12 @@ export default function TerminalView({ project, fontSize = 14, shell = "", fontF
     };
     window.addEventListener("resize", handleResize);
 
+    // 监听容器尺寸变化（side terminal 拖拽时也会触发）
+    const ro = new ResizeObserver(() => handleResize());
+    ro.observe(wrapper);
+
     return () => {
+      ro.disconnect();
       window.removeEventListener("resize", handleResize);
       detachAll();
       terminalRebuildCallbacks.delete(projectId);
