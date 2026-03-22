@@ -27,7 +27,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenIde,
   onOpenSideTerminal,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const isExpanded = true;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
 
@@ -37,11 +37,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [gitMenuOpen]);
-
-  const toggleExpand = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsExpanded((v) => !v);
-  };
 
   const toggleSection = (key: string, e: React.MouseEvent) => {
     e.stopPropagation();

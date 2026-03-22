@@ -89,7 +89,7 @@ export function launchAgentInTerminal(projectId: string, command: string, args: 
 
 export async function createTerminalForProject(
   projectId: string,          // cache key（可为 "uuid" 或 "uuid:side"）
-  projectPath: string,
+  _projectPath: string,
   projectName: string,
   selectedAgentId: string | null,
   fontSize: number,

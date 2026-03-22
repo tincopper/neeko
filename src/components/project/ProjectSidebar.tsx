@@ -23,15 +23,15 @@ interface ProjectSidebarProps {
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   projects,
   activeProjectId,
-  onAddProject,
+  onAddProject: _onAddProject,
   onRemoveProject,
   onSelectProject,
   onSelectFile,
   onRefreshGit,
-  onOpenSettings,
+  onOpenSettings: _onOpenSettings,
   onOpenIde,
   onOpenSideTerminal,
-  loading,
+  loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const isDragging = useRef(false);
