@@ -2,49 +2,57 @@
 
 # Neeko
 
-**为 AI 编程时代打造的多项目终端管理器**
+**A Multi-Project Terminal Manager Built for the AI Coding Era**
 
-在同一个窗口里管理所有项目的 AI Agent 会话，让 opencode、claude-code、aider 等工具触手可及。
+Manage all your project's AI Agent sessions in a single window, putting opencode, claude-code, aider, and other tools at your fingertips.
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-blue?logo=tauri)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange?logo=rust)](https://rustup.rs)
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green)](LICENSE)
 
+English | **[简体中文](README_CN.md)**
+
 </div>
 
 ---
 
-## 这是什么
+## What is Neeko
 
-当你同时用 AI Agent 驱动多个项目时，反复在终端窗口间切换、重新启动 Agent、找回上下文，会打断开发节奏。
+When you're driving multiple projects with AI Agents simultaneously, constantly switching between terminal windows, restarting Agents, and losing context breaks your development flow.
 
-Neeko 把所有项目的 Agent 终端整合进一个桌面应用：左侧边栏管理项目与 Git 状态，右侧是每个项目的独立终端——切换项目，会话始终在线。
+Neeko consolidates all project Agent terminals into a single desktop application: the left sidebar manages projects and Git status, while the right side shows each project's independent terminal — switch projects and your sessions stay alive.
 
-## 功能特性
+## Preview
 
-- **多项目终端** — 每个项目绑定独立 PTY 终端，切换时会话不中断，无需重启 Agent
-- **Agent 一键启动** — 内置 opencode、claude-code、aider、qwen、gemini、codex，选中即启动
-- **副终端面板** — `Ctrl+Alt+T` 在 Agent 终端旁打开独立副终端，宽度可拖拽调整
-- **IDE 一键打开** — 为每个项目绑定 IDE，`Ctrl+O` 或点击图标即在 VSCode / Cursor / GoLand 等中打开项目
-- **Git 侧边栏** — 查看变更文件、切换分支、管理 Worktree，无需离开应用
-- **Diff 查看** — 点击变更文件即可查看 Diff，支持统一/并排两种模式
-- **会话持久化** — 重启后自动恢复项目列表、Agent 与 IDE 配置
-- **键盘驱动** — `Ctrl+1~9` 跳转项目，`Ctrl+Q` 循环切换，`Ctrl+O` 打开 IDE
-- **Shell 可配置** — 在设置中选择或自定义终端 Shell，支持 zsh / bash / fish / PowerShell 等
-- **字体可配置** — 从系统字体中选择终端字体，实时预览
-- **Toast 通知** — 操作结果实时反馈，3 秒自动消失
-- **沉浸式界面** — One Dark Pro 配色，无系统边框，边栏宽度可拖拽调整
+| Main Interface | Side Terminal Panel |
+|----------------|---------------------|
+| ![Main Interface](docs/.img/index.png) | ![Side Terminal Panel](docs/.img/side-terminal.png) |
 
-## 快速开始
+## Features
 
-### 前置要求
+- **Multi-Project Terminal** — Each project binds to an independent PTY terminal, sessions persist across switches, no Agent restarts needed
+- **One-Click Agent Launch** — Built-in support for opencode, claude-code, aider, qwen, gemini, codex — select and launch
+- **Side Terminal Panel** — `Ctrl+Alt+T` opens an independent side terminal next to the Agent terminal, with draggable width
+- **One-Click IDE Launch** — Bind an IDE to each project, `Ctrl+O` or click the icon to open in VSCode / Cursor / GoLand, etc.
+- **Git Sidebar** — View changed files, switch branches, manage Worktrees without leaving the app
+- **Diff Viewer** — Click changed files to view diffs in unified or side-by-side mode
+- **Session Persistence** — Automatically restores project list, Agent, and IDE configs after restart
+- **Keyboard Driven** — `Ctrl+1~9` jump to projects, `Ctrl+Q` cycle through, `Ctrl+O` open IDE
+- **Configurable Shell** — Choose or customize terminal Shell in settings, supports zsh / bash / fish / PowerShell, etc.
+- **Configurable Font** — Select terminal font from system fonts with live preview
+- **Toast Notifications** — Real-time feedback on operations, auto-dismiss after 3 seconds
+- **Immersive Interface** — One Dark Pro color scheme, frameless window, draggable sidebar width
+
+## Getting Started
+
+### Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
 - [Rust](https://rustup.rs/) 1.70+
-- [pnpm](https://pnpm.io/)（推荐）
+- [pnpm](https://pnpm.io/) (recommended)
 
-### Linux 系统依赖
+### Linux System Dependencies
 
 **Ubuntu / Debian**
 ```bash
@@ -63,78 +71,39 @@ sudo dnf install -y gcc gcc-c++ webkit2gtk4.1-devel \
 sudo pacman -S base-devel webkit2gtk-4.1 libappindicator-gtk3 librsvg
 ```
 
-### 安装与运行
+### Install & Run
 
 ```bash
-# 安装前端依赖
+# Install frontend dependencies
 pnpm install
 
-# 开发模式
+# Development mode
 pnpm tauri dev
 
-# 构建发行版
+# Build release
 pnpm tauri build
 ```
 
-## 项目结构
+## Tech Stack
 
-```
-neeko/
-├── src/                          # 前端 React 代码
-│   ├── App.tsx                   # 根组件，统一标题栏，全局状态，快捷键
-│   ├── types.ts                  # TypeScript 类型定义
-│   ├── styles.css                # 全局样式（One Dark Pro 主题）
-│   ├── utils/
-│   │   ├── fileIcons.ts          # 文件名 → Charmed Icons SVG 映射
-│   │   └── idePresets.ts         # 预置 IDE 列表与平台命令
-│   └── components/
-│       ├── AgentSelector.tsx     # Agent 选择下拉
-│       ├── DiffView.tsx          # Diff 视图（统一/并排）
-│       ├── SettingsPanel.tsx     # 设置面板（字体/Shell/IDE/Diff 模式）
-│       ├── TerminalView.tsx      # xterm.js 终端 + 会话缓存 + IME 支持
-│       ├── SideTerminalView.tsx  # 副终端面板（可拖拽宽度）
-│       ├── WindowControls.tsx    # 最小化/最大化/关闭按钮
-│       └── project/
-│           ├── ProjectSidebar.tsx  # 可拖拽宽度边栏
-│           ├── ProjectItem.tsx     # 项目行（分支/Worktree/文件/IDE按钮）
-│           ├── FileTree.tsx        # 递归文件树
-│           └── GitDialog.tsx       # 新建分支/Worktree 对话框
-├── src-tauri/
-│   ├── src/
-│   │   ├── lib.rs               # Tauri 命令入口
-│   │   ├── state.rs             # Rust 数据结构（含 selected_ide）
-│   │   ├── agent.rs             # AgentManager + 预置 Agent
-│   │   ├── project.rs           # ProjectManager（含 IDE 管理）
-│   │   ├── git.rs               # git2-rs Git 操作 + Diff
-│   │   ├── terminal.rs          # portable-pty PTY 管理 + Watcher 线程
-│   │   └── storage.rs           # ~/.neeko/ JSON 持久化
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-├── public/
-│   └── icons/                   # Charmed Icons SVG 文件
-└── REQUIREMENTS.md
-```
+| Layer | Technology |
+|-------|------------|
+| Application Framework | Tauri 2.0 |
+| Backend | Rust + tokio + anyhow |
+| Frontend | React 18 + TypeScript + Vite |
+| Terminal Backend | portable-pty |
+| Terminal Frontend | xterm.js 5 + xterm-addon-fit |
+| Git | git2-rs (libgit2 bindings) |
+| Dialogs | tauri-plugin-dialog |
+| Serialization | serde + serde_json |
+| System Calls | libc (Unix PTY echo control) |
+| Icons | Charmed Icons SVG |
+| Styling | Pure CSS, One Dark Pro theme |
 
-## 技术栈
+## Preset Agents
 
-| 层级 | 技术 |
-|------|------|
-| 应用框架 | Tauri 2.0 |
-| 后端 | Rust + tokio + anyhow |
-| 前端 | React 18 + TypeScript + Vite |
-| 终端后端 | portable-pty |
-| 终端前端 | xterm.js 5 + xterm-addon-fit |
-| Git | git2-rs（libgit2 绑定） |
-| 对话框 | tauri-plugin-dialog |
-| 序列化 | serde + serde_json |
-| 系统调用 | libc（Unix PTY echo 控制） |
-| 图标 | Charmed Icons SVG |
-| 样式 | 纯 CSS，One Dark Pro 主题 |
-
-## 预置 Agent
-
-| ID | 命令 | 图标 |
-|----|------|------|
+| ID | Command | Icon |
+|----|---------|------|
 | `opencode` | `opencode` | 🤖 |
 | `claude-code` | `claude` | 🧠 |
 | `aider` | `aider` | 💡 |
@@ -142,11 +111,11 @@ neeko/
 | `gemini` | `gemini` | ♊ |
 | `codex` | `codex` | ⚡ |
 
-通过 `add_agent` 命令可在运行时注册自定义 Agent。
+Custom Agents can be registered at runtime via the `add_agent` command.
 
-## 预置 IDE
+## Preset IDEs
 
-| ID | 名称 |
+| ID | Name |
 |----|------|
 | `vscode` | VS Code |
 | `cursor` | Cursor |
@@ -156,17 +125,17 @@ neeko/
 | `rustrover` | RustRover |
 | `pycharm` | PyCharm |
 
-在设置面板中可覆盖每个 IDE 的启动命令，或添加自定义 IDE。
+Override launch commands for each IDE or add custom IDEs in the settings panel.
 
-## 键盘快捷键
+## Keyboard Shortcuts
 
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl+1` ~ `Ctrl+9` | 直接跳转到第 N 个项目 |
-| `Ctrl+Q` | 循环切换到下一个项目 |
-| `Ctrl+Alt+T` | 打开副终端面板 |
-| `Ctrl+W` | 关闭副终端面板 |
-| `Ctrl+O` | 在绑定 IDE 中打开当前项目 |
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+1` ~ `Ctrl+9` | Jump directly to project N |
+| `Ctrl+Q` | Cycle to next project |
+| `Ctrl+Alt+T` | Open side terminal panel |
+| `Ctrl+W` | Close side terminal panel |
+| `Ctrl+O` | Open current project in bound IDE |
 
 ## License
 
