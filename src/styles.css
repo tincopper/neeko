@@ -1501,11 +1501,80 @@ body {
 }
 
 /* Terminal Container */
+/* 并排终端容器（Agent 终端 + Side 终端） */
+.terminal-pane-container {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 两个窗格之间的分隔线 */
+.terminal-pane-divider {
+  width: 1px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
+}
+
+/* Side Terminal 容器 */
+.side-terminal-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.side-terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.side-terminal-title {
+  font-size: 0.79em;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.side-terminal-hint {
+  font-size: 0.72em;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.side-terminal-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.side-terminal-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .terminal-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 

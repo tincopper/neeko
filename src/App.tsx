@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ProjectSidebar from "./components/project";
 import TerminalView, { launchAgentInTerminal } from "./components/TerminalView";
+import SideTerminalView from "./components/SideTerminalView";
 import DiffView from "./components/DiffView";
 import AgentSelector from "./components/AgentSelector";
 import WindowControls from "./components/WindowControls";
@@ -56,6 +57,11 @@ function App() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Side Terminal 状态（每个项目独立）
+  const [sideTerminalOpen, setSideTerminalOpen] = useState(false);
+  // 切换项目时关闭 side terminal
+  const prevProjectIdRef = useRef<string | null>(null);
+
   // 同步字体大小到 CSS 变量
   useEffect(() => {
     document.documentElement.style.setProperty("--font-size", `${config.fontSize}px`);
@@ -89,12 +95,43 @@ function App() {
     return () => document.removeEventListener("mousedown", handler);
   }, [pendingAgentOpen]);
 
-  // 快捷键：Ctrl+1~9 切换到对应项目，Ctrl+Q 循环切换
+  // 切换项目时关闭 side terminal
+  useEffect(() => {
+    if (prevProjectIdRef.current !== null && prevProjectIdRef.current !== activeProjectId) {
+      setSideTerminalOpen(false);
+    }
+    prevProjectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
+
+  // 快捷键：Ctrl+1~9 切换项目，Ctrl+Q 循环切换，Ctrl+Alt+T 打开 side terminal，Ctrl+W 关闭 side terminal
   const selectProjectRef = useRef<(id: string) => void>(() => {});
+  const sideTerminalOpenRef = useRef(false);
+  const isTerminalViewRef = useRef(false);
+
+  // 同步 ref，让快捷键 handler 能读到最新状态（闭包中不更新）
+  useEffect(() => { sideTerminalOpenRef.current = sideTerminalOpen; }, [sideTerminalOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey) return;
+      // Ctrl+Alt+T：在终端视图中打开 side terminal
+      if (e.ctrlKey && e.altKey && e.code === "KeyT") {
+        e.preventDefault();
+        if (isTerminalViewRef.current) {
+          setSideTerminalOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+W：关闭 side terminal（仅当 side terminal 打开时）
+      if (e.ctrlKey && !e.altKey && e.code === "KeyW") {
+        if (sideTerminalOpenRef.current) {
+          e.preventDefault();
+          setSideTerminalOpen(false);
+        }
+        return;
+      }
+
+      if (!e.ctrlKey || e.altKey) return;
 
       if (e.code === "KeyQ") {
         e.preventDefault();
@@ -241,6 +278,8 @@ function App() {
   };
 
   const isTerminalView = activeProject?.active_view === "Terminal";
+  // 同步给快捷键 handler
+  isTerminalViewRef.current = isTerminalView;
   const diffFilePath =
     typeof activeProject?.active_view === "object"
       ? (activeProject.active_view as { Diff: { file_path: string } }).Diff?.file_path || null
@@ -316,7 +355,21 @@ function App() {
           {activeProject ? (
             <div className="content-area">
               {isTerminalView ? (
-                <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} fontFamily={config.fontFamily} />
+                <div className="terminal-pane-container">
+                  <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} fontFamily={config.fontFamily} />
+                  {sideTerminalOpen && (
+                    <>
+                      <div className="terminal-pane-divider" />
+                      <SideTerminalView
+                        project={activeProject}
+                        fontSize={config.fontSize}
+                        shell={config.shell}
+                        fontFamily={config.fontFamily}
+                        onClose={() => setSideTerminalOpen(false)}
+                      />
+                    </>
+                  )}
+                </div>
               ) : diffFilePath ? (
                 <DiffView
                   projectId={activeProject.id}

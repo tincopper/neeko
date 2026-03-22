@@ -48,24 +48,24 @@ interface TerminalCache {
   unlistenOutput: (() => void) | null;
 }
 
-// 全局缓存，切换项目时保留会话
-const terminalCache = new Map<string, TerminalCache>();
+// 全局缓存，切换项目时保留会话（key 可为 projectId 或 projectId+":side"）
+export const terminalCache = new Map<string, TerminalCache>();
 
-// 存储每个 projectId 对应的"需要重建"回调，管道关闭时调用
-const terminalRebuildCallbacks = new Map<string, () => void>();
+// 存储每个 cacheKey 对应的"需要重建"回调，管道关闭时调用
+export const terminalRebuildCallbacks = new Map<string, () => void>();
 
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString();
   console.log(`[${ts}] [Terminal] ${msg}`);
 }
 
-function destroyTerminalCache(projectId: string) {
-  const cache = terminalCache.get(projectId);
+export function destroyTerminalCache(cacheKey: string) {
+  const cache = terminalCache.get(cacheKey);
   if (!cache) return;
   cache.unlistenOutput?.();
   cache.term.dispose();
-  terminalCache.delete(projectId);
-  log(`Cache destroyed for ${projectId}`);
+  terminalCache.delete(cacheKey);
+  log(`Cache destroyed for ${cacheKey}`);
 }
 
 function sendToTerminal(projectId: string, text: string) {
@@ -87,7 +87,7 @@ export function launchAgentInTerminal(projectId: string, command: string, args: 
   setTimeout(() => sendToTerminal(projectId, cmdStr + "\r"), 50);
 }
 
-async function createTerminalForProject(
+export async function createTerminalForProject(
   projectId: string,
   projectPath: string,
   projectName: string,
