@@ -2015,6 +2015,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "git2",
+ "libc",
  "portable-pty",
  "serde",
  "serde_json",
