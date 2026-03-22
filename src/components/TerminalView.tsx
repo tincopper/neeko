@@ -29,6 +29,7 @@ interface AgentConfig {
 interface TerminalViewProps {
   project: Project;
   fontSize?: number;
+  shell?: string;
 }
 
 interface TerminalCache {
@@ -85,6 +86,7 @@ async function createTerminalForProject(
   selectedAgentId: string | null,
   fontSize: number,
   wrapper: HTMLElement,
+  shell: string,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -147,7 +149,7 @@ async function createTerminalForProject(
   try {
     const session = await invoke<{ id: string; pid: number | null }>(
       "create_terminal_session",
-      { projectId, cols: initCols, rows: initRows }
+      { projectId, cols: initCols, rows: initRows, shell: shell || null }
     );
     const sid = session.id;
     cache.sessionId = sid;
@@ -211,7 +213,7 @@ async function createTerminalForProject(
   return cache;
 }
 
-export default function TerminalView({ project, fontSize = 14 }: TerminalViewProps) {
+export default function TerminalView({ project, fontSize = 14, shell = "" }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentProjectIdRef = useRef<string | null>(null);
   // 管道关闭时递增，触发 useEffect 重建终端
@@ -274,7 +276,7 @@ export default function TerminalView({ project, fontSize = 14 }: TerminalViewPro
       attach(terminalCache.get(projectId)!);
     } else {
       // 传入 wrapper，让函数内先挂载 element 再 fit，确保初始尺寸正确
-      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize, wrapper).then((cache) => {
+      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize, wrapper, shell).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return;
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
         requestAnimationFrame(() => {

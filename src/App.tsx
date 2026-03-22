@@ -42,6 +42,7 @@ interface AgentConfig {
 const DEFAULT_CONFIG: AppConfig = {
   fontSize: 14,
   diffMode: "unified",
+  shell: "",
 };
 
 function App() {
@@ -124,6 +125,7 @@ function App() {
           setConfig({
             fontSize: typeof saved.fontSize === "number" ? saved.fontSize : DEFAULT_CONFIG.fontSize,
             diffMode: saved.diffMode === "split" ? "split" : "unified",
+            shell: typeof saved.shell === "string" ? saved.shell : DEFAULT_CONFIG.shell,
           });
         }
       } catch (e) {
@@ -312,7 +314,7 @@ function App() {
           {activeProject ? (
             <div className="content-area">
               {isTerminalView ? (
-                <TerminalView project={activeProject} fontSize={config.fontSize} />
+                <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} />
               ) : diffFilePath ? (
                 <DiffView
                   projectId={activeProject.id}

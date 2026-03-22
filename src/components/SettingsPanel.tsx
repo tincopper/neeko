@@ -1,11 +1,30 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 export type DiffMode = "unified" | "split";
 
 export interface AppConfig {
   fontSize: number;
   diffMode: DiffMode;
+  shell: string;
 }
+
+// 各平台预设 shell 列表
+export const PRESET_SHELLS: { label: string; value: string }[] = (
+  navigator.platform.toLowerCase().includes("win")
+    ? [
+        { label: "PowerShell",      value: "powershell.exe" },
+        { label: "Command Prompt",  value: "cmd.exe" },
+        { label: "Git Bash",        value: "C:\\Program Files\\Git\\bin\\bash.exe" },
+        { label: "WSL (bash)",      value: "wsl.exe" },
+      ]
+    : [
+        { label: "Default ($SHELL)", value: "" },
+        { label: "bash",             value: "/bin/bash" },
+        { label: "zsh",              value: "/bin/zsh" },
+        { label: "fish",             value: "/usr/bin/fish" },
+        { label: "sh",               value: "/bin/sh" },
+      ]
+);
 
 interface SettingsPanelProps {
   config: AppConfig;
@@ -15,6 +34,12 @@ interface SettingsPanelProps {
 
 const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, onClose }) => {
   const panelRef = useRef<HTMLDivElement>(null);
+  // shell 输入框的本地值（允许手动输入自定义路径）
+  const [shellInput, setShellInput] = useState(config.shell);
+
+  useEffect(() => {
+    setShellInput(config.shell);
+  }, [config.shell]);
 
   // 点击面板外部关闭
   useEffect(() => {
@@ -34,6 +59,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   const setDiffMode = (diffMode: DiffMode) => {
     onConfigChange({ ...config, diffMode });
   };
+
+  const applyShell = (value: string) => {
+    setShellInput(value);
+    onConfigChange({ ...config, shell: value });
+  };
+
+  // 判断当前 shell 值是否匹配某个预设
+  const isCustomShell = shellInput !== "" && !PRESET_SHELLS.some(s => s.value === shellInput);
 
   return (
     <div className="settings-panel" ref={panelRef}>
@@ -70,6 +103,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
             className={`settings-toggle-btn${config.diffMode === "split" ? " active" : ""}`}
             onClick={() => setDiffMode("split")}
           >Split</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="settings-label">Terminal Shell</div>
+        <div className="settings-shell-presets">
+          {PRESET_SHELLS.map(({ label, value }) => (
+            <button
+              key={value}
+              className={`settings-shell-btn${shellInput === value ? " active" : ""}`}
+              onClick={() => applyShell(value)}
+              title={value || "Use $SHELL environment variable"}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="settings-shell-custom">
+          <input
+            className={`settings-shell-input${isCustomShell ? " custom-active" : ""}`}
+            type="text"
+            placeholder="Custom path, e.g. /usr/bin/zsh"
+            value={shellInput}
+            onChange={e => setShellInput(e.target.value)}
+            onBlur={e => applyShell(e.target.value.trim())}
+            onKeyDown={e => { if (e.key === "Enter") applyShell(shellInput.trim()); }}
+            spellCheck={false}
+          />
+        </div>
+        <div className="settings-shell-hint">
+          Takes effect on next terminal session
         </div>
       </div>
     </div>

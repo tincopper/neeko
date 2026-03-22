@@ -33,6 +33,7 @@ impl TerminalManager {
         project_path: &str,
         cols: u16,
         rows: u16,
+        shell_override: Option<String>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -56,26 +57,18 @@ impl TerminalManager {
         })?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
-        // 检测 shell：Windows 用 powershell，Linux/macOS 优先读 $SHELL，
-        // fallback 链：$SHELL -> /bin/bash（若存在）-> /bin/sh
-        let mut cmd = if cfg!(target_os = "windows") {
-            // -ExecutionPolicy Bypass: 绕过脚本执行策略限制
-            // -NoLogo: 不显示版权信息
-            let mut c = CommandBuilder::new("powershell.exe");
-            c.arg("-ExecutionPolicy");
-            c.arg("Bypass");
-            c.arg("-NoLogo");
-            c
+        // Shell 优先级：前端传入 > $SHELL 环境变量 > 平台默认
+        // Windows 默认 powershell.exe -ExecutionPolicy Bypass -NoLogo
+        // Linux/macOS fallback 链：$SHELL -> /bin/bash -> /bin/sh
+        let mut cmd = if let Some(ref s) = shell_override {
+            if !s.is_empty() {
+                log_info(&format!("[PTY] Using configured shell: {}", s));
+                CommandBuilder::new(s)
+            } else {
+                Self::default_shell_cmd()
+            }
         } else {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| {
-                if std::path::Path::new("/bin/bash").exists() {
-                    "/bin/bash".to_string()
-                } else {
-                    "/bin/sh".to_string()
-                }
-            });
-            log_info(&format!("[PTY] Using shell: {}", shell));
-            CommandBuilder::new(shell)
+            Self::default_shell_cmd()
         };
         cmd.env("TERM", "xterm-256color");
         cmd.cwd(project_path);
@@ -197,6 +190,28 @@ impl TerminalManager {
 
         log_info(&format!("[PTY] Session {} ready", &id[..8]));
         Ok(session)
+    }
+
+    /// 根据平台返回默认 shell CommandBuilder
+    fn default_shell_cmd() -> CommandBuilder {
+        if cfg!(target_os = "windows") {
+            let mut c = CommandBuilder::new("powershell.exe");
+            c.arg("-ExecutionPolicy");
+            c.arg("Bypass");
+            c.arg("-NoLogo");
+            log_info("[PTY] Using default shell: powershell.exe");
+            c
+        } else {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+                if std::path::Path::new("/bin/bash").exists() {
+                    "/bin/bash".to_string()
+                } else {
+                    "/bin/sh".to_string()
+                }
+            });
+            log_info(&format!("[PTY] Using default shell: {}", shell));
+            CommandBuilder::new(shell)
+        }
     }
 
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {

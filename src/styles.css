@@ -313,7 +313,68 @@ body {
   color: #fff;
 }
 
+/* Shell selector in settings */
+.settings-shell-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
 
+.settings-shell-btn {
+  padding: 4px 10px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.79em;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.settings-shell-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-shell-btn.active {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.settings-shell-custom {
+  margin-bottom: 6px;
+}
+
+.settings-shell-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.86em;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.settings-shell-input:focus {
+  border-color: var(--accent-blue);
+}
+
+.settings-shell-input.custom-active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.settings-shell-hint {
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
 
 /* Sidebar */
 .sidebar {
