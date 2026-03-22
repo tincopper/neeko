@@ -58,20 +58,25 @@ impl TerminalManager {
 
         // 检测 shell：Windows 用 powershell，Linux/macOS 优先读 $SHELL，
         // fallback 链：$SHELL -> /bin/bash（若存在）-> /bin/sh
-        let shell = if cfg!(target_os = "windows") {
-            "powershell.exe".to_string()
+        let mut cmd = if cfg!(target_os = "windows") {
+            // -ExecutionPolicy Bypass: 绕过脚本执行策略限制
+            // -NoLogo: 不显示版权信息
+            let mut c = CommandBuilder::new("powershell.exe");
+            c.arg("-ExecutionPolicy");
+            c.arg("Bypass");
+            c.arg("-NoLogo");
+            c
         } else {
-            std::env::var("SHELL").unwrap_or_else(|_| {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| {
                 if std::path::Path::new("/bin/bash").exists() {
                     "/bin/bash".to_string()
                 } else {
                     "/bin/sh".to_string()
                 }
-            })
+            });
+            log_info(&format!("[PTY] Using shell: {}", shell));
+            CommandBuilder::new(shell)
         };
-        log_info(&format!("[PTY] Using shell: {}", shell));
-
-        let mut cmd = CommandBuilder::new(&shell);
         cmd.env("TERM", "xterm-256color");
         cmd.cwd(project_path);
 
