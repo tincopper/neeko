@@ -490,6 +490,112 @@ body {
   border-color: var(--accent-blue);
 }
 
+/* Font selector */
+.settings-font-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--accent-blue);
+  border-radius: 5px;
+  font-size: 0.93em;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.settings-font-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.79em;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.settings-font-clear:hover {
+  color: var(--text-primary);
+}
+
+.settings-font-list {
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background-color: var(--bg-primary);
+}
+
+.settings-font-loading {
+  padding: 16px;
+  text-align: center;
+  font-size: 0.82em;
+  color: var(--text-muted);
+}
+
+.settings-font-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  font-size: 0.86em;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.1s;
+  box-sizing: border-box;
+  gap: 12px;
+}
+
+.settings-font-item:last-child {
+  border-bottom: none;
+}
+
+.settings-font-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-font-item.active {
+  background-color: rgba(97, 175, 239, 0.15);
+  color: var(--accent-blue);
+}
+
+.settings-font-item.builtin .settings-font-name::after {
+  content: " ✦";
+  font-size: 0.7em;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.settings-font-name {
+  flex-shrink: 0;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-font-sample {
+  font-size: 0.86em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-font-item.active .settings-font-sample {
+  color: var(--accent-blue);
+  opacity: 0.7;
+}
+
 /* Empty placeholder for sections with no content yet */
 .settings-empty-section {
   display: flex;

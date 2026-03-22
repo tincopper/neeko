@@ -43,6 +43,7 @@ const DEFAULT_CONFIG: AppConfig = {
   fontSize: 14,
   diffMode: "unified",
   shell: "",
+  fontFamily: "",
 };
 
 function App() {
@@ -126,6 +127,7 @@ function App() {
             fontSize: typeof saved.fontSize === "number" ? saved.fontSize : DEFAULT_CONFIG.fontSize,
             diffMode: saved.diffMode === "split" ? "split" : "unified",
             shell: typeof saved.shell === "string" ? saved.shell : DEFAULT_CONFIG.shell,
+            fontFamily: typeof saved.fontFamily === "string" ? saved.fontFamily : DEFAULT_CONFIG.fontFamily,
           });
         }
       } catch (e) {
@@ -314,7 +316,7 @@ function App() {
           {activeProject ? (
             <div className="content-area">
               {isTerminalView ? (
-                <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} />
+                <TerminalView project={activeProject} fontSize={config.fontSize} shell={config.shell} fontFamily={config.fontFamily} />
               ) : diffFilePath ? (
                 <DiffView
                   projectId={activeProject.id}

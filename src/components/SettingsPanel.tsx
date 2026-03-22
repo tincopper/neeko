@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 export type DiffMode = "unified" | "split";
 
@@ -6,7 +7,21 @@ export interface AppConfig {
   fontSize: number;
   diffMode: DiffMode;
   shell: string;
+  fontFamily: string;
 }
+
+// 内置等宽字体预设（系统通常包含其中之一）
+export const BUILTIN_FONTS = [
+  "JetBrains Mono",
+  "Fira Code",
+  "Cascadia Code",
+  "Source Code Pro",
+  "Consolas",
+  "Monaco",
+  "Menlo",
+  "DejaVu Sans Mono",
+  "Courier New",
+];
 
 // 各平台预设 shell 列表
 export const PRESET_SHELLS: { label: string; value: string }[] = (
@@ -75,7 +90,30 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   const [activeNav, setActiveNav] = useState<NavCategory>("editor");
   const [shellInput, setShellInput] = useState(config.shell);
 
+  // 字体相关状态
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  const [fontSearch, setFontSearch] = useState("");
+  const [fontsLoading, setFontsLoading] = useState(false);
+
   useEffect(() => { setShellInput(config.shell); }, [config.shell]);
+
+  // 切换到 Terminal 类目时加载系统字体
+  const loadFonts = useCallback(async () => {
+    if (systemFonts.length > 0) return;
+    setFontsLoading(true);
+    try {
+      const fonts = await invoke<string[]>("get_system_fonts");
+      setSystemFonts(fonts);
+    } catch (e) {
+      console.error("Failed to load system fonts:", e);
+    } finally {
+      setFontsLoading(false);
+    }
+  }, [systemFonts.length]);
+
+  useEffect(() => {
+    if (activeNav === "terminal") loadFonts();
+  }, [activeNav, loadFonts]);
 
   // Esc 关闭
   useEffect(() => {
@@ -95,7 +133,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     onConfigChange({ ...config, shell: value });
   };
 
+  const applyFont = (font: string) => {
+    onConfigChange({ ...config, fontFamily: font });
+  };
+
   const isCustomShell = shellInput !== "" && !PRESET_SHELLS.some(s => s.value === shellInput);
+
+  // 合并内置预设和系统字体，搜索过滤，去重
+  const allFonts = Array.from(new Set([...BUILTIN_FONTS, ...systemFonts])).sort(
+    (a, b) => a.toLowerCase().localeCompare(b.toLowerCase())
+  );
+  const filteredFonts = fontSearch.trim()
+    ? allFonts.filter(f => f.toLowerCase().includes(fontSearch.trim().toLowerCase()))
+    : allFonts;
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -176,6 +226,59 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
               <>
                 <div className="settings-content-title">Terminal</div>
 
+                {/* Font Family */}
+                <div className="settings-item settings-item-col">
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Font Family</div>
+                    <div className="settings-item-desc">
+                      Terminal font. System fonts are loaded automatically.
+                      Takes effect immediately on existing sessions.
+                    </div>
+                  </div>
+
+                  {/* 当前选中字体预览 */}
+                  <div className="settings-font-preview" style={{ fontFamily: config.fontFamily || "monospace" }}>
+                    {config.fontFamily || "Default (JetBrains Mono / Fira Code)"}
+                    {config.fontFamily && (
+                      <button className="settings-font-clear" onClick={() => applyFont("")} title="Reset to default">✕</button>
+                    )}
+                  </div>
+
+                  {/* 搜索框 */}
+                  <input
+                    className="settings-shell-input"
+                    type="text"
+                    placeholder="Search fonts..."
+                    value={fontSearch}
+                    onChange={e => setFontSearch(e.target.value)}
+                    spellCheck={false}
+                  />
+
+                  {/* 字体列表 */}
+                  <div className="settings-font-list">
+                    {fontsLoading ? (
+                      <div className="settings-font-loading">Loading system fonts...</div>
+                    ) : filteredFonts.length === 0 ? (
+                      <div className="settings-font-loading">No fonts found</div>
+                    ) : (
+                      filteredFonts.map(font => (
+                        <button
+                          key={font}
+                          className={`settings-font-item${config.fontFamily === font ? " active" : ""}${BUILTIN_FONTS.includes(font) ? " builtin" : ""}`}
+                          onClick={() => applyFont(font)}
+                          title={font}
+                        >
+                          <span className="settings-font-name">{font}</span>
+                          <span className="settings-font-sample" style={{ fontFamily: `'${font}', monospace` }}>
+                            AaBbCc 中文
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Shell */}
                 <div className="settings-item settings-item-col">
                   <div className="settings-item-info">
                     <div className="settings-item-name">Shell</div>

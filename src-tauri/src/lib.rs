@@ -289,6 +289,96 @@ fn set_project_agent(project_id: String, agent_id: Option<String>, state: State<
         .set_selected_agent(&project_id, agent_id);
 }
 
+// 获取系统已安装的等宽字体列表
+#[tauri::command]
+fn get_system_fonts() -> Vec<String> {
+    let mut fonts = get_monospace_fonts();
+    fonts.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    fonts.dedup();
+    fonts
+}
+
+#[cfg(target_os = "windows")]
+fn get_monospace_fonts() -> Vec<String> {
+    use std::process::Command;
+    // PowerShell 枚举等宽字体（IsSymbolFont=false，Monospace 通过 Pitch 判断）
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            r#"[System.Reflection.Assembly]::LoadWithPartialName('System.Drawing') | Out-Null;
+(New-Object System.Drawing.Text.InstalledFontCollection).Families |
+Where-Object { $_.IsStyleAvailable('Regular') } |
+Select-Object -ExpandProperty Name"#,
+        ])
+        .output();
+    match output {
+        Ok(o) => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_monospace_fonts() -> Vec<String> {
+    use std::process::Command;
+    let output = Command::new("system_profiler")
+        .args(["SPFontsDataType", "-json"])
+        .output();
+    match output {
+        Ok(o) => {
+            let text = String::from_utf8_lossy(&o.stdout);
+            // 简单提取 full_name 字段
+            let mut fonts = Vec::new();
+            for line in text.lines() {
+                let line = line.trim();
+                if line.starts_with("\"full_name\"") {
+                    if let Some(v) = line.split(':').nth(1) {
+                        let name = v.trim().trim_matches('"').trim_matches(',').to_string();
+                        if !name.is_empty() {
+                            fonts.push(name);
+                        }
+                    }
+                }
+            }
+            fonts
+        }
+        Err(_) => vec![],
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn get_monospace_fonts() -> Vec<String> {
+    use std::process::Command;
+    // fc-list 枚举所有字体，过滤出 Mono/Code/Console/Terminal 等关键词
+    let output = Command::new("fc-list")
+        .args(["--format=%{family[0]}\n"])
+        .output();
+    match output {
+        Ok(o) => {
+            let text = String::from_utf8_lossy(&o.stdout);
+            let mut fonts: Vec<String> = text
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+            // 去除 fc-list 可能输出的 locale 变体（如 "Noto Sans,Noto Sans Regular"）
+            fonts = fonts
+                .into_iter()
+                .map(|f| {
+                    f.split(',').next().unwrap_or(&f).trim().to_string()
+                })
+                .filter(|f| !f.is_empty())
+                .collect();
+            fonts
+        }
+        Err(_) => vec![],
+    }
+}
+
 // 配置命令
 #[tauri::command]
 fn save_config(config: serde_json::Value, state: State<AppStateWrapper>) -> Result<(), String> {
@@ -406,6 +496,7 @@ pub fn run() {
             // 配置
             save_config,
             load_config,
+            get_system_fonts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

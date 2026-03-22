@@ -31,7 +31,10 @@ interface TerminalViewProps {
   project: Project;
   fontSize?: number;
   shell?: string;
+  fontFamily?: string;
 }
+
+const DEFAULT_FONT_FAMILY = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 interface TerminalCache {
   term: Terminal;
@@ -88,6 +91,7 @@ async function createTerminalForProject(
   fontSize: number,
   wrapper: HTMLElement,
   shell: string,
+  fontFamily: string,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -98,7 +102,9 @@ async function createTerminalForProject(
   const term = new Terminal({
     cursorBlink: true,
     fontSize: fontSize,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+    fontFamily: fontFamily
+      ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
+      : DEFAULT_FONT_FAMILY,
     theme: {
       background: "#282c34",
       foreground: "#abb2bf",
@@ -274,20 +280,23 @@ async function createTerminalForProject(
   return cache;
 }
 
-export default function TerminalView({ project, fontSize = 14, shell = "" }: TerminalViewProps) {
+export default function TerminalView({ project, fontSize = 14, shell = "", fontFamily = "" }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentProjectIdRef = useRef<string | null>(null);
   // 管道关闭时递增，触发 useEffect 重建终端
   const [rebuildCount, setRebuildCount] = useState(0);
 
-  // fontSize 变化时更新已有终端实例
+  // fontSize / fontFamily 变化时更新已有终端实例
   useEffect(() => {
     const cache = terminalCache.get(project.id);
     if (cache) {
       cache.term.options.fontSize = fontSize;
+      cache.term.options.fontFamily = fontFamily
+        ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
+        : DEFAULT_FONT_FAMILY;
       cache.fitAddon.fit();
     }
-  }, [fontSize, project.id]);
+  }, [fontSize, fontFamily, project.id]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -337,7 +346,7 @@ export default function TerminalView({ project, fontSize = 14, shell = "" }: Ter
       attach(terminalCache.get(projectId)!);
     } else {
       // 传入 wrapper，让函数内先挂载 element 再 fit，确保初始尺寸正确
-      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize, wrapper, shell).then((cache) => {
+      createTerminalForProject(projectId, project.path, project.name, project.selected_agent, fontSize, wrapper, shell, fontFamily).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return;
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
         requestAnimationFrame(() => {
