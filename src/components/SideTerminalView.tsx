@@ -94,6 +94,7 @@ export default function SideTerminalView({
       attach(terminalCache.get(key)!);
     } else {
       // Side 终端不自动启动 agent（selectedAgentId = null）
+      // backendProjectId 使用真实的 project.id，而非 cache key
       createTerminalForProject(
         key,
         project.path,
@@ -103,6 +104,7 @@ export default function SideTerminalView({
         wrapper,
         shell,
         fontFamily,
+        project.id,
       ).then((cache) => {
         if (currentKeyRef.current !== key) return;
         requestAnimationFrame(() => {

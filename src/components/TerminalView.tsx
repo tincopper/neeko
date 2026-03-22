@@ -88,7 +88,7 @@ export function launchAgentInTerminal(projectId: string, command: string, args: 
 }
 
 export async function createTerminalForProject(
-  projectId: string,
+  projectId: string,          // cache key（可为 "uuid" 或 "uuid:side"）
   projectPath: string,
   projectName: string,
   selectedAgentId: string | null,
@@ -96,6 +96,7 @@ export async function createTerminalForProject(
   wrapper: HTMLElement,
   shell: string,
   fontFamily: string,
+  backendProjectId?: string,  // 后端查找项目用的真实 project ID，默认同 projectId
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -165,7 +166,7 @@ export async function createTerminalForProject(
   try {
     const session = await invoke<{ id: string; pid: number | null }>(
       "create_terminal_session",
-      { projectId, cols: initCols, rows: initRows, shell: shell || null }
+      { projectId: backendProjectId ?? projectId, cols: initCols, rows: initRows, shell: shell || null }
     );
     const sid = session.id;
     cache.sessionId = sid;
