@@ -37,16 +37,21 @@ impl AppStateWrapper {
     }
 }
 
-// 目录选择对话框 —— 使用 tauri-plugin-dialog，跨平台支持 Windows/macOS/Linux
+// 目录选择对话框 —— 使用异步 pick_folder，兼容 macOS/Windows/Linux
 #[tauri::command]
 async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let folder = app_handle
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = oneshot::channel();
+    app_handle
         .dialog()
         .file()
         .set_title("Select Project Directory")
-        .blocking_pick_folder();
-    Ok(folder.map(|p| p.to_string()))
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder.map(|p| p.to_string()));
+        });
+    rx.await.map_err(|e| e.to_string())
 }
 
 // 项目管理命令
