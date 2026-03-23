@@ -376,6 +376,10 @@ function App() {
   selectProjectRef.current = handleSelectProject;
 
   const handleSelectFile = async (projectId: string, filePath: string) => {
+    if (activeProjectId !== projectId) {
+      setActiveProjectId(projectId);
+      await invoke("set_active_project", { projectId });
+    }
     await invoke("set_view_diff", { projectId, filePath });
     await loadProjects();
   };

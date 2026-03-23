@@ -90,43 +90,30 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
 }
 
 fn count_file_changes(repo: &Repository, file_path: &str) -> Result<(usize, usize)> {
-    // 简化实现：读取文件内容计算行数差异
-    let full_path = repo
-        .workdir()
-        .unwrap_or_else(|| Path::new(""))
-        .join(file_path);
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path).context_lines(0);
 
-    if !full_path.exists() {
-        return Ok((0, 1));
-    }
+    let old_tree = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .and_then(|c| c.tree().ok());
 
-    // 读取工作目录文件
-    let workdir_content = std::fs::read_to_string(&full_path).unwrap_or_default();
-    let workdir_lines = workdir_content.lines().count();
-
-    // 尝试获取 HEAD 版本
-    let head_lines = match repo.head() {
-        Ok(head) => match head.peel_to_commit() {
-            Ok(commit) => match commit.tree()?.get_path(Path::new(file_path)) {
-                Ok(entry) => {
-                    let blob = repo.find_blob(entry.id())?;
-                    let content = std::str::from_utf8(blob.content()).unwrap_or("");
-                    content.lines().count()
-                }
-                Err(_) => 0,
-            },
-            Err(_) => 0,
-        },
-        Err(_) => 0,
+    let diff = match &old_tree {
+        Some(tree) => repo
+            .diff_tree_to_workdir_with_index(Some(tree), Some(&mut opts))
+            .unwrap_or_else(|_| repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap()),
+        None => repo
+            .diff_index_to_workdir(None, Some(&mut opts))
+            .unwrap_or_else(|_| {
+                return repo
+                    .diff_tree_to_workdir_with_index(None, Some(&mut opts))
+                    .unwrap();
+            }),
     };
 
-    if workdir_lines > head_lines {
-        Ok((workdir_lines - head_lines, 0))
-    } else if head_lines > workdir_lines {
-        Ok((0, head_lines - workdir_lines))
-    } else {
-        Ok((1, 1)) // 默认：假设有变更
-    }
+    let stats = diff.stats().context("Failed to get diff stats")?;
+    Ok((stats.insertions(), stats.deletions()))
 }
 
 fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
@@ -196,94 +183,69 @@ pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&s
 pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
-    let mut hunks = Vec::new();
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path)
+        .context_lines(3)
+        .ignore_whitespace_eol(false);
 
-    // 获取 HEAD 版本内容
-    let old_content = get_head_content(&repo, file_path)?;
+    let old_tree = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .and_then(|c| c.tree().ok());
 
-    // 获取工作目录版本内容
-    let workdir_path = repo
-        .workdir()
-        .unwrap_or_else(|| Path::new(""))
-        .join(file_path);
-    let new_content = std::fs::read_to_string(&workdir_path).unwrap_or_default();
+    let diff = match &old_tree {
+        Some(tree) => repo
+            .diff_tree_to_workdir_with_index(Some(tree), Some(&mut opts))
+            .context("Failed to compute diff")?,
+        None => repo
+            .diff_index_to_workdir(None, Some(&mut opts))
+            .context("Failed to compute diff")?,
+    };
 
-    // 简单的 diff 实现
-    let old_lines: Vec<&str> = old_content.lines().collect();
-    let new_lines: Vec<&str> = new_content.lines().collect();
+    // 先收集所有 patch 数据，避免多个闭包同时借用
+    use std::cell::RefCell;
+    let hunks: RefCell<Vec<DiffHunk>> = RefCell::new(Vec::new());
 
-    let mut diff_lines = Vec::new();
-    let mut old_line_num = 1;
-    let mut new_line_num = 1;
+    diff.foreach(
+        &mut |_, _| true,
+        None,
+        Some(&mut |_delta, hunk| {
+            hunks.borrow_mut().push(DiffHunk {
+                old_start: hunk.old_start(),
+                old_lines: hunk.old_lines(),
+                new_start: hunk.new_start(),
+                new_lines: hunk.new_lines(),
+                lines: Vec::new(),
+            });
+            true
+        }),
+        Some(&mut |_delta, _hunk_opt, line| {
+            let content = std::str::from_utf8(line.content())
+                .unwrap_or("")
+                .trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string();
 
-    // 简化的 diff：逐行比较
-    let max_len = old_lines.len().max(new_lines.len());
-    let mut changes_exist = false;
+            let diff_line = match line.origin() {
+                '+' => DiffLine::Added(content),
+                '-' => DiffLine::Removed(content),
+                ' ' => DiffLine::Context(content),
+                _ => return true,
+            };
 
-    for i in 0..max_len {
-        let old_line = old_lines.get(i);
-        let new_line = new_lines.get(i);
-
-        match (old_line, new_line) {
-            (Some(old), Some(new)) => {
-                if old != new {
-                    changes_exist = true;
-                    diff_lines.push(DiffLine::Removed(old.to_string()));
-                    diff_lines.push(DiffLine::Added(new.to_string()));
-                    old_line_num += 1;
-                    new_line_num += 1;
-                } else {
-                    diff_lines.push(DiffLine::Context(old.to_string()));
-                    old_line_num += 1;
-                    new_line_num += 1;
-                }
+            if let Some(last) = hunks.borrow_mut().last_mut() {
+                last.lines.push(diff_line);
             }
-            (Some(old), None) => {
-                changes_exist = true;
-                diff_lines.push(DiffLine::Removed(old.to_string()));
-                old_line_num += 1;
-            }
-            (None, Some(new)) => {
-                changes_exist = true;
-                diff_lines.push(DiffLine::Added(new.to_string()));
-                new_line_num += 1;
-            }
-            (None, None) => {}
-        }
-    }
+            true
+        }),
+    )
+    .context("Failed to iterate diff")?;
 
-    if changes_exist {
-        hunks.push(DiffHunk {
-            old_start: 1,
-            old_lines: old_lines.len() as u32,
-            new_start: 1,
-            new_lines: new_lines.len() as u32,
-            lines: diff_lines,
-        });
-    }
-
-    Ok(DiffResult { hunks })
+    Ok(DiffResult {
+        hunks: hunks.into_inner(),
+    })
 }
-
-fn get_head_content(repo: &Repository, file_path: &str) -> Result<String> {
-    match repo.head() {
-        Ok(head) => match head.peel_to_commit() {
-            Ok(commit) => match commit.tree()?.get_path(Path::new(file_path)) {
-                Ok(entry) => {
-                    let blob = repo.find_blob(entry.id())?;
-                    let content = std::str::from_utf8(blob.content())
-                        .unwrap_or("")
-                        .to_string();
-                    Ok(content)
-                }
-                Err(_) => Ok(String::new()),
-            },
-            Err(_) => Ok(String::new()),
-        },
-        Err(_) => Ok(String::new()),
-    }
-}
-
 pub fn create_worktree(
     repo_path: &Path,
     worktree_path: &Path,

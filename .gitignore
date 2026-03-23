@@ -28,3 +28,5 @@ src-tauri/target/
 
 # Config
 .neeko/
+tsconfig.app.tsbuildinfo
+nul

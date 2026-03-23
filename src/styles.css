@@ -1791,6 +1791,18 @@ body {
   border-radius: 10px;
   font-size: 0.79em;
   color: var(--text-secondary);
+  display: flex;
+  gap: 4px;
+}
+
+.stat-additions {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.stat-deletions {
+  color: #f85149;
+  font-weight: 600;
 }
 
 /* Diff Mode Toggle */
@@ -1967,7 +1979,7 @@ body {
 }
 
 .diff-line {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: none;
 }
 
 .diff-line.added {
@@ -1976,6 +1988,11 @@ body {
 
 .diff-line.removed {
   background-color: var(--diff-removed);
+}
+
+.diff-line.current-change {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
 }
 
 .line-number {
@@ -2010,6 +2027,105 @@ body {
 
 .diff-line.removed .line-content {
   color: var(--diff-removed-text);
+}
+
+/* ── Word-level diff highlights (GitHub style) ── */
+
+.word-diff-added {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.word-diff-removed {
+  color: #f85149;
+  font-weight: 600;
+}
+
+/* ── Syntax highlighting (One Dark Pro theme) ── */
+
+.diff-line .line-content .hljs-keyword,
+.diff-line .line-content .hljs-selector-tag {
+  color: #c678dd;
+}
+
+.diff-line .line-content .hljs-built_in,
+.diff-line .line-content .hljs-type,
+.diff-line .line-content .hljs-literal,
+.diff-line .line-content .hljs-number,
+.diff-line .line-content .hljs-params {
+  color: #e5c07b;
+}
+
+.diff-line .line-content .hljs-string,
+.diff-line .line-content .hljs-doctag,
+.diff-line .line-content .hljs-regexp {
+  color: #98c379;
+}
+
+.diff-line .line-content .hljs-title,
+.diff-line .line-content .hljs-title.class_,
+.diff-line .line-content .hljs-title.function_ {
+  color: #61afef;
+}
+
+.diff-line .line-content .hljs-name,
+.diff-line .line-content .hljs-selector-id,
+.diff-line .line-content .hljs-selector-class {
+  color: #e06c75;
+}
+
+.diff-line .line-content .hljs-attr {
+  color: #d19a66;
+}
+
+.diff-line .line-content .hljs-attribute {
+  color: #98c379;
+}
+
+.diff-line .line-content .hljs-variable,
+.diff-line .line-content .hljs-template-variable {
+  color: #e06c75;
+}
+
+.diff-line .line-content .hljs-comment,
+.diff-line .line-content .hljs-quote,
+.diff-line .line-content .hljs-deletion {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.diff-line .line-content .hljs-addition {
+  color: #98c379;
+}
+
+.diff-line .line-content .hljs-meta {
+  color: #61afef;
+}
+
+.diff-line .line-content .hljs-symbol,
+.diff-line .line-content .hljs-bullet {
+  color: #e06c75;
+}
+
+.diff-line .line-content .hljs-section {
+  color: #e5c07b;
+  font-weight: bold;
+}
+
+.diff-line .line-content .hljs-emphasis {
+  font-style: italic;
+}
+
+.diff-line .line-content .hljs-strong {
+  font-weight: bold;
+}
+
+.diff-line .line-content .hljs-tag {
+  color: #e06c75;
+}
+
+.diff-line .line-content .hljs-formula {
+  background-color: rgba(97, 175, 239, 0.1);
 }
 
 .diff-loading,
