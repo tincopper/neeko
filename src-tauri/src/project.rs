@@ -116,10 +116,6 @@ impl ProjectManager {
         self.projects.iter().find(|p| p.id == project_id)
     }
 
-    pub fn get_project_mut(&mut self, project_id: &str) -> Option<&mut Project> {
-        self.projects.iter_mut().find(|p| p.id == project_id)
-    }
-
     pub fn list_projects(&self) -> Vec<Project> {
         self.projects.clone()
     }
@@ -142,12 +138,6 @@ impl ProjectManager {
     pub fn set_selected_agent(&mut self, project_id: &str, agent_id: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_agent = agent_id;
-        }
-    }
-
-    pub fn update_terminal_status(&mut self, project_id: &str, status: TerminalStatus) {
-        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
-            project.terminal.status = status;
         }
     }
 

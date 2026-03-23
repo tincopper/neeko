@@ -166,7 +166,13 @@ export async function createTerminalForProject(
   try {
     const session = await invoke<{ id: string; pid: number | null }>(
       "create_terminal_session",
-      { projectId: backendProjectId ?? projectId, cols: initCols, rows: initRows, shell: shell || null }
+      {
+        projectId: backendProjectId ?? projectId,
+        cols: initCols,
+        rows: initRows,
+        shell: shell || null,
+        workingDir: _projectPath || null,
+      }
     );
     const sid = session.id;
     cache.sessionId = sid;

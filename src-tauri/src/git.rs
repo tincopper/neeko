@@ -1,6 +1,6 @@
 use crate::state::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use anyhow::{Context, Result};
-use git2::{Repository, Status, StatusOptions};
+use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
@@ -301,4 +301,46 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
 
 pub fn is_git_repo(path: &Path) -> bool {
     Repository::open(path).is_ok()
+}
+
+/// 重命名本地分支（不能重命名当前 checkout 的分支以外的情况需特殊处理）
+pub fn rename_branch(repo_path: &Path, old_name: &str, new_name: &str) -> Result<()> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    let mut branch = repo
+        .find_branch(old_name, BranchType::Local)
+        .with_context(|| format!("Branch '{}' not found", old_name))?;
+    branch
+        .rename(new_name, false)
+        .with_context(|| format!("Failed to rename branch '{}' to '{}'", old_name, new_name))?;
+    Ok(())
+}
+
+/// 重命名 worktree 目录（使用 git worktree move，需要 git >= 2.30）
+pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -> Result<String> {
+    use std::process::Command;
+
+    let parent = worktree_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory of worktree"))?;
+    let new_path = parent.join(new_name);
+
+    let wt_old_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid worktree path"))?;
+    let wt_new_str = new_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid new worktree path"))?;
+
+    let output = Command::new("git")
+        .args(["worktree", "move", wt_old_str, wt_new_str])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git worktree move")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git worktree move failed: {}", stderr.trim());
+    }
+
+    Ok(wt_new_str.to_string())
 }

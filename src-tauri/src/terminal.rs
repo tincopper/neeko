@@ -1,4 +1,4 @@
-use crate::state::{AgentConfig, TerminalSession, TerminalStatus};
+use crate::state::{TerminalSession, TerminalStatus};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
@@ -38,17 +38,18 @@ impl TerminalManager {
         cols: u16,
         rows: u16,
         shell_override: Option<String>,
+        working_dir: Option<String>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
+        // 实际工作目录：优先使用调用方指定的 working_dir（worktree 场景），
+        // 否则回退到项目根路径
+        let cwd = working_dir.as_deref().unwrap_or(project_path);
         log_info(&format!("[PTY] Session ID: {}", id));
-        log_info(&format!("[PTY] Project Path: {}", project_path));
+        log_info(&format!("[PTY] Working Dir: {}", cwd));
 
-        if !std::path::Path::new(project_path).exists() {
-            return Err(anyhow::anyhow!(
-                "Project path does not exist: {}",
-                project_path
-            ));
+        if !std::path::Path::new(cwd).exists() {
+            return Err(anyhow::anyhow!("Working directory does not exist: {}", cwd));
         }
 
         // 创建 PTY
@@ -80,7 +81,7 @@ impl TerminalManager {
             cmd.env("LC_ALL", "en_US.UTF-8");
             cmd.env("LC_CTYPE", "en_US.UTF-8");
         }
-        cmd.cwd(project_path);
+        cmd.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd)?;
         let pid = child.process_id();
@@ -303,26 +304,6 @@ impl TerminalManager {
             self.close_session(&id);
         }
         log_info("[PTY] All sessions closed");
-    }
-
-    pub fn get_session(&self, session_id: &str) -> Option<TerminalSession> {
-        self.sessions.lock().unwrap().get(session_id).cloned()
-    }
-
-    pub fn list_sessions(&self) -> Vec<TerminalSession> {
-        self.sessions.lock().unwrap().values().cloned().collect()
-    }
-
-    pub fn set_session_agent(&self, session_id: &str, agent: AgentConfig) {
-        if let Some(session) = self.sessions.lock().unwrap().get_mut(session_id) {
-            session.agent = Some(agent);
-        }
-    }
-
-    pub fn update_session_status(&self, session_id: &str, status: TerminalStatus) {
-        if let Some(session) = self.sessions.lock().unwrap().get_mut(session_id) {
-            session.status = status;
-        }
     }
 
     /// 根据 shell 路径构建 CommandBuilder，PowerShell 系列自动追加必要参数

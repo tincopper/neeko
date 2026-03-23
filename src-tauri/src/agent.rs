@@ -97,16 +97,4 @@ impl AgentManager {
     pub fn remove_agent(&mut self, agent_id: &str) {
         self.agents.retain(|a| a.id != agent_id);
     }
-
-    pub fn update_agent(&mut self, agent: AgentConfig) {
-        if let Some(existing) = self.agents.iter_mut().find(|a| a.id == agent.id) {
-            *existing = agent;
-        }
-    }
-
-    pub fn toggle_agent(&mut self, agent_id: &str) {
-        if let Some(agent) = self.agents.iter_mut().find(|a| a.id == agent_id) {
-            agent.enabled = !agent.enabled;
-        }
-    }
 }

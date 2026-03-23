@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import ProjectSidebar from "./components/project";
 import TerminalView, { launchAgentInTerminal } from "./components/TerminalView";
 import SideTerminalView from "./components/SideTerminalView";
+import WorktreeTerminalView from "./components/WorktreeTerminalView";
 import DiffView from "./components/DiffView";
 import AgentSelector from "./components/AgentSelector";
 import WindowControls from "./components/WindowControls";
@@ -77,6 +78,63 @@ function App() {
 
   // Side Terminal 状态（每个项目独立）
   const [sideTerminalOpen, setSideTerminalOpen] = useState(false);
+
+  // Worktree 终端状态（per-project，切换项目时保留各自状态）
+  // key = projectId
+  const [worktreeStateMap, setWorktreeStateMap] = useState<Record<string, {
+    activePath: string | null;
+    activeBranch: string;
+    opened: { path: string; branch: string }[];
+  }>>({});
+  const activeWorktreePathRef = useRef<string | null>(null);
+  const openedWorktreesRef = useRef<{ path: string; branch: string }[]>([]);
+  // 稳定 ref，供 Ctrl+N 等 useEffect 闭包直接读取当前项目 ID
+  const activeProjectIdRef = useRef<string | null>(null);
+  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
+
+  // 从 Map 中读取当前项目的 worktree 状态
+  const currentWtState = activeProjectId ? (worktreeStateMap[activeProjectId] ?? { activePath: null, activeBranch: "", opened: [] }) : { activePath: null, activeBranch: "", opened: [] };
+  const activeWorktreePath = currentWtState.activePath;
+  const activeWorktreeBranch = currentWtState.activeBranch;
+  const openedWorktrees = currentWtState.opened;
+
+  // 稳定的 worktree state 更新函数（通过 ref 读取 projectId，避免闭包陷阱）
+  const updateWtPath = (path: string | null, branch: string) => {
+    const pid = activeProjectIdRef.current;
+    if (!pid) return;
+    setWorktreeStateMap(prev => ({
+      ...prev,
+      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activePath: path, activeBranch: branch },
+    }));
+  };
+
+  const setActiveWorktreePath = (path: string | null) => {
+    const pid = activeProjectIdRef.current;
+    if (!pid) return;
+    setWorktreeStateMap(prev => ({
+      ...prev,
+      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activePath: path },
+    }));
+  };
+
+  const setActiveWorktreeBranch = (branch: string) => {
+    const pid = activeProjectIdRef.current;
+    if (!pid) return;
+    setWorktreeStateMap(prev => ({
+      ...prev,
+      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activeBranch: branch },
+    }));
+  };
+
+  const setOpenedWorktrees = (updater: { path: string; branch: string }[] | ((prev: { path: string; branch: string }[]) => { path: string; branch: string }[])) => {
+    const pid = activeProjectIdRef.current;
+    if (!pid) return;
+    setWorktreeStateMap(prev => {
+      const cur = prev[pid] ?? { activePath: null, activeBranch: "", opened: [] };
+      const newOpened = typeof updater === "function" ? updater(cur.opened) : updater;
+      return { ...prev, [pid]: { ...cur, opened: newOpened } };
+    });
+  };
 
   // Side Terminal 宽度（拖拽调整）
   const [sideTerminalWidth, setSideTerminalWidth] = useState(480);
@@ -196,6 +254,14 @@ function App() {
     sideTerminalOpenRef.current = sideTerminalOpen;
   }, [sideTerminalOpen]);
 
+  useEffect(() => {
+    activeWorktreePathRef.current = activeWorktreePath;
+  }, [activeWorktreePath]);
+
+  useEffect(() => {
+    openedWorktreesRef.current = openedWorktrees;
+  }, [openedWorktrees]);
+
   // 打开当前项目 IDE
   const activeProjectRef = useRef<Project | null>(null);
   useEffect(() => {
@@ -225,6 +291,27 @@ function App() {
         e.preventDefault();
         if (isTerminalViewRef.current) {
           setSideTerminalOpen(true);
+        }
+        return;
+      }
+
+      // Ctrl+N：在主终端和已打开的 worktree 终端之间循环切换
+      if (e.ctrlKey && !e.altKey && e.code === "KeyN") {
+        const opened = openedWorktreesRef.current;
+        if (opened.length === 0) return;
+        e.preventDefault();
+        const cur = activeWorktreePathRef.current;
+        if (cur === null) {
+          const first = opened[0];
+          updateWtPath(first.path, first.branch);
+        } else {
+          const idx = opened.findIndex((w) => w.path === cur);
+          if (idx === opened.length - 1) {
+            updateWtPath(null, "");
+          } else {
+            const next = opened[idx + 1];
+            updateWtPath(next.path, next.branch);
+          }
         }
         return;
       }
@@ -446,9 +533,35 @@ function App() {
     }
   };
 
+  // 切换分支时回到主终端（若当前在 worktree 终端下）
+  const handleBackToMainTerminal = (projectId: string) => {
+    if (activeWorktreePath !== null) {
+      setActiveWorktreePath(null);
+      setActiveWorktreeBranch("");
+    }
+    invoke("set_view_terminal", { projectId }).catch(() => {});
+  };
+
+  const handleOpenWorktreeTerminal = (worktreePath: string, branch: string) => {
+    // 激活该 worktree 终端
+    setActiveWorktreePath(worktreePath);
+    setActiveWorktreeBranch(branch);
+    // 若尚未在已打开列表中则追加
+    setOpenedWorktrees((prev) => {
+      if (prev.some((w) => w.path === worktreePath)) return prev;
+      return [...prev, { path: worktreePath, branch }];
+    });
+    // 确保 active_view 切换回 Terminal（避免 diff 视图遮挡）
+    if (activeProjectId) {
+      invoke("set_view_terminal", { projectId: activeProjectId }).catch(() => {});
+    }
+  };
+
   const isTerminalView = activeProject?.active_view === "Terminal";
   // 同步给快捷键 handler
   isTerminalViewRef.current = isTerminalView;
+  // worktree 终端激活时也视为终端视图（Ctrl+W 等快捷键可用）
+  isTerminalViewRef.current = isTerminalView || activeWorktreePath !== null;
   const diffFilePath =
     typeof activeProject?.active_view === "object"
       ? (activeProject.active_view as { Diff: { file_path: string } }).Diff
@@ -530,7 +643,7 @@ function App() {
               </span>
               {activeProject.git_info && (
                 <span className="titlebar-branch" data-tauri-drag-region>
-                  {activeProject.git_info.current_branch}
+                  {activeWorktreeBranch || activeProject.git_info.current_branch}
                 </span>
               )}
               <AgentSelector
@@ -565,27 +678,45 @@ function App() {
           onSelectProject={handleSelectProject}
           onSelectFile={handleSelectFile}
           onRefreshGit={handleRefreshGit}
+          onBackToMainTerminal={handleBackToMainTerminal}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
           onOpenIde={(projectId) => {
             const p = projects.find((proj) => proj.id === projectId);
             if (p) handleOpenIde(p);
           }}
           onOpenSideTerminal={() => setSideTerminalOpen(true)}
+          onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
           loading={loading}
         />
 
         <div className="main-content">
           {activeProject ? (
             <div className="content-area">
-              {isTerminalView ? (
+              {isTerminalView || activeWorktreePath ? (
                 <div className="terminal-pane-container">
-                  <TerminalView
-                    project={activeProject}
-                    fontSize={config.fontSize}
-                    shell={config.shell}
-                    fontFamily={config.fontFamily}
-                  />
-                  {sideTerminalOpen && (
+                  {/* 主终端（始终挂载，worktree 终端激活时隐藏） */}
+                  <div style={{ display: activeWorktreePath ? "none" : "contents" }}>
+                    <TerminalView
+                      project={activeProject}
+                      fontSize={config.fontSize}
+                      shell={config.shell}
+                      fontFamily={config.fontFamily}
+                    />
+                  </div>
+                  {/* Worktree 终端 */}
+                  {activeWorktreePath && (
+                    <WorktreeTerminalView
+                      projectId={activeProject.id}
+                      projectName={activeProject.name}
+                      worktreePath={activeWorktreePath}
+                      worktreeBranch={activeWorktreeBranch}
+                      selectedAgent={activeProject.selected_agent}
+                      fontSize={config.fontSize}
+                      shell={config.shell}
+                      fontFamily={config.fontFamily}
+                    />
+                  )}
+                  {sideTerminalOpen && !activeWorktreePath && (
                     <>
                       <div
                         className="terminal-pane-divider"
@@ -598,6 +729,23 @@ function App() {
                         fontFamily={config.fontFamily}
                         onClose={() => setSideTerminalOpen(false)}
                         width={sideTerminalWidth}
+                      />
+                    </>
+                  )}
+                  {sideTerminalOpen && activeWorktreePath && (
+                    <>
+                      <div
+                        className="terminal-pane-divider"
+                        onMouseDown={handleSideDividerMouseDown}
+                      />
+                      <SideTerminalView
+                        project={activeProject}
+                        fontSize={config.fontSize}
+                        shell={config.shell}
+                        fontFamily={config.fontFamily}
+                        onClose={() => setSideTerminalOpen(false)}
+                        width={sideTerminalWidth}
+                        worktreePath={activeWorktreePath}
                       />
                     </>
                   )}

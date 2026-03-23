@@ -897,6 +897,14 @@ body {
   width: 12px;
   flex-shrink: 0;
   transition: transform 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(90deg);
+}
+
+.gh-project-chevron.collapsed {
+  transform: rotate(0deg);
 }
 
 .gh-repo-icon {
@@ -1332,6 +1340,48 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Section labels (Branches / Worktrees) ── */
+.gh-section-label {
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 6px 10px 2px;
+  user-select: none;
+}
+
+.gh-section-label-collapsible {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 4px 8px;
+  transition: background-color 0.1s;
+}
+
+.gh-section-label-collapsible:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.gh-section-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+  transform: rotate(0deg);
+}
+
+.gh-section-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* Worktree list indentation */
+.gh-worktree-list {
+  padding: 0 0 4px 16px;
+}
+
 /* Worktree items */
 .gh-worktree-item {
   display: flex;
@@ -1344,33 +1394,35 @@ body {
   transition: background-color 0.1s;
 }
 
-.gh-worktree-item:hover {
+/* Standalone worktree items (independent section, clickable) */
+.gh-worktree-item-standalone {
+  cursor: pointer;
+}
+
+.gh-worktree-item-standalone:hover {
   background-color: var(--bg-hover);
 }
 
-.gh-worktree-info {
+.gh-worktree-name {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  font-size: 1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-width: 0;
 }
 
-.gh-worktree-branch {
-  font-size: 1em;
+.gh-worktree-branch-tag {
+  font-size: 0.78em;
   color: #61afef;
-  font-family: 'JetBrains Mono', monospace;
+  background: rgba(97, 175, 239, 0.1);
+  border-radius: 3px;
+  padding: 1px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.gh-worktree-path {
-  font-size: 1em;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 80px;
+  flex-shrink: 0;
 }
 
 .gh-worktree-remove {
@@ -1382,31 +1434,6 @@ body {
 
 .gh-worktree-item:hover .gh-worktree-remove {
   opacity: 1;
-}
-
-/* Worktrees nested under branch */
-.gh-branch-worktrees {
-  padding-left: 0;
-}
-
-.gh-branch-worktrees .gh-worktree-item {
-  padding: 2px 8px;
-  gap: 4px;
-  font-size: 1em;
-}
-
-.gh-wt-count {
-  font-size: 0.86em;
-  color: var(--text-muted);
-  background-color: var(--bg-tertiary);
-  border-radius: 8px;
-  padding: 0 4px;
-  flex-shrink: 0;
-}
-
-.gh-wt-icon {
-  color: var(--text-muted);
-  flex-shrink: 0;
 }
 
 .gh-empty-section {
@@ -1683,6 +1710,21 @@ body {
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   height: 28px;
+  box-sizing: border-box;
+}
+
+/* ── Inline rename input ── */
+.gh-inline-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input, var(--bg-tertiary));
+  border: 1px solid var(--accent-blue);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: inherit;
+  font-family: inherit;
+  padding: 1px 4px;
+  outline: none;
   box-sizing: border-box;
 }
 

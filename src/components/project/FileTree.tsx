@@ -8,6 +8,8 @@ export interface TreeNode {
   isDir: boolean;
   children: TreeNode[];
   file?: FileChange;
+  // 压缩显示名（如 "com.tomgs.app"），仅目录节点使用
+  compactName?: string;
 }
 
 export function buildTree(files: FileChange[]): TreeNode[] {
@@ -43,7 +45,37 @@ export function buildTree(files: FileChange[]): TreeNode[] {
   };
   sort(root.children);
 
+  // 压缩只有单个目录子节点的中间路径（IDEA "Compact Middle Packages" 风格）
+  compactTree(root.children);
+
   return root.children;
+}
+
+/**
+ * 将形如 a/ -> b/ -> c/ (每层只有一个目录子节点) 压缩为单节点，
+ * compactName = "a.b.c"，children 变为 c 的 children。
+ */
+function compactTree(nodes: TreeNode[]) {
+  for (const node of nodes) {
+    if (!node.isDir) continue;
+
+    // 向下合并：只要当前节点只有 1 个子节点，且该子节点是目录
+    const parts: string[] = [node.name];
+    let cur = node;
+    while (cur.children.length === 1 && cur.children[0].isDir) {
+      cur = cur.children[0];
+      parts.push(cur.name);
+    }
+
+    if (parts.length > 1) {
+      node.compactName = parts.join(".");
+      node.children = cur.children;
+      node.path = cur.path;
+    }
+
+    // 递归处理子节点
+    compactTree(node.children);
+  }
 }
 
 const STATUS_BADGE: Record<FileChange["status"], { label: string; cls: string }> = {
@@ -61,9 +93,6 @@ interface FileTreeProps {
   depth?: number;
 }
 
-// Charmed Icons 图标映射已移至 src/utils/fileIcons.ts
-
-
 const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, depth = 0 }) => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -72,18 +101,15 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
     setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
   };
 
-  // 基础左边距：第一级文件/文件夹相对于分支行多缩进一级
-  // gh-branch-list padding-left(16) + 额外缩进(8) = 24px 作为起点
-  // 但 FileTree 已在 gh-branch-children 内，gh-branch-list 的 16px 不计入
-  // 所以 BASE = 8 让文件树第一级比分支名多缩进 8px
   const BASE = 8;
   const STEP = 14;
 
   return (
     <>
       {nodes.map((node) => {
-        const isCollapsed = collapsed[node.path] ?? false;
+        const isCollapsed = collapsed[node.path] ?? true;
         const indent = BASE + depth * STEP;
+        const displayName = node.compactName ?? node.name;
 
         if (node.isDir) {
           return (
@@ -92,6 +118,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
                 className="gh-tree-dir"
                 style={{ paddingLeft: indent }}
                 onClick={(e) => toggle(node.path, e)}
+                title={node.path}
               >
                 <img
                   className="gh-dir-icon"
@@ -100,7 +127,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
                   width={16}
                   height={16}
                 />
-                <span className="gh-dir-name">{node.name}</span>
+                <span className="gh-dir-name">{displayName}</span>
               </div>
               {!isCollapsed && (
                 <FileTree

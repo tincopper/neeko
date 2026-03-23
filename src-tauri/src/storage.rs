@@ -69,14 +69,6 @@ impl StorageManager {
         }
     }
 
-    pub fn delete_session(&self) -> Result<()> {
-        let session_file = self.config_dir.join("sessions.json");
-        if session_file.exists() {
-            fs::remove_file(session_file)?;
-        }
-        Ok(())
-    }
-
     // 保存用户配置
     pub fn save_config(&self, config: &serde_json::Value) -> Result<()> {
         let config_file = self.config_dir.join("config.json");

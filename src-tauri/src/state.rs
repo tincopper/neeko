@@ -80,25 +80,6 @@ pub struct Project {
     pub active_view: ViewMode,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppState {
-    pub projects: Vec<Project>,
-    pub active_project_id: Option<String>,
-    pub recent_projects: Vec<String>,
-    pub pinned_projects: Vec<String>,
-}
-
-impl AppState {
-    pub fn new() -> Self {
-        Self {
-            projects: Vec::new(),
-            active_project_id: None,
-            recent_projects: Vec::new(),
-            pinned_projects: Vec::new(),
-        }
-    }
-}
-
 // 持久化会话
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSession {

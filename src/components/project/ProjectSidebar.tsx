@@ -14,9 +14,11 @@ interface ProjectSidebarProps {
   onSelectProject: (projectId: string) => void;
   onSelectFile: (projectId: string, filePath: string) => void;
   onRefreshGit: (projectId: string) => void;
+  onBackToMainTerminal: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenIde?: (projectId: string) => void;
   onOpenSideTerminal?: (projectId: string) => void;
+  onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
   loading: boolean;
 }
 
@@ -28,9 +30,11 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onSelectProject,
   onSelectFile,
   onRefreshGit,
+  onBackToMainTerminal,
   onOpenSettings: _onOpenSettings,
   onOpenIde,
   onOpenSideTerminal,
+  onOpenWorktreeTerminal,
   loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -87,9 +91,11 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 onRemoveProject={onRemoveProject}
                 onSelectFile={onSelectFile}
                 onRefreshGit={onRefreshGit}
+                onBackToMainTerminal={onBackToMainTerminal}
                 onOpenDialog={setDialog}
                 onOpenIde={onOpenIde}
                 onOpenSideTerminal={onOpenSideTerminal}
+                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
               />
             ))
           )}

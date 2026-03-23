@@ -218,6 +218,37 @@ fn create_branch(
 }
 
 #[tauri::command]
+fn rename_branch(
+    project_id: String,
+    old_name: String,
+    new_name: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let manager = state.project_manager.lock().unwrap();
+    if let Some(project) = manager.get_project(&project_id) {
+        git::rename_branch(&project.path, &old_name, &new_name).map_err(|e| e.to_string())
+    } else {
+        Err("Project not found".into())
+    }
+}
+
+#[tauri::command]
+fn rename_worktree(
+    project_id: String,
+    worktree_path: String,
+    new_name: String,
+    state: State<AppStateWrapper>,
+) -> Result<String, String> {
+    let manager = state.project_manager.lock().unwrap();
+    if let Some(project) = manager.get_project(&project_id) {
+        git::rename_worktree(&project.path, &PathBuf::from(&worktree_path), &new_name)
+            .map_err(|e| e.to_string())
+    } else {
+        Err("Project not found".into())
+    }
+}
+
+#[tauri::command]
 fn get_file_diff_command(
     project_id: String,
     file_path: String,
@@ -238,6 +269,7 @@ fn create_terminal_session(
     cols: u16,
     rows: u16,
     shell: Option<String>,
+    working_dir: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, String> {
@@ -246,7 +278,7 @@ fn create_terminal_session(
         let path = project.path.to_string_lossy().to_string();
         state
             .terminal_manager
-            .create_session(&path, cols, rows, shell, app_handle)
+            .create_session(&path, cols, rows, shell, working_dir, app_handle)
             .map_err(|e| e.to_string())
     } else {
         Err("Project not found".into())
@@ -269,11 +301,6 @@ fn resize_terminal(
         .terminal_manager
         .resize_session(&session_id, cols, rows)
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn list_terminal_sessions(state: State<AppStateWrapper>) -> Vec<TerminalSession> {
-    state.terminal_manager.list_sessions()
 }
 
 // Agent 命令
@@ -615,13 +642,14 @@ pub fn run() {
             // Git 操作
             checkout_branch,
             create_branch,
+            rename_branch,
+            rename_worktree,
             get_file_diff_command,
             create_worktree,
             remove_worktree,
             // 终端管理
             create_terminal_session,
             close_terminal_session,
-            list_terminal_sessions,
             resize_terminal,
             // Agent 管理
             list_agents,
