@@ -15,14 +15,17 @@ interface GitDialogProps {
   onRefreshGit: (projectId: string) => void;
 }
 
-const GitDialog: React.FC<GitDialogProps> = ({ dialog, onClose, onRefreshGit }) => {
+const GitDialog: React.FC<GitDialogProps> = ({
+  dialog,
+  onClose,
+  onRefreshGit,
+}) => {
   const [branchName, setBranchName] = useState("");
   const [worktreePath, setWorktreePath] = useState("");
   const [worktreeBranch, setWorktreeBranch] = useState("");
   const [newBranch, setNewBranch] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
     setSubmitting(true);
@@ -77,7 +80,9 @@ const GitDialog: React.FC<GitDialogProps> = ({ dialog, onClose, onRefreshGit }) 
             />
             {error && <p className="gh-dialog-error">{error}</p>}
             <div className="modal-actions">
-              <button className="cancel-btn" onClick={onClose}>Cancel</button>
+              <button className="cancel-btn" onClick={onClose}>
+                Cancel
+              </button>
               <button
                 className="confirm-btn"
                 onClick={handleCreateBranch}
@@ -98,7 +103,9 @@ const GitDialog: React.FC<GitDialogProps> = ({ dialog, onClose, onRefreshGit }) 
               onChange={(e) => setWorktreePath(e.target.value)}
               autoFocus
             />
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Branch</label>
+            <label className="gh-dialog-label" style={{ marginTop: 12 }}>
+              Branch
+            </label>
             <input
               className="path-input"
               placeholder="Branch name"
@@ -121,11 +128,15 @@ const GitDialog: React.FC<GitDialogProps> = ({ dialog, onClose, onRefreshGit }) 
             </label>
             {error && <p className="gh-dialog-error">{error}</p>}
             <div className="modal-actions">
-              <button className="cancel-btn" onClick={onClose}>Cancel</button>
+              <button className="cancel-btn" onClick={onClose}>
+                Cancel
+              </button>
               <button
                 className="confirm-btn"
                 onClick={handleCreateWorktree}
-                disabled={!worktreePath.trim() || !worktreeBranch.trim() || submitting}
+                disabled={
+                  !worktreePath.trim() || !worktreeBranch.trim() || submitting
+                }
               >
                 {submitting ? "Creating..." : "Create Worktree"}
               </button>

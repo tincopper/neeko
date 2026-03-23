@@ -5,6 +5,7 @@ mod project;
 mod state;
 mod storage;
 mod terminal;
+mod watcher;
 
 use agent::AgentManager;
 use git::get_file_diff;
@@ -16,6 +17,7 @@ use storage::StorageManager;
 use tauri::Manager;
 use tauri::State;
 use terminal::TerminalManager;
+use watcher::WatcherManager;
 
 pub struct AppStateWrapper {
     project_manager: Mutex<ProjectManager>,
@@ -23,6 +25,7 @@ pub struct AppStateWrapper {
     agent_manager: Mutex<AgentManager>,
     storage_manager: StorageManager,
     active_project_id: Mutex<Option<String>>,
+    watcher_manager: WatcherManager,
 }
 
 impl AppStateWrapper {
@@ -33,6 +36,7 @@ impl AppStateWrapper {
             agent_manager: Mutex::new(AgentManager::new()),
             storage_manager: StorageManager::new().expect("Failed to create storage manager"),
             active_project_id: Mutex::new(None),
+            watcher_manager: WatcherManager::new(),
         }
     }
 }
@@ -61,13 +65,23 @@ fn add_project(
     agent_id: Option<String>,
     ide: Option<String>,
     state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Project, String> {
-    state
+    let project = state
         .project_manager
         .lock()
         .unwrap()
         .add_project(PathBuf::from(path), agent_id, ide)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // 为新项目启动文件监听
+    state.watcher_manager.watch(
+        project.id.clone(),
+        project.path.clone(),
+        app_handle,
+    );
+
+    Ok(project)
 }
 
 #[tauri::command]
@@ -78,6 +92,8 @@ fn remove_project(project_id: String, state: State<AppStateWrapper>) {
         .unwrap()
         .remove_project(&project_id);
     state.terminal_manager.close_session(&project_id);
+    // 停止文件监听
+    state.watcher_manager.unwatch(&project_id);
 }
 
 #[tauri::command]
@@ -559,6 +575,18 @@ pub fn run() {
                         p.selected_ide.clone(),
                     );
                 }
+            }
+            // 为所有已恢复的项目启动文件监听
+            let projects: Vec<(String, PathBuf)> = state
+                .project_manager
+                .lock()
+                .unwrap()
+                .list_projects()
+                .into_iter()
+                .map(|p| (p.id, p.path))
+                .collect();
+            for (id, path) in projects {
+                state.watcher_manager.watch(id, path, app.handle().clone());
             }
             Ok(())
         })
