@@ -78,6 +78,7 @@ pub struct Project {
     pub selected_agent: Option<String>,
     pub selected_ide: Option<String>, // IDE 可执行路径或命令
     pub active_view: ViewMode,
+    pub collapsed: bool,
 }
 
 // 持久化会话
@@ -90,6 +91,12 @@ pub struct ProjectSession {
     pub selected_ide: Option<String>,
     pub terminal_history: Vec<String>,
     pub last_status: TerminalStatus,
+    #[serde(default = "default_collapsed")]
+    pub collapsed: bool,
+}
+
+fn default_collapsed() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

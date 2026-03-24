@@ -55,6 +55,7 @@ impl ProjectManager {
             selected_agent: agent_id,
             selected_ide: ide,
             active_view: ViewMode::Terminal,
+            collapsed: true,
         };
 
         self.projects.push(project.clone());
@@ -67,6 +68,7 @@ impl ProjectManager {
         path: PathBuf,
         agent_id: Option<String>,
         ide: Option<String>,
+        collapsed: bool,
     ) -> Result<Project> {
         if !path.exists() {
             anyhow::bail!("Project path does not exist: {}", path.display());
@@ -97,6 +99,7 @@ impl ProjectManager {
             selected_agent: agent_id,
             selected_ide: ide,
             active_view: ViewMode::Terminal,
+            collapsed,
         };
         self.projects.push(project.clone());
         Ok(project)
@@ -147,5 +150,11 @@ impl ProjectManager {
 
     pub fn set_view_diff(&mut self, project_id: &str, file_path: PathBuf) {
         self.set_active_view(project_id, ViewMode::Diff { file_path });
+    }
+
+    pub fn set_collapsed(&mut self, project_id: &str, collapsed: bool) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.collapsed = collapsed;
+        }
     }
 }
