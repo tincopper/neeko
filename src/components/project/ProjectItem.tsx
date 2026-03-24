@@ -32,7 +32,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenWorktreeTerminal,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-  const [projectCollapsed, setProjectCollapsed] = useState(true);
+  const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
 
   // Inline rename state
@@ -41,6 +41,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null); // stores wt.path
   const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // 切换折叠状态并持久化
+  const toggleCollapsed = async () => {
+    const newCollapsed = !projectCollapsed;
+    setProjectCollapsed(newCollapsed);
+    try {
+      await invoke("set_project_collapsed", { projectId: project.id, collapsed: newCollapsed });
+    } catch (e) {
+      console.error("Failed to save collapsed state:", e);
+    }
+  };
 
   useEffect(() => {
     if (!gitMenuOpen) return;
@@ -163,7 +174,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         {/* 折叠/展开箭头 */}
         <span
           className={`gh-project-chevron ${projectCollapsed ? "collapsed" : ""}`}
-          onClick={(e) => { e.stopPropagation(); setProjectCollapsed(v => !v); }}
+          onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
           title={projectCollapsed ? "Expand" : "Collapse"}
         >
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">

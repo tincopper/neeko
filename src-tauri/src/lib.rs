@@ -175,6 +175,18 @@ fn set_view_diff(project_id: String, file_path: String, state: State<AppStateWra
 }
 
 #[tauri::command]
+fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppStateWrapper>) {
+    let mut pm = state.project_manager.lock().unwrap();
+    pm.set_collapsed(&project_id, collapsed);
+    // 持久化折叠状态
+    let projects = pm.list_projects();
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects);
+    let _ = state.storage_manager.save_session(&session);
+}
+
+#[tauri::command]
 fn create_worktree(
     project_id: String,
     worktree_path: String,
@@ -649,6 +661,7 @@ pub fn run() {
                         p.path.clone(),
                         p.selected_agent.clone(),
                         p.selected_ide.clone(),
+                        p.collapsed,
                     );
                 }
             }
@@ -686,6 +699,7 @@ pub fn run() {
             // 视图切换
             set_view_terminal,
             set_view_diff,
+            set_project_collapsed,
             // 对话框
             open_directory_dialog,
             // Git 操作

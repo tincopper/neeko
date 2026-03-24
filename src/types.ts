@@ -34,6 +34,7 @@ export interface Project {
   selected_agent: string | null;
   selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
+  collapsed?: boolean;
 }
 
 export interface AgentConfig {

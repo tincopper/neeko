@@ -59,6 +59,7 @@ impl StorageManager {
                 selected_ide: p.selected_ide.clone(),
                 terminal_history: p.terminal.history.clone(),
                 last_status: p.terminal.status.clone(),
+                collapsed: p.collapsed,
             })
             .collect();
 
