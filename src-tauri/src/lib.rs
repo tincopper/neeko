@@ -51,7 +51,7 @@ async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<St
     let app = app_handle.clone();
 
     // 确保在主线程上打开对话框（macOS 的 NSOpenPanel 必须在主线程调用）
-    app.run_on_main_thread(move || {
+    app.clone().run_on_main_thread(move || {
         app.dialog()
             .file()
             .set_title("Select Project Directory")
