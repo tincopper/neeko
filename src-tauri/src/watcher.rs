@@ -11,6 +11,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 
+#[allow(dead_code)]
 struct WatcherHandle {
     debouncer: notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::RecommendedWatcher>,
     stop_signal: Arc<AtomicBool>,
