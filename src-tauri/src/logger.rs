@@ -41,7 +41,7 @@ impl log::Log for FileLogger {
         );
 
         if let Some(ref path) = *FILE_LOGGER.lock().unwrap() {
-            if let Ok(mut file) = OpenOptions::new().append(true).open(path) {
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
                 let _ = file.write_all(message.as_bytes());
             }
         }
