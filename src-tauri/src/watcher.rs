@@ -2,7 +2,10 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventR
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -47,7 +50,7 @@ impl WatcherManager {
             },
         );
 
-        let debouncer = match debouncer {
+        let mut debouncer = match debouncer {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("[Watcher] debouncer error for {}: {}", path.display(), e);
