@@ -344,7 +344,8 @@ impl TerminalManager {
                 }
             });
             log_info(&format!("[PTY] Using default shell: {}", shell));
-            CommandBuilder::new(shell)
+            let c = CommandBuilder::new(&shell);
+            c
         }
     }
 }
@@ -360,8 +361,8 @@ fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
             return Err(anyhow::anyhow!("tcgetattr failed"));
         }
         let mut termios = termios.assume_init();
-        // 禁用本地回显相关标志
-        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
+        // 只禁用 ECHO（避免中文输入重复显示），保留 ECHOE/ECHOK/ECHONL（退格等处理）
+        termios.c_lflag &= !libc::ECHO;
         if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
             return Err(anyhow::anyhow!("tcsetattr failed"));
         }
