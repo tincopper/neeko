@@ -111,6 +111,12 @@ fn remove_project(project_id: String, state: State<AppStateWrapper>) {
     state.terminal_manager.close_session(&project_id);
     // 停止文件监听
     state.watcher_manager.unwatch(&project_id);
+    // 持久化删除操作
+    let projects = state.project_manager.lock().unwrap().list_projects();
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects);
+    let _ = state.storage_manager.save_session(&session);
 }
 
 #[tauri::command]

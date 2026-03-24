@@ -32,7 +32,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenWorktreeTerminal,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-  const [projectCollapsed, setProjectCollapsed] = useState(false);
+  const [projectCollapsed, setProjectCollapsed] = useState(true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
 
   // Inline rename state
