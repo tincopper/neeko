@@ -56,6 +56,15 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
         if let Some(path) = entry.path() {
             let status = entry.status();
 
+            // 显式跳过 gitignored 文件（双重保险，配合 include_ignored(false)）
+            if status.contains(Status::IGNORED) {
+                continue;
+            }
+            // 跳过已提交且无变化的文件
+            if status.is_empty() {
+                continue;
+            }
+
             let file_status = if status.contains(Status::WT_NEW)
                 || status.contains(Status::INDEX_NEW)
             {
