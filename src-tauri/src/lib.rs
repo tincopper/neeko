@@ -41,21 +41,38 @@ impl AppStateWrapper {
     }
 }
 
-// 目录选择对话框 —— 使用异步 pick_folder，兼容 macOS/Windows/Linux
+// 目录选择对话框 —— 在主线程调用，解决 macOS 上 NSOpenPanel 不显示的问题
 #[tauri::command]
 async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    use std::sync::mpsc;
     use tauri_plugin_dialog::DialogExt;
-    use tokio::sync::oneshot;
 
-    let (tx, rx) = oneshot::channel();
-    app_handle
-        .dialog()
-        .file()
-        .set_title("Select Project Directory")
-        .pick_folder(move |folder| {
-            let _ = tx.send(folder.map(|p| p.to_string()));
-        });
-    rx.await.map_err(|e| e.to_string())
+    let (tx, rx) = mpsc::channel();
+    let app = app_handle.clone();
+
+    // 确保在主线程上打开对话框（macOS 的 NSOpenPanel 必须在主线程调用）
+    app.run_on_main_thread(move || {
+        app.dialog()
+            .file()
+            .set_title("Select Project Directory")
+            .pick_folder(move |folder| {
+                let _ = tx.send(folder.map(|p| p.to_string()));
+            });
+    })
+    .map_err(|e| format!("Failed to dispatch dialog to main thread: {}", e))?;
+
+    // 带超时等待，防止回调不触发时永久挂起
+    let result = tokio::task::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(120)))
+        .await
+        .map_err(|e| format!("Dialog task join error: {}", e))?;
+
+    match result {
+        Ok(path) => Ok(path),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err("Dialog timed out, please try again".to_string())
+        }
+        Err(e) => Err(format!("Dialog channel error: {}", e)),
+    }
 }
 
 // 项目管理命令
@@ -375,26 +392,52 @@ Select-Object -ExpandProperty Name"#,
 #[cfg(target_os = "macos")]
 fn get_monospace_fonts() -> Vec<String> {
     use std::process::Command;
-    let output = Command::new("system_profiler")
+    use std::time::Duration;
+
+    // system_profiler 可能很慢（10-20s），加超时避免阻塞
+    let child = Command::new("system_profiler")
         .args(["SPFontsDataType", "-json"])
-        .output();
-    match output {
-        Ok(o) => {
-            let text = String::from_utf8_lossy(&o.stdout);
-            // 简单提取 full_name 字段
-            let mut fonts = Vec::new();
-            for line in text.lines() {
-                let line = line.trim();
-                if line.starts_with("\"full_name\"") {
-                    if let Some(v) = line.split(':').nth(1) {
-                        let name = v.trim().trim_matches('"').trim_matches(',').to_string();
-                        if !name.is_empty() {
-                            fonts.push(name);
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match child {
+        Ok(mut child) => {
+            let timeout = Duration::from_secs(10);
+            let start = std::time::Instant::now();
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => {
+                        if start.elapsed() > timeout {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return vec![];
                         }
+                        std::thread::sleep(Duration::from_millis(100));
                     }
+                    Err(_) => return vec![],
                 }
             }
-            fonts
+            let output = child.wait_with_output();
+            match output {
+                Ok(o) => {
+                    let text = String::from_utf8_lossy(&o.stdout);
+                    let mut fonts = Vec::new();
+                    for line in text.lines() {
+                        let line = line.trim();
+                        if line.starts_with("\"full_name\"") {
+                            if let Some(v) = line.split(':').nth(1) {
+                                let name = v.trim().trim_matches('"').trim_matches(',').to_string();
+                                if !name.is_empty() {
+                                    fonts.push(name);
+                                }
+                            }
+                        }
+                    }
+                    fonts
+                }
+                Err(_) => vec![],
+            }
         }
         Err(_) => vec![],
     }
