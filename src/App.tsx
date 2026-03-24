@@ -441,7 +441,14 @@ function App() {
     try {
       setLoading(true);
       await loadAgents();
-      const selected = await invoke<string | null>("open_directory_dialog");
+      // 120s 超时保护，防止 macOS 上对话框回调不触发导致永久卡死
+      const timeoutPromise = new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Dialog timed out")), 120000),
+      );
+      const selected = await Promise.race([
+        invoke<string | null>("open_directory_dialog"),
+        timeoutPromise,
+      ]);
       if (selected) {
         const exists = projects.some((p) => p.path === selected);
         if (exists) {
