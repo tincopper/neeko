@@ -116,6 +116,89 @@ impl SessionStore {
     }
 }
 
+// WSL 发行版项目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSLProject {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
+// WSL 发行版
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSLEntry {
+    pub id: String,
+    pub distro: String,
+    pub projects: Vec<WSLProject>,
+}
+
+// SSH 远程项目
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteProject {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
+// SSH 认证方式
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AuthMethod {
+    Password(String),
+    KeyFile(String),
+    KeyFileWithPassphrase {
+        key_path: String,
+        passphrase: String,
+    },
+}
+
+// SSH 远程服务器
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteEntry {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: AuthMethod,
+    pub projects: Vec<RemoteProject>,
+}
+
+// WSL 项目会话 (持久化用)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSLProjectSession {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub distro: String,
+    pub entry_id: String,
+}
+
+// WSL 发行版会话 (持久化用)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WSLEntrySession {
+    pub id: String,
+    pub distro: String,
+    pub projects: Vec<WSLProjectSession>,
+}
+
+// SSH 项目会话 (持久化用)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteProjectSession {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub entry_id: String,
+}
+
+// SSH 服务器会话 (持久化用)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteEntrySession {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub projects: Vec<RemoteProjectSession>,
+}
+
 // Diff 相关
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiffLine {

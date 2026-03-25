@@ -257,6 +257,193 @@ impl TerminalManager {
         Ok(session)
     }
 
+    /// 创建 WSL 终端会话
+    pub fn create_wsl_session(
+        &self,
+        distro: &str,
+        project_path: &str,
+        cols: u16,
+        rows: u16,
+        app_handle: tauri::AppHandle,
+    ) -> Result<TerminalSession> {
+        let id = Uuid::new_v4().to_string();
+        log_info(&format!("[WSL] Session ID: {}", id));
+        log_info(&format!("[WSL] Distro: {}", distro));
+        log_info(&format!("[WSL] Working Dir: {}", project_path));
+
+        // 创建 PTY
+        let pty_system = native_pty_system();
+        let pair = pty_system.openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
+        log_info(&format!("[WSL] PTY opened ({}x{})", cols, rows));
+
+        // 构建 wsl.exe 命令
+        let mut cmd = CommandBuilder::new("wsl.exe");
+        cmd.arg("-d");
+        cmd.arg(distro);
+        cmd.arg("--cd");
+        cmd.arg(project_path);
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("LANG", "en_US.UTF-8");
+        cmd.env("LC_ALL", "en_US.UTF-8");
+
+        let child = pair.slave.spawn_command(cmd)?;
+        let pid = child.process_id();
+        log_info(&format!("[WSL] Shell spawned, PID: {:?}", pid));
+
+        // spawn_command 后立即 drop slave
+        drop(pair.slave);
+
+        // 获取 reader 和 writer
+        let mut reader = pair.master.try_clone_reader()?;
+        let writer = pair.master.take_writer()?;
+
+        // 创建 session 对象
+        let session = TerminalSession {
+            id: id.clone(),
+            pid,
+            status: TerminalStatus::Idle,
+            history: Vec::new(),
+            agent: None,
+        };
+
+        self.sessions
+            .lock()
+            .unwrap()
+            .insert(id.clone(), session.clone());
+
+        // 监听 Frontend 输入事件
+        let writer_mutex = Arc::new(Mutex::new(writer));
+        let writer_clone = writer_mutex.clone();
+        let input_listener_id =
+            app_handle.listen(&format!("terminal-input-{}", id), move |event| {
+                match serde_json::from_str::<Vec<u8>>(event.payload()) {
+                    Ok(data) => {
+                        if let Ok(mut w) = writer_clone.lock() {
+                            if let Err(e) = w.write_all(&data) {
+                                log_error(&format!("[WSL-WRITER] Write error: {}", e));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log_error(&format!(
+                            "[WSL-WRITER] Parse error: {} payload={}",
+                            e,
+                            event.payload()
+                        ));
+                    }
+                }
+            });
+
+        // 保存 handle
+        self.pty_handles.lock().unwrap().insert(
+            id.clone(),
+            PtyHandle {
+                master: pair.master,
+                child,
+                input_listener_id,
+                app_handle: app_handle.clone(),
+            },
+        );
+
+        // Watcher 线程
+        let watch_id = id.clone();
+        let watch_pty_handles = self.pty_handles.clone();
+        let watch_sessions = self.sessions.clone();
+        let watch_handle = app_handle.clone();
+        thread::Builder::new()
+            .name(format!("wsl-watcher-{}", &id[..8]))
+            .spawn(move || {
+                log_info(&format!(
+                    "[WSL-WATCHER] Thread started for {}",
+                    &watch_id[..8]
+                ));
+
+                loop {
+                    let exited = {
+                        let mut handles = watch_pty_handles.lock().unwrap();
+                        if let Some(handle) = handles.get_mut(&watch_id) {
+                            match handle.child.try_wait() {
+                                Ok(Some(_)) => true,
+                                Ok(None) => false,
+                                Err(_) => true,
+                            }
+                        } else {
+                            log_info(&format!(
+                                "[WSL-WATCHER] Handle gone, exiting for {}",
+                                &watch_id[..8]
+                            ));
+                            return;
+                        }
+                    };
+
+                    if exited {
+                        log_info(&format!(
+                            "[WSL-WATCHER] Child exited for {}, cleaning up",
+                            &watch_id[..8]
+                        ));
+                        if let Some(handle) = watch_pty_handles.lock().unwrap().remove(&watch_id) {
+                            handle.app_handle.unlisten(handle.input_listener_id);
+                            drop(handle.master);
+                            drop(handle.child);
+                        }
+                        watch_sessions.lock().unwrap().remove(&watch_id);
+                        let close_event = format!("terminal-closed-{}", watch_id);
+                        if let Err(e) = watch_handle.emit(&close_event, ()) {
+                            log_error(&format!("[WSL-WATCHER] Failed to emit close event: {}", e));
+                        }
+                        return;
+                    }
+
+                    thread::sleep(Duration::from_millis(100));
+                }
+            })?;
+
+        // Reader 线程
+        let read_id = id.clone();
+        let read_handle = app_handle.clone();
+        thread::Builder::new()
+            .name(format!("wsl-reader-{}", &id[..8]))
+            .spawn(move || {
+                log_info(&format!(
+                    "[WSL-READER] Thread started for {}",
+                    &read_id[..8]
+                ));
+                let mut buf = [0u8; 4096];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => {
+                            log_info("[WSL-READER] EOF");
+                            break;
+                        }
+                        Ok(n) => {
+                            let data = buf[..n].to_vec();
+                            let event_name = format!("terminal-output-{}", read_id);
+                            if let Err(e) = read_handle.emit(&event_name, &data) {
+                                log_error(&format!("[WSL-READER] Emit error: {}", e));
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            log_info(&format!("[WSL-READER] Read ended: {}", e));
+                            break;
+                        }
+                    }
+                }
+                log_info(&format!(
+                    "[WSL-READER] Thread exiting for {}",
+                    &read_id[..8]
+                ));
+            })?;
+
+        log_info(&format!("[WSL] Session {} ready", &id[..8]));
+        Ok(session)
+    }
+
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
         if let Some(handle) = self.pty_handles.lock().unwrap().get(session_id) {
             handle.master.resize(PtySize {
