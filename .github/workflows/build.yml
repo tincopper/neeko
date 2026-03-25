@@ -68,6 +68,7 @@ jobs:
         with:
           tagName: 'v__VERSION__'
           releaseName: 'Neeko v__VERSION__'
+          releaseAssetNamePattern: '[name]_v[version]_[arch]-[ext]'
           releaseBody: |
             ## Installation
 
