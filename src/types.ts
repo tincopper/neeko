@@ -45,3 +45,48 @@ export interface AgentConfig {
   icon: string | null;
   enabled: boolean;
 }
+
+// WSL 发行版项目
+export interface WSLProject {
+  id: string;
+  name: string;
+  path: string;
+  distro: string;
+  entry_id: string;
+}
+
+// WSL 发行版 (持久化)
+export interface WSLEntrySession {
+  id: string;
+  distro: string;
+  projects: WSLProject[];
+}
+
+// SSH 远程项目
+export interface RemoteProject {
+  id: string;
+  name: string;
+  path: string;
+  entry_id: string;
+}
+
+// SSH 认证方式
+export type AuthMethod =
+  | { Password: string }
+  | { KeyFile: string }
+  | { KeyFileWithPassphrase: { key_path: string; passphrase: string } };
+
+// SSH 远程服务器 (持久化)
+export interface RemoteEntrySession {
+  id: string;
+  host: string;
+  port: number;
+  username: string;
+  projects: RemoteProject[];
+}
+
+// 统一的终端项目类型
+export type TerminalEntry =
+  | { type: 'local'; project: Project }
+  | { type: 'wsl'; distro: string; project: WSLProject }
+  | { type: 'remote'; host: string; project: RemoteProject };

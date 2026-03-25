@@ -10,7 +10,9 @@ import DiffView from "./components/DiffView";
 import AgentSelector from "./components/AgentSelector";
 import WindowControls from "./components/WindowControls";
 import SettingsPanel, { AppConfig } from "./components/SettingsPanel";
+import { WSLDialog, RemoteDialog } from "./components/WSLDialog";
 import { IDE_PRESETS, getIdeCommand } from "./utils/idePresets";
+import { WSLEntrySession, RemoteEntrySession } from "./types";
 import "./styles.css";
 
 interface Project {
@@ -59,6 +61,12 @@ function App() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // WSL 和远程项目状态
+  const [wslEntries, setWslEntries] = useState<WSLEntrySession[]>([]);
+  const [remoteEntries, setRemoteEntries] = useState<RemoteEntrySession[]>([]);
+  const [wslDialogOpen, setWslDialogOpen] = useState(false);
+  const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
 
   // Toast 通知
   const [toast, setToast] = useState<{
@@ -397,6 +405,8 @@ function App() {
     })();
     loadAgents();
     loadProjects();
+    loadWSLEntries();
+    loadRemoteEntries();
 
     // 监听后端文件变化事件，自动刷新 git 状态
     const unlistenPromise = listen<string>("git-changed", (event) => {
@@ -426,6 +436,24 @@ function App() {
       setProjects(projectList);
     } catch (error) {
       console.error("[App] Failed to load projects:", error);
+    }
+  };
+
+  const loadWSLEntries = async () => {
+    try {
+      const entries = await invoke<WSLEntrySession[]>("load_wsl_entries");
+      setWslEntries(entries);
+    } catch (error) {
+      console.error("[App] Failed to load WSL entries:", error);
+    }
+  };
+
+  const loadRemoteEntries = async () => {
+    try {
+      const entries = await invoke<RemoteEntrySession[]>("load_remote_entries");
+      setRemoteEntries(entries);
+    } catch (error) {
+      console.error("[App] Failed to load remote entries:", error);
     }
   };
 
@@ -461,6 +489,42 @@ function App() {
       console.error("[App] Failed to open dialog:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleWSLEntryAdd = async (entry: WSLEntrySession) => {
+    try {
+      // 更新或添加条目
+      const existingIndex = wslEntries.findIndex(e => e.id === entry.id);
+      let newEntries: WSLEntrySession[];
+      if (existingIndex >= 0) {
+        newEntries = [...wslEntries];
+        newEntries[existingIndex] = entry;
+      } else {
+        newEntries = [...wslEntries, entry];
+      }
+      setWslEntries(newEntries);
+      await invoke("save_wsl_entries", { entries: newEntries });
+    } catch (error) {
+      console.error("[App] Failed to save WSL entry:", error);
+    }
+  };
+
+  const handleRemoteEntryAdd = async (entry: RemoteEntrySession) => {
+    try {
+      // 更新或添加条目
+      const existingIndex = remoteEntries.findIndex(e => e.id === entry.id);
+      let newEntries: RemoteEntrySession[];
+      if (existingIndex >= 0) {
+        newEntries = [...remoteEntries];
+        newEntries[existingIndex] = entry;
+      } else {
+        newEntries = [...remoteEntries, entry];
+      }
+      setRemoteEntries(newEntries);
+      await invoke("save_remote_entries", { entries: newEntries });
+    } catch (error) {
+      console.error("[App] Failed to save remote entry:", error);
     }
   };
 
@@ -982,6 +1046,22 @@ function App() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
+      {/* WSL Dialog */}
+      <WSLDialog
+        isOpen={wslDialogOpen}
+        onClose={() => setWslDialogOpen(false)}
+        onAdd={handleWSLEntryAdd}
+        existingEntries={wslEntries}
+      />
+
+      {/* Remote Dialog */}
+      <RemoteDialog
+        isOpen={remoteDialogOpen}
+        onClose={() => setRemoteDialogOpen(false)}
+        onAdd={handleRemoteEntryAdd}
+        existingEntries={remoteEntries}
+      />
 
       {/* Toast 通知 */}
       {toast && (

@@ -302,6 +302,101 @@ fn resize_terminal(
         .map_err(|e| e.to_string())
 }
 
+// WSL 命令
+#[tauri::command]
+fn get_wsl_distros() -> Result<Vec<String>, String> {
+    let output = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .output()
+        .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("WSL command failed: {}", stderr));
+    }
+
+    let distros: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim().trim_matches('\0').to_string())
+        .filter(|line| !line.is_empty())
+        .collect();
+
+    Ok(distros)
+}
+
+#[tauri::command]
+fn create_wsl_terminal_session(
+    distro: String,
+    project_path: String,
+    cols: u16,
+    rows: u16,
+    state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> Result<TerminalSession, String> {
+    state
+        .terminal_manager
+        .create_wsl_session(&distro, &project_path, cols, rows, app_handle)
+        .map_err(|e| e.to_string())
+}
+
+// WSL 配置持久化
+#[tauri::command]
+fn save_wsl_entries(
+    entries: Vec<WSLEntrySession>,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let config_file = state
+        .storage_manager
+        .get_config_dir()
+        .join("wsl_entries.json");
+    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(config_file, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_wsl_entries(state: State<AppStateWrapper>) -> Result<Vec<WSLEntrySession>, String> {
+    let config_file = state
+        .storage_manager
+        .get_config_dir()
+        .join("wsl_entries.json");
+    if !config_file.exists() {
+        return Ok(Vec::new());
+    }
+    let json = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
+    let entries: Vec<WSLEntrySession> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(entries)
+}
+
+// SSH 配置持久化
+#[tauri::command]
+fn save_remote_entries(
+    entries: Vec<RemoteEntrySession>,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let config_file = state
+        .storage_manager
+        .get_config_dir()
+        .join("remote_entries.json");
+    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(config_file, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_remote_entries(state: State<AppStateWrapper>) -> Result<Vec<RemoteEntrySession>, String> {
+    let config_file = state
+        .storage_manager
+        .get_config_dir()
+        .join("remote_entries.json");
+    if !config_file.exists() {
+        return Ok(Vec::new());
+    }
+    let json = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
+    let entries: Vec<RemoteEntrySession> =
+        serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(entries)
+}
+
 // Agent 命令
 #[tauri::command]
 fn list_agents(state: State<AppStateWrapper>) -> Vec<AgentConfig> {
@@ -680,6 +775,14 @@ pub fn run() {
             create_terminal_session,
             close_terminal_session,
             resize_terminal,
+            // WSL 终端
+            get_wsl_distros,
+            create_wsl_terminal_session,
+            save_wsl_entries,
+            load_wsl_entries,
+            // SSH 远程终端
+            save_remote_entries,
+            load_remote_entries,
             // Agent 管理
             list_agents,
             get_agent,
