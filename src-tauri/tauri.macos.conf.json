@@ -4,7 +4,7 @@
     "targets": ["dmg"],
     "macOS": {
       "minimumSystemVersion": "10.13",
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "signingIdentity": "-",
       "entitlements": null,
       "dmg": {
