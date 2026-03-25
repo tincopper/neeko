@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import ProjectSidebar from "./components/project";
 import TerminalView, { launchAgentInTerminal } from "./components/TerminalView";
 import SideTerminalView from "./components/SideTerminalView";
@@ -441,14 +442,11 @@ function App() {
     try {
       setLoading(true);
       await loadAgents();
-      // 120s 超时保护，防止 macOS 上对话框回调不触发导致永久卡死
-      const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Dialog timed out")), 120000),
-      );
-      const selected = await Promise.race([
-        invoke<string | null>("open_directory_dialog"),
-        timeoutPromise,
-      ]);
+      // 使用 Tauri dialog 插件的 JavaScript API 打开目录选择对话框
+      const selected = await open({
+        multiple: false,
+        directory: true,
+      });
       if (selected) {
         const exists = projects.some((p) => p.path === selected);
         if (exists) {
