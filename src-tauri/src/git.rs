@@ -251,8 +251,33 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
     )
     .context("Failed to iterate diff")?;
 
+    let mut result_hunks = hunks.into_inner();
+
+    // If hunks is empty, try to read file content (may be a new file)
+    if result_hunks.is_empty() {
+        let full_path = repo_path.join(file_path);
+        if full_path.exists() && full_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&full_path) {
+                let lines: Vec<DiffLine> = content
+                    .lines()
+                    .map(|line| DiffLine::Added(line.to_string()))
+                    .collect();
+
+                if !lines.is_empty() {
+                    result_hunks.push(DiffHunk {
+                        old_start: 0,
+                        old_lines: 0,
+                        new_start: 1,
+                        new_lines: lines.len() as u32,
+                        lines,
+                    });
+                }
+            }
+        }
+    }
+
     Ok(DiffResult {
-        hunks: hunks.into_inner(),
+        hunks: result_hunks,
     })
 }
 pub fn create_worktree(
