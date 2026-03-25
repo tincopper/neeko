@@ -12,6 +12,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 git2 = "0.18"
 portable-pty = "0.8"
 uuid = { version = "1.6", features = ["v4"] }
@@ -21,6 +22,8 @@ notify = { version = "6", features = ["macos_fsevent"] }
 notify-debouncer-mini = "0.4"
 dirs = "5.0"
 log = "0.4"
+russh = "0.50.0-beta.7"
+russh-keys = "0.50.0-beta.7"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

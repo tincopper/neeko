@@ -2,6 +2,7 @@ mod agent;
 mod git;
 mod logger;
 mod project;
+mod remote;
 mod state;
 mod storage;
 mod terminal;
@@ -10,6 +11,7 @@ mod watcher;
 use agent::AgentManager;
 use git::get_file_diff;
 use project::ProjectManager;
+use remote::RemoteTerminalManager;
 use state::*;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -22,6 +24,7 @@ use watcher::WatcherManager;
 pub struct AppStateWrapper {
     project_manager: Mutex<ProjectManager>,
     terminal_manager: TerminalManager,
+    remote_terminal_manager: RemoteTerminalManager,
     agent_manager: Mutex<AgentManager>,
     storage_manager: StorageManager,
     active_project_id: Mutex<Option<String>>,
@@ -33,6 +36,7 @@ impl AppStateWrapper {
         Self {
             project_manager: Mutex::new(ProjectManager::new()),
             terminal_manager: TerminalManager::new(),
+            remote_terminal_manager: RemoteTerminalManager::new(),
             agent_manager: Mutex::new(AgentManager::new()),
             storage_manager: StorageManager::new().expect("Failed to create storage manager"),
             active_project_id: Mutex::new(None),
@@ -395,6 +399,44 @@ fn load_remote_entries(state: State<AppStateWrapper>) -> Result<Vec<RemoteEntryS
     let entries: Vec<RemoteEntrySession> =
         serde_json::from_str(&json).map_err(|e| e.to_string())?;
     Ok(entries)
+}
+
+// SSH 远程终端命令
+#[tauri::command]
+async fn create_remote_terminal_session(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    cols: u16,
+    rows: u16,
+    state: State<'_, AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> Result<TerminalSession, String> {
+    state
+        .remote_terminal_manager
+        .create_session(&host, port, &username, &auth, &project_path, cols, rows, app_handle)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn close_remote_terminal_session(session_id: String, state: State<AppStateWrapper>) {
+    state.remote_terminal_manager.close_session(&session_id);
+}
+
+#[tauri::command]
+fn resize_remote_terminal(
+    session_id: String,
+    cols: u16,
+    rows: u16,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    state
+        .remote_terminal_manager
+        .resize_session(&session_id, cols, rows)
+        .map_err(|e| e.to_string())
 }
 
 // Agent 命令
@@ -781,6 +823,9 @@ pub fn run() {
             save_wsl_entries,
             load_wsl_entries,
             // SSH 远程终端
+            create_remote_terminal_session,
+            close_remote_terminal_session,
+            resize_remote_terminal,
             save_remote_entries,
             load_remote_entries,
             // Agent 管理
