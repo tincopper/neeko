@@ -68,7 +68,22 @@ jobs:
         with:
           tagName: 'v__VERSION__'
           releaseName: 'Neeko v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
+          releaseBody: |
+            ## Installation
+
+            ### Windows
+            Download and run the `.exe` or `.msi` installer.
+
+            ### macOS
+            Download the `.dmg` file, open it and drag **Neeko** to Applications.
+
+            **First launch**: If you see "Neeko is damaged" or "Cannot verify developer":
+            1. Open Terminal
+            2. Run: `xattr -cr /Applications/Neeko.app`
+            3. Open Neeko again
+
+            ### Linux
+            Download the `.AppImage` or `.deb` file.
           releaseDraft: false
           prerelease: false
           retryAttempts: 3
