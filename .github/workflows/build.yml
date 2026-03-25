@@ -60,7 +60,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -69,8 +69,9 @@ jobs:
           tagName: 'v__VERSION__'
           releaseName: 'Neeko v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
+          retryAttempts: 3
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows'
