@@ -41,40 +41,6 @@ impl AppStateWrapper {
     }
 }
 
-// 目录选择对话框 —— 在主线程调用，解决 macOS 上 NSOpenPanel 不显示的问题
-#[tauri::command]
-async fn open_directory_dialog(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
-    use std::sync::mpsc;
-    use tauri_plugin_dialog::DialogExt;
-
-    let (tx, rx) = mpsc::channel();
-    let app = app_handle.clone();
-
-    // 确保在主线程上打开对话框（macOS 的 NSOpenPanel 必须在主线程调用）
-    app.clone().run_on_main_thread(move || {
-        app.dialog()
-            .file()
-            .set_title("Select Project Directory")
-            .pick_folder(move |folder| {
-                let _ = tx.send(folder.map(|p| p.to_string()));
-            });
-    })
-    .map_err(|e| format!("Failed to dispatch dialog to main thread: {}", e))?;
-
-    // 带超时等待，防止回调不触发时永久挂起
-    let result = tokio::task::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(120)))
-        .await
-        .map_err(|e| format!("Dialog task join error: {}", e))?;
-
-    match result {
-        Ok(path) => Ok(path),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            Err("Dialog timed out, please try again".to_string())
-        }
-        Err(e) => Err(format!("Dialog channel error: {}", e)),
-    }
-}
-
 // 项目管理命令
 #[tauri::command]
 fn add_project(
@@ -92,11 +58,9 @@ fn add_project(
         .map_err(|e| e.to_string())?;
 
     // 为新项目启动文件监听
-    state.watcher_manager.watch(
-        project.id.clone(),
-        project.path.clone(),
-        app_handle,
-    );
+    state
+        .watcher_manager
+        .watch(project.id.clone(), project.path.clone(), app_handle);
 
     Ok(project)
 }
@@ -479,9 +443,7 @@ fn get_monospace_fonts() -> Vec<String> {
             // 去除 fc-list 可能输出的 locale 变体（如 "Noto Sans,Noto Sans Regular"）
             fonts = fonts
                 .into_iter()
-                .map(|f| {
-                    f.split(',').next().unwrap_or(&f).trim().to_string()
-                })
+                .map(|f| f.split(',').next().unwrap_or(&f).trim().to_string())
                 .filter(|f| !f.is_empty())
                 .collect();
             fonts
@@ -549,7 +511,8 @@ fn open_ide(ide_command: String, project_path: String) -> Result<(), String> {
         cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
 
-    cmd.spawn().map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
+    cmd.spawn()
+        .map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
     Ok(())
 }
 
@@ -565,14 +528,18 @@ fn split_command(s: &str) -> Vec<String> {
             '"' => {
                 // 读取直到下一个 "
                 for inner in chars.by_ref() {
-                    if inner == '"' { break; }
+                    if inner == '"' {
+                        break;
+                    }
                     current.push(inner);
                 }
             }
             '\'' => {
                 // 读取直到下一个 '
                 for inner in chars.by_ref() {
-                    if inner == '\'' { break; }
+                    if inner == '\'' {
+                        break;
+                    }
                     current.push(inner);
                 }
             }
@@ -701,7 +668,6 @@ pub fn run() {
             set_view_diff,
             set_project_collapsed,
             // 对话框
-            open_directory_dialog,
             // Git 操作
             checkout_branch,
             create_branch,
