@@ -330,6 +330,48 @@ fn get_wsl_distros() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<String>, String> {
+    let dir_path = path.unwrap_or_else(|| "/home".to_string());
+    
+    let output = std::process::Command::new("wsl.exe")
+        .args(["-d", &distro, "--", "ls", "-1", "--group-directories-first", &dir_path])
+        .output()
+        .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("WSL command failed: {}", stderr));
+    }
+
+    let entries: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.trim().to_string())
+        .collect();
+
+    Ok(entries)
+}
+
+#[tauri::command]
+fn get_wsl_home_dir(distro: String) -> Result<String, String> {
+    let output = std::process::Command::new("wsl.exe")
+        .args(["-d", &distro, "--", "echo", "$HOME"])
+        .output()
+        .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("WSL command failed: {}", stderr));
+    }
+
+    let home_dir = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_string();
+
+    Ok(home_dir)
+}
+
+#[tauri::command]
 fn create_wsl_terminal_session(
     distro: String,
     project_path: String,
@@ -819,6 +861,8 @@ pub fn run() {
             resize_terminal,
             // WSL 终端
             get_wsl_distros,
+            get_wsl_directories,
+            get_wsl_home_dir,
             create_wsl_terminal_session,
             save_wsl_entries,
             load_wsl_entries,

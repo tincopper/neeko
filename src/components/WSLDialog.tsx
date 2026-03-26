@@ -10,11 +10,11 @@ interface WSLDialogProps {
 }
 
 export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialogProps) {
-  const [step, setStep] = useState<"select-distro" | "add-project">("select-distro");
+  const [step, setStep] = useState<"select-distro" | "select-path">("select-distro");
   const [distros, setDistros] = useState<string[]>([]);
   const [selectedDistro, setSelectedDistro] = useState<string>("");
-  const [projectName, setProjectName] = useState<string>("");
-  const [projectPath, setProjectPath] = useState<string>("");
+  const [currentPath, setCurrentPath] = useState<string>("/");
+  const [directories, setDirectories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +23,12 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
       loadDistros();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (step === "select-path" && selectedDistro) {
+      loadDirectories(currentPath);
+    }
+  }, [step, selectedDistro, currentPath]);
 
   const loadDistros = async () => {
     try {
@@ -37,28 +43,72 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
     }
   };
 
-  const handleSelectDistro = (distro: string) => {
-    setSelectedDistro(distro);
-    setStep("add-project");
+  const loadDirectories = async (path: string) => {
+    try {
+      setLoading(true);
+      const result = await invoke<string[]>("get_wsl_directories", { 
+        distro: selectedDistro, 
+        path 
+      });
+      setDirectories(result);
+    } catch (err) {
+      console.error("Failed to load directories:", err);
+      setDirectories([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAddProject = () => {
-    if (!selectedDistro || !projectName || !projectPath) {
-      setError("Please fill in all fields");
+  const handleSelectDistro = async (distro: string) => {
+    setSelectedDistro(distro);
+    try {
+      // 获取用户的 home 目录
+      const homeDir = await invoke<string>("get_wsl_home_dir", { distro });
+      setCurrentPath(homeDir);
+    } catch {
+      setCurrentPath("/home");
+    }
+    setStep("select-path");
+  };
+
+  const handleSelectDirectory = (dir: string) => {
+    const newPath = currentPath === "/" ? `/${dir}` : `${currentPath}/${dir}`;
+    setCurrentPath(newPath);
+  };
+
+  const handleGoUp = () => {
+    if (currentPath === "/") return;
+    const parentPath = currentPath.substring(0, currentPath.lastIndexOf("/")) || "/";
+    setCurrentPath(parentPath);
+  };
+
+  const handleConfirmPath = () => {
+    if (!currentPath) {
+      setError("Please select a path");
       return;
     }
 
     const existingEntry = existingEntries.find(e => e.distro === selectedDistro);
     
+    // 从路径中提取项目名（最后一个目录）
+    const projectName = currentPath.split("/").filter(Boolean).pop() || currentPath;
+    
     const newProject: WSLProject = {
       id: crypto.randomUUID(),
       name: projectName,
-      path: projectPath,
+      path: currentPath,
       distro: selectedDistro,
       entry_id: existingEntry?.id || crypto.randomUUID(),
     };
 
     if (existingEntry) {
+      // 检查是否已存在相同路径的项目
+      const pathExists = existingEntry.projects.some(p => p.path === currentPath);
+      if (pathExists) {
+        setError("This path is already added");
+        return;
+      }
+      
       // 添加到现有发行版
       const updatedEntry: WSLEntrySession = {
         ...existingEntry,
@@ -76,19 +126,14 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
     }
 
     // 重置状态
-    setStep("select-distro");
-    setSelectedDistro("");
-    setProjectName("");
-    setProjectPath("");
-    setError(null);
-    onClose();
+    handleClose();
   };
 
   const handleClose = () => {
     setStep("select-distro");
     setSelectedDistro("");
-    setProjectName("");
-    setProjectPath("");
+    setCurrentPath("/");
+    setDirectories([]);
     setError(null);
     onClose();
   };
@@ -97,17 +142,17 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h3>{step === "select-distro" ? "Select WSL Distro" : "Add WSL Project"}</h3>
+      <div className="modal wsl-modal" onClick={e => e.stopPropagation()}>
+        <h3>{step === "select-distro" ? "Select WSL Distro" : "Select Project Path"}</h3>
         
         {error && <p className="gh-dialog-error">{error}</p>}
         
         {step === "select-distro" ? (
           <>
             {loading ? (
-              <p>Loading WSL distros...</p>
+              <p className="wsl-loading">Loading WSL distros...</p>
             ) : distros.length === 0 ? (
-              <p>No WSL distros found. Please install a WSL distro first.</p>
+              <p className="wsl-empty">No WSL distros found. Please install a WSL distro first.</p>
             ) : (
               <div className="wsl-distro-list">
                 {distros.map(distro => (
@@ -118,6 +163,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
                   >
                     <span className="wsl-distro-icon">🐧</span>
                     <span className="wsl-distro-name">{distro}</span>
+                    <span className="wsl-distro-arrow">›</span>
                   </div>
                 ))}
               </div>
@@ -125,39 +171,60 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries }: WSLDialog
           </>
         ) : (
           <>
-            <label className="gh-dialog-label">Distro</label>
-            <div className="wsl-selected-distro">
+            <div className="wsl-path-header">
               <span className="wsl-distro-icon">🐧</span>
-              <span>{selectedDistro}</span>
+              <span className="wsl-distro-label">{selectedDistro}</span>
             </div>
             
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Name</label>
-            <input
-              type="text"
-              value={projectName}
-              onChange={e => setProjectName(e.target.value)}
-              placeholder="my-project"
-              className="gh-dialog-input"
-            />
+            <div className="wsl-path-display">
+              <span className="wsl-path-text">{currentPath}</span>
+            </div>
             
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Path (in WSL)</label>
-            <input
-              type="text"
-              value={projectPath}
-              onChange={e => setProjectPath(e.target.value)}
-              placeholder="/home/user/my-project"
-              className="gh-dialog-input"
-            />
+            <div className="wsl-directory-list">
+              {currentPath !== "/" && (
+                <div 
+                  className="wsl-directory-item wsl-directory-up"
+                  onClick={handleGoUp}
+                >
+                  <span className="wsl-dir-icon">📁</span>
+                  <span className="wsl-dir-name">..</span>
+                </div>
+              )}
+              {loading ? (
+                <div className="wsl-loading-item">Loading...</div>
+              ) : directories.length === 0 ? (
+                <div className="wsl-empty-item">No directories found</div>
+              ) : (
+                directories.map(dir => (
+                  <div
+                    key={dir}
+                    className="wsl-directory-item"
+                    onClick={() => handleSelectDirectory(dir)}
+                  >
+                    <span className="wsl-dir-icon">📁</span>
+                    <span className="wsl-dir-name">{dir}</span>
+                    <span className="wsl-dir-arrow">›</span>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            <div className="wsl-project-preview">
+              <span className="wsl-preview-label">Project will be added as:</span>
+              <span className="wsl-preview-name">
+                {currentPath.split("/").filter(Boolean).pop() || currentPath}
+              </span>
+            </div>
           </>
         )}
         
         <div className="modal-actions">
           <button className="modal-btn cancel" onClick={handleClose}>Cancel</button>
-          {step === "add-project" && (
+          {step === "select-path" && (
             <button 
               className="modal-btn confirm" 
-              onClick={handleAddProject}
-              disabled={!projectName || !projectPath}
+              onClick={handleConfirmPath}
+              disabled={!currentPath}
             >
               Add
             </button>
@@ -216,6 +283,15 @@ export function RemoteDialog({
     }
 
     setStep("add-project");
+  };
+
+  const handlePathChange = (path: string) => {
+    setProjectPath(path);
+    // 自动从路径中提取项目名
+    if (path) {
+      const name = path.split("/").filter(Boolean).pop() || "";
+      setProjectName(name);
+    }
   };
 
   const handleAddProject = () => {
@@ -376,21 +452,21 @@ export function RemoteDialog({
               </>
             )}
             
+            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Path (on server)</label>
+            <input
+              type="text"
+              value={projectPath}
+              onChange={e => handlePathChange(e.target.value)}
+              placeholder="/home/user/my-project"
+              className="gh-dialog-input"
+            />
+            
             <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Name</label>
             <input
               type="text"
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
-              placeholder="my-project"
-              className="gh-dialog-input"
-            />
-            
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Path (on server)</label>
-            <input
-              type="text"
-              value={projectPath}
-              onChange={e => setProjectPath(e.target.value)}
-              placeholder="/home/user/my-project"
+              placeholder="Auto-generated from path"
               className="gh-dialog-input"
             />
           </>
