@@ -307,10 +307,27 @@ fn resize_terminal(
 }
 
 // WSL 命令
+//
+// wsl.exe 在无控制台（non-console）模式下默认输出 UTF-16LE。
+// 设置环境变量 WSL_UTF8=1 可强制其输出 UTF-8，是微软官方推荐方案。
+//
+// Windows 上 std::process::Command 默认会为子进程创建控制台窗口。
+// 通过 CREATE_NO_WINDOW 标志抑制，避免每次目录查询时弹出黑框。
+fn wsl_command(program: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 #[tauri::command]
 fn get_wsl_distros() -> Result<Vec<String>, String> {
-    let output = std::process::Command::new("wsl.exe")
+    let output = wsl_command("wsl.exe")
         .args(["-l", "-q"])
+        .env("WSL_UTF8", "1")
         .output()
         .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
 
@@ -321,8 +338,7 @@ fn get_wsl_distros() -> Result<Vec<String>, String> {
 
     let distros: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
-        .filter(|line| !line.is_empty())
-        .map(|line| line.trim().trim_matches('\0').to_string())
+        .map(|line| line.trim().trim_end_matches('*').trim().to_string())
         .filter(|line| !line.is_empty())
         .collect();
 
@@ -331,22 +347,26 @@ fn get_wsl_distros() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<String>, String> {
-    let dir_path = path.unwrap_or_else(|| "/home".to_string());
-    
-    let output = std::process::Command::new("wsl.exe")
-        .args(["-d", &distro, "--", "ls", "-1", "--group-directories-first", &dir_path])
+    let dir_path = path.unwrap_or_else(|| "/".to_string());
+
+    // 用 bash -c 执行，避免 Windows 工作目录被 WSL 自动映射导致路径解析错误。
+    // ls -1p 会在目录名后追加 /，通过 grep 只保留目录。
+    let cmd = format!(
+        "ls -1p \"{}\" 2>/dev/null | grep '/$' | sed 's|/$||'",
+        dir_path.replace('"', "\\\"")
+    );
+
+    let output = wsl_command("wsl.exe")
+        .args(["-d", &distro, "bash", "-c", &cmd])
+        .env("WSL_UTF8", "1")
         .output()
         .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("WSL command failed: {}", stderr));
-    }
 
     let entries: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter(|line| !line.is_empty())
         .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
         .collect();
 
     Ok(entries)
@@ -354,8 +374,9 @@ fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<Strin
 
 #[tauri::command]
 fn get_wsl_home_dir(distro: String) -> Result<String, String> {
-    let output = std::process::Command::new("wsl.exe")
-        .args(["-d", &distro, "--", "echo", "$HOME"])
+    let output = wsl_command("wsl.exe")
+        .args(["-d", &distro, "bash", "-c", "echo $HOME"])
+        .env("WSL_UTF8", "1")
         .output()
         .map_err(|e| format!("Failed to execute wsl.exe: {}", e))?;
 
@@ -411,7 +432,18 @@ fn load_wsl_entries(state: State<AppStateWrapper>) -> Result<Vec<WSLEntrySession
     }
     let json = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
     let entries: Vec<WSLEntrySession> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    Ok(entries)
+
+    // 过滤历史脏数据：distro 名含 null 字节说明是旧版 UTF-16LE 未解码的残留
+    let clean: Vec<WSLEntrySession> = entries
+        .into_iter()
+        .filter(|e| !e.distro.contains('\0'))
+        .map(|mut e| {
+            e.projects.retain(|p| !p.distro.contains('\0'));
+            e
+        })
+        .collect();
+
+    Ok(clean)
 }
 
 // SSH 配置持久化

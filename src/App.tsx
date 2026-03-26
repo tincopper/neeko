@@ -11,8 +11,10 @@ import AgentSelector from "./components/AgentSelector";
 import WindowControls from "./components/WindowControls";
 import SettingsPanel, { AppConfig } from "./components/SettingsPanel";
 import { WSLDialog, RemoteDialog } from "./components/WSLDialog";
+import WSLTerminalView, { wslCacheKey, destroyWslCache } from "./components/WSLTerminalView";
 import { IDE_PRESETS, getIdeCommand } from "./utils/idePresets";
-import { WSLEntrySession, RemoteEntrySession } from "./types";
+import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "./types";
+import type { ActiveWslKey, ActiveRemoteKey } from "./components/project/RemoteItems";
 import "./styles.css";
 
 interface Project {
@@ -68,6 +70,16 @@ function App() {
   const [wslDialogOpen, setWslDialogOpen] = useState(false);
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+
+  // 当前激活的 WSL / Remote 终端项目
+  const [activeWslKey, setActiveWslKey] = useState<ActiveWslKey>(null);
+  const [activeRemoteKey, setActiveRemoteKey] = useState<ActiveRemoteKey>(null);
+  // 当前激活的 WSL 项目完整信息（用于渲染终端）
+  const [activeWslProject, setActiveWslProject] = useState<{ distro: string; project: WSLProject } | null>(null);
+  // 已建立终端会话的项目 ID 集合（用于侧边栏显示活跃状态）
+  const [wslOpenSessions, setWslOpenSessions] = useState<Set<string>>(new Set());
+  // Remote 已建立会话的 projectId → sessionId 映射
+  const [remoteOpenSessions, setRemoteOpenSessions] = useState<Map<string, string>>(new Map());
 
   // 点击外部关闭添加菜单
   useEffect(() => {
@@ -543,6 +555,132 @@ function App() {
     }
   };
 
+  // ── WSL 侧边栏回调 ────────────────────────────────────────────────────────
+
+  const handleSelectWslProject = (distro: string, project: WSLProject) => {
+    // 清除本地项目激活状态
+    setActiveProjectId(null);
+    setActiveProject(null);
+    setActiveWslKey({ distro, projectId: project.id });
+    setActiveWslProject({ distro, project });
+    setActiveRemoteKey(null);
+  };
+
+  // 关闭 WSL 项目终端（释放 PTY），但保留配置
+  const handleCloseWslProject = (entryId: string, projectId: string) => {
+    const entry = wslEntries.find(e => e.id === entryId);
+    if (entry) {
+      const key = wslCacheKey(entry.distro, projectId);
+      destroyWslCache(key);
+    }
+    // 如果当前正在查看该项目终端，清除视图
+    if (activeWslKey?.projectId === projectId) {
+      setActiveWslKey(null);
+      setActiveWslProject(null);
+    }
+    setWslOpenSessions(prev => {
+      const next = new Set(prev);
+      next.delete(projectId);
+      return next;
+    });
+  };
+
+  const handleRemoveWslProject = async (entryId: string, projectId: string) => {
+    // 关闭终端并清除视图
+    handleCloseWslProject(entryId, projectId);
+    const newEntries = wslEntries.map(e => {
+      if (e.id !== entryId) return e;
+      return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
+    });
+    setWslEntries(newEntries);
+    await invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
+  };
+
+  const handleRemoveWslEntry = async (entryId: string) => {
+    const entry = wslEntries.find(e => e.id === entryId);
+    if (entry) {
+      entry.projects.forEach(p => {
+        const key = wslCacheKey(entry.distro, p.id);
+        destroyWslCache(key);
+        setWslOpenSessions(prev => {
+          const next = new Set(prev);
+          next.delete(p.id);
+          return next;
+        });
+      });
+      if (activeWslKey && entry.projects.some(p => p.id === activeWslKey.projectId)) {
+        setActiveWslKey(null);
+        setActiveWslProject(null);
+      }
+    }
+    const newEntries = wslEntries.filter(e => e.id !== entryId);
+    setWslEntries(newEntries);
+    await invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
+  };
+
+  // "在已有发行版下添加项目" - 重新打开 WSL dialog 并预选该 entry
+  const [wslAddToEntryId, setWslAddToEntryId] = useState<string | null>(null);
+  const handleAddWslProject = (entryId: string) => {
+    setWslAddToEntryId(entryId);
+    setWslDialogOpen(true);
+  };
+  const handleWslDialogClose = () => { setWslDialogOpen(false); setWslAddToEntryId(null); };
+
+  // ── Remote 侧边栏回调 ─────────────────────────────────────────────────────
+
+  const handleSelectRemoteProject = (_host: string, _project: RemoteProject) => {
+    // TODO: SSH 终端视图（Phase 2）
+    setActiveProjectId(null);
+    setActiveProject(null);
+    setActiveRemoteKey({ host: _host, projectId: _project.id });
+  };
+
+  // 关闭 Remote 项目终端（释放 SSH 会话），但保留配置
+  const handleCloseRemoteProject = (_entryId: string, projectId: string) => {
+    const sessionId = remoteOpenSessions.get(projectId);
+    if (sessionId) {
+      invoke("close_remote_terminal_session", { sessionId }).catch(console.error);
+    }
+    if (activeRemoteKey?.projectId === projectId) {
+      setActiveRemoteKey(null);
+    }
+    setRemoteOpenSessions(prev => {
+      const next = new Map(prev);
+      next.delete(projectId);
+      return next;
+    });
+  };
+
+  const handleRemoveRemoteProject = async (entryId: string, projectId: string) => {
+    handleCloseRemoteProject(entryId, projectId);
+    const newEntries = remoteEntries.map(e => {
+      if (e.id !== entryId) return e;
+      return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
+    });
+    setRemoteEntries(newEntries);
+    await invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
+  };
+
+  const handleRemoveRemoteEntry = async (entryId: string) => {
+    const entry = remoteEntries.find(e => e.id === entryId);
+    if (entry) {
+      entry.projects.forEach(p => handleCloseRemoteProject(entryId, p.id));
+      if (activeRemoteKey && entry.projects.some(p => p.id === activeRemoteKey.projectId)) {
+        setActiveRemoteKey(null);
+      }
+    }
+    const newEntries = remoteEntries.filter(e => e.id !== entryId);
+    setRemoteEntries(newEntries);
+    await invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
+  };
+
+  const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
+  const handleAddRemoteProject = (entryId: string) => {
+    setRemoteAddToEntryId(entryId);
+    setRemoteDialogOpen(true);
+  };
+  const handleRemoteDialogClose = () => { setRemoteDialogOpen(false); setRemoteAddToEntryId(null); };
+
   const handleConfirmAddProject = async () => {
     if (!pendingPath) return;
     try {
@@ -773,6 +911,12 @@ function App() {
         <ProjectSidebar
           projects={projects}
           activeProjectId={activeProjectId}
+          wslEntries={wslEntries}
+          remoteEntries={remoteEntries}
+          activeWslKey={activeWslKey}
+          activeRemoteKey={activeRemoteKey}
+          wslOpenSessions={wslOpenSessions}
+          remoteOpenSessions={new Set(remoteOpenSessions.keys())}
           onAddProject={handleAddProject}
           onRemoveProject={handleRemoveProject}
           onSelectProject={handleSelectProject}
@@ -786,10 +930,44 @@ function App() {
           }}
           onOpenSideTerminal={() => setSideTerminalOpen(true)}
           onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
+          onSelectWslProject={handleSelectWslProject}
+          onCloseWslProject={handleCloseWslProject}
+          onRemoveWslProject={handleRemoveWslProject}
+          onRemoveWslEntry={handleRemoveWslEntry}
+          onAddWslProject={handleAddWslProject}
+          onSelectRemoteProject={handleSelectRemoteProject}
+          onCloseRemoteProject={handleCloseRemoteProject}
+          onRemoveRemoteProject={handleRemoveRemoteProject}
+          onRemoveRemoteEntry={handleRemoveRemoteEntry}
+          onAddRemoteProject={handleAddRemoteProject}
           loading={loading}
         />
 
         <div className="main-content">
+          {/* WSL 终端视图 */}
+          {activeWslProject && !activeProject && (
+            <div className="content-area">
+              <div className="terminal-pane-container">
+                <WSLTerminalView
+                  distro={activeWslProject.distro}
+                  projectId={activeWslProject.project.id}
+                  projectName={activeWslProject.project.name}
+                  projectPath={activeWslProject.project.path}
+                  fontSize={config.fontSize}
+                  fontFamily={config.fontFamily}
+                  onSessionReady={(pid) => {
+                    setWslOpenSessions(prev => {
+                      const next = new Set(prev);
+                      next.add(pid);
+                      return next;
+                    });
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 本地项目视图 */}
           {activeProject ? (
             <div className="content-area">
               {isTerminalView || activeWorktreePath ? (
@@ -859,7 +1037,7 @@ function App() {
                 />
               ) : null}
             </div>
-          ) : (
+          ) : !activeWslProject ? (
             <div className="empty-state">
               <div className="empty-body">
                 <div className="empty-icon">📁</div>
@@ -870,7 +1048,7 @@ function App() {
                 </button>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* 添加项目时选择 Agent 的 modal */}
@@ -1081,17 +1259,20 @@ function App() {
       {/* WSL Dialog */}
       <WSLDialog
         isOpen={wslDialogOpen}
-        onClose={() => setWslDialogOpen(false)}
+        onClose={handleWslDialogClose}
         onAdd={handleWSLEntryAdd}
         existingEntries={wslEntries}
+        selectedEntryId={wslAddToEntryId ?? undefined}
       />
 
       {/* Remote Dialog */}
       <RemoteDialog
         isOpen={remoteDialogOpen}
-        onClose={() => setRemoteDialogOpen(false)}
+        onClose={handleRemoteDialogClose}
         onAdd={handleRemoteEntryAdd}
         existingEntries={remoteEntries}
+        addProjectMode={remoteAddToEntryId !== null}
+        selectedEntryId={remoteAddToEntryId ?? undefined}
       />
 
       {/* Toast 通知 */}
