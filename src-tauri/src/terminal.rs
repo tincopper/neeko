@@ -290,6 +290,8 @@ impl TerminalManager {
         cmd.env("TERM", "xterm-256color");
         cmd.env("LANG", "en_US.UTF-8");
         cmd.env("LC_ALL", "en_US.UTF-8");
+        // 强制 wsl.exe 输出 UTF-8（避免 UTF-16LE 乱码）
+        cmd.env("WSL_UTF8", "1");
 
         let child = pair.slave.spawn_command(cmd)?;
         let pid = child.process_id();

@@ -2554,6 +2554,18 @@ body {
   color: var(--text-muted);
 }
 
+/* Hide number input spinners */
+.gh-dialog-input[type="number"]::-webkit-inner-spin-button,
+.gh-dialog-input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.gh-dialog-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .gh-dialog-error {
   color: var(--accent-red);
   background-color: rgba(224, 108, 117, 0.1);
@@ -2618,8 +2630,8 @@ body {
 
 /* WSL Path Selector */
 .wsl-modal {
-  min-width: 450px;
-  max-width: 550px;
+  min-width: 460px;
+  max-width: 560px;
 }
 
 .wsl-loading,
@@ -2633,10 +2645,10 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 12px;
   background-color: var(--bg-tertiary);
   border-radius: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .wsl-distro-label {
@@ -2645,92 +2657,104 @@ body {
   color: var(--text-primary);
 }
 
-.wsl-path-display {
-  padding: 10px 12px;
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+/* Path autocomplete wrapper */
+.wsl-path-autocomplete {
+  position: relative;
+  width: 100%;
+}
+
+/* Suggestions dropdown */
+.wsl-suggestions {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--accent-blue);
   border-radius: 6px;
-  margin-bottom: 12px;
-}
-
-.wsl-path-text {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  color: var(--accent-blue);
-}
-
-.wsl-directory-list {
-  max-height: 250px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  z-index: 200;
+  max-height: 220px;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  margin-bottom: 12px;
 }
 
-.wsl-directory-item {
+.wsl-suggestion-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 7px 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-color);
-  transition: background-color 0.15s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background-color 0.1s;
 }
 
-.wsl-directory-item:last-child {
+.wsl-suggestion-item:last-child {
   border-bottom: none;
 }
 
-.wsl-directory-item:hover {
-  background-color: var(--bg-hover);
+.wsl-suggestion-item:hover,
+.wsl-suggestion-item.active {
+  background-color: rgba(97, 175, 239, 0.15);
 }
 
-.wsl-directory-up {
-  background-color: var(--bg-tertiary);
+.wsl-suggestion-icon {
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
-.wsl-dir-icon {
-  font-size: 14px;
-}
-
-.wsl-dir-name {
-  flex: 1;
-  font-size: 14px;
+.wsl-suggestion-name {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
   color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
-.wsl-dir-arrow {
+.wsl-suggestion-parent {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
   color: var(--text-muted);
-  font-size: 18px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
-.wsl-loading-item,
-.wsl-empty-item {
-  padding: 20px;
+.wsl-suggestion-loading {
+  padding: 12px;
   text-align: center;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .wsl-project-preview {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
-  background-color: rgba(97, 175, 239, 0.1);
-  border: 1px solid var(--accent-blue);
+  padding: 10px 12px;
+  background-color: rgba(97, 175, 239, 0.08);
+  border: 1px solid rgba(97, 175, 239, 0.3);
   border-radius: 6px;
+  margin-top: 12px;
 }
 
 .wsl-preview-label {
   font-size: 12px;
   color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .wsl-preview-name {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--accent-blue);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wsl-distro-list .wsl-distro-item {
