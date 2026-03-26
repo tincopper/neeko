@@ -15,12 +15,15 @@ interface AgentSelectorProps {
   projectId: string;
   currentAgentId: string | null;
   onSelectAgent: (agent: AgentConfig | null) => void;
+  /** WSL/SSH 项目传 true，跳过后端 set_project_agent，由外部回调自行持久化 */
+  skipBackendPersist?: boolean;
 }
 
 const AgentSelector: React.FC<AgentSelectorProps> = ({
   projectId,
   currentAgentId,
   onSelectAgent,
+  skipBackendPersist = false,
 }) => {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgentId);
@@ -62,10 +65,12 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
     }
     setSelectedAgentId(agentId);
     setIsOpen(false);
-    try {
-      await invoke("set_project_agent", { projectId, agentId });
-    } catch (error) {
-      console.error("Failed to set agent:", error);
+    if (!skipBackendPersist) {
+      try {
+        await invoke("set_project_agent", { projectId, agentId });
+      } catch (error) {
+        console.error("Failed to set agent:", error);
+      }
     }
     const agent = agentId ? agents.find((a) => a.id === agentId) ?? null : null;
     onSelectAgent(agent);

@@ -3,19 +3,26 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import ProjectSidebar from "./components/project";
-import TerminalView, { launchAgentInTerminal } from "./components/TerminalView";
+import TerminalView, { launchAgentInTerminal, destroyTerminalCache } from "./components/TerminalView";
 import SideTerminalView from "./components/SideTerminalView";
 import WorktreeTerminalView from "./components/WorktreeTerminalView";
 import DiffView from "./components/DiffView";
-import AgentSelector from "./components/AgentSelector";
-import WindowControls from "./components/WindowControls";
 import SettingsPanel, { AppConfig } from "./components/SettingsPanel";
-import { WSLDialog, RemoteDialog } from "./components/WSLDialog";
-import WSLTerminalView, { wslCacheKey, destroyWslCache } from "./components/WSLTerminalView";
-import { IDE_PRESETS, getIdeCommand } from "./utils/idePresets";
-import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "./types";
+import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/WSLDialog";
+import WSLTerminalView, { wslCacheKey, destroyWslCache, launchAgentInWslTerminal } from "./components/WSLTerminalView";
+import RemoteTerminalView, { remoteCacheKey, destroyRemoteCache, launchAgentInRemoteTerminal } from "./components/RemoteTerminalView";
+import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, AuthMethod } from "./types";
 import type { ActiveWslKey, ActiveRemoteKey } from "./components/project/RemoteItems";
+import { useToast } from "./hooks/useToast";
+import { useSideTerminalResize } from "./hooks/useSideTerminalResize";
+import { useWorktreeState } from "./hooks/useWorktreeState";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import AddProjectModal from "./components/AddProjectModal";
+import TitleBar from "./components/TitleBar";
 import "./styles.css";
+
+// ── re-export to keep hook import clean ──
+export type { ActiveWslKey, ActiveRemoteKey };
 
 interface Project {
   id: string;
@@ -76,10 +83,22 @@ function App() {
   const [activeRemoteKey, setActiveRemoteKey] = useState<ActiveRemoteKey>(null);
   // 当前激活的 WSL 项目完整信息（用于渲染终端）
   const [activeWslProject, setActiveWslProject] = useState<{ distro: string; project: WSLProject } | null>(null);
+  // 当前激活的 Remote 项目完整信息（用于渲染终端）
+  const [activeRemoteProject, setActiveRemoteProject] = useState<{
+    entry: RemoteEntrySession;
+    project: RemoteProject;
+  } | null>(null);
   // 已建立终端会话的项目 ID 集合（用于侧边栏显示活跃状态）
   const [wslOpenSessions, setWslOpenSessions] = useState<Set<string>>(new Set());
-  // Remote 已建立会话的 projectId → sessionId 映射
-  const [remoteOpenSessions, setRemoteOpenSessions] = useState<Map<string, string>>(new Map());
+  // Remote 已建立会话的 projectId 集合（用于侧边栏显示活跃状态）
+  const [remoteOpenSessions, setRemoteOpenSessions] = useState<Set<string>>(new Set());
+  // SSH 认证信息内存缓存：entryId → AuthMethod（不持久化）
+  const [remoteAuthStore, setRemoteAuthStore] = useState<Map<string, AuthMethod>>(new Map());
+  // 等待重新登录的 entry（无 auth 缓存时弹出登录弹窗）
+  const [pendingAuthEntry, setPendingAuthEntry] = useState<RemoteEntrySession | null>(null);
+  // WSL / Remote side terminal 已打开的 projectId 集合
+  const [wslSideTerminalOpen, setWslSideTerminalOpen] = useState<Set<string>>(new Set());
+  const [remoteSideTerminalOpen, setRemoteSideTerminalOpen] = useState<Set<string>>(new Set());
 
   // 点击外部关闭添加菜单
   useEffect(() => {
@@ -95,121 +114,40 @@ function App() {
     }
   }, [showAddMenu]);
 
-  // Toast 通知
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "info" | "error";
-  } | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast, showToast } = useToast();
 
-  const showToast = (message: string, type: "info" | "error" = "info") => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ message, type });
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-  };
+  // Stable ref for activeProjectId — declared early so hooks below can reference it
+  // (rerender-use-ref-transient-values)
+  const activeProjectIdRef = useRef<string | null>(null);
+  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
 
   // 全局配置（持久化）
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Side Terminal 状态（每个项目独立）
-  const [sideTerminalOpen, setSideTerminalOpen] = useState(false);
-
-  // Worktree 终端状态（per-project，切换项目时保留各自状态）
-  // key = projectId
-  const [worktreeStateMap, setWorktreeStateMap] = useState<Record<string, {
-    activePath: string | null;
-    activeBranch: string;
-    opened: { path: string; branch: string }[];
-  }>>({});
-  const activeWorktreePathRef = useRef<string | null>(null);
-  const openedWorktreesRef = useRef<{ path: string; branch: string }[]>([]);
-  // 稳定 ref，供 Ctrl+N 等 useEffect 闭包直接读取当前项目 ID
-  const activeProjectIdRef = useRef<string | null>(null);
-  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
-
-  // 从 Map 中读取当前项目的 worktree 状态
-  const currentWtState = activeProjectId ? (worktreeStateMap[activeProjectId] ?? { activePath: null, activeBranch: "", opened: [] }) : { activePath: null, activeBranch: "", opened: [] };
-  const activeWorktreePath = currentWtState.activePath;
-  const activeWorktreeBranch = currentWtState.activeBranch;
-  const openedWorktrees = currentWtState.opened;
-
-  // 稳定的 worktree state 更新函数（通过 ref 读取 projectId，避免闭包陷阱）
-  const updateWtPath = (path: string | null, branch: string) => {
+  // Side Terminal 状态：per-project Map（key = projectId，value = open）
+  // 切换项目时不关闭，保持各自的 side terminal 开关状态
+  const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, boolean>>({});
+  const sideTerminalOpen = activeProjectId ? (sideTerminalOpenMap[activeProjectId] ?? false) : false;
+  const setSideTerminalOpen = (open: boolean) => {
     const pid = activeProjectIdRef.current;
     if (!pid) return;
-    setWorktreeStateMap(prev => ({
-      ...prev,
-      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activePath: path, activeBranch: branch },
-    }));
+    setSideTerminalOpenMap(prev => ({ ...prev, [pid]: open }));
   };
 
-  const setActiveWorktreePath = (path: string | null) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
-    setWorktreeStateMap(prev => ({
-      ...prev,
-      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activePath: path },
-    }));
-  };
+  const {
+    activeWorktreePath,
+    activeWorktreeBranch,
+    openedWorktrees,
+    activeWorktreePathRef,
+    openedWorktreesRef,
+    updateWtPath,
+    setActiveWorktreePath,
+    setActiveWorktreeBranch,
+    setOpenedWorktrees,
+  } = useWorktreeState(activeProjectIdRef);
 
-  const setActiveWorktreeBranch = (branch: string) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
-    setWorktreeStateMap(prev => ({
-      ...prev,
-      [pid]: { ...(prev[pid] ?? { activePath: null, activeBranch: "", opened: [] }), activeBranch: branch },
-    }));
-  };
-
-  const setOpenedWorktrees = (updater: { path: string; branch: string }[] | ((prev: { path: string; branch: string }[]) => { path: string; branch: string }[])) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
-    setWorktreeStateMap(prev => {
-      const cur = prev[pid] ?? { activePath: null, activeBranch: "", opened: [] };
-      const newOpened = typeof updater === "function" ? updater(cur.opened) : updater;
-      return { ...prev, [pid]: { ...cur, opened: newOpened } };
-    });
-  };
-
-  // Side Terminal 宽度（拖拽调整）
-  const [sideTerminalWidth, setSideTerminalWidth] = useState(480);
-  const sideResizingRef = useRef(false);
-  const sideResizeStartX = useRef(0);
-  const sideResizeStartWidth = useRef(480);
-  const MIN_SIDE_WIDTH = 200;
-  const MAX_SIDE_WIDTH = 1200;
-
-  const handleSideDividerMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    sideResizingRef.current = true;
-    sideResizeStartX.current = e.clientX;
-    sideResizeStartWidth.current = sideTerminalWidth;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!sideResizingRef.current) return;
-      // 向左拖动增大宽度（divider 在 side terminal 左侧）
-      const delta = sideResizeStartX.current - ev.clientX;
-      const next = Math.min(
-        MAX_SIDE_WIDTH,
-        Math.max(MIN_SIDE_WIDTH, sideResizeStartWidth.current + delta),
-      );
-      setSideTerminalWidth(next);
-    };
-    const onMouseUp = () => {
-      sideResizingRef.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  };
-  // 切换项目时关闭 side terminal
-  const prevProjectIdRef = useRef<string | null>(null);
+  const { sideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize();
 
   // 同步字体大小到 CSS 变量
   useEffect(() => {
@@ -232,79 +170,43 @@ function App() {
   // 添加项目时的 agent / IDE 选择 modal
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [selectedNewAgentId, setSelectedNewAgentId] = useState<string | null>(
-    null,
-  );
-  const [pendingAgentOpen, setPendingAgentOpen] = useState(false);
-  const pendingAgentRef = useRef<HTMLDivElement>(null);
-  const [selectedNewIdeId, setSelectedNewIdeId] = useState<string | null>(null);
-  const [pendingIdeOpen, setPendingIdeOpen] = useState(false);
-  const pendingIdeRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!pendingIdeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        pendingIdeRef.current &&
-        !pendingIdeRef.current.contains(e.target as Node)
-      ) {
-        setPendingIdeOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [pendingIdeOpen]);
-
-  useEffect(() => {
-    if (!pendingAgentOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        pendingAgentRef.current &&
-        !pendingAgentRef.current.contains(e.target as Node)
-      ) {
-        setPendingAgentOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [pendingAgentOpen]);
-
-  // 切换项目时关闭 side terminal
-  useEffect(() => {
-    if (
-      prevProjectIdRef.current !== null &&
-      prevProjectIdRef.current !== activeProjectId
-    ) {
-      setSideTerminalOpen(false);
-    }
-    prevProjectIdRef.current = activeProjectId;
-  }, [activeProjectId]);
-
-  // 快捷键：Ctrl+1~9 切换项目，Ctrl+Q 循环切换，Ctrl+Alt+T 打开 side terminal，Ctrl+W 关闭 side terminal
+  // ── Stable refs for keyboard shortcuts and event handler closures ──────────
+  // (rerender-use-ref-transient-values: keep latest values without re-running effects)
   const selectProjectRef = useRef<(id: string) => void>(() => {});
   const sideTerminalOpenRef = useRef(false);
   const isTerminalViewRef = useRef(false);
+  const activeProjectRef = useRef<Project | null>(null);
+  // WSL refs
+  const wslEntriesRef = useRef<WSLEntrySession[]>([]);
+  const activeWslKeyRef = useRef<ActiveWslKey>(null);
+  const selectWslProjectRef = useRef<(distro: string, project: WSLProject) => void>(() => {});
+  // Remote refs
+  const remoteEntriesRef = useRef<RemoteEntrySession[]>([]);
+  const activeRemoteKeyRef = useRef<ActiveRemoteKey>(null);
+  const selectRemoteProjectRef = useRef<(host: string, project: RemoteProject) => void>(() => {});
+  // Side terminal open state refs
+  const wslSideOpenRef = useRef<Set<string>>(new Set());
+  const remoteSideOpenRef = useRef<Set<string>>(new Set());
 
-  // 同步 ref，让快捷键 handler 能读到最新状态（闭包中不更新）
+  // Sync all refs in a single effect (rerender-split-combined-hooks: combined here as all are
+  // inert ref assignments with no side-effects)
   useEffect(() => {
     sideTerminalOpenRef.current = sideTerminalOpen;
-  }, [sideTerminalOpen]);
-
-  useEffect(() => {
+    wslEntriesRef.current = wslEntries;
+    activeWslKeyRef.current = activeWslKey;
+    remoteEntriesRef.current = remoteEntries;
+    activeRemoteKeyRef.current = activeRemoteKey;
+    wslSideOpenRef.current = wslSideTerminalOpen;
+    remoteSideOpenRef.current = remoteSideTerminalOpen;
     activeWorktreePathRef.current = activeWorktreePath;
-  }, [activeWorktreePath]);
-
-  useEffect(() => {
     openedWorktreesRef.current = openedWorktrees;
-  }, [openedWorktrees]);
-
-  // 打开当前项目 IDE
-  const activeProjectRef = useRef<Project | null>(null);
-  useEffect(() => {
     activeProjectRef.current = activeProject;
-  }, [activeProject]);
+  }, [sideTerminalOpen, wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
+      wslSideTerminalOpen, remoteSideTerminalOpen, activeWorktreePath, openedWorktrees,
+      activeProject]);
 
-  const handleOpenIde = async (project: Project) => {
+  const handleOpenIde = async (project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) {
       showToast("No IDE configured for this project", "error");
       return;
@@ -313,88 +215,38 @@ function App() {
     try {
       await invoke("open_ide", {
         ideCommand: project.selected_ide,
-        projectPath: project.path,
+        projectPath: (activeProjectRef.current as Project | null)?.path ?? "",
       });
     } catch (e: any) {
       showToast(String(e), "error");
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Alt+T：在终端视图中打开 side terminal
-      if (e.ctrlKey && e.altKey && e.code === "KeyT") {
-        e.preventDefault();
-        if (isTerminalViewRef.current) {
-          setSideTerminalOpen(true);
-        }
-        return;
-      }
-
-      // Ctrl+N：在主终端和已打开的 worktree 终端之间循环切换
-      if (e.ctrlKey && !e.altKey && e.code === "KeyN") {
-        const opened = openedWorktreesRef.current;
-        if (opened.length === 0) return;
-        e.preventDefault();
-        const cur = activeWorktreePathRef.current;
-        if (cur === null) {
-          const first = opened[0];
-          updateWtPath(first.path, first.branch);
-        } else {
-          const idx = opened.findIndex((w) => w.path === cur);
-          if (idx === opened.length - 1) {
-            updateWtPath(null, "");
-          } else {
-            const next = opened[idx + 1];
-            updateWtPath(next.path, next.branch);
-          }
-        }
-        return;
-      }
-
-      // Ctrl+W：关闭 side terminal（仅当 side terminal 打开时）
-      if (e.ctrlKey && !e.altKey && e.code === "KeyW") {
-        if (sideTerminalOpenRef.current) {
-          e.preventDefault();
-          setSideTerminalOpen(false);
-        }
-        return;
-      }
-
-      // Ctrl+O：打开当前项目 IDE
-      if (e.ctrlKey && !e.altKey && e.code === "KeyO") {
-        const p = activeProjectRef.current;
-        if (p) {
-          e.preventDefault();
-          handleOpenIde(p);
-        }
-        return;
-      }
-
-      if (!e.ctrlKey || e.altKey) return;
-
-      if (e.code === "KeyQ") {
-        e.preventDefault();
-        if (projects.length === 0) return;
-        const currentIndex = projects.findIndex(
-          (p) => p.id === activeProjectId,
-        );
-        const nextIndex = (currentIndex + 1) % projects.length;
-        selectProjectRef.current(projects[nextIndex].id);
-        return;
-      }
-
-      const match = e.code.match(/^Digit([1-9])$/);
-      if (match) {
-        e.preventDefault();
-        const target = projects[parseInt(match[1]) - 1];
-        if (target) selectProjectRef.current(target.id);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [projects, activeProjectId]);
+  // Keyboard shortcuts delegated to extracted hook
+  // (bundle-barrel-imports, rerender-move-effect-to-event)
+  useKeyboardShortcuts({
+    projects,
+    activeProjectId,
+    sideTerminalOpenRef,
+    setSideTerminalOpen,
+    wslEntriesRef,
+    activeWslKeyRef,
+    selectWslProjectRef,
+    remoteEntriesRef,
+    activeRemoteKeyRef,
+    selectRemoteProjectRef,
+    selectProjectRef,
+    wslSideOpenRef,
+    remoteSideOpenRef,
+    setWslSideTerminalOpen,
+    setRemoteSideTerminalOpen,
+    activeWorktreePathRef,
+    openedWorktreesRef,
+    updateWtPath,
+    isTerminalViewRef,
+    activeProjectRef,
+    handleOpenIde,
+  });
 
   // 应用启动时加载配置、agents、projects
   useEffect(() => {
@@ -508,8 +360,6 @@ function App() {
           alert(`Project already added: ${selected}`);
           return;
         }
-        setSelectedNewAgentId(null);
-        setSelectedNewIdeId(null);
         setPendingPath(selected);
       }
     } catch (error) {
@@ -537,7 +387,7 @@ function App() {
     }
   };
 
-  const handleRemoteEntryAdd = async (entry: RemoteEntrySession) => {
+  const handleRemoteEntryAdd = async (entry: RemoteEntrySession, auth: AuthMethod | null) => {
     try {
       // 更新或添加条目
       const existingIndex = remoteEntries.findIndex(e => e.id === entry.id);
@@ -550,6 +400,10 @@ function App() {
       }
       setRemoteEntries(newEntries);
       await invoke("save_remote_entries", { entries: newEntries });
+      // 缓存 auth 到内存（新服务器时 auth 非 null）
+      if (auth) {
+        setRemoteAuthStore(prev => new Map(prev).set(entry.id, auth));
+      }
     } catch (error) {
       console.error("[App] Failed to save remote entry:", error);
     }
@@ -565,24 +419,23 @@ function App() {
     setActiveWslProject({ distro, project });
     setActiveRemoteKey(null);
   };
+  // 让快捷键 handler 闭包始终持有最新的函数引用
+  selectWslProjectRef.current = handleSelectWslProject;
 
   // 关闭 WSL 项目终端（释放 PTY），但保留配置
   const handleCloseWslProject = (entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
-      const key = wslCacheKey(entry.distro, projectId);
-      destroyWslCache(key);
+      destroyWslCache(wslCacheKey(entry.distro, projectId));
+      destroyWslCache(wslCacheKey(entry.distro, projectId) + ":side");
     }
     // 如果当前正在查看该项目终端，清除视图
     if (activeWslKey?.projectId === projectId) {
       setActiveWslKey(null);
       setActiveWslProject(null);
     }
-    setWslOpenSessions(prev => {
-      const next = new Set(prev);
-      next.delete(projectId);
-      return next;
-    });
+    setWslOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
+    setWslSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
   };
 
   const handleRemoveWslProject = async (entryId: string, projectId: string) => {
@@ -628,27 +481,29 @@ function App() {
 
   // ── Remote 侧边栏回调 ─────────────────────────────────────────────────────
 
-  const handleSelectRemoteProject = (_host: string, _project: RemoteProject) => {
-    // TODO: SSH 终端视图（Phase 2）
+  const handleSelectRemoteProject = (host: string, project: RemoteProject) => {
     setActiveProjectId(null);
     setActiveProject(null);
-    setActiveRemoteKey({ host: _host, projectId: _project.id });
+    setActiveWslKey(null);
+    setActiveWslProject(null);
+    setActiveRemoteKey({ host, projectId: project.id });
+    // 找到对应的 entry，用于渲染终端视图
+    const entry = remoteEntries.find(e => e.host === host);
+    if (entry) setActiveRemoteProject({ entry, project });
   };
+  // 让快捷键 handler 闭包始终持有最新的函数引用
+  selectRemoteProjectRef.current = handleSelectRemoteProject;
 
   // 关闭 Remote 项目终端（释放 SSH 会话），但保留配置
-  const handleCloseRemoteProject = (_entryId: string, projectId: string) => {
-    const sessionId = remoteOpenSessions.get(projectId);
-    if (sessionId) {
-      invoke("close_remote_terminal_session", { sessionId }).catch(console.error);
-    }
+  const handleCloseRemoteProject = (entryId: string, projectId: string) => {
+    destroyRemoteCache(remoteCacheKey(entryId, projectId));
+    destroyRemoteCache(remoteCacheKey(entryId, projectId) + ":side");
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
+      setActiveRemoteProject(null);
     }
-    setRemoteOpenSessions(prev => {
-      const next = new Map(prev);
-      next.delete(projectId);
-      return next;
-    });
+    setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
+    setRemoteSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
   };
 
   const handleRemoveRemoteProject = async (entryId: string, projectId: string) => {
@@ -667,7 +522,10 @@ function App() {
       entry.projects.forEach(p => handleCloseRemoteProject(entryId, p.id));
       if (activeRemoteKey && entry.projects.some(p => p.id === activeRemoteKey.projectId)) {
         setActiveRemoteKey(null);
+        setActiveRemoteProject(null);
       }
+      // 清除该服务器的 auth 缓存
+      setRemoteAuthStore(prev => { const next = new Map(prev); next.delete(entryId); return next; });
     }
     const newEntries = remoteEntries.filter(e => e.id !== entryId);
     setRemoteEntries(newEntries);
@@ -681,28 +539,13 @@ function App() {
   };
   const handleRemoteDialogClose = () => { setRemoteDialogOpen(false); setRemoteAddToEntryId(null); };
 
-  const handleConfirmAddProject = async () => {
+  const handleConfirmAddProject = async (agentId: string | null, ideCommand: string | null) => {
     if (!pendingPath) return;
     try {
       setLoading(true);
-      // 将预设 ID 或自定义 ID 转换为实际命令字符串
-      let ideCommand: string | null = null;
-      if (selectedNewIdeId) {
-        if (selectedNewIdeId.startsWith("custom:")) {
-          const idx = parseInt(selectedNewIdeId.replace("custom:", ""));
-          ideCommand = config.customIdes?.[idx]?.command ?? null;
-        } else {
-          const preset = IDE_PRESETS.find((i) => i.id === selectedNewIdeId);
-          if (preset) {
-            // 优先使用用户覆盖的命令
-            ideCommand =
-              config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset);
-          }
-        }
-      }
       const project = await invoke<Project>("add_project", {
         path: pendingPath,
-        agentId: selectedNewAgentId,
+        agentId,
         ide: ideCommand,
       });
       await invoke("save_session").catch(() => {});
@@ -724,6 +567,13 @@ function App() {
       if (activeProjectId === projectId) {
         setActiveProjectId(projects.length > 1 ? projects[0].id : null);
       }
+      // 清理 side terminal Map entry 并销毁对应 cache
+      setSideTerminalOpenMap(prev => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
+      destroyTerminalCache(`${projectId}:side`);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
@@ -780,9 +630,7 @@ function App() {
   };
 
   const isTerminalView = activeProject?.active_view === "Terminal";
-  // 同步给快捷键 handler
-  isTerminalViewRef.current = isTerminalView;
-  // worktree 终端激活时也视为终端视图（Ctrl+W 等快捷键可用）
+  // Sync to ref (rerender-use-ref-transient-values) — worktree terminal also counts as terminal view
   isTerminalViewRef.current = isTerminalView || activeWorktreePath !== null;
   const diffFilePath =
     typeof activeProject?.active_view === "object"
@@ -790,122 +638,73 @@ function App() {
           ?.file_path || null
       : null;
 
+  // Trigger SSH auth dialog via effect, not during render
+  // (rerender-derived-state-no-effect: derive "needs auth" from state, schedule dialog open via effect)
+  useEffect(() => {
+    if (!activeRemoteProject) {
+      setPendingAuthEntry(null);
+      return;
+    }
+    const hasAuth = remoteAuthStore.has(activeRemoteProject.entry.id);
+    if (!hasAuth) {
+      setPendingAuthEntry(activeRemoteProject.entry);
+    } else {
+      setPendingAuthEntry(null);
+    }
+  }, [activeRemoteProject, remoteAuthStore]);
+
   return (
     <div className="app-root">
-      {/* 唯一标题栏：跨整个窗口宽度 */}
-      <div className="titlebar" data-tauri-drag-region>
-        {/* 左侧：NEEKO + 设置 + Add Project */}
-        <div className="titlebar-left" data-tauri-drag-region>
-          <span className="titlebar-appname" data-tauri-drag-region>
-            NEEKO
-          </span>
-          <button
-            className="tb-icon-btn"
-            onClick={() => setSettingsOpen((v) => !v)}
-            title="Settings"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <circle
-                cx="8"
-                cy="8"
-                r="2.5"
-                stroke="currentColor"
-                strokeWidth="1.4"
-              />
-              <path
-                d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-          <button
-            className="tb-icon-btn"
-            onClick={() => setShowAddMenu(!showAddMenu)}
-            disabled={loading}
-            title="Add"
-          >
-            {loading ? (
-              "…"
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <line
-                  x1="7"
-                  y1="1"
-                  x2="7"
-                  y2="13"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-                <line
-                  x1="1"
-                  y1="7"
-                  x2="13"
-                  y2="7"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            )}
-          </button>
-          {showAddMenu && (
-            <div className="add-menu-dropdown">
-              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); handleAddProject(); }}>
-                <span className="add-menu-icon">📁</span>
-                <span>Add Local Project</span>
-              </div>
-              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); setWslDialogOpen(true); }}>
-                <span className="add-menu-icon">🐧</span>
-                <span>Add WSL Distro</span>
-              </div>
-              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); setRemoteDialogOpen(true); }}>
-                <span className="add-menu-icon">🖥️</span>
-                <span>Add Remote Server</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 分隔线 */}
-        <div className="titlebar-divider" data-tauri-drag-region />
-
-        {/* 右侧：项目名/分支 + AgentSelector + 窗口控制 */}
-        <div className="titlebar-right" data-tauri-drag-region>
-          {activeProject ? (
-            <>
-              <span className="titlebar-project-name" data-tauri-drag-region>
-                {activeProject.name}
-              </span>
-              {activeProject.git_info && (
-                <span className="titlebar-branch" data-tauri-drag-region>
-                  {activeWorktreeBranch || activeProject.git_info.current_branch}
-                </span>
-              )}
-              <AgentSelector
-                projectId={activeProject.id}
-                currentAgentId={activeProject.selected_agent}
-                onSelectAgent={(agent) => {
-                  if (agent) {
-                    launchAgentInTerminal(
-                      activeProject.id,
-                      agent.command,
-                      agent.args,
-                    );
-                  }
-                  invoke("save_session").catch(() => {});
-                }}
-              />
-            </>
-          ) : (
-            <span className="titlebar-placeholder" data-tauri-drag-region />
-          )}
-          <WindowControls />
-        </div>
-      </div>
-
+      <TitleBar
+        activeProject={activeProject}
+        activeWslProject={activeWslProject}
+        activeRemoteProject={activeRemoteProject}
+        activeWorktreeBranch={activeWorktreeBranch}
+        showAddMenu={showAddMenu}
+        loading={loading}
+        onOpenSettings={() => setSettingsOpen((v) => !v)}
+        onToggleAddMenu={() => setShowAddMenu(v => !v)}
+        onAddProject={() => { setShowAddMenu(false); handleAddProject(); }}
+        onAddWsl={() => { setShowAddMenu(false); setWslDialogOpen(true); }}
+        onAddRemote={() => { setShowAddMenu(false); setRemoteDialogOpen(true); }}
+        onSelectLocalAgent={(agent) => {
+          if (agent) launchAgentInTerminal(activeProject!.id, agent.command, agent.args);
+        }}
+        onSelectWslAgent={(agent) => {
+          if (!activeWslProject) return;
+          const key = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
+          if (agent) launchAgentInWslTerminal(key, agent.command, agent.args);
+          const agentId = agent?.id ?? null;
+          const newEntries = wslEntries.map(e => ({
+            ...e,
+            projects: e.projects.map(p =>
+              p.id === activeWslProject.project.id ? { ...p, selected_agent: agentId } : p
+            ),
+          }));
+          setWslEntries(newEntries);
+          setActiveWslProject(prev =>
+            prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+          );
+          invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
+        }}
+        onSelectRemoteAgent={(agent) => {
+          if (!activeRemoteProject) return;
+          const key = remoteCacheKey(activeRemoteProject.entry.id, activeRemoteProject.project.id);
+          if (agent) launchAgentInRemoteTerminal(key, agent.command, agent.args);
+          const agentId = agent?.id ?? null;
+          const newEntries = remoteEntries.map(e => ({
+            ...e,
+            projects: e.projects.map(p =>
+              p.id === activeRemoteProject.project.id ? { ...p, selected_agent: agentId } : p
+            ),
+          }));
+          setRemoteEntries(newEntries);
+          setActiveRemoteProject(prev =>
+            prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+          );
+          invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
+        }}
+      />
       {/* 主体：侧栏 + 内容区，无独立标题行 */}
       <div className="app-container">
         <ProjectSidebar
@@ -916,7 +715,7 @@ function App() {
           activeWslKey={activeWslKey}
           activeRemoteKey={activeRemoteKey}
           wslOpenSessions={wslOpenSessions}
-          remoteOpenSessions={new Set(remoteOpenSessions.keys())}
+          remoteOpenSessions={remoteOpenSessions}
           onAddProject={handleAddProject}
           onRemoveProject={handleRemoveProject}
           onSelectProject={handleSelectProject}
@@ -940,6 +739,12 @@ function App() {
           onRemoveRemoteProject={handleRemoveRemoteProject}
           onRemoveRemoteEntry={handleRemoveRemoteEntry}
           onAddRemoteProject={handleAddRemoteProject}
+          onOpenWslSideTerminal={(_, projectId) =>
+            setWslSideTerminalOpen(prev => new Set(prev).add(projectId))
+          }
+          onOpenRemoteSideTerminal={(_, projectId) =>
+            setRemoteSideTerminalOpen(prev => new Set(prev).add(projectId))
+          }
           loading={loading}
         />
 
@@ -955,17 +760,110 @@ function App() {
                   projectPath={activeWslProject.project.path}
                   fontSize={config.fontSize}
                   fontFamily={config.fontFamily}
+                  selectedAgentId={activeWslProject.project.selected_agent}
                   onSessionReady={(pid) => {
-                    setWslOpenSessions(prev => {
-                      const next = new Set(prev);
-                      next.add(pid);
-                      return next;
-                    });
+                    setWslOpenSessions(prev => new Set(prev).add(pid));
                   }}
                 />
+                {wslSideTerminalOpen.has(activeWslProject.project.id) && (
+                  <>
+                    <div
+                      className="terminal-pane-divider"
+                      onMouseDown={handleSideDividerMouseDown}
+                    />
+                    <WSLTerminalView
+                      distro={activeWslProject.distro}
+                      projectId={activeWslProject.project.id}
+                      projectName={activeWslProject.project.name}
+                      projectPath={activeWslProject.project.path}
+                      fontSize={config.fontSize}
+                      fontFamily={config.fontFamily}
+                      cacheKeySuffix=":side"
+                      sideMode
+                      width={sideTerminalWidth}
+                      onClose={() =>
+                        setWslSideTerminalOpen(prev => {
+                          const n = new Set(prev);
+                          n.delete(activeWslProject.project.id);
+                          return n;
+                        })
+                      }
+                    />
+                  </>
+                )}
               </div>
             </div>
           )}
+
+          {/* SSH 终端视图 */}
+          {activeRemoteProject && !activeProject && !activeWslProject && (() => {
+            const { entry, project } = activeRemoteProject;
+            const auth = remoteAuthStore.get(entry.id);
+            // 无 auth 缓存：显示空白占位，弹窗由 useEffect 触发（见上方）
+            if (!auth) {
+              return (
+                <div className="empty-state">
+                  <div className="empty-body">
+                    <div className="empty-icon">🔑</div>
+                    <h2>Authentication required</h2>
+                    <p>Waiting for credentials...</p>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div className="content-area">
+                <div className="terminal-pane-container">
+                  <RemoteTerminalView
+                    entryId={entry.id}
+                    projectId={project.id}
+                    projectName={project.name}
+                    projectPath={project.path}
+                    host={entry.host}
+                    port={entry.port}
+                    username={entry.username}
+                    auth={auth}
+                    fontSize={config.fontSize}
+                    fontFamily={config.fontFamily}
+                    selectedAgentId={project.selected_agent}
+                    onSessionReady={(pid) => {
+                      setRemoteOpenSessions(prev => new Set(prev).add(pid));
+                    }}
+                  />
+                  {remoteSideTerminalOpen.has(project.id) && (
+                    <>
+                      <div
+                        className="terminal-pane-divider"
+                        onMouseDown={handleSideDividerMouseDown}
+                      />
+                      <RemoteTerminalView
+                        entryId={entry.id}
+                        projectId={project.id}
+                        projectName={project.name}
+                        projectPath={project.path}
+                        host={entry.host}
+                        port={entry.port}
+                        username={entry.username}
+                        auth={auth}
+                        fontSize={config.fontSize}
+                        fontFamily={config.fontFamily}
+                        cacheKeySuffix=":side"
+                        sideMode
+                        width={sideTerminalWidth}
+                        onClose={() =>
+                          setRemoteSideTerminalOpen(prev => {
+                            const n = new Set(prev);
+                            n.delete(project.id);
+                            return n;
+                          })
+                        }
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 本地项目视图 */}
           {activeProject ? (
@@ -1006,6 +904,7 @@ function App() {
                         shell={config.shell}
                         fontFamily={config.fontFamily}
                         onClose={() => setSideTerminalOpen(false)}
+                        onDestroy={() => destroyTerminalCache(`${activeProject.id}:side`)}
                         width={sideTerminalWidth}
                       />
                     </>
@@ -1022,6 +921,7 @@ function App() {
                         shell={config.shell}
                         fontFamily={config.fontFamily}
                         onClose={() => setSideTerminalOpen(false)}
+                        onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${activeWorktreePath}`)}
                         width={sideTerminalWidth}
                         worktreePath={activeWorktreePath}
                       />
@@ -1037,7 +937,7 @@ function App() {
                 />
               ) : null}
             </div>
-          ) : !activeWslProject ? (
+          ) : !activeWslProject && !activeRemoteProject ? (
             <div className="empty-state">
               <div className="empty-body">
                 <div className="empty-icon">📁</div>
@@ -1051,199 +951,15 @@ function App() {
           ) : null}
         </div>
 
-        {/* 添加项目时选择 Agent 的 modal */}
         {pendingPath && (
-          <div className="modal-overlay">
-            <div className="modal" key={pendingPath}>
-              <h3>Add Project</h3>
-              <p className="modal-path">{pendingPath}</p>
-              <label className="gh-dialog-label" style={{ marginTop: 12 }}>
-                Agent
-              </label>
-              <div
-                className="agent-selector"
-                ref={pendingAgentRef}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                <button
-                  className="agent-dropdown-btn"
-                  style={{ width: "100%" }}
-                  onClick={() => setPendingAgentOpen((v) => !v)}
-                >
-                  {selectedNewAgentId ? (
-                    <>
-                      <span className="agent-icon">
-                        {agents.find((a) => a.id === selectedNewAgentId)
-                          ?.icon || "🤖"}
-                      </span>
-                      <span className="agent-name">
-                        {agents.find((a) => a.id === selectedNewAgentId)?.name}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="agent-icon">⚡</span>
-                      <span className="agent-name">None</span>
-                    </>
-                  )}
-                  <span
-                    className="dropdown-arrow"
-                    style={{ marginLeft: "auto" }}
-                  >
-                    {pendingAgentOpen ? "−" : "+"}
-                  </span>
-                </button>
-                {pendingAgentOpen && (
-                  <div
-                    className="agent-dropdown"
-                    style={{ left: 0, right: 0, minWidth: "unset" }}
-                  >
-                    <div
-                      className={`agent-option${!selectedNewAgentId ? " selected" : ""}`}
-                      onClick={() => {
-                        setSelectedNewAgentId(null);
-                        setPendingAgentOpen(false);
-                      }}
-                    >
-                      <span className="agent-icon">⚡</span>
-                      <span className="agent-name">None</span>
-                    </div>
-                    {agents
-                      .filter((a) => a.enabled)
-                      .map((agent) => (
-                        <div
-                          key={agent.id}
-                          className={`agent-option${selectedNewAgentId === agent.id ? " selected" : ""}`}
-                          onClick={() => {
-                            setSelectedNewAgentId(agent.id);
-                            setPendingAgentOpen(false);
-                          }}
-                        >
-                          <span className="agent-icon">
-                            {agent.icon || "🤖"}
-                          </span>
-                          <span className="agent-name">{agent.name}</span>
-                          <span className="agent-command">{agent.command}</span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-
-              {/* IDE 选择 */}
-              <label className="gh-dialog-label" style={{ marginTop: 12 }}>
-                IDE
-              </label>
-              <div
-                className="agent-selector"
-                ref={pendingIdeRef}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                <button
-                  className="agent-dropdown-btn"
-                  style={{ width: "100%" }}
-                  onClick={() => setPendingIdeOpen((v) => !v)}
-                >
-                  {selectedNewIdeId ? (
-                    <>
-                      <span className="agent-icon">
-                        {selectedNewIdeId.startsWith("custom:")
-                          ? "💻"
-                          : IDE_PRESETS.find((i) => i.id === selectedNewIdeId)
-                              ?.icon}
-                      </span>
-                      <span className="agent-name">
-                        {selectedNewIdeId.startsWith("custom:")
-                          ? config.customIdes?.[
-                              parseInt(selectedNewIdeId.replace("custom:", ""))
-                            ]?.name
-                          : IDE_PRESETS.find((i) => i.id === selectedNewIdeId)
-                              ?.name}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="agent-icon">💻</span>
-                      <span className="agent-name">None</span>
-                    </>
-                  )}
-                  <span
-                    className="dropdown-arrow"
-                    style={{ marginLeft: "auto" }}
-                  >
-                    {pendingIdeOpen ? "−" : "+"}
-                  </span>
-                </button>
-                {pendingIdeOpen && (
-                  <div
-                    className="agent-dropdown"
-                    style={{ left: 0, right: 0, minWidth: "unset" }}
-                  >
-                    <div
-                      className={`agent-option${!selectedNewIdeId ? " selected" : ""}`}
-                      onClick={() => {
-                        setSelectedNewIdeId(null);
-                        setPendingIdeOpen(false);
-                      }}
-                    >
-                      <span className="agent-icon">💻</span>
-                      <span className="agent-name">None</span>
-                    </div>
-                    {IDE_PRESETS.map((ide) => (
-                      <div
-                        key={ide.id}
-                        className={`agent-option${selectedNewIdeId === ide.id ? " selected" : ""}`}
-                        onClick={() => {
-                          setSelectedNewIdeId(ide.id);
-                          setPendingIdeOpen(false);
-                        }}
-                      >
-                        <span className="agent-icon">{ide.icon}</span>
-                        <span className="agent-name">{ide.name}</span>
-                        <span className="agent-command">
-                          {config.ideCommandOverrides?.[ide.id] ??
-                            getIdeCommand(ide)}
-                        </span>
-                      </div>
-                    ))}
-                    {(config.customIdes || []).map((ide, idx) => {
-                      const customId = `custom:${idx}`;
-                      return (
-                        <div
-                          key={customId}
-                          className={`agent-option${selectedNewIdeId === customId ? " selected" : ""}`}
-                          onClick={() => {
-                            setSelectedNewIdeId(customId);
-                            setPendingIdeOpen(false);
-                          }}
-                        >
-                          <span className="agent-icon">💻</span>
-                          <span className="agent-name">{ide.name}</span>
-                          <span className="agent-command">{ide.command}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  className="cancel-btn"
-                  onClick={() => setPendingPath(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="confirm-btn"
-                  onClick={handleConfirmAddProject}
-                  disabled={loading}
-                >
-                  Add Project
-                </button>
-              </div>
-            </div>
-          </div>
+          <AddProjectModal
+            pendingPath={pendingPath}
+            agents={agents}
+            config={config}
+            onConfirm={handleConfirmAddProject}
+            onCancel={() => setPendingPath(null)}
+            loading={loading}
+          />
         )}
       </div>
 
@@ -1263,6 +979,7 @@ function App() {
         onAdd={handleWSLEntryAdd}
         existingEntries={wslEntries}
         selectedEntryId={wslAddToEntryId ?? undefined}
+        agents={agents}
       />
 
       {/* Remote Dialog */}
@@ -1273,7 +990,29 @@ function App() {
         existingEntries={remoteEntries}
         addProjectMode={remoteAddToEntryId !== null}
         selectedEntryId={remoteAddToEntryId ?? undefined}
+        agents={agents}
+        existingEntryAuth={remoteAuthStore}
       />
+
+      {/* SSH 重新登录弹窗 */}
+      {pendingAuthEntry && (
+        <RemoteAuthDialog
+          isOpen={true}
+          host={pendingAuthEntry.host}
+          port={pendingAuthEntry.port}
+          username={pendingAuthEntry.username}
+          onCancel={() => {
+            setPendingAuthEntry(null);
+            // 取消登录时退出该项目视图
+            setActiveRemoteKey(null);
+            setActiveRemoteProject(null);
+          }}
+          onSuccess={(auth) => {
+            setRemoteAuthStore(prev => new Map(prev).set(pendingAuthEntry.id, auth));
+            setPendingAuthEntry(null);
+          }}
+        />
+      )}
 
       {/* Toast 通知 */}
       {toast && (

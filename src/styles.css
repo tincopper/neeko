@@ -2270,6 +2270,7 @@ body {
   min-width: 400px;
   max-width: 500px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: visible;
 }
 
 .agent-select {
@@ -2673,7 +2674,7 @@ body {
   border: 1px solid var(--accent-blue);
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-  z-index: 200;
+  z-index: 1100;
   max-height: 220px;
   overflow-y: auto;
 }

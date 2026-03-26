@@ -16,6 +16,7 @@ interface WSLItemProps {
   onRemoveProject: (entryId: string, projectId: string) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
+  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
 }
 
 export const WSLItem: React.FC<WSLItemProps> = ({
@@ -27,6 +28,7 @@ export const WSLItem: React.FC<WSLItemProps> = ({
   onRemoveProject,
   onRemoveEntry,
   onAddProject,
+  onOpenSideTerminal,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -105,6 +107,20 @@ export const WSLItem: React.FC<WSLItemProps> = ({
                     />
                   )}
                   <div className="gh-project-actions" style={{ marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>
+                    {isActive && onOpenSideTerminal && (
+                      <button
+                        className="gh-icon-btn"
+                        style={{ opacity: 0 }}
+                        title="Open side terminal (Ctrl+Alt+T)"
+                        onClick={() => onOpenSideTerminal(entry.id, project.id)}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
+                        </svg>
+                      </button>
+                    )}
                     {hasSession && (
                       <button
                         className="gh-icon-btn"
@@ -114,7 +130,6 @@ export const WSLItem: React.FC<WSLItemProps> = ({
                         onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
                         onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
                       >
-                        {/* stop / square icon */}
                         <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
                           <rect x="2" y="2" width="8" height="8" rx="1.5" />
                         </svg>
@@ -150,6 +165,7 @@ interface RemoteItemProps {
   onRemoveProject: (entryId: string, projectId: string) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
+  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
 }
 
 export const RemoteItem: React.FC<RemoteItemProps> = ({
@@ -161,6 +177,7 @@ export const RemoteItem: React.FC<RemoteItemProps> = ({
   onRemoveProject,
   onRemoveEntry,
   onAddProject,
+  onOpenSideTerminal,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
   const label = `${entry.host}:${entry.port}`;
@@ -238,6 +255,20 @@ export const RemoteItem: React.FC<RemoteItemProps> = ({
                     />
                   )}
                   <div className="gh-project-actions" style={{ marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>
+                    {isActive && onOpenSideTerminal && (
+                      <button
+                        className="gh-icon-btn"
+                        style={{ opacity: 0 }}
+                        title="Open side terminal (Ctrl+Alt+T)"
+                        onClick={() => onOpenSideTerminal(entry.id, project.id)}
+                        onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                        onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
+                        </svg>
+                      </button>
+                    )}
                     {hasSession && (
                       <button
                         className="gh-icon-btn"

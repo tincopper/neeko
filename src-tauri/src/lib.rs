@@ -513,6 +513,37 @@ fn resize_remote_terminal(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn test_remote_connection(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), String> {
+    state
+        .remote_terminal_manager
+        .test_connection(&host, port, &username, &auth)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_remote_directories(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<String>, String> {
+    state
+        .remote_terminal_manager
+        .list_directories(&host, port, &username, &auth, &path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // Agent 命令
 #[tauri::command]
 fn list_agents(state: State<AppStateWrapper>) -> Vec<AgentConfig> {
@@ -902,6 +933,8 @@ pub fn run() {
             create_remote_terminal_session,
             close_remote_terminal_session,
             resize_remote_terminal,
+            test_remote_connection,
+            list_remote_directories,
             save_remote_entries,
             load_remote_entries,
             // Agent 管理

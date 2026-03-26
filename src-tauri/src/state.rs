@@ -170,6 +170,8 @@ pub struct WSLProjectSession {
     pub path: String,
     pub distro: String,
     pub entry_id: String,
+    #[serde(default)]
+    pub selected_agent: Option<String>,
 }
 
 // WSL 发行版会话 (持久化用)
@@ -187,6 +189,8 @@ pub struct RemoteProjectSession {
     pub name: String,
     pub path: String,
     pub entry_id: String,
+    #[serde(default)]
+    pub selected_agent: Option<String>,
 }
 
 // SSH 服务器会话 (持久化用)
@@ -197,6 +201,9 @@ pub struct RemoteEntrySession {
     pub port: u16,
     pub username: String,
     pub projects: Vec<RemoteProjectSession>,
+    /// Base64 编码的 AuthMethod JSON（用户选择「保存密码」时填写）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_auth: Option<String>,
 }
 
 // Diff 相关
