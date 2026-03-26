@@ -67,6 +67,21 @@ function App() {
   const [remoteEntries, setRemoteEntries] = useState<RemoteEntrySession[]>([]);
   const [wslDialogOpen, setWslDialogOpen] = useState(false);
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+
+  // 点击外部关闭添加菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.add-menu-dropdown') && !target.closest('.tb-icon-btn')) {
+        setShowAddMenu(false);
+      }
+    };
+    if (showAddMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showAddMenu]);
 
   // Toast 通知
   const [toast, setToast] = useState<{
@@ -669,9 +684,9 @@ function App() {
           </button>
           <button
             className="tb-icon-btn"
-            onClick={handleAddProject}
+            onClick={() => setShowAddMenu(!showAddMenu)}
             disabled={loading}
-            title="Add Project"
+            title="Add"
           >
             {loading ? (
               "…"
@@ -698,6 +713,22 @@ function App() {
               </svg>
             )}
           </button>
+          {showAddMenu && (
+            <div className="add-menu-dropdown">
+              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); handleAddProject(); }}>
+                <span className="add-menu-icon">📁</span>
+                <span>Add Local Project</span>
+              </div>
+              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); setWslDialogOpen(true); }}>
+                <span className="add-menu-icon">🐧</span>
+                <span>Add WSL Distro</span>
+              </div>
+              <div className="add-menu-item" onClick={() => { setShowAddMenu(false); setRemoteDialogOpen(true); }}>
+                <span className="add-menu-icon">🖥️</span>
+                <span>Add Remote Server</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 分隔线 */}

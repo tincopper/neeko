@@ -81,6 +81,7 @@ body {
   flex-shrink: 0;
   padding-left: 16px;
   gap: 2px;
+  position: relative;
 }
 
 .titlebar-appname {
@@ -155,6 +156,39 @@ body {
 .tb-icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Add Menu Dropdown */
+.add-menu-dropdown {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  min-width: 180px;
+  overflow: hidden;
+}
+
+.add-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: background-color 0.15s;
+}
+
+.add-menu-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.add-menu-icon {
+  font-size: 14px;
 }
 
 /* Window Controls (minimize / maximize / close) */
