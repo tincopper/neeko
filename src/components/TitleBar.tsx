@@ -1,77 +1,143 @@
-import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+import AgentSelector from "./AgentSelector";
+import WindowControls from "./WindowControls";
+import { WSLProject, RemoteEntrySession, RemoteProject } from "../types";
 
-export default function TitleBar() {
-  const [isMaximized, setIsMaximized] = useState(false);
-  const appWindow = getCurrentWindow();
+interface Project {
+  id: string;
+  name: string;
+  path: string;
+  git_info: { current_branch: string; branches: string[]; worktrees: any[]; changed_files: any[]; is_clean: boolean } | null;
+  selected_agent: string | null;
+}
 
-  useEffect(() => {
-    // 初始化最大化状态
-    appWindow.isMaximized().then(setIsMaximized);
+interface AgentConfig {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  icon: string | null;
+  enabled: boolean;
+}
 
-    // 监听窗口状态变化
-    const unlisten = appWindow.onResized(() => {
-      appWindow.isMaximized().then(setIsMaximized);
-    });
+interface TitleBarProps {
+  activeProject: Project | null;
+  activeWslProject: { distro: string; project: WSLProject } | null;
+  activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
+  activeWorktreeBranch: string;
+  showAddMenu: boolean;
+  loading: boolean;
+  onOpenSettings: () => void;
+  onToggleAddMenu: () => void;
+  onAddProject: () => void;
+  onAddWsl: () => void;
+  onAddRemote: () => void;
+  onSelectLocalAgent: (agent: AgentConfig | null) => void;
+  onSelectWslAgent: (agent: AgentConfig | null) => void;
+  onSelectRemoteAgent: (agent: AgentConfig | null) => void;
+}
 
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
 
-  const handleMinimize = () => appWindow.minimize();
-  const handleMaximize = () => {
-    if (isMaximized) {
-      appWindow.unmaximize();
-    } else {
-      appWindow.maximize();
-    }
-  };
-  const handleClose = () => appWindow.close();
-
+export default function TitleBar({
+  activeProject,
+  activeWslProject,
+  activeRemoteProject,
+  activeWorktreeBranch,
+  showAddMenu,
+  loading,
+  onOpenSettings,
+  onToggleAddMenu,
+  onAddProject,
+  onAddWsl,
+  onAddRemote,
+  onSelectLocalAgent,
+  onSelectWslAgent,
+  onSelectRemoteAgent,
+}: TitleBarProps) {
   return (
     <div className="titlebar" data-tauri-drag-region>
-      <div className="titlebar-title" data-tauri-drag-region>
-        Neeko
-      </div>
-      <div className="titlebar-controls">
-        <button
-          className="titlebar-btn titlebar-minimize"
-          onClick={handleMinimize}
-          title="Minimize"
-        >
-          <svg width="10" height="1" viewBox="0 0 10 1">
-            <line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" strokeWidth="1.5" />
+      {/* Left: NEEKO + Settings + Add */}
+      <div className="titlebar-left" data-tauri-drag-region>
+        <span className="titlebar-appname" data-tauri-drag-region>NEEKO</span>
+        <button className="tb-icon-btn" onClick={onOpenSettings} title="Settings">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
         </button>
-        <button
-          className="titlebar-btn titlebar-maximize"
-          onClick={handleMaximize}
-          title={isMaximized ? "Restore" : "Maximize"}
-        >
-          {isMaximized ? (
-            /* Restore 图标：两个重叠的方块 */
-            <svg width="10" height="10" viewBox="0 0 10 10">
-              <rect x="2" y="0" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.2" />
-              <rect x="0" y="2" width="8" height="8" fill="var(--bg-secondary)" stroke="currentColor" strokeWidth="1.2" />
-            </svg>
-          ) : (
-            /* Maximize 图标：一个方块 */
-            <svg width="10" height="10" viewBox="0 0 10 10">
-              <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1.2" />
+        <button className="tb-icon-btn" onClick={onToggleAddMenu} disabled={loading} title="Add">
+          {loading ? "\u2026" : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           )}
         </button>
-        <button
-          className="titlebar-btn titlebar-close"
-          onClick={handleClose}
-          title="Close"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" strokeWidth="1.5" />
-            <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-        </button>
+        {showAddMenu && (
+          <div className="add-menu-dropdown">
+            <div className="add-menu-item" onClick={onAddProject}>
+              <span className="add-menu-icon">{"\u{1F4C1}"}</span>
+              <span>Add Local Project</span>
+            </div>
+            <div className="add-menu-item" onClick={onAddWsl}>
+              <span className="add-menu-icon">{"\u{1F427}"}</span>
+              <span>Add WSL Distro</span>
+            </div>
+            <div className="add-menu-item" onClick={onAddRemote}>
+              <span className="add-menu-icon">{"\u{1F5A5}"}</span>
+              <span>Add Remote Server</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="titlebar-divider" data-tauri-drag-region />
+
+      {/* Right: project name + branch + agent + window controls */}
+      <div className="titlebar-right" data-tauri-drag-region>
+        {activeProject ? (
+          <>
+            <span className="titlebar-project-name" data-tauri-drag-region>{activeProject.name}</span>
+            {activeProject.git_info && (
+              <span className="titlebar-branch" data-tauri-drag-region>
+                {activeWorktreeBranch || activeProject.git_info.current_branch}
+              </span>
+            )}
+            <AgentSelector
+              projectId={activeProject.id}
+              currentAgentId={activeProject.selected_agent}
+              onSelectAgent={(agent) => {
+                if (agent) onSelectLocalAgent(agent);
+                invoke("save_session").catch(() => {});
+              }}
+            />
+          </>
+        ) : activeWslProject ? (
+          <>
+            <span className="titlebar-project-name" data-tauri-drag-region>{activeWslProject.project.name}</span>
+            <span className="titlebar-branch" data-tauri-drag-region>WSL: {activeWslProject.distro}</span>
+            <AgentSelector
+              projectId={activeWslProject.project.id}
+              currentAgentId={activeWslProject.project.selected_agent}
+              skipBackendPersist
+              onSelectAgent={(agent) => onSelectWslAgent(agent)}
+            />
+          </>
+        ) : activeRemoteProject ? (
+          <>
+            <span className="titlebar-project-name" data-tauri-drag-region>{activeRemoteProject.project.name}</span>
+            <span className="titlebar-branch" data-tauri-drag-region>SSH: {activeRemoteProject.entry.host}</span>
+            <AgentSelector
+              projectId={activeRemoteProject.project.id}
+              currentAgentId={activeRemoteProject.project.selected_agent}
+              skipBackendPersist
+              onSelectAgent={(agent) => onSelectRemoteAgent(agent)}
+            />
+          </>
+        ) : (
+          <span className="titlebar-placeholder" data-tauri-drag-region />
+        )}
+        <WindowControls />
       </div>
     </div>
   );

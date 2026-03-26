@@ -36,6 +36,8 @@ interface ProjectSidebarProps {
   onRemoveRemoteProject: (entryId: string, projectId: string) => void;
   onRemoveRemoteEntry: (entryId: string) => void;
   onAddRemoteProject: (entryId: string) => void;
+  onOpenWslSideTerminal?: (entryId: string, projectId: string) => void;
+  onOpenRemoteSideTerminal?: (entryId: string, projectId: string) => void;
   loading: boolean;
 }
 
@@ -68,6 +70,8 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onRemoveRemoteProject,
   onRemoveRemoteEntry,
   onAddRemoteProject,
+  onOpenWslSideTerminal,
+  onOpenRemoteSideTerminal,
   loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -148,6 +152,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveProject={onRemoveWslProject}
                   onRemoveEntry={onRemoveWslEntry}
                   onAddProject={onAddWslProject}
+                  onOpenSideTerminal={onOpenWslSideTerminal}
                 />
               ))}
 
@@ -163,6 +168,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveProject={onRemoveRemoteProject}
                   onRemoveEntry={onRemoveRemoteEntry}
                   onAddProject={onAddRemoteProject}
+                  onOpenSideTerminal={onOpenRemoteSideTerminal}
                 />
               ))}
             </>

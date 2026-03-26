@@ -4,7 +4,6 @@ import {
   createTerminalForProject,
   terminalCache,
   terminalRebuildCallbacks,
-  destroyTerminalCache,
 } from "./TerminalView";
 
 interface Project {
@@ -22,6 +21,8 @@ interface SideTerminalViewProps {
   onClose: () => void;
   width?: number;
   worktreePath?: string;
+  /** 用户主动关闭时调用（销毁 PTY cache）；组件因切换项目而卸载时不触发，保留 PTY 会话 */
+  onDestroy?: () => void;
 }
 
 // Side 终端的 cache key 格式：projectId + ":side" 或 projectId + ":side:" + worktreePath
@@ -37,6 +38,7 @@ export default function SideTerminalView({
   onClose,
   width,
   worktreePath,
+  onDestroy,
 }: SideTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -165,13 +167,10 @@ export default function SideTerminalView({
     };
   }, [project.id, worktreePath, rebuildCount]);
 
-  // 组件卸载时销毁 side 终端缓存（关闭时彻底清理）
-  useEffect(() => {
-    return () => {
-      const key = sideKey(project.id, worktreePath);
-      destroyTerminalCache(key);
-    };
-  }, [project.id, worktreePath]);
+  const handleClose = () => {
+    onDestroy?.();
+    onClose();
+  };
 
   return (
     <div
@@ -181,7 +180,7 @@ export default function SideTerminalView({
       <div className="side-terminal-header">
         <span className="side-terminal-title">Terminal</span>
         <span className="side-terminal-hint">Ctrl+W to close</span>
-        <button className="side-terminal-close" onClick={onClose} title="Close (Ctrl+W)">
+        <button className="side-terminal-close" onClick={handleClose} title="Close (Ctrl+W)">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
           </svg>
