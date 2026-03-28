@@ -1,10 +1,6 @@
 import React from "react";
-import TerminalView, { destroyTerminalCache } from "./TerminalView";
-import SideTerminalView from "./SideTerminalView";
-import WorktreeTerminalView from "./WorktreeTerminalView";
+import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView, RemoteTerminalView } from "./terminal";
 import DiffView from "./DiffView";
-import WSLTerminalView from "./WSLTerminalView";
-import RemoteTerminalView from "./RemoteTerminalView";
 import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
 
 interface MainContentProps {
@@ -265,4 +261,4 @@ function MainContent({
   );
 }
 
-export default MainContent;
+export default React.memo(MainContent);

@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import ProjectSidebar from "./components/project";
-import { launchAgentInTerminal } from "./components/TerminalView";
+import ProjectSidebar, { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
-import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/WSLDialog";
-import { wslCacheKey, launchAgentInWslTerminal } from "./components/WSLTerminalView";
-import { remoteCacheKey, launchAgentInRemoteTerminal } from "./components/RemoteTerminalView";
-import { WSLProject, RemoteProject } from "./types";
-import type { ActiveWslKey } from "./components/project/RemoteItems";
+import MainContent from "./components/MainContent";
+import { TitleBar } from "./components/layout";
+import { launchAgentInTerminal, wslCacheKey, launchAgentInWslTerminal, remoteCacheKey, launchAgentInRemoteTerminal } from "./components/terminal";
+import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/connections";
+import { WSLProject, RemoteProject, AgentConfig } from "./types";
+import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
 import { useSideTerminalResize } from "./hooks/useSideTerminalResize";
@@ -18,9 +18,6 @@ import { useAppConfig } from "./hooks/useAppConfig";
 import { useLocalProjects } from "./hooks/useLocalProjects";
 import { useWslProjects } from "./hooks/useWslProjects";
 import { useRemoteProjects } from "./hooks/useRemoteProjects";
-import AddProjectModal from "./components/AddProjectModal";
-import TitleBar from "./components/TitleBar";
-import MainContent from "./components/MainContent";
 import "./styles.css";
 
 // ── re-export to keep hook import clean ──
@@ -235,6 +232,60 @@ function App() {
     };
   }, []);
 
+  // ── Agent selection callbacks ─────────────────────────────────────────────
+  const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
+    if (agent && activeProject) {
+      launchAgentInTerminal(activeProject.id, agent.command, agent.args);
+    }
+  }, [activeProject]);
+
+  const handleSelectWslAgent = useCallback((agent: AgentConfig | null) => {
+    if (!activeWslProject) return;
+    const key = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
+    if (agent) launchAgentInWslTerminal(key, agent.command, agent.args);
+    const agentId = agent?.id ?? null;
+    const newEntries = wslEntries.map(e => ({
+      ...e,
+      projects: e.projects.map(p =>
+        p.id === activeWslProject.project.id ? { ...p, selected_agent: agentId } : p
+      ),
+    }));
+    setWslEntries(newEntries);
+    setActiveWslProject(prev =>
+      prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+    );
+    invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
+  }, [activeWslProject, wslEntries, setWslEntries, setActiveWslProject]);
+
+  const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
+    if (!activeRemoteProject) return;
+    const key = remoteCacheKey(activeRemoteProject.entry.id, activeRemoteProject.project.id);
+    if (agent) launchAgentInRemoteTerminal(key, agent.command, agent.args);
+    const agentId = agent?.id ?? null;
+    const newEntries = remoteEntries.map(e => ({
+      ...e,
+      projects: e.projects.map(p =>
+        p.id === activeRemoteProject.project.id ? { ...p, selected_agent: agentId } : p
+      ),
+    }));
+    setRemoteEntries(newEntries);
+    setActiveRemoteProject(prev =>
+      prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+    );
+    invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
+  }, [activeRemoteProject, remoteEntries, setRemoteEntries, setActiveRemoteProject]);
+
+  const handleToggleSettings = useCallback(() => setSettingsOpen((v) => !v), []);
+  const handleToggleAddMenu = useCallback(() => setShowAddMenu(v => !v), []);
+  const handleAddProjectClick = useCallback(() => { setShowAddMenu(false); handleAddProject(); }, [handleAddProject]);
+  const handleAddWslClick = useCallback(() => { setShowAddMenu(false); setWslDialogOpen(true); }, []);
+  const handleAddRemoteClick = useCallback(() => { setShowAddMenu(false); setRemoteDialogOpen(true); }, []);
+
+  const handleOpenIdeForSidebar = useCallback((projectId: string) => {
+    const p = projects.find((proj) => proj.id === projectId);
+    if (p) handleOpenIdeCallback(p);
+  }, [projects, handleOpenIdeCallback]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app-root">
@@ -245,48 +296,14 @@ function App() {
         activeWorktreeBranch={activeWorktreeBranch}
         showAddMenu={showAddMenu}
         loading={loading}
-        onOpenSettings={() => setSettingsOpen((v) => !v)}
-        onToggleAddMenu={() => setShowAddMenu(v => !v)}
-        onAddProject={() => { setShowAddMenu(false); handleAddProject(); }}
-        onAddWsl={() => { setShowAddMenu(false); setWslDialogOpen(true); }}
-        onAddRemote={() => { setShowAddMenu(false); setRemoteDialogOpen(true); }}
-        onSelectLocalAgent={(agent) => {
-          if (agent) launchAgentInTerminal(activeProject!.id, agent.command, agent.args);
-        }}
-        onSelectWslAgent={(agent) => {
-          if (!activeWslProject) return;
-          const key = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
-          if (agent) launchAgentInWslTerminal(key, agent.command, agent.args);
-          const agentId = agent?.id ?? null;
-          const newEntries = wslEntries.map(e => ({
-            ...e,
-            projects: e.projects.map(p =>
-              p.id === activeWslProject.project.id ? { ...p, selected_agent: agentId } : p
-            ),
-          }));
-          setWslEntries(newEntries);
-          setActiveWslProject(prev =>
-            prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
-          );
-          invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
-        }}
-        onSelectRemoteAgent={(agent) => {
-          if (!activeRemoteProject) return;
-          const key = remoteCacheKey(activeRemoteProject.entry.id, activeRemoteProject.project.id);
-          if (agent) launchAgentInRemoteTerminal(key, agent.command, agent.args);
-          const agentId = agent?.id ?? null;
-          const newEntries = remoteEntries.map(e => ({
-            ...e,
-            projects: e.projects.map(p =>
-              p.id === activeRemoteProject.project.id ? { ...p, selected_agent: agentId } : p
-            ),
-          }));
-          setRemoteEntries(newEntries);
-          setActiveRemoteProject(prev =>
-            prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
-          );
-          invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
-        }}
+        onOpenSettings={handleToggleSettings}
+        onToggleAddMenu={handleToggleAddMenu}
+        onAddProject={handleAddProjectClick}
+        onAddWsl={handleAddWslClick}
+        onAddRemote={handleAddRemoteClick}
+        onSelectLocalAgent={handleSelectLocalAgent}
+        onSelectWslAgent={handleSelectWslAgent}
+        onSelectRemoteAgent={handleSelectRemoteAgent}
       />
 
       <div className="app-container">
@@ -305,11 +322,8 @@ function App() {
           onSelectFile={handleSelectFile}
           onRefreshGit={handleRefreshGit}
           onBackToMainTerminal={handleBackToMainTerminal}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
-          onOpenIde={(projectId) => {
-            const p = projects.find((proj) => proj.id === projectId);
-            if (p) handleOpenIdeCallback(p);
-          }}
+          onOpenSettings={handleToggleSettings}
+          onOpenIde={handleOpenIdeForSidebar}
           onOpenSideTerminal={() => setSideTerminalOpen(true)}
           onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
           onSelectWslProject={handleSelectWslProject}

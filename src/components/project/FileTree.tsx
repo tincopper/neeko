@@ -170,4 +170,4 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
   );
 };
 
-export default FileTree;
+export default React.memo(FileTree);

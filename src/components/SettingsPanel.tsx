@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
 import type { AppConfig, DiffMode } from "../types";
@@ -217,8 +217,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   const isCustomShell = shellInput !== "" && !PRESET_SHELLS.some(s => s.value === shellInput);
 
   // 合并内置预设和系统字体，搜索过滤，去重
-  const allFonts = Array.from(new Set([...BUILTIN_FONTS, ...systemFonts])).sort(
-    (a, b) => a.toLowerCase().localeCompare(b.toLowerCase())
+  const allFonts = useMemo(
+    () => Array.from(new Set([...BUILTIN_FONTS, ...systemFonts])).sort(
+      (a, b) => a.toLowerCase().localeCompare(b.toLowerCase())
+    ),
+    [systemFonts]
   );
   const filteredFonts = fontSearch.trim()
     ? allFonts.filter(f => f.toLowerCase().includes(fontSearch.trim().toLowerCase()))

@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from "react";
 import { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
 import ProjectItem from "./ProjectItem";
 import GitDialog, { DialogState } from "./GitDialog";
-import { WSLItem, RemoteItem, ActiveWslKey, ActiveRemoteKey } from "./RemoteItems";
+import { WSLItem, RemoteItem, ActiveWslKey, ActiveRemoteKey } from "../connections/RemoteItems";
 
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;

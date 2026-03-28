@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 export function useSideTerminalResize() {
   const [sideTerminalWidth, setSideTerminalWidth] = useState(480);
@@ -6,7 +6,7 @@ export function useSideTerminalResize() {
   const sideResizeStartX = useRef(0);
   const sideResizeStartWidth = useRef(480);
 
-  const handleSideDividerMouseDown = (e: React.MouseEvent) => {
+  const handleSideDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     sideResizingRef.current = true;
     sideResizeStartX.current = e.clientX;
@@ -29,7 +29,7 @@ export function useSideTerminalResize() {
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  };
+  }, [sideTerminalWidth]);
 
   return { sideTerminalWidth, handleSideDividerMouseDown };
 }

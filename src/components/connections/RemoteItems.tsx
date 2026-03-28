@@ -19,7 +19,7 @@ interface WSLItemProps {
   onOpenSideTerminal?: (entryId: string, projectId: string) => void;
 }
 
-export const WSLItem: React.FC<WSLItemProps> = ({
+export const WSLItem = React.memo<WSLItemProps>(({
   entry,
   activeKey,
   openSessions,
@@ -152,7 +152,7 @@ export const WSLItem: React.FC<WSLItemProps> = ({
       )}
     </div>
   );
-};
+});
 
 // ─── RemoteItem ───────────────────────────────────────────────────────────────
 
@@ -168,7 +168,7 @@ interface RemoteItemProps {
   onOpenSideTerminal?: (entryId: string, projectId: string) => void;
 }
 
-export const RemoteItem: React.FC<RemoteItemProps> = ({
+export const RemoteItem = React.memo<RemoteItemProps>(({
   entry,
   activeKey,
   openSessions,
@@ -300,4 +300,4 @@ export const RemoteItem: React.FC<RemoteItemProps> = ({
       )}
     </div>
   );
-};
+});

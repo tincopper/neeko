@@ -5,6 +5,9 @@ import { Unicode11Addon } from 'xterm-addon-unicode11'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 import 'xterm/css/xterm.css'
+import { buildFontFamily } from '../../utils/terminal'
+
+const IS_UNIX = !navigator.platform.toLowerCase().includes('win')
 
 interface Project {
   id: string
@@ -33,12 +36,6 @@ interface TerminalViewProps {
   shell?: string
   fontFamily?: string
 }
-
-// Linux 默认使用 Cascadia Code，其他平台保持原有 fallback 链
-const isLinux = navigator.platform.toLowerCase().startsWith('linux')
-const DEFAULT_FONT_FAMILY = isLinux
-  ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
-  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace"
 
 interface TerminalCache {
   term: Terminal
@@ -111,9 +108,7 @@ export async function createTerminalForProject(
   const term = new Terminal({
     cursorBlink: true,
     fontSize: fontSize,
-    fontFamily: fontFamily
-      ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
-      : DEFAULT_FONT_FAMILY,
+    fontFamily: buildFontFamily(fontFamily),
     theme: {
       background: '#282c34',
       foreground: '#abb2bf',
@@ -228,7 +223,7 @@ export async function createTerminalForProject(
     //   4. onData 用 compositionPendingText 过滤 compositionend 后的重复触发
     //
     // Windows：PTY 回显由系统负责，onData 正常发送即可（IME 行为不同）
-    const isUnix = !navigator.platform.toLowerCase().includes('win')
+    const isUnix = IS_UNIX
     let isComposing = false
     let compositionPendingText = ''
     let inputBuffer = '' // 用户输入缓冲区，只删除用户输入的字符
@@ -343,9 +338,7 @@ export default function TerminalView({
     const cache = terminalCache.get(project.id)
     if (cache) {
       cache.term.options.fontSize = fontSize
-      cache.term.options.fontFamily = fontFamily
-        ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
-        : DEFAULT_FONT_FAMILY
+      cache.term.options.fontFamily = buildFontFamily(fontFamily)
       cache.fitAddon.fit()
     }
   }, [fontSize, fontFamily, project.id])

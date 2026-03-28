@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import React from "react";
 import AgentSelector from "./AgentSelector";
 import WindowControls from "./WindowControls";
-import { WSLProject, RemoteEntrySession, RemoteProject } from "../types";
+import { WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
 
 interface Project {
   id: string;
@@ -38,7 +39,7 @@ interface TitleBarProps {
 }
 
 
-export default function TitleBar({
+function TitleBar({
   activeProject,
   activeWslProject,
   activeRemoteProject,
@@ -142,3 +143,5 @@ export default function TitleBar({
     </div>
   );
 }
+
+export default React.memo(TitleBar);
