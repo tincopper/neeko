@@ -161,8 +161,8 @@ body {
 /* Add Menu Dropdown */
 .add-menu-dropdown {
   position: absolute;
-  top: 40px;
-  left: 0;
+  top: 32px;
+  right: 0;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -189,6 +189,15 @@ body {
 
 .add-menu-icon {
   font-size: 14px;
+}
+
+.add-menu-icon-img {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 /* Window Controls (minimize / maximize / close) */
@@ -925,27 +934,25 @@ body {
   background-color: var(--bg-hover);
 }
 
-.gh-project-chevron {
-  font-size: 0.57em;
-  color: var(--text-muted);
-  width: 12px;
-  flex-shrink: 0;
-  transition: transform 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: rotate(90deg);
-}
-
-.gh-project-chevron.collapsed {
-  transform: rotate(0deg);
-}
 
 .gh-repo-icon {
   color: var(--text-secondary);
   flex-shrink: 0;
   display: flex;
   align-items: center;
+}
+
+.gh-project-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
 }
 
 .gh-project-meta {
@@ -2500,6 +2507,17 @@ body {
 
 .wsl-distro-icon {
   font-size: 18px;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--text-secondary);
+}
+
+.sidebar-distro-icon {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--text-secondary);
 }
 
 .wsl-distro-name {
@@ -2521,6 +2539,9 @@ body {
 
 .remote-server-icon {
   font-size: 16px;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--text-secondary);
 }
 
 .gh-dialog-label {
@@ -2701,6 +2722,9 @@ body {
 .wsl-suggestion-icon {
   font-size: 13px;
   flex-shrink: 0;
+  fill: currentColor;
+  stroke: currentColor;
+  color: var(--text-muted);
 }
 
 .wsl-suggestion-name {

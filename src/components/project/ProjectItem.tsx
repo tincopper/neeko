@@ -4,6 +4,20 @@ import { Project } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
 
+const AVATAR_COLORS = [
+  "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
+  "#56b6c2", "#d19a66", "#67a8e4", "#abb2bf", "#be5046",
+];
+
+function getAvatarStyle(name: string): React.CSSProperties {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const color = AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  return { color, backgroundColor: color + "26" };
+}
+
 interface ProjectItemProps {
   project: Project;
   isActive: boolean;
@@ -172,21 +186,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div className={`gh-project ${isActive ? "active" : ""}`}>
-      <div className="gh-project-header" onClick={() => onSelectProject(project.id)}>
-        {/* 折叠/展开箭头 */}
-        <span
-          className={`gh-project-chevron ${projectCollapsed ? "collapsed" : ""}`}
-          onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
-          title={projectCollapsed ? "Expand" : "Collapse"}
-        >
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/>
-          </svg>
-        </span>
-        <span className="gh-repo-icon">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8Z"/>
-          </svg>
+      <div className="gh-project-header" onClick={() => { onSelectProject(project.id); toggleCollapsed(); }}>
+        <span className="gh-project-avatar" style={getAvatarStyle(project.name)}>
+          {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="gh-project-meta">
           <span className="gh-project-name">{project.name}</span>

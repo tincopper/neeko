@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
+import { getDistroIcon } from "../../utils/distros";
+import serverIcon from "../../assets/server.svg";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
@@ -39,12 +41,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
         className="gh-project-header"
         onClick={() => setCollapsed((v) => !v)}
       >
-        <span className={`gh-project-chevron ${collapsed ? "collapsed" : ""}`}>
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-          </svg>
-        </span>
-        <span style={{ fontSize: 15 }}>🐧</span>
+        <img src={getDistroIcon(entry.distro)} className="sidebar-distro-icon" alt="" />
         <div className="gh-project-meta">
           <span className="gh-project-name">{entry.distro}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>WSL</span>
@@ -189,12 +186,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
         className="gh-project-header"
         onClick={() => setCollapsed((v) => !v)}
       >
-        <span className={`gh-project-chevron ${collapsed ? "collapsed" : ""}`}>
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-          </svg>
-        </span>
-        <span style={{ fontSize: 15 }}>🖥️</span>
+        <img src={serverIcon} className="sidebar-distro-icon" alt="" />
         <div className="gh-project-meta">
           <span className="gh-project-name">{label}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>SSH</span>

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WSLProject, WSLEntrySession, AgentConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
+import { getDistroIcon } from "../../utils/distros";
 
 interface WSLDialogProps {
   isOpen: boolean;
@@ -230,7 +231,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                     className="wsl-distro-item"
                     onClick={() => handleSelectDistro(distro)}
                   >
-                    <span className="wsl-distro-icon">🐧</span>
+                    <img className="wsl-distro-icon" src={getDistroIcon(distro)} width={15} height={15} alt="" />
                     <span className="wsl-distro-name">{distro}</span>
                     <span className="wsl-distro-arrow">›</span>
                   </div>
@@ -241,7 +242,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
         ) : (
           <>
             <div className="wsl-path-header">
-              <span className="wsl-distro-icon">🐧</span>
+              <img className="wsl-distro-icon" src={getDistroIcon(selectedDistro)} width={15} height={15} alt="" />
               <span className="wsl-distro-label">{selectedDistro}</span>
             </div>
 
