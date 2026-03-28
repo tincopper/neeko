@@ -27,6 +27,7 @@ interface MainContentProps {
   remoteSideTerminalOpen: Set<string>;
   setRemoteSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
+  suppressResizeRef?: React.MutableRefObject<boolean>;
 }
 
 function MainContent({
@@ -49,6 +50,7 @@ function MainContent({
   remoteSideTerminalOpen,
   setRemoteSideTerminalOpen,
   setRemoteOpenSessions,
+  suppressResizeRef,
 }: MainContentProps) {
   const isTerminalView = activeProject?.active_view === "Terminal";
   const diffFilePath =
@@ -186,6 +188,7 @@ function MainContent({
                   fontSize={config.fontSize}
                   shell={config.shell}
                   fontFamily={config.fontFamily}
+                  suppressResizeRef={suppressResizeRef}
                 />
               </div>
               {/* Worktree 终端 */}

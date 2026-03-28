@@ -17,8 +17,6 @@ interface ProjectSidebarProps {
   activeRemoteKey: ActiveRemoteKey;
   wslOpenSessions: Set<string>;
   remoteOpenSessions: Set<string>;
-  initialSidebarWidth?: number;
-  onSidebarWidthChange?: (width: number) => void;
   onAddProject: () => void;
   onRemoveProject: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
@@ -41,6 +39,9 @@ interface ProjectSidebarProps {
   onAddRemoteProject: (entryId: string) => void;
   onOpenWslSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenRemoteSideTerminal?: (entryId: string, projectId: string) => void;
+  initialSidebarWidth?: number;
+  onSidebarWidthChange?: (width: number) => void;
+  suppressResizeRef?: React.MutableRefObject<boolean>;
   loading: boolean;
 }
 
@@ -77,6 +78,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onOpenRemoteSideTerminal,
   initialSidebarWidth,
   onSidebarWidthChange,
+  suppressResizeRef,
   loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -104,6 +106,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width") || "280"
     );
     startWidth.current = current;
+    if (suppressResizeRef) suppressResizeRef.current = true;
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
@@ -115,6 +118,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       document.removeEventListener("mouseup", onMouseUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      if (suppressResizeRef) suppressResizeRef.current = false;
       // 拖拽结束后持久化
       if (onSidebarWidthChange) {
         const final = parseInt(
@@ -128,7 +132,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
     document.body.style.userSelect = "none";
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [updateWidth, onSidebarWidthChange]);
+  }, [updateWidth, onSidebarWidthChange, suppressResizeRef]);
 
   const isEmpty = projects.length === 0
     && (IS_WINDOWS ? wslEntries.length === 0 : true)

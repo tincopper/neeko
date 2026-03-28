@@ -296,10 +296,19 @@ export default function WSLTerminalView({
     };
     window.addEventListener("resize", handleResize);
     // 监听容器尺寸变化（side terminal 拖拽时主终端宽度变化也会触发）
-    const ro = new ResizeObserver(() => handleResize());
+    // rAF 节流：避免拖拽时每像素触发 fit()+PTY resize 导致终端闪烁
+    let resizeRafId: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (resizeRafId !== null) return;
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = null;
+        handleResize();
+      });
+    });
     ro.observe(wrapper);
 
     return () => {
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       detachAll();

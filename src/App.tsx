@@ -109,6 +109,7 @@ function App() {
   } = useWorktreeState(activeProjectIdRef);
 
   // ── Width persistence callbacks ──
+  const suppressTerminalResizeRef = useRef(false);
   const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
   const saveSidebarWidth = useCallback((width: number) => {
     clearTimeout(sidebarWidthSaveTimeout.current);
@@ -131,7 +132,7 @@ function App() {
     }).catch(console.error);
   }, []);
 
-  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, saveSideTerminalWidth);
+  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, saveSideTerminalWidth, suppressTerminalResizeRef);
 
   // ── Add menu ──────────────────────────────────────────────────────────────
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -367,6 +368,7 @@ function App() {
           remoteOpenSessions={remoteOpenSessions}
           initialSidebarWidth={initialSidebarWidth}
           onSidebarWidthChange={saveSidebarWidth}
+          suppressResizeRef={suppressTerminalResizeRef}
           onAddProject={handleAddProject}
           onRemoveProject={handleRemoveProject}
           onSelectProject={handleSelectProject}
@@ -407,6 +409,7 @@ function App() {
           setSideTerminalOpen={setSideTerminalOpen}
           handleSelectProject={handleSelectProject}
           handleAddProject={handleAddProject}
+          suppressResizeRef={suppressTerminalResizeRef}
           activeWslProject={activeWslProject}
           wslSideTerminalOpen={wslSideTerminalOpen}
           setWslSideTerminalOpen={setWslSideTerminalOpen}
