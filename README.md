@@ -4,7 +4,7 @@
 
 **A Multi-Project Terminal Manager Built for the AI Coding Era**
 
-Manage all your project's AI Agent sessions in a single window, putting opencode, claude-code, aider, and other tools at your fingertips.
+Manage all your project's AI Agent sessions in a single window — local, WSL, and SSH remote — putting opencode, claude-code, and other tools at your fingertips.
 
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-blue?logo=tauri)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange?logo=rust)](https://rustup.rs)
@@ -32,18 +32,22 @@ Neeko consolidates all project Agent terminals into a single desktop application
 ## Features
 
 - **Multi-Project Terminal** — Each project binds to an independent PTY terminal, sessions persist across switches, no Agent restarts needed
+- **WSL Terminals** — Browse WSL distributions, select paths, and launch full PTY terminals with Agent auto-launch (Windows only)
+- **SSH Remote Terminals** — Connect to remote servers via password or key-file auth, manage paths, and run Agents remotely with session caching
 - **Worktree Terminals** — Each Git worktree gets its own independent terminal session with the correct working directory; click any worktree in the sidebar to open or resume its session
-- **One-Click Agent Launch** — Built-in support for opencode, claude-code, aider, qwen, gemini, codex — select and launch; worktree terminals automatically start the project's configured Agent
+- **One-Click Agent Launch** — Built-in support for opencode, claude-code, qwen, gemini, codex, qoder, codebuddy — select and launch; worktree terminals automatically start the project's configured Agent
 - **Side Terminal Panel** — `Ctrl+Alt+T` opens an independent side terminal next to the Agent terminal, with draggable width; when a worktree terminal is active, the side panel also opens in the worktree directory
 - **One-Click IDE Launch** — Bind an IDE to each project, `Ctrl+O` or click the icon to open in VSCode / Cursor / GoLand, etc.
 - **Git Sidebar** — View changed files, switch branches, manage Worktrees without leaving the app; file list auto-refreshes when files change on disk
 - **Diff Viewer** — Click changed files to view diffs in unified or side-by-side mode, with syntax highlighting, word-level diff, and change block navigation
 - **Inline Rename** — Double-click any branch name or worktree to rename it in place; press Enter to confirm or Escape to cancel
 - **Session Persistence** — Automatically restores project list, Agent, and IDE configs after restart; worktree terminal state is preserved per-project when switching between projects
+- **Terminal Refresh** — `Ctrl+R` rebuilds the current terminal's DOM from the cached PTY session without losing state
 - **Keyboard Driven** — `Ctrl+1~9` jump to projects, `Ctrl+Q` cycle through, `Ctrl+N` cycle through main + worktree terminals, `Ctrl+O` open IDE
 - **Configurable Shell** — Choose or customize terminal Shell in settings, supports zsh / bash / fish / PowerShell, etc.
 - **Configurable Font** — Select terminal font from system fonts with live preview
-- **Immersive Interface** — One Dark Pro color scheme, frameless window, draggable sidebar width
+- **Custom Agents** — Add custom Agent CLIs and override built-in Agent commands in the Settings panel
+- **Immersive Interface** — One Dark Pro color scheme, frameless window, draggable sidebar and side-terminal widths
 
 ## Getting Started
 
@@ -95,26 +99,20 @@ pnpm tauri build
 | Terminal Backend | portable-pty |
 | Terminal Frontend | xterm.js 5 + xterm-addon-fit |
 | Git | git2-rs (libgit2 bindings) |
+| SSH | russh (async SSH2 client) |
 | Syntax Highlighting | highlight.js |
 | File Watching | notify + notify-debouncer-mini |
 | Dialogs | tauri-plugin-dialog |
 | Serialization | serde + serde_json |
 | System Calls | libc (Unix PTY echo control) |
-| Icons | Charmed Icons SVG |
+| Icons | SVG (Simple Icons, Charm Icons) |
 | Styling | Pure CSS, One Dark Pro theme |
 
 ## Preset Agents
 
-| ID | Command | Icon |
-|----|---------|------|
-| `opencode` | `opencode` | 🤖 |
-| `claude-code` | `claude` | 🧠 |
-| `aider` | `aider` | 💡 |
-| `qwen` | `qwen` | 🌟 |
-| `gemini` | `gemini` | ♊ |
-| `codex` | `codex` | ⚡ |
+opencode, claude-code, qwen, gemini, codex, qoder, codebuddy
 
-Custom Agents can be registered at runtime via the settings panel.
+Custom Agents can be added and built-in Agent commands can be overridden in the Settings panel.
 
 ## Preset IDEs
 
@@ -139,6 +137,7 @@ Override launch commands for each IDE or add custom IDEs in the settings panel.
 | `Ctrl+N` | Cycle through main terminal and worktree terminals |
 | `Ctrl+Alt+T` | Open side terminal panel |
 | `Ctrl+W` | Close side terminal panel |
+| `Ctrl+R` | Refresh/rebuild current terminal |
 | `Ctrl+O` | Open current project in bound IDE |
 
 ## License
