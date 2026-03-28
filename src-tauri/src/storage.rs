@@ -1,4 +1,4 @@
-use crate::state::{ProjectSession, SessionStore};
+use crate::state::{ProjectSession, RemoteEntrySession, SessionStore, WSLEntrySession};
 use anyhow::Result;
 use chrono::Local;
 use std::fs;
@@ -39,16 +39,64 @@ impl StorageManager {
     pub fn load_session(&self) -> Result<SessionStore> {
         let session_file = self.config_dir.join("sessions.json");
 
-        if !session_file.exists() {
-            return Ok(SessionStore::new());
+        let mut session = if session_file.exists() {
+            let json = fs::read_to_string(&session_file)?;
+            serde_json::from_str::<SessionStore>(&json)?
+        } else {
+            SessionStore::new()
+        };
+
+        // 迁移旧的独立文件到统一 sessions.json
+        let mut migrated = false;
+
+        if session.wsl_entries.is_empty() {
+            let old_wsl_file = self.config_dir.join("wsl_entries.json");
+            if old_wsl_file.exists() {
+                if let Ok(json) = fs::read_to_string(&old_wsl_file) {
+                    if let Ok(entries) = serde_json::from_str::<Vec<WSLEntrySession>>(&json) {
+                        // 过滤历史脏数据
+                        session.wsl_entries = entries
+                            .into_iter()
+                            .filter(|e| !e.distro.contains('\0'))
+                            .map(|mut e| {
+                                e.projects.retain(|p| !p.distro.contains('\0'));
+                                e
+                            })
+                            .collect();
+                        migrated = true;
+                    }
+                }
+                let _ = fs::remove_file(&old_wsl_file);
+            }
         }
 
-        let json = fs::read_to_string(session_file)?;
-        let session: SessionStore = serde_json::from_str(&json)?;
+        if session.remote_entries.is_empty() {
+            let old_remote_file = self.config_dir.join("remote_entries.json");
+            if old_remote_file.exists() {
+                if let Ok(json) = fs::read_to_string(&old_remote_file) {
+                    if let Ok(entries) = serde_json::from_str::<Vec<RemoteEntrySession>>(&json) {
+                        session.remote_entries = entries;
+                        migrated = true;
+                    }
+                }
+                let _ = fs::remove_file(&old_remote_file);
+            }
+        }
+
+        // 迁移后立即保存统一格式
+        if migrated {
+            let _ = self.save_session(&session);
+        }
+
         Ok(session)
     }
 
-    pub fn create_session_from_projects(&self, projects: &[crate::state::Project]) -> SessionStore {
+    pub fn create_session_from_projects(
+        &self,
+        projects: &[crate::state::Project],
+        wsl_entries: Option<&[WSLEntrySession]>,
+        remote_entries: Option<&[RemoteEntrySession]>,
+    ) -> SessionStore {
         let project_sessions = projects
             .iter()
             .map(|p| ProjectSession {
@@ -63,10 +111,24 @@ impl StorageManager {
             })
             .collect();
 
+        // None 表示"从已有 session 读取"，Some 表示"使用传入的数据"
+        let wsl = wsl_entries.map(|v| v.to_vec()).unwrap_or_else(|| {
+            self.load_session()
+                .map(|s| s.wsl_entries)
+                .unwrap_or_default()
+        });
+        let remote = remote_entries.map(|v| v.to_vec()).unwrap_or_else(|| {
+            self.load_session()
+                .map(|s| s.remote_entries)
+                .unwrap_or_default()
+        });
+
         SessionStore {
             projects: project_sessions,
             active_project_id: None,
             last_updated: Local::now().to_rfc3339(),
+            wsl_entries: wsl,
+            remote_entries: remote,
         }
     }
 

@@ -9,6 +9,7 @@ import { TitleBar } from "./components/layout";
 import { launchAgentInTerminal, wslCacheKey, launchAgentInWslTerminal, remoteCacheKey, launchAgentInRemoteTerminal } from "./components/terminal";
 import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/connections";
 import { WSLProject, RemoteProject, AgentConfig } from "./types";
+import type { WSLEntrySession, RemoteEntrySession } from "./types";
 import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
@@ -17,7 +18,7 @@ import { useWorktreeState } from "./hooks/useWorktreeState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useAppConfig } from "./hooks/useAppConfig";
 import { useLocalProjects } from "./hooks/useLocalProjects";
-import { useWslProjects } from "./hooks/useWslProjects";
+import { useWslProjects, type SaveSessionFn } from "./hooks/useWslProjects";
 import { useRemoteProjects } from "./hooks/useRemoteProjects";
 import "./styles.css";
 
@@ -30,8 +31,18 @@ function App() {
   const { toast, showToast } = useToast();
 
   const local = useLocalProjects();
-  const wsl = useWslProjects();
-  const remote = useRemoteProjects();
+
+  // ── Unified session save (stable via refs) ──
+  const wslEntriesRefForSave = useRef<WSLEntrySession[]>([]);
+  const remoteEntriesRefForSave = useRef<RemoteEntrySession[]>([]);
+  const saveSession: SaveSessionFn = useCallback(async (wslEntriesParam?: WSLEntrySession[], remoteEntriesParam?: RemoteEntrySession[]) => {
+    const wsl = wslEntriesParam ?? wslEntriesRefForSave.current;
+    const remote = remoteEntriesParam ?? remoteEntriesRefForSave.current;
+    await invoke("save_session", { wslEntries: wsl, remoteEntries: remote });
+  }, []);
+
+  const wsl = useWslProjects(saveSession);
+  const remote = useRemoteProjects(saveSession);
 
   const {
     projects, activeProjectId, setActiveProjectId,
@@ -55,7 +66,7 @@ function App() {
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,
     wslEntriesRef, activeWslKeyRef, selectWslProjectRef, wslSideOpenRef,
-    loadWSLEntries, handleWSLEntryAdd,
+    handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,
   } = wsl;
@@ -71,7 +82,7 @@ function App() {
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
     remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef, remoteSideOpenRef,
-    loadRemoteEntries, handleRemoteEntryAdd,
+    handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
   } = remote;
@@ -128,6 +139,8 @@ function App() {
     activeWorktreePathRef.current = activeWorktreePath;
     openedWorktreesRef.current = openedWorktrees;
     activeProjectRef.current = activeProject;
+    wslEntriesRefForSave.current = wslEntries;
+    remoteEntriesRefForSave.current = remoteEntries;
   }, [sideTerminalOpen, wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
       wslSideTerminalOpen, remoteSideTerminalOpen, activeWorktreePath, openedWorktrees,
       activeProject]);
@@ -218,8 +231,12 @@ function App() {
   useEffect(() => {
     loadAgents();
     loadProjects();
-    if (IS_WINDOWS) loadWSLEntries();
-    loadRemoteEntries();
+
+    // 统一加载所有会话数据
+    invoke<any>("load_session").then((session: any) => {
+      setWslEntries(session.wsl_entries ?? []);
+      setRemoteEntries(session.remote_entries ?? []);
+    }).catch(console.error);
 
     const unlistenPromise = listen<string>("git-changed", (event) => {
       const projectId = event.payload;
@@ -255,7 +272,7 @@ function App() {
     setActiveWslProject(prev =>
       prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
     );
-    invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
+    invoke("save_session", { wslEntries: newEntries, remoteEntries: remoteEntriesRefForSave.current }).catch(console.error);
   }, [activeWslProject, wslEntries, setWslEntries, setActiveWslProject]);
 
   const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
@@ -273,7 +290,7 @@ function App() {
     setActiveRemoteProject(prev =>
       prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
     );
-    invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
+    invoke("save_session", { wslEntries: wslEntriesRefForSave.current, remoteEntries: newEntries }).catch(console.error);
   }, [activeRemoteProject, remoteEntries, setRemoteEntries, setActiveRemoteProject]);
 
   const handleToggleSettings = useCallback(() => setSettingsOpen((v) => !v), []);

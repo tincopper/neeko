@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { wslCacheKey, destroyWslCache } from "../components/terminal";
 import type { WSLEntrySession, WSLProject } from "../types";
 
 export type ActiveWslKey = { distro: string; projectId: string } | null;
+export type SaveSessionFn = (wslEntries?: WSLEntrySession[], remoteEntries?: any[]) => Promise<void>;
 
-export function useWslProjects() {
+export function useWslProjects(saveSession: SaveSessionFn) {
   const [wslEntries, setWslEntries] = useState<WSLEntrySession[]>([]);
   const [activeWslKey, setActiveWslKey] = useState<ActiveWslKey>(null);
   const [activeWslProject, setActiveWslProject] = useState<{ distro: string; project: WSLProject } | null>(null);
@@ -19,15 +19,6 @@ export function useWslProjects() {
   const selectWslProjectRef = useRef<(distro: string, project: WSLProject) => void>(() => {});
   const wslSideOpenRef = useRef<Set<string>>(new Set());
 
-  const loadWSLEntries = useCallback(async () => {
-    try {
-      const entries = await invoke<WSLEntrySession[]>("load_wsl_entries");
-      setWslEntries(entries);
-    } catch (error) {
-      console.error("[App] Failed to load WSL entries:", error);
-    }
-  }, []);
-
   const handleWSLEntryAdd = useCallback(async (entry: WSLEntrySession) => {
     try {
       const existingIndex = wslEntries.findIndex(e => e.id === entry.id);
@@ -39,11 +30,11 @@ export function useWslProjects() {
         newEntries = [...wslEntries, entry];
       }
       setWslEntries(newEntries);
-      await invoke("save_wsl_entries", { entries: newEntries });
+      await saveSession(newEntries);
     } catch (error) {
       console.error("[App] Failed to save WSL entry:", error);
     }
-  }, [wslEntries]);
+  }, [wslEntries, saveSession]);
 
   const handleCloseWslProject = useCallback((entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
@@ -76,8 +67,8 @@ export function useWslProjects() {
       return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
     });
     setWslEntries(newEntries);
-    await invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
-  }, [wslEntries, activeWslKey]);
+    await saveSession(newEntries).catch(console.error);
+  }, [wslEntries, activeWslKey, saveSession]);
 
   const handleRemoveWslEntry = useCallback(async (entryId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
@@ -94,8 +85,8 @@ export function useWslProjects() {
     }
     const newEntries = wslEntries.filter(e => e.id !== entryId);
     setWslEntries(newEntries);
-    await invoke("save_wsl_entries", { entries: newEntries }).catch(console.error);
-  }, [wslEntries, activeWslKey]);
+    await saveSession(newEntries).catch(console.error);
+  }, [wslEntries, activeWslKey, saveSession]);
 
   const handleAddWslProject = useCallback((entryId: string) => {
     setWslAddToEntryId(entryId);
@@ -116,7 +107,7 @@ export function useWslProjects() {
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,
     wslEntriesRef, activeWslKeyRef, selectWslProjectRef, wslSideOpenRef,
-    loadWSLEntries, handleWSLEntryAdd,
+    handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,
   };
