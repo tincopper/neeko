@@ -1,6 +1,6 @@
 # Neeko — Session Context
 
-> Last updated: 2026-03-27 (session 3)
+> Last updated: 2026-03-28 (session 4)
 
 ## Goal
 
@@ -15,6 +15,72 @@ Build and enhance a Tauri-based terminal manager app called **Neeko** that suppo
 - TypeScript type checking (`npx tsc --noEmit`) must pass after every change
 - Rust compilation (`cargo build`) must pass after every change
 - Follow Vercel React Best Practices: `rerender-use-ref-transient-values`, `rerender-split-combined-hooks`, `rerender-derived-state-no-effect`, `rerender-move-effect-to-event`, etc.
+
+---
+
+## Frontend Development Conventions
+
+### Project Structure
+
+```
+src/
+├── components/
+│   ├── terminal/          ← 终端相关组件（TerminalView, SideTerminalView, WorktreeTerminalView, WSLTerminalView, RemoteTerminalView）
+│   ├── connections/       ← WSL + SSH 连接管理（WSLDialog, RemoteDialog, RemoteAuthDialog, RemoteItems）
+│   ├── project/           ← 本地项目管理（ProjectSidebar, ProjectItem, FileTree, GitDialog, AddProjectModal）
+│   ├── layout/            ← 窗口布局（TitleBar, WindowControls, AgentSelector）
+│   ├── MainContent.tsx    ← 跨域编排组件（保留根目录）
+│   ├── DiffView.tsx       ← Git diff 独立模块（保留根目录）
+│   └── SettingsPanel.tsx  ← 设置面板（保留根目录）
+├── hooks/                 ← 自定义 hooks
+├── utils/                 ← 工具函数（terminal.ts, fileIcons.ts, idePresets.ts）
+├── types.ts               ← 全局类型定义（单一源）
+└── App.tsx                ← 组合层（~430 行）
+```
+
+每个子目录有 `index.ts` barrel export，consumer 统一从目录导入：
+```typescript
+import { TerminalView, destroyTerminalCache } from "./components/terminal";
+import { TitleBar } from "./components/layout";
+import { WSLDialog } from "./components/connections";
+import ProjectSidebar, { AddProjectModal } from "./components/project";
+```
+
+### Types 集中管理
+
+- 所有接口定义在 `src/types.ts`（Project, AgentConfig, AppConfig, WSLEntrySession, RemoteEntrySession, AuthMethod 等）
+- 组件内不重复定义已有类型；如需本地类型用 `interface` 但不导出
+- `SettingsPanel.tsx` re-export `AppConfig`/`DiffMode` 保持向后兼容
+
+### Hook 设计原则
+
+1. **按领域划分**：`useLocalProjects`、`useWslProjects`、`useRemoteProjects`、`useAppConfig`
+2. **返回稳定引用**：所有返回的函数用 `useCallback` 包装，依赖项精确声明
+3. **跨域协调在 App.tsx**：hook 管理自己的状态和 CRUD，跨域 select/clear 逻辑在 App 层组合
+4. **Ref 同步集中**：所有 refs 在 App.tsx 的单个 `useEffect` 中同步（`rerender-use-ref-transient-values`）
+
+### React 性能优化规范
+
+| 模式 | 规则 |
+|------|------|
+| `React.memo` | 列表项组件（ProjectItem, WSLItem, RemoteItem）、大型布局组件（MainContent, TitleBar）、复用组件（AgentSelector, FileTree） |
+| `useMemo` | 昂贵计算（`buildTree`、字体列表合并排序、分支过滤） |
+| `useCallback` | 跨组件传递的回调、hooks 返回的函数（`showToast`、`handleSideDividerMouseDown`） |
+| 内联对象 | 避免 JSX 中的 `style={{...}}` 常量对象；提取到模块级变量 |
+| 条件渲染 | 用三元而非 `&&`（避免 falsy 值渲染问题） |
+| Ref 模式 | 频繁变化的值用 ref 跟踪，在 effect 中同步（`activeProjectIdRef`、`sideTerminalOpenRef`） |
+
+### 共享工具
+
+- `src/utils/terminal.ts`：`DEFAULT_FONT_FAMILY`、`buildFontFamily(fontFamily)` — 所有终端组件共用
+- 不在多个文件中重复常量定义
+
+### 组件提取标准
+
+当 App.tsx 超过 400 行时考虑：
+1. 提取领域 hook（状态 + CRUD 操作）
+2. 提取视图组件（渲染树独立的部分）
+3. 保留 App.tsx 作为纯组合层（hook 调用 + JSX 编排）
 
 ---
 
@@ -53,14 +119,21 @@ Side terminal for local projects was closing on project switch because:
 ### SSH Re-auth Flow
 `remoteAuthStore: Map<entryId, AuthMethod>` is in-memory only (lost on app restart). When a SSH project is selected without cached auth, `pendingAuthEntry` state is set via `useEffect` (not `setTimeout` in render — anti-pattern), triggering `RemoteAuthDialog`.
 
-### App.tsx Refactor (Session 3)
-Hooks extracted: `useToast`, `useSideTerminalResize`, `useWorktreeState`, `useKeyboardShortcuts`.  
-Components extracted: `TitleBar`, `AddProjectModal`.  
+### App.tsx Architecture (Session 3 + 4)
+
+Session 3: Hooks extracted: `useToast`, `useSideTerminalResize`, `useWorktreeState`, `useKeyboardShortcuts`.
+Components extracted: `TitleBar`, `AddProjectModal`.
+
+Session 4 (full refactor):
+- Domain hooks extracted: `useAppConfig`, `useLocalProjects`, `useWslProjects`, `useRemoteProjects`
+- `MainContent` component extracted for view rendering
+- Types consolidated: `AppConfig` moved to `types.ts`, duplicate `Project`/`AgentConfig` removed
+- App.tsx reduced from 1036 → 432 lines (pure composition layer)
+
+Design principles:
 - `activeProjectIdRef` must be declared before `useWorktreeState()` call — ordering matters
-- Inline `keydown` useEffect replaced with `useKeyboardShortcuts` hook
-- SSH auth trigger moved from `setTimeout`-in-render to proper `useEffect`
-- Removed stale `selectedNewAgentId`/`selectedNewIdeId` state
-- Fixed duplicate `activeProjectRef` declaration
+- Cross-domain select handlers (e.g. selecting WSL clears local/remote) composed in App.tsx
+- All refs synced in single `useEffect`
 
 ### TitleBar
 Does NOT take `agents`/`wslEntries`/`remoteEntries` props — `AgentSelector` fetches agents internally via `invoke`.
@@ -84,17 +157,21 @@ Has `skipBackendPersist` prop — WSL/SSH pass `true` to skip `set_project_agent
 
 ---
 
-## Key State in App.tsx
+## Key State Distribution
 
-| State | Type | Purpose |
+State is distributed across domain hooks, App.tsx only holds cross-domain coordination:
+
+| State | Location | Purpose |
 |---|---|---|
-| `wslSideTerminalOpen` | `Set<string>` | projectIds with open WSL side terminals |
-| `remoteSideTerminalOpen` | `Set<string>` | projectIds with open SSH side terminals |
-| `sideTerminalOpenMap` | `Record<string, boolean>` | Per-project local side terminal state |
-| `remoteAuthStore` | `Map<entryId, AuthMethod>` | In-memory SSH auth (not persisted to disk) |
-| `pendingAuthEntry` | `RemoteEntrySession \| null` | Entry waiting for re-login (triggers `RemoteAuthDialog`) |
-| `activeWslProject` | `{ distro, project }` | Full info for rendering WSL terminal |
-| `activeRemoteProject` | `{ entry, project }` | Full info for rendering SSH terminal |
+| `projects`, `activeProjectId`, `activeProject` | `useLocalProjects` | Local project state |
+| `wslEntries`, `activeWslKey`, `activeWslProject` | `useWslProjects` | WSL project state |
+| `remoteEntries`, `activeRemoteKey`, `activeRemoteProject` | `useRemoteProjects` | SSH project state |
+| `remoteAuthStore` | `useRemoteProjects` | In-memory SSH auth (not persisted) |
+| `pendingAuthEntry` | `useRemoteProjects` | Entry waiting for re-login |
+| `config` | `useAppConfig` | App configuration (persisted) |
+| `sideTerminalOpenMap` | `useLocalProjects` | Per-project local side terminal state |
+| `wslSideTerminalOpen`, `remoteSideTerminalOpen` | respective hooks | Side terminal open sets |
+| `activeWorktreePath`, `openedWorktrees` | `useWorktreeState` | Per-project worktree state |
 
 ---
 
@@ -148,6 +225,24 @@ Has `skipBackendPersist` prop — WSL/SSH pass `true` to skip `set_project_agent
 19. **`useKeyboardShortcuts` hook** — null guards with `?? []` / `?? new Set()` / `?.()` optional calls; `Ctrl+N` and `Ctrl+O` support
 20. **All session 3 changes committed** as `744c365`
 
+### Session 4 — Refactoring & Optimization
+
+21. **App.tsx full modular refactor** (`820cc6e`):
+    - Extracted 4 domain hooks: `useAppConfig`, `useLocalProjects`, `useWslProjects`, `useRemoteProjects`
+    - Extracted `MainContent` component for view rendering
+    - Consolidated types: `AppConfig`/`DiffMode` moved to `types.ts`
+    - App.tsx: 1036 → 432 lines
+22. **Component directory restructuring** (`157c2de`):
+    - Created `terminal/`, `connections/`, `layout/` directories with barrel exports
+    - Split `WSLDialog.tsx` (973 lines) into 3 focused files
+    - Moved `RemoteItems` from `project/` to `connections/`
+    - Moved `AddProjectModal` into `project/`
+23. **Shared utility extraction**: `src/utils/terminal.ts` — `DEFAULT_FONT_FAMILY` deduplicated from 5 files
+24. **React.memo applied** to 7 components: MainContent, TitleBar, ProjectItem, FileTree, AgentSelector, WSLItem, RemoteItem
+25. **useMemo optimizations**: `buildTree(changedFiles)`, font list merge/sort, worktree branch filtering
+26. **useCallback stabilizations**: `useToast.showToast`, `useSideTerminalResize.handleSideDividerMouseDown`, all agent selection callbacks in App.tsx
+27. **Inline callback extraction**: App.tsx TitleBar/ProjectSidebar props converted to named `useCallback` functions
+
 ---
 
 ## Known Issues / Still Needs Work
@@ -164,21 +259,39 @@ Has `skipBackendPersist` prop — WSL/SSH pass `true` to skip `set_project_agent
 
 | File | Purpose |
 |---|---|
-| `src/App.tsx` | Main component; fully refactored in session 3 |
-| `src/types.ts` | `WSLProject`, `RemoteProject` (both have `selected_agent: string \| null`); `AuthMethod` type |
-| `src/styles.css` | `.wsl-modal`, `.wsl-suggestions` (z-index: 1100), `.modal` (overflow: visible) |
-| `src/components/WSLTerminalView.tsx` | WSL terminal; `ResizeObserver` + `useEffect([width])` added session 3 |
-| `src/components/RemoteTerminalView.tsx` | SSH terminal; same props as WSL; `ResizeObserver` + `useEffect([width])` |
-| `src/components/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; no PTY destroy on unmount |
-| `src/components/AgentSelector.tsx` | `skipBackendPersist` prop |
-| `src/components/WSLDialog.tsx` | `WSLDialog` + `RemoteDialog` + `RemoteAuthDialog`; `saveCredentials` checkbox |
-| `src/components/TitleBar.tsx` | Extracted from App.tsx; no unused props |
-| `src/components/AddProjectModal.tsx` | Extracted from App.tsx; agent + IDE selection modal |
-| `src/components/project/RemoteItems.tsx` | `WSLItem`, `RemoteItem` with `onOpenSideTerminal` prop |
-| `src/components/project/ProjectSidebar.tsx` | `onOpenWslSideTerminal`, `onOpenRemoteSideTerminal` props |
-| `src/hooks/useToast.ts` | Toast notification hook |
-| `src/hooks/useSideTerminalResize.ts` | Side terminal drag-resize hook |
-| `src/hooks/useWorktreeState.ts` | Per-project worktree state management |
+| `src/App.tsx` | Composition layer; calls domain hooks, renders layout |
+| `src/types.ts` | All shared interfaces: `Project`, `AgentConfig`, `AppConfig`, `WSLProject`, `RemoteProject`, `AuthMethod`, etc. |
+| `src/styles.css` | Global styles |
+| `src/utils/terminal.ts` | `DEFAULT_FONT_FAMILY`, `buildFontFamily()` — shared by all terminal components |
+| **terminal/** | |
+| `src/components/terminal/TerminalView.tsx` | Local terminal; `terminalCache`, `createTerminalForProject`, `launchAgentInTerminal` |
+| `src/components/terminal/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; no PTY destroy on unmount |
+| `src/components/terminal/WorktreeTerminalView.tsx` | Worktree terminal; reuses TerminalView cache |
+| `src/components/terminal/WSLTerminalView.tsx` | WSL terminal; `ResizeObserver` + `useEffect([width])` |
+| `src/components/terminal/RemoteTerminalView.tsx` | SSH terminal; same props as WSL |
+| **connections/** | |
+| `src/components/connections/WSLDialog.tsx` | WSL distro/path selection dialog |
+| `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog |
+| `src/components/connections/RemoteAuthDialog.tsx` | SSH re-authentication dialog |
+| `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types |
+| **project/** | |
+| `src/components/project/ProjectSidebar.tsx` | Left sidebar; all project types |
+| `src/components/project/ProjectItem.tsx` | Local project card; `useMemo` for `buildTree` + branch filtering |
+| `src/components/project/FileTree.tsx` | Changed file tree; `buildTree` function |
+| `src/components/project/GitDialog.tsx` | New branch/worktree dialog |
+| `src/components/project/AddProjectModal.tsx` | Agent + IDE selection modal |
+| **layout/** | |
+| `src/components/layout/TitleBar.tsx` | App title bar; agent selectors for all project types |
+| `src/components/layout/WindowControls.tsx` | Min/max/close buttons |
+| `src/components/layout/AgentSelector.tsx` | `skipBackendPersist` prop for WSL/SSH |
+| **hooks/** | |
+| `src/hooks/useAppConfig.ts` | Config load/save + CSS variable sync |
+| `src/hooks/useLocalProjects.ts` | Local project CRUD + state |
+| `src/hooks/useWslProjects.ts` | WSL project CRUD + state |
+| `src/hooks/useRemoteProjects.ts` | SSH project CRUD + state + auth |
+| `src/hooks/useToast.ts` | Toast notification (useCallback) |
+| `src/hooks/useSideTerminalResize.ts` | Drag-to-resize (useCallback) |
+| `src/hooks/useWorktreeState.ts` | Per-project worktree state |
 | `src/hooks/useKeyboardShortcuts.ts` | All keyboard shortcut logic |
 
 ### Backend (`src-tauri/src/`)
