@@ -8,8 +8,8 @@ import MainContent from "./components/MainContent";
 import { TitleBar } from "./components/layout";
 import { launchAgentInTerminal, wslCacheKey, launchAgentInWslTerminal, remoteCacheKey, launchAgentInRemoteTerminal } from "./components/terminal";
 import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/connections";
-import { WSLProject, RemoteProject, AgentConfig } from "./types";
-import type { WSLEntrySession, RemoteEntrySession } from "./types";
+import { WSLProject, RemoteProject, AgentConfig, GitInfo } from "./types";
+import type { WSLEntrySession, RemoteEntrySession, AuthMethod } from "./types";
 import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
@@ -169,6 +169,18 @@ function App() {
       wslSideTerminalOpen, remoteSideTerminalOpen, activeWorktreePath, openedWorktrees,
       activeProject]);
 
+  // ── WSL/SSH diff state (声明在 handleSelectWslProject 之前，避免 TDZ 歧义) ──
+  const [wslDiffState, setWslDiffState] = useState<{
+    distro: string; projectPath: string; filePath: string;
+  } | null>(null);
+  const [remoteDiffState, setRemoteDiffState] = useState<{
+    entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string; filePath: string;
+  } | null>(null);
+
+  // ── WSL/SSH worktree state (同上) ────────────────────────────────────────
+  const [activeWslWorktreePath, setActiveWslWorktreePath] = useState<string | null>(null);
+  const [activeRemoteWorktreePath, setActiveRemoteWorktreePath] = useState<string | null>(null);
+
   // ── Cross-domain select handlers ──────────────────────────────────────────
   const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
     setActiveProjectId(null);
@@ -177,7 +189,25 @@ function App() {
     setActiveWslProject({ distro, project });
     setActiveRemoteKey(null);
     setActiveRemoteProject(null);
-  }, [setActiveProjectId, setActiveProject, setActiveWslKey, setActiveWslProject, setActiveRemoteKey, setActiveRemoteProject]);
+    setWslDiffState(null);
+    setRemoteDiffState(null);
+    setActiveWslWorktreePath(null);
+    setActiveRemoteWorktreePath(null);
+
+    // 异步刷新 git_info
+    invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath: project.path })
+      .then(gitInfo => {
+        setActiveWslProject(prev => prev?.project.id === project.id
+          ? { ...prev, project: { ...prev.project, git_info: gitInfo } }
+          : prev
+        );
+        setWslEntries(prev => prev.map(e => ({
+          ...e,
+          projects: e.projects.map(p => p.id === project.id ? { ...p, git_info: gitInfo } : p)
+        })));
+      })
+      .catch(() => {});
+  }, [setActiveProjectId, setActiveProject, setActiveWslKey, setActiveWslProject, setActiveRemoteKey, setActiveRemoteProject, setWslEntries]);
   selectWslProjectRef.current = handleSelectWslProject;
 
   const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
@@ -186,10 +216,113 @@ function App() {
     setActiveWslKey(null);
     setActiveWslProject(null);
     setActiveRemoteKey({ host, projectId: project.id });
-    const entry = remoteEntries.find(e => e.host === host);
-    if (entry) setActiveRemoteProject({ entry, project });
-  }, [remoteEntries, setActiveProjectId, setActiveProject, setActiveWslKey, setActiveWslProject, setActiveRemoteKey, setActiveRemoteProject]);
+    setActiveWslWorktreePath(null);
+    setActiveRemoteWorktreePath(null);
+    const entry = remoteEntriesRef.current.find(e => e.host === host);
+    if (entry) {
+      setActiveRemoteProject({ entry, project });
+      setWslDiffState(null);
+      setRemoteDiffState(null);
+
+      // 异步刷新 git_info
+      const auth = remoteAuthStore.get(entry.id);
+      if (auth) {
+        invoke<GitInfo>("refresh_remote_git_info", {
+          host: entry.host, port: entry.port, username: entry.username,
+          auth, projectPath: project.path,
+        })
+        .then(gitInfo => {
+          setActiveRemoteProject(prev => prev?.project.id === project.id
+            ? { ...prev, project: { ...prev.project, git_info: gitInfo } }
+            : prev
+          );
+          setRemoteEntries(prev => prev.map(e => ({
+            ...e,
+            projects: e.projects.map(p => p.id === project.id ? { ...p, git_info: gitInfo } : p)
+          })));
+        })
+        .catch(() => {});
+      }
+    }
+  }, [remoteAuthStore, setActiveProjectId, setActiveProject, setActiveWslKey, setActiveWslProject, setActiveRemoteKey, setActiveRemoteProject, setRemoteEntries]);
   selectRemoteProjectRef.current = handleSelectRemoteProject;
+
+  // ── invokeRemoteGit helper (方案 B: 自动注入 auth) ─────────────────────────
+  const invokeRemoteGit = useCallback(
+    async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
+      const entry = remoteEntriesRef.current.find(e => e.id === entryId);
+      const auth = remoteAuthStore.get(entryId);
+      if (!entry || !auth) throw new Error("No auth for entry");
+      return invoke(command, {
+        host: entry.host, port: entry.port, username: entry.username,
+        auth, ...extra
+      });
+    },
+    [remoteAuthStore]
+  );
+
+  // ── WSL/SSH callbacks for sidebar ──────────────────────────────────────────
+  const handleSelectWslFile = useCallback((distro: string, projectPath: string, filePath: string) => {
+    setWslDiffState({ distro, projectPath, filePath });
+  }, []);
+
+  const handleSelectRemoteFile = useCallback((entryId: string, projectPath: string, filePath: string) => {
+    const entry = remoteEntriesRef.current.find(e => e.id === entryId);
+    const auth = remoteAuthStore.get(entryId);
+    if (entry && auth) {
+      setRemoteDiffState({ entryId, host: entry.host, port: entry.port, username: entry.username, auth, projectPath, filePath });
+    }
+  }, [remoteAuthStore]);
+
+  const handleRefreshWslGit = useCallback(async (distro: string, projectId: string, projectPath: string) => {
+    const gitInfo = await invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath }).catch(() => null);
+    if (!gitInfo) return;
+    setWslEntries(prev => prev.map(e => ({
+      ...e,
+      projects: e.projects.map(p => p.id === projectId ? { ...p, git_info: gitInfo } : p)
+    })));
+    setActiveWslProject(prev =>
+      prev?.project.id === projectId ? { ...prev, project: { ...prev.project, git_info: gitInfo } } : prev
+    );
+  }, [setWslEntries, setActiveWslProject]);
+
+  const handleRefreshRemoteGit = useCallback(async (entryId: string, projectId: string, projectPath: string) => {
+    const result = await invokeRemoteGit("refresh_remote_git_info", entryId, { projectPath }).catch(() => null);
+    if (!result) return;
+    const gitInfo = result as GitInfo;
+    setRemoteEntries(prev => prev.map(e => ({
+      ...e,
+      projects: e.projects.map(p => p.id === projectId ? { ...p, git_info: gitInfo } as RemoteProject : p)
+    })));
+    setActiveRemoteProject(prev =>
+      prev?.project.id === projectId ? { ...prev, project: { ...prev.project, git_info: gitInfo } } : prev
+    );
+  }, [invokeRemoteGit, setRemoteEntries, setActiveRemoteProject]);
+
+  const handleOpenWslIde = useCallback((distro: string, projectPath: string, ide: string) => {
+    invoke("open_wsl_ide", { distro, projectPath, ide }).catch(e => showToast(String(e), "error"));
+  }, [showToast]);
+
+  const handleOpenRemoteIde = useCallback((entryId: string, projectPath: string, ide: string) => {
+    const entry = remoteEntriesRef.current.find(e => e.id === entryId);
+    if (!entry) return;
+    invoke("open_remote_ide", { host: entry.host, port: entry.port, username: entry.username, projectPath, ide })
+      .catch(e => showToast(String(e), "error"));
+  }, [showToast]);
+
+  // ── WSL/SSH worktree handlers (state declared above) ─────────────────────
+
+  const handleOpenWslWorktreeTerminal = useCallback((_distro: string, worktreePath: string, _branch: string) => {
+    setActiveWslWorktreePath(worktreePath);
+    setWslDiffState(null);
+    setRemoteDiffState(null);
+  }, []);
+
+  const handleOpenRemoteWorktreeTerminal = useCallback((_entryId: string, worktreePath: string, _branch: string) => {
+    setActiveRemoteWorktreePath(worktreePath);
+    setWslDiffState(null);
+    setRemoteDiffState(null);
+  }, []);
 
   // IDE open helper (used by keyboard shortcuts and sidebar)
   const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
@@ -402,6 +535,15 @@ function App() {
           onOpenRemoteSideTerminal={(_, projectId) =>
             setRemoteSideTerminalOpen(prev => new Set(prev).add(projectId))
           }
+          onSelectWslFile={handleSelectWslFile}
+          onSelectRemoteFile={handleSelectRemoteFile}
+          onRefreshWslGit={handleRefreshWslGit}
+          onRefreshRemoteGit={handleRefreshRemoteGit}
+          onOpenWslIde={handleOpenWslIde}
+          onOpenRemoteIde={handleOpenRemoteIde}
+          onOpenWslWorktreeTerminal={handleOpenWslWorktreeTerminal}
+          onOpenRemoteWorktreeTerminal={handleOpenRemoteWorktreeTerminal}
+          invokeRemoteGit={invokeRemoteGit}
           loading={loading}
         />
 
@@ -418,14 +560,20 @@ function App() {
           handleAddProject={handleAddProject}
           suppressResizeRef={suppressTerminalResizeRef}
           activeWslProject={activeWslProject}
+          activeWslWorktreePath={activeWslWorktreePath}
           wslSideTerminalOpen={wslSideTerminalOpen}
           setWslSideTerminalOpen={setWslSideTerminalOpen}
           setWslOpenSessions={setWslOpenSessions}
           activeRemoteProject={activeRemoteProject}
+          activeRemoteWorktreePath={activeRemoteWorktreePath}
           remoteAuthStore={remoteAuthStore}
           remoteSideTerminalOpen={remoteSideTerminalOpen}
           setRemoteSideTerminalOpen={setRemoteSideTerminalOpen}
           setRemoteOpenSessions={setRemoteOpenSessions}
+          wslDiffState={wslDiffState}
+          remoteDiffState={remoteDiffState}
+          onWslDiffBack={() => setWslDiffState(null)}
+          onRemoteDiffBack={() => setRemoteDiffState(null)}
         />
 
         {pendingPath && (
@@ -456,18 +604,20 @@ function App() {
           existingEntries={wslEntries}
           selectedEntryId={wslAddToEntryId ?? undefined}
           agents={agents}
+          config={config}
         />
       )}
 
-      <RemoteDialog
-        isOpen={remoteDialogOpen}
-        onClose={handleRemoteDialogClose}
-        onAdd={handleRemoteEntryAdd}
-        existingEntries={remoteEntries}
-        addProjectMode={remoteAddToEntryId !== null}
-        selectedEntryId={remoteAddToEntryId ?? undefined}
-        agents={agents}
-        existingEntryAuth={remoteAuthStore}
+        <RemoteDialog
+          isOpen={remoteDialogOpen}
+          onClose={handleRemoteDialogClose}
+          onAdd={handleRemoteEntryAdd}
+          existingEntries={remoteEntries}
+          addProjectMode={remoteAddToEntryId !== null}
+          selectedEntryId={remoteAddToEntryId ?? undefined}
+          agents={agents}
+          config={config}
+          existingEntryAuth={remoteAuthStore}
       />
 
       {pendingAuthEntry && (

@@ -121,7 +121,15 @@ function TitleBar({
         ) : activeWslProject ? (
           <>
             <span className="titlebar-project-name" data-tauri-drag-region>{activeWslProject.project.name}</span>
-            <span className="titlebar-branch" data-tauri-drag-region>WSL: {activeWslProject.distro}</span>
+            {activeWslProject.project.git_info ? (
+              <span className="titlebar-branch" data-tauri-drag-region>
+                {activeWslProject.project.git_info.current_branch}
+              </span>
+            ) : (
+              <span className="titlebar-branch" data-tauri-drag-region style={{ opacity: 0.5 }}>
+                WSL: {activeWslProject.distro}
+              </span>
+            )}
             <AgentSelector
               projectId={activeWslProject.project.id}
               currentAgentId={activeWslProject.project.selected_agent}
@@ -132,7 +140,15 @@ function TitleBar({
         ) : activeRemoteProject ? (
           <>
             <span className="titlebar-project-name" data-tauri-drag-region>{activeRemoteProject.project.name}</span>
-            <span className="titlebar-branch" data-tauri-drag-region>SSH: {activeRemoteProject.entry.host}</span>
+            {activeRemoteProject.project.git_info ? (
+              <span className="titlebar-branch" data-tauri-drag-region>
+                {activeRemoteProject.project.git_info.current_branch}
+              </span>
+            ) : (
+              <span className="titlebar-branch" data-tauri-drag-region style={{ opacity: 0.5 }}>
+                SSH: {activeRemoteProject.entry.host}
+              </span>
+            )}
             <AgentSelector
               projectId={activeRemoteProject.project.id}
               currentAgentId={activeRemoteProject.project.selected_agent}

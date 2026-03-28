@@ -68,6 +68,8 @@ export interface WSLProject {
   distro: string;
   entry_id: string;
   selected_agent: string | null;
+  selected_ide: string | null;
+  git_info?: GitInfo | null;
 }
 
 // WSL 发行版 (持久化)
@@ -84,6 +86,8 @@ export interface RemoteProject {
   path: string;
   entry_id: string;
   selected_agent: string | null;
+  selected_ide: string | null;
+  git_info?: GitInfo | null;
 }
 
 // SSH 认证方式

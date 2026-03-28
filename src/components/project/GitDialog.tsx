@@ -5,20 +5,28 @@ export type DialogType = "new-branch" | "new-worktree";
 
 export interface DialogState {
   type: DialogType;
-  projectId: string;
+  projectId?: string;           // local project ID
   branches: string[];
+  source?: {                    // WSL/SSH source
+    type: "wsl" | "remote";
+    distro?: string;            // for WSL
+    entryId?: string;           // for SSH
+    projectPath: string;
+  };
 }
 
 interface GitDialogProps {
   dialog: DialogState;
   onClose: () => void;
   onRefreshGit: (projectId: string) => void;
+  onRefreshAfterWslSsh?: () => void;  // 用于 WSL/SSH dialog 完成后刷新
 }
 
 const GitDialog: React.FC<GitDialogProps> = ({
   dialog,
   onClose,
   onRefreshGit,
+  onRefreshAfterWslSsh,
 }) => {
   const [branchName, setBranchName] = useState("");
   const [worktreePath, setWorktreePath] = useState("");
@@ -31,11 +39,19 @@ const GitDialog: React.FC<GitDialogProps> = ({
     setSubmitting(true);
     setError(null);
     try {
-      await invoke("create_branch", {
-        projectId: dialog.projectId,
-        branchName: branchName.trim(),
-      });
-      onRefreshGit(dialog.projectId);
+      const src = dialog.source;
+      if (src?.type === "wsl") {
+        await invoke("wsl_create_branch", { distro: src.distro, projectPath: src.projectPath, branchName: branchName.trim() });
+        onRefreshAfterWslSsh?.();
+      } else if (src?.type === "remote") {
+        // SSH git commands need auth — not supported in this dialog yet
+        setError("SSH branch creation not yet supported");
+        setSubmitting(false);
+        return;
+      } else {
+        await invoke("create_branch", { projectId: dialog.projectId, branchName: branchName.trim() });
+        onRefreshGit(dialog.projectId ?? "");
+      }
       onClose();
     } catch (e: any) {
       setError(String(e));
@@ -49,13 +65,18 @@ const GitDialog: React.FC<GitDialogProps> = ({
     setSubmitting(true);
     setError(null);
     try {
-      await invoke("create_worktree", {
-        projectId: dialog.projectId,
-        worktreePath: worktreePath.trim(),
-        branchName: worktreeBranch.trim(),
-        newBranch,
-      });
-      onRefreshGit(dialog.projectId);
+      const src = dialog.source;
+      if (src?.type === "wsl") {
+        await invoke("wsl_create_worktree", { distro: src.distro, projectPath: src.projectPath, worktreePath: worktreePath.trim(), branchName: worktreeBranch.trim(), newBranch });
+        onRefreshAfterWslSsh?.();
+      } else if (src?.type === "remote") {
+        setError("SSH worktree creation not yet supported");
+        setSubmitting(false);
+        return;
+      } else {
+        await invoke("create_worktree", { projectId: dialog.projectId, worktreePath: worktreePath.trim(), branchName: worktreeBranch.trim(), newBranch });
+        onRefreshGit(dialog.projectId ?? "");
+      }
       onClose();
     } catch (e: any) {
       setError(String(e));

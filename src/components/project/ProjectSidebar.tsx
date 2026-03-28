@@ -39,6 +39,15 @@ interface ProjectSidebarProps {
   onAddRemoteProject: (entryId: string) => void;
   onOpenWslSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenRemoteSideTerminal?: (entryId: string, projectId: string) => void;
+  onSelectWslFile?: (distro: string, projectPath: string, filePath: string) => void;
+  onSelectRemoteFile?: (entryId: string, projectPath: string, filePath: string) => void;
+  onRefreshWslGit?: (distro: string, projectId: string, projectPath: string) => void;
+  onRefreshRemoteGit?: (entryId: string, projectId: string, projectPath: string) => void;
+  onOpenWslIde?: (distro: string, projectPath: string, ide: string) => void;
+  onOpenRemoteIde?: (entryId: string, projectPath: string, ide: string) => void;
+  onOpenWslWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
+  onOpenRemoteWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
+  invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   initialSidebarWidth?: number;
   onSidebarWidthChange?: (width: number) => void;
   suppressResizeRef?: React.MutableRefObject<boolean>;
@@ -76,12 +85,25 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onAddRemoteProject,
   onOpenWslSideTerminal,
   onOpenRemoteSideTerminal,
+  onSelectWslFile,
+  onSelectRemoteFile,
+  onRefreshWslGit,
+  onRefreshRemoteGit,
+  onOpenWslIde,
+  onOpenRemoteIde,
+  onOpenWslWorktreeTerminal,
+  onOpenRemoteWorktreeTerminal,
+  invokeRemoteGit,
   initialSidebarWidth,
   onSidebarWidthChange,
   suppressResizeRef,
   loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  // Wrapper to accept WSL/Remote dialog objects (type is string literal union at runtime)
+  const handleOpenDialog = useCallback((d: { type: string; source: { type: string; distro?: string; entryId?: string; projectPath: string }; branches: string[] }) => {
+    setDialog(d as DialogState);
+  }, []);
   const isDragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(initialSidebarWidth ?? 280);
@@ -178,6 +200,11 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveEntry={onRemoveWslEntry}
                   onAddProject={onAddWslProject}
                   onOpenSideTerminal={onOpenWslSideTerminal}
+                  onSelectFile={onSelectWslFile}
+                  onRefreshGit={onRefreshWslGit}
+                  onOpenIde={onOpenWslIde}
+                  onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
+                  onOpenDialog={handleOpenDialog}
                 />
               ))}
 
@@ -194,6 +221,12 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveEntry={onRemoveRemoteEntry}
                   onAddProject={onAddRemoteProject}
                   onOpenSideTerminal={onOpenRemoteSideTerminal}
+                  onSelectFile={onSelectRemoteFile}
+                  onRefreshGit={onRefreshRemoteGit}
+                  onOpenIde={onOpenRemoteIde}
+                  onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
+                  invokeRemoteGit={invokeRemoteGit}
+                  onOpenDialog={handleOpenDialog}
                 />
               ))}
             </>
@@ -206,6 +239,23 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
           dialog={dialog}
           onClose={() => setDialog(null)}
           onRefreshGit={onRefreshGit}
+          onRefreshAfterWslSsh={dialog.source ? (() => {
+            const src = dialog.source!;
+            if (src.type === "wsl" && src.distro && onRefreshWslGit) {
+              // 找到 projectId：从 wslEntries 中按 projectPath 匹配
+              const entry = wslEntries.find(e => e.distro === src.distro);
+              const project = entry?.projects.find(p => p.path === src.projectPath);
+              if (entry && project) {
+                onRefreshWslGit(src.distro, project.id, src.projectPath);
+              }
+            } else if (src.type === "remote" && src.entryId && onRefreshRemoteGit) {
+              const entry = remoteEntries.find(e => e.id === src.entryId);
+              const project = entry?.projects.find(p => p.path === src.projectPath);
+              if (entry && project) {
+                onRefreshRemoteGit(src.entryId, project.id, src.projectPath);
+              }
+            }
+          }) : undefined}
         />
       )}
     </>

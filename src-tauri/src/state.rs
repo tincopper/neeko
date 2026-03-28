@@ -149,6 +149,8 @@ pub struct WSLProjectSession {
     pub entry_id: String,
     #[serde(default)]
     pub selected_agent: Option<String>,
+    #[serde(default)]
+    pub selected_ide: Option<String>,
 }
 
 // WSL 发行版会话 (持久化用)
@@ -168,6 +170,8 @@ pub struct RemoteProjectSession {
     pub entry_id: String,
     #[serde(default)]
     pub selected_agent: Option<String>,
+    #[serde(default)]
+    pub selected_ide: Option<String>,
 }
 
 // SSH 服务器会话 (持久化用)

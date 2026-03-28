@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig } from "../../types";
+import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
+import { getIdeCommand, IDE_PRESETS } from "../../utils/idePresets";
 import serverIcon from "../../assets/server.svg";
 
 interface RemoteDialogProps {
@@ -13,6 +14,7 @@ interface RemoteDialogProps {
   addProjectMode?: boolean;
   selectedEntryId?: string;
   agents: AgentConfig[];
+  config: AppConfig;
   /** 已有服务器的 auth 缓存（entryId → AuthMethod），用于向已有服务器添加项目时的路径补全 */
   existingEntryAuth?: Map<string, AuthMethod>;
 }
@@ -25,6 +27,7 @@ export function RemoteDialog({
   addProjectMode = false,
   selectedEntryId: selectedEntryIdProp,
   agents,
+  config,
   existingEntryAuth,
 }: RemoteDialogProps) {
   const [step, setStep] = useState<"server-config" | "add-project">(
@@ -45,6 +48,9 @@ export function RemoteDialog({
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const agentDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
+  const [ideDropdownOpen, setIdeDropdownOpen] = useState(false);
+  const ideDropdownRef = useRef<HTMLDivElement>(null);
 
   // 路径自动补全状态
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -215,12 +221,25 @@ export function RemoteDialog({
       return;
     }
 
+    // 解析 selected_ide 命令
+    let selectedIdeCommand: string | null = null;
+    if (selectedIdeId) {
+      if (selectedIdeId.startsWith("custom:")) {
+        const customIdx = parseInt(selectedIdeId.replace("custom:", ""), 10);
+        selectedIdeCommand = config.customIdes?.[customIdx]?.command ?? null;
+      } else {
+        const preset = IDE_PRESETS.find(i => i.id === selectedIdeId);
+        if (preset) selectedIdeCommand = config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset);
+      }
+    }
+
     const newProject: RemoteProject = {
       id: crypto.randomUUID(),
       name: projectName,
       path: projectPath,
       entry_id: selectedServer?.id || crypto.randomUUID(),
       selected_agent: selectedAgentId,
+      selected_ide: selectedIdeCommand,
     };
 
     if (selectedServer) {
@@ -461,6 +480,51 @@ export function RemoteDialog({
                       <AgentIcon icon={agent.icon} />
                       <span className="agent-name">{agent.name}</span>
                       <span className="agent-command">{agent.command}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* IDE 选择 */}
+            <label className="gh-dialog-label" style={{ marginTop: 14 }}>IDE</label>
+            <div className="agent-selector" ref={ideDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+              <button
+                className="agent-dropdown-btn"
+                style={{ width: "100%" }}
+                onClick={() => setIdeDropdownOpen(v => !v)}
+              >
+                {(() => {
+                  const preset = selectedIdeId && !selectedIdeId.startsWith("custom:")
+                    ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
+                  if (preset) return <span className="agent-name">{preset.name}</span>;
+                  if (selectedIdeId?.startsWith("custom:")) {
+                    const ci = parseInt(selectedIdeId.replace("custom:", ""), 10);
+                    const customIde = config.customIdes?.[ci];
+                    return <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>;
+                  }
+                  return <span className="agent-name" style={{ opacity: 0.5 }}>None (only VSCode/Zed supported)</span>;
+                })()}
+                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
+                  {ideDropdownOpen ? "−" : "+"}
+                </span>
+              </button>
+              {ideDropdownOpen && (
+                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                  <div
+                    className={`agent-option${!selectedIdeId ? " selected" : ""}`}
+                    onClick={() => { setSelectedIdeId(null); setIdeDropdownOpen(false); }}
+                  >
+                    <span className="agent-name">None</span>
+                  </div>
+                  {IDE_PRESETS.filter(p => ["vscode", "zed"].includes(p.id)).map(preset => (
+                    <div
+                      key={preset.id}
+                      className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
+                      onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
+                    >
+                      <span className="agent-name">{preset.name}</span>
+                      <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>
                   ))}
                 </div>

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { WSLProject, WSLEntrySession, AgentConfig } from "../../types";
+import { WSLProject, WSLEntrySession, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
 import { getDistroIcon } from "../../utils/distros";
+import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
 
 interface WSLDialogProps {
   isOpen: boolean;
@@ -12,9 +13,10 @@ interface WSLDialogProps {
   /** 传入时直接跳到 select-path 步骤并预选该发行版 */
   selectedEntryId?: string;
   agents: AgentConfig[];
+  config: AppConfig;
 }
 
-export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEntryId, agents }: WSLDialogProps) {
+export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEntryId, agents, config }: WSLDialogProps) {
   const [step, setStep] = useState<"select-distro" | "select-path">("select-distro");
   const [distros, setDistros] = useState<string[]>([]);
   const [selectedDistro, setSelectedDistro] = useState<string>("");
@@ -27,11 +29,14 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
   const [error, setError] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+  const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
+  const [ideDropdownOpen, setIdeDropdownOpen] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchSeq = useRef(0); // 用于丢弃过期请求结果
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null); // 用于点击外侧关闭
   const agentDropdownRef = useRef<HTMLDivElement>(null);
+  const ideDropdownRef = useRef<HTMLDivElement>(null);
 
   // 点击补全框外侧关闭下拉
   useEffect(() => {
@@ -170,6 +175,18 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
     const existingEntry = existingEntries.find(e => e.distro === selectedDistro);
     const projectName = finalPath.split("/").filter(Boolean).pop() || finalPath;
 
+    // 解析 selected_ide 命令
+    let selectedIdeCommand: string | null = null;
+    if (selectedIdeId) {
+      if (selectedIdeId.startsWith("custom:")) {
+        const customIdx = parseInt(selectedIdeId.replace("custom:", ""), 10);
+        selectedIdeCommand = config.customIdes?.[customIdx]?.command ?? null;
+      } else {
+        const preset = IDE_PRESETS.find(i => i.id === selectedIdeId);
+        if (preset) selectedIdeCommand = config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset);
+      }
+    }
+
     const newProject: WSLProject = {
       id: crypto.randomUUID(),
       name: projectName,
@@ -177,6 +194,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
       distro: selectedDistro,
       entry_id: existingEntry?.id || crypto.randomUUID(),
       selected_agent: selectedAgentId,
+      selected_ide: selectedIdeCommand,
     };
 
     if (existingEntry) {
@@ -334,6 +352,54 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                       <AgentIcon icon={agent.icon} />
                       <span className="agent-name">{agent.name}</span>
                       <span className="agent-command">{agent.command}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* IDE 选择 */}
+            <label className="gh-dialog-label" style={{ marginTop: 14 }}>IDE</label>
+            <div className="agent-selector" ref={ideDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+              <button
+                className="agent-dropdown-btn"
+                style={{ width: "100%" }}
+                onClick={() => setIdeDropdownOpen(v => !v)}
+              >
+                {(() => {
+                  const selectedPreset = selectedIdeId && !selectedIdeId.startsWith("custom:")
+                    ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
+                  if (selectedPreset) {
+                    return <><span className="agent-name">{selectedPreset.name}</span></>;
+                  }
+                  if (selectedIdeId?.startsWith("custom:")) {
+        const idx = Number(selectedIdeId.replace("custom:", ""));
+                    const customIde = config.customIdes?.[idx];
+                    return <><span className="agent-name">{customIde?.name ?? "Custom IDE"}</span></>;
+                  }
+                  return <><span className="agent-name" style={{ opacity: 0.5 }}>None (only VSCode/Zed supported)</span></>;
+                })()}
+                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
+                  {ideDropdownOpen ? "−" : "+"}
+                </span>
+              </button>
+              {ideDropdownOpen && (
+                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                  <div
+                    className={`agent-option${!selectedIdeId ? " selected" : ""}`}
+                    onClick={() => { setSelectedIdeId(null); setIdeDropdownOpen(false); }}
+                  >
+                    <span className="agent-name">None</span>
+                  </div>
+                  {/* 仅显示 VSCode 和 Zed */}
+                  {IDE_PRESETS.filter(p => ["vscode", "zed"].includes(p.id)).map(preset => (
+                    <div
+                      key={preset.id}
+                      className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
+                      onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
+                    >
+                      <span className="agent-name">{preset.name}</span>
+                      <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>
                   ))}
                 </div>
