@@ -10,7 +10,8 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 struct SSHHandle {
-    /// 用于向 SSH channel 写入数据的 sender（发到 IO 任务）
+    /// 用于向 IO 任务发送输入数据的 sender（通过 Drop 关闭 channel 通知 IO 任务退出）
+    #[allow(dead_code)]
     input_tx: mpsc::UnboundedSender<Vec<u8>>,
     /// 用于向 IO 任务发送 PTY resize 请求 (cols, rows)
     resize_tx: mpsc::UnboundedSender<(u32, u32)>,
@@ -262,15 +263,6 @@ impl RemoteTerminalManager {
             handle.app_handle.unlisten(handle.input_listener_id);
             // input_tx drop 后，IO 任务的 recv() 会返回 None，任务自然退出
         }
-    }
-
-    pub fn close_all_sessions(&self) {
-        log_info("[SSH] Closing all sessions...");
-        let ids: Vec<String> = self.ssh_handles.lock().unwrap().keys().cloned().collect();
-        for id in ids {
-            self.close_session(&id);
-        }
-        log_info("[SSH] All sessions closed");
     }
 
     /// 测试 SSH 连接是否可用（验证 host/port/username/auth）
