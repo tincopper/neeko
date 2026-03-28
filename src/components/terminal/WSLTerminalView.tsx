@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -121,7 +121,7 @@ interface WSLTerminalViewProps {
   width?: number;
 }
 
-export default function WSLTerminalView({
+export default React.memo(function WSLTerminalView({
   distro,
   projectId,
   projectName: _projectName,
@@ -363,4 +363,4 @@ export default function WSLTerminalView({
       <div className="terminal-wrapper" ref={wrapperRef} />
     </div>
   );
-}
+});

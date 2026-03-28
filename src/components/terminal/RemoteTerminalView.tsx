@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -88,7 +88,7 @@ interface RemoteTerminalViewProps {
   width?: number;
 }
 
-export default function RemoteTerminalView({
+export default React.memo(function RemoteTerminalView({
   entryId,
   projectId,
   projectName: _projectName,
@@ -337,4 +337,4 @@ export default function RemoteTerminalView({
       <div className="terminal-wrapper" ref={wrapperRef} />
     </div>
   );
-}
+});
