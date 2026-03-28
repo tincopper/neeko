@@ -83,7 +83,7 @@ fn remove_project(project_id: String, state: State<AppStateWrapper>) {
     let projects = state.project_manager.lock().unwrap().list_projects();
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects, None, None);
+        .create_session_from_projects(&projects, None, None, None, None);
     let _ = state.storage_manager.save_session(&session);
 }
 
@@ -150,7 +150,7 @@ fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppSt
     let projects = pm.list_projects();
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects, None, None);
+        .create_session_from_projects(&projects, None, None, None, None);
     let _ = state.storage_manager.save_session(&session);
 }
 
@@ -768,12 +768,18 @@ fn load_config(state: State<AppStateWrapper>) -> Result<serde_json::Value, Strin
 fn save_session(
     wsl_entries: Vec<WSLEntrySession>,
     remote_entries: Vec<RemoteEntrySession>,
+    sidebar_width: Option<u32>,
+    side_terminal_width: Option<u32>,
     state: State<AppStateWrapper>,
 ) -> Result<(), String> {
     let projects = state.project_manager.lock().unwrap().list_projects();
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, Some(&wsl_entries), Some(&remote_entries));
+    let session = state.storage_manager.create_session_from_projects(
+        &projects,
+        Some(&wsl_entries),
+        Some(&remote_entries),
+        sidebar_width,
+        side_terminal_width,
+    );
     state
         .storage_manager
         .save_session(&session)

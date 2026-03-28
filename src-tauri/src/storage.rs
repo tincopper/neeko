@@ -96,6 +96,8 @@ impl StorageManager {
         projects: &[crate::state::Project],
         wsl_entries: Option<&[WSLEntrySession]>,
         remote_entries: Option<&[RemoteEntrySession]>,
+        sidebar_width: Option<u32>,
+        side_terminal_width: Option<u32>,
     ) -> SessionStore {
         let project_sessions = projects
             .iter()
@@ -112,23 +114,20 @@ impl StorageManager {
             .collect();
 
         // None 表示"从已有 session 读取"，Some 表示"使用传入的数据"
-        let wsl = wsl_entries.map(|v| v.to_vec()).unwrap_or_else(|| {
-            self.load_session()
-                .map(|s| s.wsl_entries)
-                .unwrap_or_default()
-        });
-        let remote = remote_entries.map(|v| v.to_vec()).unwrap_or_else(|| {
-            self.load_session()
-                .map(|s| s.remote_entries)
-                .unwrap_or_default()
-        });
+        let existing = self.load_session().unwrap_or_else(|_| SessionStore::new());
 
         SessionStore {
             projects: project_sessions,
             active_project_id: None,
             last_updated: Local::now().to_rfc3339(),
-            wsl_entries: wsl,
-            remote_entries: remote,
+            wsl_entries: wsl_entries
+                .map(|v| v.to_vec())
+                .unwrap_or(existing.wsl_entries),
+            remote_entries: remote_entries
+                .map(|v| v.to_vec())
+                .unwrap_or(existing.remote_entries),
+            sidebar_width: sidebar_width.or(existing.sidebar_width),
+            side_terminal_width: side_terminal_width.or(existing.side_terminal_width),
         }
     }
 

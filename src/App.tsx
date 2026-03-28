@@ -108,7 +108,30 @@ function App() {
     setOpenedWorktrees,
   } = useWorktreeState(activeProjectIdRef);
 
-  const { sideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize();
+  // ── Width persistence callbacks ──
+  const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const saveSidebarWidth = useCallback((width: number) => {
+    clearTimeout(sidebarWidthSaveTimeout.current);
+    sidebarWidthSaveTimeout.current = setTimeout(() => {
+      invoke("save_session", {
+        wslEntries: wslEntriesRefForSave.current,
+        remoteEntries: remoteEntriesRefForSave.current,
+        sidebarWidth: width,
+        sideTerminalWidth: null,
+      }).catch(console.error);
+    }, 300);
+  }, []);
+
+  const saveSideTerminalWidth = useCallback((width: number) => {
+    invoke("save_session", {
+      wslEntries: wslEntriesRefForSave.current,
+      remoteEntries: remoteEntriesRefForSave.current,
+      sidebarWidth: null,
+      sideTerminalWidth: Math.round(width),
+    }).catch(console.error);
+  }, []);
+
+  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, saveSideTerminalWidth);
 
   // ── Add menu ──────────────────────────────────────────────────────────────
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -228,6 +251,8 @@ function App() {
   });
 
   // ── Startup: listen for git changes ───────────────────────────────────────
+  const [initialSidebarWidth, setInitialSidebarWidth] = useState<number>(280);
+
   useEffect(() => {
     loadAgents();
     loadProjects();
@@ -236,6 +261,12 @@ function App() {
     invoke<any>("load_session").then((session: any) => {
       setWslEntries(session.wsl_entries ?? []);
       setRemoteEntries(session.remote_entries ?? []);
+      if (session.sidebar_width) {
+        setInitialSidebarWidth(session.sidebar_width);
+      }
+      if (session.side_terminal_width) {
+        setSideTerminalWidth(session.side_terminal_width);
+      }
     }).catch(console.error);
 
     const unlistenPromise = listen<string>("git-changed", (event) => {
@@ -334,6 +365,8 @@ function App() {
           activeRemoteKey={activeRemoteKey}
           wslOpenSessions={wslOpenSessions}
           remoteOpenSessions={remoteOpenSessions}
+          initialSidebarWidth={initialSidebarWidth}
+          onSidebarWidthChange={saveSidebarWidth}
           onAddProject={handleAddProject}
           onRemoveProject={handleRemoveProject}
           onSelectProject={handleSelectProject}
