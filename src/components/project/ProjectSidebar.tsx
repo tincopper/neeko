@@ -17,6 +17,8 @@ interface ProjectSidebarProps {
   activeRemoteKey: ActiveRemoteKey;
   wslOpenSessions: Set<string>;
   remoteOpenSessions: Set<string>;
+  initialSidebarWidth?: number;
+  onSidebarWidthChange?: (width: number) => void;
   onAddProject: () => void;
   onRemoveProject: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
@@ -73,12 +75,21 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onAddRemoteProject,
   onOpenWslSideTerminal,
   onOpenRemoteSideTerminal,
+  initialSidebarWidth,
+  onSidebarWidthChange,
   loading: _loading,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
-  const startWidth = useRef(280);
+  const startWidth = useRef(initialSidebarWidth ?? 280);
+
+  // 初始化 CSS 变量
+  React.useEffect(() => {
+    if (initialSidebarWidth) {
+      document.documentElement.style.setProperty("--sidebar-width", `${Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, initialSidebarWidth))}px`);
+    }
+  }, []);
 
   const updateWidth = useCallback((w: number) => {
     const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
@@ -104,13 +115,20 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       document.removeEventListener("mouseup", onMouseUp);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      // 拖拽结束后持久化
+      if (onSidebarWidthChange) {
+        const final = parseInt(
+          getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width") || "280"
+        );
+        onSidebarWidthChange(final);
+      }
     };
 
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [updateWidth]);
+  }, [updateWidth, onSidebarWidthChange]);
 
   const isEmpty = projects.length === 0
     && (IS_WINDOWS ? wslEntries.length === 0 : true)

@@ -108,6 +108,10 @@ pub struct SessionStore {
     pub wsl_entries: Vec<WSLEntrySession>,
     #[serde(default)]
     pub remote_entries: Vec<RemoteEntrySession>,
+    #[serde(default)]
+    pub sidebar_width: Option<u32>,
+    #[serde(default)]
+    pub side_terminal_width: Option<u32>,
 }
 
 impl SessionStore {
@@ -118,6 +122,8 @@ impl SessionStore {
             last_updated: String::new(),
             wsl_entries: Vec::new(),
             remote_entries: Vec::new(),
+            sidebar_width: None,
+            side_terminal_width: None,
         }
     }
 }

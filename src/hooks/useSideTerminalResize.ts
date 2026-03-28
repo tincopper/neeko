@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 
-export function useSideTerminalResize() {
-  const [sideTerminalWidth, setSideTerminalWidth] = useState(480);
+export function useSideTerminalResize(initialWidth: number, onWidthChange: (width: number) => void) {
+  const [sideTerminalWidth, setSideTerminalWidth] = useState(initialWidth);
   const sideResizingRef = useRef(false);
   const sideResizeStartX = useRef(0);
-  const sideResizeStartWidth = useRef(480);
+  const sideResizeStartWidth = useRef(initialWidth);
+  const lastWidthRef = useRef(initialWidth);
 
   const handleSideDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -18,6 +19,7 @@ export function useSideTerminalResize() {
       if (!sideResizingRef.current) return;
       const delta = sideResizeStartX.current - ev.clientX;
       const next = Math.min(1200, Math.max(200, sideResizeStartWidth.current + delta));
+      lastWidthRef.current = next;
       setSideTerminalWidth(next);
     };
     const onMouseUp = () => {
@@ -26,10 +28,11 @@ export function useSideTerminalResize() {
       document.body.style.userSelect = "";
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      onWidthChange(lastWidthRef.current);
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [sideTerminalWidth]);
+  }, [sideTerminalWidth, onWidthChange]);
 
-  return { sideTerminalWidth, handleSideDividerMouseDown };
+  return { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown };
 }
