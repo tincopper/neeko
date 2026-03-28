@@ -325,6 +325,9 @@ fn wsl_command(program: &str) -> std::process::Command {
 }
 #[tauri::command]
 fn get_wsl_distros() -> Result<Vec<String>, String> {
+    if !cfg!(target_os = "windows") {
+        return Err("WSL is only supported on Windows".to_string());
+    }
     let output = wsl_command("wsl.exe")
         .args(["-l", "-q"])
         .env("WSL_UTF8", "1")
@@ -347,6 +350,9 @@ fn get_wsl_distros() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<String>, String> {
+    if !cfg!(target_os = "windows") {
+        return Err("WSL is only supported on Windows".to_string());
+    }
     let dir_path = path.unwrap_or_else(|| "/".to_string());
 
     // 用 bash -c 执行，避免 Windows 工作目录被 WSL 自动映射导致路径解析错误。
@@ -374,6 +380,9 @@ fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<Strin
 
 #[tauri::command]
 fn get_wsl_home_dir(distro: String) -> Result<String, String> {
+    if !cfg!(target_os = "windows") {
+        return Err("WSL is only supported on Windows".to_string());
+    }
     let output = wsl_command("wsl.exe")
         .args(["-d", &distro, "bash", "-c", "echo $HOME"])
         .env("WSL_UTF8", "1")
@@ -401,6 +410,9 @@ fn create_wsl_terminal_session(
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, String> {
+    if !cfg!(target_os = "windows") {
+        return Err("WSL is only supported on Windows".to_string());
+    }
     state
         .terminal_manager
         .create_wsl_session(&distro, &project_path, cols, rows, app_handle)

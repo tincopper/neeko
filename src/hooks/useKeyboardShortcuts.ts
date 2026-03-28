@@ -1,5 +1,6 @@
 import { useEffect, RefObject } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../types";
+import { IS_WINDOWS } from "../utils/platform";
 
 type ActiveWslKey = { distro: string; projectId: string } | null;
 type ActiveRemoteKey = { host: string; projectId: string } | null;
@@ -62,7 +63,7 @@ export function useKeyboardShortcuts({
         e.preventDefault();
         if (isTerminalViewRef.current) {
           setSideTerminalOpen(true);
-        } else if (activeWslKeyRef.current) {
+        } else if (IS_WINDOWS && activeWslKeyRef.current) {
           const pid = activeWslKeyRef.current.projectId;
           setWslSideTerminalOpen(prev => new Set(prev).add(pid));
         } else if (activeRemoteKeyRef.current) {
@@ -94,7 +95,7 @@ export function useKeyboardShortcuts({
         if (sideTerminalOpenRef.current) {
           e.preventDefault();
           setSideTerminalOpen(false);
-        } else if (activeWslKeyRef.current) {
+        } else if (IS_WINDOWS && activeWslKeyRef.current) {
           const pid = activeWslKeyRef.current.projectId;
           if ((wslSideOpenRef.current ?? new Set()).has(pid)) {
             e.preventDefault();
@@ -123,9 +124,9 @@ export function useKeyboardShortcuts({
 
       const allItems: SwitchItem[] = [
         ...projects.map((p) => ({ type: "local" as const, id: p.id })),
-        ...(wslEntriesRef.current ?? []).flatMap((entry) =>
+        ...(IS_WINDOWS ? (wslEntriesRef.current ?? []).flatMap((entry) =>
           entry.projects.map((proj) => ({ type: "wsl" as const, distro: entry.distro, project: proj }))
-        ),
+        ) : []),
         ...(remoteEntriesRef.current ?? []).flatMap((entry) =>
           entry.projects.map((proj) => ({ type: "remote" as const, host: entry.host, project: proj }))
         ),

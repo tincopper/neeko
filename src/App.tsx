@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { IS_WINDOWS } from "./utils/platform";
 import ProjectSidebar, { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
 import MainContent from "./components/MainContent";
@@ -217,7 +218,7 @@ function App() {
   useEffect(() => {
     loadAgents();
     loadProjects();
-    loadWSLEntries();
+    if (IS_WINDOWS) loadWSLEntries();
     loadRemoteEntries();
 
     const unlistenPromise = listen<string>("git-changed", (event) => {
@@ -299,7 +300,7 @@ function App() {
         onOpenSettings={handleToggleSettings}
         onToggleAddMenu={handleToggleAddMenu}
         onAddProject={handleAddProjectClick}
-        onAddWsl={handleAddWslClick}
+        onAddWsl={IS_WINDOWS ? handleAddWslClick : (() => {})}
         onAddRemote={handleAddRemoteClick}
         onSelectLocalAgent={handleSelectLocalAgent}
         onSelectWslAgent={handleSelectWslAgent}
@@ -387,14 +388,16 @@ function App() {
         />
       )}
 
-      <WSLDialog
-        isOpen={wslDialogOpen}
-        onClose={handleWslDialogClose}
-        onAdd={handleWSLEntryAdd}
-        existingEntries={wslEntries}
-        selectedEntryId={wslAddToEntryId ?? undefined}
-        agents={agents}
-      />
+      {IS_WINDOWS && (
+        <WSLDialog
+          isOpen={wslDialogOpen}
+          onClose={handleWslDialogClose}
+          onAdd={handleWSLEntryAdd}
+          existingEntries={wslEntries}
+          selectedEntryId={wslAddToEntryId ?? undefined}
+          agents={agents}
+        />
+      )}
 
       <RemoteDialog
         isOpen={remoteDialogOpen}
