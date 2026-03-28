@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
-import type { AppConfig, DiffMode } from "../types";
+import { getAgentIconSrc } from "../utils/agents";
+import type { AppConfig, DiffMode, AgentConfig } from "../types";
 
 // re-export for backward compatibility
 export type { AppConfig, DiffMode };
@@ -37,7 +38,7 @@ export const PRESET_SHELLS: { label: string; value: string }[] = (
       ]
 );
 
-type NavCategory = "editor" | "terminal" | "ide" | "git";
+type NavCategory = "editor" | "terminal" | "agents" | "ide" | "git";
 
 interface NavItem {
   id: NavCategory;
@@ -58,6 +59,16 @@ const NAV_ITEMS: NavItem[] = [
   {
     id: "terminal",
     label: "Terminal",
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M6 9a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9.5H6.5A.5.5 0 0 1 6 9Zm-2.354-4.854a.5.5 0 0 1 0 .708L2.707 6l.939.939a.5.5 0 1 1-.707.707l-1.25-1.25a.5.5 0 0 1 0-.707l1.25-1.25a.5.5 0 0 1 .707 0z"/>
+        <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
+      </svg>
+    ),
+  },
+  {
+    id: "agents",
+    label: "Agents",
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
         <path d="M6 9a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9.5H6.5A.5.5 0 0 1 6 9Zm-2.354-4.854a.5.5 0 0 1 0 .708L2.707 6l.939.939a.5.5 0 1 1-.707.707l-1.25-1.25a.5.5 0 0 1 0-.707l1.25-1.25a.5.5 0 0 1 .707 0z"/>
@@ -105,6 +116,11 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
   // 自定义 IDE 相关状态
   const [newIdeName, setNewIdeName] = useState("");
   const [newIdeCommand, setNewIdeCommand] = useState("");
+
+  // 自定义 Agent 相关状态
+  const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentCommand, setNewAgentCommand] = useState("");
+  const [newAgentArgs, setNewAgentArgs] = useState("");
 
   // 预设 IDE 双击编辑状态
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
@@ -184,6 +200,75 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     next.splice(idx, 1);
     onConfigChange({ ...config, customIdes: next });
   };
+
+  // 自定义 Agent 管理
+  const BUILTIN_AGENTS: AgentConfig[] = [
+    { id: "opencode", name: "opencode", command: "opencode", args: [], icon: "opencode.png", enabled: true },
+    { id: "claude-code", name: "claude-code", command: "claude", args: [], icon: "claude-code.png", enabled: true },
+    { id: "qwen", name: "qwen", command: "qwen", args: [], icon: "qwen.png", enabled: true },
+    { id: "gemini", name: "gemini", command: "gemini", args: [], icon: "gemini.png", enabled: true },
+    { id: "codex", name: "codex", command: "codex", args: [], icon: "codex.png", enabled: true },
+    { id: "qoder", name: "qoder", command: "qoder", args: [], icon: "qoder.svg", enabled: true },
+    { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], icon: "codebuddy.svg", enabled: true },
+  ];
+
+  const addCustomAgent = async () => {
+    const name = newAgentName.trim();
+    const command = newAgentCommand.trim();
+    if (!name || !command) return;
+    const id = `custom:${name.toLowerCase().replace(/\s+/g, "-")}`;
+    const exists = (config.customAgents || []).some(a => a.id === id);
+    if (exists) return;
+    const args = newAgentArgs.trim() ? newAgentArgs.trim().split(",").map(s => s.trim()).filter(Boolean) : [];
+    const newAgent: AgentConfig = { id, name, command, args, icon: "cli.svg", enabled: true };
+    const nextCustom = [...(config.customAgents || []), newAgent];
+    onConfigChange({ ...config, customAgents: nextCustom });
+    try {
+      await invoke("add_agent", { agent: newAgent });
+    } catch (e) {
+      console.error("[Settings] Failed to add agent:", e);
+    }
+    setNewAgentName("");
+    setNewAgentCommand("");
+    setNewAgentArgs("");
+  };
+
+  const removeCustomAgent = async (idx: number) => {
+    const agent = (config.customAgents || [])[idx];
+    if (!agent) return;
+    const nextCustom = [...(config.customAgents || [])];
+    nextCustom.splice(idx, 1);
+    onConfigChange({ ...config, customAgents: nextCustom });
+    try {
+      await invoke("remove_agent", { agentId: agent.id });
+    } catch (e) {
+      console.error("[Settings] Failed to remove agent:", e);
+    }
+  };
+
+  // 内置 Agent 命令覆盖编辑
+  const startEditAgent = (agent: AgentConfig) => {
+    const current = config.agentCommandOverrides?.[agent.id] ?? agent.command;
+    setEditingPresetId(agent.id);
+    setEditingValue(current);
+  };
+
+  const saveAgentOverride = (agentId: string) => {
+    const trimmed = editingValue.trim();
+    const agent = BUILTIN_AGENTS.find(a => a.id === agentId);
+    const defaultCmd = agent?.command ?? "";
+    const overrides = { ...(config.agentCommandOverrides || {}) };
+    if (trimmed && trimmed !== defaultCmd) {
+      overrides[agentId] = trimmed;
+    } else {
+      delete overrides[agentId];
+    }
+    onConfigChange({ ...config, agentCommandOverrides: overrides });
+    setEditingPresetId(null);
+  };
+
+  const getEffectiveAgentCommand = (agent: AgentConfig) =>
+    config.agentCommandOverrides?.[agent.id] ?? agent.command;
 
   const startEditPreset = (ide: import("../utils/idePresets").IdePreset) => {
     const current = config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
@@ -411,6 +496,144 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                     onKeyDown={e => { if (e.key === "Enter") applyShell(shellInput.trim()); }}
                     spellCheck={false}
                   />
+                </div>
+              </>
+            )}
+
+            {activeNav === "agents" && (
+              <>
+                <div className="settings-content-title">Agents</div>
+
+                {/* 内置 Agent 列表 */}
+                <div className="settings-item settings-item-col">
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Built-in Agents</div>
+                    <div className="settings-item-desc">
+                      Pre-configured AI agent CLIs. Select one when adding a project or from the title bar.
+                    </div>
+                  </div>
+                  <div className="settings-ide-list">
+                    {BUILTIN_AGENTS.map(agent => {
+                      const iconSrc = getAgentIconSrc(agent.icon);
+                      const isEditing = editingPresetId === agent.id;
+                      const effectiveCmd = getEffectiveAgentCommand(agent);
+                      const isOverridden = !!config.agentCommandOverrides?.[agent.id];
+                      return (
+                        <div key={agent.id} className="settings-ide-item">
+                          {iconSrc ? (
+                            <img src={iconSrc} className="agent-icon" alt="" />
+                          ) : (
+                            <span className="settings-ide-icon">{""}</span>
+                          )}
+                          <span className="settings-ide-name">{agent.name}</span>
+                          {isEditing ? (
+                            <input
+                              className="settings-ide-command-input"
+                              value={editingValue}
+                              autoFocus
+                              spellCheck={false}
+                              onChange={e => setEditingValue(e.target.value)}
+                              onBlur={() => saveAgentOverride(agent.id)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") saveAgentOverride(agent.id);
+                                if (e.key === "Escape") cancelPresetEdit();
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className={`settings-ide-command${isOverridden ? " overridden" : ""}`}
+                              title="Double-click to edit"
+                              onDoubleClick={() => startEditAgent(agent)}
+                            >
+                              {effectiveCmd}
+                            </span>
+                          )}
+                          {isOverridden && !isEditing && (
+                            <button
+                              className="settings-ide-reset"
+                              title="Reset to default"
+                              onClick={() => {
+                                const overrides = { ...(config.agentCommandOverrides || {}) };
+                                delete overrides[agent.id];
+                                onConfigChange({ ...config, agentCommandOverrides: overrides });
+                              }}
+                            >↺</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 自定义 Agent */}
+                <div className="settings-item settings-item-col" style={{ marginTop: 8 }}>
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Custom Agents</div>
+                    <div className="settings-item-desc">
+                      Add custom AI agent CLIs by specifying a name, command, and optional arguments.
+                    </div>
+                  </div>
+
+                  {/* 已添加的自定义 Agent */}
+                  {(config.customAgents || []).length > 0 && (
+                    <div className="settings-ide-list">
+                      {(config.customAgents || []).map((agent, idx) => {
+                        const iconSrc = getAgentIconSrc(agent.icon);
+                        return (
+                          <div key={agent.id} className="settings-ide-item">
+                            {iconSrc ? (
+                              <img src={iconSrc} className="agent-icon" alt="" />
+                            ) : (
+                              <span className="settings-ide-icon">{""}</span>
+                            )}
+                            <span className="settings-ide-name">{agent.name}</span>
+                            <span className="settings-ide-command">
+                              {agent.command}{agent.args.length > 0 ? " " + agent.args.join(" ") : ""}
+                            </span>
+                            <button
+                              className="settings-ide-remove"
+                              onClick={() => removeCustomAgent(idx)}
+                              title="Remove"
+                            >✕</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 添加新自定义 Agent */}
+                  <div className="settings-ide-add">
+                    <input
+                      className="settings-shell-input"
+                      type="text"
+                      placeholder="Name, e.g. My Agent"
+                      value={newAgentName}
+                      onChange={e => setNewAgentName(e.target.value)}
+                      spellCheck={false}
+                    />
+                    <input
+                      className="settings-shell-input"
+                      type="text"
+                      placeholder="Command, e.g. my-agent"
+                      value={newAgentCommand}
+                      onChange={e => setNewAgentCommand(e.target.value)}
+                      spellCheck={false}
+                    />
+                    <input
+                      className="settings-shell-input"
+                      type="text"
+                      placeholder="Args (comma separated), e.g. --verbose, --model gpt-4"
+                      value={newAgentArgs}
+                      onChange={e => setNewAgentArgs(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }}
+                      spellCheck={false}
+                    />
+                    <button
+                      className="settings-ide-add-btn"
+                      onClick={addCustomAgent}
+                      disabled={!newAgentName.trim() || !newAgentCommand.trim()}
+                    >Add Agent</button>
+                  </div>
                 </div>
               </>
             )}

@@ -508,13 +508,36 @@ fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<AgentCon
 }
 
 #[tauri::command]
-fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) {
-    state.agent_manager.lock().unwrap().add_agent(agent);
+fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), String> {
+    // 添加到内存
+    state.agent_manager.lock().unwrap().add_agent(agent.clone());
+    // 持久化到 config.json
+    let mut config = state.storage_manager.load_config().unwrap_or_default();
+    let custom_agents = config
+        .as_object_mut()
+        .and_then(|m| m.entry("customAgents").or_insert(serde_json::json!([])).as_array_mut())
+        .ok_or_else(|| "Failed to access config".to_string())?;
+    // 避免重复
+    if !custom_agents.iter().any(|a| a.get("id").and_then(|v| v.as_str()) == Some(&agent.id)) {
+        custom_agents.push(serde_json::to_value(&agent).map_err(|e| e.to_string())?);
+    }
+    state.storage_manager.save_config(&config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn remove_agent(agent_id: String, state: State<AppStateWrapper>) {
+fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), String> {
+    // 从内存移除
     state.agent_manager.lock().unwrap().remove_agent(&agent_id);
+    // 从 config.json 移除
+    let mut config = state.storage_manager.load_config().unwrap_or_default();
+    if let Some(custom_agents) = config
+        .as_object_mut()
+        .and_then(|m| m.get_mut("customAgents"))
+        .and_then(|v| v.as_array_mut())
+    {
+        custom_agents.retain(|a| a.get("id").and_then(|v| v.as_str()) != Some(&agent_id));
+    }
+    state.storage_manager.save_config(&config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -842,6 +865,19 @@ pub fn run() {
             for (id, path) in projects {
                 state.watcher_manager.watch(id, path, app.handle().clone());
             }
+
+            // 从 config.json 加载自定义 agent 到 AgentManager
+            if let Ok(config) = state.storage_manager.load_config() {
+                if let Some(custom_agents) = config.get("customAgents").and_then(|v| v.as_array()) {
+                    let mut am = state.agent_manager.lock().unwrap();
+                    for agent_json in custom_agents {
+                        if let Ok(agent) = serde_json::from_value::<AgentConfig>(agent_json.clone()) {
+                            am.add_agent(agent);
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {

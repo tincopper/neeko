@@ -36,6 +36,7 @@ interface TerminalViewProps {
   shell?: string
   fontFamily?: string
   suppressResizeRef?: React.MutableRefObject<boolean>
+  agentCommandOverrides?: Record<string, string>
 }
 
 interface TerminalCache {
@@ -99,6 +100,7 @@ export async function createTerminalForProject(
   shell: string,
   fontFamily: string,
   backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
+  agentCommandOverrides?: Record<string, string>, // 内置 agent 命令覆盖
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -305,12 +307,13 @@ export async function createTerminalForProject(
         const agent = await invoke<AgentConfig>('get_agent', {
           agentId: selectedAgentId,
         })
+        const cmd = agentCommandOverrides?.[agent.id] ?? agent.command
         const cmdStr =
-          agent.command +
+          cmd +
           (agent.args.length ? ' ' + agent.args.join(' ') : '') +
           '\r'
         sendToTerminal(projectId, cmdStr)
-        log(`Auto-launched agent: ${agent.command}`)
+        log(`Auto-launched agent: ${cmd}`)
       } catch (err) {
         log(`Auto-launch agent failed: ${err}`)
       }
@@ -329,6 +332,7 @@ export default function TerminalView({
   shell = '',
   fontFamily = '',
   suppressResizeRef,
+  agentCommandOverrides,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -402,6 +406,8 @@ export default function TerminalView({
         wrapper,
         shell,
         fontFamily,
+        undefined,
+        agentCommandOverrides,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸

@@ -9,6 +9,8 @@ const DEFAULT_CONFIG: AppConfig = {
   fontFamily: "",
   customIdes: [],
   ideCommandOverrides: {},
+  agentCommandOverrides: {},
+  customAgents: [],
 };
 
 export function useAppConfig() {
@@ -61,6 +63,14 @@ export function useAppConfig() {
               typeof saved.ideCommandOverrides === "object"
                 ? saved.ideCommandOverrides
                 : DEFAULT_CONFIG.ideCommandOverrides,
+            agentCommandOverrides:
+              saved.agentCommandOverrides &&
+              typeof saved.agentCommandOverrides === "object"
+                ? saved.agentCommandOverrides
+                : DEFAULT_CONFIG.agentCommandOverrides,
+            customAgents: Array.isArray(saved.customAgents)
+              ? saved.customAgents
+              : DEFAULT_CONFIG.customAgents,
           });
         }
       } catch (e) {

@@ -1591,6 +1591,9 @@ body {
 
 .agent-icon {
   font-size: var(--font-size);
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .agent-name {

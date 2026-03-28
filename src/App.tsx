@@ -285,14 +285,18 @@ function App() {
   // ── Agent selection callbacks ─────────────────────────────────────────────
   const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
     if (agent && activeProject) {
-      launchAgentInTerminal(activeProject.id, agent.command, agent.args);
+      const cmd = config.agentCommandOverrides?.[agent.id] ?? agent.command;
+      launchAgentInTerminal(activeProject.id, cmd, agent.args);
     }
-  }, [activeProject]);
+  }, [activeProject, config.agentCommandOverrides]);
 
   const handleSelectWslAgent = useCallback((agent: AgentConfig | null) => {
     if (!activeWslProject) return;
     const key = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
-    if (agent) launchAgentInWslTerminal(key, agent.command, agent.args);
+    if (agent) {
+      const cmd = config.agentCommandOverrides?.[agent.id] ?? agent.command;
+      launchAgentInWslTerminal(key, cmd, agent.args);
+    }
     const agentId = agent?.id ?? null;
     const newEntries = wslEntries.map(e => ({
       ...e,
@@ -310,7 +314,10 @@ function App() {
   const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
     if (!activeRemoteProject) return;
     const key = remoteCacheKey(activeRemoteProject.entry.id, activeRemoteProject.project.id);
-    if (agent) launchAgentInRemoteTerminal(key, agent.command, agent.args);
+    if (agent) {
+      const cmd = config.agentCommandOverrides?.[agent.id] ?? agent.command;
+      launchAgentInRemoteTerminal(key, cmd, agent.args);
+    }
     const agentId = agent?.id ?? null;
     const newEntries = remoteEntries.map(e => ({
       ...e,
