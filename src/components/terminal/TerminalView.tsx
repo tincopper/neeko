@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { Unicode11Addon } from 'xterm-addon-unicode11'
@@ -36,7 +36,7 @@ interface TerminalViewProps {
   shell?: string
   fontFamily?: string
   suppressResizeRef?: React.MutableRefObject<boolean>
-  agentCommandOverrides?: Record<string, string>
+  agentCommandOverride?: string
 }
 
 interface TerminalCache {
@@ -326,13 +326,13 @@ export async function createTerminalForProject(
   return cache
 }
 
-export default function TerminalView({
+function TerminalView({
   project,
   fontSize = 14,
   shell = '',
   fontFamily = '',
   suppressResizeRef,
-  agentCommandOverrides,
+  agentCommandOverride,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -407,7 +407,9 @@ export default function TerminalView({
         shell,
         fontFamily,
         undefined,
-        agentCommandOverrides,
+        agentCommandOverride && project.selected_agent
+          ? { [project.selected_agent]: agentCommandOverride }
+          : undefined,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
@@ -468,3 +470,11 @@ export default function TerminalView({
     </div>
   )
 }
+
+export default React.memo(TerminalView, (prev, next) =>
+  prev.project.id === next.project.id &&
+  prev.fontSize === next.fontSize &&
+  prev.shell === next.shell &&
+  prev.fontFamily === next.fontFamily &&
+  prev.agentCommandOverride === next.agentCommandOverride
+)

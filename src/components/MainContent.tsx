@@ -189,7 +189,7 @@ function MainContent({
                   shell={config.shell}
                   fontFamily={config.fontFamily}
                   suppressResizeRef={suppressResizeRef}
-                  agentCommandOverrides={config.agentCommandOverrides}
+                  agentCommandOverride={config.agentCommandOverrides?.[activeProject.selected_agent ?? ""]}
                 />
               </div>
               {/* Worktree 终端 */}

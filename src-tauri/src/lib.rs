@@ -551,7 +551,7 @@ fn set_project_agent(project_id: String, agent_id: Option<String>, state: State<
 
 // 获取系统已安装的等宽字体列表
 #[tauri::command]
-fn get_system_fonts() -> Vec<String> {
+async fn get_system_fonts() -> Vec<String> {
     let mut fonts = get_monospace_fonts();
     fonts.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
     fonts.dedup();
@@ -561,6 +561,8 @@ fn get_system_fonts() -> Vec<String> {
 #[cfg(target_os = "windows")]
 fn get_monospace_fonts() -> Vec<String> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     // PowerShell 枚举等宽字体（IsSymbolFont=false，Monospace 通过 Pitch 判断）
     let output = Command::new("powershell")
         .args([
@@ -571,6 +573,7 @@ fn get_monospace_fonts() -> Vec<String> {
 Where-Object { $_.IsStyleAvailable('Regular') } |
 Select-Object -ExpandProperty Name"#,
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     match output {
         Ok(o) => String::from_utf8_lossy(&o.stdout)
