@@ -1,3 +1,15 @@
+// App configuration (persisted)
+export type DiffMode = "unified" | "split";
+
+export interface AppConfig {
+  fontSize: number;
+  diffMode: DiffMode;
+  shell: string;
+  fontFamily: string;
+  customIdes: { name: string; command: string }[];
+  ideCommandOverrides: Record<string, string>;
+}
+
 export interface FileChange {
   path: string;
   status: "Modified" | "Added" | "Deleted" | "Renamed" | "Untracked";
