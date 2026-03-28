@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView, RemoteTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
@@ -65,6 +65,14 @@ function MainContent({
   onRemoteDiffBack,
   suppressResizeRef,
 }: MainContentProps) {
+  // 稳定的 onSessionReady 回调，避免 WSL/Remote TerminalView 因回调引用变化重渲染
+  const onWslSessionReady = useCallback((pid: string) => {
+    setWslOpenSessions(prev => new Set(prev).add(pid));
+  }, [setWslOpenSessions]);
+
+  const onRemoteSessionReady = useCallback((pid: string) => {
+    setRemoteOpenSessions(prev => new Set(prev).add(pid));
+  }, [setRemoteOpenSessions]);
   const isTerminalView = activeProject?.active_view === "Terminal";
   const diffFilePath =
     typeof activeProject?.active_view === "object"
@@ -96,9 +104,7 @@ function MainContent({
               // worktree 模式使用不同缓存键，避免与主终端冲突
               cacheKeySuffix={activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}` : ""}
               selectedAgentId={activeWslProject.project.selected_agent}
-              onSessionReady={(pid) => {
-                setWslOpenSessions(prev => new Set(prev).add(pid));
-              }}
+              onSessionReady={onWslSessionReady}
             />
             {wslSideTerminalOpen.has(activeWslProject.project.id) && (
               <>
@@ -179,9 +185,7 @@ function MainContent({
                 // worktree 模式使用不同缓存键，避免与主终端冲突
                 cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
                 selectedAgentId={project.selected_agent}
-                onSessionReady={(pid) => {
-                  setRemoteOpenSessions(prev => new Set(prev).add(pid));
-                }}
+                onSessionReady={onRemoteSessionReady}
               />
               {remoteSideTerminalOpen.has(project.id) && (
                 <>
