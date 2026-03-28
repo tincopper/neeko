@@ -104,6 +104,10 @@ pub struct SessionStore {
     pub projects: Vec<ProjectSession>,
     pub active_project_id: Option<String>,
     pub last_updated: String,
+    #[serde(default)]
+    pub wsl_entries: Vec<WSLEntrySession>,
+    #[serde(default)]
+    pub remote_entries: Vec<RemoteEntrySession>,
 }
 
 impl SessionStore {
@@ -112,6 +116,8 @@ impl SessionStore {
             projects: Vec::new(),
             active_project_id: None,
             last_updated: String::new(),
+            wsl_entries: Vec::new(),
+            remote_entries: Vec::new(),
         }
     }
 }

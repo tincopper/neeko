@@ -83,7 +83,7 @@ fn remove_project(project_id: String, state: State<AppStateWrapper>) {
     let projects = state.project_manager.lock().unwrap().list_projects();
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects);
+        .create_session_from_projects(&projects, None, None);
     let _ = state.storage_manager.save_session(&session);
 }
 
@@ -150,7 +150,7 @@ fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppSt
     let projects = pm.list_projects();
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects);
+        .create_session_from_projects(&projects, None, None);
     let _ = state.storage_manager.save_session(&session);
 }
 
@@ -419,73 +419,7 @@ fn create_wsl_terminal_session(
         .map_err(|e| e.to_string())
 }
 
-// WSL 配置持久化
-#[tauri::command]
-fn save_wsl_entries(
-    entries: Vec<WSLEntrySession>,
-    state: State<AppStateWrapper>,
-) -> Result<(), String> {
-    let config_file = state
-        .storage_manager
-        .get_config_dir()
-        .join("wsl_entries.json");
-    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(config_file, json).map_err(|e| e.to_string())
-}
 
-#[tauri::command]
-fn load_wsl_entries(state: State<AppStateWrapper>) -> Result<Vec<WSLEntrySession>, String> {
-    let config_file = state
-        .storage_manager
-        .get_config_dir()
-        .join("wsl_entries.json");
-    if !config_file.exists() {
-        return Ok(Vec::new());
-    }
-    let json = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
-    let entries: Vec<WSLEntrySession> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-
-    // 过滤历史脏数据：distro 名含 null 字节说明是旧版 UTF-16LE 未解码的残留
-    let clean: Vec<WSLEntrySession> = entries
-        .into_iter()
-        .filter(|e| !e.distro.contains('\0'))
-        .map(|mut e| {
-            e.projects.retain(|p| !p.distro.contains('\0'));
-            e
-        })
-        .collect();
-
-    Ok(clean)
-}
-
-// SSH 配置持久化
-#[tauri::command]
-fn save_remote_entries(
-    entries: Vec<RemoteEntrySession>,
-    state: State<AppStateWrapper>,
-) -> Result<(), String> {
-    let config_file = state
-        .storage_manager
-        .get_config_dir()
-        .join("remote_entries.json");
-    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(config_file, json).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn load_remote_entries(state: State<AppStateWrapper>) -> Result<Vec<RemoteEntrySession>, String> {
-    let config_file = state
-        .storage_manager
-        .get_config_dir()
-        .join("remote_entries.json");
-    if !config_file.exists() {
-        return Ok(Vec::new());
-    }
-    let json = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
-    let entries: Vec<RemoteEntrySession> =
-        serde_json::from_str(&json).map_err(|e| e.to_string())?;
-    Ok(entries)
-}
 
 // SSH 远程终端命令
 #[tauri::command]
@@ -831,11 +765,15 @@ fn load_config(state: State<AppStateWrapper>) -> Result<serde_json::Value, Strin
 
 // 持久化命令
 #[tauri::command]
-fn save_session(state: State<AppStateWrapper>) -> Result<(), String> {
+fn save_session(
+    wsl_entries: Vec<WSLEntrySession>,
+    remote_entries: Vec<RemoteEntrySession>,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
     let projects = state.project_manager.lock().unwrap().list_projects();
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects);
+        .create_session_from_projects(&projects, Some(&wsl_entries), Some(&remote_entries));
     state
         .storage_manager
         .save_session(&session)
@@ -939,16 +877,12 @@ pub fn run() {
             get_wsl_directories,
             get_wsl_home_dir,
             create_wsl_terminal_session,
-            save_wsl_entries,
-            load_wsl_entries,
             // SSH 远程终端
             create_remote_terminal_session,
             close_remote_terminal_session,
             resize_remote_terminal,
             test_remote_connection,
             list_remote_directories,
-            save_remote_entries,
-            load_remote_entries,
             // Agent 管理
             list_agents,
             get_agent,

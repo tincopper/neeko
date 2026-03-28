@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { remoteCacheKey, destroyRemoteCache } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
+import type { SaveSessionFn } from "./useWslProjects";
 
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
 
-export function useRemoteProjects() {
+export function useRemoteProjects(saveSession: SaveSessionFn) {
   const [remoteEntries, setRemoteEntries] = useState<RemoteEntrySession[]>([]);
   const [activeRemoteKey, setActiveRemoteKey] = useState<ActiveRemoteKey>(null);
   const [activeRemoteProject, setActiveRemoteProject] = useState<{
@@ -38,15 +38,6 @@ export function useRemoteProjects() {
     }
   }, [activeRemoteProject, remoteAuthStore]);
 
-  const loadRemoteEntries = useCallback(async () => {
-    try {
-      const entries = await invoke<RemoteEntrySession[]>("load_remote_entries");
-      setRemoteEntries(entries);
-    } catch (error) {
-      console.error("[App] Failed to load remote entries:", error);
-    }
-  }, []);
-
   const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null) => {
     try {
       const existingIndex = remoteEntries.findIndex(e => e.id === entry.id);
@@ -58,14 +49,14 @@ export function useRemoteProjects() {
         newEntries = [...remoteEntries, entry];
       }
       setRemoteEntries(newEntries);
-      await invoke("save_remote_entries", { entries: newEntries });
+      await saveSession(undefined, newEntries);
       if (auth) {
         setRemoteAuthStore(prev => new Map(prev).set(entry.id, auth));
       }
     } catch (error) {
       console.error("[App] Failed to save remote entry:", error);
     }
-  }, [remoteEntries]);
+  }, [remoteEntries, saveSession]);
 
   const handleCloseRemoteProject = useCallback((entryId: string, projectId: string) => {
     destroyRemoteCache(remoteCacheKey(entryId, projectId));
@@ -92,8 +83,8 @@ export function useRemoteProjects() {
       return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
     });
     setRemoteEntries(newEntries);
-    await invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
-  }, [remoteEntries, activeRemoteKey]);
+    await saveSession(undefined, newEntries).catch(console.error);
+  }, [remoteEntries, activeRemoteKey, saveSession]);
 
   const handleRemoveRemoteEntry = useCallback(async (entryId: string) => {
     const entry = remoteEntries.find(e => e.id === entryId);
@@ -110,8 +101,8 @@ export function useRemoteProjects() {
     }
     const newEntries = remoteEntries.filter(e => e.id !== entryId);
     setRemoteEntries(newEntries);
-    await invoke("save_remote_entries", { entries: newEntries }).catch(console.error);
-  }, [remoteEntries, activeRemoteKey]);
+    await saveSession(undefined, newEntries).catch(console.error);
+  }, [remoteEntries, activeRemoteKey, saveSession]);
 
   const handleAddRemoteProject = useCallback((entryId: string) => {
     setRemoteAddToEntryId(entryId);
@@ -134,7 +125,7 @@ export function useRemoteProjects() {
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
     remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef, remoteSideOpenRef,
-    loadRemoteEntries, handleRemoteEntryAdd,
+    handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
   };
