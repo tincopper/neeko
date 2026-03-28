@@ -22,7 +22,7 @@ impl AgentManager {
             command: "opencode".to_string(),
             args: vec![],
             env: HashMap::new(),
-            icon: Some("🤖".to_string()),
+            icon: Some("opencode.png".to_string()),
             enabled: true,
         });
 
@@ -33,18 +33,7 @@ impl AgentManager {
             command: "claude".to_string(),
             args: vec![],
             env: HashMap::new(),
-            icon: Some("🧠".to_string()),
-            enabled: true,
-        });
-
-        // aider
-        self.agents.push(AgentConfig {
-            id: "aider".to_string(),
-            name: "aider".to_string(),
-            command: "aider".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-            icon: Some("💡".to_string()),
+            icon: Some("claude-code.png".to_string()),
             enabled: true,
         });
 
@@ -55,7 +44,7 @@ impl AgentManager {
             command: "qwen".to_string(),
             args: vec![],
             env: HashMap::new(),
-            icon: Some("🌟".to_string()),
+            icon: Some("qwen.png".to_string()),
             enabled: true,
         });
 
@@ -66,7 +55,7 @@ impl AgentManager {
             command: "gemini".to_string(),
             args: vec![],
             env: HashMap::new(),
-            icon: Some("♊".to_string()),
+            icon: Some("gemini.png".to_string()),
             enabled: true,
         });
 
@@ -77,7 +66,29 @@ impl AgentManager {
             command: "codex".to_string(),
             args: vec![],
             env: HashMap::new(),
-            icon: Some("⚡".to_string()),
+            icon: Some("codex.png".to_string()),
+            enabled: true,
+        });
+
+        // qoder
+        self.agents.push(AgentConfig {
+            id: "qoder".to_string(),
+            name: "qoder".to_string(),
+            command: "qoder".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("qoder.svg".to_string()),
+            enabled: true,
+        });
+
+        // codebuddy
+        self.agents.push(AgentConfig {
+            id: "codebuddy".to_string(),
+            name: "codebuddy".to_string(),
+            command: "codebuddy".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("codebuddy.svg".to_string()),
             enabled: true,
         });
     }
