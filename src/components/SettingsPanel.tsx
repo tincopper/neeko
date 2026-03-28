@@ -1,17 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
+import type { AppConfig, DiffMode } from "../types";
 
-export type DiffMode = "unified" | "split";
-
-export interface AppConfig {
-  fontSize: number;
-  diffMode: DiffMode;
-  shell: string;
-  fontFamily: string;
-  customIdes: { name: string; command: string }[];
-  ideCommandOverrides: Record<string, string>; // preset id -> 自定义命令
-}
+// re-export for backward compatibility
+export type { AppConfig, DiffMode };
 
 // 内置等宽字体预设（系统通常包含其中之一）
 export const BUILTIN_FONTS = [

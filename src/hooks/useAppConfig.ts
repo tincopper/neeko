@@ -1,0 +1,73 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { AppConfig } from "../types";
+
+const DEFAULT_CONFIG: AppConfig = {
+  fontSize: 14,
+  diffMode: "unified",
+  shell: "",
+  fontFamily: "",
+  customIdes: [],
+  ideCommandOverrides: {},
+};
+
+export function useAppConfig() {
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // 同步字体大小到 CSS 变量
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--font-size",
+      `${config.fontSize}px`,
+    );
+  }, [config.fontSize]);
+
+  // 持久化保存配置
+  const saveConfig = useCallback(async (next: AppConfig) => {
+    setConfig(next);
+    try {
+      await invoke("save_config", { config: next });
+    } catch (e) {
+      console.error("[App] Failed to save config:", e);
+    }
+  }, []);
+
+  // 应用启动时加载配置
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await invoke<Record<string, any>>("load_config");
+        if (saved && typeof saved === "object") {
+          setConfig({
+            fontSize:
+              typeof saved.fontSize === "number"
+                ? saved.fontSize
+                : DEFAULT_CONFIG.fontSize,
+            diffMode: saved.diffMode === "split" ? "split" : "unified",
+            shell:
+              typeof saved.shell === "string"
+                ? saved.shell
+                : DEFAULT_CONFIG.shell,
+            fontFamily:
+              typeof saved.fontFamily === "string"
+                ? saved.fontFamily
+                : DEFAULT_CONFIG.fontFamily,
+            customIdes: Array.isArray(saved.customIdes)
+              ? saved.customIdes
+              : DEFAULT_CONFIG.customIdes,
+            ideCommandOverrides:
+              saved.ideCommandOverrides &&
+              typeof saved.ideCommandOverrides === "object"
+                ? saved.ideCommandOverrides
+                : DEFAULT_CONFIG.ideCommandOverrides,
+          });
+        }
+      } catch (e) {
+        console.error("[App] Failed to load config:", e);
+      }
+    })();
+  }, []);
+
+  return { config, settingsOpen, setSettingsOpen, saveConfig };
+}
