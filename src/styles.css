@@ -1009,6 +1009,28 @@ body {
   flex-shrink: 0;
 }
 
+/* Hide project header actions by default, show on hover */
+.gh-project-header .gh-project-actions,
+.gh-project-header .gh-ide-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gh-project-header:hover .gh-project-actions,
+.gh-project-header:hover .gh-ide-btn {
+  opacity: 1;
+}
+
+/* Hide sub-project row actions (WSL/Remote), show on row hover */
+.gh-branch-item .gh-project-actions {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gh-branch-item:hover .gh-project-actions {
+  opacity: 1;
+}
+
 
 .gh-icon-btn {
   background: none;
