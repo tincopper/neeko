@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
+import serverIcon from "../../assets/server.svg";
 
 interface RemoteDialogProps {
   isOpen: boolean;
@@ -363,7 +364,7 @@ export function RemoteDialog({
             {/* 服务器信息 */}
             <label className="gh-dialog-label">Server</label>
             <div className="remote-selected-server">
-              <span className="remote-server-icon">🖥️</span>
+              <img className="remote-server-icon" src={serverIcon} width={15} height={15} alt="" />
               <span>{selectedServer ? selectedServer.host : `${host}:${port}`}</span>
             </div>
 

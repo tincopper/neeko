@@ -3,6 +3,7 @@ import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalV
 import DiffView from "./DiffView";
 import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
 
+
 interface MainContentProps {
   config: AppConfig;
   // local
