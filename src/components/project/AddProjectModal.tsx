@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
-import type { AppConfig } from "./SettingsPanel";
+import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
+import type { AppConfig } from "../SettingsPanel";
 
 interface AgentConfig {
   id: string;

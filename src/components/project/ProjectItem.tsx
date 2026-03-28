@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Project } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
@@ -157,13 +157,15 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   };
 
   const changedFiles = project.git_info?.changed_files ?? [];
-  const tree = buildTree(changedFiles);
+  const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
   const branches = project.git_info?.branches ?? [];
   const worktrees = project.git_info?.worktrees ?? [];
 
   // 被 worktree 占用的 branch 不在 Branches 列表中展示
-  const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
-  const filteredBranches = branches.filter((b) => !worktreeBranchSet.has(b));
+  const filteredBranches = useMemo(() => {
+    const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
+    return branches.filter((b) => !worktreeBranchSet.has(b));
+  }, [worktrees, branches]);
 
   const branchesExpanded = expandedSections["__branches__"] ?? true;
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
@@ -411,4 +413,4 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   );
 };
 
-export default ProjectItem;
+export default React.memo(ProjectItem);

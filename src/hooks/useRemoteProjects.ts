@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { remoteCacheKey, destroyRemoteCache } from "../components/RemoteTerminalView";
+import { remoteCacheKey, destroyRemoteCache } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 
 export type ActiveRemoteKey = { host: string; projectId: string } | null;

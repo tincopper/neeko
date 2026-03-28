@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { wslCacheKey, destroyWslCache } from "../components/WSLTerminalView";
+import { wslCacheKey, destroyWslCache } from "../components/terminal";
 import type { WSLEntrySession, WSLProject } from "../types";
 
 export type ActiveWslKey = { distro: string; projectId: string } | null;

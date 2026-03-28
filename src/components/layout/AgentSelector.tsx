@@ -124,4 +124,4 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   );
 };
 
-export default AgentSelector;
+export default React.memo(AgentSelector);

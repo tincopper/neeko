@@ -5,58 +5,80 @@ import {
   terminalCache,
   terminalRebuildCallbacks,
 } from "./TerminalView";
+import { buildFontFamily } from "../../utils/terminal";
 
-interface WorktreeTerminalViewProps {
-  projectId: string;
-  projectName: string;
-  worktreePath: string;
-  worktreeBranch: string;
-  selectedAgent: string | null;
+interface Project {
+  id: string;
+  name: string;
+  path: string;
+  selected_agent: string | null;
+}
+
+interface SideTerminalViewProps {
+  project: Project;
   fontSize?: number;
   shell?: string;
   fontFamily?: string;
+  onClose: () => void;
+  width?: number;
+  worktreePath?: string;
+  /** 用户主动关闭时调用（销毁 PTY cache）；组件因切换项目而卸载时不触发，保留 PTY 会话 */
+  onDestroy?: () => void;
 }
 
-// cache key 格式：projectId + ":wt:" + worktreePath
-export function worktreeKey(projectId: string, worktreePath: string) {
-  return `${projectId}:wt:${worktreePath}`;
+// Side 终端的 cache key 格式：projectId + ":side" 或 projectId + ":side:" + worktreePath
+function sideKey(projectId: string, worktreePath?: string) {
+  return worktreePath ? `${projectId}:side:${worktreePath}` : `${projectId}:side`;
 }
 
-export default function WorktreeTerminalView({
-  projectId,
-  projectName,
-  worktreePath,
-  worktreeBranch,
-  selectedAgent,
+export default function SideTerminalView({
+  project,
   fontSize = 14,
   shell = "",
   fontFamily = "",
-}: WorktreeTerminalViewProps) {
+  onClose,
+  width,
+  worktreePath,
+  onDestroy,
+}: SideTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
 
   // fontSize / fontFamily 变化时同步到已有实例
   useEffect(() => {
-    const key = worktreeKey(projectId, worktreePath);
+    const key = sideKey(project.id, worktreePath);
     const cache = terminalCache.get(key);
     if (!cache) return;
-    const isLinux = navigator.platform.toLowerCase().startsWith("linux");
-    const DEFAULT_FONT_FAMILY = isLinux
-      ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
-      : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
     cache.term.options.fontSize = fontSize;
-    cache.term.options.fontFamily = fontFamily
-      ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
-      : DEFAULT_FONT_FAMILY;
+    cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, projectId, worktreePath]);
+  }, [fontSize, fontFamily, project.id]);
+
+  // side terminal 宽度变化时重算 PTY 尺寸
+  useEffect(() => {
+    const key = sideKey(project.id, worktreePath);
+    const cache = terminalCache.get(key);
+    if (!cache) return;
+    // 延迟执行以确保浏览器完成布局
+    const timer = setTimeout(() => {
+      cache.fitAddon.fit();
+      if (cache.sessionId) {
+        invoke("resize_terminal", {
+          sessionId: cache.sessionId,
+          cols: cache.term.cols,
+          rows: cache.term.rows,
+        }).catch(() => {});
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [width]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const key = worktreeKey(projectId, worktreePath);
+    const key = sideKey(project.id, worktreePath);
     currentKeyRef.current = key;
 
     // 注册重建回调
@@ -94,17 +116,17 @@ export default function WorktreeTerminalView({
     if (terminalCache.has(key)) {
       attach(terminalCache.get(key)!);
     } else {
-      // worktreePath 作为终端工作目录，selectedAgent 自动启动 Agent，backendProjectId 为父项目 ID
+      // 副终端不自动启动 agent；若有 worktreePath 则 cwd 为 worktree 路径
       createTerminalForProject(
         key,
-        worktreePath,
-        `${projectName} [${worktreeBranch}]`,
-        selectedAgent,
+        worktreePath || project.path,
+        project.name,
+        null,
         fontSize,
         wrapper,
         shell,
         fontFamily,
-        projectId,
+        project.id,
       ).then((cache) => {
         if (currentKeyRef.current !== key) return;
         requestAnimationFrame(() => {
@@ -141,11 +163,29 @@ export default function WorktreeTerminalView({
       detachAll();
       terminalRebuildCallbacks.delete(key);
     };
-  }, [projectId, worktreePath, rebuildCount]);
+  }, [project.id, worktreePath, rebuildCount]);
+
+  const handleClose = () => {
+    onDestroy?.();
+    onClose();
+  };
 
   return (
-    <div className="terminal-container">
+    <div
+      className="side-terminal-container"
+      style={width ? { flex: "none", width } : undefined}
+    >
+      <div className="side-terminal-header">
+        <span className="side-terminal-title">Terminal</span>
+        <span className="side-terminal-hint">Ctrl+W to close</span>
+        <button className="side-terminal-close" onClick={handleClose} title="Close (Ctrl+W)">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
       <div className="terminal-wrapper" ref={wrapperRef} />
     </div>
   );
 }
+
