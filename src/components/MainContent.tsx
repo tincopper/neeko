@@ -189,6 +189,7 @@ function MainContent({
                   shell={config.shell}
                   fontFamily={config.fontFamily}
                   suppressResizeRef={suppressResizeRef}
+                  agentCommandOverrides={config.agentCommandOverrides}
                 />
               </div>
               {/* Worktree 终端 */}

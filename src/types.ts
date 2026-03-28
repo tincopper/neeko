@@ -8,6 +8,8 @@ export interface AppConfig {
   fontFamily: string;
   customIdes: { name: string; command: string }[];
   ideCommandOverrides: Record<string, string>;
+  agentCommandOverrides: Record<string, string>;
+  customAgents: AgentConfig[];
 }
 
 export interface FileChange {
