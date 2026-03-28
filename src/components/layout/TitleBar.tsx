@@ -3,6 +3,7 @@ import React from "react";
 import AgentSelector from "./AgentSelector";
 import WindowControls from "./WindowControls";
 import { WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
+import { IS_WINDOWS } from "../../utils/platform";
 import linuxIcon from "../../assets/linux.svg";
 import serverIcon from "../../assets/server.svg";
 
@@ -82,10 +83,12 @@ function TitleBar({
               <span className="add-menu-icon">📁</span>
               <span>Add Local Project</span>
             </div>
-            <div className="add-menu-item" onClick={onAddWsl}>
-              <img src={linuxIcon} className="add-menu-icon-img" alt="" />
-              <span>Add WSL Distro</span>
-            </div>
+            {IS_WINDOWS && (
+              <div className="add-menu-item" onClick={onAddWsl}>
+                <img src={linuxIcon} className="add-menu-icon-img" alt="" />
+                <span>Add WSL Distro</span>
+              </div>
+            )}
             <div className="add-menu-item" onClick={onAddRemote}>
               <img src={serverIcon} className="add-menu-icon-img" alt="" />
               <span>Add Remote Server</span>

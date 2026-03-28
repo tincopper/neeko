@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
+import { IS_WINDOWS } from "../../utils/platform";
 import ProjectItem from "./ProjectItem";
 import GitDialog, { DialogState } from "./GitDialog";
 import { WSLItem, RemoteItem, ActiveWslKey, ActiveRemoteKey } from "../connections/RemoteItems";
@@ -111,7 +112,9 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
     document.addEventListener("mouseup", onMouseUp);
   }, [updateWidth]);
 
-  const isEmpty = projects.length === 0 && wslEntries.length === 0 && remoteEntries.length === 0;
+  const isEmpty = projects.length === 0
+    && (IS_WINDOWS ? wslEntries.length === 0 : true)
+    && remoteEntries.length === 0;
 
   return (
     <>
@@ -141,7 +144,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
               ))}
 
               {/* WSL 发行版 */}
-              {wslEntries.map((entry) => (
+              {IS_WINDOWS && wslEntries.map((entry) => (
                 <WSLItem
                   key={entry.id}
                   entry={entry}
