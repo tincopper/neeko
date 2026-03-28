@@ -86,12 +86,12 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   const startX = useRef(0);
   const startWidth = useRef(initialSidebarWidth ?? 280);
 
-  // 初始化 CSS 变量
+  // 初始化 CSS 变量（随 initialSidebarWidth 变化更新，处理异步 load_session 返回后的情况）
   React.useEffect(() => {
     if (initialSidebarWidth) {
       document.documentElement.style.setProperty("--sidebar-width", `${Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, initialSidebarWidth))}px`);
     }
-  }, []);
+  }, [initialSidebarWidth]);
 
   const updateWidth = useCallback((w: number) => {
     const clamped = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w));
