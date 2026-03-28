@@ -27,7 +27,20 @@ export function useAppConfig() {
 
   // 持久化保存配置
   const saveConfig = useCallback(async (next: AppConfig) => {
-    setConfig(next);
+    setConfig(prev => {
+      // 浅比较：所有字段相同则返回旧引用，避免不必要的重渲染
+      if (
+        prev.fontSize === next.fontSize &&
+        prev.diffMode === next.diffMode &&
+        prev.shell === next.shell &&
+        prev.fontFamily === next.fontFamily &&
+        prev.customIdes === next.customIdes &&
+        prev.ideCommandOverrides === next.ideCommandOverrides &&
+        prev.agentCommandOverrides === next.agentCommandOverrides &&
+        prev.customAgents === next.customAgents
+      ) return prev;
+      return next;
+    });
     try {
       await invoke("save_config", { config: next });
     } catch (e) {
