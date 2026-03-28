@@ -1,13 +1,14 @@
 # Neeko — Session Context
 
-> Last updated: 2026-03-28 (session 5)
+> Last updated: 2026-03-28 (session 6)
 
 ## Goal
 
-Build and enhance a Tauri-based terminal manager app called **Neeko** that supports local projects, WSL terminals, and SSH remote terminals with full feature parity across all three types.
+Build and enhance a Tauri-based terminal manager app called **Neeko** that supports local projects, WSL terminals, and SSH remote terminals. This session focused on multiple improvements: platform gating for WSL, persistence consolidation, UI configuration for sidebar/side terminal widths, custom Agent CLI support, terminal flicker fixes, and terminal refresh/rebuild capability.
 
 ## Constraints
 
+- WSL is **Windows-only**: UI conditionally shown via `IS_WINDOWS` (`navigator.platform`); backend commands gated with `cfg!(target_os = "windows")`
 - Keep WSL and SSH terminal features at parity with local project features
 - All terminal sessions (main + side) must survive project switching (PTY cache preserved, DOM detach/reattach)
 - Side terminal width is shared (`sideTerminalWidth`) across all terminal types
@@ -15,6 +16,7 @@ Build and enhance a Tauri-based terminal manager app called **Neeko** that suppo
 - TypeScript type checking (`npx tsc --noEmit`) must pass after every change
 - Rust compilation (`cargo build`) must pass after every change
 - Follow Vercel React Best Practices: `rerender-use-ref-transient-values`, `rerender-split-combined-hooks`, `rerender-derived-state-no-effect`, `rerender-move-effect-to-event`, etc.
+- `AgentIcon` (`layout/AgentIcon.tsx`) supports custom agent icons via `AgentConfig.icon` filename resolved via `getAgentIconSrc()` in `utils/agents.ts`; includes `cli.svg` for custom agents.
 
 ---
 
@@ -33,14 +35,15 @@ src/
 │   ├── DiffView.tsx       ← Git diff 独立模块（保留根目录）
 │   └── SettingsPanel.tsx  ← 设置面板（保留根目录）
 ├── hooks/                 ← 自定义 hooks
-├── utils/                 ← 工具函数（terminal.ts, agents.ts, distros.ts, fileIcons.ts, idePresets.ts）
+├── utils/                 ← 工具函数（terminal.ts, agents.ts, distros.ts, platform.ts, fileIcons.ts, idePresets.ts）
 ├── types.ts               ← 全局类型定义（单一源）
 ├── assets/
 │   ├── agents/            ← Agent logo（PNG/SVG：claude-code, opencode, qwen, gemini, codex, qoder, codebuddy）
 │   ├── distros/           ← WSL 发行版 logo（SVG：ubuntu, debian, fedora, opensuse, archlinux, ...）
 │   ├── linux.svg          ← WSL 通用图标
 │   ├── server.svg         ← SSH 图标
-│   └── folder.svg         ← 文件夹图标
+│   ├── folder.svg         ← 文件夹图标
+│   └── cli.svg            ← 自定义 Agent 图标
 └── App.tsx                ← 组合层（~446 行）
 ```
 
@@ -82,6 +85,7 @@ import ProjectSidebar, { AddProjectModal } from "./components/project";
 - `src/utils/terminal.ts`：`DEFAULT_FONT_FAMILY`、`buildFontFamily(fontFamily)` — 所有终端组件共用
 - `src/utils/agents.ts`：`getAgentIconSrc(icon)` — AgentConfig.icon → 可导入的图片 URL
 - `src/utils/distros.ts`：`getDistroIcon(name)` — WSL 发行版名称 → 模糊匹配 logo（支持版本号后缀如 `Ubuntu-22.04`）
+- `src/utils/platform.ts`：`IS_WINDOWS` — 平台检测，控制 WSL UI 显隐
 - 不在多个文件中重复常量定义
 
 ### 组件提取标准
@@ -97,6 +101,9 @@ import ProjectSidebar, { AddProjectModal } from "./components/project";
 
 ### Terminal Cache
 All terminals use a global Map keyed by string (e.g. `wsl:{distro}:{projectId}`, `remote:{entryId}:{projectId}`, with `:side` suffix for side terminals). PTY sessions survive component unmount — DOM is detached but xterm instance + PTY process kept alive.
+
+### Terminal Refresh (Ctrl+R)
+`refreshTerminal()` destroys the xterm instance and DOM, then calls `createTerminalForProject` to rebuild from cached PTY. `TerminalCache` stores `unlistenClosed` callback — called during refresh to unregister the `terminal-closed-{sid}` listener before cleanup, preventing double rebuild race condition. WSL/Remote use `wslRebuildCallbacks`/`remoteRebuildCallbacks` Maps to trigger `setRebuildCount` increment.
 
 ### WSL Terminal
 Uses `wsl.exe -d <distro> --cd <path>` with `WSL_UTF8=1` env, outputs via `terminal-output-{id}` events, inputs via `terminal-input-{id}` events.
@@ -125,10 +132,19 @@ Side terminal for local projects was closing on project switch because:
 
 **Fix**: Changed to `sideTerminalOpenMap: Record<projectId, boolean>` and only destroy cache on explicit close via `onDestroy` callback.
 
+### Platform Gating (WSL)
+WSL is Windows-only. Frontend uses `IS_WINDOWS` (`src/utils/platform.ts`) to conditionally render WSL UI elements. Backend uses `cfg!(target_os = "windows")` to gate WSL Tauri commands — empty fallback on non-Windows.
+
+### Persistence (Unified sessions.json)
+All state persisted in single `sessions.json` (unified `SessionStore`):
+- Local projects, WSL entries, remote entries — `#[serde(default)]` for backward compatibility
+- `sidebar_width`, `side_terminal_width` — saved on drag end via callbacks
+- Old `wsl_entries.json`/`remote_entries.json` auto-migrated and deleted on load
+
 ### SSH Re-auth Flow
 `remoteAuthStore: Map<entryId, AuthMethod>` is in-memory only (lost on app restart). When a SSH project is selected without cached auth, `pendingAuthEntry` state is set via `useEffect` (not `setTimeout` in render — anti-pattern), triggering `RemoteAuthDialog`.
 
-### App.tsx Architecture (Session 3 + 4)
+### App.tsx Architecture (Session 3 + 4 + 6)
 
 Session 3: Hooks extracted: `useToast`, `useSideTerminalResize`, `useWorktreeState`, `useKeyboardShortcuts`.
 Components extracted: `TitleBar`, `AddProjectModal`.
@@ -138,6 +154,13 @@ Session 4 (full refactor):
 - `MainContent` component extracted for view rendering
 - Types consolidated: `AppConfig` moved to `types.ts`, duplicate `Project`/`AgentConfig` removed
 - App.tsx reduced from 1036 → 432 lines (pure composition layer)
+
+Session 6:
+- `suppressTerminalResizeRef` added to prevent `fitAddon.fit()` during sidebar/side-terminal drag
+- `saveSession` ref-based pattern to avoid stale closure on project change
+- Width callbacks (`onSidebarWidthChange`, `onSideTerminalWidthChange`) wired through for persistence
+- `IS_WINDOWS` used for conditional WSL entry loading and UI rendering
+- `agentCommandOverrides` (single string) passed to `TerminalView` for agent command customization
 
 Design principles:
 - `activeProjectIdRef` must be declared before `useWorktreeState()` call — ordering matters
@@ -162,10 +185,10 @@ Returns directory names.
 `test_remote_connection` creates a one-shot SSH connection, runs `echo ok`, verifies auth works.
 
 ### AgentSelector
-Has `skipBackendPersist` prop — WSL/SSH pass `true` to skip `set_project_agent` invoke (they persist via `save_wsl_entries` / `save_remote_entries` instead).
+Agent selection for WSL/SSH projects is persisted via unified `save_session` command (not `set_project_agent`). Agent command overrides (`agentCommandOverrides`) and custom agents (`customAgents`) are persisted in `config.json` via `useAppConfig`.
 
 ### Agent Icon System
-`AgentIcon` component (`layout/AgentIcon.tsx`) renders agent logos. `AgentConfig.icon` is a filename (e.g. `"claude-code.png"`, `"qoder.svg"`), resolved via `getAgentIconSrc()` in `utils/agents.ts`. Uses Vite static imports (auto-inline ≤4KB). Fallback: `🤖` emoji if no icon matches.
+`AgentIcon` component (`layout/AgentIcon.tsx`) renders agent logos. `AgentConfig.icon` is a filename (e.g. `"claude-code.png"`, `"qoder.svg"`), resolved via `getAgentIconSrc()` in `utils/agents.ts`. Uses Vite static imports (auto-inline ≤4KB). Fallback: `🤖` emoji if no icon matches. `cli.svg` is used for custom agents.
 
 ### SVG Icon System
 - **WSL/SSH sidebar icons**: `linux.svg` (penguin, Simple Icons) and `server.svg` (Charm Icons) replace emoji (🐧/🖥️)
@@ -210,6 +233,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `Ctrl+1~9` | Switches to nth item in unified list |
 | `Ctrl+Alt+T` | Opens side terminal for currently active project type |
 | `Ctrl+W` | Closes side terminal for currently active project type |
+| `Ctrl+R` | Refresh/rebuild current terminal DOM from cached PTY |
 | `Ctrl+N` | Cycles worktree terminals |
 | `Ctrl+O` | Opens IDE |
 
@@ -297,13 +321,52 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
     - Fixed dropdown to be right-aligned (`right: 0; left: auto`) below the + button
 33. **Vite env declarations** — added `declare module "*.png"` and `declare module "*.svg"` to `vite-env.d.ts`
 
+### Session 6 — Platform Gating, Persistence, Custom Agents, Terminal Refresh
+
+34. **WSL platform gating** (`0bd083b`):
+    - Added `IS_WINDOWS` constant in `src/utils/platform.ts` using `navigator.platform`
+    - Frontend: WSL entries loading, sidebar sections, and add-WSL button conditionally rendered via `IS_WINDOWS`
+    - Backend: all WSL commands gated with `cfg!(target_os = "windows")` (empty fallback on non-Windows)
+35. **Persistence unification** (`ed43799`):
+    - Merged `wsl_entries.json` and `remote_entries.json` into single `sessions.json`
+    - Added `wsl_entries: Vec<WSLEntrySession>` and `remote_entries: Vec<RemoteEntrySession>` fields to `SessionStore` with `#[serde(default)]`
+    - Auto-migration logic in `storage.rs::load_session()` — reads old files, adds to store, removes old files
+    - Removed `save_wsl_entries`/`load_wsl_entries`/`save_remote_entries`/`load_remote_entries` Tauri commands
+    - `useWslProjects` and `useRemoteProjects` hooks load from `invoke("load_session")` instead of dedicated commands
+36. **Sidebar/side terminal width persistence** (`0033ece`, `728de4a`):
+    - Added `sidebar_width: Option<f64>` and `side_terminal_width: Option<f64>` to `SessionStore` (backend) and `save_session` command
+    - Sidebar width saved on `mouseup` event via `onSidebarWidthChange` callback
+    - Side terminal width saved via `onSideTerminalWidthChange` callback
+    - `ProjectSidebar` loads initial width from session store; CSS variable updated via `useEffect([initialSidebarWidth])`
+    - `useSideTerminalResize` accepts `initialWidth` prop to restore on startup
+37. **Terminal flicker fix** (`3cfad5c`, `c9cc5f6`):
+    - **Font loading**: `get_system_fonts` PowerShell command spawns `CREATE_NO_WINDOW` flag to avoid visible console window flash
+    - **Blocking call**: `get_system_fonts` changed from sync to `async fn` to not block main thread
+    - **Re-render bypass**: `useAppConfig.saveConfig` uses shallow comparison (`shallowEqual`) before `setConfig`; `React.memo` added to `TerminalView` with custom comparator
+    - **Resize during drag**: `suppressTerminalResizeRef` pattern in `App.tsx` — sidebar/side-terminal drag suppresses `fitAddon.fit()` to prevent flicker
+38. **Custom Agent CLI support** (`29cddc8`):
+    - New "Agents" tab in `SettingsPanel` — shows built-in agents (read-only command with double-click editing) and custom agents (add/remove)
+    - Custom agents stored in `config.json` via `customAgents: AgentConfig[]` field on `AppConfig`
+    - `agentCommandOverrides: Record<string, string>` for built-in agent command customization
+    - `add_agent`/`remove_agent` backend commands enhanced to sync with `config.json` on disk
+    - `cli.svg` icon added for custom agents in `src/utils/agents.ts`
+39. **Terminal refresh (Ctrl+R)** (`7943a1b`):
+    - Added `refreshTerminal()`, `refreshWslTerminal()`, `refreshRemoteTerminal()`, `refreshSideTerminal()` functions in terminal components
+    - `Ctrl+R` shortcut in `useKeyboardShortcuts.ts` — destroys and rebuilds the xterm DOM from cached PTY without losing session state
+    - WSL/Remote terminals wired with `wslRebuildCallbacks`/`remoteRebuildCallbacks` Maps (previously `_setRebuildCount` unused)
+    - `TerminalCache` now stores `unlistenClosed` — called during refresh to prevent double rebuild race condition from `terminal-closed-{sid}` listener
+40. **Dead code cleanup** (`f8e0bff`):
+    - Removed unused structs: `WSLProject`, `WSLEntry`, `RemoteProject`, `RemoteEntry` in `state.rs` (replaced by `WSLEntrySession`/`RemoteEntrySession`)
+    - Removed `RemoteTerminalManager::close_all_sessions()` (never called)
+    - Added `#[allow(dead_code)]` on `input_tx` in `remote.rs` (used indirectly via closure)
+    - Zero Rust compiler warnings
+
 ---
 
 ## Known Issues / Still Needs Work
 
 - "Save credentials" checkbox exists in `RemoteDialog` UI but Base64 encode/decode + auto-fill into `remoteAuthStore` on load is **not yet wired up** in App.tsx
 - SSH path autocomplete dropdown click-selection may still have issues (z-index fix applied, needs verification)
-- `input_tx` field on `SSHHandle` generates a `dead_code` warning (used indirectly via event listener closure)
 
 ---
 
@@ -313,13 +376,14 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 
 | File | Purpose |
 |---|---|
-| `src/App.tsx` | Composition layer; calls domain hooks, renders layout |
-| `src/types.ts` | All shared interfaces: `Project`, `AgentConfig`, `AppConfig`, `WSLProject`, `RemoteProject`, `AuthMethod`, etc. |
+| `src/App.tsx` | Composition layer; domain hooks, cross-domain coordination, `suppressTerminalResizeRef`, `saveSession` (ref-based), width callbacks |
+| `src/types.ts` | All shared interfaces: `AppConfig` (with `customAgents`, `agentCommandOverrides`, `sidebar_width`, `side_terminal_width` persisted via config.json) |
 | `src/styles.css` | Global styles (including `.project-avatar`, `.agent-icon`, SVG color inheritance) |
-| `src/vite-env.d.ts` | Module declarations for `*.png` and `*.svg` imports |
+| `src/utils/platform.ts` | `IS_WINDOWS = navigator.platform.toLowerCase().includes("win")` — gates WSL UI |
 | `src/utils/terminal.ts` | `DEFAULT_FONT_FAMILY`, `buildFontFamily()` — shared by all terminal components |
-| `src/utils/agents.ts` | `getAgentIconSrc(icon)` — resolves agent icon filename → Vite-imported URL |
+| `src/utils/agents.ts` | `getAgentIconSrc(icon)` — resolves agent icon filename → Vite-imported URL; includes `cli.svg` for custom agents |
 | `src/utils/distros.ts` | `getDistroIcon(name)` — WSL distro name fuzzy match → SVG logo |
+| `src/vite-env.d.ts` | Module declarations for `*.png` and `*.svg` imports |
 | **assets/** | |
 | `src/assets/agents/` | 7 agent logo files (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy |
 | `src/assets/distros/` | 9 WSL distro SVGs: ubuntu, debian, fedora, opensuse, archlinux, kalilinux, alpine, centos, oracle |
@@ -327,42 +391,46 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/assets/server.svg` | SSH icon (Charm Icons) |
 | `src/assets/folder.svg` | Folder icon (Charm Icons) |
 | **terminal/** | |
-| `src/components/terminal/TerminalView.tsx` | Local terminal; `terminalCache`, `createTerminalForProject`, `launchAgentInTerminal` |
-| `src/components/terminal/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; no PTY destroy on unmount |
+| `src/components/terminal/TerminalView.tsx` | Local terminal; `terminalCache` (with `unlistenClosed`), `createTerminalForProject`, `launchAgentInTerminal`, `refreshTerminal()`; `React.memo` with custom comparator |
+| `src/components/terminal/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; `refreshSideTerminal()` |
 | `src/components/terminal/WorktreeTerminalView.tsx` | Worktree terminal; reuses TerminalView cache |
-| `src/components/terminal/WSLTerminalView.tsx` | WSL terminal; `ResizeObserver` + `useEffect([width])` |
-| `src/components/terminal/RemoteTerminalView.tsx` | SSH terminal; same props as WSL |
+| `src/components/terminal/WSLTerminalView.tsx` | WSL terminal; `ResizeObserver`, `useEffect([width])`, `wslRebuildCallbacks`, `refreshWslTerminal()` |
+| `src/components/terminal/RemoteTerminalView.tsx` | SSH terminal; `ResizeObserver`, `useEffect([width])`, `remoteRebuildCallbacks`, `refreshRemoteTerminal()` |
+| `src/components/terminal/index.ts` | Barrel export including all refresh functions |
 | **connections/** | |
 | `src/components/connections/WSLDialog.tsx` | WSL distro/path selection dialog |
-| `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog |
+| `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog; `saveCredentials` checkbox |
 | `src/components/connections/RemoteAuthDialog.tsx` | SSH re-authentication dialog |
 | `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types; uses `AgentIcon` + `getDistroIcon()` |
 | **project/** | |
-| `src/components/project/ProjectSidebar.tsx` | Left sidebar; all project types |
+| `src/components/project/ProjectSidebar.tsx` | Left sidebar; accepts `initialSidebarWidth`, `onSidebarWidthChange`, `suppressResizeRef`; CSS variable update via `useEffect([initialSidebarWidth])` |
 | `src/components/project/ProjectItem.tsx` | Local project card; `useMemo` for `buildTree` + branch filtering |
 | `src/components/project/FileTree.tsx` | Changed file tree; `buildTree` function |
 | `src/components/project/GitDialog.tsx` | New branch/worktree dialog |
 | `src/components/project/AddProjectModal.tsx` | Agent + IDE selection modal |
+| `src/components/MainContent.tsx` | Cross-domain composition; forwards `suppressResizeRef` and `agentCommandOverride` to `TerminalView` |
+| `src/components/SettingsPanel.tsx` | Settings panel with General/Theme/Agents tabs; Agents tab: built-in agent command editing + custom agent CRUD |
 | **layout/** | |
 | `src/components/layout/TitleBar.tsx` | App title bar; agent selectors for all project types |
 | `src/components/layout/WindowControls.tsx` | Min/max/close buttons |
-| `src/components/layout/AgentSelector.tsx` | `skipBackendPersist` prop for WSL/SSH |
+| `src/components/layout/AgentSelector.tsx` | Agent selection dropdown |
 | `src/components/layout/AgentIcon.tsx` | Agent logo renderer; resolves `AgentConfig.icon` filename; fallback 🤖 |
 | **hooks/** | |
-| `src/hooks/useAppConfig.ts` | Config load/save + CSS variable sync |
-| `src/hooks/useLocalProjects.ts` | Local project CRUD + state |
-| `src/hooks/useWslProjects.ts` | WSL project CRUD + state |
-| `src/hooks/useRemoteProjects.ts` | SSH project CRUD + state + auth |
+| `src/hooks/useAppConfig.ts` | Config load/save with shallow comparison + CSS variable sync |
+| `src/hooks/useLocalProjects.ts` | Local project CRUD + state; takes `SaveSessionFn` callback |
+| `src/hooks/useWslProjects.ts` | WSL project CRUD + state; loads from unified `load_session`; takes `SaveSessionFn` callback |
+| `src/hooks/useRemoteProjects.ts` | SSH project CRUD + state + auth; loads from unified `load_session`; takes `SaveSessionFn` callback |
 | `src/hooks/useToast.ts` | Toast notification (useCallback) |
-| `src/hooks/useSideTerminalResize.ts` | Drag-to-resize (useCallback) |
+| `src/hooks/useSideTerminalResize.ts` | Drag-to-resize; accepts `initialWidth`, `onWidthChange`, `suppressResizeRef` |
 | `src/hooks/useWorktreeState.ts` | Per-project worktree state |
-| `src/hooks/useKeyboardShortcuts.ts` | All keyboard shortcut logic |
+| `src/hooks/useKeyboardShortcuts.ts` | All keyboard shortcut logic; `Ctrl+R` for terminal refresh |
 
 ### Backend (`src-tauri/src/`)
 
 | File | Purpose |
 |---|---|
-| `src-tauri/src/remote.rs` | Full SSH session management; `SSHHandle` with `resize_tx`; IO task `select!` (3 branches); `test_connection`; `list_directories` |
-| `src-tauri/src/lib.rs` | Tauri command registrations: `test_remote_connection`, `list_remote_directories`, `create_remote_terminal_session`, `resize_remote_terminal`, etc. |
-| `src-tauri/src/state.rs` | `WSLProjectSession`, `RemoteProjectSession` with `selected_agent: Option<String>`; `RemoteEntrySession` with `saved_auth: Option<String>` |
+| `src-tauri/src/remote.rs` | Full SSH session management; `SSHHandle` with `resize_tx`; IO task `select!` (3 branches); `test_connection`; `list_directories`; `#[allow(dead_code)]` on `input_tx` |
+| `src-tauri/src/lib.rs` | Tauri commands: `test_remote_connection`, `list_remote_directories`, `create_remote_terminal_session`, `resize_remote_terminal`; WSL commands gated `cfg!(target_os = "windows")`; `get_system_fonts` is `async fn` with `CREATE_NO_WINDOW`; `add_agent`/`remove_agent` sync to `config.json` |
+| `src-tauri/src/state.rs` | `SessionStore` with `wsl_entries`, `remote_entries`, `sidebar_width`, `side_terminal_width`; `WSLEntrySession`, `RemoteEntrySession` |
+| `src-tauri/src/storage.rs` | `create_session_from_projects` takes `Option<&[...]>` for wsl/remote and `Option<u32>` for widths; `load_session` auto-migrates old `wsl_entries.json`/`remote_entries.json` |
 | `src-tauri/src/terminal.rs` | Local/WSL terminal session management |
