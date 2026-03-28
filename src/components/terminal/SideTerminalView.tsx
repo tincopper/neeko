@@ -4,6 +4,7 @@ import {
   createTerminalForProject,
   terminalCache,
   terminalRebuildCallbacks,
+  destroyTerminalCache,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
 
@@ -29,6 +30,20 @@ interface SideTerminalViewProps {
 // Side 终端的 cache key 格式：projectId + ":side" 或 projectId + ":side:" + worktreePath
 function sideKey(projectId: string, worktreePath?: string) {
   return worktreePath ? `${projectId}:side:${worktreePath}` : `${projectId}:side`;
+}
+
+/** 手动刷新 Side 终端 */
+export function refreshSideTerminal(projectId: string, worktreePath?: string) {
+  const key = sideKey(projectId, worktreePath);
+  const cache = terminalCache.get(key);
+  if (cache) {
+    cache.unlistenOutput?.();
+    if (cache.sessionId) {
+      invoke('close_terminal_session', { sessionId: cache.sessionId }).catch(() => {});
+    }
+  }
+  destroyTerminalCache(key);
+  terminalRebuildCallbacks.get(key)?.();
 }
 
 export default function SideTerminalView({
