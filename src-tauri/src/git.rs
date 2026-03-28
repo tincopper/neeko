@@ -378,3 +378,68 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
 
     Ok(wt_new_str.to_string())
 }
+
+/// 解析 git diff --unified=3 文本输出为 DiffResult
+pub fn parse_unified_diff(output: &str) -> DiffResult {
+    let mut hunks: Vec<DiffHunk> = Vec::new();
+
+    for line in output.lines() {
+        if line.starts_with("@@") {
+            // 解析 @@ -old_start,old_lines +new_start,new_lines @@
+            if let Some((hunk_header, _)) = parse_hunk_header(line) {
+                hunks.push(hunk_header);
+            }
+        } else if let Some(last) = hunks.last_mut() {
+            if line.starts_with('+') && !line.starts_with("+++") {
+                last.lines.push(DiffLine::Added(line[1..].to_string()));
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                last.lines.push(DiffLine::Removed(line[1..].to_string()));
+            } else if line.starts_with(' ') {
+                last.lines.push(DiffLine::Context(line[1..].to_string()));
+            }
+            // 跳过其他行（\ No newline at end of file 等）
+        }
+    }
+
+    DiffResult { hunks }
+}
+
+fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
+    // @@ -old_start,old_lines +new_start,new_lines @@
+    let rest = line.strip_prefix("@@ ")?;
+    let rest = rest.strip_prefix('-')?;
+
+    let (old_part, rest) = rest.split_once(' ')?;
+    let (old_start, old_lines) = if let Some((s, l)) = old_part.split_once(',') {
+        (s.parse::<u32>().ok()?, l.parse::<u32>().ok()?)
+    } else {
+        // 省略行数时隐含为 1（git 标准）
+        (old_part.parse::<u32>().ok()?, 1)
+    };
+
+    let rest = rest.strip_prefix('+')?;
+
+    let (new_part, _rest) = if let Some(pos) = rest.find(" @@") {
+        (&rest[..pos], &rest[pos..])
+    } else {
+        return None;
+    };
+
+    let (new_start, new_lines) = if let Some((s, l)) = new_part.split_once(',') {
+        (s.parse::<u32>().ok()?, l.parse::<u32>().ok()?)
+    } else {
+        // 省略行数时隐含为 1
+        (new_part.parse::<u32>().ok()?, 1)
+    };
+
+    Some((
+        DiffHunk {
+            old_start,
+            old_lines,
+            new_start,
+            new_lines,
+            lines: Vec::new(),
+        },
+        _rest,
+    ))
+}

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -70,8 +71,14 @@ interface DiffResult {
 
 type ViewMode = "unified" | "split";
 
+export type DiffSource =
+  | { type: "local"; projectId: string }
+  | { type: "wsl"; distro: string; projectPath: string }
+  | { type: "remote"; entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string };
+
 interface DiffViewProps {
-  projectId: string;
+  projectId?: string;    // legacy — for local projects
+  diffSource?: DiffSource;
   filePath: string;
   initialMode?: ViewMode;
   onBack: () => void;
@@ -329,7 +336,7 @@ function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   return rows;
 }
 
-const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, initialMode, onBack }) => {
+const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, initialMode, onBack }) => {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -369,16 +376,34 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, filePath, initialMode, o
 
   useEffect(() => {
     loadDiff();
-  }, [projectId, filePath]);
+  }, [projectId, diffSource, filePath]);
 
   const loadDiff = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<DiffResult>("get_file_diff_command", {
-        projectId,
-        filePath,
-      });
+      let result: DiffResult;
+      if (diffSource?.type === "wsl") {
+        result = await invoke<DiffResult>("get_wsl_file_diff_command", {
+          distro: diffSource.distro,
+          projectPath: diffSource.projectPath,
+          filePath,
+        });
+      } else if (diffSource?.type === "remote") {
+        result = await invoke<DiffResult>("get_remote_file_diff_command", {
+          host: diffSource.host,
+          port: diffSource.port,
+          username: diffSource.username,
+          auth: diffSource.auth,
+          projectPath: diffSource.projectPath,
+          filePath,
+        });
+      } else {
+        result = await invoke<DiffResult>("get_file_diff_command", {
+          projectId: projectId ?? diffSource?.projectId,
+          filePath,
+        });
+      }
       setDiffResult(result);
       setCurrentBlockIndex(0);
     } catch (err) {

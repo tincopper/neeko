@@ -18,15 +18,22 @@ interface MainContentProps {
   handleAddProject: () => void;
   // wsl
   activeWslProject: { distro: string; project: WSLProject } | null;
+  activeWslWorktreePath: string | null;
   wslSideTerminalOpen: Set<string>;
   setWslSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   // remote
   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
+  activeRemoteWorktreePath: string | null;
   remoteAuthStore: Map<string, AuthMethod>;
   remoteSideTerminalOpen: Set<string>;
   setRemoteSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
+  // diff state
+  wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
+  remoteDiffState: { entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string; filePath: string } | null;
+  onWslDiffBack: () => void;
+  onRemoteDiffBack: () => void;
   suppressResizeRef?: React.MutableRefObject<boolean>;
 }
 
@@ -42,14 +49,20 @@ function MainContent({
   handleSelectProject,
   handleAddProject,
   activeWslProject,
+  activeWslWorktreePath,
   wslSideTerminalOpen,
   setWslSideTerminalOpen,
   setWslOpenSessions,
   activeRemoteProject,
+  activeRemoteWorktreePath,
   remoteAuthStore,
   remoteSideTerminalOpen,
   setRemoteSideTerminalOpen,
   setRemoteOpenSessions,
+  wslDiffState,
+  remoteDiffState,
+  onWslDiffBack,
+  onRemoteDiffBack,
   suppressResizeRef,
 }: MainContentProps) {
   const isTerminalView = activeProject?.active_view === "Terminal";
@@ -64,14 +77,24 @@ function MainContent({
       {/* WSL 终端视图 */}
       {activeWslProject && !activeProject && (
         <div className="content-area">
+          {wslDiffState ? (
+            <DiffView
+              diffSource={{ type: "wsl", distro: wslDiffState.distro, projectPath: wslDiffState.projectPath }}
+              filePath={wslDiffState.filePath}
+              initialMode={config.diffMode}
+              onBack={onWslDiffBack}
+            />
+          ) : (
           <div className="terminal-pane-container">
             <WSLTerminalView
               distro={activeWslProject.distro}
               projectId={activeWslProject.project.id}
               projectName={activeWslProject.project.name}
-              projectPath={activeWslProject.project.path}
+              projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
               fontSize={config.fontSize}
               fontFamily={config.fontFamily}
+              // worktree 模式使用不同缓存键，避免与主终端冲突
+              cacheKeySuffix={activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}` : ""}
               selectedAgentId={activeWslProject.project.selected_agent}
               onSessionReady={(pid) => {
                 setWslOpenSessions(prev => new Set(prev).add(pid));
@@ -104,6 +127,7 @@ function MainContent({
               </>
             )}
           </div>
+          )}
         </div>
       )}
 
@@ -124,18 +148,36 @@ function MainContent({
         }
         return (
           <div className="content-area">
+            {remoteDiffState ? (
+              <DiffView
+                diffSource={{
+                  type: "remote",
+                  entryId: remoteDiffState.entryId,
+                  host: remoteDiffState.host,
+                  port: remoteDiffState.port,
+                  username: remoteDiffState.username,
+                  auth: remoteDiffState.auth,
+                  projectPath: remoteDiffState.projectPath,
+                }}
+                filePath={remoteDiffState.filePath}
+                initialMode={config.diffMode}
+                onBack={onRemoteDiffBack}
+              />
+            ) : (
             <div className="terminal-pane-container">
               <RemoteTerminalView
                 entryId={entry.id}
                 projectId={project.id}
                 projectName={project.name}
-                projectPath={project.path}
+                projectPath={activeRemoteWorktreePath ?? project.path}
                 host={entry.host}
                 port={entry.port}
                 username={entry.username}
                 auth={auth}
                 fontSize={config.fontSize}
                 fontFamily={config.fontFamily}
+                // worktree 模式使用不同缓存键，避免与主终端冲突
+                cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
                 selectedAgentId={project.selected_agent}
                 onSessionReady={(pid) => {
                   setRemoteOpenSessions(prev => new Set(prev).add(pid));
@@ -172,6 +214,7 @@ function MainContent({
                 </>
               )}
             </div>
+            )}
           </div>
         );
       })()}

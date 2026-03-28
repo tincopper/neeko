@@ -834,6 +834,321 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Neeko!", name)
 }
 
+// ─── WSL Git 命令 (Windows only) ──────────────────────────────────────────────
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn refresh_wsl_git_info(distro: String, project_path: String) -> Result<GitInfo, String> {
+    remote::get_wsl_git_info(&distro, &project_path).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_wsl_file_diff_command(
+    distro: String,
+    project_path: String,
+    file_path: String,
+) -> Result<DiffResult, String> {
+    remote::get_wsl_file_diff(&distro, &project_path, &file_path).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_checkout_branch(
+    distro: String,
+    project_path: String,
+    branch_name: String,
+) -> Result<(), String> {
+    remote::run_wsl_git(&distro, &project_path, &["checkout", &branch_name])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_create_branch(
+    distro: String,
+    project_path: String,
+    branch_name: String,
+) -> Result<(), String> {
+    remote::run_wsl_git(&distro, &project_path, &["branch", &branch_name])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_rename_branch(
+    distro: String,
+    project_path: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    remote::run_wsl_git(&distro, &project_path, &["branch", "-m", &old_name, &new_name])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_create_worktree(
+    distro: String,
+    project_path: String,
+    worktree_path: String,
+    branch_name: String,
+    new_branch: bool,
+) -> Result<(), String> {
+    let args = if new_branch {
+        vec!["worktree".to_string(), "add".to_string(), "-b".to_string(), branch_name.clone(), worktree_path]
+    } else {
+        vec!["worktree".to_string(), "add".to_string(), worktree_path, branch_name.clone()]
+    };
+    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    remote::run_wsl_git(&distro, &project_path, &args_refs)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_remove_worktree(
+    distro: String,
+    project_path: String,
+    worktree_path: String,
+) -> Result<(), String> {
+    remote::run_wsl_git(&distro, &project_path, &["worktree", "remove", "--force", &worktree_path])
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn wsl_rename_worktree(
+    distro: String,
+    project_path: String,
+    worktree_path: String,
+    new_name: String,
+) -> Result<String, String> {
+    remote::run_wsl_git(&distro, &project_path, &["worktree", "move", &worktree_path, &new_name])
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), String> {
+    remote::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn open_wsl_ide(_distro: String, _project_path: String, _ide: String) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn open_remote_ide(host: String, port: u16, username: String, project_path: String, ide: String) -> Result<(), String> {
+    remote::open_remote_ide(&host, port, &username, &project_path, &ide).map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn open_remote_ide(_host: String, _port: u16, _username: String, _project_path: String, _ide: String) -> Result<(), String> {
+    Err("Remote IDE open via SSH is only supported on Windows".to_string())
+}
+
+// ─── WSL Git 命令 stubs (non-Windows) ─────────────────────────────────────────
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn refresh_wsl_git_info(_distro: String, _project_path: String) -> Result<GitInfo, String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn get_wsl_file_diff_command(_distro: String, _project_path: String, _file_path: String) -> Result<DiffResult, String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_checkout_branch(_distro: String, _project_path: String, _branch_name: String) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_create_branch(_distro: String, _project_path: String, _branch_name: String) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_rename_branch(_distro: String, _project_path: String, _old_name: String, _new_name: String) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_create_worktree(_distro: String, _project_path: String, _worktree_path: String, _branch_name: String, _new_branch: bool) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_remove_worktree(_distro: String, _project_path: String, _worktree_path: String) -> Result<(), String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn wsl_rename_worktree(_distro: String, _project_path: String, _worktree_path: String, _new_name: String) -> Result<String, String> {
+    Err("WSL is only supported on Windows".to_string())
+}
+
+// ─── SSH Git 命令 ────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn refresh_remote_git_info(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+) -> Result<GitInfo, String> {
+    remote::get_remote_git_info(&host, port, &username, &auth, &project_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_remote_file_diff_command(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_path: String,
+) -> Result<DiffResult, String> {
+    remote::get_remote_file_diff(&host, port, &username, &auth, &project_path, &file_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_checkout_branch(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let cmd = format!("git checkout '{}'", branch_name.replace('\'', "'\\''"));
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_create_branch(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let cmd = format!("git branch '{}'", branch_name.replace('\'', "'\\''"));
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_rename_branch(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let cmd = format!("git branch -m {} {}", q(&old_name), q(&new_name));
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_create_worktree(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    worktree_path: String,
+    branch_name: String,
+    new_branch: bool,
+) -> Result<(), String> {
+    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let cmd = if new_branch {
+        format!("git worktree add -b {} {}", q(&branch_name), q(&worktree_path))
+    } else {
+        format!("git worktree add {} {}", q(&worktree_path), q(&branch_name))
+    };
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_remove_worktree(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    worktree_path: String,
+) -> Result<(), String> {
+    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let cmd = format!("git worktree remove --force {}", q(&worktree_path));
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn remote_rename_worktree(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    worktree_path: String,
+    new_name: String,
+) -> Result<String, String> {
+    let parent = std::path::Path::new(&worktree_path)
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or(".");
+    let new_path = format!("{}/{}", parent, new_name);
+    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    let cmd = format!("git worktree move {} {}", q(&worktree_path), q(&new_path));
+    remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| new_path)
+        .map_err(|e| e.to_string())
+}
+
 pub fn run() {
     logger::init_logger();
     log::info!("Neeko starting");
@@ -937,6 +1252,26 @@ pub fn run() {
             // IDE
             set_project_ide,
             open_ide,
+            // WSL Git
+            refresh_wsl_git_info,
+            get_wsl_file_diff_command,
+            wsl_checkout_branch,
+            wsl_create_branch,
+            wsl_rename_branch,
+            wsl_create_worktree,
+            wsl_remove_worktree,
+            wsl_rename_worktree,
+            open_wsl_ide,
+            // SSH Git
+            refresh_remote_git_info,
+            get_remote_file_diff_command,
+            remote_checkout_branch,
+            remote_create_branch,
+            remote_rename_branch,
+            remote_create_worktree,
+            remote_remove_worktree,
+            remote_rename_worktree,
+            open_remote_ide,
             // 持久化
             save_session,
             load_session,
