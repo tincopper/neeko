@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
 import type { AppConfig } from "../SettingsPanel";
+import AgentIcon from "../layout/AgentIcon";
 
 interface AgentConfig {
   id: string;
@@ -96,16 +97,14 @@ export default function AddProjectModal({
           >
             {selectedAgentId ? (
               <>
-                <span className="agent-icon">
-                  {agents.find((a) => a.id === selectedAgentId)?.icon || "🤖"}
-                </span>
+                <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon} />
                 <span className="agent-name">
                   {agents.find((a) => a.id === selectedAgentId)?.name}
                 </span>
               </>
             ) : (
               <>
-                <span className="agent-icon">⚡</span>
+                <AgentIcon icon={null} fallback="⚡" />
                 <span className="agent-name">None</span>
               </>
             )}
@@ -119,7 +118,7 @@ export default function AddProjectModal({
                 className={`agent-option${!selectedAgentId ? " selected" : ""}`}
                 onClick={() => { setSelectedAgentId(null); setPendingAgentOpen(false); }}
               >
-                <span className="agent-icon">⚡</span>
+                <AgentIcon icon={null} fallback="⚡" />
                 <span className="agent-name">None</span>
               </div>
               {agents
@@ -130,7 +129,7 @@ export default function AddProjectModal({
                     className={`agent-option${selectedAgentId === agent.id ? " selected" : ""}`}
                     onClick={() => { setSelectedAgentId(agent.id); setPendingAgentOpen(false); }}
                   >
-                    <span className="agent-icon">{agent.icon || "🤖"}</span>
+                    <AgentIcon icon={agent.icon} />
                     <span className="agent-name">{agent.name}</span>
                     <span className="agent-command">{agent.command}</span>
                   </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import AgentIcon from "./AgentIcon";
 
 interface AgentConfig {
   id: string;
@@ -86,12 +87,12 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       >
         {selectedAgent ? (
           <>
-            <span className="agent-icon">{selectedAgent.icon || "🤖"}</span>
+            <AgentIcon icon={selectedAgent.icon} />
             <span className="agent-name">{selectedAgent.name}</span>
           </>
         ) : (
           <>
-            <span className="agent-icon">⚡</span>
+            <AgentIcon icon={null} fallback="⚡" />
             <span className="agent-name">Select Agent</span>
           </>
         )}
@@ -104,7 +105,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             className={`agent-option ${!selectedAgentId ? "selected" : ""}`}
             onClick={() => handleSelectAgent(null)}
           >
-            <span className="agent-icon">⚡</span>
+            <AgentIcon icon={null} fallback="⚡" />
             <span className="agent-name">None</span>
           </div>
           {agents.map((agent) => (
@@ -113,7 +114,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
               className={`agent-option ${selectedAgentId === agent.id ? "selected" : ""} ${!agent.enabled ? "disabled" : ""}`}
               onClick={() => agent.enabled && handleSelectAgent(agent.id)}
             >
-              <span className="agent-icon">{agent.icon || "🤖"}</span>
+              <AgentIcon icon={agent.icon} />
               <span className="agent-name">{agent.name}</span>
               <span className="agent-command">{agent.command}</span>
             </div>

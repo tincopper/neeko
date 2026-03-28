@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig } from "../../types";
+import AgentIcon from "../layout/AgentIcon";
 
 interface RemoteDialogProps {
   isOpen: boolean;
@@ -427,12 +428,12 @@ export function RemoteDialog({
                   const agent = agents.find(a => a.id === selectedAgentId);
                   return agent ? (
                     <>
-                      <span className="agent-icon">{agent.icon || "🤖"}</span>
+                      <AgentIcon icon={agent.icon} />
                       <span className="agent-name">{agent.name}</span>
                     </>
                   ) : (
                     <>
-                      <span className="agent-icon">⚡</span>
+                      <AgentIcon icon={null} fallback="⚡" />
                       <span className="agent-name">None</span>
                     </>
                   );
@@ -447,7 +448,7 @@ export function RemoteDialog({
                     className={`agent-option${!selectedAgentId ? " selected" : ""}`}
                     onClick={() => { setSelectedAgentId(null); setAgentDropdownOpen(false); }}
                   >
-                    <span className="agent-icon">⚡</span>
+                    <AgentIcon icon={null} fallback="⚡" />
                     <span className="agent-name">None</span>
                   </div>
                   {agents.filter(a => a.enabled).map(agent => (
@@ -456,7 +457,7 @@ export function RemoteDialog({
                       className={`agent-option${selectedAgentId === agent.id ? " selected" : ""}`}
                       onClick={() => { setSelectedAgentId(agent.id); setAgentDropdownOpen(false); }}
                     >
-                      <span className="agent-icon">{agent.icon || "🤖"}</span>
+                      <AgentIcon icon={agent.icon} />
                       <span className="agent-name">{agent.name}</span>
                       <span className="agent-command">{agent.command}</span>
                     </div>
