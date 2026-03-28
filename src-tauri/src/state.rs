@@ -128,30 +128,6 @@ impl SessionStore {
     }
 }
 
-// WSL 发行版项目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WSLProject {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-}
-
-// WSL 发行版
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WSLEntry {
-    pub id: String,
-    pub distro: String,
-    pub projects: Vec<WSLProject>,
-}
-
-// SSH 远程项目
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemoteProject {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-}
-
 // SSH 认证方式
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuthMethod {
@@ -161,17 +137,6 @@ pub enum AuthMethod {
         key_path: String,
         passphrase: String,
     },
-}
-
-// SSH 远程服务器
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemoteEntry {
-    pub id: String,
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    pub auth: AuthMethod,
-    pub projects: Vec<RemoteProject>,
 }
 
 // WSL 项目会话 (持久化用)
