@@ -36,6 +36,23 @@ export function destroyWslCache(key: string) {
   wslTerminalCache.delete(key);
 }
 
+/** 手动刷新 WSL 终端：关闭 PTY + 销毁缓存 + 触发重建 */
+export function refreshWslTerminal(key: string) {
+  const cache = wslTerminalCache.get(key);
+  if (!cache) return;
+  cache.unlisten?.();
+  if (cache.sessionId) {
+    invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
+  }
+  cache.term.dispose();
+  wslTerminalCache.delete(key);
+  // 通过 rebuildCallbackMap 触发重建（需要组件注册）
+  wslRebuildCallbacks.get(key)?.();
+}
+
+/** WSL 终端重建回调注册表 */
+export const wslRebuildCallbacks = new Map<string, () => void>();
+
 /** 获取已建立的 WSL 终端 sessionId（尚未建立返回 null） */
 export function getWslSessionId(key: string): string | null {
   return wslTerminalCache.get(key)?.sessionId ?? null;
@@ -120,7 +137,7 @@ export default function WSLTerminalView({
 }: WSLTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
-  const [rebuildCount, _setRebuildCount] = useState(0);
+  const [rebuildCount, setRebuildCount] = useState(0);
 
   // 字体変化时同步到已有实例
   useEffect(() => {
@@ -156,6 +173,11 @@ export default function WSLTerminalView({
 
     const key = wslCacheKey(distro, projectId) + cacheKeySuffix;
     currentKeyRef.current = key;
+
+    // 注册重建回调
+    wslRebuildCallbacks.set(key, () => {
+      if (currentKeyRef.current === key) setRebuildCount(c => c + 1);
+    });
 
     const attach = (cache: WslTerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -312,6 +334,7 @@ export default function WSLTerminalView({
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       detachAll();
+      wslRebuildCallbacks.delete(key);
     };
   }, [distro, projectId, projectPath, cacheKeySuffix, rebuildCount]);
 

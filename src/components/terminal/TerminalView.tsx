@@ -45,6 +45,7 @@ interface TerminalCache {
   element: HTMLElement
   sessionId: string | null
   unlistenOutput: (() => void) | null
+  unlistenClosed: (() => void) | null
 }
 
 // 全局缓存，切换项目时保留会话（key 可为 projectId 或 projectId+":side"）
@@ -62,9 +63,28 @@ export function destroyTerminalCache(cacheKey: string) {
   const cache = terminalCache.get(cacheKey)
   if (!cache) return
   cache.unlistenOutput?.()
+  cache.unlistenClosed?.()
   cache.term.dispose()
   terminalCache.delete(cacheKey)
   log(`Cache destroyed for ${cacheKey}`)
+}
+
+/** 手动刷新终端：关闭后端 PTY + 销毁前端缓存 + 触发重建 */
+export function refreshTerminal(cacheKey: string) {
+  const cache = terminalCache.get(cacheKey)
+  if (!cache) return
+  const { sessionId, unlistenOutput, unlistenClosed } = cache
+  // 取消所有事件监听，避免竞态下旧事件触发双重重建
+  unlistenOutput?.()
+  unlistenClosed?.()
+  // 关闭后端 PTY
+  if (sessionId) {
+    invoke('close_terminal_session', { sessionId }).catch(() => {})
+  }
+  // 销毁前端 xterm 缓存
+  destroyTerminalCache(cacheKey)
+  // 触发重建
+  terminalRebuildCallbacks.get(cacheKey)?.()
 }
 
 function sendToTerminal(projectId: string, text: string) {
@@ -160,6 +180,7 @@ export async function createTerminalForProject(
     element,
     sessionId: null,
     unlistenOutput: null,
+    unlistenClosed: null,
   }
 
   terminalCache.set(projectId, cache)
@@ -213,6 +234,7 @@ export async function createTerminalForProject(
         }, 3000)
       },
     )
+    cache.unlistenClosed = unlistenClosed
 
     // ── IME 输入处理 ──────────────────────────────────────────────────────
     // 问题：Linux 下 keydown(229) 先于 compositionstart 触发，xterm.js 的

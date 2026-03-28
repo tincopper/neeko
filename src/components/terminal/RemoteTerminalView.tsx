@@ -49,6 +49,22 @@ export function destroyRemoteCache(key: string) {
   remoteTerminalCache.delete(key);
 }
 
+/** 手动刷新 Remote 终端：关闭 SSH PTY + 销毁缓存 + 触发重建 */
+export function refreshRemoteTerminal(key: string) {
+  const cache = remoteTerminalCache.get(key);
+  if (!cache) return;
+  cache.unlisten?.();
+  if (cache.sessionId) {
+    invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
+  }
+  cache.term.dispose();
+  remoteTerminalCache.delete(key);
+  remoteRebuildCallbacks.get(key)?.();
+}
+
+/** Remote 终端重建回调注册表 */
+export const remoteRebuildCallbacks = new Map<string, () => void>();
+
 interface RemoteTerminalViewProps {
   entryId: string;
   projectId: string;
@@ -92,7 +108,7 @@ export default function RemoteTerminalView({
 }: RemoteTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
-  const [rebuildCount, _setRebuildCount] = useState(0);
+  const [rebuildCount, setRebuildCount] = useState(0);
 
   // 字体变化时同步到已有实例
   useEffect(() => {
@@ -128,6 +144,11 @@ export default function RemoteTerminalView({
 
     const key = remoteCacheKey(entryId, projectId) + cacheKeySuffix;
     currentKeyRef.current = key;
+
+    // 注册重建回调
+    remoteRebuildCallbacks.set(key, () => {
+      if (currentKeyRef.current === key) setRebuildCount(c => c + 1);
+    });
 
     const attach = (cache: RemoteTerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -287,6 +308,7 @@ export default function RemoteTerminalView({
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       detachAll();
+      remoteRebuildCallbacks.delete(key);
     };
   }, [entryId, projectId, projectPath, cacheKeySuffix, rebuildCount]);
 

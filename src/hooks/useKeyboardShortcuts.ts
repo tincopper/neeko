@@ -1,6 +1,7 @@
 import { useEffect, RefObject } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
+import { refreshTerminal, refreshSideTerminal, refreshWslTerminal, refreshRemoteTerminal } from "../components/terminal";
 
 type ActiveWslKey = { distro: string; projectId: string } | null;
 type ActiveRemoteKey = { host: string; projectId: string } | null;
@@ -116,6 +117,22 @@ export function useKeyboardShortcuts({
         if (p) {
           e.preventDefault();
           handleOpenIde(p);
+        }
+        return;
+      }
+
+      if (e.ctrlKey && !e.altKey && e.code === "KeyR") {
+        e.preventDefault();
+        if (sideTerminalOpenRef.current && activeProjectId) {
+          refreshSideTerminal(activeProjectId);
+        } else if (activeProjectId && isTerminalViewRef.current) {
+          refreshTerminal(activeProjectId);
+        } else if (IS_WINDOWS && activeWslKeyRef.current) {
+          const k = `wsl:${activeWslKeyRef.current.distro}:${activeWslKeyRef.current.projectId}`;
+          refreshWslTerminal(k);
+        } else if (activeRemoteKeyRef.current) {
+          const k = `remote:${activeRemoteKeyRef.current.host}:${activeRemoteKeyRef.current.projectId}`;
+          refreshRemoteTerminal(k);
         }
         return;
       }
