@@ -1,6 +1,6 @@
 # Neeko — Session Context
 
-> Last updated: 2026-03-28 (session 4)
+> Last updated: 2026-03-28 (session 5)
 
 ## Goal
 
@@ -28,20 +28,26 @@ src/
 │   ├── terminal/          ← 终端相关组件（TerminalView, SideTerminalView, WorktreeTerminalView, WSLTerminalView, RemoteTerminalView）
 │   ├── connections/       ← WSL + SSH 连接管理（WSLDialog, RemoteDialog, RemoteAuthDialog, RemoteItems）
 │   ├── project/           ← 本地项目管理（ProjectSidebar, ProjectItem, FileTree, GitDialog, AddProjectModal）
-│   ├── layout/            ← 窗口布局（TitleBar, WindowControls, AgentSelector）
+│   ├── layout/            ← 窗口布局（TitleBar, WindowControls, AgentSelector, AgentIcon）
 │   ├── MainContent.tsx    ← 跨域编排组件（保留根目录）
 │   ├── DiffView.tsx       ← Git diff 独立模块（保留根目录）
 │   └── SettingsPanel.tsx  ← 设置面板（保留根目录）
 ├── hooks/                 ← 自定义 hooks
-├── utils/                 ← 工具函数（terminal.ts, fileIcons.ts, idePresets.ts）
+├── utils/                 ← 工具函数（terminal.ts, agents.ts, distros.ts, fileIcons.ts, idePresets.ts）
 ├── types.ts               ← 全局类型定义（单一源）
-└── App.tsx                ← 组合层（~430 行）
+├── assets/
+│   ├── agents/            ← Agent logo（PNG/SVG：claude-code, opencode, qwen, gemini, codex, qoder, codebuddy）
+│   ├── distros/           ← WSL 发行版 logo（SVG：ubuntu, debian, fedora, opensuse, archlinux, ...）
+│   ├── linux.svg          ← WSL 通用图标
+│   ├── server.svg         ← SSH 图标
+│   └── folder.svg         ← 文件夹图标
+└── App.tsx                ← 组合层（~446 行）
 ```
 
 每个子目录有 `index.ts` barrel export，consumer 统一从目录导入：
 ```typescript
 import { TerminalView, destroyTerminalCache } from "./components/terminal";
-import { TitleBar } from "./components/layout";
+import { TitleBar, AgentIcon } from "./components/layout";
 import { WSLDialog } from "./components/connections";
 import ProjectSidebar, { AddProjectModal } from "./components/project";
 ```
@@ -51,6 +57,7 @@ import ProjectSidebar, { AddProjectModal } from "./components/project";
 - 所有接口定义在 `src/types.ts`（Project, AgentConfig, AppConfig, WSLEntrySession, RemoteEntrySession, AuthMethod 等）
 - 组件内不重复定义已有类型；如需本地类型用 `interface` 但不导出
 - `SettingsPanel.tsx` re-export `AppConfig`/`DiffMode` 保持向后兼容
+- `AgentConfig.icon` 类型：PNG/SVG 文件名（如 `"claude-code.png"`, `"qoder.svg"`），由 `AgentIcon` 组件渲染
 
 ### Hook 设计原则
 
@@ -73,6 +80,8 @@ import ProjectSidebar, { AddProjectModal } from "./components/project";
 ### 共享工具
 
 - `src/utils/terminal.ts`：`DEFAULT_FONT_FAMILY`、`buildFontFamily(fontFamily)` — 所有终端组件共用
+- `src/utils/agents.ts`：`getAgentIconSrc(icon)` — AgentConfig.icon → 可导入的图片 URL
+- `src/utils/distros.ts`：`getDistroIcon(name)` — WSL 发行版名称 → 模糊匹配 logo（支持版本号后缀如 `Ubuntu-22.04`）
 - 不在多个文件中重复常量定义
 
 ### 组件提取标准
@@ -154,6 +163,24 @@ Returns directory names.
 
 ### AgentSelector
 Has `skipBackendPersist` prop — WSL/SSH pass `true` to skip `set_project_agent` invoke (they persist via `save_wsl_entries` / `save_remote_entries` instead).
+
+### Agent Icon System
+`AgentIcon` component (`layout/AgentIcon.tsx`) renders agent logos. `AgentConfig.icon` is a filename (e.g. `"claude-code.png"`, `"qoder.svg"`), resolved via `getAgentIconSrc()` in `utils/agents.ts`. Uses Vite static imports (auto-inline ≤4KB). Fallback: `🤖` emoji if no icon matches.
+
+### SVG Icon System
+- **WSL/SSH sidebar icons**: `linux.svg` (penguin, Simple Icons) and `server.svg` (Charm Icons) replace emoji (🐧/🖥️)
+- **Folder icon**: `folder.svg` (Charm Icons) — used in suggestions and empty states
+- **Color inheritance**: CSS `fill: currentColor; stroke: currentColor; color: var(--text-secondary)` on `<img>` elements — SVGs inherit theme colors
+- **Simple Icons SVGs** have hardcoded `fill="#000"` inside SVG; CSS overrides from parent element
+- **Charm Icons SVGs** use `stroke="currentColor"` — work with CSS color inheritance out of the box
+- **Build behavior**: Vite inlines small SVGs (<4KB) as base64 data URLs; larger ones become separate files
+
+### WSL Distro Icons
+`getDistroIcon(name)` in `utils/distros.ts` fuzzy-matches WSL distro names to logos:
+- Strips version suffixes: `"ubuntu-22.04"` → `"ubuntu"`, `"opensuse-leap-15.6"` → `"opensuse-leap"`
+- Maps via `NAME_MAP`: 13 entries → 9 SVG icons
+- Fallback: generic `linux.svg` (penguin logo)
+- 9 distro SVGs: ubuntu, debian, fedora, opensuse, archlinux, kalilinux, alpine, centos, oracle
 
 ---
 
@@ -243,6 +270,33 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 26. **useCallback stabilizations**: `useToast.showToast`, `useSideTerminalResize.handleSideDividerMouseDown`, all agent selection callbacks in App.tsx
 27. **Inline callback extraction**: App.tsx TitleBar/ProjectSidebar props converted to named `useCallback` functions
 
+### Session 5 — Agent Icons & SVG Icon System
+
+28. **Agent icons** (`794b61d`):
+    - Downloaded 7 agent logos (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy
+    - Created `AgentIcon` component (`layout/AgentIcon.tsx`) — resolves `AgentConfig.icon` filename → Vite-imported URL
+    - Created `src/utils/agents.ts` mapping; `AgentConfig.icon` changed from emoji to filename string
+    - Removed aider agent, added qoder and codebuddy
+    - Replaced `<span className="agent-icon">` with `<AgentIcon>` in 4 components: TitleBar, AddProjectModal, WSLItem, RemoteItem
+    - Added `AgentIcon` to `layout/index.ts` barrel export
+29. **SVG icon system** (`81f6167`):
+    - Replaced emoji icons (🐧/🖥️) with SVGs: `linux.svg` (WSL), `server.svg` (SSH)
+    - Added CSS `fill: currentColor; stroke: currentColor; color: var(--text-secondary)` for theme color inheritance
+    - Removed expand/collapse chevrons from all sidebar items
+    - Kept 📁 folder emoji in suggestion items and empty state (no SVG replacement)
+30. **WSL distro logos** (`81f6167`):
+    - Added 9 distro-specific SVGs to `src/assets/distros/`
+    - Created `src/utils/distros.ts` with `getDistroIcon()` — fuzzy matching strips version suffixes
+    - `WSLDialog` suggestions now show distro logo instead of 📁
+    - `WSLItem` sidebar card shows distro logo (uses `getDistroIcon(wslEntry.distro_name)`)
+31. **Project avatar revamp** (`81f6167`):
+    - Replaced generic repo icon with colored first-letter avatar in `ProjectItem`
+    - Hash-based color: `name.charCodeAt(0) % HUE_COUNT` → HSL color
+    - CSS class: `.project-avatar { width: 20px; height: 20px; border-radius: 4px; }`
+32. **Add menu dropdown positioning** (`81f6167`):
+    - Fixed dropdown to be right-aligned (`right: 0; left: auto`) below the + button
+33. **Vite env declarations** — added `declare module "*.png"` and `declare module "*.svg"` to `vite-env.d.ts`
+
 ---
 
 ## Known Issues / Still Needs Work
@@ -261,8 +315,17 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 |---|---|
 | `src/App.tsx` | Composition layer; calls domain hooks, renders layout |
 | `src/types.ts` | All shared interfaces: `Project`, `AgentConfig`, `AppConfig`, `WSLProject`, `RemoteProject`, `AuthMethod`, etc. |
-| `src/styles.css` | Global styles |
+| `src/styles.css` | Global styles (including `.project-avatar`, `.agent-icon`, SVG color inheritance) |
+| `src/vite-env.d.ts` | Module declarations for `*.png` and `*.svg` imports |
 | `src/utils/terminal.ts` | `DEFAULT_FONT_FAMILY`, `buildFontFamily()` — shared by all terminal components |
+| `src/utils/agents.ts` | `getAgentIconSrc(icon)` — resolves agent icon filename → Vite-imported URL |
+| `src/utils/distros.ts` | `getDistroIcon(name)` — WSL distro name fuzzy match → SVG logo |
+| **assets/** | |
+| `src/assets/agents/` | 7 agent logo files (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy |
+| `src/assets/distros/` | 9 WSL distro SVGs: ubuntu, debian, fedora, opensuse, archlinux, kalilinux, alpine, centos, oracle |
+| `src/assets/linux.svg` | Generic WSL icon (penguin, Simple Icons) |
+| `src/assets/server.svg` | SSH icon (Charm Icons) |
+| `src/assets/folder.svg` | Folder icon (Charm Icons) |
 | **terminal/** | |
 | `src/components/terminal/TerminalView.tsx` | Local terminal; `terminalCache`, `createTerminalForProject`, `launchAgentInTerminal` |
 | `src/components/terminal/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; no PTY destroy on unmount |
@@ -273,7 +336,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/components/connections/WSLDialog.tsx` | WSL distro/path selection dialog |
 | `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog |
 | `src/components/connections/RemoteAuthDialog.tsx` | SSH re-authentication dialog |
-| `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types |
+| `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types; uses `AgentIcon` + `getDistroIcon()` |
 | **project/** | |
 | `src/components/project/ProjectSidebar.tsx` | Left sidebar; all project types |
 | `src/components/project/ProjectItem.tsx` | Local project card; `useMemo` for `buildTree` + branch filtering |
@@ -284,6 +347,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/components/layout/TitleBar.tsx` | App title bar; agent selectors for all project types |
 | `src/components/layout/WindowControls.tsx` | Min/max/close buttons |
 | `src/components/layout/AgentSelector.tsx` | `skipBackendPersist` prop for WSL/SSH |
+| `src/components/layout/AgentIcon.tsx` | Agent logo renderer; resolves `AgentConfig.icon` filename; fallback 🤖 |
 | **hooks/** | |
 | `src/hooks/useAppConfig.ts` | Config load/save + CSS variable sync |
 | `src/hooks/useLocalProjects.ts` | Local project CRUD + state |
