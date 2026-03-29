@@ -1,10 +1,10 @@
 # Neeko — Session Context
 
-> Last updated: 2026-03-28 (session 6)
+> Last updated: 2026-03-29 (session 7)
 
 ## Goal
 
-Build and enhance a Tauri-based terminal manager app called **Neeko** that supports local projects, WSL terminals, and SSH remote terminals. This session focused on multiple improvements: platform gating for WSL, persistence consolidation, UI configuration for sidebar/side terminal widths, custom Agent CLI support, terminal flicker fixes, and terminal refresh/rebuild capability.
+Build and enhance a Tauri-based terminal manager app called **Neeko** that supports local projects, WSL terminals, and SSH remote terminals. This session focused on WSL/SSH feature parity with local projects: collapse/expand behavior, IDE icons from assets, unified branch badges, worktree cycling for WSL/SSH, SSH credential persistence, DiffView flicker fix, and CREATE_NO_WINDOW for Windows.
 
 ## Constraints
 
@@ -17,6 +17,10 @@ Build and enhance a Tauri-based terminal manager app called **Neeko** that suppo
 - Rust compilation (`cargo build`) must pass after every change
 - Follow Vercel React Best Practices: `rerender-use-ref-transient-values`, `rerender-split-combined-hooks`, `rerender-derived-state-no-effect`, `rerender-move-effect-to-event`, etc.
 - `AgentIcon` (`layout/AgentIcon.tsx`) supports custom agent icons via `AgentConfig.icon` filename resolved via `getAgentIconSrc()` in `utils/agents.ts`; includes `cli.svg` for custom agents.
+- IDE icons rendered from `assets/ides/` SVG/PNG files via `getIdeIconSrc()` and `getIdeIconByCommand()` in `utils/idePresets.ts`; includes `default.svg` fallback
+- IDE button in sidebar only visible on hover when project is `.active` (same as local ProjectItem)
+- `CREATE_NO_WINDOW` (0x08000000) flag applied to all `Command::new` on Windows — `remote.rs` and `git.rs` now use `no_window_cmd()` helper
+- WSL/SSH `changed_files` rendered via `buildTree()` + `FileTree` component (parity with local), not as a flat list
 
 ---
 
@@ -361,12 +365,34 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
     - Added `#[allow(dead_code)]` on `input_tx` in `remote.rs` (used indirectly via closure)
     - Zero Rust compiler warnings
 
+### Session 7 — WSL/SSH Parity, IDE Icons, DiffView, Credentials
+
+41. **Project collapse/expand** — clicking project header selects the project, clicking the avatar/icon toggles collapse. Applied to `ProjectItem`, `ProjectItemCard`, `WSLItem`, `RemoteItem`.
+42. **FileTree double-click fix** — changed expanded state from `useState<Record<string, boolean>>` to `useState<Set<string>>` with `useCallback` toggle handler.
+43. **WSL/SSH button consistency** — Git menu moved inside `.gh-project-actions` div (visible on hover only); IDE button placed outside actions; branch/worktree indentation unified to `14px`.
+44. **WSL/SSH IDE button** — always visible when `onOpenIde` callback exists (not gated by `selected_ide`); uses `getIdeIconByCommand()` for icon resolution.
+45. **Branch badge unification** — worktree and project branch badges both use `.gh-branch-inline` CSS class with `title` attribute for hover tooltip.
+46. **WSL/SSH worktree support** — 8 requirements implemented:
+    - Filter current branch's worktree from available list
+    - Worktree path persistence via `worktree_state` in `sessions.json` (`save_session` with `worktree_state` param)
+    - Ctrl+N cycling for WSL and SSH worktrees via `useKeyboardShortcuts` (`wslOpenedWtRef`/`remoteOpenedWtRef`)
+    - Side terminal uses active worktree path (`activeWslWorktreePath`/`activeRemoteWorktreePath`)
+    - Title bar branch syncs with active worktree branch (`activeWslWorktreeBranch`/`activeRemoteWorktreeBranch`)
+47. **SSH credential persistence** — `saved_auth: Option<String>` Base64 field on `RemoteEntrySession`; auto-restore via `restoreAuthFromEntries()` on load; "记住密码" checkbox in `RemoteAuthDialog` with `saved_auth` returned on success.
+48. **Custom radio/checkbox styles** — `.custom-radio` and `.custom-checkbox` CSS classes matching dark theme; used for SSH auth type selector.
+49. **WSL/SSH changed files as FileTree** — replaced flat file list in `ProjectBody` (RemoteItems) with `buildTree()` + `FileTree` component; `onSelectFile` adapter: `onSelectFile={(_, fp) => onSelectFile(fp)}`.
+50. **DiffView flicker fix** — `useRef` with `JSON.stringify` serialized key prevents re-loading diff content on every parent re-render (previously `[diffSource]` dependency with inline object literal caused unnecessary re-renders).
+51. **IDE icons from assets** — added `src/assets/ides/` with 8 SVG/PNG files (vscode, cursor, zed, idea, goland, rustrover, pycharm, default); `getIdeIconSrc(ideId)` and `getIdeIconByCommand(cmd, overrides)` in `utils/idePresets.ts`; `SettingsPanel` and `AddProjectModal` use new icons.
+52. **IDE button visibility** — `.gh-ide-btn` only visible on `.active` project hover via CSS (`opacity`/`visibility` transition); custom override IDEs resolve icon via reverse lookup: command → `ideCommandOverrides` → presetId → icon.
+53. **CREATE_NO_WINDOW on Windows** — `no_window_cmd()` helper added to `remote.rs` and `git.rs`; applies `CommandCreationFlags(0x08000000)` on `#[cfg(windows)]`, no-op on other platforms.
+
 ---
 
 ## Known Issues / Still Needs Work
 
-- "Save credentials" checkbox exists in `RemoteDialog` UI but Base64 encode/decode + auto-fill into `remoteAuthStore` on load is **not yet wired up** in App.tsx
+- SSH credential persistence works but auto-fill on reconnect could be improved (currently restored in `useEffect` after `remoteEntries` load, but edge cases with partial saves may exist)
 - SSH path autocomplete dropdown click-selection may still have issues (z-index fix applied, needs verification)
+- IDE command override → icon resolution only works for presets, not fully custom IDEs added via the settings UI
 
 ---
 
@@ -376,13 +402,14 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 
 | File | Purpose |
 |---|---|
-| `src/App.tsx` | Composition layer; domain hooks, cross-domain coordination, `suppressTerminalResizeRef`, `saveSession` (ref-based), width callbacks |
-| `src/types.ts` | All shared interfaces: `AppConfig` (with `customAgents`, `agentCommandOverrides`, `sidebar_width`, `side_terminal_width` persisted via config.json) |
-| `src/styles.css` | Global styles (including `.project-avatar`, `.agent-icon`, SVG color inheritance) |
+| `src/App.tsx` | Composition layer; domain hooks, cross-domain coordination, `suppressTerminalResizeRef`, `saveSession` (ref-based), width callbacks; `wslOpenedWt`/`remoteOpenedWt` worktree state; `restoreAuthFromEntries()`, `ideCommandOverrides` to sidebar |
+| `src/types.ts` | All shared interfaces: `AppConfig` (with `customAgents`, `agentCommandOverrides`, `sidebar_width`, `side_terminal_width` persisted via config.json); `RemoteEntrySession.saved_auth` |
+| `src/styles.css` | Global styles (including `.project-avatar`, `.agent-icon`, SVG color inheritance, `.custom-radio`, `.custom-checkbox`, `.gh-branch-inline`, `.gh-ide-icon`, `.gh-ide-btn` active-only visibility) |
 | `src/utils/platform.ts` | `IS_WINDOWS = navigator.platform.toLowerCase().includes("win")` — gates WSL UI |
 | `src/utils/terminal.ts` | `DEFAULT_FONT_FAMILY`, `buildFontFamily()` — shared by all terminal components |
 | `src/utils/agents.ts` | `getAgentIconSrc(icon)` — resolves agent icon filename → Vite-imported URL; includes `cli.svg` for custom agents |
 | `src/utils/distros.ts` | `getDistroIcon(name)` — WSL distro name fuzzy match → SVG logo |
+| `src/utils/idePresets.ts` | `getIdeIconSrc(ideId)`, `getIdeIconByCommand(cmd, overrides)` — IDE icon resolution; `default.svg` fallback |
 | `src/vite-env.d.ts` | Module declarations for `*.png` and `*.svg` imports |
 | **assets/** | |
 | `src/assets/agents/` | 7 agent logo files (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy |
@@ -390,6 +417,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/assets/linux.svg` | Generic WSL icon (penguin, Simple Icons) |
 | `src/assets/server.svg` | SSH icon (Charm Icons) |
 | `src/assets/folder.svg` | Folder icon (Charm Icons) |
+| `src/assets/ides/` | 8 IDE SVG/PNG files: vscode.svg, cursor.png, zed.png, idea.svg, goland.svg, rustrover.svg, pycharm.svg, default.svg |
 | **terminal/** | |
 | `src/components/terminal/TerminalView.tsx` | Local terminal; `terminalCache` (with `unlistenClosed`), `createTerminalForProject`, `launchAgentInTerminal`, `refreshTerminal()`; `React.memo` with custom comparator |
 | `src/components/terminal/SideTerminalView.tsx` | Local side terminal; `onDestroy` prop; `refreshSideTerminal()` |
@@ -399,19 +427,20 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/components/terminal/index.ts` | Barrel export including all refresh functions |
 | **connections/** | |
 | `src/components/connections/WSLDialog.tsx` | WSL distro/path selection dialog |
-| `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog; `saveCredentials` checkbox |
-| `src/components/connections/RemoteAuthDialog.tsx` | SSH re-authentication dialog |
-| `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types; uses `AgentIcon` + `getDistroIcon()` |
+| `src/components/connections/RemoteDialog.tsx` | SSH server config + project path dialog; `saveCredentials` checkbox; `onAdd` includes `saved_auth` |
+| `src/components/connections/RemoteAuthDialog.tsx` | SSH re-authentication dialog; "记住密码" checkbox; `onSuccess` returns `saved_auth` |
+| `src/components/connections/RemoteItems.tsx` | `WSLItem`, `RemoteItem` sidebar components; `ActiveWslKey`, `ActiveRemoteKey` types; uses `AgentIcon` + `getDistroIcon()`; `ProjectBody` uses `buildTree`+`FileTree`; `ideCommandOverrides` prop |
 | **project/** | |
 | `src/components/project/ProjectSidebar.tsx` | Left sidebar; accepts `initialSidebarWidth`, `onSidebarWidthChange`, `suppressResizeRef`; CSS variable update via `useEffect([initialSidebarWidth])` |
-| `src/components/project/ProjectItem.tsx` | Local project card; `useMemo` for `buildTree` + branch filtering |
-| `src/components/project/FileTree.tsx` | Changed file tree; `buildTree` function |
+| `src/components/project/ProjectItem.tsx` | Local project card; `useMemo` for `buildTree` + branch filtering; `filteredWorktrees` (excludes current); avatar click toggles collapse; IDE icon via `getIdeIconByCommand`; `ideCommandOverrides` prop |
+| `src/components/project/FileTree.tsx` | Changed file tree; `buildTree` function; `useState<Set<string>>` expanded state with `useCallback` toggle |
 | `src/components/project/GitDialog.tsx` | New branch/worktree dialog |
-| `src/components/project/AddProjectModal.tsx` | Agent + IDE selection modal |
-| `src/components/MainContent.tsx` | Cross-domain composition; forwards `suppressResizeRef` and `agentCommandOverride` to `TerminalView` |
-| `src/components/SettingsPanel.tsx` | Settings panel with General/Theme/Agents tabs; Agents tab: built-in agent command editing + custom agent CRUD |
+| `src/components/project/AddProjectModal.tsx` | Agent + IDE selection modal; IDE icons via `getIdeIconSrc()` |
+| `src/components/MainContent.tsx` | Cross-domain composition; forwards `suppressResizeRef` and `agentCommandOverride` to `TerminalView`; WSL/SSH side terminal uses worktree paths |
+| `src/components/DiffView.tsx` | Git diff viewer; `useRef` lastLoadKey prevents flicker on parent re-render |
+| `src/components/SettingsPanel.tsx` | Settings panel with General/Theme/Agents tabs; Agents tab: built-in agent command editing + custom agent CRUD; IDE icons via `getIdeIconSrc()` |
 | **layout/** | |
-| `src/components/layout/TitleBar.tsx` | App title bar; agent selectors for all project types |
+| `src/components/layout/TitleBar.tsx` | App title bar; agent selectors for all project types; `activeWslWorktreeBranch`, `activeRemoteWorktreeBranch` props |
 | `src/components/layout/WindowControls.tsx` | Min/max/close buttons |
 | `src/components/layout/AgentSelector.tsx` | Agent selection dropdown |
 | `src/components/layout/AgentIcon.tsx` | Agent logo renderer; resolves `AgentConfig.icon` filename; fallback 🤖 |
@@ -419,18 +448,19 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/hooks/useAppConfig.ts` | Config load/save with shallow comparison + CSS variable sync |
 | `src/hooks/useLocalProjects.ts` | Local project CRUD + state; takes `SaveSessionFn` callback |
 | `src/hooks/useWslProjects.ts` | WSL project CRUD + state; loads from unified `load_session`; takes `SaveSessionFn` callback |
-| `src/hooks/useRemoteProjects.ts` | SSH project CRUD + state + auth; loads from unified `load_session`; takes `SaveSessionFn` callback |
+| `src/hooks/useRemoteProjects.ts` | SSH project CRUD + state + auth; loads from unified `load_session`; takes `SaveSessionFn` callback; `restoreAuthFromEntries()` auto-restores saved auth on load |
 | `src/hooks/useToast.ts` | Toast notification (useCallback) |
 | `src/hooks/useSideTerminalResize.ts` | Drag-to-resize; accepts `initialWidth`, `onWidthChange`, `suppressResizeRef` |
 | `src/hooks/useWorktreeState.ts` | Per-project worktree state |
-| `src/hooks/useKeyboardShortcuts.ts` | All keyboard shortcut logic; `Ctrl+R` for terminal refresh |
+| `src/hooks/useKeyboardShortcuts.ts` | All keyboard shortcut logic; `Ctrl+R` for terminal refresh; Ctrl+N: WSL/SSH worktree cycling via `wslOpenedWtRef`/`remoteOpenedWtRef` |
 
 ### Backend (`src-tauri/src/`)
 
 | File | Purpose |
 |---|---|
-| `src-tauri/src/remote.rs` | Full SSH session management; `SSHHandle` with `resize_tx`; IO task `select!` (3 branches); `test_connection`; `list_directories`; `#[allow(dead_code)]` on `input_tx` |
+| `src-tauri/src/remote.rs` | Full SSH session management; `SSHHandle` with `resize_tx`; IO task `select!` (3 branches); `test_connection`; `list_directories`; `no_window_cmd()` helper with CREATE_NO_WINDOW; `#[allow(dead_code)]` on `input_tx` |
+| `src-tauri/src/git.rs` | Git operations; `no_window_cmd()` helper with CREATE_NO_WINDOW on Windows |
 | `src-tauri/src/lib.rs` | Tauri commands: `test_remote_connection`, `list_remote_directories`, `create_remote_terminal_session`, `resize_remote_terminal`; WSL commands gated `cfg!(target_os = "windows")`; `get_system_fonts` is `async fn` with `CREATE_NO_WINDOW`; `add_agent`/`remove_agent` sync to `config.json` |
-| `src-tauri/src/state.rs` | `SessionStore` with `wsl_entries`, `remote_entries`, `sidebar_width`, `side_terminal_width`; `WSLEntrySession`, `RemoteEntrySession` |
-| `src-tauri/src/storage.rs` | `create_session_from_projects` takes `Option<&[...]>` for wsl/remote and `Option<u32>` for widths; `load_session` auto-migrates old `wsl_entries.json`/`remote_entries.json` |
+| `src-tauri/src/state.rs` | `SessionStore` with `wsl_entries`, `remote_entries`, `sidebar_width`, `side_terminal_width`, `worktree_state: HashMap<String, String>`; `WSLEntrySession.saved_auth`, `RemoteEntrySession.saved_auth` |
+| `src-tauri/src/storage.rs` | `create_session_from_projects` takes `Option<&[...]>` for wsl/remote and `Option<u32>` for widths; preserves `worktree_state`; `load_session` auto-migrates old `wsl_entries.json`/`remote_entries.json` |
 | `src-tauri/src/terminal.rs` | Local/WSL terminal session management |
