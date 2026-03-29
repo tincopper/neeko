@@ -186,8 +186,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div className={`gh-project ${isActive ? "active" : ""}`}>
-      <div className="gh-project-header" onClick={() => { onSelectProject(project.id); toggleCollapsed(); }}>
-        <span className="gh-project-avatar" style={getAvatarStyle(project.name)}>
+      <div className="gh-project-header" onClick={() => onSelectProject(project.id)}>
+        <span
+          className="gh-project-avatar"
+          style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
+        >
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="gh-project-meta">
