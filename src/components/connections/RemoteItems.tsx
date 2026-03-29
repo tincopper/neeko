@@ -1,6 +1,7 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo } from "../../types";
 import { getDistroIcon } from "../../utils/distros";
+import FileTree, { buildTree } from "../project/FileTree";
 import serverIcon from "../../assets/server.svg";
 
 // ─── Active selection type ───────────────────────────────────────────────────
@@ -42,34 +43,11 @@ function getAvatarStyle(name: string): React.CSSProperties {
   return { color, backgroundColor: color + "26" };
 }
 
-// ─── File status helpers ─────────────────────────────────────────────────────
-
-function getFileStatusClass(status: string): string {
-  switch (status) {
-    case "Added": return "file-added";
-    case "Modified": return "file-modified";
-    case "Deleted": return "file-deleted";
-    case "Renamed": return "file-renamed";
-    case "Untracked": return "file-untracked";
-    default: return "";
-  }
-}
-
-function getFileStatusLabel(status: string): string {
-  switch (status) {
-    case "Added": return "A";
-    case "Modified": return "M";
-    case "Deleted": return "D";
-    case "Renamed": return "R";
-    case "Untracked": return "?";
-    default: return "";
-  }
-}
-
 // ─── Generic project body (branches, worktrees, changed files) ───────────────
 
 interface ProjectBodyProps {
   gitInfo: GitInfo;
+  projectId: string;
   expandedSections: Record<string, boolean>;
   renamingBranch: string | null;
   renameBranchValue: string;
@@ -90,10 +68,12 @@ interface ProjectBodyProps {
   onCancelRenameWorktree: () => void;
   renameInputRef: React.RefObject<HTMLInputElement>;
   renameWtInputRef: React.RefObject<HTMLInputElement>;
+  currentBranch: string;
 }
 
 const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
   gitInfo,
+  projectId,
   expandedSections,
   renamingBranch,
   renameBranchValue,
@@ -114,7 +94,9 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
   onCancelRenameWorktree,
   renameInputRef,
   renameWtInputRef,
+  currentBranch,
 }) => {
+  const fileTree = useMemo(() => buildTree(gitInfo.changed_files), [gitInfo.changed_files]);
   const branchesExpanded = expandedSections["__branches__"] ?? true;
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
 
@@ -176,24 +158,10 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     <span className="gh-branch-item-name">{branch}</span>
                   )}
                 </div>
-                {/* Expanded current branch: show changed files */}
+                {/* Expanded current branch: show changed files as tree */}
                 {isCurrent && isExpanded && gitInfo.changed_files.length > 0 && (
-                  <div className="gh-file-list">
-                    {gitInfo.changed_files.map((f) => (
-                      <div
-                        key={f.path}
-                        className={`gh-file-item file-item`}
-                        onClick={(e) => { e.stopPropagation(); onSelectFile(f.path); }}
-                      >
-                        <span className={`file-status-icon ${getFileStatusClass(f.status)}`}>
-                          {getFileStatusLabel(f.status)}
-                        </span>
-                        <span className="file-path-name">{f.path.split('/').pop()}</span>
-                        <span className="file-path-full">{f.path}</span>
-                        {f.additions > 0 && <span className="file-stat additions">+{f.additions}</span>}
-                        {f.deletions > 0 && <span className="file-stat deletions">-{f.deletions}</span>}
-                      </div>
-                    ))}
+                  <div className="gh-file-tree">
+                    <FileTree nodes={fileTree} projectId={projectId} onSelectFile={(_, fp) => onSelectFile(fp)} />
                   </div>
                 )}
               </div>
@@ -217,7 +185,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
           </div>
           {worktreesExpanded && (
             <div className="gh-worktree-list">
-              {gitInfo.worktrees.map((wt) => {
+              {gitInfo.worktrees.filter((wt) => wt.branch !== currentBranch).map((wt) => {
                 const isRenaming = renamingWorktree === wt.path;
                 return (
                   <div
@@ -293,6 +261,7 @@ interface ProjectItemCardProps {
   onRemoveProject: () => void;
   onOpenIde?: () => void;
   onOpenDialog?: (type: string, branches: string[]) => void;
+  currentBranch: string;
 }
 
 const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
@@ -301,6 +270,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onCheckoutBranch, onCommitRenameBranch,
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
   onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
+  currentBranch,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -449,6 +419,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
       {!collapsed && gitInfo && (
         <ProjectBody
           gitInfo={gitInfo}
+          projectId={project.id}
           expandedSections={expandedSections}
           renamingBranch={renamingBranch}
           renameBranchValue={renameBranchValue}
@@ -469,6 +440,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           onCancelRenameWorktree={() => setRenamingWorktree(null)}
           renameInputRef={renameInputRef}
           renameWtInputRef={renameWtInputRef}
+          currentBranch={currentBranch}
         />
       )}
     </div>
@@ -595,6 +567,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
                   onOpenDialog={onOpenDialog ? (type, branches) =>
                     onOpenDialog({ type, source: { type: "wsl", distro: entry.distro, projectPath: project.path }, branches })
                   : undefined}
+                  currentBranch={project.git_info?.current_branch ?? ""}
                 />
               );
             })
@@ -726,6 +699,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
                   onOpenDialog={onOpenDialog ? (type, branches) =>
                     onOpenDialog({ type, source: { type: "remote", entryId: entry.id, projectPath: project.path }, branches })
                   : undefined}
+                  currentBranch={project.git_info?.current_branch ?? ""}
                 />
               );
             })

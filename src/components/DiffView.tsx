@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
@@ -342,6 +342,7 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
   const [error, setError] = useState<string | null>(null);
   const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "unified");
+  const lastLoadKeyRef = useRef<string>("");
 
   const language = useMemo(() => detectLanguage(filePath), [filePath]);
 
@@ -375,6 +376,9 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
   }, [diffResult]);
 
   useEffect(() => {
+    const key = `${projectId ?? ""}|${JSON.stringify(diffSource ?? "")}|${filePath}`;
+    if (key === lastLoadKeyRef.current) return;
+    lastLoadKeyRef.current = key;
     loadDiff();
   }, [projectId, diffSource, filePath]);
 

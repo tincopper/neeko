@@ -30,6 +30,16 @@ interface UseKeyboardShortcutsParams {
   activeWorktreePathRef: RefObject<string | null>;
   openedWorktreesRef: RefObject<{ path: string; branch: string }[]>;
   updateWtPath: (path: string | null, branch: string) => void;
+  // WSL worktree cycling
+  wslOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
+  activeWslWorktreePathRef: RefObject<string | null>;
+  setWslWorktreePath: (path: string | null) => void;
+  setWslWtBranch: (branch: string) => void;
+  // SSH worktree cycling
+  remoteOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
+  activeRemoteWorktreePathRef: RefObject<string | null>;
+  setRemoteWorktreePath: (path: string | null) => void;
+  setRemoteWtBranch: (branch: string) => void;
   isTerminalViewRef: RefObject<boolean>;
   activeProjectRef: RefObject<{ id: string; selected_ide: string | null } | null>;
   handleOpenIde: (project: { id: string; selected_ide: string | null }) => void;
@@ -54,6 +64,14 @@ export function useKeyboardShortcuts({
   activeWorktreePathRef,
   openedWorktreesRef,
   updateWtPath,
+  wslOpenedWtRef,
+  activeWslWorktreePathRef,
+  setWslWorktreePath,
+  setWslWtBranch,
+  remoteOpenedWtRef,
+  activeRemoteWorktreePathRef,
+  setRemoteWorktreePath,
+  setRemoteWtBranch,
   isTerminalViewRef,
   activeProjectRef,
   handleOpenIde,
@@ -75,18 +93,59 @@ export function useKeyboardShortcuts({
       }
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyN") {
-        const opened = openedWorktreesRef.current ?? [];
-        if (opened.length === 0) return;
         e.preventDefault();
-        const cur = activeWorktreePathRef.current;
-        if (cur === null) {
-          updateWtPath(opened[0].path, opened[0].branch);
-        } else {
-          const idx = opened.findIndex((w) => w.path === cur);
-          if (idx === opened.length - 1) {
-            updateWtPath(null, "");
+        // Local project worktree cycling
+        if (isTerminalViewRef.current) {
+          const opened = openedWorktreesRef.current ?? [];
+          if (opened.length === 0) return;
+          const cur = activeWorktreePathRef.current;
+          if (cur === null) {
+            updateWtPath(opened[0].path, opened[0].branch);
           } else {
-            updateWtPath(opened[idx + 1].path, opened[idx + 1].branch);
+            const idx = opened.findIndex((w) => w.path === cur);
+            if (idx === opened.length - 1) {
+              updateWtPath(null, "");
+            } else {
+              updateWtPath(opened[idx + 1].path, opened[idx + 1].branch);
+            }
+          }
+        }
+        // WSL worktree cycling
+        else if (activeWslKeyRef.current) {
+          const opened = wslOpenedWtRef.current ?? [];
+          if (opened.length === 0) return;
+          const cur = activeWslWorktreePathRef.current;
+          if (cur === null) {
+            setWslWorktreePath(opened[0].path);
+            setWslWtBranch(opened[0].branch);
+          } else {
+            const idx = opened.findIndex((w) => w.path === cur);
+            if (idx === opened.length - 1) {
+              setWslWorktreePath(null);
+              setWslWtBranch("");
+            } else {
+              setWslWorktreePath(opened[idx + 1].path);
+              setWslWtBranch(opened[idx + 1].branch);
+            }
+          }
+        }
+        // SSH worktree cycling
+        else if (activeRemoteKeyRef.current) {
+          const opened = remoteOpenedWtRef.current ?? [];
+          if (opened.length === 0) return;
+          const cur = activeRemoteWorktreePathRef.current;
+          if (cur === null) {
+            setRemoteWorktreePath(opened[0].path);
+            setRemoteWtBranch(opened[0].branch);
+          } else {
+            const idx = opened.findIndex((w) => w.path === cur);
+            if (idx === opened.length - 1) {
+              setRemoteWorktreePath(null);
+              setRemoteWtBranch("");
+            } else {
+              setRemoteWorktreePath(opened[idx + 1].path);
+              setRemoteWtBranch(opened[idx + 1].branch);
+            }
           }
         }
         return;

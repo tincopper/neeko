@@ -103,6 +103,7 @@ export interface RemoteEntrySession {
   port: number;
   username: string;
   projects: RemoteProject[];
+  saved_auth?: string | null;
 }
 
 // 统一的终端项目类型

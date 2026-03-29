@@ -112,6 +112,8 @@ pub struct SessionStore {
     pub sidebar_width: Option<u32>,
     #[serde(default)]
     pub side_terminal_width: Option<u32>,
+    #[serde(default)]
+    pub worktree_state: HashMap<String, String>,
 }
 
 impl SessionStore {
@@ -124,6 +126,7 @@ impl SessionStore {
             remote_entries: Vec::new(),
             sidebar_width: None,
             side_terminal_width: None,
+            worktree_state: HashMap::new(),
         }
     }
 }

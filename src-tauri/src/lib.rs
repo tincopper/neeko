@@ -796,16 +796,20 @@ fn save_session(
     remote_entries: Vec<RemoteEntrySession>,
     sidebar_width: Option<u32>,
     side_terminal_width: Option<u32>,
+    worktree_state: Option<std::collections::HashMap<String, String>>,
     state: State<AppStateWrapper>,
 ) -> Result<(), String> {
     let projects = state.project_manager.lock().unwrap().list_projects();
-    let session = state.storage_manager.create_session_from_projects(
+    let mut session = state.storage_manager.create_session_from_projects(
         &projects,
         Some(&wsl_entries),
         Some(&remote_entries),
         sidebar_width,
         side_terminal_width,
     );
+    if let Some(wt) = worktree_state {
+        session.worktree_state = wt;
+    }
     state
         .storage_manager
         .save_session(&session)
