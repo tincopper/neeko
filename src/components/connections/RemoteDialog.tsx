@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
-import { getIdeCommand, IDE_PRESETS } from "../../utils/idePresets";
+import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../utils/idePresets";
 import serverIcon from "../../assets/server.svg";
 
 interface RemoteDialogProps {
@@ -502,13 +502,23 @@ export function RemoteDialog({
                 {(() => {
                   const preset = selectedIdeId && !selectedIdeId.startsWith("custom:")
                     ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
-                  if (preset) return <span className="agent-name">{preset.name}</span>;
+                  if (preset) return (
+                    <>
+                      <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
+                      <span className="agent-name">{preset.name}</span>
+                    </>
+                  );
                   if (selectedIdeId?.startsWith("custom:")) {
                     const ci = parseInt(selectedIdeId.replace("custom:", ""), 10);
                     const customIde = config.customIdes?.[ci];
-                    return <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>;
+                    return (
+                      <>
+                        <img src={getIdeIconSrc(null)} alt="" style={{ width: 16, height: 16 }} />
+                        <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>
+                      </>
+                    );
                   }
-                  return <span className="agent-name" style={{ opacity: 0.5 }}>None (only VSCode/Zed supported)</span>;
+                  return <span className="agent-name" style={{ opacity: 0.5 }}>None (VSCode/Cursor/Zed)</span>;
                 })()}
                 <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
                   {ideDropdownOpen ? "−" : "+"}
@@ -522,12 +532,13 @@ export function RemoteDialog({
                   >
                     <span className="agent-name">None</span>
                   </div>
-                  {IDE_PRESETS.filter(p => ["vscode", "zed"].includes(p.id)).map(preset => (
+                  {IDE_PRESETS.filter(p => ["vscode", "cursor", "zed"].includes(p.id)).map(preset => (
                     <div
                       key={preset.id}
                       className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
                       onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
                     >
+                      <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
                       <span className="agent-name">{preset.name}</span>
                       <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>

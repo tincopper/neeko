@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { WSLProject, WSLEntrySession, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
 import { getDistroIcon } from "../../utils/distros";
-import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 
 interface WSLDialogProps {
   isOpen: boolean;
@@ -370,14 +370,24 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                   const selectedPreset = selectedIdeId && !selectedIdeId.startsWith("custom:")
                     ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
                   if (selectedPreset) {
-                    return <><span className="agent-name">{selectedPreset.name}</span></>;
+                    return (
+                      <>
+                        <img src={getIdeIconSrc(selectedPreset.icon)} alt="" style={{ width: 16, height: 16 }} />
+                        <span className="agent-name">{selectedPreset.name}</span>
+                      </>
+                    );
                   }
                   if (selectedIdeId?.startsWith("custom:")) {
         const idx = Number(selectedIdeId.replace("custom:", ""));
                     const customIde = config.customIdes?.[idx];
-                    return <><span className="agent-name">{customIde?.name ?? "Custom IDE"}</span></>;
+                    return (
+                      <>
+                        <img src={getIdeIconSrc(null)} alt="" style={{ width: 16, height: 16 }} />
+                        <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>
+                      </>
+                    );
                   }
-                  return <><span className="agent-name" style={{ opacity: 0.5 }}>None (only VSCode/Zed supported)</span></>;
+                  return <><span className="agent-name" style={{ opacity: 0.5 }}>None (VSCode/Cursor/Zed)</span></>;
                 })()}
                 <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
                   {ideDropdownOpen ? "−" : "+"}
@@ -391,13 +401,14 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                   >
                     <span className="agent-name">None</span>
                   </div>
-                  {/* 仅显示 VSCode 和 Zed */}
-                  {IDE_PRESETS.filter(p => ["vscode", "zed"].includes(p.id)).map(preset => (
+                  {/* 支持 VSCode、Cursor 和 Zed */}
+                  {IDE_PRESETS.filter(p => ["vscode", "cursor", "zed"].includes(p.id)).map(preset => (
                     <div
                       key={preset.id}
                       className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
                       onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
                     >
+                      <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
                       <span className="agent-name">{preset.name}</span>
                       <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>

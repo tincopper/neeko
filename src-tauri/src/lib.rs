@@ -949,16 +949,9 @@ fn open_wsl_ide(_distro: String, _project_path: String, _ide: String) -> Result<
     Err("WSL is only supported on Windows".to_string())
 }
 
-#[cfg(target_os = "windows")]
 #[tauri::command]
 fn open_remote_ide(host: String, port: u16, username: String, project_path: String, ide: String) -> Result<(), String> {
     remote::open_remote_ide(&host, port, &username, &project_path, &ide).map_err(|e| e.to_string())
-}
-
-#[cfg(not(target_os = "windows"))]
-#[tauri::command]
-fn open_remote_ide(_host: String, _port: u16, _username: String, _project_path: String, _ide: String) -> Result<(), String> {
-    Err("Remote IDE open via SSH is only supported on Windows".to_string())
 }
 
 // ─── WSL Git 命令 stubs (non-Windows) ─────────────────────────────────────────

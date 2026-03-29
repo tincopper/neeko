@@ -632,8 +632,13 @@ pub async fn run_remote_git(
     ssh_exec_command(host, port, username, auth, &cmd).await
 }
 
-/// 通过本地命令打开 SSH IDE（VSCode Remote 或 Zed）
-#[cfg(target_os = "windows")]
+/// 通过本地命令打开 SSH IDE（VSCode Remote、Cursor、Zed 等）
+///
+/// 支持的 IDE（通过命令字符串识别）：
+/// - code: VSCode，使用 `code --remote ssh-remote+user@host:port path`
+/// - cursor: Cursor，使用 `cursor --remote ssh-remote+user@host:port path`
+/// - zed: Zed，使用 `zed ssh://user@host:port/path`
+/// - 其他 JetBrains IDE: 不支持 SSH 远程打开，返回错误
 pub fn open_remote_ide(
     host: &str,
     port: u16,
@@ -641,33 +646,62 @@ pub fn open_remote_ide(
     project_path: &str,
     ide: &str,
 ) -> Result<()> {
-    use std::os::windows::process::CommandExt;
-    const DETACHED_PROCESS: u32 = 0x00000008;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+    // 构建 SSH 连接字符串（用于 VSCode/Cursor 的 --remote 参数）
+    let ssh_connection = format!("ssh-remote+{}@{}:{}", username, host, port);
 
-    match ide {
-        "vscode" => {
-            let folder_uri = format!(
-                "vscode-remote://ssh-remote+{}@{}:{}{}",
-                username, host, port, project_path
-            );
-            Command::new("code")
-                .arg("--folder-uri")
-                .arg(&folder_uri)
-                .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-                .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to launch VSCode: {}", e))?;
+    // 构建 SSH URL（用于 Zed 等）
+    let ssh_url = format!("ssh://{}@{}:{}{}", username, host, port, project_path);
+
+    let (exe, args): (&str, Vec<String>) = match ide {
+        "code" => {
+            // VSCode 使用 --remote 格式（官方推荐）
+            // 格式: code --remote ssh-remote+user@host:port /path/to/folder
+            ("code", vec!["--remote".to_string(), ssh_connection, project_path.to_string()])
+        }
+        "cursor" => {
+            // Cursor 使用与 VSCode 相同的格式
+            ("cursor", vec!["--remote".to_string(), ssh_connection, project_path.to_string()])
         }
         "zed" => {
-            let ssh_url = format!("ssh://{}@{}:{}{}", username, host, port, project_path);
-            Command::new("zed")
-                .arg(&ssh_url)
-                .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-                .spawn()
-                .map_err(|e| anyhow::anyhow!("Failed to launch Zed: {}", e))?;
+            // Zed 使用 ssh:// URL 格式
+            // 格式: zed ssh://user@host:port/path
+            ("zed", vec![ssh_url])
         }
-        _ => return Err(anyhow::anyhow!("Unsupported IDE: {}", ide)),
+        _ => return Err(anyhow::anyhow!(
+            "IDE '{}' does not support SSH remote opening. Supported: code, cursor, zed",
+            ide
+        )),
+    };
+
+    spawn_ide_process(exe, &args)
+}
+
+/// 启动 IDE 进程（跨平台）
+fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
+    use std::process::Command;
+
+    let mut cmd = Command::new(exe);
+    cmd.args(args);
+
+    // Windows: 使用 detached process 避免阻塞
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
+
+    // Unix: 使用 spawn 避免阻塞
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    cmd.spawn()
+        .map_err(|e| anyhow::anyhow!("Failed to launch '{}': {}. Make sure it's installed and in PATH.", exe, e))?;
+
     Ok(())
 }
 
