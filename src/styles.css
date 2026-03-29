@@ -1099,6 +1099,7 @@ body {
 /* File tree */
 .gh-file-tree {
   margin-top: 2px;
+  padding-left: 16px;
 }
 
 .gh-tree-dir,
