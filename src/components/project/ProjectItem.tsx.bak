@@ -172,20 +172,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   const changedFiles = project.git_info?.changed_files ?? [];
   const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
-   const branches = project.git_info?.branches ?? [];
-   const worktrees = project.git_info?.worktrees ?? [];
+  const branches = project.git_info?.branches ?? [];
+  const worktrees = project.git_info?.worktrees ?? [];
 
-   // 被 worktree 占用的 branch 不在 Branches 列表中展示
-   const filteredBranches = useMemo(() => {
-     const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
-     return branches.filter((b) => !worktreeBranchSet.has(b));
-   }, [worktrees, branches]);
-
-   // Filter out worktrees that are on the current branch (to avoid duplication)
-   const filteredWorktrees = useMemo(() => {
-     const currentBranch = project.git_info?.current_branch ?? "";
-     return worktrees.filter((wt) => wt.branch !== currentBranch);
-   }, [worktrees, project.git_info?.current_branch]);
+  // 被 worktree 占用的 branch 不在 Branches 列表中展示
+  const filteredBranches = useMemo(() => {
+    const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
+    return branches.filter((b) => !worktreeBranchSet.has(b));
+  }, [worktrees, branches]);
 
   const branchesExpanded = expandedSections["__branches__"] ?? true;
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
@@ -367,9 +361,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     </svg>
                     Worktrees
                   </div>
-               {worktreesExpanded && (
-                   <div className="gh-worktree-list">
-                     {filteredWorktrees.map((wt) => (
+                  {worktreesExpanded && (
+                  <div className="gh-worktree-list">
+                    {worktrees.map((wt) => (
                       <div
                         key={wt.path}
                         className="gh-worktree-item gh-worktree-item-standalone"

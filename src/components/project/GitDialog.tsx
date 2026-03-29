@@ -139,12 +139,13 @@ const GitDialog: React.FC<GitDialogProps> = ({
                 <option key={b} value={b} />
               ))}
             </datalist>
-            <label className="gh-dialog-checkbox" style={{ marginTop: 10 }}>
+            <label className="custom-checkbox gh-dialog-checkbox" style={{ marginTop: 10 }}>
               <input
                 type="checkbox"
                 checked={newBranch}
                 onChange={(e) => setNewBranch(e.target.checked)}
               />
+              <span className="checkbox-mark" />
               Create new branch
             </label>
             {error && <p className="gh-dialog-error">{error}</p>}

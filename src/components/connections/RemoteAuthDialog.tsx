@@ -8,8 +8,8 @@ interface RemoteAuthDialogProps {
   port: number;
   username: string;
   onCancel: () => void;
-  /** 认证成功后回调，返回用户输入的 auth */
-  onSuccess: (auth: AuthMethod) => void;
+  /** 认证成功后回调，返回用户输入的 auth 和可选的 Base64 编码凭据 */
+  onSuccess: (auth: AuthMethod, saved_auth?: string | null) => void;
 }
 
 export function RemoteAuthDialog({
@@ -25,6 +25,7 @@ export function RemoteAuthDialog({
   const [keyPath, setKeyPath] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [saveCredentials, setSaveCredentials] = useState(false);
 
   const reset = () => {
     setAuthType("password");
@@ -32,6 +33,7 @@ export function RemoteAuthDialog({
     setKeyPath("");
     setError(null);
     setConnecting(false);
+    setSaveCredentials(false);
   };
 
   const handleCancel = () => {
@@ -47,8 +49,9 @@ export function RemoteAuthDialog({
     setConnecting(true);
     try {
       await invoke("test_remote_connection", { host, port, username, auth });
+      const encodedAuth = saveCredentials ? btoa(JSON.stringify(auth)) : null;
       reset();
-      onSuccess(auth);
+      onSuccess(auth, encodedAuth);
     } catch (err) {
       setError(`Authentication failed: ${err}`);
     } finally {
@@ -70,12 +73,14 @@ export function RemoteAuthDialog({
 
         <label className="gh-dialog-label">Auth Type</label>
         <div className="auth-type-selector">
-          <label>
+          <label className="custom-radio">
             <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
+            <span className="radio-mark" />
             Password
           </label>
-          <label>
+          <label className="custom-radio">
             <input type="radio" checked={authType === "key"} onChange={() => setAuthType("key")} />
+            <span className="radio-mark" />
             Key File
           </label>
         </div>
@@ -107,6 +112,16 @@ export function RemoteAuthDialog({
             />
           </>
         )}
+
+        <label className="custom-checkbox save-credentials-label" style={{ marginTop: 14 }}>
+          <input
+            type="checkbox"
+            checked={saveCredentials}
+            onChange={e => setSaveCredentials(e.target.checked)}
+          />
+          <span className="checkbox-mark" />
+          记住密码（本地存储）
+        </label>
 
         <div className="modal-actions">
           <button className="modal-btn cancel" onClick={handleCancel}>Cancel</button>

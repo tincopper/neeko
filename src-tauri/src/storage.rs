@@ -128,6 +128,7 @@ impl StorageManager {
                 .unwrap_or(existing.remote_entries),
             sidebar_width: sidebar_width.or(existing.sidebar_width),
             side_terminal_width: side_terminal_width.or(existing.side_terminal_width),
+            worktree_state: existing.worktree_state,
         }
     }
 

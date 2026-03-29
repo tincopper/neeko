@@ -116,10 +116,10 @@ function MainContent({
                   distro={activeWslProject.distro}
                   projectId={activeWslProject.project.id}
                   projectName={activeWslProject.project.name}
-                  projectPath={activeWslProject.project.path}
+                  projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
                   fontSize={config.fontSize}
                   fontFamily={config.fontFamily}
-                  cacheKeySuffix=":side"
+                  cacheKeySuffix={activeWslWorktreePath ? `:side:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}` : ":side"}
                   sideMode
                   width={sideTerminalWidth}
                   onClose={() =>
@@ -197,14 +197,14 @@ function MainContent({
                     entryId={entry.id}
                     projectId={project.id}
                     projectName={project.name}
-                    projectPath={project.path}
+                    projectPath={activeRemoteWorktreePath ?? project.path}
                     host={entry.host}
                     port={entry.port}
                     username={entry.username}
                     auth={auth}
                     fontSize={config.fontSize}
                     fontFamily={config.fontFamily}
-                    cacheKeySuffix=":side"
+                    cacheKeySuffix={activeRemoteWorktreePath ? `:side:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ":side"}
                     sideMode
                     width={sideTerminalWidth}
                     onClose={() =>

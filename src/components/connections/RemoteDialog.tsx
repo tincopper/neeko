@@ -8,8 +8,8 @@ import serverIcon from "../../assets/server.svg";
 interface RemoteDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  /** entry 为持久化数据（不含密码）；auth 为本次输入的认证信息（仅内存，entryId 已有服务器时为 null） */
-  onAdd: (entry: RemoteEntrySession, auth: AuthMethod | null) => void;
+  /** entry 为持久化数据；auth 为本次输入的认证信息（仅内存）；saved_auth 为 Base64 编码的持久化凭据 */
+  onAdd: (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => void;
   existingEntries: RemoteEntrySession[];
   addProjectMode?: boolean;
   selectedEntryId?: string;
@@ -253,14 +253,16 @@ export function RemoteDialog({
         authType === "password"
           ? { Password: password }
           : { KeyFile: keyPath };
+      const encodedAuth = saveCredentials ? btoa(JSON.stringify(auth)) : null;
       const newEntry: RemoteEntrySession = {
         id: crypto.randomUUID(),
         host,
         port: parseInt(port) || 22,
         username,
         projects: [newProject],
+        saved_auth: encodedAuth,
       };
-      onAdd(newEntry, auth);
+      onAdd(newEntry, auth, encodedAuth);
     }
 
     resetState();
@@ -335,12 +337,14 @@ export function RemoteDialog({
 
             <label className="gh-dialog-label" style={{ marginTop: 12 }}>Auth Type</label>
             <div className="auth-type-selector">
-              <label>
+              <label className="custom-radio">
                 <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
+                <span className="radio-mark" />
                 Password
               </label>
-              <label>
+              <label className="custom-radio">
                 <input type="radio" checked={authType === "key"} onChange={() => setAuthType("key")} />
+                <span className="radio-mark" />
                 Key File
               </label>
             </div>
@@ -369,12 +373,13 @@ export function RemoteDialog({
               </>
             )}
 
-            <label className="save-credentials-label" style={{ marginTop: 14 }}>
+            <label className="custom-checkbox save-credentials-label" style={{ marginTop: 14 }}>
               <input
                 type="checkbox"
                 checked={saveCredentials}
                 onChange={e => setSaveCredentials(e.target.checked)}
               />
+              <span className="checkbox-mark" />
               Save credentials (stored locally with Base64 obfuscation)
             </label>
           </>

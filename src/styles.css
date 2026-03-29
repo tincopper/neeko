@@ -2805,3 +2805,104 @@ body {
   color: var(--text-muted);
   font-size: 18px;
 }
+
+/* ── Custom Radio & Checkbox ── */
+.custom-radio,
+.custom-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  user-select: none;
+  position: relative;
+}
+
+.custom-radio input,
+.custom-checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.custom-radio .radio-mark {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.custom-radio .radio-mark::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  transform: scale(0);
+  transition: transform 0.15s;
+}
+
+.custom-radio input:checked ~ .radio-mark {
+  border-color: var(--accent-blue);
+  background: var(--bg-tertiary);
+}
+
+.custom-radio input:checked ~ .radio-mark::after {
+  transform: scale(1);
+}
+
+.custom-radio:hover .radio-mark {
+  border-color: var(--accent-blue);
+}
+
+.custom-checkbox .checkbox-mark {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.custom-checkbox .checkbox-mark::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) scale(0);
+  transition: transform 0.15s;
+  margin-top: -2px;
+}
+
+.custom-checkbox input:checked ~ .checkbox-mark {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue);
+}
+
+.custom-checkbox input:checked ~ .checkbox-mark::after {
+  transform: rotate(-45deg) scale(1);
+}
+
+.custom-checkbox:hover .checkbox-mark {
+  border-color: var(--accent-blue);
+}
+
+.custom-radio input:focus-visible ~ .radio-mark,
+.custom-checkbox input:focus-visible ~ .checkbox-mark {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 1px;
+}

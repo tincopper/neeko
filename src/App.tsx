@@ -14,7 +14,7 @@ import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
 import { useSideTerminalResize } from "./hooks/useSideTerminalResize";
-import { useWorktreeState } from "./hooks/useWorktreeState";
+import { useWorktreeState, type WorktreeItem } from "./hooks/useWorktreeState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useAppConfig } from "./hooks/useAppConfig";
 import { useLocalProjects } from "./hooks/useLocalProjects";
@@ -35,6 +35,22 @@ function App() {
   // ── Unified session save (stable via refs) ──
   const wslEntriesRefForSave = useRef<WSLEntrySession[]>([]);
   const remoteEntriesRefForSave = useRef<RemoteEntrySession[]>([]);
+  const worktreeStateRef = useRef<Record<string, string>>({});
+  const wtSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
+    if (wtPath) {
+      worktreeStateRef.current[projectId] = wtPath;
+    } else {
+      delete worktreeStateRef.current[projectId];
+    }
+    // Debounced save
+    if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
+    wtSaveTimerRef.current = setTimeout(() => {
+      invoke("save_session", { worktreeState: worktreeStateRef.current }).catch(() => {});
+    }, 500);
+  }, []);
+
   const saveSession: SaveSessionFn = useCallback(async (wslEntriesParam?: WSLEntrySession[], remoteEntriesParam?: RemoteEntrySession[]) => {
     const wsl = wslEntriesParam ?? wslEntriesRefForSave.current;
     const remote = remoteEntriesParam ?? remoteEntriesRefForSave.current;
@@ -85,6 +101,7 @@ function App() {
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
+    restoreAuthFromEntries,
   } = remote;
 
   // ── Side terminal state ───────────────────────────────────────────────────
@@ -180,6 +197,18 @@ function App() {
   // ── WSL/SSH worktree state (同上) ────────────────────────────────────────
   const [activeWslWorktreePath, setActiveWslWorktreePath] = useState<string | null>(null);
   const [activeRemoteWorktreePath, setActiveRemoteWorktreePath] = useState<string | null>(null);
+  const [wslActiveWtBranch, setWslActiveWtBranch] = useState("");
+  const [remoteActiveWtBranch, setRemoteActiveWtBranch] = useState("");
+  const [wslOpenedWt, setWslOpenedWt] = useState<WorktreeItem[]>([]);
+  const [remoteOpenedWt, setRemoteOpenedWt] = useState<WorktreeItem[]>([]);
+  const wslOpenedWtRef = useRef<WorktreeItem[]>([]);
+  const remoteOpenedWtRef = useRef<WorktreeItem[]>([]);
+  const activeWslWorktreePathRef = useRef<string | null>(null);
+  const activeRemoteWorktreePathRef = useRef<string | null>(null);
+  wslOpenedWtRef.current = wslOpenedWt;
+  remoteOpenedWtRef.current = remoteOpenedWt;
+  activeWslWorktreePathRef.current = activeWslWorktreePath;
+  activeRemoteWorktreePathRef.current = activeRemoteWorktreePath;
 
   // ── Cross-domain select handlers ──────────────────────────────────────────
   const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
@@ -193,6 +222,10 @@ function App() {
     setRemoteDiffState(null);
     setActiveWslWorktreePath(null);
     setActiveRemoteWorktreePath(null);
+    setWslActiveWtBranch("");
+    setRemoteActiveWtBranch("");
+    setWslOpenedWt([]);
+    setRemoteOpenedWt([]);
 
     // 异步刷新 git_info
     invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath: project.path })
@@ -218,6 +251,10 @@ function App() {
     setActiveRemoteKey({ host, projectId: project.id });
     setActiveWslWorktreePath(null);
     setActiveRemoteWorktreePath(null);
+    setWslActiveWtBranch("");
+    setRemoteActiveWtBranch("");
+    setWslOpenedWt([]);
+    setRemoteOpenedWt([]);
     const entry = remoteEntriesRef.current.find(e => e.host === host);
     if (entry) {
       setActiveRemoteProject({ entry, project });
@@ -314,14 +351,24 @@ function App() {
 
   // ── WSL/SSH worktree handlers (state declared above) ─────────────────────
 
-  const handleOpenWslWorktreeTerminal = useCallback((_distro: string, worktreePath: string, _branch: string) => {
+  const handleOpenWslWorktreeTerminal = useCallback((_distro: string, worktreePath: string, branch: string) => {
     setActiveWslWorktreePath(worktreePath);
+    setWslActiveWtBranch(branch);
+    setWslOpenedWt(prev => {
+      if (prev.some(w => w.path === worktreePath)) return prev;
+      return [...prev, { path: worktreePath, branch }];
+    });
     setWslDiffState(null);
     setRemoteDiffState(null);
   }, []);
 
-  const handleOpenRemoteWorktreeTerminal = useCallback((_entryId: string, worktreePath: string, _branch: string) => {
+  const handleOpenRemoteWorktreeTerminal = useCallback((_entryId: string, worktreePath: string, branch: string) => {
     setActiveRemoteWorktreePath(worktreePath);
+    setRemoteActiveWtBranch(branch);
+    setRemoteOpenedWt(prev => {
+      if (prev.some(w => w.path === worktreePath)) return prev;
+      return [...prev, { path: worktreePath, branch }];
+    });
     setWslDiffState(null);
     setRemoteDiffState(null);
   }, []);
@@ -353,9 +400,10 @@ function App() {
       return [...prev, { path: worktreePath, branch }];
     });
     if (activeProjectIdRef.current) {
+      saveWorktreeState(activeProjectIdRef.current, worktreePath);
       invoke("set_view_terminal", { projectId: activeProjectIdRef.current }).catch(() => {});
     }
-  }, [setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees]);
+  }, [setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState]);
 
   // ── isTerminalView ref sync ───────────────────────────────────────────────
   const isTerminalView = activeProject?.active_view === "Terminal";
@@ -381,6 +429,14 @@ function App() {
     activeWorktreePathRef,
     openedWorktreesRef,
     updateWtPath,
+    wslOpenedWtRef,
+    activeWslWorktreePathRef,
+    setWslWorktreePath: setActiveWslWorktreePath,
+    setWslWtBranch: setWslActiveWtBranch,
+    remoteOpenedWtRef,
+    activeRemoteWorktreePathRef,
+    setRemoteWorktreePath: setActiveRemoteWorktreePath,
+    setRemoteWtBranch: setRemoteActiveWtBranch,
     isTerminalViewRef,
     activeProjectRef,
     handleOpenIde: handleOpenIdeCallback,
@@ -395,14 +451,23 @@ function App() {
 
     // 统一加载所有会话数据
     invoke<any>("load_session").then((session: any) => {
-      setWslEntries(session.wsl_entries ?? []);
-      setRemoteEntries(session.remote_entries ?? []);
+      const wslE = session.wsl_entries ?? [];
+      const remoteE = session.remote_entries ?? [];
+      setWslEntries(wslE);
+      setRemoteEntries(remoteE);
       if (session.sidebar_width) {
         setInitialSidebarWidth(session.sidebar_width);
       }
       if (session.side_terminal_width) {
         setSideTerminalWidth(session.side_terminal_width);
       }
+      // Restore worktree state per project
+      const wtState = session.worktree_state;
+      if (wtState && typeof wtState === "object") {
+        worktreeStateRef.current = wtState;
+      }
+      // Restore SSH auth from saved credentials
+      restoreAuthFromEntries(remoteE);
     }).catch(console.error);
 
     const unlistenPromise = listen<string>("git-changed", (event) => {
@@ -486,6 +551,8 @@ function App() {
         activeWslProject={activeWslProject}
         activeRemoteProject={activeRemoteProject}
         activeWorktreeBranch={activeWorktreeBranch}
+        activeWslWorktreeBranch={wslActiveWtBranch}
+        activeRemoteWorktreeBranch={remoteActiveWtBranch}
         showAddMenu={showAddMenu}
         loading={loading}
         onOpenSettings={handleToggleSettings}
@@ -633,9 +700,20 @@ function App() {
             setActiveRemoteKey(null);
             setActiveRemoteProject(null);
           }}
-          onSuccess={(auth) => {
+          onSuccess={(auth, saved_auth) => {
             setRemoteAuthStore(prev => new Map(prev).set(pendingAuthEntry.id, auth));
             setPendingAuthEntry(null);
+            // 如果用户选择记住密码，持久化到 entry
+            if (saved_auth) {
+              const entries = remoteEntriesRef.current;
+              const idx = entries.findIndex(e => e.id === pendingAuthEntry.id);
+              if (idx >= 0) {
+                const updated = [...entries];
+                updated[idx] = { ...updated[idx], saved_auth };
+                setRemoteEntries(updated);
+                saveSession(undefined, updated);
+              }
+            }
           }}
         />
       )}

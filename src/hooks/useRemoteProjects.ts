@@ -38,15 +38,17 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     }
   }, [activeRemoteProject, remoteAuthStore]);
 
-  const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null) => {
+  const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
     try {
+      // 如果有 saved_auth，写入 entry 用于持久化
+      const persistEntry = saved_auth ? { ...entry, saved_auth } : entry;
       const existingIndex = remoteEntries.findIndex(e => e.id === entry.id);
       let newEntries: RemoteEntrySession[];
       if (existingIndex >= 0) {
         newEntries = [...remoteEntries];
-        newEntries[existingIndex] = entry;
+        newEntries[existingIndex] = persistEntry;
       } else {
-        newEntries = [...remoteEntries, entry];
+        newEntries = [...remoteEntries, persistEntry];
       }
       setRemoteEntries(newEntries);
       await saveSession(undefined, newEntries);
@@ -114,6 +116,28 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     setRemoteAddToEntryId(null);
   }, []);
 
+  /** 从持久化的 saved_auth 恢复 remoteAuthStore */
+  const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
+    const restored = new Map<string, AuthMethod>();
+    for (const entry of entries) {
+      if (entry.saved_auth) {
+        try {
+          const auth: AuthMethod = JSON.parse(atob(entry.saved_auth));
+          restored.set(entry.id, auth);
+        } catch {
+          // ignore invalid saved_auth
+        }
+      }
+    }
+    if (restored.size > 0) {
+      setRemoteAuthStore(prev => {
+        const merged = new Map(prev);
+        for (const [k, v] of restored) merged.set(k, v);
+        return merged;
+      });
+    }
+  }, []);
+
   return {
     remoteEntries, setRemoteEntries,
     activeRemoteKey, setActiveRemoteKey,
@@ -128,5 +152,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
+    restoreAuthFromEntries,
   };
 }

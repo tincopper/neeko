@@ -29,6 +29,8 @@ interface TitleBarProps {
   activeWslProject: { distro: string; project: WSLProject } | null;
   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
   activeWorktreeBranch: string;
+  activeWslWorktreeBranch: string;
+  activeRemoteWorktreeBranch: string;
   showAddMenu: boolean;
   loading: boolean;
   onOpenSettings: () => void;
@@ -47,6 +49,8 @@ function TitleBar({
   activeWslProject,
   activeRemoteProject,
   activeWorktreeBranch,
+  activeWslWorktreeBranch,
+  activeRemoteWorktreeBranch,
   showAddMenu,
   loading,
   onOpenSettings,
@@ -123,7 +127,7 @@ function TitleBar({
             <span className="titlebar-project-name" data-tauri-drag-region>{activeWslProject.project.name}</span>
             {activeWslProject.project.git_info ? (
               <span className="titlebar-branch" data-tauri-drag-region>
-                {activeWslProject.project.git_info.current_branch}
+                {activeWslWorktreeBranch || activeWslProject.project.git_info.current_branch}
               </span>
             ) : (
               <span className="titlebar-branch" data-tauri-drag-region style={{ opacity: 0.5 }}>
@@ -142,7 +146,7 @@ function TitleBar({
             <span className="titlebar-project-name" data-tauri-drag-region>{activeRemoteProject.project.name}</span>
             {activeRemoteProject.project.git_info ? (
               <span className="titlebar-branch" data-tauri-drag-region>
-                {activeRemoteProject.project.git_info.current_branch}
+                {activeRemoteWorktreeBranch || activeRemoteProject.project.git_info.current_branch}
               </span>
             ) : (
               <span className="titlebar-branch" data-tauri-drag-region style={{ opacity: 0.5 }}>
