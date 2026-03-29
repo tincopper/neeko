@@ -1026,7 +1026,7 @@ body {
 }
 
 .gh-project-header:hover .gh-project-actions,
-.gh-project-header:hover .gh-ide-btn {
+.gh-project.active .gh-project-header:hover .gh-ide-btn {
   opacity: 1;
 }
 
