@@ -614,6 +614,7 @@ function App() {
           onOpenRemoteWorktreeTerminal={handleOpenRemoteWorktreeTerminal}
           invokeRemoteGit={invokeRemoteGit}
           loading={loading}
+          ideCommandOverrides={config.ideCommandOverrides}
         />
 
         <MainContent

@@ -52,6 +52,7 @@ interface ProjectSidebarProps {
   onSidebarWidthChange?: (width: number) => void;
   suppressResizeRef?: React.MutableRefObject<boolean>;
   loading: boolean;
+  ideCommandOverrides?: Record<string, string>;
 }
 
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
@@ -98,6 +99,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onSidebarWidthChange,
   suppressResizeRef,
   loading: _loading,
+  ideCommandOverrides,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   // Wrapper to accept WSL/Remote dialog objects (type is string literal union at runtime)
@@ -184,6 +186,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenIde={onOpenIde}
                   onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  ideCommandOverrides={ideCommandOverrides}
                 />
               ))}
 
@@ -205,6 +208,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenIde={onOpenWslIde}
                   onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
                   onOpenDialog={handleOpenDialog}
+                  ideCommandOverrides={ideCommandOverrides}
                 />
               ))}
 
@@ -227,6 +231,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
                   invokeRemoteGit={invokeRemoteGit}
                   onOpenDialog={handleOpenDialog}
+                  ideCommandOverrides={ideCommandOverrides}
                 />
               ))}
             </>

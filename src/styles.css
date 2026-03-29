@@ -729,8 +729,10 @@ body {
 .settings-ide-icon {
   font-size: 0.93em;
   width: 18px;
+  height: 18px;
   text-align: center;
   flex-shrink: 0;
+  object-fit: contain;
 }
 
 .settings-ide-name {
@@ -849,6 +851,13 @@ body {
 
 .gh-ide-btn:hover {
   color: var(--accent-blue) !important;
+}
+
+.gh-ide-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  display: block;
 }
 
 /* Empty placeholder for sections with no content yet */

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import type { AppConfig } from "../SettingsPanel";
 import AgentIcon from "../layout/AgentIcon";
 
@@ -190,7 +190,7 @@ export default function AddProjectModal({
                   className={`agent-option${selectedIdeId === ide.id ? " selected" : ""}`}
                   onClick={() => { setSelectedIdeId(ide.id); setPendingIdeOpen(false); }}
                 >
-                  <span className="agent-icon">{ide.icon}</span>
+                  <img src={getIdeIconSrc(ide.icon)} className="agent-icon" alt="" />
                   <span className="agent-name">{ide.name}</span>
                   <span className="agent-command">
                     {config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide)}
