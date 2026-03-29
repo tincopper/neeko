@@ -252,7 +252,8 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     ) : (
                       <span className="gh-branch-item-name">{wt.path.split('/').pop()}</span>
                     )}
-                    <span className="gh-worktree-branch" style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)" }}>
+                    <span className="gh-branch-inline" title={wt.branch}>
+                      {BRANCH_SVG}
                       {wt.branch}
                     </span>
                     {!isRenaming && (
@@ -437,7 +438,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
 
         {/* Branch badge */}
         {gitInfo && (
-          <span className="gh-branch-inline">
+          <span className="gh-branch-inline" title={gitInfo.current_branch}>
             {BRANCH_SVG}
             {gitInfo.current_branch}
           </span>
