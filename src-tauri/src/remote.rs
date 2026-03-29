@@ -634,11 +634,13 @@ pub async fn run_remote_git(
 
 /// 通过本地命令打开 SSH IDE（VSCode Remote、Cursor、Zed 等）
 ///
-/// 支持的 IDE（通过命令字符串识别）：
-/// - code: VSCode，使用 `code --remote ssh-remote+user@host:port path`
-/// - cursor: Cursor，使用 `cursor --remote ssh-remote+user@host:port path`
-/// - zed: Zed，使用 `zed ssh://user@host:port/path`
-/// - 其他 JetBrains IDE: 不支持 SSH 远程打开，返回错误
+/// 支持的 IDE（通过命令字符串智能识别类型）：
+/// - VSCode 类（包含 "code"）: 使用 `--remote ssh-remote+user@host:port path`
+/// - Cursor 类（包含 "cursor"）: 使用 `--remote ssh-remote+user@host:port path`
+/// - Zed 类（包含 "zed"）: 使用 `ssh://user@host:port/path`
+/// - 其他 IDE: 不支持 SSH 远程打开，返回错误
+///
+/// 注意：exe 参数是用户配置的实际可执行路径（如 "code"、"cursor"、"zed" 或自定义路径）
 pub fn open_remote_ide(
     host: &str,
     port: u16,
@@ -646,34 +648,27 @@ pub fn open_remote_ide(
     project_path: &str,
     ide: &str,
 ) -> Result<()> {
-    // 构建 SSH 连接字符串（用于 VSCode/Cursor 的 --remote 参数）
-    let ssh_connection = format!("ssh-remote+{}@{}:{}", username, host, port);
+    let ide_lower = ide.to_lowercase();
 
-    // 构建 SSH URL（用于 Zed 等）
-    let ssh_url = format!("ssh://{}@{}:{}{}", username, host, port, project_path);
-
-    let (exe, args): (&str, Vec<String>) = match ide {
-        "code" => {
-            // VSCode 使用 --remote 格式（官方推荐）
-            // 格式: code --remote ssh-remote+user@host:port /path/to/folder
-            ("code", vec!["--remote".to_string(), ssh_connection, project_path.to_string()])
-        }
-        "cursor" => {
-            // Cursor 使用与 VSCode 相同的格式
-            ("cursor", vec!["--remote".to_string(), ssh_connection, project_path.to_string()])
-        }
-        "zed" => {
-            // Zed 使用 ssh:// URL 格式
-            // 格式: zed ssh://user@host:port/path
-            ("zed", vec![ssh_url])
-        }
-        _ => return Err(anyhow::anyhow!(
-            "IDE '{}' does not support SSH remote opening. Supported: code, cursor, zed",
+    // 根据 IDE 类型决定参数格式
+    let args: Vec<String> = if ide_lower.contains("code") || ide_lower.contains("cursor") {
+        // VSCode / Cursor 使用 --remote 格式
+        // 格式: <exe> --remote ssh-remote+user@host:port /path/to/folder
+        let ssh_connection = format!("ssh-remote+{}@{}:{}", username, host, port);
+        vec!["--remote".to_string(), ssh_connection, project_path.to_string()]
+    } else if ide_lower.contains("zed") {
+        // Zed 使用 ssh:// URL 格式
+        // 格式: <exe> ssh://user@host:port/path
+        let ssh_url = format!("ssh://{}@{}:{}{}", username, host, port, project_path);
+        vec![ssh_url]
+    } else {
+        return Err(anyhow::anyhow!(
+            "IDE '{}' does not support SSH remote opening. Supported: VSCode (code), Cursor (cursor), Zed (zed)",
             ide
-        )),
+        ));
     };
 
-    spawn_ide_process(exe, &args)
+    spawn_ide_process(ide, &args)
 }
 
 /// 启动 IDE 进程（跨平台）
