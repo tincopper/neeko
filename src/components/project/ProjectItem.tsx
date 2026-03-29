@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Project } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
+import { getIdeIconByCommand } from "../../utils/idePresets";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -30,6 +31,7 @@ interface ProjectItemProps {
   onOpenIde?: (projectId: string) => void;
   onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
+  ideCommandOverrides?: Record<string, string>;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -44,6 +46,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenIde,
   onOpenSideTerminal,
   onOpenWorktreeTerminal,
+  ideCommandOverrides,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
@@ -210,9 +213,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
             onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M10.604 1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1ZM3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5Z"/>
-            </svg>
+            <img src={getIdeIconByCommand(project.selected_ide, ideCommandOverrides)} className="gh-ide-icon" alt="" />
           </button>
         )}
         <div className="gh-project-actions">

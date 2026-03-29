@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { IDE_PRESETS, getIdeCommand } from "../utils/idePresets";
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../utils/idePresets";
 import { getAgentIconSrc } from "../utils/agents";
 import type { AppConfig, DiffMode, AgentConfig } from "../types";
 
@@ -655,9 +655,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                       const isEditing = editingPresetId === ide.id;
                       const effectiveCmd = getEffectiveCommand(ide);
                       const isOverridden = !!config.ideCommandOverrides?.[ide.id];
+                      const iconSrc = getIdeIconSrc(ide.icon);
                       return (
                         <div key={ide.id} className="settings-ide-item">
-                          <span className="settings-ide-icon">{ide.icon}</span>
+                          <img src={iconSrc} className="settings-ide-icon" alt="" />
                           <span className="settings-ide-name">{ide.name}</span>
                           {isEditing ? (
                             <input
@@ -712,7 +713,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
                     <div className="settings-ide-list">
                       {(config.customIdes || []).map((ide, idx) => (
                         <div key={idx} className="settings-ide-item">
-                          <span className="settings-ide-icon">💻</span>
+                          <img src={getIdeIconSrc(null)} className="settings-ide-icon" alt="" />
                           <span className="settings-ide-name">{ide.name}</span>
                           <span className="settings-ide-command">{ide.command}</span>
                           <button

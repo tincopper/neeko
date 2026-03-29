@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo } from "../../types";
 import { getDistroIcon } from "../../utils/distros";
+import { getIdeIconByCommand } from "../../utils/idePresets";
 import FileTree, { buildTree } from "../project/FileTree";
 import serverIcon from "../../assets/server.svg";
 
@@ -262,6 +263,7 @@ interface ProjectItemCardProps {
   onOpenIde?: () => void;
   onOpenDialog?: (type: string, branches: string[]) => void;
   currentBranch: string;
+  ideCommandOverrides?: Record<string, string>;
 }
 
 const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
@@ -270,7 +272,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onCheckoutBranch, onCommitRenameBranch,
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
   onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
-  currentBranch,
+  currentBranch, ideCommandOverrides,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -358,9 +360,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
             title={project.selected_ide ? `Open in IDE (Ctrl+O)\n${project.selected_ide}` : "Open in IDE (Ctrl+O)"}
             onClick={(e) => { e.stopPropagation(); onOpenIde(); }}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M10.604 1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.75.75 0 0 1-1.06-1.06l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1ZM3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.216 2.784 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-3.5a.75.75 0 0 0-1.5 0v3.5a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25v-8.5a.25.25 0 0 1 .25-.25h3.5a.75.75 0 0 0 0-1.5h-3.5Z"/>
-            </svg>
+            <img src={getIdeIconByCommand(project.selected_ide ?? null, ideCommandOverrides)} className="gh-ide-icon" alt="" />
           </button>
         )}
 
@@ -465,6 +465,7 @@ interface WSLItemProps {
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
+  ideCommandOverrides?: Record<string, string>;
 }
 
 export const WSLItem = React.memo<WSLItemProps>(({
@@ -483,6 +484,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
   onOpenIde,
   onOpenWorktreeTerminal,
   onOpenDialog,
+  ideCommandOverrides,
 }) => {
   void onCloseProject; // intentionally unused — close handled by terminal session
   const [collapsed, setCollapsed] = useState(false);
@@ -568,6 +570,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
                     onOpenDialog({ type, source: { type: "wsl", distro: entry.distro, projectPath: project.path }, branches })
                   : undefined}
                   currentBranch={project.git_info?.current_branch ?? ""}
+                  ideCommandOverrides={ideCommandOverrides}
                 />
               );
             })
@@ -596,6 +599,7 @@ interface RemoteItemProps {
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
+  ideCommandOverrides?: Record<string, string>;
 }
 
 export const RemoteItem = React.memo<RemoteItemProps>(({
@@ -614,6 +618,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
   onOpenWorktreeTerminal,
   invokeRemoteGit,
   onOpenDialog,
+  ideCommandOverrides,
 }) => {
   void onCloseProject;
   const [collapsed, setCollapsed] = useState(false);
@@ -700,6 +705,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
                     onOpenDialog({ type, source: { type: "remote", entryId: entry.id, projectPath: project.path }, branches })
                   : undefined}
                   currentBranch={project.git_info?.current_branch ?? ""}
+                  ideCommandOverrides={ideCommandOverrides}
                 />
               );
             })
