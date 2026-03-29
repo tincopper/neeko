@@ -300,10 +300,12 @@ function App() {
   }, [invokeRemoteGit, setRemoteEntries, setActiveRemoteProject]);
 
   const handleOpenWslIde = useCallback((distro: string, projectPath: string, ide: string) => {
+    if (!ide) { showToast("No IDE selected for this project", "error"); return; }
     invoke("open_wsl_ide", { distro, projectPath, ide }).catch(e => showToast(String(e), "error"));
   }, [showToast]);
 
   const handleOpenRemoteIde = useCallback((entryId: string, projectPath: string, ide: string) => {
+    if (!ide) { showToast("No IDE selected for this project", "error"); return; }
     const entry = remoteEntriesRef.current.find(e => e.id === entryId);
     if (!entry) return;
     invoke("open_remote_ide", { host: entry.host, port: entry.port, username: entry.username, projectPath, ide })

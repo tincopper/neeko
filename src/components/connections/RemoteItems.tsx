@@ -143,7 +143,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
               <div key={branch}>
                 <div
                   className={`gh-branch-item${isCurrent ? " current" : ""}`}
-                  style={{ paddingLeft: 28, cursor: "pointer" }}
+                  style={{ cursor: "pointer" }}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isRenaming) return;
@@ -223,7 +223,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                   <div
                     key={wt.path}
                     className="gh-worktree-item gh-worktree-item-standalone"
-                    style={{ paddingLeft: 28, cursor: "pointer" }}
+                    style={{ cursor: "pointer" }}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (isRenaming) return;
@@ -363,7 +363,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   }, [gitMenuOpen]);
 
   return (
-    <div className={`gh-project${isActive ? " active" : ""}`} style={{ marginLeft: 12 }}>
+    <div className={`gh-project${isActive ? " active" : ""}`}>
       {/* Project header */}
       <div
         className="gh-project-header"
@@ -380,11 +380,11 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           <span className="gh-project-name">{project.name}</span>
         </div>
 
-        {/* IDE 按钮 — 有 selected_ide 时显示（与本地 ProjectItem 一致） */}
-        {project.selected_ide && onOpenIde && (
+        {/* IDE 按钮 */}
+        {onOpenIde && (
           <button
             className="gh-icon-btn gh-ide-btn"
-            title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
+            title={project.selected_ide ? `Open in IDE (Ctrl+O)\n${project.selected_ide}` : "Open in IDE (Ctrl+O)"}
             onClick={(e) => { e.stopPropagation(); onOpenIde(); }}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
@@ -393,38 +393,37 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           </button>
         )}
 
-        {/* Git menu */}
-        {gitInfo && onOpenDialog && (
-          <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="gh-icon-btn gh-git-menu-btn"
-              onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
-              title="Git actions"
-            >
-              {GIT_SVG}
-            </button>
-            {gitMenuOpen && (
-              <div className="gh-git-dropdown">
-                <div className="gh-git-dropdown-item"
-                  onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
-                  New Branch
-                </div>
-                <div className="gh-git-dropdown-item"
-                  onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
-                  New Worktree
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Actions */}
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
+          {/* Side Terminal 按钮 */}
           {isActive && onOpenSideTerminal && (
             <button className="gh-icon-btn" title="Open side terminal (Ctrl+Alt+T)"
               onClick={() => onOpenSideTerminal()}>
               {SIDE_TERMINAL_SVG}
             </button>
+          )}
+          {/* Git 操作下拉菜单 */}
+          {gitInfo && onOpenDialog && (
+            <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="gh-icon-btn gh-git-menu-btn"
+                onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
+                title="Git actions"
+              >
+                {GIT_SVG}
+              </button>
+              {gitMenuOpen && (
+                <div className="gh-git-dropdown">
+                  <div className="gh-git-dropdown-item"
+                    onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
+                    New Branch
+                  </div>
+                  <div className="gh-git-dropdown-item"
+                    onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
+                    New Worktree
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           {hasSession && (
             <button className="gh-icon-btn" title="Close terminal"
@@ -591,7 +590,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
                   }}
                   onOpenSideTerminal={onOpenSideTerminal ? () => onOpenSideTerminal(entry.id, project.id) : undefined}
                   onRemoveProject={() => onRemoveProject(entry.id, project.id)}
-                  onOpenIde={onOpenIde && project.selected_ide ? () => onOpenIde(entry.distro, project.path, project.selected_ide!) : undefined}
+                  onOpenIde={onOpenIde ? () => onOpenIde(entry.distro, project.path, project.selected_ide ?? "") : undefined}
                   onOpenDialog={onOpenDialog ? (type, branches) =>
                     onOpenDialog({ type, source: { type: "wsl", distro: entry.distro, projectPath: project.path }, branches })
                   : undefined}
@@ -722,7 +721,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
                   }}
                   onOpenSideTerminal={onOpenSideTerminal ? () => onOpenSideTerminal(entry.id, project.id) : undefined}
                   onRemoveProject={() => onRemoveProject(entry.id, project.id)}
-                  onOpenIde={onOpenIde && project.selected_ide ? () => onOpenIde(entry.id, project.path, project.selected_ide!) : undefined}
+                  onOpenIde={onOpenIde ? () => onOpenIde(entry.id, project.path, project.selected_ide ?? "") : undefined}
                   onOpenDialog={onOpenDialog ? (type, branches) =>
                     onOpenDialog({ type, source: { type: "remote", entryId: entry.id, projectPath: project.path }, branches })
                   : undefined}

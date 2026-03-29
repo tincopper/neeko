@@ -395,6 +395,19 @@ use crate::git::parse_unified_diff;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn no_window_cmd(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 fn safe_path(path: &str) -> String {
     path.replace('\'', "'\\''")
 }
@@ -402,7 +415,7 @@ fn safe_path(path: &str) -> String {
 /// 执行 wsl.exe -d distro bash -c "<cmd>" 并返回 stdout
 #[cfg(target_os = "windows")]
 fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
-    let output = Command::new("wsl.exe")
+    let output = no_window_cmd("wsl.exe")
         .arg("-d")
         .arg(distro)
         .arg("bash")
@@ -472,7 +485,7 @@ pub fn run_wsl_git(distro: &str, project_path: &str, git_args: &[&str]) -> Resul
 #[cfg(target_os = "windows")]
 pub fn open_wsl_ide(distro: &str, project_path: &str, ide: &str) -> Result<()> {
     // 在 WSL 中以后台模式运行 code 或 zed
-    let _ = Command::new("wsl.exe")
+    let _ = no_window_cmd("wsl.exe")
         .arg("-d")
         .arg(distro)
         .arg("--cd")
