@@ -544,7 +544,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
       </div>
 
       {!collapsed && (
-        <div className="gh-project-body">
+        <div className="gh-project-body" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
             <div className="gh-empty-section" style={{ paddingLeft: 28 }}>No projects</div>
           ) : (
@@ -675,7 +675,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
       </div>
 
       {!collapsed && (
-        <div className="gh-project-body">
+        <div className="gh-project-body" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
             <div className="gh-empty-section" style={{ paddingLeft: 28 }}>No projects</div>
           ) : (
