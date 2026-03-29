@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { FileChange } from "../../types";
 import { fileIconSrc } from "../../utils/fileIcons";
 
@@ -94,12 +94,16 @@ interface FileTreeProps {
 }
 
 const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, depth = 0 }) => {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const toggle = (path: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }));
-  };
+  const toggle = useCallback((path: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
 
   const BASE = 8;
   const STEP = 14;
@@ -107,7 +111,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
   return (
     <>
       {nodes.map((node) => {
-        const isCollapsed = collapsed[node.path] ?? true;
+        const isExpanded = expanded.has(node.path);
         const indent = BASE + depth * STEP;
         const displayName = node.compactName ?? node.name;
 
@@ -117,19 +121,19 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
               <div
                 className="gh-tree-dir"
                 style={{ paddingLeft: indent }}
-                onClick={(e) => toggle(node.path, e)}
+                onClick={(e) => { e.stopPropagation(); toggle(node.path); }}
                 title={node.path}
               >
                 <img
                   className="gh-dir-icon"
-                  src={`/icons/${isCollapsed ? "_folder" : "_folder_open"}.svg`}
+                  src={`/icons/${!isExpanded ? "_folder" : "_folder_open"}.svg`}
                   alt=""
                   width={16}
                   height={16}
                 />
                 <span className="gh-dir-name">{displayName}</span>
               </div>
-              {!isCollapsed && (
+              {isExpanded && (
                 <FileTree
                   nodes={node.children}
                   projectId={projectId}

@@ -367,9 +367,13 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
       {/* Project header */}
       <div
         className="gh-project-header"
-        onClick={() => { onSelectProject(); setCollapsed(v => !v); }}
+        onClick={() => onSelectProject()}
       >
-        <span className="gh-project-avatar" style={getAvatarStyle(project.name)}>
+        <span
+          className="gh-project-avatar"
+          style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); setCollapsed(v => !v); }}
+        >
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="gh-project-meta">
@@ -513,8 +517,14 @@ export const WSLItem = React.memo<WSLItemProps>(({
 
   return (
     <div className="gh-project">
-      <div className="gh-project-header" onClick={() => setCollapsed((v) => !v)}>
-        <img src={getDistroIcon(entry.distro)} className="sidebar-distro-icon" alt="" />
+      <div className="gh-project-header">
+        <img
+          src={getDistroIcon(entry.distro)}
+          className="sidebar-distro-icon"
+          alt=""
+          style={{ cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
+        />
         <div className="gh-project-meta">
           <span className="gh-project-name">{entry.distro}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>WSL</span>
@@ -638,8 +648,14 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
 
   return (
     <div className="gh-project">
-      <div className="gh-project-header" onClick={() => setCollapsed((v) => !v)}>
-        <img src={serverIcon} className="sidebar-distro-icon" alt="" />
+      <div className="gh-project-header">
+        <img
+          src={serverIcon}
+          className="sidebar-distro-icon"
+          alt=""
+          style={{ cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
+        />
         <div className="gh-project-meta">
           <span className="gh-project-name">{label}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>SSH</span>
