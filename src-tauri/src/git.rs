@@ -2,6 +2,17 @@ use crate::state::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitIn
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn no_window_cmd(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -286,8 +297,6 @@ pub fn create_worktree(
     branch_name: &str,
     new_branch: bool,
 ) -> Result<()> {
-    use std::process::Command;
-
     let mut args = vec!["worktree", "add"];
     if new_branch {
         args.push("-b");
@@ -301,7 +310,7 @@ pub fn create_worktree(
         args.push(branch_name);
     }
 
-    let output = Command::new("git")
+    let output = no_window_cmd("git")
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -315,12 +324,10 @@ pub fn create_worktree(
 }
 
 pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
-    use std::process::Command;
-
     let wt_path_str = worktree_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
-    let output = Command::new("git")
+    let output = no_window_cmd("git")
         .args(["worktree", "remove", "--force", wt_path_str])
         .current_dir(repo_path)
         .output()
@@ -351,8 +358,6 @@ pub fn rename_branch(repo_path: &Path, old_name: &str, new_name: &str) -> Result
 
 /// 重命名 worktree 目录（使用 git worktree move，需要 git >= 2.30）
 pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -> Result<String> {
-    use std::process::Command;
-
     let parent = worktree_path
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine parent directory of worktree"))?;
@@ -365,7 +370,7 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid new worktree path"))?;
 
-    let output = Command::new("git")
+    let output = no_window_cmd("git")
         .args(["worktree", "move", wt_old_str, wt_new_str])
         .current_dir(repo_path)
         .output()
