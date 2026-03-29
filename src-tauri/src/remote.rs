@@ -76,7 +76,9 @@ impl RemoteTerminalManager {
                 let key_pair = russh::keys::load_secret_key(key_path, None)?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
             AuthMethod::KeyFileWithPassphrase {
                 key_path,
@@ -85,7 +87,9 @@ impl RemoteTerminalManager {
                 let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
         };
 
@@ -100,15 +104,7 @@ impl RemoteTerminalManager {
 
         // 请求 PTY
         channel
-            .request_pty(
-                false,
-                "xterm-256color",
-                cols as u32,
-                rows as u32,
-                0,
-                0,
-                &[],
-            )
+            .request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
             .await?;
 
         // 请求 shell
@@ -245,7 +241,9 @@ impl RemoteTerminalManager {
             let _ = handle.resize_tx.send((cols as u32, rows as u32));
             log_info(&format!(
                 "[SSH] Resize {}x{} sent to session {}",
-                cols, rows, &session_id[..8]
+                cols,
+                rows,
+                &session_id[..8]
             ));
         }
         Ok(())
@@ -284,18 +282,27 @@ impl RemoteTerminalManager {
                 let key_pair = russh::keys::load_secret_key(key_path, None)?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
-            AuthMethod::KeyFileWithPassphrase { key_path, passphrase } => {
+            AuthMethod::KeyFileWithPassphrase {
+                key_path,
+                passphrase,
+            } => {
                 let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
         };
 
         if !auth_result.success() {
-            return Err(anyhow::anyhow!("Authentication failed: invalid credentials"));
+            return Err(anyhow::anyhow!(
+                "Authentication failed: invalid credentials"
+            ));
         }
 
         let mut channel = session.channel_open_session().await?;
@@ -308,7 +315,9 @@ impl RemoteTerminalManager {
             }
         }
         let _ = channel.close().await;
-        let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
+        let _ = session
+            .disconnect(russh::Disconnect::ByApplication, "", "")
+            .await;
         Ok(())
     }
 
@@ -333,13 +342,20 @@ impl RemoteTerminalManager {
                 let key_pair = russh::keys::load_secret_key(key_path, None)?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
-            AuthMethod::KeyFileWithPassphrase { key_path, passphrase } => {
+            AuthMethod::KeyFileWithPassphrase {
+                key_path,
+                passphrase,
+            } => {
                 let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
                 let key_with_hash =
                     russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session.authenticate_publickey(username, key_with_hash).await?
+                session
+                    .authenticate_publickey(username, key_with_hash)
+                    .await?
             }
         };
 
@@ -368,7 +384,9 @@ impl RemoteTerminalManager {
         }
 
         let _ = channel.close().await;
-        let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
+        let _ = session
+            .disconnect(russh::Disconnect::ByApplication, "", "")
+            .await;
 
         let dirs = String::from_utf8_lossy(&output)
             .lines()
@@ -390,8 +408,8 @@ fn log_error(msg: &str) {
 
 // ─── WSL Git 命令 (Windows only) ────────────────────────────────────────────
 
-use crate::state::{DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use crate::git::parse_unified_diff;
+use crate::state::{DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -443,8 +461,10 @@ fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
 #[cfg(target_os = "windows")]
 pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
     let sp = safe_path(project_path);
-    let output = run_wsl_bash(distro, &format!(
-        "cd '{sp}' \
+    let output = run_wsl_bash(
+        distro,
+        &format!(
+            "cd '{sp}' \
           && printf '__BRANCH__\\n' \
           && git branch --show-current 2>/dev/null \
           && printf '\\n__BRANCHES__\\n' \
@@ -453,7 +473,8 @@ pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
           && git worktree list --porcelain 2>/dev/null \
           && printf '\\n__STATUS__\\n' \
           && git status --porcelain 2>/dev/null"
-    ))?;
+        ),
+    )?;
 
     Ok(parse_git_info_output(&output))
 }
@@ -463,9 +484,10 @@ pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
 pub fn get_wsl_file_diff(distro: &str, project_path: &str, file_path: &str) -> Result<DiffResult> {
     let sp = safe_path(project_path);
     let fp = safe_path(file_path);
-    let output = run_wsl_bash(distro, &format!(
-        "cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"
-    ))?;
+    let output = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
+    )?;
     Ok(parse_unified_diff(&output))
 }
 
@@ -474,7 +496,8 @@ pub fn get_wsl_file_diff(distro: &str, project_path: &str, file_path: &str) -> R
 pub fn run_wsl_git(distro: &str, project_path: &str, git_args: &[&str]) -> Result<String> {
     let sp = safe_path(project_path);
     // 每个参数单独用单引号包裹，防止包含空格的分支名被 shell 拆分
-    let quoted_args: Vec<String> = git_args.iter()
+    let quoted_args: Vec<String> = git_args
+        .iter()
         .map(|a| format!("'{}'", safe_path(a)))
         .collect();
     let git_cmd = format!("cd '{}' && git {}", sp, quoted_args.join(" "));
@@ -512,18 +535,23 @@ async fn ssh_exec_command(
     let mut session = client::connect(config, (host, port), Client).await?;
 
     let auth_result = match auth {
-        AuthMethod::Password(password) => {
-            session.authenticate_password(username, password).await?
-        }
+        AuthMethod::Password(password) => session.authenticate_password(username, password).await?,
         AuthMethod::KeyFile(key_path) => {
             let key_pair = russh::keys::load_secret_key(key_path, None)?;
             let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session.authenticate_publickey(username, key_with_hash).await?
+            session
+                .authenticate_publickey(username, key_with_hash)
+                .await?
         }
-        AuthMethod::KeyFileWithPassphrase { key_path, passphrase } => {
+        AuthMethod::KeyFileWithPassphrase {
+            key_path,
+            passphrase,
+        } => {
             let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
             let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session.authenticate_publickey(username, key_with_hash).await?
+            session
+                .authenticate_publickey(username, key_with_hash)
+                .await?
         }
     };
 
@@ -556,7 +584,9 @@ async fn ssh_exec_command(
     }
 
     let _ = channel.close().await;
-    let _ = session.disconnect(russh::Disconnect::ByApplication, "", "").await;
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "")
+        .await;
 
     let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
 
@@ -611,9 +641,7 @@ pub async fn get_remote_file_diff(
 ) -> Result<DiffResult> {
     let sp = safe_path(project_path);
     let fp = safe_path(file_path);
-    let cmd = format!(
-        "cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"
-    );
+    let cmd = format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null");
     let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_unified_diff(&output))
 }
@@ -655,7 +683,11 @@ pub fn open_remote_ide(
         // VSCode / Cursor 使用 --remote 格式
         // 格式: <exe> --remote ssh-remote+user@host:port /path/to/folder
         let ssh_connection = format!("ssh-remote+{}@{}:{}", username, host, port);
-        vec!["--remote".to_string(), ssh_connection, project_path.to_string()]
+        vec![
+            "--remote".to_string(),
+            ssh_connection,
+            project_path.to_string(),
+        ]
     } else if ide_lower.contains("zed") {
         // Zed 使用 ssh:// URL 格式
         // 格式: <exe> ssh://user@host:port/path
@@ -675,27 +707,48 @@ pub fn open_remote_ide(
 fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     use std::process::Command;
 
-    let mut cmd = Command::new(exe);
-    cmd.args(args);
-
-    // Windows: 使用 detached process 避免阻塞
     #[cfg(windows)]
     {
+        // Windows: 使用 cmd.exe /C 包装命令，以支持 .cmd/.bat 等脚本文件
         use std::os::windows::process::CommandExt;
         const DETACHED_PROCESS: u32 = 0x00000008;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+
+        // 构建完整命令: exe arg1 arg2 ...
+        let full_command = std::iter::once(exe.to_string())
+            .chain(args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        Command::new("cmd.exe")
+            .args(["/C", &full_command])
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                    exe,
+                    e
+                )
+            })?;
     }
 
-    // Unix: 使用 spawn 避免阻塞
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
 
-    cmd.spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to launch '{}': {}. Make sure it's installed and in PATH.", exe, e))?;
+        Command::new(exe)
+            .args(args)
+            .process_group(0)
+            .spawn()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                    exe,
+                    e
+                )
+            })?;
+    }
 
     Ok(())
 }
@@ -715,10 +768,22 @@ fn parse_git_info_output(output: &str) -> GitInfo {
 
     for line in output.lines() {
         match line.trim() {
-            "__BRANCH__" => { section = "branch"; continue; }
-            "__BRANCHES__" => { section = "branches"; continue; }
-            "__WORKTREES__" => { section = "worktrees"; continue; }
-            "__STATUS__" => { section = "status"; continue; }
+            "__BRANCH__" => {
+                section = "branch";
+                continue;
+            }
+            "__BRANCHES__" => {
+                section = "branches";
+                continue;
+            }
+            "__WORKTREES__" => {
+                section = "worktrees";
+                continue;
+            }
+            "__STATUS__" => {
+                section = "status";
+                continue;
+            }
             _ => {}
         }
 
