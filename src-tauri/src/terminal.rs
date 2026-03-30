@@ -550,8 +550,10 @@ fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
             return Err(anyhow::anyhow!("tcgetattr failed"));
         }
         let mut termios = termios.assume_init();
-        // 只禁用 ECHO（避免中文输入重复显示），保留 ECHOE/ECHOK/ECHONL（退格等处理）
-        termios.c_lflag &= !libc::ECHO;
+        // 禁用所有回显标志（ECHO/ECHOE/ECHOK/ECHONL）
+        // macOS 上 shell 启动后可能通过 stty 重新启用回显，
+        // 禁用全部标志可以防止 shell 覆盖设置
+        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
         if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
             return Err(anyhow::anyhow!("tcsetattr failed"));
         }
