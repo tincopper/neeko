@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
 import 'xterm/css/xterm.css'
 import { buildFontFamily } from '../../utils/terminal'
+import { IS_MACOS } from '../../utils/platform'
 
 const IS_UNIX = !navigator.platform.toLowerCase().includes('win')
 
@@ -286,8 +287,9 @@ export async function createTerminalForProject(
     if (textarea) {
       // keyCode 229：IME 组合开始的信号，在 compositionstart 之前触发
       // Linux 下必须在此处提前设置 isComposing，否则 onData 会先一步发出
+      // macOS：e.isComposing 是 W3C 标准属性，比 keyCode 229 更可靠
       textarea.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.keyCode === 229 && !isComposing) {
+        if ((e.isComposing || e.keyCode === 229) && !isComposing) {
           isComposing = true
           compositionPendingText = ''
         }
@@ -301,11 +303,12 @@ export async function createTerminalForProject(
         if (committed) {
           compositionPendingText = committed
           sendInput(committed)
-          // 延迟重置，防止 compositionend 后 onData 立即触发时误发
+          // macOS 上事件循环延迟更大，需要更长的超时防止误发
+          const resetDelay = IS_MACOS ? 150 : 50
           setTimeout(() => {
             isComposing = false
             compositionPendingText = ''
-          }, 50)
+          }, resetDelay)
         } else {
           isComposing = false
           compositionPendingText = ''
