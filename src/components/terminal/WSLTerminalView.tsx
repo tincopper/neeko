@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import { Unicode11Addon } from "xterm-addon-unicode11";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 interface WslTerminalCache {
   term: Terminal;
