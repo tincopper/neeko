@@ -97,7 +97,7 @@ pnpm tauri build
 | Backend | Rust + tokio + anyhow |
 | Frontend | React 18 + TypeScript + Vite |
 | Terminal Backend | portable-pty |
-| Terminal Frontend | xterm.js 5 + xterm-addon-fit |
+| Terminal Frontend | @xterm/xterm 6 + @xterm/addon-fit |
 | Git | git2-rs (libgit2 bindings) |
 | SSH | russh (async SSH2 client) |
 | Syntax Highlighting | highlight.js |

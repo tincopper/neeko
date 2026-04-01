@@ -170,7 +170,7 @@
 | 后端语言 | Rust |
 | 前端框架 | React 18 + TypeScript + Vite |
 | 终端后端 | portable-pty |
-| 终端前端 | xterm.js 5 + xterm-addon-fit |
+| 终端前端 | @xterm/xterm 6 + @xterm/addon-fit |
 | Git 操作 | git2-rs（含 diff） |
 | 对话框 | tauri-plugin-dialog |
 | 序列化 | serde + serde_json |
