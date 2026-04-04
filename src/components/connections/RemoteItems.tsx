@@ -1,8 +1,10 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
-import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo } from "../../types";
+import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../../types";
 import { getDistroIcon } from "../../utils/distros";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import FileTree, { buildTree } from "../project/FileTree";
+import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
+import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
 import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon } from "../icons";
 
@@ -222,7 +224,7 @@ ProjectBody.displayName = "ProjectBody";
 // ─── Generic project item header + expandable body ──────────────────────────
 
 interface ProjectItemCardProps {
-  project: { id: string; name: string; path: string; git_info?: GitInfo | null; selected_ide?: string | null };
+  project: { id: string; name: string; path: string; git_info?: GitInfo | null; selected_ide?: string | null; selected_agent?: string | null };
   isActive: boolean;
   hasSession: boolean;
   onSelectProject: () => void;
@@ -238,6 +240,11 @@ interface ProjectItemCardProps {
   onOpenDialog?: (type: string, branches: string[]) => void;
   currentBranch: string;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
@@ -247,6 +254,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
   onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
   currentBranch, ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -255,6 +263,8 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null);
   const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameWtInputRef = useRef<HTMLInputElement>(null);
   const gitInfoLoaded = useRef(false);
@@ -309,12 +319,81 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     return () => document.removeEventListener("click", handler);
   }, [gitMenuOpen]);
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const buildContextMenuItems = (): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    if (project.selected_ide && onOpenIde) {
+      items.push({
+        label: "Open in IDE",
+        shortcut: "Ctrl+O",
+        action: () => onOpenIde(),
+      });
+    }
+
+    if (isActive && onOpenSideTerminal) {
+      items.push({
+        label: "Open Side Terminal",
+        shortcut: "Ctrl+Alt+T",
+        action: () => onOpenSideTerminal(),
+      });
+    }
+
+    if (project.git_info) {
+      items.push({
+        label: "New Branch",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-branch", project.git_info!.branches);
+        },
+      });
+      items.push({
+        label: "New Worktree",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-worktree", project.git_info!.branches);
+        },
+      });
+    }
+
+    if (onRefresh) {
+      items.push({
+        label: "Refresh Terminal",
+        shortcut: "Ctrl+R",
+        action: () => onRefresh(),
+      });
+    }
+
+    items.push({ label: "", separator: true, action: () => {} });
+
+    if (onOpenSettings && config) {
+      items.push({
+        label: "Project Settings",
+        action: () => setSettingsOpen(true),
+      });
+    }
+
+    items.push({
+      label: "Remove Project",
+      action: () => onRemoveProject(),
+      danger: true,
+    });
+
+    return items;
+  };
+
   return (
     <div className={`gh-project${isActive ? " active" : ""}`}>
       {/* Project header */}
       <div
         className="gh-project-header"
         onClick={() => onSelectProject()}
+        onContextMenu={handleContextMenu}
       >
         <span
           className="gh-project-avatar"
@@ -417,6 +496,28 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           currentBranch={currentBranch}
         />
       )}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems()}
+        />
+      )}
+      {settingsOpen && config && (
+        <ProjectSettingsDialog
+          projectId={project.id}
+          projectName={project.name}
+          currentAgent={project.selected_agent ?? null}
+          currentIde={project.selected_ide ?? null}
+          agents={agents ?? []}
+          config={config}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(agentId, ideCmd) => {
+            onSaveProjectSettings?.(agentId, ideCmd);
+            setSettingsOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 });
@@ -439,6 +540,11 @@ interface WSLProjectCardProps {
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
@@ -446,6 +552,7 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
   onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal, onOpenDialog,
   ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
   const handleSelectFile = useCallback((fp: string) => {
     onSelectFile?.(distro, project.path, fp);
@@ -525,6 +632,11 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
       onOpenDialog={handleOpenDialog}
       currentBranch={project.git_info?.current_branch ?? ""}
       ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
     />
   );
 });
@@ -548,6 +660,11 @@ interface WSLItemProps {
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (distro: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const WSLItem = React.memo<WSLItemProps>(({
@@ -567,6 +684,11 @@ export const WSLItem = React.memo<WSLItemProps>(({
   onOpenWorktreeTerminal,
   onOpenDialog,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   void onCloseProject; // intentionally unused — close handled by terminal session
   const [collapsed, setCollapsed] = useState(false);
@@ -620,6 +742,11 @@ export const WSLItem = React.memo<WSLItemProps>(({
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
                   onOpenDialog={onOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.distro, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
                 />
               );
             })
@@ -648,6 +775,11 @@ interface RemoteProjectCardProps {
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
@@ -655,6 +787,7 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
   onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal,
   invokeRemoteGit, onOpenDialog, ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
   const handleSelectFile = useCallback((fp: string) => {
     onSelectFile?.(entryId, project.path, fp);
@@ -734,6 +867,11 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
       onOpenDialog={handleOpenDialog}
       currentBranch={project.git_info?.current_branch ?? ""}
       ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
     />
   );
 });
@@ -758,6 +896,11 @@ interface RemoteItemProps {
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (entryId: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const RemoteItem = React.memo<RemoteItemProps>(({
@@ -777,6 +920,11 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
   invokeRemoteGit,
   onOpenDialog,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   void onCloseProject;
   const [collapsed, setCollapsed] = useState(false);
@@ -832,6 +980,11 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
                   invokeRemoteGit={invokeRemoteGit}
                   onOpenDialog={onOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.id, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
                 />
               );
             })

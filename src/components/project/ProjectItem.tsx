@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Project } from "../../types";
+import { Project, AgentConfig, AppConfig } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
+import ContextMenu, { ContextMenuItem } from "./ContextMenu";
+import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, GitLogoIcon, TrashIcon } from "../icons";
 
@@ -33,6 +35,11 @@ interface ProjectItemProps {
   onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -48,10 +55,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenSideTerminal,
   onOpenWorktreeTerminal,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Inline rename state
   const [renamingBranch, setRenamingBranch] = useState<string | null>(null);
@@ -174,6 +188,82 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     });
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const buildContextMenuItems = (): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    if (project.selected_ide && onOpenIde) {
+      items.push({
+        label: "Open in IDE",
+        shortcut: "Ctrl+O",
+        action: () => onOpenIde(project.id),
+      });
+    }
+
+    if (isActive && project.active_view === "Terminal" && onOpenSideTerminal) {
+      items.push({
+        label: "Open Side Terminal",
+        shortcut: "Ctrl+Alt+T",
+        action: () => onOpenSideTerminal(project.id),
+      });
+    }
+
+    if (project.git_info) {
+      items.push({
+        label: "New Branch",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog({
+            type: "new-branch",
+            projectId: project.id,
+            branches: project.git_info!.branches,
+          });
+        },
+      });
+      items.push({
+        label: "New Worktree",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog({
+            type: "new-worktree",
+            projectId: project.id,
+            branches: project.git_info!.branches,
+          });
+        },
+      });
+    }
+
+    if (onRefresh) {
+      items.push({
+        label: "Refresh Terminal",
+        shortcut: "Ctrl+R",
+        action: () => onRefresh(project.id),
+      });
+    }
+
+    items.push({ label: "", separator: true, action: () => {} });
+
+    if (onOpenSettings && config) {
+      items.push({
+        label: "Project Settings",
+        action: () => setSettingsOpen(true),
+      });
+    }
+
+    items.push({
+      label: "Remove Project",
+      action: () => onRemoveProject(project.id),
+      danger: true,
+    });
+
+    return items;
+  };
+
   const changedFiles = project.git_info?.changed_files ?? [];
   const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
    const branches = project.git_info?.branches ?? [];
@@ -196,7 +286,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div className={`gh-project ${isActive ? "active" : ""}`}>
-      <div className="gh-project-header" onClick={() => onSelectProject(project.id)}>
+      <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
         <span
           className="gh-project-avatar"
           style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
@@ -399,6 +489,28 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             </>
           )}
         </div>
+      )}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems()}
+        />
+      )}
+      {settingsOpen && config && (
+        <ProjectSettingsDialog
+          projectId={project.id}
+          projectName={project.name}
+          currentAgent={project.selected_agent}
+          currentIde={project.selected_ide}
+          agents={agents ?? []}
+          config={config}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(agentId, ideCmd) => {
+            onSaveProjectSettings?.(project.id, agentId, ideCmd);
+            setSettingsOpen(false);
+          }}
+        />
       )}
     </div>
   );

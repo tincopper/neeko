@@ -326,6 +326,31 @@ function App() {
     setRemoteSideTerminalOpen(prev => new Set(prev).add(projectId));
   }, [setRemoteSideTerminalOpen]);
 
+  const handleSaveProjectSettings = useCallback(async (
+    projectId: string,
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => {
+    projects.map((p) =>
+      p.id === projectId
+        ? { ...p, selected_agent: agentId, selected_ide: ideCommand }
+        : p
+    );
+    setActiveProject((prev) =>
+      prev && prev.id === projectId
+        ? { ...prev, selected_agent: agentId, selected_ide: ideCommand }
+        : prev
+    );
+    try {
+      await invoke("save_session", {
+        wslEntries: wslEntriesRefForSave.current,
+        remoteEntries: remoteEntriesRefForSave.current,
+      });
+    } catch (e) {
+      console.error("Failed to save session after project settings change:", e);
+    }
+  }, [projects, setActiveProject]);
+
   const handleWslDiffBack = useCallback(() => {
     wslActions.setWslDiffState(null);
   }, [wslActions.setWslDiffState]);
@@ -424,6 +449,9 @@ function App() {
           invokeRemoteGit={remoteActions.invokeRemoteGit}
           loading={loading}
           ideCommandOverrides={config.ideCommandOverrides}
+          agents={agents}
+          config={config}
+          onSaveProjectSettings={handleSaveProjectSettings}
         />
 
         <MainContent
