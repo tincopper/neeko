@@ -84,7 +84,9 @@ fn remove_project(project_id: String, state: State<AppStateWrapper>) {
     let session = state
         .storage_manager
         .create_session_from_projects(&projects, None, None, None, None);
-    let _ = state.storage_manager.save_session(&session);
+    if let Err(e) = state.storage_manager.save_session(&session) {
+        log::error!("Failed to save session after removing project {}: {}", project_id, e);
+    }
 }
 
 #[tauri::command]
@@ -100,7 +102,7 @@ fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<Proj
         .unwrap()
         .get_project(&project_id)
         .cloned()
-        .ok_or_else(|| "Project not found".to_string())
+        .ok_or_else(|| format!("Project not found: {}", project_id))
 }
 
 #[tauri::command]
@@ -153,7 +155,9 @@ fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppSt
     let session = state
         .storage_manager
         .create_session_from_projects(&projects, None, None, None, None);
-    let _ = state.storage_manager.save_session(&session);
+    if let Err(e) = state.storage_manager.save_session(&session) {
+        log::error!("Failed to save session after collapsing project {}: {}", project_id, e);
+    }
 }
 
 #[tauri::command]
@@ -174,7 +178,7 @@ fn create_worktree(
         )
         .map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -189,7 +193,7 @@ fn remove_worktree(
         git::remove_worktree(&project.path, &PathBuf::from(&worktree_path))
             .map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -204,7 +208,7 @@ fn checkout_branch(
     if let Some(project) = manager.get_project(&project_id) {
         git::checkout_branch(&project.path, &branch_name).map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -218,7 +222,7 @@ fn create_branch(
     if let Some(project) = manager.get_project(&project_id) {
         git::create_branch(&project.path, &branch_name, None).map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -233,7 +237,7 @@ fn rename_branch(
     if let Some(project) = manager.get_project(&project_id) {
         git::rename_branch(&project.path, &old_name, &new_name).map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -249,7 +253,7 @@ fn rename_worktree(
         git::rename_worktree(&project.path, &PathBuf::from(&worktree_path), &new_name)
             .map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -263,7 +267,7 @@ fn get_file_diff_command(
     if let Some(project) = manager.get_project(&project_id) {
         get_file_diff(&project.path, &file_path).map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -286,7 +290,7 @@ fn create_terminal_session(
             .create_session(&path, cols, rows, shell, working_dir, app_handle)
             .map_err(|e| e.to_string())
     } else {
-        Err("Project not found".into())
+        Err(format!("Project not found: {}", project_id))
     }
 }
 
@@ -506,7 +510,7 @@ fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<AgentCon
         .unwrap()
         .get_agent(&agent_id)
         .cloned()
-        .ok_or_else(|| "Agent not found".into())
+        .ok_or_else(|| format!("Agent not found: {}", agent_id))
 }
 
 #[tauri::command]
