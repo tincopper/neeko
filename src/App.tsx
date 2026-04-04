@@ -311,11 +311,28 @@ function App() {
   const handleAddProjectClick = useCallback(() => { setShowAddMenu(false); handleAddProject(); }, [handleAddProject]);
   const handleAddWslClick = useCallback(() => { setShowAddMenu(false); setWslDialogOpen(true); }, []);
   const handleAddRemoteClick = useCallback(() => { setShowAddMenu(false); setRemoteDialogOpen(true); }, []);
+  const handleAddWslOrNoop = IS_WINDOWS ? handleAddWslClick : noop;
 
   const handleOpenIdeForSidebar = useCallback((projectId: string) => {
     const p = projects.find((proj) => proj.id === projectId);
     if (p) handleOpenIdeCallback(p);
   }, [projects, handleOpenIdeCallback]);
+
+  const handleOpenWslSideTerminal = useCallback((_: string, projectId: string) => {
+    setWslSideTerminalOpen(prev => new Set(prev).add(projectId));
+  }, [setWslSideTerminalOpen]);
+
+  const handleOpenRemoteSideTerminal = useCallback((_: string, projectId: string) => {
+    setRemoteSideTerminalOpen(prev => new Set(prev).add(projectId));
+  }, [setRemoteSideTerminalOpen]);
+
+  const handleWslDiffBack = useCallback(() => {
+    wslActions.setWslDiffState(null);
+  }, [wslActions.setWslDiffState]);
+
+  const handleRemoteDiffBack = useCallback(() => {
+    remoteActions.setRemoteDiffState(null);
+  }, [remoteActions.setRemoteDiffState]);
 
   const handleRemoteAuthCancel = useCallback(() => {
     setPendingAuthEntry(null);
@@ -354,7 +371,7 @@ function App() {
         onOpenSettings={handleToggleSettings}
         onToggleAddMenu={handleToggleAddMenu}
         onAddProject={handleAddProjectClick}
-        onAddWsl={IS_WINDOWS ? handleAddWslClick : noop}
+        onAddWsl={handleAddWslOrNoop}
         onAddRemote={handleAddRemoteClick}
         onSelectLocalAgent={handleSelectLocalAgent}
         onSelectWslAgent={wslActions.handleSelectWslAgent}
@@ -394,12 +411,8 @@ function App() {
           onRemoveRemoteProject={handleRemoveRemoteProject}
           onRemoveRemoteEntry={handleRemoveRemoteEntry}
           onAddRemoteProject={handleAddRemoteProject}
-          onOpenWslSideTerminal={(_, projectId) =>
-            setWslSideTerminalOpen(prev => new Set(prev).add(projectId))
-          }
-          onOpenRemoteSideTerminal={(_, projectId) =>
-            setRemoteSideTerminalOpen(prev => new Set(prev).add(projectId))
-          }
+          onOpenWslSideTerminal={handleOpenWslSideTerminal}
+          onOpenRemoteSideTerminal={handleOpenRemoteSideTerminal}
           onSelectWslFile={wslActions.handleSelectWslFile}
           onSelectRemoteFile={remoteActions.handleSelectRemoteFile}
           onRefreshWslGit={wslActions.handleRefreshWslGit}
@@ -438,8 +451,8 @@ function App() {
           setRemoteOpenSessions={setRemoteOpenSessions}
           wslDiffState={wslActions.wslDiffState}
           remoteDiffState={remoteActions.remoteDiffState}
-          onWslDiffBack={() => wslActions.setWslDiffState(null)}
-          onRemoteDiffBack={() => remoteActions.setRemoteDiffState(null)}
+          onWslDiffBack={handleWslDiffBack}
+          onRemoteDiffBack={handleRemoteDiffBack}
         />
 
         {pendingPath && (
