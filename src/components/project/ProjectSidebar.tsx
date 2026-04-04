@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
+import { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, AgentConfig, AppConfig } from "../../types";
 import { IS_WINDOWS } from "../../utils/platform";
 import ProjectItem from "./ProjectItem";
 import GitDialog, { DialogState } from "./GitDialog";
@@ -53,6 +53,9 @@ interface ProjectSidebarProps {
   suppressResizeRef?: React.MutableRefObject<boolean>;
   loading: boolean;
   ideCommandOverrides?: Record<string, string>;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
 }
 
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
@@ -100,6 +103,9 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   suppressResizeRef,
   loading: _loading,
   ideCommandOverrides,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   // Wrapper to accept WSL/Remote dialog objects (type is string literal union at runtime)
@@ -187,6 +193,11 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={_onOpenSettings}
+                  onRefresh={onRefreshGit}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
                 />
               ))}
 
@@ -209,6 +220,19 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
                   onOpenDialog={handleOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={_onOpenSettings}
+                  onRefresh={onRefreshWslGit ? (distro, projectId) => {
+                    const e = wslEntries.find(en => en.distro === distro);
+                    const p = e?.projects.find(pr => pr.id === projectId);
+                    if (p) onRefreshWslGit(distro, p.id, p.path);
+                  } : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings ? (agentId, ideCmd) => {
+                    const e = wslEntries.find(en => en.distro === activeWslKey?.distro);
+                    const p = e?.projects.find(pr => pr.id === activeWslKey?.projectId);
+                    if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                  } : undefined}
                 />
               ))}
 
@@ -232,6 +256,19 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   invokeRemoteGit={invokeRemoteGit}
                   onOpenDialog={handleOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={_onOpenSettings}
+                  onRefresh={onRefreshRemoteGit ? (entryId, projectId) => {
+                    const e = remoteEntries.find(en => en.id === entryId);
+                    const p = e?.projects.find(pr => pr.id === projectId);
+                    if (p) onRefreshRemoteGit(entryId, p.id, p.path);
+                  } : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings ? (agentId, ideCmd) => {
+                    const e = remoteEntries.find(en => en.id === activeRemoteKey?.host);
+                    const p = e?.projects.find(pr => pr.id === activeRemoteKey?.projectId);
+                    if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                  } : undefined}
                 />
               ))}
             </>
