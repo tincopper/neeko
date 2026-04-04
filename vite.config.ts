@@ -12,4 +12,17 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    target: "chrome110",
+    cssMinify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-unicode11"],
+          highlight: ["highlight.js/lib/core"],
+          lucide: ["lucide-react"],
+        },
+      },
+    },
+  },
 }));

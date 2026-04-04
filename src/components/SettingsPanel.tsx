@@ -287,9 +287,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     ),
     [systemFonts]
   );
-  const filteredFonts = fontSearch.trim()
-    ? allFonts.filter(f => f.toLowerCase().includes(fontSearch.trim().toLowerCase()))
-    : allFonts;
+  const filteredFonts = useMemo(() => {
+    const search = fontSearch.trim().toLowerCase();
+    return search ? allFonts.filter(f => f.toLowerCase().includes(search)) : allFonts;
+  }, [allFonts, fontSearch]);
 
   return (
     <div className="settings-overlay" onClick={onClose}>

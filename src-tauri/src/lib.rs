@@ -144,10 +144,12 @@ fn set_view_diff(project_id: String, file_path: String, state: State<AppStateWra
 
 #[tauri::command]
 fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppStateWrapper>) {
-    let mut pm = state.project_manager.lock().unwrap();
-    pm.set_collapsed(&project_id, collapsed);
+    {
+        let mut pm = state.project_manager.lock().unwrap();
+        pm.set_collapsed(&project_id, collapsed);
+    }
     // 持久化折叠状态
-    let projects = pm.list_projects();
+    let projects = state.project_manager.lock().unwrap().list_projects();
     let session = state
         .storage_manager
         .create_session_from_projects(&projects, None, None, None, None);

@@ -267,4 +267,4 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   );
 };
 
-export default ProjectSidebar;
+export default React.memo(ProjectSidebar);

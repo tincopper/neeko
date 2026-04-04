@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-static FILE_LOGGER: Mutex<Option<PathBuf>> = Mutex::new(None);
+static FILE_LOGGER: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
 struct FileLogger;
 
@@ -40,8 +40,8 @@ impl log::Log for FileLogger {
             record.args()
         );
 
-        if let Some(ref path) = *FILE_LOGGER.lock().unwrap() {
-            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        if let Ok(mut guard) = FILE_LOGGER.lock() {
+            if let Some(ref mut file) = *guard {
                 let _ = file.write_all(message.as_bytes());
             }
         }
@@ -62,7 +62,13 @@ pub fn init_logger() {
         let _ = fs::create_dir_all(parent);
     }
 
-    *FILE_LOGGER.lock().unwrap() = Some(log_path.clone());
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+
+    *FILE_LOGGER.lock().unwrap() = file;
 
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(log::LevelFilter::Debug))
