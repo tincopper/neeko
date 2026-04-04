@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
+import { CloseRoundIcon } from "../icons";
 import "@xterm/xterm/css/xterm.css";
 
 interface RemoteTerminalCache {
@@ -322,9 +323,7 @@ export default React.memo(function RemoteTerminalView({
           <span className="side-terminal-title">Terminal</span>
           <span className="side-terminal-hint">Ctrl+W to close</span>
           <button className="side-terminal-close" onClick={onClose} title="Close (Ctrl+W)">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
+            <CloseRoundIcon size={12} />
           </button>
         </div>
         <div className="terminal-wrapper" ref={wrapperRef} />

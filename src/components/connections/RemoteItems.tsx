@@ -4,31 +4,11 @@ import { getDistroIcon } from "../../utils/distros";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import FileTree, { buildTree } from "../project/FileTree";
 import serverIcon from "../../assets/server.svg";
+import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon } from "../icons";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
-
-// ─── Shared SVG icons ────────────────────────────────────────────────────────
-const FILE_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
-  <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
-</svg>;
-
-const BRANCH_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
-  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-</svg>;
-
-const SIDE_TERMINAL_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-  <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
-</svg>;
-
-const CLOSE_TERMINAL_SVG = <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
-  <rect x="2" y="2" width="8" height="8" rx="1.5" />
-</svg>;
-
-const GIT_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-</svg>;
 
 const AVATAR_COLORS = [
   "#e06c75", "#d19a66", "#e5c07b", "#98c379",
@@ -108,10 +88,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
         className="gh-section-label gh-section-label-collapsible"
         onClick={(e) => onToggleSection("__branches__", e)}
       >
-        <svg className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`}
-          width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-        </svg>
+        <ChevronRightIcon size={10} className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`} />
         Branches
       </div>
       {branchesExpanded && (
@@ -141,7 +118,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     if (!isRenaming) onStartRenameBranch(branch, gitInfo.current_branch);
                   }}
                 >
-                  {BRANCH_SVG}
+                  <BranchIcon size={11} style={{ opacity: 0.6 }} />
                   {isRenaming ? (
                     <input
                       ref={renameInputRef}
@@ -178,10 +155,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
             className="gh-section-label gh-section-label-collapsible"
             onClick={(e) => onToggleSection("__worktrees__", e)}
           >
-            <svg className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`}
-              width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-            </svg>
+            <ChevronRightIcon size={10} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
             Worktrees
           </div>
           {worktreesExpanded && (
@@ -204,7 +178,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     }}
                     title={`${wt.path}\nClick to open terminal`}
                   >
-                    {FILE_SVG}
+                    <FileIcon size={11} style={{ opacity: 0.6 }} />
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
@@ -222,7 +196,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       <span className="gh-branch-item-name">{wt.path.split('/').pop()}</span>
                     )}
                     <span className="gh-branch-inline" title={wt.branch}>
-                      {BRANCH_SVG}
+                      <BranchIcon size={11} style={{ opacity: 0.6 }} />
                       {wt.branch}
                     </span>
                     {!isRenaming && (
@@ -369,7 +343,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {isActive && onOpenSideTerminal && (
             <button className="gh-icon-btn" title="Open side terminal (Ctrl+Alt+T)"
               onClick={() => onOpenSideTerminal()}>
-              {SIDE_TERMINAL_SVG}
+              <SideTerminalIcon size={11} />
             </button>
           )}
           {/* Git 操作下拉菜单 */}
@@ -380,7 +354,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
-                {GIT_SVG}
+                <GitLogoIcon size={11} />
               </button>
               {gitMenuOpen && (
                 <div className="gh-git-dropdown">
@@ -399,7 +373,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {hasSession && (
             <button className="gh-icon-btn" title="Close terminal"
               onClick={() => onRemoveProject()}>
-              {CLOSE_TERMINAL_SVG}
+              <CloseTerminalIcon size={10} />
             </button>
           )}
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove project"
@@ -409,7 +383,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
         {/* Branch badge */}
         {gitInfo && (
           <span className="gh-branch-inline" title={gitInfo.current_branch}>
-            {BRANCH_SVG}
+            <BranchIcon size={11} style={{ opacity: 0.6 }} />
             {gitInfo.current_branch}
           </span>
         )}
@@ -505,15 +479,10 @@ export const WSLItem = React.memo<WSLItemProps>(({
         </div>
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
           <button className="gh-icon-btn" title="Add WSL project" onClick={() => onAddProject(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <PlusIcon size={11} />
           </button>
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove distro" onClick={() => onRemoveEntry(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
-            </svg>
+            <TrashIcon size={11} />
           </button>
         </div>
       </div>
@@ -640,15 +609,10 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
         </div>
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
           <button className="gh-icon-btn" title="Add remote project" onClick={() => onAddProject(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <PlusIcon size={11} />
           </button>
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove server" onClick={() => onRemoveEntry(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
-            </svg>
+            <TrashIcon size={11} />
           </button>
         </div>
       </div>
