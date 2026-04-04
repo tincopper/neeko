@@ -3,7 +3,7 @@ import React from "react";
 import AgentSelector from "./AgentSelector";
 import WindowControls from "./WindowControls";
 import { WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
-import { IS_WINDOWS } from "../../utils/platform";
+import { IS_WINDOWS, IS_MACOS } from "../../utils/platform";
 import linuxIcon from "../../assets/linux.svg";
 import serverIcon from "../../assets/server.svg";
 import { SettingsIcon, PlusIcon } from "../icons";
@@ -156,7 +156,7 @@ function TitleBar({
         ) : (
           <span className="titlebar-placeholder" data-tauri-drag-region />
         )}
-        <WindowControls />
+        {!IS_MACOS && <WindowControls />}
       </div>
     </div>
   );
