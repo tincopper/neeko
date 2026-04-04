@@ -7,6 +7,7 @@ import {
   destroyTerminalCache,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
+import { CloseRoundIcon } from "../icons";
 
 interface Project {
   id: string;
@@ -194,9 +195,7 @@ export default function SideTerminalView({
         <span className="side-terminal-title">Terminal</span>
         <span className="side-terminal-hint">Ctrl+W to close</span>
         <button className="side-terminal-close" onClick={handleClose} title="Close (Ctrl+W)">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
+          <CloseRoundIcon size={12} />
         </button>
       </div>
       <div className="terminal-wrapper" ref={wrapperRef} />

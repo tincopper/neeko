@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
+import { ChevronRightIcon } from "./icons";
 import hljs from "highlight.js/lib/core";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
@@ -500,27 +501,27 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
               Split
             </button>
           </div>
-          <button
-            className="nav-btn"
-            onClick={() => navigateBlock("prev")}
-            disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
-            title="Previous Change"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"/></svg>
-          </button>
+            <button
+              className="nav-btn"
+              onClick={() => navigateBlock("prev")}
+              disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
+              title="Previous Change"
+            >
+              <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
+            </button>
           <span className="hunk-index">
             {totalChangeBlocks > 0
               ? `${currentBlockIndex + 1} / ${totalChangeBlocks}`
               : "0 / 0"}
           </span>
-          <button
-            className="nav-btn"
-            onClick={() => navigateBlock("next")}
-            disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
-            title="Next Change"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
-          </button>
+            <button
+              className="nav-btn"
+              onClick={() => navigateBlock("next")}
+              disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
+              title="Next Change"
+            >
+              <ChevronRightIcon size={14} />
+            </button>
           <button className="back-btn" onClick={onBack} title="Back to Terminal">✕</button>
         </div>
       </div>
