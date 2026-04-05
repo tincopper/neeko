@@ -138,3 +138,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: CI 前后端 lint/test 并行化
+
+**Date**: 2026-04-05
+**Task**: CI 前后端 lint/test 并行化
+
+### Summary
+
+将 CI 中单一 check job 拆分为 4 个独立并行 job（frontend-check、frontend-test、backend-check、backend-test），全部支持三平台运行，并新增 Rust 单元测试步骤
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6436d23` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
