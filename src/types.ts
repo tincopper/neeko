@@ -113,6 +113,38 @@ export type TerminalEntry =
   | { type: 'wsl'; distro: string; project: WSLProject }
   | { type: 'remote'; host: string; project: RemoteProject };
 
+// 统一项目类型
+export type ProjectType = 'local' | 'wsl' | 'remote';
+
+export interface UnifiedProject {
+  type: ProjectType;
+  id: string;
+  name: string;
+  path: string;
+  gitInfo?: GitInfo | null;
+  selectedAgent?: string | null;
+  selectedIde?: string | null;
+  activeView: "Terminal" | { Diff: { file_path: string } };
+  collapsed: boolean;
+}
+
+export interface WslProjectAdapter {
+  type: 'wsl';
+  distro: string;
+  project: UnifiedProject;
+}
+
+export interface RemoteProjectAdapter {
+  type: 'remote';
+  entry: RemoteEntrySession;
+  project: UnifiedProject;
+}
+
+export type ActiveProjectAdapter = 
+  | { type: 'local'; project: UnifiedProject }
+  | WslProjectAdapter 
+  | RemoteProjectAdapter;
+
 // 持久化会话存储（与 Rust SessionStore 对应）
 export interface SessionStore {
   projects: { id: string; name: string; path: string; selected_agent: string | null; selected_ide: string | null; terminal_history: string[]; last_status: string; collapsed: boolean }[];
