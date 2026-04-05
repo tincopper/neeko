@@ -3,6 +3,9 @@
   ".trellis/scripts/__init__.py": "1242be5b972094c2e141aecbe81a4efd478f6534e3d5e28306374e6a18fcf46c",
   ".trellis/scripts/add_session.py": "7c869be8146e6f675bd95e424909ff301ea0a8f8fd82a4f056f6d320e755a406",
   ".trellis/scripts/common/__init__.py": "301724230abcce6e9fc99054c12d21c30eea7bc3b330ae6350aa3b6158461273",
+  ".trellis/scripts/common/__pycache__/__init__.cpython-314.pyc": "26bcda7efcd3af0db4b29acf633a4ad30086b7b0971cbeaec2168061984763f0",
+  ".trellis/scripts/common/__pycache__/developer.cpython-314.pyc": "80844a86062e6ba510c4acfa74433d306de5fdd3d88a9d30a39004d105ddab94",
+  ".trellis/scripts/common/__pycache__/paths.cpython-314.pyc": "fe0281487c3c300f9057103ac3e3028507013cce3c90021b90b8f5447aa167eb",
   ".trellis/scripts/common/cli_adapter.py": "66ef4f75470807b531490a6b6928604eb59781148fe3c5412f39e132ffab0850",
   ".trellis/scripts/common/config.py": "909257b442d7d1e7a2596996622c4f2f010d8c1343e1efd088ef8615d99554c7",
   ".trellis/scripts/common/developer.py": "69f6145c4c48953677de3ba06f487ba2a1675f4d66153346ab40594bb06a01c9",
@@ -50,5 +53,6 @@
   ".claude/hooks/inject-subagent-context.py": "75ce4cc175a00f9afa5fe1c80298e29521359ad90a66701c3c1166aa588f3080",
   ".claude/hooks/ralph-loop.py": "a367a5dd4f605730cf8157c61658e848176ae480be19029126ff9bbd90a37712",
   ".claude/hooks/session-start.py": "5c048949cbf8ac58c7c26ef51cd90bf91454574425f2158f4778c200b8098f53",
-  ".claude/settings.json": "fdb7fcf660961b4b52f22f08e91f942a193e1a3f5ebbca9cbba21a157d1c359d"
+  ".claude/settings.json": "fdb7fcf660961b4b52f22f08e91f942a193e1a3f5ebbca9cbba21a157d1c359d",
+  ".claude/settings.local.json": "2d1f43492143a5ca796ebb1245c679a5a37ba5eda9976c8ae2968b750a7f9541"
 }

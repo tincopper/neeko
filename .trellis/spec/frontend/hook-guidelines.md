@@ -1,51 +1,181 @@
-# Hook Guidelines
+# Hook 指南
 
-> How hooks are used in this project.
-
----
-
-## Overview
-
-<!--
-Document your project's hook conventions here.
-
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
+> 本项目中 Hooks 的使用方式。
 
 ---
 
-## Custom Hook Patterns
+## 概述
 
-<!-- How to create and structure custom hooks -->
-
-(To be filled by the team)
+所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目仅使用 **React 内置 Hooks** —— 没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
 
 ---
 
-## Data Fetching
+## 自定义 Hook 模式
 
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
+### 标准 Hook 结构
 
-(To be filled by the team)
+```tsx
+// src/hooks/useToast.ts
+import { useState, useRef, useCallback } from "react";
+
+export function useToast() {
+  const [toast, setToast] = useState<{ message: string; type: "info" | "error" } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: "info" | "error" = "info") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  return { toast, showToast };
+}
+```
+
+### 关键模式
+
+1. **命名导出函数**（非默认导出）：`export function useXxx()`
+2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 下传
+3. **用 `useRef` 管理可变状态**，适用于不需要触发重渲染的数据（计时器、缓存、当前值镜像）
+4. **返回对象**，包含状态值和操作回调
+
+### Ref 镜像模式
+
+本代码库的特色模式：将状态值镜像到 ref，使回调能读取最新值而不产生过期闭包：
+
+```tsx
+// src/App.tsx —— 常见模式
+const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+const activeProjectIdRef = useRef<string | null>(null);
+useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
+
+// 现在回调可以读取 activeProjectIdRef.current 而不依赖 activeProjectId
+```
+
+该模式在 `App.tsx` 和 `useWorktreeState` 等 Hook 中广泛使用。
 
 ---
 
-## Naming Conventions
+## 数据获取
 
-<!-- Hook naming rules (use*, etc.) -->
+### 所有数据通过 Tauri IPC 传输
 
-(To be filled by the team)
+没有 HTTP 客户端、REST API 或 GraphQL。所有后端通信使用 Tauri 的 `invoke`：
+
+```tsx
+import { invoke } from "@tauri-apps/api/core";
+
+// 带类型的 invoke 调用
+const result = await invoke<SomeType>("command_name", { param1, param2 });
+```
+
+### 事件监听
+
+对于后端推送的事件，使用 Tauri 的 `listen`：
+
+```tsx
+import { listen } from "@tauri-apps/api/event";
+
+useEffect(() => {
+  const unlisten = listen<string>("git-changed", (event) => {
+    // 处理 event.payload
+  });
+  return () => { unlisten.then(fn => fn()); };
+}, []);
+```
+
+### 配置持久化模式
+
+参见 `useAppConfig.ts` 了解标准的加载/保存模式：
+
+```tsx
+export function useAppConfig() {
+  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
+
+  // 挂载时加载
+  useEffect(() => {
+    (async () => {
+      const saved = await invoke<Record<string, any>>("load_config");
+      // 校验并与默认值合并
+      setConfig({ ... });
+    })();
+  }, []);
+
+  // 保存时浅比较，避免不必要的写入
+  const saveConfig = useCallback(async (next: AppConfig) => {
+    setConfig(prev => { /* 浅比较 */ });
+    await invoke("save_config", { config: next });
+  }, []);
+
+  return { config, saveConfig };
+}
+```
 
 ---
 
-## Common Mistakes
+## 命名约定
 
-<!-- Hook-related mistakes your team has made -->
+| 约定 | 示例 |
+|------|------|
+| 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
+| 导出：命名函数 | `export function useAppConfig()` |
+| 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
+| 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
 
-(To be filled by the team)
+---
+
+## 现有 Hooks 参考
+
+| Hook | 用途 | 关键返回值 |
+|------|------|-----------|
+| `useAppConfig` | 应用配置持久化 | `config`、`saveConfig`、`settingsOpen` |
+| `useToast` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
+| `useLocalProjects` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
+| `useWslProjects` | WSL 发行版管理 | WSL 会话、CRUD 回调 |
+| `useRemoteProjects` | SSH 远程管理 + 认证 | 远程条目、CRUD 回调、认证状态 |
+| `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
+| `useSideTerminalResize` | 拖拽调整终端面板大小 | 宽度状态、鼠标事件处理 |
+| `useWorktreeState` | 按项目追踪 worktree 状态 | 路径、分支、已打开的 worktrees |
+
+---
+
+## 常见错误
+
+### 1. 作为 Props 传递的回调忘记用 `useCallback`
+
+由于本项目使用 Props 下传 + `React.memo` 组件，没有 `useCallback` 的回调会破坏记忆化：
+
+```tsx
+// 错误 —— 每次渲染产生新的函数引用
+const handleSelect = (id: string) => { ... };
+
+// 正确 —— 引用稳定
+const handleSelect = useCallback((id: string) => { ... }, [deps]);
+```
+
+### 2. 在事件处理器中读取过期状态
+
+当回调需要最新状态值时，使用 ref 镜像模式：
+
+```tsx
+// 错误 —— 闭包捕获了初始值
+const handler = useCallback(() => {
+  console.log(activeProjectId); // 过期了！
+}, []); // 空依赖以保持引用稳定
+
+// 正确 —— 从 ref 读取
+const handler = useCallback(() => {
+  console.log(activeProjectIdRef.current); // 始终是最新的
+}, []);
+```
+
+### 3. 没有清理 Tauri 监听器
+
+使用 `listen` 时务必在 `useEffect` 中返回清理函数：
+
+```tsx
+useEffect(() => {
+  const unlisten = listen("event", handler);
+  return () => { unlisten.then(fn => fn()); };
+}, []);
+```
