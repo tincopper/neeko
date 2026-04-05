@@ -391,16 +391,33 @@ fn parse_unified_diff_empty_input() {
 
 ### 测试模块位置
 
-始终在源文件底部：
+测试文件统一放在 `tests/unit/` 目录下，通过 `tests/unit.rs` 入口文件引用：
+
+```
+tests/
+├── unit.rs                  # 入口文件，引用各模块测试
+└── unit/
+    ├── agent_test.rs
+    ├── state_test.rs
+    ├── git_test.rs
+    ├── project_test.rs
+    └── storage_test.rs
+```
+
+`tests/unit.rs` 使用 `#[path]` 属性引用子目录中的测试文件：
 
 ```rust
-// ... 生产代码在上方 ...
+#[path = "unit/agent_test.rs"]
+mod agent_test;
+#[path = "unit/git_test.rs"]
+mod git_test;
+```
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // ... 测试 ...
-}
+测试文件通过 `use neeko_lib::module_name` 导入被测试模块（要求模块在 `lib.rs` 中声明为 `pub mod`）：
+
+```rust
+use neeko_lib::agent::AgentManager;
+use neeko_lib::state::AgentConfig;
 ```
 
 ### 测试命名

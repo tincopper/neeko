@@ -22,6 +22,13 @@ impl StorageManager {
         Ok(Self { config_dir })
     }
 
+    pub fn with_dir(config_dir: PathBuf) -> Result<Self> {
+        if !config_dir.exists() {
+            fs::create_dir_all(&config_dir)?;
+        }
+        Ok(Self { config_dir })
+    }
+
     pub fn get_config_dir(&self) -> &Path {
         &self.config_dir
     }
