@@ -81,7 +81,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, onClose }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConfigChange, onClose }) => {
   const [activeNav, setActiveNav] = useState<NavCategory>("editor");
   const [shellInput, setShellInput] = useState(config.shell);
 
@@ -747,6 +747,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
       </div>
     </div>
   );
-};
+});
 
 export default SettingsPanel;

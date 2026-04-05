@@ -145,7 +145,7 @@ export function useLocalProjects() {
         ideCommand: project.selected_ide,
         projectPath: (activeProjectRef.current as Project | null)?.path ?? "",
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("[App] Failed to open IDE:", e);
     }
   }, []);

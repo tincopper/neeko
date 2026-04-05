@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef, useMemo } from "react";
 
 export interface ContextMenuItem {
   label: string;
@@ -36,7 +36,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const adjustedPosition = useCallback(() => {
+  const pos = useMemo(() => {
     const menuWidth = 220;
     const menuHeight = items.length * 32;
     const winW = window.innerWidth;
@@ -46,8 +46,6 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
       top: position.y + menuHeight > winH ? winH - menuHeight - 4 : position.y,
     };
   }, [position, items.length]);
-
-  const pos = adjustedPosition();
 
   return (
     <div

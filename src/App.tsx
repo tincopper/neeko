@@ -9,7 +9,7 @@ import { AppToast } from "./components/AppToast";
 import { launchAgentInTerminal } from "./components/terminal";
 import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/connections";
 import { AgentConfig } from "./types";
-import type { WSLEntrySession, RemoteEntrySession } from "./types";
+import type { WSLEntrySession, RemoteEntrySession, AuthMethod } from "./types";
 import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
@@ -258,7 +258,7 @@ function App() {
       return;
     }
     showToast(`Opening ${project.selected_ide}...`, "info");
-    handleOpenIde(project).catch((e: any) => showToast(String(e), "error"));
+    handleOpenIde(project).catch((e: unknown) => showToast(String(e), "error"));
   }, [handleOpenIde, showToast]);
 
   // ── Keyboard shortcuts ──
@@ -367,7 +367,7 @@ function App() {
     setActiveRemoteProject(null);
   }, [setPendingAuthEntry, setActiveRemoteKey, setActiveRemoteProject]);
 
-  const handleRemoteAuthSuccess = useCallback((auth: any, saved_auth: string | null | undefined) => {
+  const handleRemoteAuthSuccess = useCallback((auth: AuthMethod, saved_auth: string | null | undefined) => {
     if (!pendingAuthEntry) return;
     setRemoteAuthStore(prev => new Map(prev).set(pendingAuthEntry.id, auth));
     setPendingAuthEntry(null);
