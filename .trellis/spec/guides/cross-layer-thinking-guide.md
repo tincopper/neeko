@@ -1,94 +1,94 @@
-# Cross-Layer Thinking Guide
+# 跨层思维指南
 
-> **Purpose**: Think through data flow across layers before implementing.
-
----
-
-## The Problem
-
-**Most bugs happen at layer boundaries**, not within layers.
-
-Common cross-layer bugs:
-- API returns format A, frontend expects format B
-- Database stores X, service transforms to Y, but loses data
-- Multiple layers implement the same logic differently
+> **目的**：在实现功能之前，梳理清楚跨层的数据流。
 
 ---
 
-## Before Implementing Cross-Layer Features
+## 问题描述
 
-### Step 1: Map the Data Flow
+**大多数 bug 发生在层间边界**，而非层内部。
 
-Draw out how data moves:
+常见的跨层 bug：
+- API 返回格式 A，前端期望格式 B
+- 数据库存储 X，Service 转换为 Y，但丢失了数据
+- 多层分别实现了相同逻辑，但行为不一致
+
+---
+
+## 实现跨层功能之前
+
+### 第一步：绘制数据流
+
+画出数据的流动路径：
 
 ```
-Source → Transform → Store → Retrieve → Transform → Display
+数据源 → 转换 → 存储 → 读取 → 转换 → 展示
 ```
 
-For each arrow, ask:
-- What format is the data in?
-- What could go wrong?
-- Who is responsible for validation?
+对于每个箭头，问自己：
+- 数据是什么格式？
+- 可能出什么问题？
+- 谁负责校验？
 
-### Step 2: Identify Boundaries
+### 第二步：识别边界
 
-| Boundary | Common Issues |
-|----------|---------------|
-| API ↔ Service | Type mismatches, missing fields |
-| Service ↔ Database | Format conversions, null handling |
-| Backend ↔ Frontend | Serialization, date formats |
-| Component ↔ Component | Props shape changes |
+| 边界 | 常见问题 |
+|------|---------|
+| API ↔ Service | 类型不匹配、缺少字段 |
+| Service ↔ 数据库 | 格式转换、null 处理 |
+| 后端 ↔ 前端 | 序列化、日期格式 |
+| 组件 ↔ 组件 | Props 结构变更 |
 
-### Step 3: Define Contracts
+### 第三步：定义契约
 
-For each boundary:
-- What is the exact input format?
-- What is the exact output format?
-- What errors can occur?
-
----
-
-## Common Cross-Layer Mistakes
-
-### Mistake 1: Implicit Format Assumptions
-
-**Bad**: Assuming date format without checking
-
-**Good**: Explicit format conversion at boundaries
-
-### Mistake 2: Scattered Validation
-
-**Bad**: Validating the same thing in multiple layers
-
-**Good**: Validate once at the entry point
-
-### Mistake 3: Leaky Abstractions
-
-**Bad**: Component knows about database schema
-
-**Good**: Each layer only knows its neighbors
+对于每个边界：
+- 精确的输入格式是什么？
+- 精确的输出格式是什么？
+- 可能发生哪些错误？
 
 ---
 
-## Checklist for Cross-Layer Features
+## 常见的跨层错误
 
-Before implementation:
-- [ ] Mapped the complete data flow
-- [ ] Identified all layer boundaries
-- [ ] Defined format at each boundary
-- [ ] Decided where validation happens
+### 错误 1：隐式的格式假设
 
-After implementation:
-- [ ] Tested with edge cases (null, empty, invalid)
-- [ ] Verified error handling at each boundary
-- [ ] Checked data survives round-trip
+**错误做法**：不检查就假设日期格式
+
+**正确做法**：在边界处进行显式的格式转换
+
+### 错误 2：分散的校验
+
+**错误做法**：在多层重复校验同一件事
+
+**正确做法**：在入口点校验一次
+
+### 错误 3：泄漏的抽象
+
+**错误做法**：组件知道数据库 schema
+
+**正确做法**：每一层只了解其相邻层
 
 ---
 
-## When to Create Flow Documentation
+## 跨层功能检查清单
 
-Create detailed flow docs when:
-- Feature spans 3+ layers
-- Multiple teams are involved
-- Data format is complex
-- Feature has caused bugs before
+实现之前：
+- [ ] 绘制了完整的数据流
+- [ ] 识别了所有层间边界
+- [ ] 定义了每个边界的数据格式
+- [ ] 决定了校验发生在哪一层
+
+实现之后：
+- [ ] 用边界情况测试过（null、空值、无效值）
+- [ ] 验证了每个边界的错误处理
+- [ ] 检查了数据能否完整地往返传递
+
+---
+
+## 何时需要创建流程文档
+
+以下情况需要创建详细的流程文档：
+- 功能跨越 3 个以上层级
+- 涉及多个团队
+- 数据格式复杂
+- 该功能以前出过 bug
