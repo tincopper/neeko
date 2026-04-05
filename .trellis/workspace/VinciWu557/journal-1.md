@@ -58,3 +58,50 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Backend 单元测试脚手架搭建
+
+**Date**: 2026-04-05
+**Task**: Backend 单元测试脚手架搭建
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 内容 | 说明 |
+|------|------|
+| 测试目录结构 | 建立 `tests/unit/` 目录，按模块拆分测试文件：agent_test / git_test / project_test / state_test / storage_test |
+| 模块可见性 | `lib.rs` 中 agent / git / project / state / storage 改为 `pub mod`，支持外部测试引用 |
+| StorageManager::with_dir | 新增 `with_dir(config_dir)` 构造方法，方便测试中使用临时目录隔离 |
+| 测试规范更新 | `backend-testing.md` 更新为 `tests/unit/` 目录结构，废弃源文件底部 `#[cfg(test)]` 写法 |
+| dev-dependency | 添加 `tempfile = "3"` 用于测试中的临时目录管理 |
+| 任务归档 | 完成 `04-05-backend-unit-test-plan` 的归档 |
+
+**变更文件**:
+- `.trellis/spec/unit-test/backend-testing.md`
+- `src-tauri/Cargo.toml` / `Cargo.lock`
+- `src-tauri/src/lib.rs` / `storage.rs`
+- `src-tauri/tests/unit.rs` + 5 个模块测试文件
+- `.trellis/tasks/04-05-backend-unit-test-plan/` (archived)
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b31e3d9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
