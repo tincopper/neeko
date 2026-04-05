@@ -1,16 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import type { AppConfig } from "../SettingsPanel";
+import type { AgentConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
-
-interface AgentConfig {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  icon: string | null;
-  enabled: boolean;
-}
 
 interface AddProjectModalProps {
   pendingPath: string;

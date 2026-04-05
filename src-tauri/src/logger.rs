@@ -68,7 +68,9 @@ pub fn init_logger() {
         .open(&log_path)
         .ok();
 
-    *FILE_LOGGER.lock().unwrap() = file;
+    if let Ok(mut logger) = FILE_LOGGER.lock() {
+        *logger = file;
+    }
 
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(log::LevelFilter::Debug))

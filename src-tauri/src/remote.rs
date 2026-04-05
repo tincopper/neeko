@@ -152,15 +152,17 @@ impl RemoteTerminalManager {
             });
 
         // 保存 handle（包含 resize_tx，供 resize_session 调用）
-        self.ssh_handles.lock().unwrap().insert(
-            id.clone(),
-            SSHHandle {
-                input_tx,
-                resize_tx,
-                input_listener_id,
-                app_handle: app_handle.clone(),
-            },
-        );
+        if let Ok(mut handles) = self.ssh_handles.lock() {
+            handles.insert(
+                id.clone(),
+                SSHHandle {
+                    input_tx,
+                    resize_tx,
+                    input_listener_id,
+                    app_handle: app_handle.clone(),
+                },
+            );
+        }
 
         // 用 make_writer() 分离读写端，避免 select! 中的可变借用冲突
         let mut writer = channel.make_writer();
@@ -236,15 +238,16 @@ impl RemoteTerminalManager {
     }
 
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
-        let handles = self.ssh_handles.lock().unwrap();
-        if let Some(handle) = handles.get(session_id) {
-            let _ = handle.resize_tx.send((cols as u32, rows as u32));
-            log_info(&format!(
-                "[SSH] Resize {}x{} sent to session {}",
-                cols,
-                rows,
-                &session_id[..8]
-            ));
+        if let Ok(handles) = self.ssh_handles.lock() {
+            if let Some(handle) = handles.get(session_id) {
+                let _ = handle.resize_tx.send((cols as u32, rows as u32));
+                log_info(&format!(
+                    "[SSH] Resize {}x{} sent to session {}",
+                    cols,
+                    rows,
+                    &session_id[..8]
+                ));
+            }
         }
         Ok(())
     }
@@ -254,12 +257,16 @@ impl RemoteTerminalManager {
             "[SSH] Closing session {}",
             &session_id[..8.min(session_id.len())]
         ));
-        self.sessions.lock().unwrap().remove(session_id);
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(session_id);
+        }
 
-        if let Some(handle) = self.ssh_handles.lock().unwrap().remove(session_id) {
-            // 注销 input 监听器
-            handle.app_handle.unlisten(handle.input_listener_id);
-            // input_tx drop 后，IO 任务的 recv() 会返回 None，任务自然退出
+        if let Ok(mut handles) = self.ssh_handles.lock() {
+            if let Some(handle) = handles.remove(session_id) {
+                // 注销 input 监听器
+                handle.app_handle.unlisten(handle.input_listener_id);
+                // input_tx drop 后，IO 任务的 recv() 会返回 None，任务自然退出
+            }
         }
     }
 

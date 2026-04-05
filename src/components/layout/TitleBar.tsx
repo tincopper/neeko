@@ -2,28 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import AgentSelector from "./AgentSelector";
 import WindowControls from "./WindowControls";
-import { WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
+import type { Project, WSLProject, RemoteEntrySession, RemoteProject, AgentConfig } from "../../types";
 import { IS_WINDOWS, IS_MACOS } from "../../utils/platform";
 import linuxIcon from "../../assets/linux.svg";
 import serverIcon from "../../assets/server.svg";
 import { SettingsIcon, PlusIcon } from "../icons";
-
-interface Project {
-  id: string;
-  name: string;
-  path: string;
-  git_info: { current_branch: string; branches: string[]; worktrees: any[]; changed_files: any[]; is_clean: boolean } | null;
-  selected_agent: string | null;
-}
-
-interface AgentConfig {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  icon: string | null;
-  enabled: boolean;
-}
 
 interface TitleBarProps {
   activeProject: Project | null;

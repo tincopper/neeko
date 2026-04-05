@@ -65,7 +65,7 @@ function App() {
   const remote = useRemoteProjects(saveSession);
 
   const {
-    projects, activeProjectId, setActiveProjectId,
+    projects, setProjects, activeProjectId, setActiveProjectId,
     activeProject, setActiveProject,
     loading,
     pendingPath, setPendingPath,
@@ -331,10 +331,12 @@ function App() {
     agentId: string | null,
     ideCommand: string | null,
   ) => {
-    projects.map((p) =>
-      p.id === projectId
-        ? { ...p, selected_agent: agentId, selected_ide: ideCommand }
-        : p
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, selected_agent: agentId, selected_ide: ideCommand }
+          : p
+      )
     );
     setActiveProject((prev) =>
       prev && prev.id === projectId
@@ -349,7 +351,7 @@ function App() {
     } catch (e) {
       console.error("Failed to save session after project settings change:", e);
     }
-  }, [projects, setActiveProject]);
+  }, [setProjects, setActiveProject]);
 
   const handleWslDiffBack = useCallback(() => {
     wslActions.setWslDiffState(null);

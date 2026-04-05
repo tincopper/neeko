@@ -182,13 +182,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
 
   // 自定义 Agent 管理
   const BUILTIN_AGENTS: AgentConfig[] = [
-    { id: "opencode", name: "opencode", command: "opencode", args: [], icon: "opencode.png", enabled: true },
-    { id: "claude-code", name: "claude-code", command: "claude", args: [], icon: "claude-code.png", enabled: true },
-    { id: "qwen", name: "qwen", command: "qwen", args: [], icon: "qwen.png", enabled: true },
-    { id: "gemini", name: "gemini", command: "gemini", args: [], icon: "gemini.png", enabled: true },
-    { id: "codex", name: "codex", command: "codex", args: [], icon: "codex.png", enabled: true },
-    { id: "qoder", name: "qoder", command: "qoder", args: [], icon: "qoder.svg", enabled: true },
-    { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], icon: "codebuddy.svg", enabled: true },
+    { id: "opencode", name: "opencode", command: "opencode", args: [], env: {}, icon: "opencode.png", enabled: true },
+    { id: "claude-code", name: "claude-code", command: "claude", args: [], env: {}, icon: "claude-code.png", enabled: true },
+    { id: "qwen", name: "qwen", command: "qwen", args: [], env: {}, icon: "qwen.png", enabled: true },
+    { id: "gemini", name: "gemini", command: "gemini", args: [], env: {}, icon: "gemini.png", enabled: true },
+    { id: "codex", name: "codex", command: "codex", args: [], env: {}, icon: "codex.png", enabled: true },
+    { id: "qoder", name: "qoder", command: "qoder", args: [], env: {}, icon: "qoder.svg", enabled: true },
+    { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], env: {}, icon: "codebuddy.svg", enabled: true },
   ];
 
   const addCustomAgent = async () => {
@@ -199,7 +199,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     const exists = (config.customAgents || []).some(a => a.id === id);
     if (exists) return;
     const args = newAgentArgs.trim() ? newAgentArgs.trim().split(",").map(s => s.trim()).filter(Boolean) : [];
-    const newAgent: AgentConfig = { id, name, command, args, icon: "cli.svg", enabled: true };
+    const newAgent: AgentConfig = { id, name, command, args, env: {}, icon: "cli.svg", enabled: true };
     const nextCustom = [...(config.customAgents || []), newAgent];
     onConfigChange({ ...config, customAgents: nextCustom });
     try {

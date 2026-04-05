@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
-import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView, RemoteTerminalView } from "./terminal";
+import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
+import RemoteProjectView from "./RemoteProjectView";
 import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
 
 
@@ -138,90 +139,22 @@ function MainContent({
       )}
 
       {/* SSH 终端视图 */}
-      {activeRemoteProject && !activeProject && !activeWslProject && (() => {
-        const { entry, project } = activeRemoteProject;
-        const auth = remoteAuthStore.get(entry.id);
-        if (!auth) {
-          return (
-            <div className="empty-state">
-              <div className="empty-body">
-                <div className="empty-icon">🔑</div>
-                <h2>Authentication required</h2>
-                <p>Waiting for credentials...</p>
-              </div>
-            </div>
-          );
-        }
-        return (
-          <div className="content-area">
-            {remoteDiffState ? (
-              <DiffView
-                diffSource={{
-                  type: "remote",
-                  entryId: remoteDiffState.entryId,
-                  host: remoteDiffState.host,
-                  port: remoteDiffState.port,
-                  username: remoteDiffState.username,
-                  auth: remoteDiffState.auth,
-                  projectPath: remoteDiffState.projectPath,
-                }}
-                filePath={remoteDiffState.filePath}
-                initialMode={config.diffMode}
-                onBack={onRemoteDiffBack}
-              />
-            ) : (
-            <div className="terminal-pane-container">
-              <RemoteTerminalView
-                entryId={entry.id}
-                projectId={project.id}
-                projectName={project.name}
-                projectPath={activeRemoteWorktreePath ?? project.path}
-                host={entry.host}
-                port={entry.port}
-                username={entry.username}
-                auth={auth}
-                fontSize={config.fontSize}
-                fontFamily={config.fontFamily}
-                // worktree 模式使用不同缓存键，避免与主终端冲突
-                cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
-                selectedAgentId={project.selected_agent}
-                onSessionReady={onRemoteSessionReady}
-              />
-              {remoteSideTerminalOpen.has(project.id) && (
-                <>
-                  <div
-                    className="terminal-pane-divider"
-                    onMouseDown={handleSideDividerMouseDown}
-                  />
-                  <RemoteTerminalView
-                    entryId={entry.id}
-                    projectId={project.id}
-                    projectName={project.name}
-                    projectPath={activeRemoteWorktreePath ?? project.path}
-                    host={entry.host}
-                    port={entry.port}
-                    username={entry.username}
-                    auth={auth}
-                    fontSize={config.fontSize}
-                    fontFamily={config.fontFamily}
-                    cacheKeySuffix={activeRemoteWorktreePath ? `:side:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ":side"}
-                    sideMode
-                    width={sideTerminalWidth}
-                    onClose={() =>
-                      setRemoteSideTerminalOpen(prev => {
-                        const n = new Set(prev);
-                        n.delete(project.id);
-                        return n;
-                      })
-                    }
-                  />
-                </>
-              )}
-            </div>
-            )}
-          </div>
-        );
-      })()}
+      {activeRemoteProject && !activeProject && !activeWslProject && (
+        <RemoteProjectView
+          entry={activeRemoteProject.entry}
+          project={activeRemoteProject.project}
+          remoteAuthStore={remoteAuthStore}
+          remoteDiffState={remoteDiffState}
+          config={config}
+          onRemoteDiffBack={onRemoteDiffBack}
+          activeRemoteWorktreePath={activeRemoteWorktreePath}
+          remoteSideTerminalOpen={remoteSideTerminalOpen}
+          setRemoteSideTerminalOpen={setRemoteSideTerminalOpen}
+          handleSideDividerMouseDown={handleSideDividerMouseDown}
+          sideTerminalWidth={sideTerminalWidth}
+          onRemoteSessionReady={onRemoteSessionReady}
+        />
+      )}
 
       {/* 本地项目视图 */}
       {activeProject ? (

@@ -1,14 +1,15 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { launchAgentInRemoteTerminal, remoteCacheKey } from "../components/terminal";
-import type { RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
+import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
+import type { DiffSetter, WslDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
 
 export function useRemoteActions(deps: {
   setActiveProjectId: (id: string | null) => void;
-  setActiveProject: (p: any) => void;
-  setActiveWslKey: (k: any) => void;
-  setActiveWslProject: (p: any) => void;
+  setActiveProject: (p: Project | null) => void;
+  setActiveWslKey: (k: { distro: string; projectId: string } | null) => void;
+  setActiveWslProject: (p: { distro: string; project: WSLProject } | null) => void;
   setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
   setActiveRemoteKey: React.Dispatch<React.SetStateAction<{ host: string; projectId: string } | null>>;
   setActiveRemoteProject: React.Dispatch<React.SetStateAction<{
@@ -20,7 +21,7 @@ export function useRemoteActions(deps: {
   remoteAuthStore: Map<string, AuthMethod>;
   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
   remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-  setWslDiffStateRef: React.MutableRefObject<((s: any) => void) | null>;
+  setWslDiffStateRef: DiffSetter<WslDiffState>;
   wslActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
   wslOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
   wslWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
