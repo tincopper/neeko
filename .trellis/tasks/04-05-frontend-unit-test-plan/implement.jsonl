@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试配置规范、Hook/组件测试模式、Tauri API mock 策略"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Mock 边界原则、invoke mock 模式、测试数据工厂"}
