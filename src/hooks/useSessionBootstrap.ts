@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { WSLEntrySession, RemoteEntrySession } from "../types";
+import type { SessionStore, WSLEntrySession, RemoteEntrySession } from "../types";
 
 export function useSessionBootstrap(deps: {
   loadAgents: () => Promise<void>;
@@ -18,7 +18,7 @@ export function useSessionBootstrap(deps: {
     deps.loadAgents();
     deps.loadProjects();
 
-    invoke<any>("load_session").then((session: any) => {
+    invoke<SessionStore>("load_session").then((session) => {
       const wslE = session.wsl_entries ?? [];
       const remoteE = session.remote_entries ?? [];
       deps.setWslEntries(wslE);

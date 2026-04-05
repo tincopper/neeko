@@ -4,53 +4,46 @@ import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
 import { ChevronRightIcon } from "./icons";
 import hljs from "highlight.js/lib/core";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import java from "highlight.js/lib/languages/java";
-import cpp from "highlight.js/lib/languages/cpp";
-import csharp from "highlight.js/lib/languages/csharp";
-import go from "highlight.js/lib/languages/go";
-import ruby from "highlight.js/lib/languages/ruby";
-import php from "highlight.js/lib/languages/php";
-import swift from "highlight.js/lib/languages/swift";
-import kotlin from "highlight.js/lib/languages/kotlin";
-import scala from "highlight.js/lib/languages/scala";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import json from "highlight.js/lib/languages/json";
-import yaml from "highlight.js/lib/languages/yaml";
-import markdown from "highlight.js/lib/languages/markdown";
-import sql from "highlight.js/lib/languages/sql";
-import shell from "highlight.js/lib/languages/shell";
-import dockerfile from "highlight.js/lib/languages/dockerfile";
-import diff from "highlight.js/lib/languages/diff";
-import plaintext from "highlight.js/lib/languages/plaintext";
 
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("java", java);
-hljs.registerLanguage("cpp", cpp);
-hljs.registerLanguage("csharp", csharp);
-hljs.registerLanguage("go", go);
-hljs.registerLanguage("ruby", ruby);
-hljs.registerLanguage("php", php);
-hljs.registerLanguage("swift", swift);
-hljs.registerLanguage("kotlin", kotlin);
-hljs.registerLanguage("scala", scala);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("markdown", markdown);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("shell", shell);
-hljs.registerLanguage("dockerfile", dockerfile);
-hljs.registerLanguage("diff", diff);
-hljs.registerLanguage("plaintext", plaintext);
+const LANGUAGE_MAP: Record<string, () => Promise<unknown>> = {
+  javascript: () => import("highlight.js/lib/languages/javascript"),
+  typescript: () => import("highlight.js/lib/languages/typescript"),
+  python: () => import("highlight.js/lib/languages/python"),
+  rust: () => import("highlight.js/lib/languages/rust"),
+  java: () => import("highlight.js/lib/languages/java"),
+  cpp: () => import("highlight.js/lib/languages/cpp"),
+  csharp: () => import("highlight.js/lib/languages/csharp"),
+  go: () => import("highlight.js/lib/languages/go"),
+  ruby: () => import("highlight.js/lib/languages/ruby"),
+  php: () => import("highlight.js/lib/languages/php"),
+  swift: () => import("highlight.js/lib/languages/swift"),
+  kotlin: () => import("highlight.js/lib/languages/kotlin"),
+  scala: () => import("highlight.js/lib/languages/scala"),
+  css: () => import("highlight.js/lib/languages/css"),
+  xml: () => import("highlight.js/lib/languages/xml"),
+  json: () => import("highlight.js/lib/languages/json"),
+  yaml: () => import("highlight.js/lib/languages/yaml"),
+  markdown: () => import("highlight.js/lib/languages/markdown"),
+  sql: () => import("highlight.js/lib/languages/sql"),
+  shell: () => import("highlight.js/lib/languages/shell"),
+  dockerfile: () => import("highlight.js/lib/languages/dockerfile"),
+  diff: () => import("highlight.js/lib/languages/diff"),
+  plaintext: () => import("highlight.js/lib/languages/plaintext"),
+};
+
+type LanguageFn = (hljs: import("highlight.js").HLJSApi) => import("highlight.js").Language;
+
+const registeredLangs = new Set<string>();
+
+async function ensureLanguageRegistered(lang: string): Promise<void> {
+  if (registeredLangs.has(lang)) return;
+  const loader = LANGUAGE_MAP[lang];
+  if (loader) {
+    const mod = await loader();
+    hljs.registerLanguage(lang, (mod as { default: LanguageFn }).default);
+    registeredLangs.add(lang);
+  }
+}
 
 interface DiffLine {
   Context?: string;
@@ -346,6 +339,11 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
   const lastLoadKeyRef = useRef<string>("");
 
   const language = useMemo(() => detectLanguage(filePath), [filePath]);
+
+  // Eagerly register the highlight.js language when it changes
+  useEffect(() => {
+    ensureLanguageRegistered(language);
+  }, [language]);
 
   // 计算改动统计
   const changeStats = useMemo(() => {

@@ -1,28 +1,29 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { launchAgentInWslTerminal, wslCacheKey } from "../components/terminal";
-import type { WSLEntrySession, WSLProject, GitInfo, AgentConfig, AppConfig } from "../types";
+import type { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../types";
+import type { DiffSetter, RemoteDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
 
 export function useWslActions(deps: {
   setActiveProjectId: (id: string | null) => void;
-  setActiveProject: (p: any) => void;
-  setActiveRemoteKey: (k: any) => void;
-  setActiveRemoteProject: (p: any) => void;
+  setActiveProject: (p: Project | null) => void;
+  setActiveRemoteKey: (k: { host: string; projectId: string } | null) => void;
+  setActiveRemoteProject: (p: { entry: RemoteEntrySession; project: RemoteProject } | null) => void;
   setWslEntries: React.Dispatch<React.SetStateAction<WSLEntrySession[]>>;
   setActiveWslKey: React.Dispatch<React.SetStateAction<{ distro: string; projectId: string } | null>>;
   setActiveWslProject: React.Dispatch<React.SetStateAction<{ distro: string; project: WSLProject } | null>>;
   activeWslProject: { distro: string; project: WSLProject } | null;
   wslEntries: WSLEntrySession[];
   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<any[]>;
-  setRemoteDiffStateRef: React.MutableRefObject<((s: any) => void) | null>;
+  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
+  setRemoteDiffStateRef: DiffSetter<RemoteDiffState>;
   remoteActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
   remoteOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
   remoteWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
-  saveSession: (wsl?: WSLEntrySession[], remote?: any[]) => Promise<void>;
+  saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
 }) {
   // ── Diff state ──
   const [wslDiffState, setWslDiffState] = useState<{

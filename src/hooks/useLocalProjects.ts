@@ -151,7 +151,7 @@ export function useLocalProjects() {
   }, []);
 
   return {
-    projects, activeProjectId, setActiveProjectId,
+    projects, setProjects, activeProjectId, setActiveProjectId,
     activeProject, setActiveProject,
     loading, setLoading,
     pendingPath, setPendingPath,
