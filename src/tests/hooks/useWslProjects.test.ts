@@ -1,12 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWslProjects } from '../../hooks/useWslProjects';
+import type { WSLEntrySession } from '../../types';
 
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
   wslCacheKey: (distro: string, projectId: string) => `wsl:${distro}:${projectId}`,
   destroyWslCache: vi.fn(),
 }));
+
+const makeWslProject = (overrides: {
+  id: string;
+  name: string;
+  path: string;
+  distro?: string;
+  entry_id?: string;
+}) => ({
+  id: overrides.id,
+  name: overrides.name,
+  path: overrides.path,
+  distro: overrides.distro ?? 'Ubuntu',
+  entry_id: overrides.entry_id ?? 'entry-1',
+  selected_agent: null,
+  selected_ide: null,
+});
+
+const makeWslEntry = (overrides: {
+  id: string;
+  distro: string;
+  projects: ReturnType<typeof makeWslProject>[];
+}): WSLEntrySession => ({
+  id: overrides.id,
+  distro: overrides.distro,
+  projects: overrides.projects,
+});
 
 describe('useWslProjects', () => {
   const mockSaveSession = vi.fn();
@@ -29,13 +56,11 @@ describe('useWslProjects', () => {
   it('handleWSLEntryAdd 添加新 entry', async () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeWslEntry({
       id: 'entry-1',
       distro: 'Ubuntu',
-      projects: [
-        { id: 'wp1', name: 'ws-project', path: '/home/user/proj' },
-      ],
-    };
+      projects: [makeWslProject({ id: 'wp1', name: 'ws-project', path: '/home/user/proj' })],
+    });
 
     await act(async () => {
       await result.current.handleWSLEntryAdd(entry);
@@ -49,21 +74,21 @@ describe('useWslProjects', () => {
   it('handleWSLEntryAdd 更新已有 entry', async () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeWslEntry({
       id: 'entry-1',
       distro: 'Ubuntu',
-      projects: [{ id: 'wp1', name: 'proj1', path: '/home/user/proj1' }],
-    };
+      projects: [makeWslProject({ id: 'wp1', name: 'proj1', path: '/home/user/proj1' })],
+    });
 
     await act(async () => {
       await result.current.handleWSLEntryAdd(entry);
     });
 
-    const updated = {
+    const updated: WSLEntrySession = {
       ...entry,
       projects: [
         ...entry.projects,
-        { id: 'wp2', name: 'proj2', path: '/home/user/proj2' },
+        makeWslProject({ id: 'wp2', name: 'proj2', path: '/home/user/proj2' }),
       ],
     };
 
@@ -71,21 +96,20 @@ describe('useWslProjects', () => {
       await result.current.handleWSLEntryAdd(updated);
     });
 
-    expect(result.current.wslEntries).toHaveLength(1); // 仍然是 1 个 entry
+    expect(result.current.wslEntries).toHaveLength(1);
     expect(result.current.wslEntries[0].projects).toHaveLength(2);
   });
 
   it('handleCloseWslProject 关闭活跃项目', () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
-    // 先添加 entry
     act(() => {
       result.current.setWslEntries([
-        {
+        makeWslEntry({
           id: 'e1',
           distro: 'Ubuntu',
-          projects: [{ id: 'wp1', name: 'p1', path: '/tmp/p1' }],
-        },
+          projects: [makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' })],
+        }),
       ]);
     });
 
@@ -109,14 +133,14 @@ describe('useWslProjects', () => {
   it('handleRemoveWslProject 从 entry 中移除项目', async () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeWslEntry({
       id: 'e1',
       distro: 'Ubuntu',
       projects: [
-        { id: 'wp1', name: 'p1', path: '/tmp/p1' },
-        { id: 'wp2', name: 'p2', path: '/tmp/p2' },
+        makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' }),
+        makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' }),
       ],
-    };
+    });
 
     act(() => {
       result.current.setWslEntries([entry]);
@@ -136,16 +160,16 @@ describe('useWslProjects', () => {
 
     act(() => {
       result.current.setWslEntries([
-        {
+        makeWslEntry({
           id: 'e1',
           distro: 'Ubuntu',
-          projects: [{ id: 'wp1', name: 'p1', path: '/tmp/p1' }],
-        },
-        {
+          projects: [makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' })],
+        }),
+        makeWslEntry({
           id: 'e2',
           distro: 'Debian',
-          projects: [{ id: 'wp2', name: 'p2', path: '/tmp/p2' }],
-        },
+          projects: [makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' })],
+        }),
       ]);
     });
 

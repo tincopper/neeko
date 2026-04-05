@@ -1,12 +1,43 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '../../hooks/useRemoteProjects';
+import type { RemoteEntrySession, RemoteProject } from '../../types';
 
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
   remoteCacheKey: (entryId: string, projectId: string) => `remote:${entryId}:${projectId}`,
   destroyRemoteCache: vi.fn(),
 }));
+
+const makeRemoteProject = (overrides: {
+  id: string;
+  name: string;
+  path: string;
+  entry_id?: string;
+}): RemoteProject => ({
+  id: overrides.id,
+  name: overrides.name,
+  path: overrides.path,
+  entry_id: overrides.entry_id ?? 'e1',
+  selected_agent: null,
+  selected_ide: null,
+});
+
+const makeRemoteEntry = (overrides: {
+  id: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  projects?: RemoteProject[];
+  saved_auth?: string | null;
+}): RemoteEntrySession => ({
+  id: overrides.id,
+  host: overrides.host ?? '192.168.1.100',
+  port: overrides.port ?? 22,
+  username: overrides.username ?? 'root',
+  projects: overrides.projects ?? [],
+  saved_auth: overrides.saved_auth,
+});
 
 describe('useRemoteProjects', () => {
   const mockSaveSession = vi.fn();
@@ -29,16 +60,11 @@ describe('useRemoteProjects', () => {
   it('handleRemoteEntryAdd 添加新 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeRemoteEntry({
       id: 'remote-1',
       host: '192.168.1.100',
-      name: 'production',
-      authMethod: 'password' as const,
-      saved_auth: null,
-      projects: [
-        { id: 'rp1', name: 'app', path: '/opt/app' },
-      ],
-    };
+      projects: [makeRemoteProject({ id: 'rp1', name: 'app', path: '/opt/app' })],
+    });
 
     await act(async () => {
       await result.current.handleRemoteEntryAdd(entry, null);
@@ -52,24 +78,21 @@ describe('useRemoteProjects', () => {
   it('handleRemoteEntryAdd 更新已有 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeRemoteEntry({
       id: 'remote-1',
       host: '192.168.1.100',
-      name: 'prod',
-      authMethod: 'password' as const,
-      saved_auth: null,
-      projects: [{ id: 'rp1', name: 'app', path: '/opt/app' }],
-    };
+      projects: [makeRemoteProject({ id: 'rp1', name: 'app', path: '/opt/app' })],
+    });
 
     await act(async () => {
       await result.current.handleRemoteEntryAdd(entry, null);
     });
 
-    const updated = {
+    const updated: RemoteEntrySession = {
       ...entry,
       projects: [
         ...entry.projects,
-        { id: 'rp2', name: 'api', path: '/opt/api' },
+        makeRemoteProject({ id: 'rp2', name: 'api', path: '/opt/api' }),
       ],
     };
 
@@ -84,14 +107,7 @@ describe('useRemoteProjects', () => {
   it('handleRemoteEntryAdd 保存 auth 到 store', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const entry = {
-      id: 'remote-1',
-      host: '192.168.1.100',
-      name: 'prod',
-      authMethod: 'password' as const,
-      saved_auth: null,
-      projects: [],
-    };
+    const entry = makeRemoteEntry({ id: 'remote-1' });
 
     const auth = { password: 'secret' };
 
@@ -105,14 +121,7 @@ describe('useRemoteProjects', () => {
   it('handleRemoteEntryAdd 有 saved_auth 时写入 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const entry = {
-      id: 'remote-1',
-      host: '192.168.1.100',
-      name: 'prod',
-      authMethod: 'key' as const,
-      saved_auth: null,
-      projects: [],
-    };
+    const entry = makeRemoteEntry({ id: 'remote-1' });
 
     await act(async () => {
       await result.current.handleRemoteEntryAdd(entry, null, 'encoded-auth');
@@ -126,14 +135,11 @@ describe('useRemoteProjects', () => {
 
     act(() => {
       result.current.setRemoteEntries([
-        {
+        makeRemoteEntry({
           id: 'e1',
           host: 'host1',
-          name: 'prod',
-          authMethod: 'password' as const,
-          saved_auth: null,
-          projects: [{ id: 'rp1', name: 'p1', path: '/opt/p1' }],
-        },
+          projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
+        }),
       ]);
     });
 
@@ -159,17 +165,14 @@ describe('useRemoteProjects', () => {
 
     act(() => {
       result.current.setRemoteEntries([
-        {
+        makeRemoteEntry({
           id: 'e1',
           host: 'host1',
-          name: 'prod',
-          authMethod: 'password' as const,
-          saved_auth: null,
           projects: [
-            { id: 'rp1', name: 'p1', path: '/opt/p1' },
-            { id: 'rp2', name: 'p2', path: '/opt/p2' },
+            makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+            makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
           ],
-        },
+        }),
       ]);
     });
 
@@ -184,14 +187,11 @@ describe('useRemoteProjects', () => {
   it('handleRemoveRemoteEntry 移除整个 entry 并清理 auth', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const entry = {
+    const entry = makeRemoteEntry({
       id: 'e1',
       host: 'host1',
-      name: 'prod',
-      authMethod: 'password' as const,
-      saved_auth: null,
-      projects: [{ id: 'rp1', name: 'p1', path: '/opt/p1' }],
-    };
+      projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
+    });
 
     await act(async () => {
       await result.current.handleRemoteEntryAdd(entry, { password: 'test' } as any);
@@ -234,19 +234,11 @@ describe('useRemoteProjects', () => {
   it('restoreAuthFromEntries 从 saved_auth 恢复 auth', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    // Base64 编码的 JSON auth
     const authData = { password: 'test123' };
     const encoded = btoa(JSON.stringify(authData));
 
     const entries = [
-      {
-        id: 'e1',
-        host: 'host1',
-        name: 'prod',
-        authMethod: 'password' as const,
-        saved_auth: encoded,
-        projects: [],
-      },
+      makeRemoteEntry({ id: 'e1', host: 'host1', saved_auth: encoded }),
     ];
 
     act(() => {
@@ -260,14 +252,7 @@ describe('useRemoteProjects', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
     const entries = [
-      {
-        id: 'e1',
-        host: 'host1',
-        name: 'prod',
-        authMethod: 'password' as const,
-        saved_auth: 'invalid-base64!!!',
-        projects: [],
-      },
+      makeRemoteEntry({ id: 'e1', host: 'host1', saved_auth: 'invalid-base64!!!' }),
     ];
 
     act(() => {
@@ -282,29 +267,19 @@ describe('useRemoteProjects', () => {
 
     act(() => {
       result.current.setRemoteEntries([
-        {
+        makeRemoteEntry({
           id: 'e1',
           host: 'host1',
-          name: 'prod',
-          authMethod: 'password' as const,
-          saved_auth: null,
-          projects: [{ id: 'rp1', name: 'p1', path: '/opt/p1' }],
-        },
+          projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
+        }),
       ]);
     });
 
     act(() => {
       result.current.setActiveRemoteProject({
-        entry: {
-          id: 'e1',
-          host: 'host1',
-          name: 'prod',
-          authMethod: 'password' as const,
-          saved_auth: null,
-          projects: [],
-        },
-        project: { id: 'rp1', name: 'p1', path: '/opt/p1' },
-      } as any);
+        entry: makeRemoteEntry({ id: 'e1', host: 'host1' }),
+        project: makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+      });
     });
 
     expect(result.current.pendingAuthEntry).not.toBeNull();
