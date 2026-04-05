@@ -29,6 +29,15 @@ npx tsc --noEmit
 
 # Rust 编译检查
 cargo check --manifest-path src-tauri/Cargo.toml
+
+# 前端测试
+pnpm test
+
+# 前端测试（watch 模式）
+pnpm test:watch
+
+# Rust 测试
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## 目录结构
@@ -181,6 +190,57 @@ import { TitleBar, AgentIcon } from "./components/layout";
 #### 平台门控
 - WSL 命令使用 `cfg!(target_os = "windows")` 门控
 - Windows 使用 `CREATE_NO_WINDOW` (0x08000000) 避免控制台闪烁
+
+### 测试 (TDD)
+
+**本项目采用 TDD 驱动开发。所有新增需求或改动必须先写测试再写实现。**
+
+#### 测试框架
+- **前端**：Vitest + @testing-library/react + jsdom
+- **后端**：Rust 内置 `#[test]` + `tempfile`（临时目录）
+
+#### 测试目录结构
+```
+src/
+├── utils/__tests__/
+│   ├── fileIcons.test.ts
+│   ├── distros.test.ts
+│   ├── agents.test.ts
+│   ├── terminal.test.ts
+│   └── idePresets.test.ts
+├── components/project/__tests__/
+│   └── FileTree.test.ts
+├── hooks/__tests__/
+│   └── useWorktreeState.test.ts
+└── test/
+    └── setup.ts
+src-tauri/src/
+├── git.rs    (#[cfg(test)] 模块)
+├── agent.rs  (#[cfg(test)] 模块)
+└── ...
+```
+
+#### 测试优先级
+| Tier | 目标 | 方法 |
+|------|------|------|
+| 1 | 纯函数（`getFileIcon`、`buildTree`、`parse_unified_diff`） | 直接调用，断言返回值 |
+| 2 | Hooks（`useWorktreeState`） | `renderHook` + `act` |
+| 3 | Rust 管理器（`AgentManager`、`ProjectManager`） | `#[test]` 函数 |
+| 4 | 组件（需要 mock `invoke`） | `@testing-library/react` |
+
+#### TDD 流程
+1. **先写测试**：定义输入/输出，编写失败的测试用例
+2. **红灯**：运行 `pnpm test` / `cargo test`，确认测试失败
+3. **绿灯**：编写最小实现使测试通过
+4. **重构**：优化代码，保持测试通过
+5. **提交**：测试 + 实现一起提交
+
+#### 测试规范
+- 纯函数测试不 mock 任何依赖
+- Hook 测试使用 `renderHook`，不渲染组件
+- Rust 测试使用 `#[cfg(test)]` 模块，避免污染生产代码
+- 测试命名：`should_<行为>_when_<条件>`
+- 每个测试用例独立，不依赖执行顺序
 
 ## 架构要点
 
