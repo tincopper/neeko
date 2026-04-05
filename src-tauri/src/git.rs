@@ -490,3 +490,122 @@ fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
         _rest,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_parse_empty_diff() {
+        let result = parse_unified_diff("");
+        assert!(result.hunks.is_empty());
+    }
+
+    #[test]
+    fn should_parse_single_hunk() {
+        let diff = r#"@@ -1,3 +1,4 @@
+ line1
++added line
+ line2
+ line3"#;
+        let result = parse_unified_diff(diff);
+        assert_eq!(result.hunks.len(), 1);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.old_start, 1);
+        assert_eq!(hunk.old_lines, 3);
+        assert_eq!(hunk.new_start, 1);
+        assert_eq!(hunk.new_lines, 4);
+        assert_eq!(hunk.lines.len(), 4);
+    }
+
+    #[test]
+    fn should_parse_added_lines() {
+        let diff = r#"@@ -1,1 +1,2 @@
+ existing
++new line"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert!(matches!(hunk.lines[0], DiffLine::Context(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Added(_)));
+    }
+
+    #[test]
+    fn should_parse_removed_lines() {
+        let diff = r#"@@ -1,2 +1,1 @@
+-removed line
+-removed line2"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.lines.len(), 2);
+        assert!(matches!(hunk.lines[0], DiffLine::Removed(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Removed(_)));
+    }
+
+    #[test]
+    fn should_parse_multiple_hunks() {
+        let diff = r#"@@ -1,3 +1,3 @@
+ context1
+-old1
++new1
+ context2
+@@ -10,2 +10,3 @@
+ context10
++added
+ context11"#;
+        let result = parse_unified_diff(diff);
+        assert_eq!(result.hunks.len(), 2);
+        assert_eq!(result.hunks[0].old_start, 1);
+        assert_eq!(result.hunks[1].old_start, 10);
+    }
+
+    #[test]
+    fn should_skip_diff_headers() {
+        let diff = r#"--- a/file.rs
++++ b/file.rs
+@@ -1,1 +1,2 @@
+ line1
++added"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        // Should not include --- or +++ as diff lines
+        assert_eq!(hunk.lines.len(), 2);
+        assert!(matches!(hunk.lines[0], DiffLine::Context(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Added(_)));
+    }
+
+    #[test]
+    fn should_parse_hunk_without_line_counts() {
+        let diff = "@@ -1 +1 @@
+-old
++new";
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.old_start, 1);
+        assert_eq!(hunk.old_lines, 1);
+        assert_eq!(hunk.new_start, 1);
+        assert_eq!(hunk.new_lines, 1);
+    }
+
+    #[test]
+    fn should_strip_prefix_from_lines() {
+        let diff = r#"@@ -1,3 +1,3 @@
+ unchanged
+-removed
++added"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+
+        match &hunk.lines[0] {
+            DiffLine::Context(s) => assert_eq!(s, "unchanged"),
+            _ => panic!("Expected Context"),
+        }
+        match &hunk.lines[1] {
+            DiffLine::Removed(s) => assert_eq!(s, "removed"),
+            _ => panic!("Expected Removed"),
+        }
+        match &hunk.lines[2] {
+            DiffLine::Added(s) => assert_eq!(s, "added"),
+            _ => panic!("Expected Added"),
+        }
+    }
+}

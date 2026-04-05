@@ -109,3 +109,80 @@ impl AgentManager {
         self.agents.retain(|a| a.id != agent_id);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_initialize_with_seven_presets() {
+        let manager = AgentManager::new();
+        assert_eq!(manager.get_agents().len(), 7);
+    }
+
+    #[test]
+    fn should_find_agent_by_id() {
+        let manager = AgentManager::new();
+        let agent = manager.get_agent("opencode");
+        assert!(agent.is_some());
+        assert_eq!(agent.unwrap().name, "opencode");
+    }
+
+    #[test]
+    fn should_return_none_for_unknown_id() {
+        let manager = AgentManager::new();
+        assert!(manager.get_agent("nonexistent").is_none());
+    }
+
+    #[test]
+    fn should_add_custom_agent() {
+        let mut manager = AgentManager::new();
+        let custom = AgentConfig {
+            id: "custom".to_string(),
+            name: "Custom Agent".to_string(),
+            command: "custom".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: None,
+            enabled: true,
+        };
+        manager.add_agent(custom);
+        assert_eq!(manager.get_agents().len(), 8);
+        assert!(manager.get_agent("custom").is_some());
+    }
+
+    #[test]
+    fn should_remove_agent() {
+        let mut manager = AgentManager::new();
+        manager.remove_agent("opencode");
+        assert_eq!(manager.get_agents().len(), 6);
+        assert!(manager.get_agent("opencode").is_none());
+    }
+
+    #[test]
+    fn should_not_panic_when_removing_nonexistent() {
+        let mut manager = AgentManager::new();
+        manager.remove_agent("nonexistent");
+        assert_eq!(manager.get_agents().len(), 7);
+    }
+
+    #[test]
+    fn should_contain_all_expected_presets() {
+        let manager = AgentManager::new();
+        let agents = manager.get_agents();
+        let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
+        assert!(ids.contains(&"opencode"));
+        assert!(ids.contains(&"claude-code"));
+        assert!(ids.contains(&"qwen"));
+        assert!(ids.contains(&"gemini"));
+        assert!(ids.contains(&"codex"));
+        assert!(ids.contains(&"qoder"));
+        assert!(ids.contains(&"codebuddy"));
+    }
+
+    #[test]
+    fn should_have_all_agents_enabled_by_default() {
+        let manager = AgentManager::new();
+        assert!(manager.get_agents().iter().all(|a| a.enabled));
+    }
+}
