@@ -1,0 +1,4 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查测试是否遵循规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查代码质量规范"}

@@ -100,22 +100,34 @@ cargo test -- --nocapture  # 显示 println 输出
 
 ### 前端
 
-测试文件与源文件放在一起，使用 `.test.ts` / `.test.tsx` 后缀：
+测试文件统一放在 `src/tests/` 独立目录下，按模块类型分子目录，使用 `.test.ts` / `.test.tsx` 后缀：
 
 ```
 src/
-├── hooks/
-│   ├── useToast.ts
-│   └── useToast.test.ts        # Hook 测试
+├── tests/                              # 前端测试独立目录
+│   ├── setup.ts                        # 全局测试配置（Tauri API mock）
+│   ├── factories.ts                    # 共享测试数据工厂
+│   ├── utils/
+│   │   ├── platform.test.ts            # 工具函数测试
+│   │   ├── terminal.test.ts
+│   │   └── ...
+│   ├── hooks/
+│   │   ├── useToast.test.ts            # Hook 测试
+│   │   ├── useAppConfig.test.ts
+│   │   └── ...
+│   └── components/
+│       ├── FileTree.test.tsx            # 组件测试
+│       └── ...
 ├── utils/
-│   ├── platform.ts
-│   └── platform.test.ts        # 工具函数测试
-├── components/
-│   └── layout/
-│       ├── AgentIcon.tsx
-│       └── AgentIcon.test.tsx   # 组件测试
-└── test/
-    └── setup.ts                 # 全局测试配置
+├── hooks/
+└── components/
+```
+
+测试文件通过相对路径导入源码：
+
+```typescript
+import { IS_WINDOWS } from '../../utils/platform';
+import { useToast } from '../../hooks/useToast';
 ```
 
 ### 后端

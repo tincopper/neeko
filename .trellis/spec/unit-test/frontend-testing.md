@@ -19,14 +19,15 @@ pnpm add -D vitest @testing-library/react @testing-library/jest-dom @testing-lib
 ```typescript
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    setupFiles: ['./src/tests/setup.ts'],
+    include: ['src/tests/**/*.{test,spec}.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
@@ -34,12 +35,17 @@ export default defineConfig({
       exclude: ['src/test/**', 'src/vite-env.d.ts', 'src/main.tsx'],
     },
   },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
 });
 ```
 
 ### 全局测试配置
 
-创建 `src/test/setup.ts`：
+创建 `src/tests/setup.ts`：
 
 ```typescript
 import '@testing-library/jest-dom/vitest';
