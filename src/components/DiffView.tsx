@@ -51,13 +51,13 @@ hljs.registerLanguage("dockerfile", dockerfile);
 hljs.registerLanguage("diff", diff);
 hljs.registerLanguage("plaintext", plaintext);
 
-interface DiffLine {
+export interface DiffLine {
   Context?: string;
   Added?: string;
   Removed?: string;
 }
 
-interface DiffHunk {
+export interface DiffHunk {
   old_start: number;
   old_lines: number;
   new_start: number;
@@ -84,7 +84,7 @@ interface DiffViewProps {
   onBack: () => void;
 }
 
-interface SplitRow {
+export interface SplitRow {
   type: "hunk-header" | "change" | "context";
   hunkHeader?: string;
   oldLineNum?: number;
@@ -122,7 +122,7 @@ const EXT_TO_LANG: Record<string, string> = {
   ".gitignore": "plaintext", ".env": "plaintext",
 };
 
-function detectLanguage(filePath: string): string {
+export function detectLanguage(filePath: string): string {
   const lower = filePath.toLowerCase();
   if (lower.endsWith("dockerfile")) return "dockerfile";
   const dotIdx = lower.lastIndexOf(".");
@@ -131,7 +131,7 @@ function detectLanguage(filePath: string): string {
   return EXT_TO_LANG[ext] || "plaintext";
 }
 
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -150,12 +150,12 @@ function highlightLine(text: string, language: string): string {
 
 // ── Word-level diff using LCS ──
 
-interface WordDiffPart {
+export interface WordDiffPart {
   value: string;
   type: "equal" | "added" | "removed";
 }
 
-function tokenizeForDiff(text: string): string[] {
+export function tokenizeForDiff(text: string): string[] {
   const tokens: string[] = [];
   let current = "";
   for (let i = 0; i < text.length; i++) {
@@ -174,7 +174,7 @@ function tokenizeForDiff(text: string): string[] {
   return tokens;
 }
 
-function computeLCS(a: string[], b: string[]): boolean[][] {
+export function computeLCS(a: string[], b: string[]): boolean[][] {
   const m = a.length;
   const n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
@@ -203,7 +203,7 @@ function computeLCS(a: string[], b: string[]): boolean[][] {
   return lcs;
 }
 
-function computeWordDiff(oldText: string, newText: string): { oldParts: WordDiffPart[]; newParts: WordDiffPart[] } {
+export function computeWordDiff(oldText: string, newText: string): { oldParts: WordDiffPart[]; newParts: WordDiffPart[] } {
   const oldTokens = tokenizeForDiff(oldText);
   const newTokens = tokenizeForDiff(newText);
   const lcs = computeLCS(oldTokens, newTokens);
@@ -271,7 +271,7 @@ function renderWordDiffHtml(
 
 // ── Split view builder with word-level diff ──
 
-function buildSplitRows(hunk: DiffHunk): SplitRow[] {
+export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   const rows: SplitRow[] = [];
   rows.push({
     type: "hunk-header",
