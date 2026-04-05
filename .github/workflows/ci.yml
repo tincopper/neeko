@@ -12,17 +12,11 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  frontend-check:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            platform: windows
-          - os: macos-latest
-            platform: macos
-          - os: ubuntu-latest
-            platform: linux
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -38,6 +32,49 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: TypeScript check
+        run: pnpm tsc --noEmit
+
+  frontend-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Unit tests
+        run: pnpm test:run
+
+  backend-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -47,7 +84,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -57,12 +94,40 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install frontend dependencies
-        run: pnpm install
-
-      - name: TypeScript check
-        run: pnpm tsc --noEmit
-
       - name: Rust check
         run: cargo check
+        working-directory: ./src-tauri
+
+  backend-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Rust test
+        run: cargo test
         working-directory: ./src-tauri
