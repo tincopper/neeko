@@ -111,7 +111,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       await invoke("checkout_branch", { projectId: project.id, branchName });
       onBackToMainTerminal(project.id);
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -121,7 +121,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("remove_worktree", { projectId: project.id, worktreePath });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -141,7 +141,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("rename_branch", { projectId: project.id, oldName, newName });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -169,7 +169,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("rename_worktree", { projectId: project.id, worktreePath: oldPath, newName });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };

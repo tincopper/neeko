@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   createTerminalForProject,
@@ -47,7 +47,7 @@ export function refreshSideTerminal(projectId: string, worktreePath?: string) {
   terminalRebuildCallbacks.get(key)?.();
 }
 
-export default function SideTerminalView({
+function SideTerminalView({
   project,
   fontSize = 14,
   shell = "",
@@ -202,4 +202,6 @@ export default function SideTerminalView({
     </div>
   );
 }
+
+export default React.memo(SideTerminalView);
 

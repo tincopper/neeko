@@ -330,7 +330,7 @@ function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   return rows;
 }
 
-const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, initialMode, onBack }) => {
+const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, filePath, initialMode, onBack }) => {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -678,6 +678,6 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
       </div>
     </div>
   );
-};
+});
 
 export default DiffView;
