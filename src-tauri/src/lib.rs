@@ -1,10 +1,10 @@
-mod agent;
-mod git;
+pub mod agent;
+pub mod git;
 mod logger;
-mod project;
+pub mod project;
 mod remote;
-mod state;
-mod storage;
+pub mod state;
+pub mod storage;
 mod terminal;
 mod watcher;
 
