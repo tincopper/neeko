@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import type { WSLEntrySession, RemoteEntrySession } from '../../types';
 
 // mock terminal refresh functions
 vi.mock('../../components/terminal', () => ({
@@ -10,38 +11,37 @@ vi.mock('../../components/terminal', () => ({
   refreshRemoteTerminal: vi.fn(),
 }));
 
-function createDefaultParams(overrides?: Partial<any>) {
+function createDefaultParams() {
   return {
-    projects: [],
-    activeProjectId: null,
+    projects: [] as { id: string }[],
+    activeProjectId: null as string | null,
     sideTerminalOpenRef: { current: false },
     setSideTerminalOpen: vi.fn(),
-    wslEntriesRef: { current: [] },
-    activeWslKeyRef: { current: null },
+    wslEntriesRef: { current: [] as WSLEntrySession[] },
+    activeWslKeyRef: { current: null as { distro: string; projectId: string } | null },
     selectWslProjectRef: { current: vi.fn() },
-    remoteEntriesRef: { current: [] },
-    activeRemoteKeyRef: { current: null },
+    remoteEntriesRef: { current: [] as RemoteEntrySession[] },
+    activeRemoteKeyRef: { current: null as { host: string; projectId: string } | null },
     selectRemoteProjectRef: { current: vi.fn() },
     selectProjectRef: { current: vi.fn() },
-    wslSideOpenRef: { current: new Set() },
-    remoteSideOpenRef: { current: new Set() },
+    wslSideOpenRef: { current: new Set<string>() },
+    remoteSideOpenRef: { current: new Set<string>() },
     setWslSideTerminalOpen: vi.fn(),
     setRemoteSideTerminalOpen: vi.fn(),
-    activeWorktreePathRef: { current: null },
-    openedWorktreesRef: { current: [] },
+    activeWorktreePathRef: { current: null as string | null },
+    openedWorktreesRef: { current: [] as { path: string; branch: string }[] },
     updateWtPath: vi.fn(),
-    wslOpenedWtRef: { current: [] },
-    activeWslWorktreePathRef: { current: null },
+    wslOpenedWtRef: { current: [] as { path: string; branch: string }[] },
+    activeWslWorktreePathRef: { current: null as string | null },
     setWslWorktreePath: vi.fn(),
     setWslWtBranch: vi.fn(),
-    remoteOpenedWtRef: { current: [] },
-    activeRemoteWorktreePathRef: { current: null },
+    remoteOpenedWtRef: { current: [] as { path: string; branch: string }[] },
+    activeRemoteWorktreePathRef: { current: null as string | null },
     setRemoteWorktreePath: vi.fn(),
     setRemoteWtBranch: vi.fn(),
     isTerminalViewRef: { current: true },
-    activeProjectRef: { current: null },
+    activeProjectRef: { current: null as { id: string; selected_ide: string | null } | null },
     handleOpenIde: vi.fn(),
-    ...overrides,
   };
 }
 
@@ -52,7 +52,6 @@ function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean }
     altKey: opts.altKey ?? false,
     bubbles: true,
   });
-  // preventDefault spy
   const preventSpy = vi.spyOn(event, 'preventDefault');
   window.dispatchEvent(event);
   return { event, preventSpy };
@@ -204,7 +203,7 @@ describe('useKeyboardShortcuts', () => {
     params.isTerminalViewRef.current = true;
     renderHook(() => useKeyboardShortcuts(params));
 
-    dispatchKey('KeyT'); // 无 Ctrl/Alt
+    dispatchKey('KeyT');
 
     expect(params.setSideTerminalOpen).not.toHaveBeenCalled();
   });

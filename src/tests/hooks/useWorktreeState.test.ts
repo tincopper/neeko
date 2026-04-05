@@ -3,14 +3,14 @@ import { renderHook, act } from '@testing-library/react';
 import { useWorktreeState } from '../../hooks/useWorktreeState';
 
 describe('useWorktreeState', () => {
-  let activeProjectIdRef: React.RefObject<string | null>;
+  let activeProjectIdRef: { current: string | null };
 
   beforeEach(() => {
     activeProjectIdRef = { current: 'project-1' };
   });
 
   it('初始状态为空', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     expect(result.current.activeWorktreePath).toBeNull();
     expect(result.current.activeWorktreeBranch).toBe('');
@@ -19,7 +19,7 @@ describe('useWorktreeState', () => {
 
   it('null 项目 ID 时不更新状态', () => {
     activeProjectIdRef.current = null;
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     act(() => {
       result.current.updateWtPath('/some/path', 'main');
@@ -29,7 +29,7 @@ describe('useWorktreeState', () => {
   });
 
   it('updateWtPath 同时更新路径和分支', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     act(() => {
       result.current.updateWtPath('/projects/wt1', 'feature-a');
@@ -40,29 +40,29 @@ describe('useWorktreeState', () => {
   });
 
   it('setActiveWorktreePath 只更新路径', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     act(() => {
       result.current.setActiveWorktreePath('/projects/wt1');
     });
 
     expect(result.current.activeWorktreePath).toBe('/projects/wt1');
-    expect(result.current.activeWorktreeBranch).toBe(''); // 分支不变
+    expect(result.current.activeWorktreeBranch).toBe('');
   });
 
   it('setActiveWorktreeBranch 只更新分支', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     act(() => {
       result.current.setActiveWorktreeBranch('develop');
     });
 
     expect(result.current.activeWorktreeBranch).toBe('develop');
-    expect(result.current.activeWorktreePath).toBeNull(); // 路径不变
+    expect(result.current.activeWorktreePath).toBeNull();
   });
 
   it('setOpenedWorktrees 直接设置列表', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     const items = [
       { path: '/projects/wt1', branch: 'main' },
@@ -77,7 +77,7 @@ describe('useWorktreeState', () => {
   });
 
   it('setOpenedWorktrees 支持函数式更新', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef));
+    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
 
     const items = [{ path: '/projects/wt1', branch: 'main' }];
     act(() => {
@@ -109,11 +109,9 @@ describe('useWorktreeState', () => {
       r1.current.updateWtPath('/project-1/wt', 'main');
     });
 
-    // project-2 的状态不受影响
     expect(r2.current.activeWorktreePath).toBeNull();
     expect(r2.current.activeWorktreeBranch).toBe('');
 
-    // project-1 的状态独立保留
     expect(r1.current.activeWorktreePath).toBe('/project-1/wt');
   });
 });
