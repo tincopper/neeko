@@ -39,6 +39,7 @@ jobs:
         run: pnpm tsc --noEmit
 
   frontend-test:
+    needs: frontend-check
     strategy:
       fail-fast: false
       matrix:
@@ -61,8 +62,15 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Unit tests
-        run: pnpm test:run
+      - name: Unit tests with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: coverage-report
+          path: coverage/
 
   backend-check:
     strategy:
@@ -99,6 +107,7 @@ jobs:
         working-directory: ./src-tauri
 
   backend-test:
+    needs: backend-check
     strategy:
       fail-fast: false
       matrix:
