@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
-- **Last Active**: 2026-04-05
+- **Total Sessions**: 5
+- **Last Active**: 2026-04-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~172 | Active |
+| `journal-1.md` | ~204 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 5 | 2026-04-06 | CI Workflow Trigger 调整 | `d300cfb` |
 | 4 | 2026-04-05 | CI 前后端 lint/test 并行化 | `6436d23` |
 | 3 | 2026-04-05 | P3 组件测试 + 类型错误修复 | `5be96a8`, `4533b04` |
 | 2 | 2026-04-05 | Backend 单元测试脚手架搭建 | `b31e3d9` |
