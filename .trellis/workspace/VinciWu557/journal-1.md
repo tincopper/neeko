@@ -170,3 +170,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: CI Workflow Trigger 调整
+
+**Date**: 2026-04-06
+**Task**: CI Workflow Trigger 调整
+
+### Summary
+
+调整 CI/Build workflow 触发条件：ci check/test 改为任意分支 push 触发，build 改为手动触发
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d300cfb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
