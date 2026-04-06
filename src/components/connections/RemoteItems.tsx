@@ -1,34 +1,16 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
-import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo } from "../../types";
+import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../../types";
 import { getDistroIcon } from "../../utils/distros";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import FileTree, { buildTree } from "../project/FileTree";
+import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
+import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
+import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon } from "../icons";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
-
-// ─── Shared SVG icons ────────────────────────────────────────────────────────
-const FILE_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
-  <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
-</svg>;
-
-const BRANCH_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
-  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-</svg>;
-
-const SIDE_TERMINAL_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-  <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z" />
-</svg>;
-
-const CLOSE_TERMINAL_SVG = <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
-  <rect x="2" y="2" width="8" height="8" rx="1.5" />
-</svg>;
-
-const GIT_SVG = <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z" />
-</svg>;
 
 const AVATAR_COLORS = [
   "#e06c75", "#d19a66", "#e5c07b", "#98c379",
@@ -108,10 +90,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
         className="gh-section-label gh-section-label-collapsible"
         onClick={(e) => onToggleSection("__branches__", e)}
       >
-        <svg className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`}
-          width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-        </svg>
+        <ChevronRightIcon size={10} className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`} />
         Branches
       </div>
       {branchesExpanded && (
@@ -141,7 +120,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     if (!isRenaming) onStartRenameBranch(branch, gitInfo.current_branch);
                   }}
                 >
-                  {BRANCH_SVG}
+                  <BranchIcon size={11} style={{ opacity: 0.6 }} />
                   {isRenaming ? (
                     <input
                       ref={renameInputRef}
@@ -178,10 +157,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
             className="gh-section-label gh-section-label-collapsible"
             onClick={(e) => onToggleSection("__worktrees__", e)}
           >
-            <svg className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`}
-              width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-            </svg>
+            <ChevronRightIcon size={10} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
             Worktrees
           </div>
           {worktreesExpanded && (
@@ -204,7 +180,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     }}
                     title={`${wt.path}\nClick to open terminal`}
                   >
-                    {FILE_SVG}
+                    <FileIcon size={11} style={{ opacity: 0.6 }} />
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
@@ -222,7 +198,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       <span className="gh-branch-item-name">{wt.path.split('/').pop()}</span>
                     )}
                     <span className="gh-branch-inline" title={wt.branch}>
-                      {BRANCH_SVG}
+                      <BranchIcon size={11} style={{ opacity: 0.6 }} />
                       {wt.branch}
                     </span>
                     {!isRenaming && (
@@ -248,7 +224,7 @@ ProjectBody.displayName = "ProjectBody";
 // ─── Generic project item header + expandable body ──────────────────────────
 
 interface ProjectItemCardProps {
-  project: { id: string; name: string; path: string; git_info?: GitInfo | null; selected_ide?: string | null };
+  project: { id: string; name: string; path: string; git_info?: GitInfo | null; selected_ide?: string | null; selected_agent?: string | null };
   isActive: boolean;
   hasSession: boolean;
   onSelectProject: () => void;
@@ -264,6 +240,11 @@ interface ProjectItemCardProps {
   onOpenDialog?: (type: string, branches: string[]) => void;
   currentBranch: string;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
@@ -273,6 +254,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
   onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
   currentBranch, ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -281,6 +263,8 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null);
   const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameWtInputRef = useRef<HTMLInputElement>(null);
   const gitInfoLoaded = useRef(false);
@@ -335,12 +319,81 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     return () => document.removeEventListener("click", handler);
   }, [gitMenuOpen]);
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const buildContextMenuItems = (): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    if (project.selected_ide && onOpenIde) {
+      items.push({
+        label: "Open in IDE",
+        shortcut: "Ctrl+O",
+        action: () => onOpenIde(),
+      });
+    }
+
+    if (isActive && onOpenSideTerminal) {
+      items.push({
+        label: "Open Side Terminal",
+        shortcut: "Ctrl+Alt+T",
+        action: () => onOpenSideTerminal(),
+      });
+    }
+
+    if (project.git_info) {
+      items.push({
+        label: "New Branch",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-branch", project.git_info!.branches);
+        },
+      });
+      items.push({
+        label: "New Worktree",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-worktree", project.git_info!.branches);
+        },
+      });
+    }
+
+    if (onRefresh) {
+      items.push({
+        label: "Refresh Terminal",
+        shortcut: "Ctrl+R",
+        action: () => onRefresh(),
+      });
+    }
+
+    items.push({ label: "", separator: true, action: () => {} });
+
+    if (onOpenSettings && config) {
+      items.push({
+        label: "Project Settings",
+        action: () => setSettingsOpen(true),
+      });
+    }
+
+    items.push({
+      label: "Remove Project",
+      action: () => onRemoveProject(),
+      danger: true,
+    });
+
+    return items;
+  };
+
   return (
     <div className={`gh-project${isActive ? " active" : ""}`}>
       {/* Project header */}
       <div
         className="gh-project-header"
         onClick={() => onSelectProject()}
+        onContextMenu={handleContextMenu}
       >
         <span
           className="gh-project-avatar"
@@ -369,7 +422,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {isActive && onOpenSideTerminal && (
             <button className="gh-icon-btn" title="Open side terminal (Ctrl+Alt+T)"
               onClick={() => onOpenSideTerminal()}>
-              {SIDE_TERMINAL_SVG}
+              <SideTerminalIcon size={11} />
             </button>
           )}
           {/* Git 操作下拉菜单 */}
@@ -380,7 +433,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
-                {GIT_SVG}
+                <GitLogoIcon size={11} />
               </button>
               {gitMenuOpen && (
                 <div className="gh-git-dropdown">
@@ -399,7 +452,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {hasSession && (
             <button className="gh-icon-btn" title="Close terminal"
               onClick={() => onRemoveProject()}>
-              {CLOSE_TERMINAL_SVG}
+              <CloseTerminalIcon size={10} />
             </button>
           )}
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove project"
@@ -409,7 +462,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
         {/* Branch badge */}
         {gitInfo && (
           <span className="gh-branch-inline" title={gitInfo.current_branch}>
-            {BRANCH_SVG}
+            <BranchIcon size={11} style={{ opacity: 0.6 }} />
             {gitInfo.current_branch}
           </span>
         )}
@@ -443,10 +496,151 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           currentBranch={currentBranch}
         />
       )}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems()}
+        />
+      )}
+      {settingsOpen && config && (
+        <ProjectSettingsDialog
+          projectId={project.id}
+          projectName={project.name}
+          currentAgent={project.selected_agent ?? null}
+          currentIde={project.selected_ide ?? null}
+          agents={agents ?? []}
+          config={config}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(agentId, ideCmd) => {
+            onSaveProjectSettings?.(agentId, ideCmd);
+            setSettingsOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 });
 ProjectItemCard.displayName = "ProjectItemCard";
+
+// ─── WSL Project Card (extracted to stabilize callbacks for React.memo) ──
+
+interface WSLProjectCardProps {
+  project: WSLProject;
+  entryId: string;
+  distro: string;
+  isActive: boolean;
+  hasSession: boolean;
+  onSelectProject: (distro: string, project: WSLProject) => void;
+  onRemoveProject: (entryId: string, projectId: string) => void;
+  onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
+  onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
+  onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
+  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
+  onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
+  onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
+  ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+}
+
+const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
+  project, entryId, distro, isActive, hasSession,
+  onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
+  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal, onOpenDialog,
+  ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
+}) => {
+  const handleSelectFile = useCallback((fp: string) => {
+    onSelectFile?.(distro, project.path, fp);
+  }, [onSelectFile, distro, project.path]);
+
+  const handleCheckout = useCallback((branch: string) => {
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_checkout_branch", { distro, projectPath: project.path, branchName: branch })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+    );
+  }, [distro, project.path, project.id, onRefreshGit]);
+
+  const handleRenameBranch = useCallback((oldName: string, newName: string) => {
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_rename_branch", { distro, projectPath: project.path, oldName, newName })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch(console.error)
+    );
+  }, [distro, project.path, project.id, onRefreshGit]);
+
+  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => {
+    onOpenWorktreeTerminal?.(distro, wtPath, branch);
+  }, [onOpenWorktreeTerminal, distro]);
+
+  const handleRenameWorktree = useCallback((oldPath: string, newName: string) => {
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_rename_worktree", { distro, projectPath: project.path, worktreePath: oldPath, newName })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch(console.error)
+    );
+  }, [distro, project.path, project.id, onRefreshGit]);
+
+  const handleRemoveWorktree = useCallback((wtPath: string) => {
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_remove_worktree", { distro, projectPath: project.path, worktreePath: wtPath })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+    );
+  }, [distro, project.path, project.id, onRefreshGit]);
+
+  const handleOpenSide = useMemo(() =>
+    onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined,
+    [onOpenSideTerminal, entryId, project.id]
+  );
+
+  const handleRemove = useCallback(() => {
+    onRemoveProject(entryId, project.id);
+  }, [onRemoveProject, entryId, project.id]);
+
+  const handleOpenIde = useMemo(() =>
+    onOpenIde ? () => onOpenIde(distro, project.path, project.selected_ide ?? "") : undefined,
+    [onOpenIde, distro, project.path, project.selected_ide]
+  );
+
+  const handleOpenDialog = useMemo(() =>
+    onOpenDialog
+      ? (type: string, branches: string[]) =>
+          onOpenDialog({ type, source: { type: "wsl", distro, projectPath: project.path }, branches })
+      : undefined,
+    [onOpenDialog, distro, project.path]
+  );
+
+  return (
+    <ProjectItemCard
+      project={project}
+      isActive={isActive}
+      hasSession={hasSession}
+      onSelectProject={() => onSelectProject(distro, project)}
+      onSelectFile={handleSelectFile}
+      onCheckoutBranch={handleCheckout}
+      onCommitRenameBranch={handleRenameBranch}
+      onOpenWorktreeTerminal={handleOpenWorktree}
+      onCommitRenameWorktree={handleRenameWorktree}
+      onRemoveWorktree={handleRemoveWorktree}
+      onOpenSideTerminal={handleOpenSide}
+      onRemoveProject={handleRemove}
+      onOpenIde={handleOpenIde}
+      onOpenDialog={handleOpenDialog}
+      currentBranch={project.git_info?.current_branch ?? ""}
+      ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
+    />
+  );
+});
+WSLProjectCard.displayName = "WSLProjectCard";
 
 // ─── WSLItem ──────────────────────────────────────────────────────────────────
 
@@ -466,6 +660,11 @@ interface WSLItemProps {
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (distro: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const WSLItem = React.memo<WSLItemProps>(({
@@ -485,6 +684,11 @@ export const WSLItem = React.memo<WSLItemProps>(({
   onOpenWorktreeTerminal,
   onOpenDialog,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   void onCloseProject; // intentionally unused — close handled by terminal session
   const [collapsed, setCollapsed] = useState(false);
@@ -505,15 +709,10 @@ export const WSLItem = React.memo<WSLItemProps>(({
         </div>
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
           <button className="gh-icon-btn" title="Add WSL project" onClick={() => onAddProject(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <PlusIcon size={11} />
           </button>
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove distro" onClick={() => onRemoveEntry(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
-            </svg>
+            <TrashIcon size={11} />
           </button>
         </div>
       </div>
@@ -527,50 +726,27 @@ export const WSLItem = React.memo<WSLItemProps>(({
               const isActive = activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
               const hasSession = openSessions.has(project.id);
               return (
-                <ProjectItemCard
+                <WSLProjectCard
                   key={project.id}
                   project={project}
+                  entryId={entry.id}
+                  distro={entry.distro}
                   isActive={isActive}
                   hasSession={hasSession}
-                  onSelectProject={() => onSelectProject(entry.distro, project)}
-                  onSelectFile={(filePath) => onSelectFile?.(entry.distro, project.path, filePath)}
-                  onCheckoutBranch={(branch) => {
-                    import("@tauri-apps/api/core").then(({ invoke }) =>
-                      invoke("wsl_checkout_branch", { distro: entry.distro, projectPath: project.path, branchName: branch })
-                        .then(() => onRefreshGit?.(entry.distro, project.id, project.path))
-                    );
-                  }}
-                  onCommitRenameBranch={(oldName, newName) => {
-                    import("@tauri-apps/api/core").then(({ invoke }) =>
-                      invoke("wsl_rename_branch", { distro: entry.distro, projectPath: project.path, oldName, newName })
-                        .then(() => onRefreshGit?.(entry.distro, project.id, project.path))
-                        .catch(console.error)
-                    );
-                  }}
-                  onOpenWorktreeTerminal={(worktreePath, branch) => {
-                    onOpenWorktreeTerminal?.(entry.distro, worktreePath, branch);
-                  }}
-                  onCommitRenameWorktree={(oldPath, newName) => {
-                    import("@tauri-apps/api/core").then(({ invoke }) =>
-                      invoke("wsl_rename_worktree", { distro: entry.distro, projectPath: project.path, worktreePath: oldPath, newName })
-                        .then(() => onRefreshGit?.(entry.distro, project.id, project.path))
-                        .catch(console.error)
-                    );
-                  }}
-                  onRemoveWorktree={(worktreePath) => {
-                    import("@tauri-apps/api/core").then(({ invoke }) =>
-                      invoke("wsl_remove_worktree", { distro: entry.distro, projectPath: project.path, worktreePath })
-                        .then(() => onRefreshGit?.(entry.distro, project.id, project.path))
-                    );
-                  }}
-                  onOpenSideTerminal={onOpenSideTerminal ? () => onOpenSideTerminal(entry.id, project.id) : undefined}
-                  onRemoveProject={() => onRemoveProject(entry.id, project.id)}
-                  onOpenIde={onOpenIde ? () => onOpenIde(entry.distro, project.path, project.selected_ide ?? "") : undefined}
-                  onOpenDialog={onOpenDialog ? (type, branches) =>
-                    onOpenDialog({ type, source: { type: "wsl", distro: entry.distro, projectPath: project.path }, branches })
-                  : undefined}
-                  currentBranch={project.git_info?.current_branch ?? ""}
+                  onSelectProject={onSelectProject}
+                  onRemoveProject={onRemoveProject}
+                  onSelectFile={onSelectFile}
+                  onRefreshGit={onRefreshGit}
+                  onOpenIde={onOpenIde}
+                  onOpenSideTerminal={onOpenSideTerminal}
+                  onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  onOpenDialog={onOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.distro, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
                 />
               );
             })
@@ -580,6 +756,126 @@ export const WSLItem = React.memo<WSLItemProps>(({
     </div>
   );
 });
+
+// ─── Remote Project Card (extracted to stabilize callbacks for React.memo) ──
+
+interface RemoteProjectCardProps {
+  project: RemoteProject;
+  entryId: string;
+  host: string;
+  isActive: boolean;
+  hasSession: boolean;
+  onSelectProject: (host: string, project: RemoteProject) => void;
+  onRemoveProject: (entryId: string, projectId: string) => void;
+  onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
+  onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
+  onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
+  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
+  onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
+  invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
+  onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
+  ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+}
+
+const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
+  project, entryId, host, isActive, hasSession,
+  onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
+  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal,
+  invokeRemoteGit, onOpenDialog, ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
+}) => {
+  const handleSelectFile = useCallback((fp: string) => {
+    onSelectFile?.(entryId, project.path, fp);
+  }, [onSelectFile, entryId, project.path]);
+
+  const handleCheckout = useCallback((branch: string) => {
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_checkout_branch", entryId, { projectPath: project.path, branchName: branch })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path));
+    }
+  }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
+  const handleRenameBranch = useCallback((oldName: string, newName: string) => {
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_rename_branch", entryId, { projectPath: project.path, oldName, newName })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch(console.error);
+    }
+  }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
+  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => {
+    onOpenWorktreeTerminal?.(entryId, wtPath, branch);
+  }, [onOpenWorktreeTerminal, entryId]);
+
+  const handleRenameWorktree = useCallback((oldPath: string, newName: string) => {
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_rename_worktree", entryId, { projectPath: project.path, worktreePath: oldPath, newName })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch(console.error);
+    }
+  }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
+  const handleRemoveWorktree = useCallback((wtPath: string) => {
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_remove_worktree", entryId, { projectPath: project.path, worktreePath: wtPath })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path));
+    }
+  }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
+  const handleOpenSide = useMemo(() =>
+    onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined,
+    [onOpenSideTerminal, entryId, project.id]
+  );
+
+  const handleRemove = useCallback(() => {
+    onRemoveProject(entryId, project.id);
+  }, [onRemoveProject, entryId, project.id]);
+
+  const handleOpenIde = useMemo(() =>
+    onOpenIde ? () => onOpenIde(entryId, project.path, project.selected_ide ?? "") : undefined,
+    [onOpenIde, entryId, project.path, project.selected_ide]
+  );
+
+  const handleOpenDialog = useMemo(() =>
+    onOpenDialog
+      ? (type: string, branches: string[]) =>
+          onOpenDialog({ type, source: { type: "remote", entryId, projectPath: project.path }, branches })
+      : undefined,
+    [onOpenDialog, entryId, project.path]
+  );
+
+  return (
+    <ProjectItemCard
+      project={project}
+      isActive={isActive}
+      hasSession={hasSession}
+      onSelectProject={() => onSelectProject(host, project)}
+      onSelectFile={handleSelectFile}
+      onCheckoutBranch={handleCheckout}
+      onCommitRenameBranch={handleRenameBranch}
+      onOpenWorktreeTerminal={handleOpenWorktree}
+      onCommitRenameWorktree={handleRenameWorktree}
+      onRemoveWorktree={handleRemoveWorktree}
+      onOpenSideTerminal={handleOpenSide}
+      onRemoveProject={handleRemove}
+      onOpenIde={handleOpenIde}
+      onOpenDialog={handleOpenDialog}
+      currentBranch={project.git_info?.current_branch ?? ""}
+      ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
+    />
+  );
+});
+RemoteProjectCard.displayName = "RemoteProjectCard";
 
 // ─── RemoteItem ───────────────────────────────────────────────────────────────
 
@@ -600,6 +896,11 @@ interface RemoteItemProps {
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (entryId: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const RemoteItem = React.memo<RemoteItemProps>(({
@@ -619,6 +920,11 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
   invokeRemoteGit,
   onOpenDialog,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   void onCloseProject;
   const [collapsed, setCollapsed] = useState(false);
@@ -640,15 +946,10 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
         </div>
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
           <button className="gh-icon-btn" title="Add remote project" onClick={() => onAddProject(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <PlusIcon size={11} />
           </button>
           <button className="gh-icon-btn gh-icon-btn-danger" title="Remove server" onClick={() => onRemoveEntry(entry.id)}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
-            </svg>
+            <TrashIcon size={11} />
           </button>
         </div>
       </div>
@@ -662,50 +963,28 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
               const isActive = activeKey?.host === entry.host && activeKey?.projectId === project.id;
               const hasSession = openSessions.has(project.id);
               return (
-                <ProjectItemCard
+                <RemoteProjectCard
                   key={project.id}
                   project={project}
+                  entryId={entry.id}
+                  host={entry.host}
                   isActive={isActive}
                   hasSession={hasSession}
-                  onSelectProject={() => onSelectProject(entry.host, project)}
-                  onSelectFile={(filePath) => onSelectFile?.(entry.id, project.path, filePath)}
-                  onCheckoutBranch={(branch) => {
-                    if (invokeRemoteGit) {
-                      invokeRemoteGit("remote_checkout_branch", entry.id, { projectPath: project.path, branchName: branch })
-                        .then(() => onRefreshGit?.(entry.id, project.id, project.path));
-                    }
-                  }}
-                  onCommitRenameBranch={(oldName, newName) => {
-                    if (invokeRemoteGit) {
-                      invokeRemoteGit("remote_rename_branch", entry.id, { projectPath: project.path, oldName, newName })
-                        .then(() => onRefreshGit?.(entry.id, project.id, project.path))
-                        .catch(console.error);
-                    }
-                  }}
-                  onOpenWorktreeTerminal={(worktreePath, branch) => {
-                    onOpenWorktreeTerminal?.(entry.id, worktreePath, branch);
-                  }}
-                  onCommitRenameWorktree={(oldPath, newName) => {
-                    if (invokeRemoteGit) {
-                      invokeRemoteGit("remote_rename_worktree", entry.id, { projectPath: project.path, worktreePath: oldPath, newName })
-                        .then(() => onRefreshGit?.(entry.id, project.id, project.path))
-                        .catch(console.error);
-                    }
-                  }}
-                  onRemoveWorktree={(worktreePath) => {
-                    if (invokeRemoteGit) {
-                      invokeRemoteGit("remote_remove_worktree", entry.id, { projectPath: project.path, worktreePath })
-                        .then(() => onRefreshGit?.(entry.id, project.id, project.path));
-                    }
-                  }}
-                  onOpenSideTerminal={onOpenSideTerminal ? () => onOpenSideTerminal(entry.id, project.id) : undefined}
-                  onRemoveProject={() => onRemoveProject(entry.id, project.id)}
-                  onOpenIde={onOpenIde ? () => onOpenIde(entry.id, project.path, project.selected_ide ?? "") : undefined}
-                  onOpenDialog={onOpenDialog ? (type, branches) =>
-                    onOpenDialog({ type, source: { type: "remote", entryId: entry.id, projectPath: project.path }, branches })
-                  : undefined}
-                  currentBranch={project.git_info?.current_branch ?? ""}
+                  onSelectProject={onSelectProject}
+                  onRemoveProject={onRemoveProject}
+                  onSelectFile={onSelectFile}
+                  onRefreshGit={onRefreshGit}
+                  onOpenIde={onOpenIde}
+                  onOpenSideTerminal={onOpenSideTerminal}
+                  onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  invokeRemoteGit={invokeRemoteGit}
+                  onOpenDialog={onOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.id, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
                 />
               );
             })

@@ -1,35 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Terminal } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
-import { Unicode11Addon } from 'xterm-addon-unicode11'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
-import 'xterm/css/xterm.css'
+import '@xterm/xterm/css/xterm.css'
 import { buildFontFamily } from '../../utils/terminal'
 import { IS_MACOS } from '../../utils/platform'
+import type { Project, AgentConfig } from '../../types'
 
 const IS_UNIX = !navigator.platform.toLowerCase().includes('win')
-
-interface Project {
-  id: string
-  name: string
-  path: string
-  terminal: {
-    id: string
-    pid: number | null
-    status: 'Idle' | 'Running' | 'Failed'
-    history: string[]
-    agent: any
-  }
-  selected_agent: string | null
-}
-
-interface AgentConfig {
-  id: string
-  name: string
-  command: string
-  args: string[]
-}
 
 interface TerminalViewProps {
   project: Project

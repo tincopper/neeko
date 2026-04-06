@@ -83,17 +83,21 @@ impl WatcherManager {
             }
         });
 
-        self.watchers.lock().unwrap().insert(
-            project_id,
-            WatcherHandle {
-                debouncer,
-                stop_signal: stop,
-            },
-        );
+        if let Ok(mut watchers) = self.watchers.lock() {
+            watchers.insert(
+                project_id,
+                WatcherHandle {
+                    debouncer,
+                    stop_signal: stop,
+                },
+            );
+        }
     }
 
     pub fn unwatch(&self, project_id: &str) {
         // 移除时 stop_signal 被 drop，轮询线程下次检查时退出
-        self.watchers.lock().unwrap().remove(project_id);
+        if let Ok(mut watchers) = self.watchers.lock() {
+            watchers.remove(project_id);
+        }
     }
 }

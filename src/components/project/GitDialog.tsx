@@ -53,7 +53,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(String(e));
     } finally {
       setSubmitting(false);
@@ -78,7 +78,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(String(e));
     } finally {
       setSubmitting(false);

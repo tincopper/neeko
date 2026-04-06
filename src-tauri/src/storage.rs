@@ -92,7 +92,9 @@ impl StorageManager {
 
         // 迁移后立即保存统一格式
         if migrated {
-            let _ = self.save_session(&session);
+            if let Err(e) = self.save_session(&session) {
+                log::error!("Failed to save migrated session: {}", e);
+            }
         }
 
         Ok(session)

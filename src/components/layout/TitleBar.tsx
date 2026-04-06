@@ -2,27 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import AgentSelector from "./AgentSelector";
 import WindowControls from "./WindowControls";
-import { WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
-import { IS_WINDOWS } from "../../utils/platform";
+import type { Project, WSLProject, RemoteEntrySession, RemoteProject, AgentConfig } from "../../types";
+import { IS_WINDOWS, IS_MACOS } from "../../utils/platform";
 import linuxIcon from "../../assets/linux.svg";
 import serverIcon from "../../assets/server.svg";
-
-interface Project {
-  id: string;
-  name: string;
-  path: string;
-  git_info: { current_branch: string; branches: string[]; worktrees: any[]; changed_files: any[]; is_clean: boolean } | null;
-  selected_agent: string | null;
-}
-
-interface AgentConfig {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  icon: string | null;
-  enabled: boolean;
-}
+import { SettingsIcon, PlusIcon } from "../icons";
 
 interface TitleBarProps {
   activeProject: Project | null;
@@ -68,18 +52,10 @@ function TitleBar({
       <div className="titlebar-left" data-tauri-drag-region>
         <span className="titlebar-appname" data-tauri-drag-region>NEEKO</span>
         <button className="tb-icon-btn" onClick={onOpenSettings} title="Settings">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-          </svg>
+          <SettingsIcon size={14} />
         </button>
         <button className="tb-icon-btn" onClick={onToggleAddMenu} disabled={loading} title="Add">
-          {loading ? "\u2026" : (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <line x1="7" y1="1" x2="7" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="1" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          )}
+          {loading ? "\u2026" : <PlusIcon size={14} />}
         </button>
         {showAddMenu && (
           <div className="add-menu-dropdown">
@@ -163,7 +139,7 @@ function TitleBar({
         ) : (
           <span className="titlebar-placeholder" data-tauri-drag-region />
         )}
-        <WindowControls />
+        {!IS_MACOS && <WindowControls />}
       </div>
     </div>
   );

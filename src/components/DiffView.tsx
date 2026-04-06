@@ -2,54 +2,48 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
+import { ChevronRightIcon } from "./icons";
 import hljs from "highlight.js/lib/core";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import python from "highlight.js/lib/languages/python";
-import rust from "highlight.js/lib/languages/rust";
-import java from "highlight.js/lib/languages/java";
-import cpp from "highlight.js/lib/languages/cpp";
-import csharp from "highlight.js/lib/languages/csharp";
-import go from "highlight.js/lib/languages/go";
-import ruby from "highlight.js/lib/languages/ruby";
-import php from "highlight.js/lib/languages/php";
-import swift from "highlight.js/lib/languages/swift";
-import kotlin from "highlight.js/lib/languages/kotlin";
-import scala from "highlight.js/lib/languages/scala";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import json from "highlight.js/lib/languages/json";
-import yaml from "highlight.js/lib/languages/yaml";
-import markdown from "highlight.js/lib/languages/markdown";
-import sql from "highlight.js/lib/languages/sql";
-import shell from "highlight.js/lib/languages/shell";
-import dockerfile from "highlight.js/lib/languages/dockerfile";
-import diff from "highlight.js/lib/languages/diff";
-import plaintext from "highlight.js/lib/languages/plaintext";
 
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("rust", rust);
-hljs.registerLanguage("java", java);
-hljs.registerLanguage("cpp", cpp);
-hljs.registerLanguage("csharp", csharp);
-hljs.registerLanguage("go", go);
-hljs.registerLanguage("ruby", ruby);
-hljs.registerLanguage("php", php);
-hljs.registerLanguage("swift", swift);
-hljs.registerLanguage("kotlin", kotlin);
-hljs.registerLanguage("scala", scala);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("xml", xml);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("markdown", markdown);
-hljs.registerLanguage("sql", sql);
-hljs.registerLanguage("shell", shell);
-hljs.registerLanguage("dockerfile", dockerfile);
-hljs.registerLanguage("diff", diff);
-hljs.registerLanguage("plaintext", plaintext);
+const LANGUAGE_MAP: Record<string, () => Promise<unknown>> = {
+  javascript: () => import("highlight.js/lib/languages/javascript"),
+  typescript: () => import("highlight.js/lib/languages/typescript"),
+  python: () => import("highlight.js/lib/languages/python"),
+  rust: () => import("highlight.js/lib/languages/rust"),
+  java: () => import("highlight.js/lib/languages/java"),
+  cpp: () => import("highlight.js/lib/languages/cpp"),
+  csharp: () => import("highlight.js/lib/languages/csharp"),
+  go: () => import("highlight.js/lib/languages/go"),
+  ruby: () => import("highlight.js/lib/languages/ruby"),
+  php: () => import("highlight.js/lib/languages/php"),
+  swift: () => import("highlight.js/lib/languages/swift"),
+  kotlin: () => import("highlight.js/lib/languages/kotlin"),
+  scala: () => import("highlight.js/lib/languages/scala"),
+  css: () => import("highlight.js/lib/languages/css"),
+  xml: () => import("highlight.js/lib/languages/xml"),
+  json: () => import("highlight.js/lib/languages/json"),
+  yaml: () => import("highlight.js/lib/languages/yaml"),
+  markdown: () => import("highlight.js/lib/languages/markdown"),
+  sql: () => import("highlight.js/lib/languages/sql"),
+  shell: () => import("highlight.js/lib/languages/shell"),
+  dockerfile: () => import("highlight.js/lib/languages/dockerfile"),
+  diff: () => import("highlight.js/lib/languages/diff"),
+  plaintext: () => import("highlight.js/lib/languages/plaintext"),
+};
+
+type LanguageFn = (hljs: import("highlight.js").HLJSApi) => import("highlight.js").Language;
+
+const registeredLangs = new Set<string>();
+
+async function ensureLanguageRegistered(lang: string): Promise<void> {
+  if (registeredLangs.has(lang)) return;
+  const loader = LANGUAGE_MAP[lang];
+  if (loader) {
+    const mod = await loader();
+    hljs.registerLanguage(lang, (mod as { default: LanguageFn }).default);
+    registeredLangs.add(lang);
+  }
+}
 
 export interface DiffLine {
   Context?: string;
@@ -336,7 +330,7 @@ export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   return rows;
 }
 
-const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, initialMode, onBack }) => {
+const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, filePath, initialMode, onBack }) => {
   const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -345,6 +339,11 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
   const lastLoadKeyRef = useRef<string>("");
 
   const language = useMemo(() => detectLanguage(filePath), [filePath]);
+
+  // Eagerly register the highlight.js language when it changes
+  useEffect(() => {
+    ensureLanguageRegistered(language);
+  }, [language]);
 
   // 计算改动统计
   const changeStats = useMemo(() => {
@@ -500,27 +499,27 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
               Split
             </button>
           </div>
-          <button
-            className="nav-btn"
-            onClick={() => navigateBlock("prev")}
-            disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
-            title="Previous Change"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"/></svg>
-          </button>
+            <button
+              className="nav-btn"
+              onClick={() => navigateBlock("prev")}
+              disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
+              title="Previous Change"
+            >
+              <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
+            </button>
           <span className="hunk-index">
             {totalChangeBlocks > 0
               ? `${currentBlockIndex + 1} / ${totalChangeBlocks}`
               : "0 / 0"}
           </span>
-          <button
-            className="nav-btn"
-            onClick={() => navigateBlock("next")}
-            disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
-            title="Next Change"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg>
-          </button>
+            <button
+              className="nav-btn"
+              onClick={() => navigateBlock("next")}
+              disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
+              title="Next Change"
+            >
+              <ChevronRightIcon size={14} />
+            </button>
           <button className="back-btn" onClick={onBack} title="Back to Terminal">✕</button>
         </div>
       </div>
@@ -679,6 +678,6 @@ const DiffView: React.FC<DiffViewProps> = ({ projectId, diffSource, filePath, in
       </div>
     </div>
   );
-};
+});
 
 export default DiffView;

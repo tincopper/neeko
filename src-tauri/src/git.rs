@@ -67,11 +67,9 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
         if let Some(path) = entry.path() {
             let status = entry.status();
 
-            // 显式跳过 gitignored 文件（双重保险，配合 include_ignored(false)）
             if status.contains(Status::IGNORED) {
                 continue;
             }
-            // 跳过已提交且无变化的文件
             if status.is_empty() {
                 continue;
             }
@@ -94,70 +92,114 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
                 continue;
             };
 
-            // 简化版本：使用固定值
-            let (additions, deletions) = count_file_changes(repo, path)?;
-
             files.push(FileChange {
                 path: PathBuf::from(path),
                 status: file_status,
-                additions,
-                deletions,
+                additions: 0,
+                deletions: 0,
             });
+        }
+    }
+
+    // Single combined diff to get per-file stats
+    if !files.is_empty() {
+        let mut diff_opts = git2::DiffOptions::new();
+        let old_tree = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_commit().ok())
+            .and_then(|c| c.tree().ok());
+
+        let diff = match &old_tree {
+            Some(tree) => repo
+                .diff_tree_to_workdir_with_index(Some(tree), Some(&mut diff_opts))
+                .or_else(|_| repo.diff_index_to_workdir(None, Some(&mut diff_opts))),
+            None => repo
+                .diff_index_to_workdir(None, Some(&mut diff_opts))
+                .or_else(|_| repo.diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))),
+        };
+
+        if let Ok(diff) = diff {
+            use std::cell::RefCell;
+            let file_stats: RefCell<Vec<(String, usize, usize)>> = RefCell::new(Vec::new());
+            let _ = diff.foreach(
+                &mut |delta, _| {
+                    if let Some(path) = delta.new_file().path() {
+                        file_stats
+                            .borrow_mut()
+                            .push((path.to_string_lossy().to_string(), 0, 0));
+                    }
+                    true
+                },
+                None,
+                None,
+                Some(&mut |_delta, _hunk, line| {
+                    let origin = line.origin();
+                    if origin == '+' || origin == '-' {
+                        let mut stats = file_stats.borrow_mut();
+                        if let Some(last) = stats.last_mut() {
+                            if origin == '+' {
+                                last.1 += 1;
+                            } else {
+                                last.2 += 1;
+                            }
+                        }
+                    }
+                    true
+                }),
+            );
+
+            let stats = file_stats.into_inner();
+            for file in &mut files {
+                let path_str = file.path.to_string_lossy().replace('\\', "/");
+                if let Some((_, a, d)) = stats.iter().find(|(p, _, _)| {
+                    let normalized = p.replace('\\', "/");
+                    normalized == path_str
+                        || normalized.ends_with(&path_str)
+                        || path_str.ends_with(&normalized)
+                }) {
+                    file.additions = *a;
+                    file.deletions = *d;
+                }
+            }
         }
     }
 
     Ok(files)
 }
 
-fn count_file_changes(repo: &Repository, file_path: &str) -> Result<(usize, usize)> {
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(file_path).context_lines(0);
-
-    let old_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .and_then(|c| c.tree().ok());
-
-    let diff = match &old_tree {
-        Some(tree) => repo
-            .diff_tree_to_workdir_with_index(Some(tree), Some(&mut opts))
-            .unwrap_or_else(|_| repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap()),
-        None => repo
-            .diff_index_to_workdir(None, Some(&mut opts))
-            .unwrap_or_else(|_| {
-                return repo
-                    .diff_tree_to_workdir_with_index(None, Some(&mut opts))
-                    .unwrap();
-            }),
-    };
-
-    let stats = diff.stats().context("Failed to get diff stats")?;
-    Ok((stats.insertions(), stats.deletions()))
-}
-
 fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
     let mut worktrees = Vec::new();
 
-    // 获取 worktree 名称列表
     if let Ok(names) = repo.worktrees() {
         for name in names.iter().flatten() {
             if let Some(wt) = repo.find_worktree(name).ok() {
                 let path = wt.path().to_path_buf();
-                // 简化版本，获取分支信息
-                if let Ok(wt_repo) = Repository::open(&path) {
-                    if let Ok(head) = wt_repo.head() {
-                        let branch = head.shorthand().unwrap_or("HEAD").to_string();
-                        let head_oid = head
-                            .target()
-                            .map(|oid| oid.to_string())
-                            .unwrap_or_else(|| "detached".to_string());
+                // Use git command to get branch and head info (avoids N+1 repo opens)
+                let wt_path_str = path.to_str().unwrap_or(".");
+                if let Ok(output) = no_window_cmd("git")
+                    .args(["-C", wt_path_str, "rev-parse", "--abbrev-ref", "HEAD"])
+                    .output()
+                {
+                    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let branch = if branch.is_empty() {
+                        "HEAD".to_string()
+                    } else {
+                        branch
+                    };
 
-                        worktrees.push(Worktree {
-                            path,
-                            branch,
-                            head: head_oid,
-                        });
+                    if let Ok(output) = no_window_cmd("git")
+                        .args(["-C", wt_path_str, "rev-parse", "HEAD"])
+                        .output()
+                    {
+                        let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        let head = if head.is_empty() {
+                            "detached".to_string()
+                        } else {
+                            head
+                        };
+
+                        worktrees.push(Worktree { path, branch, head });
                     }
                 }
             }
@@ -447,4 +489,123 @@ fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
         },
         _rest,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_parse_empty_diff() {
+        let result = parse_unified_diff("");
+        assert!(result.hunks.is_empty());
+    }
+
+    #[test]
+    fn should_parse_single_hunk() {
+        let diff = r#"@@ -1,3 +1,4 @@
+ line1
++added line
+ line2
+ line3"#;
+        let result = parse_unified_diff(diff);
+        assert_eq!(result.hunks.len(), 1);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.old_start, 1);
+        assert_eq!(hunk.old_lines, 3);
+        assert_eq!(hunk.new_start, 1);
+        assert_eq!(hunk.new_lines, 4);
+        assert_eq!(hunk.lines.len(), 4);
+    }
+
+    #[test]
+    fn should_parse_added_lines() {
+        let diff = r#"@@ -1,1 +1,2 @@
+ existing
++new line"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert!(matches!(hunk.lines[0], DiffLine::Context(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Added(_)));
+    }
+
+    #[test]
+    fn should_parse_removed_lines() {
+        let diff = r#"@@ -1,2 +1,1 @@
+-removed line
+-removed line2"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.lines.len(), 2);
+        assert!(matches!(hunk.lines[0], DiffLine::Removed(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Removed(_)));
+    }
+
+    #[test]
+    fn should_parse_multiple_hunks() {
+        let diff = r#"@@ -1,3 +1,3 @@
+ context1
+-old1
++new1
+ context2
+@@ -10,2 +10,3 @@
+ context10
++added
+ context11"#;
+        let result = parse_unified_diff(diff);
+        assert_eq!(result.hunks.len(), 2);
+        assert_eq!(result.hunks[0].old_start, 1);
+        assert_eq!(result.hunks[1].old_start, 10);
+    }
+
+    #[test]
+    fn should_skip_diff_headers() {
+        let diff = r#"--- a/file.rs
++++ b/file.rs
+@@ -1,1 +1,2 @@
+ line1
++added"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        // Should not include --- or +++ as diff lines
+        assert_eq!(hunk.lines.len(), 2);
+        assert!(matches!(hunk.lines[0], DiffLine::Context(_)));
+        assert!(matches!(hunk.lines[1], DiffLine::Added(_)));
+    }
+
+    #[test]
+    fn should_parse_hunk_without_line_counts() {
+        let diff = "@@ -1 +1 @@
+-old
++new";
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+        assert_eq!(hunk.old_start, 1);
+        assert_eq!(hunk.old_lines, 1);
+        assert_eq!(hunk.new_start, 1);
+        assert_eq!(hunk.new_lines, 1);
+    }
+
+    #[test]
+    fn should_strip_prefix_from_lines() {
+        let diff = r#"@@ -1,3 +1,3 @@
+ unchanged
+-removed
++added"#;
+        let result = parse_unified_diff(diff);
+        let hunk = &result.hunks[0];
+
+        match &hunk.lines[0] {
+            DiffLine::Context(s) => assert_eq!(s, "unchanged"),
+            _ => panic!("Expected Context"),
+        }
+        match &hunk.lines[1] {
+            DiffLine::Removed(s) => assert_eq!(s, "removed"),
+            _ => panic!("Expected Removed"),
+        }
+        match &hunk.lines[2] {
+            DiffLine::Added(s) => assert_eq!(s, "added"),
+            _ => panic!("Expected Added"),
+        }
+    }
 }

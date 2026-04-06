@@ -97,7 +97,7 @@ pnpm tauri build
 | 后端 | Rust + tokio + anyhow |
 | 前端 | React 18 + TypeScript + Vite |
 | 终端后端 | portable-pty |
-| 终端前端 | xterm.js 5 + xterm-addon-fit |
+| 终端前端 | @xterm/xterm 6 + @xterm/addon-fit |
 | Git | git2-rs（libgit2 绑定） |
 | SSH | russh（异步 SSH2 客户端） |
 | 语法高亮 | highlight.js |

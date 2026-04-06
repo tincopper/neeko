@@ -52,7 +52,7 @@ export function useAppConfig() {
   useEffect(() => {
     (async () => {
       try {
-        const saved = await invoke<Record<string, any>>("load_config");
+        const saved = await invoke<AppConfig>("load_config");
         if (saved && typeof saved === "object") {
           setConfig({
             fontSize:

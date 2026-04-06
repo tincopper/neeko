@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../utils/idePresets";
 import { getAgentIconSrc } from "../utils/agents";
 import type { AppConfig, DiffMode, AgentConfig } from "../types";
+import { EditorIcon, TerminalIcon, CodeIcon, GridIcon, GitLogoIcon, CloseIcon } from "./icons";
 
 // re-export for backward compatibility
 export type { AppConfig, DiffMode };
@@ -50,49 +51,27 @@ const NAV_ITEMS: NavItem[] = [
   {
     id: "editor",
     label: "Editor",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M2 2.5A.5.5 0 0 1 2.5 2h11a.5.5 0 0 1 0 1h-11A.5.5 0 0 1 2 2.5Zm0 4A.5.5 0 0 1 2.5 6h11a.5.5 0 0 1 0 1h-11A.5.5 0 0 1 2 6.5Zm0 4a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5Z"/>
-      </svg>
-    ),
+    icon: <EditorIcon size={16} />,
   },
   {
     id: "terminal",
     label: "Terminal",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M6 9a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9.5H6.5A.5.5 0 0 1 6 9Zm-2.354-4.854a.5.5 0 0 1 0 .708L2.707 6l.939.939a.5.5 0 1 1-.707.707l-1.25-1.25a.5.5 0 0 1 0-.707l1.25-1.25a.5.5 0 0 1 .707 0z"/>
-        <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
-      </svg>
-    ),
+    icon: <TerminalIcon size={16} />,
   },
   {
     id: "agents",
     label: "Agents",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M6 9a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9.5H6.5A.5.5 0 0 1 6 9Zm-2.354-4.854a.5.5 0 0 1 0 .708L2.707 6l.939.939a.5.5 0 1 1-.707.707l-1.25-1.25a.5.5 0 0 1 0-.707l1.25-1.25a.5.5 0 0 1 .707 0z"/>
-        <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
-      </svg>
-    ),
+    icon: <GridIcon size={16} />,
   },
   {
     id: "ide",
     label: "IDE",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zm1.5-.5a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11zM5.354 5.354a.5.5 0 1 0-.708-.708L2.793 6.5l1.853 1.854a.5.5 0 1 0 .708-.708L4.207 6.5l1.147-1.146zm5 0L11.5 6.5l-1.146 1.146a.5.5 0 0 0 .708.708L12.914 6.5l-1.853-1.854a.5.5 0 0 0-.707.708zM7.854 10.854a.5.5 0 0 1-.707-.707l1.5-3a.5.5 0 0 1 .906.42l-1.5 3a.5.5 0 0 1-.199.287z"/>
-      </svg>
-    ),
+    icon: <CodeIcon size={16} />,
   },
   {
     id: "git",
     label: "Git",
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M15.698 7.287 8.712.302a1.03 1.03 0 0 0-1.457 0l-1.45 1.45 1.84 1.84a1.223 1.223 0 0 1 1.55 1.56l1.773 1.774a1.224 1.224 0 0 1 1.267 2.025 1.226 1.226 0 0 1-2.002-1.334L8.58 5.963v4.353a1.226 1.226 0 1 1-1.008-.036V5.887a1.226 1.226 0 0 1-.666-1.608L5.093 2.465l-4.79 4.79a1.03 1.03 0 0 0 0 1.457l6.986 6.986a1.03 1.03 0 0 0 1.457 0l6.953-6.953a1.031 1.031 0 0 0-.001-1.458z"/>
-      </svg>
-    ),
+    icon: <GitLogoIcon size={16} />,
   },
 ];
 
@@ -102,7 +81,7 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, onClose }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConfigChange, onClose }) => {
   const [activeNav, setActiveNav] = useState<NavCategory>("editor");
   const [shellInput, setShellInput] = useState(config.shell);
 
@@ -203,13 +182,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
 
   // 自定义 Agent 管理
   const BUILTIN_AGENTS: AgentConfig[] = [
-    { id: "opencode", name: "opencode", command: "opencode", args: [], icon: "opencode.png", enabled: true },
-    { id: "claude-code", name: "claude-code", command: "claude", args: [], icon: "claude-code.png", enabled: true },
-    { id: "qwen", name: "qwen", command: "qwen", args: [], icon: "qwen.png", enabled: true },
-    { id: "gemini", name: "gemini", command: "gemini", args: [], icon: "gemini.png", enabled: true },
-    { id: "codex", name: "codex", command: "codex", args: [], icon: "codex.png", enabled: true },
-    { id: "qoder", name: "qoder", command: "qoder", args: [], icon: "qoder.svg", enabled: true },
-    { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], icon: "codebuddy.svg", enabled: true },
+    { id: "opencode", name: "opencode", command: "opencode", args: [], env: {}, icon: "opencode.png", enabled: true },
+    { id: "claude-code", name: "claude-code", command: "claude", args: [], env: {}, icon: "claude-code.png", enabled: true },
+    { id: "qwen", name: "qwen", command: "qwen", args: [], env: {}, icon: "qwen.png", enabled: true },
+    { id: "gemini", name: "gemini", command: "gemini", args: [], env: {}, icon: "gemini.png", enabled: true },
+    { id: "codex", name: "codex", command: "codex", args: [], env: {}, icon: "codex.png", enabled: true },
+    { id: "qoder", name: "qoder", command: "qoder", args: [], env: {}, icon: "qoder.svg", enabled: true },
+    { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], env: {}, icon: "codebuddy.svg", enabled: true },
   ];
 
   const addCustomAgent = async () => {
@@ -220,7 +199,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     const exists = (config.customAgents || []).some(a => a.id === id);
     if (exists) return;
     const args = newAgentArgs.trim() ? newAgentArgs.trim().split(",").map(s => s.trim()).filter(Boolean) : [];
-    const newAgent: AgentConfig = { id, name, command, args, icon: "cli.svg", enabled: true };
+    const newAgent: AgentConfig = { id, name, command, args, env: {}, icon: "cli.svg", enabled: true };
     const nextCustom = [...(config.customAgents || []), newAgent];
     onConfigChange({ ...config, customAgents: nextCustom });
     try {
@@ -308,9 +287,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
     ),
     [systemFonts]
   );
-  const filteredFonts = fontSearch.trim()
-    ? allFonts.filter(f => f.toLowerCase().includes(fontSearch.trim().toLowerCase()))
-    : allFonts;
+  const filteredFonts = useMemo(() => {
+    const search = fontSearch.trim().toLowerCase();
+    return search ? allFonts.filter(f => f.toLowerCase().includes(search)) : allFonts;
+  }, [allFonts, fontSearch]);
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -319,9 +299,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
         <div className="settings-dialog-header">
           <span className="settings-dialog-title">Settings</span>
           <button className="settings-dialog-close" onClick={onClose}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
+            <CloseIcon />
           </button>
         </div>
 
@@ -759,9 +737,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
               <>
                 <div className="settings-content-title">Git</div>
                 <div className="settings-empty-section">
-                  <svg width="32" height="32" viewBox="0 0 16 16" fill="currentColor" opacity="0.3">
-                    <path d="M15.698 7.287 8.712.302a1.03 1.03 0 0 0-1.457 0l-1.45 1.45 1.84 1.84a1.223 1.223 0 0 1 1.55 1.56l1.773 1.774a1.224 1.224 0 0 1 1.267 2.025 1.226 1.226 0 0 1-2.002-1.334L8.58 5.963v4.353a1.226 1.226 0 1 1-1.008-.036V5.887a1.226 1.226 0 0 1-.666-1.608L5.093 2.465l-4.79 4.79a1.03 1.03 0 0 0 0 1.457l6.986 6.986a1.03 1.03 0 0 0 1.457 0l6.953-6.953a1.031 1.031 0 0 0-.001-1.458z"/>
-                  </svg>
+                  <GitLogoIcon size={32} style={{ opacity: 0.3 }} />
                   <span>No Git settings yet</span>
                 </div>
               </>
@@ -771,6 +747,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onConfigChange, o
       </div>
     </div>
   );
-};
+});
 
 export default SettingsPanel;

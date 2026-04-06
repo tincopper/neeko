@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Project } from "../../types";
+import { Project, AgentConfig, AppConfig } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
+import ContextMenu, { ContextMenuItem } from "./ContextMenu";
+import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
+import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, GitLogoIcon, TrashIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -32,6 +35,11 @@ interface ProjectItemProps {
   onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
   ideCommandOverrides?: Record<string, string>;
+  onOpenSettings?: () => void;
+  onRefresh?: (projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
+  onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -47,10 +55,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onOpenSideTerminal,
   onOpenWorktreeTerminal,
   ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Inline rename state
   const [renamingBranch, setRenamingBranch] = useState<string | null>(null);
@@ -96,7 +111,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       await invoke("checkout_branch", { projectId: project.id, branchName });
       onBackToMainTerminal(project.id);
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -106,7 +121,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("remove_worktree", { projectId: project.id, worktreePath });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -126,7 +141,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("rename_branch", { projectId: project.id, oldName, newName });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -154,7 +169,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     try {
       await invoke("rename_worktree", { projectId: project.id, worktreePath: oldPath, newName });
       onRefreshGit(project.id);
-    } catch (e: any) {
+    } catch (e: unknown) {
       alert(String(e));
     }
   };
@@ -171,6 +186,82 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       projectId: project.id,
       branches: project.git_info?.branches ?? [],
     });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const buildContextMenuItems = (): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+
+    if (project.selected_ide && onOpenIde) {
+      items.push({
+        label: "Open in IDE",
+        shortcut: "Ctrl+O",
+        action: () => onOpenIde(project.id),
+      });
+    }
+
+    if (isActive && project.active_view === "Terminal" && onOpenSideTerminal) {
+      items.push({
+        label: "Open Side Terminal",
+        shortcut: "Ctrl+Alt+T",
+        action: () => onOpenSideTerminal(project.id),
+      });
+    }
+
+    if (project.git_info) {
+      items.push({
+        label: "New Branch",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog({
+            type: "new-branch",
+            projectId: project.id,
+            branches: project.git_info!.branches,
+          });
+        },
+      });
+      items.push({
+        label: "New Worktree",
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog({
+            type: "new-worktree",
+            projectId: project.id,
+            branches: project.git_info!.branches,
+          });
+        },
+      });
+    }
+
+    if (onRefresh) {
+      items.push({
+        label: "Refresh Terminal",
+        shortcut: "Ctrl+R",
+        action: () => onRefresh(project.id),
+      });
+    }
+
+    items.push({ label: "", separator: true, action: () => {} });
+
+    if (onOpenSettings && config) {
+      items.push({
+        label: "Project Settings",
+        action: () => setSettingsOpen(true),
+      });
+    }
+
+    items.push({
+      label: "Remove Project",
+      action: () => onRemoveProject(project.id),
+      danger: true,
+    });
+
+    return items;
   };
 
   const changedFiles = project.git_info?.changed_files ?? [];
@@ -195,7 +286,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div className={`gh-project ${isActive ? "active" : ""}`}>
-      <div className="gh-project-header" onClick={() => onSelectProject(project.id)}>
+      <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
         <span
           className="gh-project-avatar"
           style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
@@ -224,9 +315,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
               onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
               title="Open side terminal (Ctrl+Alt+T)"
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z"/>
-              </svg>
+              <SideTerminalIcon size={12} />
             </button>
           )}
           {/* Git 操作下拉菜单 */}
@@ -237,22 +326,16 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-                </svg>
+                <GitLogoIcon size={12} />
               </button>
               {gitMenuOpen && (
                 <div className="gh-git-dropdown">
                   <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-branch", e); }}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-                    </svg>
+                    <GitLogoIcon size={12} />
                     New Branch
                   </div>
                   <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M1 2.5A2.5 2.5 0 0 1 3.5 0h8.75a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0V1.5H3.5a1 1 0 0 0-1 1V7c0 .55.45 1 1 1h2a.75.75 0 0 1 0 1.5h-2A2.5 2.5 0 0 1 1 7V2.5ZM8 8.5a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 8 8.5Zm0 3a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5A.75.75 0 0 1 8 11.5Zm-4 3a.75.75 0 0 1 .75-.75h9.5a.75.75 0 0 1 0 1.5h-9.5A.75.75 0 0 1 4 14.5Z"/>
-                    </svg>
+                    <GitLogoIcon size={12} />
                     New Worktree
                   </div>
                 </div>
@@ -264,16 +347,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             onClick={(e) => { e.stopPropagation(); onRemoveProject(project.id); }}
             title="Remove"
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/>
-            </svg>
+            <TrashIcon size={12} />
           </button>
         </div>
         {project.git_info && (
           <span className="gh-branch-inline" title={project.git_info.current_branch}>
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-            </svg>
+            <BranchIcon size={11} />
             {project.git_info.current_branch}
           </span>
         )}
@@ -288,12 +367,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                 className="gh-section-label gh-section-label-collapsible"
                 onClick={(e) => toggleSection("__branches__", e)}
               >
-                <svg
-                  className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`}
-                  width="9" height="9" viewBox="0 0 16 16" fill="currentColor"
-                >
-                  <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/>
-                </svg>
+                <ChevronRightIcon size={9} className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`} />
                 Branches
               </div>
               {branchesExpanded && (
@@ -308,9 +382,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                   return (
                     <React.Fragment key={branch}>
                       <div className={`gh-branch-item ${isCurrent ? "current" : ""}`}>
-                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
-                          <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-                        </svg>
+                        <BranchIcon size={11} />
                         {renamingBranch === branch ? (
                           <input
                             ref={renameInputRef}
@@ -360,12 +432,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     className="gh-section-label gh-section-label-collapsible"
                     onClick={(e) => toggleSection("__worktrees__", e)}
                   >
-                    <svg
-                      className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`}
-                      width="9" height="9" viewBox="0 0 16 16" fill="currentColor"
-                    >
-                      <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/>
-                    </svg>
+                    <ChevronRightIcon size={9} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
                     Worktrees
                   </div>
                {worktreesExpanded && (
@@ -381,9 +448,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                         }}
                         title={`${wt.path}\nClick to open terminal`}
                       >
-                        <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.7 }}>
-                          <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z"/>
-                        </svg>
+                        <FileIcon size={11} style={{ opacity: 0.7 }} />
                         {renamingWorktree === wt.path ? (
                           <input
                             ref={renameInputRef}
@@ -407,9 +472,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                           </span>
                         )}
                         <span className="gh-branch-inline" title={wt.branch}>
-                          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
-                            <path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>
-                          </svg>
+                          <BranchIcon size={11} />
                           {wt.branch}
                         </span>
                         <button
@@ -426,6 +489,28 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             </>
           )}
         </div>
+      )}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems()}
+        />
+      )}
+      {settingsOpen && config && (
+        <ProjectSettingsDialog
+          projectId={project.id}
+          projectName={project.name}
+          currentAgent={project.selected_agent}
+          currentIde={project.selected_ide}
+          agents={agents ?? []}
+          config={config}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(agentId, ideCmd) => {
+            onSaveProjectSettings?.(project.id, agentId, ideCmd);
+            setSettingsOpen(false);
+          }}
+        />
       )}
     </div>
   );
