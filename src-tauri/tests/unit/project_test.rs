@@ -143,7 +143,7 @@ fn set_view_diff() {
 
     pm.set_view_diff(&project.id, PathBuf::from("src/main.rs"));
     match &pm.get_project(&project.id).unwrap().active_view {
-        ViewMode::Diff { file_path } => assert_eq!(file_path, &PathBuf::from("src/main.rs")),
+        ViewMode::Diff { file_path } => assert_eq!(*file_path, PathBuf::from("src/main.rs")),
         _ => panic!("Expected Diff view"),
     }
 }
