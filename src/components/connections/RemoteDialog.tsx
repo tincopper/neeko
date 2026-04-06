@@ -317,7 +317,7 @@ export function RemoteDialog({
               className="gh-dialog-input"
             />
 
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Port</label>
+            <label className="gh-dialog-label mt-12">Port</label>
             <input
               type="number"
               value={port}
@@ -326,7 +326,7 @@ export function RemoteDialog({
               className="gh-dialog-input"
             />
 
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Username</label>
+            <label className="gh-dialog-label mt-12">Username</label>
             <input
               type="text"
               value={username}
@@ -335,7 +335,7 @@ export function RemoteDialog({
               className="gh-dialog-input"
             />
 
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Auth Type</label>
+            <label className="gh-dialog-label mt-12">Auth Type</label>
             <div className="auth-type-selector">
               <label className="custom-radio">
                 <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
@@ -351,7 +351,7 @@ export function RemoteDialog({
 
             {authType === "password" ? (
               <>
-                <label className="gh-dialog-label" style={{ marginTop: 12 }}>Password</label>
+                <label className="gh-dialog-label mt-12">Password</label>
                 <input
                   type="password"
                   value={password}
@@ -362,7 +362,7 @@ export function RemoteDialog({
               </>
             ) : (
               <>
-                <label className="gh-dialog-label" style={{ marginTop: 12 }}>Key File Path</label>
+                <label className="gh-dialog-label mt-12">Key File Path</label>
                 <input
                   type="text"
                   value={keyPath}
@@ -373,7 +373,7 @@ export function RemoteDialog({
               </>
             )}
 
-            <label className="custom-checkbox save-credentials-label" style={{ marginTop: 14 }}>
+            <label className="custom-checkbox save-credentials-label mt-14">
               <input
                 type="checkbox"
                 checked={saveCredentials}
@@ -393,7 +393,7 @@ export function RemoteDialog({
             </div>
 
             {/* 路径输入 + 自动补全 */}
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Project Path (on server)</label>
+            <label className="gh-dialog-label mt-12">Project Path (on server)</label>
             <div className="wsl-path-autocomplete" ref={pathWrapperRef}>
               <input
                 ref={pathInputRef}
@@ -442,11 +442,10 @@ export function RemoteDialog({
             )}
 
             {/* Agent 选择 */}
-            <label className="gh-dialog-label" style={{ marginTop: 14 }}>Agent</label>
-            <div className="agent-selector" ref={agentDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+            <label className="gh-dialog-label mt-14">Agent</label>
+            <div className="agent-selector agent-selector-full" ref={agentDropdownRef}>
               <button
-                className="agent-dropdown-btn"
-                style={{ width: "100%" }}
+                className="agent-dropdown-btn w-full"
                 onClick={() => setAgentDropdownOpen(v => !v)}
               >
                 {(() => {
@@ -463,12 +462,12 @@ export function RemoteDialog({
                     </>
                   );
                 })()}
-                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
+                <span className="dropdown-arrow ml-auto">
                   {agentDropdownOpen ? "−" : "+"}
                 </span>
               </button>
               {agentDropdownOpen && (
-                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                <div className="agent-dropdown dropdown-position-unset">
                   <div
                     className={`agent-option${!selectedAgentId ? " selected" : ""}`}
                     onClick={() => { setSelectedAgentId(null); setAgentDropdownOpen(false); }}
@@ -492,11 +491,10 @@ export function RemoteDialog({
             </div>
 
             {/* IDE 选择 */}
-            <label className="gh-dialog-label" style={{ marginTop: 14 }}>IDE</label>
-            <div className="agent-selector" ref={ideDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+            <label className="gh-dialog-label mt-14">IDE</label>
+            <div className="agent-selector agent-selector-full" ref={ideDropdownRef}>
               <button
-                className="agent-dropdown-btn"
-                style={{ width: "100%" }}
+                className="agent-dropdown-btn w-full"
                 onClick={() => setIdeDropdownOpen(v => !v)}
               >
                 {(() => {
@@ -504,7 +502,7 @@ export function RemoteDialog({
                     ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
                   if (preset) return (
                     <>
-                      <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
+                      <img src={getIdeIconSrc(preset.icon)} alt="" className="icon-16" />
                       <span className="agent-name">{preset.name}</span>
                     </>
                   );
@@ -513,19 +511,19 @@ export function RemoteDialog({
                     const customIde = config.customIdes?.[ci];
                     return (
                       <>
-                        <img src={getIdeIconSrc(null)} alt="" style={{ width: 16, height: 16 }} />
+                        <img src={getIdeIconSrc(null)} alt="" className="icon-16" />
                         <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>
                       </>
                     );
                   }
-                  return <span className="agent-name" style={{ opacity: 0.5 }}>None (VSCode/Cursor/Zed)</span>;
+                  return <span className="agent-name opacity-50">None (VSCode/Cursor/Zed)</span>;
                 })()}
-                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
+                <span className="dropdown-arrow ml-auto">
                   {ideDropdownOpen ? "−" : "+"}
                 </span>
               </button>
               {ideDropdownOpen && (
-                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                <div className="agent-dropdown dropdown-position-unset">
                   <div
                     className={`agent-option${!selectedIdeId ? " selected" : ""}`}
                     onClick={() => { setSelectedIdeId(null); setIdeDropdownOpen(false); }}
@@ -538,7 +536,7 @@ export function RemoteDialog({
                       className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
                       onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
                     >
-                      <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
+                      <img src={getIdeIconSrc(preset.icon)} alt="" className="icon-16" />
                       <span className="agent-name">{preset.name}</span>
                       <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>

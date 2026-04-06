@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   createTerminalForProject,
@@ -7,6 +7,7 @@ import {
   destroyTerminalCache,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
+import { CloseRoundIcon } from "../icons";
 
 interface Project {
   id: string;
@@ -46,7 +47,7 @@ export function refreshSideTerminal(projectId: string, worktreePath?: string) {
   terminalRebuildCallbacks.get(key)?.();
 }
 
-export default function SideTerminalView({
+function SideTerminalView({
   project,
   fontSize = 14,
   shell = "",
@@ -194,13 +195,13 @@ export default function SideTerminalView({
         <span className="side-terminal-title">Terminal</span>
         <span className="side-terminal-hint">Ctrl+W to close</span>
         <button className="side-terminal-close" onClick={handleClose} title="Close (Ctrl+W)">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
+          <CloseRoundIcon size={12} />
         </button>
       </div>
       <div className="terminal-wrapper" ref={wrapperRef} />
     </div>
   );
 }
+
+export default React.memo(SideTerminalView);
 

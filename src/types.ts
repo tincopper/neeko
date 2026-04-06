@@ -43,12 +43,12 @@ export interface Project {
     pid: number | null;
     status: "Idle" | "Running" | "Failed";
     history: string[];
-    agent: any;
+    agent: AgentConfig | null;
   };
   selected_agent: string | null;
   selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
-  collapsed?: boolean;
+  collapsed: boolean;
 }
 
 export interface AgentConfig {
@@ -56,6 +56,7 @@ export interface AgentConfig {
   name: string;
   command: string;
   args: string[];
+  env: Record<string, string>;
   icon: string | null;
   enabled: boolean;
 }
@@ -111,3 +112,15 @@ export type TerminalEntry =
   | { type: 'local'; project: Project }
   | { type: 'wsl'; distro: string; project: WSLProject }
   | { type: 'remote'; host: string; project: RemoteProject };
+
+// 持久化会话存储（与 Rust SessionStore 对应）
+export interface SessionStore {
+  projects: { id: string; name: string; path: string; selected_agent: string | null; selected_ide: string | null; terminal_history: string[]; last_status: string; collapsed: boolean }[];
+  active_project_id: string | null;
+  last_updated: string;
+  wsl_entries: WSLEntrySession[];
+  remote_entries: RemoteEntrySession[];
+  sidebar_width: number | null;
+  side_terminal_width: number | null;
+  worktree_state: Record<string, string>;
+}

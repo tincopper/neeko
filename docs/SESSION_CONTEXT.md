@@ -1,6 +1,6 @@
 # Neeko — Session Context
 
-> Last updated: 2026-03-29 (session 7)
+> Last updated: 2026-04-04 (session 8)
 
 ## Goal
 
@@ -367,24 +367,33 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 
 ### Session 7 — WSL/SSH Parity, IDE Icons, DiffView, Credentials
 
-41. **Project collapse/expand** — clicking project header selects the project, clicking the avatar/icon toggles collapse. Applied to `ProjectItem`, `ProjectItemCard`, `WSLItem`, `RemoteItem`.
-42. **FileTree double-click fix** — changed expanded state from `useState<Record<string, boolean>>` to `useState<Set<string>>` with `useCallback` toggle handler.
-43. **WSL/SSH button consistency** — Git menu moved inside `.gh-project-actions` div (visible on hover only); IDE button placed outside actions; branch/worktree indentation unified to `14px`.
-44. **WSL/SSH IDE button** — always visible when `onOpenIde` callback exists (not gated by `selected_ide`); uses `getIdeIconByCommand()` for icon resolution.
-45. **Branch badge unification** — worktree and project branch badges both use `.gh-branch-inline` CSS class with `title` attribute for hover tooltip.
-46. **WSL/SSH worktree support** — 8 requirements implemented:
-    - Filter current branch's worktree from available list
-    - Worktree path persistence via `worktree_state` in `sessions.json` (`save_session` with `worktree_state` param)
-    - Ctrl+N cycling for WSL and SSH worktrees via `useKeyboardShortcuts` (`wslOpenedWtRef`/`remoteOpenedWtRef`)
-    - Side terminal uses active worktree path (`activeWslWorktreePath`/`activeRemoteWorktreePath`)
-    - Title bar branch syncs with active worktree branch (`activeWslWorktreeBranch`/`activeRemoteWorktreeBranch`)
-47. **SSH credential persistence** — `saved_auth: Option<String>` Base64 field on `RemoteEntrySession`; auto-restore via `restoreAuthFromEntries()` on load; "记住密码" checkbox in `RemoteAuthDialog` with `saved_auth` returned on success.
-48. **Custom radio/checkbox styles** — `.custom-radio` and `.custom-checkbox` CSS classes matching dark theme; used for SSH auth type selector.
-49. **WSL/SSH changed files as FileTree** — replaced flat file list in `ProjectBody` (RemoteItems) with `buildTree()` + `FileTree` component; `onSelectFile` adapter: `onSelectFile={(_, fp) => onSelectFile(fp)}`.
-50. **DiffView flicker fix** — `useRef` with `JSON.stringify` serialized key prevents re-loading diff content on every parent re-render (previously `[diffSource]` dependency with inline object literal caused unnecessary re-renders).
-51. **IDE icons from assets** — added `src/assets/ides/` with 8 SVG/PNG files (vscode, cursor, zed, idea, goland, rustrover, pycharm, default); `getIdeIconSrc(ideId)` and `getIdeIconByCommand(cmd, overrides)` in `utils/idePresets.ts`; `SettingsPanel` and `AddProjectModal` use new icons.
-52. **IDE button visibility** — `.gh-ide-btn` only visible on `.active` project hover via CSS (`opacity`/`visibility` transition); custom override IDEs resolve icon via reverse lookup: command → `ideCommandOverrides` → presetId → icon.
 53. **CREATE_NO_WINDOW on Windows** — `no_window_cmd()` helper added to `remote.rs` and `git.rs`; applies `CommandCreationFlags(0x08000000)` on `#[cfg(windows)]`, no-op on other platforms.
+
+### Session 8 — Spec & Documentation Sync
+
+54. **REQUIREMENTS.md updated** — synced with actual codebase:
+    - Added WSL support section (2.10): distro enumeration, terminal, Git, IDE operations
+    - Added SSH remote support section (2.11): connection testing, terminal, Git, IDE, credential persistence
+    - Added Worktree terminal section (2.6): dedicated terminal per worktree, `Ctrl+N` cycling
+    - Added file logging section (2.14): custom `FileLogger` writing to `~/.neeko/neeko.log`
+    - Updated Agent table: removed aider, added qoder and codebuddy (7 total)
+    - Updated keyboard shortcuts: added `Ctrl+N` (worktree cycle), `Ctrl+R` (terminal refresh), `Escape` (close settings)
+    - Updated CSS variables: 14 → 21 (added `--text-muted`, `--status-*`, `--diff-*-text`)
+    - Updated Tauri commands: 27 → 61 (added WSL 13 commands, SSH 14 commands, plus rename_branch/rename_worktree/set_project_collapsed)
+    - Updated data structures: added `AuthMethod`, `WSLEntrySession`, `RemoteEntrySession`, `collapsed` fields
+    - Updated tech stack: added russh, notify, highlight.js, lucide-react
+    - Updated architecture diagram to include WSL/SSH terminals and new backend components
+    - Updated persistence: `save_session` now takes 5 parameters; `config.json` includes `agentCommandOverrides` and `customAgents`
+    - Updated icon system: lucide-react for UI, SVG for files/folders, module assets for agents/IDEs
+55. **AGENTS.md created** — new AI assistant context file at project root:
+    - Project overview, tech stack, version info
+    - Common commands (pnpm install, tauri dev/build, tsc, cargo check)
+    - Complete directory structure (frontend + backend)
+    - Frontend conventions: type management, hook design, React performance, barrel export, shared utilities
+    - Backend conventions: module responsibilities, error handling, platform gating
+    - Architecture highlights: terminal cache, SSH IO, agent auto-launch delays, persistence strategy
+    - Keyboard shortcuts, preset agents, preset IDEs
+    - Known issues and related documents
 
 ---
 

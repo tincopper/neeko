@@ -105,8 +105,8 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
     });
   }, []);
 
-  const BASE = 8;
-  const STEP = 14;
+  const BASE = 6;
+  const STEP = 12;
 
   return (
     <>
