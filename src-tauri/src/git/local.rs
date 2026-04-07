@@ -333,6 +333,7 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
         hunks: result_hunks,
     })
 }
+
 pub fn create_worktree(
     repo_path: &Path,
     worktree_path: &Path,

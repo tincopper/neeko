@@ -7,6 +7,7 @@ mod remote;
 pub mod state;
 pub mod storage;
 mod terminal;
+mod utils;
 mod watcher;
 
 use state::*;
