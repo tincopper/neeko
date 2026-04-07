@@ -265,6 +265,21 @@ export async function createTerminalForProject(
 
     const textarea = term.textarea
     if (textarea) {
+      // 将 helper textarea 定位到光标位置，使 IME 候选窗口出现在正确位置
+      // 修复 xterm.js 6.x 中 textarea 位置未同步的问题（7.x 已修复：PR #5759）
+      const syncTextareaToCursor = () => {
+        // 在 xterm 容器内查找光标元素
+        const cursorEl = element.querySelector('.xterm-cursor')
+        if (!cursorEl) return
+        const cursorRect = cursorEl.getBoundingClientRect()
+        const containerRect = element.getBoundingClientRect()
+        // 计算相对于 xterm 容器的偏移
+        const top = cursorRect.top - containerRect.top
+        const left = cursorRect.left - containerRect.left
+        textarea.style.top = `${top}px`
+        textarea.style.left = `${left}px`
+      }
+
       // keyCode 229：IME 组合开始的信号，在 compositionstart 之前触发
       // Linux 下必须在此处提前设置 isComposing，否则 onData 会先一步发出
       // macOS：e.isComposing 是 W3C 标准属性，比 keyCode 229 更可靠
@@ -272,11 +287,15 @@ export async function createTerminalForProject(
         if ((e.isComposing || e.keyCode === 229) && !isComposing) {
           isComposing = true
           compositionPendingText = ''
+          // 在 IME 开始前同步 textarea 位置到光标
+          syncTextareaToCursor()
         }
       })
       textarea.addEventListener('compositionstart', () => {
         isComposing = true
         compositionPendingText = ''
+        // 确保 compositionstart 时 textarea 也在光标位置
+        syncTextareaToCursor()
       })
       textarea.addEventListener('compositionend', (e: CompositionEvent) => {
         const committed = e.data || ''
