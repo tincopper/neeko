@@ -3,7 +3,7 @@ use crate::AppStateWrapper;
 use tauri::State;
 
 fn wsl_command(program: &str) -> std::process::Command {
-    let mut cmd = std::process::Command::new(program);
+    let cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
