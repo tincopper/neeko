@@ -83,7 +83,7 @@ impl TerminalManager {
         let child = pair.slave.spawn_command(cmd)?;
 
         #[cfg(unix)]
-        disable_echo_if_possible(&pair.master);
+        disable_echo_if_possible(pair.master.as_ref());
 
         spawn_pty_pipeline(
             &id,
@@ -259,8 +259,9 @@ fn spawn_writer_listener(
     let writer_clone = writer_mutex.clone();
     let prefix_owned = prefix.to_string();
 
-    app_handle.listen(&format!("terminal-input-{}", id), move |event| {
-        match serde_json::from_str::<Vec<u8>>(event.payload()) {
+    app_handle.listen(
+        &format!("terminal-input-{}", id),
+        move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
             Ok(data) => {
                 if let Ok(mut w) = writer_clone.lock() {
                     if let Err(e) = w.write_all(&data) {
@@ -276,8 +277,8 @@ fn spawn_writer_listener(
                     event.payload()
                 ));
             }
-        }
-    })
+        },
+    )
 }
 
 fn spawn_watcher_thread(
