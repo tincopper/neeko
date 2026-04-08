@@ -14,6 +14,7 @@ import {
   Grid2x2,
   Info,
   OctagonAlert,
+  Search,
   type LucideProps,
 } from "lucide-react";
 
@@ -33,6 +34,7 @@ export const GridIcon = Grid2x2;
 export const InfoCircleIcon = Info;
 export const ErrorOctagonIcon = OctagonAlert;
 export const GitLogoIcon = GitBranch;
+export const SearchIcon = Search;
 
 // ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
 
