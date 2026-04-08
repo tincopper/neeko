@@ -27,6 +27,7 @@ export function createAgent(overrides?: Partial<AgentConfig>): AgentConfig {
     name: 'Claude Code',
     command: 'claude',
     args: [],
+    env: {},
     icon: null,
     enabled: true,
     ...overrides,
