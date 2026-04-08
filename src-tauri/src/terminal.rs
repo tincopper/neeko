@@ -82,8 +82,9 @@ impl TerminalManager {
 
         let child = pair.slave.spawn_command(cmd)?;
 
-        #[cfg(unix)]
-        disable_echo_if_possible(pair.master.as_ref());
+        // Note: Do NOT disable echo here - shell handles line editing
+        // PTY native echo will display user input
+        // This preserves Tab completion, arrow keys, and backspace on Linux
 
         spawn_pty_pipeline(
             &id,
