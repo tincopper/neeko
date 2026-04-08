@@ -5,3 +5,69 @@
 
 ---
 
+
+
+## Session 1: IME candidate window position fix
+
+**Date**: 2026-04-08
+**Task**: IME candidate window position fix
+
+### Summary
+
+Analyzed and fixed IME candidate window not appearing at cursor position in terminal. Root cause: xterm.js 6.0.0 textarea position not synced before composition start (upstream fix in 7.0.0 PR #5759). Added syncTextareaToCursor() workaround.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `98632ff` | (see git log) |
+| `61f6bf0` | (see git log) |
+| `d4fab6c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 2: Fix Rust compilation errors
+
+**Date**: 2026-04-08
+**Task**: Fix Rust compilation errors
+
+### Summary
+
+Fixed 12 Rust compilation errors: crate::git::wsl:: → crate::git:: (pub re-export), added mut to cmd for creation_flags() calls in local.rs, wsl.rs, wsl.rs (commands)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec7149a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

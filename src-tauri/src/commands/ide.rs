@@ -186,7 +186,7 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
 pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
+        crate::git::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "windows"))]
     {

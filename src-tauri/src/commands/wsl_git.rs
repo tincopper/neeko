@@ -4,7 +4,7 @@ use crate::state::*;
 pub fn refresh_wsl_git_info(distro: String, project_path: String) -> Result<GitInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::get_wsl_git_info(&distro, &project_path).map_err(|e| e.to_string())
+        crate::git::get_wsl_git_info(&distro, &project_path).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -21,7 +21,7 @@ pub fn get_wsl_file_diff_command(
 ) -> Result<DiffResult, String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::get_wsl_file_diff(&distro, &project_path, &file_path)
+        crate::git::get_wsl_file_diff(&distro, &project_path, &file_path)
             .map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "windows"))]
@@ -39,7 +39,7 @@ pub fn wsl_checkout_branch(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::run_wsl_git(&distro, &project_path, &["checkout", &branch_name])
+        crate::git::run_wsl_git(&distro, &project_path, &["checkout", &branch_name])
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -58,7 +58,7 @@ pub fn wsl_create_branch(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::run_wsl_git(&distro, &project_path, &["branch", &branch_name])
+        crate::git::run_wsl_git(&distro, &project_path, &["branch", &branch_name])
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -78,7 +78,7 @@ pub fn wsl_rename_branch(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::run_wsl_git(
+        crate::git::run_wsl_git(
             &distro,
             &project_path,
             &["branch", "-m", &old_name, &new_name],
@@ -108,7 +108,7 @@ pub fn wsl_create_worktree(
         } else {
             vec!["worktree", "add", &worktree_path, &branch_name]
         };
-        crate::git::wsl::run_wsl_git(&distro, &project_path, &args)
+        crate::git::run_wsl_git(&distro, &project_path, &args)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
@@ -127,7 +127,7 @@ pub fn wsl_remove_worktree(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::run_wsl_git(
+        crate::git::run_wsl_git(
             &distro,
             &project_path,
             &["worktree", "remove", "--force", &worktree_path],
@@ -151,7 +151,7 @@ pub fn wsl_rename_worktree(
 ) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl::run_wsl_git(
+        crate::git::run_wsl_git(
             &distro,
             &project_path,
             &["worktree", "move", &worktree_path, &new_name],
