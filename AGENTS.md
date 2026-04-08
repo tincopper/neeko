@@ -202,18 +202,28 @@ import { TitleBar, AgentIcon } from "./components/layout";
 #### 测试目录结构
 ```
 src/
-├── utils/__tests__/
-│   ├── fileIcons.test.ts
-│   ├── distros.test.ts
-│   ├── agents.test.ts
-│   ├── terminal.test.ts
-│   └── idePresets.test.ts
-├── components/project/__tests__/
-│   └── FileTree.test.ts
-├── hooks/__tests__/
-│   └── useWorktreeState.test.ts
-└── test/
-    └── setup.ts
+├── testing/                      # 全局测试配置
+│   ├── setup.ts                  # vitest 全局 setup
+│   └── factories.ts              # 测试工厂函数
+├── components/
+│   └── __tests__/                # 组件测试
+│       ├── DiffView.test.tsx
+│       ├── FileTree.test.tsx
+│       └── SettingsPanel.test.tsx
+├── hooks/
+│   └── __tests__/               # Hook 测试
+│       ├── useAppConfig.test.ts
+│       ├── useLocalProjects.test.ts
+│       └── useWorktreeState.test.ts
+└── utils/
+    └── __tests__/               # 工具函数测试
+        ├── terminalInput.test.ts
+        ├── fileIcons.test.ts
+        ├── distros.test.ts
+        ├── agents.test.ts
+        ├── terminal.test.ts
+        ├── idePresets.test.ts
+        └── platform.test.ts
 src-tauri/src/
 ├── git.rs    (#[cfg(test)] 模块)
 ├── agent.rs  (#[cfg(test)] 模块)

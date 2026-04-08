@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useLocalProjects } from '../../hooks/useLocalProjects';
-import { createProject } from '../factories';
+import { createProject } from '../../testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
 vi.mock('../../components/terminal', () => ({
