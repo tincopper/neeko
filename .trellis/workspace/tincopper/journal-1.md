@@ -71,3 +71,35 @@ Fixed 12 Rust compilation errors: crate::git::wsl:: → crate::git:: (pub re-exp
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Fix IDE icon display in add project dialog
+
+**Date**: 2026-04-08
+**Task**: Fix IDE icon display in add project dialog
+
+### Summary
+
+Fixed IDE icon not rendering in the add project dropdown — was showing raw filename text instead of the actual icon image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21cdbcc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
