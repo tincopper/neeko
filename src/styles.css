@@ -998,6 +998,140 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.gh-branch-inline:hover,
+.gh-branch-inline.active {
+  background-color: rgba(97, 175, 239, 0.2);
+  border-color: rgba(97, 175, 239, 0.4);
+}
+
+/* Branch dropdown */
+.gh-branch-dropdown-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.gh-branch-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  min-width: 220px;
+  max-width: 320px;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.gh-branch-dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.gh-branch-dropdown-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gh-branch-dropdown-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 0.82em;
+  font-family: inherit;
+}
+
+.gh-branch-dropdown-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.gh-branch-dropdown-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.gh-branch-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.82em;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.gh-branch-dropdown-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gh-branch-dropdown-item.current {
+  color: #61afef;
+  cursor: default;
+}
+
+.gh-branch-dropdown-item svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.gh-branch-dropdown-item.current svg {
+  opacity: 1;
+}
+
+.gh-branch-dropdown-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-branch-dropdown-empty {
+  padding: 12px;
+  text-align: center;
+  font-size: 0.82em;
+  color: var(--text-muted);
+}
+
+.gh-branch-dropdown-footer {
+  border-top: 1px solid var(--border-color);
+  padding: 4px 0;
+}
+
+.gh-branch-dropdown-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.82em;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.gh-branch-dropdown-action:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.gh-branch-dropdown-action svg {
+  flex-shrink: 0;
+  opacity: 0.6;
 }
 
 /* branch inline is always visible as rightmost element */
