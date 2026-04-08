@@ -32,3 +32,7 @@ vi.mock('@tauri-apps/api/window', () => ({
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
 }));
+
+// Mock asset imports (Vite transforms these to URLs in production)
+vi.mock('*.png', () => ({ default: 'mock-png-url' }));
+vi.mock('*.svg', () => ({ default: 'mock-svg-url' }));
