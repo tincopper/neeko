@@ -9,7 +9,7 @@ use super::remote::parse_git_info_output;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 fn no_window_cmd(program: &str) -> Command {
-    let cmd = Command::new(program);
+    let mut cmd = Command::new(program);
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
