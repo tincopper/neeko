@@ -103,3 +103,36 @@ Fixed IDE icon not rendering in the add project dropdown — was showing raw fil
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Replace branch list with searchable dropdown
+
+**Date**: 2026-04-08
+**Task**: Replace branch list with searchable dropdown
+
+### Summary
+
+Fixed IDE icon display bug in add project dialog (filename text -> img tag). Replaced expandable branch list with searchable dropdown triggered by clicking the branch badge in project header.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21cdbcc` | (see git log) |
+| `645ba87` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
