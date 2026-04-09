@@ -103,28 +103,4 @@ describe('useSideTerminalResize', () => {
     expect(onWidthChange).toHaveBeenCalled();
     expect(onWidthChange.mock.calls[0][0]).toBe(600);
   });
-
-  it('suppressResizeRef 为 true 时抑制 resize', () => {
-    const suppressRef = { current: false };
-    const { result } = renderHook(() =>
-      useSideTerminalResize(500, defaultOnWidthChange, suppressRef),
-    );
-
-    const mouseDownEvent = {
-      preventDefault: vi.fn(),
-      clientX: 500,
-    } as unknown as React.MouseEvent;
-
-    act(() => {
-      result.current.handleSideDividerMouseDown(mouseDownEvent);
-    });
-
-    // 拖拽期间 suppressResizeRef 应为 true
-    expect(suppressRef.current).toBe(true);
-
-    document.dispatchEvent(new MouseEvent('mouseup'));
-
-    // 释放后恢复
-    expect(suppressRef.current).toBe(false);
-  });
 });

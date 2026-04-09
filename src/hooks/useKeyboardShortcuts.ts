@@ -14,8 +14,11 @@ type SwitchItem =
 interface UseKeyboardShortcutsParams {
   projects: { id: string }[];
   activeProjectId: string | null;
-  sideTerminalOpenRef: RefObject<boolean>;
-  setSideTerminalOpen: (open: boolean) => void;
+  activeProjectIdRef: RefObject<string | null>;
+  sideTerminalOpenRef: RefObject<Set<string>>;
+  setSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
+  focusedSideTerminalIndex: string | null;
+  setFocusedSideTerminalIndex: (index: string | null) => void;
   wslEntriesRef: RefObject<WSLEntrySession[]>;
   activeWslKeyRef: RefObject<ActiveWslKey>;
   selectWslProjectRef: RefObject<(distro: string, project: WSLProject) => void>;
@@ -48,8 +51,11 @@ interface UseKeyboardShortcutsParams {
 export function useKeyboardShortcuts({
   projects,
   activeProjectId,
+  activeProjectIdRef,
   sideTerminalOpenRef,
   setSideTerminalOpen,
+  focusedSideTerminalIndex,
+  setFocusedSideTerminalIndex,
   wslEntriesRef,
   activeWslKeyRef,
   selectWslProjectRef,
@@ -81,7 +87,18 @@ export function useKeyboardShortcuts({
       if (e.ctrlKey && e.altKey && e.code === "KeyT") {
         e.preventDefault();
         if (isTerminalViewRef.current) {
-          setSideTerminalOpen(true);
+          // 打开新的终端窗口（最多 4 个）
+          setSideTerminalOpen(prev => {
+            const next = new Set(prev);
+            if (next.size >= 4) return prev;
+            // 找到最小的可用索引
+            let newIndex = 0;
+            while (next.has(String(newIndex))) {
+              newIndex++;
+            }
+            next.add(String(newIndex));
+            return next;
+          });
         } else if (IS_WINDOWS && activeWslKeyRef.current) {
           const pid = activeWslKeyRef.current.projectId;
           setWslSideTerminalOpen(prev => new Set(prev).add(pid));
@@ -152,9 +169,43 @@ export function useKeyboardShortcuts({
       }
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyW") {
-        if (sideTerminalOpenRef.current) {
+        const currentSet = sideTerminalOpenRef.current ?? new Set<string>();
+        if (currentSet.size > 0) {
           e.preventDefault();
-          setSideTerminalOpen(false);
+          // 如果有聚焦的终端，关闭聚焦的终端；否则关闭最近打开的终端
+          const indexToRemove = focusedSideTerminalIndex && currentSet.has(focusedSideTerminalIndex)
+            ? focusedSideTerminalIndex
+            : (() => {
+                const arr = Array.from(currentSet);
+                return arr[arr.length - 1];
+              })();
+          const projectId = activeProjectIdRef.current;
+          
+          // 销毁 PTY 会话
+          if (projectId) {
+            const idx = parseInt(indexToRemove, 10);
+            const cacheKey = `${projectId}:side:${idx}`;
+            import("../components/terminal").then(({ terminalCache, destroyTerminalCache }) => {
+              // 先获取 sessionId，再销毁
+              const cache = terminalCache.get(cacheKey);
+              if (cache?.sessionId) {
+                import("@tauri-apps/api/core").then(({ invoke }) => {
+                  invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
+                });
+              }
+              destroyTerminalCache(cacheKey);
+            });
+          }
+          
+          // 从 Set 中移除
+          setSideTerminalOpen(prev => {
+            const next = new Set(prev);
+            next.delete(indexToRemove);
+            return next;
+          });
+          
+          // 清除聚焦索引
+          setFocusedSideTerminalIndex(null);
         } else if (IS_WINDOWS && activeWslKeyRef.current) {
           const pid = activeWslKeyRef.current.projectId;
           if ((wslSideOpenRef.current ?? new Set()).has(pid)) {
@@ -182,8 +233,12 @@ export function useKeyboardShortcuts({
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyR") {
         e.preventDefault();
-        if (sideTerminalOpenRef.current && activeProjectId) {
-          refreshSideTerminal(activeProjectId);
+        const currentSet = sideTerminalOpenRef.current ?? new Set<string>();
+        if (currentSet.size > 0 && activeProjectId) {
+          // 刷新所有打开的 side terminals
+          currentSet.forEach(indexStr => {
+            refreshSideTerminal(activeProjectId, parseInt(indexStr, 10));
+          });
         } else if (activeProjectId && isTerminalViewRef.current) {
           refreshTerminal(activeProjectId);
         } else if (IS_WINDOWS && activeWslKeyRef.current) {
