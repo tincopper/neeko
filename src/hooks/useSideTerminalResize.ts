@@ -1,9 +1,8 @@
-import { useState, useRef, useCallback, MutableRefObject } from "react";
+import { useState, useRef, useCallback } from "react";
 
 export function useSideTerminalResize(
   initialWidth: number,
   onWidthChange: (width: number) => void,
-  suppressResizeRef?: MutableRefObject<boolean>,
 ) {
   const [sideTerminalWidth, setSideTerminalWidth] = useState(initialWidth);
   const sideResizingRef = useRef(false);
@@ -19,7 +18,6 @@ export function useSideTerminalResize(
     sideResizeStartWidth.current = sideTerminalWidth;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-    if (suppressResizeRef) suppressResizeRef.current = true;
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!sideResizingRef.current) return;
@@ -43,14 +41,13 @@ export function useSideTerminalResize(
       }
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      if (suppressResizeRef) suppressResizeRef.current = false;
       // 拖拽结束时同步最终值
       setSideTerminalWidth(lastWidthRef.current);
       onWidthChange(lastWidthRef.current);
     };
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [sideTerminalWidth, onWidthChange, suppressResizeRef]);
+  }, [sideTerminalWidth, onWidthChange]);
 
   return { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown };
 }

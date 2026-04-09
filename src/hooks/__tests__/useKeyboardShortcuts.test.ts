@@ -15,8 +15,11 @@ function createDefaultParams() {
   return {
     projects: [] as { id: string }[],
     activeProjectId: null as string | null,
-    sideTerminalOpenRef: { current: false },
+    activeProjectIdRef: { current: null } as React.MutableRefObject<string | null>,
+    sideTerminalOpenRef: { current: new Set<string>() } as React.MutableRefObject<Set<string>>,
     setSideTerminalOpen: vi.fn(),
+    focusedSideTerminalIndex: null as string | null,
+    setFocusedSideTerminalIndex: vi.fn(),
     wslEntriesRef: { current: [] as WSLEntrySession[] },
     activeWslKeyRef: { current: null as { distro: string; projectId: string } | null },
     selectWslProjectRef: { current: vi.fn() },
@@ -76,20 +79,40 @@ describe('useKeyboardShortcuts', () => {
 
     dispatchKey('KeyT', { ctrlKey: true, altKey: true });
 
-    expect(params.setSideTerminalOpen).toHaveBeenCalledWith(true);
+    // 验证 setSideTerminalOpen 被调用，传入一个函数
+    expect(params.setSideTerminalOpen).toHaveBeenCalled();
+    const callFn = params.setSideTerminalOpen.mock.calls[0][0];
+    expect(callFn(new Set<string>()).has('0')).toBe(true);
   });
 
   it('Ctrl+W 关闭已打开的 side terminal', () => {
-    params.sideTerminalOpenRef.current = true;
+    params.sideTerminalOpenRef.current = new Set(['0']);
+    params.focusedSideTerminalIndex = '0';
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyW', { ctrlKey: true });
 
-    expect(params.setSideTerminalOpen).toHaveBeenCalledWith(false);
+    // 验证 setSideTerminalOpen 被调用，传入一个函数
+    expect(params.setSideTerminalOpen).toHaveBeenCalled();
+    // 验证 setFocusedSideTerminalIndex 被调用为 null
+    expect(params.setFocusedSideTerminalIndex).toHaveBeenCalledWith(null);
+  });
+
+  it('Ctrl+W 无聚焦终端时关闭最后一个', () => {
+    params.sideTerminalOpenRef.current = new Set(['0', '1']);
+    params.focusedSideTerminalIndex = null;
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('KeyW', { ctrlKey: true });
+
+    // 验证 setSideTerminalOpen 被调用
+    expect(params.setSideTerminalOpen).toHaveBeenCalled();
+    // 验证 setFocusedSideTerminalIndex 被调用为 null
+    expect(params.setFocusedSideTerminalIndex).toHaveBeenCalledWith(null);
   });
 
   it('Ctrl+W 不关闭未打开的 side terminal', () => {
-    params.sideTerminalOpenRef.current = false;
+    params.sideTerminalOpenRef.current = new Set();
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyW', { ctrlKey: true });

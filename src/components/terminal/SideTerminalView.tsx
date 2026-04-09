@@ -22,20 +22,29 @@ interface SideTerminalViewProps {
   shell?: string;
   fontFamily?: string;
   onClose: () => void;
-  width?: number;
   worktreePath?: string;
+  index?: number;
+  /** 当前打开的终端数量，用于触发布局变化时的 resize */
+  terminalCount?: number;
+  /** 当前是否聚焦 */
+  isFocused?: boolean;
+  /** 聚焦时回调 */
+  onFocus?: () => void;
   /** 用户主动关闭时调用（销毁 PTY cache）；组件因切换项目而卸载时不触发，保留 PTY 会话 */
   onDestroy?: () => void;
 }
 
-// Side 终端的 cache key 格式：projectId + ":side" 或 projectId + ":side:" + worktreePath
-function sideKey(projectId: string, worktreePath?: string) {
-  return worktreePath ? `${projectId}:side:${worktreePath}` : `${projectId}:side`;
+// Side 终端的 cache key 格式：projectId + ":side" 或 projectId + ":side:" + index
+function sideKey(projectId: string, index?: number, worktreePath?: string) {
+  if (worktreePath) {
+    return index !== undefined ? `${projectId}:side:${index}:${worktreePath}` : `${projectId}:side:${worktreePath}`;
+  }
+  return index !== undefined ? `${projectId}:side:${index}` : `${projectId}:side`;
 }
 
 /** 手动刷新 Side 终端 */
-export function refreshSideTerminal(projectId: string, worktreePath?: string) {
-  const key = sideKey(projectId, worktreePath);
+export function refreshSideTerminal(projectId: string, index?: number, worktreePath?: string) {
+  const key = sideKey(projectId, index, worktreePath);
   const cache = terminalCache.get(key);
   if (cache) {
     cache.unlistenOutput?.();
@@ -53,48 +62,86 @@ function SideTerminalView({
   shell = "",
   fontFamily = "",
   onClose,
-  width,
   worktreePath,
+  index,
+  terminalCount,
+  isFocused,
+  onFocus,
   onDestroy,
 }: SideTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
+  const prevTerminalCountRef = useRef(0);
+
+  // 布局变化时触发 PTY resize（终端数量变化时）
+  useEffect(() => {
+    if (terminalCount === undefined) return;
+    const key = sideKey(project.id, index, worktreePath);
+    const cache = terminalCache.get(key);
+    // 检测到终端数量变化
+    if (prevTerminalCountRef.current !== terminalCount && cache) {
+      prevTerminalCountRef.current = terminalCount;
+      requestAnimationFrame(() => {
+        cache.fitAddon.fit();
+        if (cache.sessionId) {
+          invoke("resize_terminal", {
+            sessionId: cache.sessionId,
+            cols: cache.term.cols,
+            rows: cache.term.rows,
+          }).catch(() => {});
+        }
+      });
+    }
+  }, [terminalCount, project.id, index, worktreePath]);
 
   // fontSize / fontFamily 变化时同步到已有实例
   useEffect(() => {
-    const key = sideKey(project.id, worktreePath);
+    const key = sideKey(project.id, index, worktreePath);
     const cache = terminalCache.get(key);
     if (!cache) return;
     cache.term.options.fontSize = fontSize;
     cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, project.id]);
+  }, [fontSize, fontFamily, project.id, index, worktreePath]);
 
-  // side terminal 宽度变化时重算 PTY 尺寸
+  // side terminal 容器尺寸变化时重算 PTY 尺寸（使用 ResizeObserver）
   useEffect(() => {
-    const key = sideKey(project.id, worktreePath);
+    const key = sideKey(project.id, index, worktreePath);
     const cache = terminalCache.get(key);
-    if (!cache) return;
-    // 延迟执行以确保浏览器完成布局
-    const timer = setTimeout(() => {
-      cache.fitAddon.fit();
-      if (cache.sessionId) {
-        invoke("resize_terminal", {
-          sessionId: cache.sessionId,
-          cols: cache.term.cols,
-          rows: cache.term.rows,
-        }).catch(() => {});
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [width]);
+    if (!cache || !wrapperRef.current) return;
+
+    let rafId: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const c = terminalCache.get(key);
+        if (c) {
+          c.fitAddon.fit();
+          if (c.sessionId) {
+            invoke("resize_terminal", {
+              sessionId: c.sessionId,
+              cols: c.term.cols,
+              rows: c.term.rows,
+            }).catch(() => {});
+          }
+        }
+      });
+    });
+    ro.observe(wrapperRef.current);
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [project.id, index, worktreePath]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const key = sideKey(project.id, worktreePath);
+    const key = sideKey(project.id, index, worktreePath);
     currentKeyRef.current = key;
 
     // 注册重建回调
@@ -179,18 +226,27 @@ function SideTerminalView({
       detachAll();
       terminalRebuildCallbacks.delete(key);
     };
-  }, [project.id, worktreePath, rebuildCount]);
+  }, [project.id, worktreePath, index, rebuildCount]);
 
   const handleClose = () => {
     onDestroy?.();
     onClose();
   };
 
+  // 当 isFocused 变化时，focus terminal
+  useEffect(() => {
+    if (isFocused) {
+      const key = sideKey(project.id, index, worktreePath);
+      const cache = terminalCache.get(key);
+      if (cache) {
+        cache.term.focus();
+        onFocus?.();
+      }
+    }
+  }, [isFocused, project.id, index, worktreePath, onFocus]);
+
   return (
-    <div
-      className="side-terminal-container"
-      style={width ? { flex: "none", width } : undefined}
-    >
+    <div className="side-terminal-container">
       <div className="side-terminal-header">
         <span className="side-terminal-title">Terminal</span>
         <span className="side-terminal-hint">Ctrl+W to close</span>

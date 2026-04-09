@@ -11,10 +11,12 @@ interface MainContentProps {
   activeProject: Project | null;
   activeWorktreePath: string | null;
   activeWorktreeBranch: string;
-  sideTerminalOpen: boolean;
+  sideTerminalOpenSet: Set<string>;
   sideTerminalWidth: number;
   handleSideDividerMouseDown: (e: React.MouseEvent) => void;
-  setSideTerminalOpen: (open: boolean) => void;
+  setSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
+  focusedSideTerminalIndex: string | null;
+  onFocusSideTerminal: (index: string | null) => void;
   handleSelectProject: (projectId: string) => void;
   handleAddProject: () => void;
   // wsl
@@ -43,10 +45,12 @@ function MainContent({
   activeProject,
   activeWorktreePath,
   activeWorktreeBranch,
-  sideTerminalOpen,
+  sideTerminalOpenSet,
   sideTerminalWidth,
   handleSideDividerMouseDown,
   setSideTerminalOpen,
+  focusedSideTerminalIndex,
+  onFocusSideTerminal,
   handleSelectProject,
   handleAddProject,
   activeWslProject,
@@ -185,39 +189,69 @@ function MainContent({
                   fontFamily={config.fontFamily}
                 />
               )}
-              {sideTerminalOpen && !activeWorktreePath && (
+              {sideTerminalOpenSet.size > 0 && !activeWorktreePath && (
                 <>
                   <div
                     className="terminal-pane-divider"
                     onMouseDown={handleSideDividerMouseDown}
                   />
-                  <SideTerminalView
-                    project={activeProject}
-                    fontSize={config.fontSize}
-                    shell={config.shell}
-                    fontFamily={config.fontFamily}
-                    onClose={() => setSideTerminalOpen(false)}
-                    onDestroy={() => destroyTerminalCache(`${activeProject.id}:side`)}
-                    width={sideTerminalWidth}
-                  />
+                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
+                    {Array.from(sideTerminalOpenSet).map((indexStr) => {
+                      const index = parseInt(indexStr, 10);
+                      return (
+                        <SideTerminalView
+                          key={`${activeProject.id}:side:${index}`}
+                          project={activeProject}
+                          fontSize={config.fontSize}
+                          shell={config.shell}
+                          fontFamily={config.fontFamily}
+                          onClose={() => setSideTerminalOpen(prev => {
+                            const n = new Set(prev);
+                            n.delete(indexStr);
+                            return n;
+                          })}
+                          onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${index}`)}
+                          index={index}
+                          terminalCount={sideTerminalOpenSet.size}
+                          isFocused={focusedSideTerminalIndex === indexStr}
+                          onFocus={() => onFocusSideTerminal(indexStr)}
+                        />
+                      );
+                    })}
+                  </div>
                 </>
               )}
-              {sideTerminalOpen && activeWorktreePath && (
+              {sideTerminalOpenSet.size > 0 && activeWorktreePath && (
                 <>
                   <div
                     className="terminal-pane-divider"
                     onMouseDown={handleSideDividerMouseDown}
                   />
-                  <SideTerminalView
-                    project={activeProject}
-                    fontSize={config.fontSize}
-                    shell={config.shell}
-                    fontFamily={config.fontFamily}
-                    onClose={() => setSideTerminalOpen(false)}
-                    onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${activeWorktreePath}`)}
-                    width={sideTerminalWidth}
-                    worktreePath={activeWorktreePath}
-                  />
+                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
+                    {Array.from(sideTerminalOpenSet).map((indexStr) => {
+                      const index = parseInt(indexStr, 10);
+                      return (
+                        <SideTerminalView
+                          key={`${activeProject.id}:side:${index}`}
+                          project={activeProject}
+                          fontSize={config.fontSize}
+                          shell={config.shell}
+                          fontFamily={config.fontFamily}
+                          onClose={() => setSideTerminalOpen(prev => {
+                            const n = new Set(prev);
+                            n.delete(indexStr);
+                            return n;
+                          })}
+                          onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${index}`)}
+                          index={index}
+                          worktreePath={activeWorktreePath}
+                          terminalCount={sideTerminalOpenSet.size}
+                          isFocused={focusedSideTerminalIndex === indexStr}
+                          onFocus={() => onFocusSideTerminal(indexStr)}
+                        />
+                      );
+                    })}
+                  </div>
                 </>
               )}
             </div>

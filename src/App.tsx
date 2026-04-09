@@ -139,7 +139,7 @@ function App() {
     saveSessionPartial({ sideTerminalWidth: Math.round(width) });
   }, [saveSessionPartial]);
 
-  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, saveSideTerminalWidth, suppressTerminalResizeRef);
+  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, saveSideTerminalWidth);
 
   // ── Cross-domain setter refs ──
   const xdomain = useCrossDomainRefs();
@@ -183,13 +183,19 @@ function App() {
   xdomain.wslOpenedWtSetterRef.current = wslActions.setWslOpenedWt;
   xdomain.wslWorktreePathSetterRef.current = wslActions.setActiveWslWorktreePath;
 
-  // ── Side terminal state ──
-  const sideTerminalOpen = activeProjectId ? (sideTerminalOpenMap[activeProjectId] ?? false) : false;
-  const setSideTerminalOpen = useCallback((open: boolean) => {
+  // Helper to create empty Set
+  const emptySideTerminalSet = () => new Set<string>();
+
+  // ── Side terminal state (支持多个终端窗口) ──
+  const sideTerminalOpenSet = activeProjectId ? (sideTerminalOpenMap[activeProjectId] ?? emptySideTerminalSet()) : emptySideTerminalSet();
+  const setSideTerminalOpen = useCallback((updater: (prev: Set<string>) => Set<string>) => {
     const pid = activeProjectIdRef.current;
     if (!pid) return;
-    setSideTerminalOpenMap(prev => ({ ...prev, [pid]: open }));
+    setSideTerminalOpenMap(prev => ({ ...prev, [pid]: updater(prev[pid] ?? emptySideTerminalSet()) }));
   }, [setSideTerminalOpenMap]);
+
+  // 追踪当前 focus 的 side terminal 索引
+  const [focusedSideTerminalIndex, setFocusedSideTerminalIndex] = useState<string | null>(null);
 
   // ── Add menu ──
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -217,9 +223,9 @@ function App() {
   });
 
   // ── Ref sync ──────────────────────────────────────────────────────────────
-  const sideTerminalOpenRef = useRef(false);
+  const sideTerminalOpenSetRef = useRef<Set<string>>(new Set<string>());
   useEffect(() => {
-    sideTerminalOpenRef.current = sideTerminalOpen;
+    sideTerminalOpenSetRef.current = sideTerminalOpenSet;
     wslEntriesRef.current = wslEntries;
     activeWslKeyRef.current = activeWslKey;
     remoteEntriesRef.current = remoteEntries;
@@ -235,7 +241,7 @@ function App() {
     wslActions.activeWslWorktreePathRef.current = wslActions.activeWslWorktreePath;
     remoteActions.remoteOpenedWtRef.current = remoteActions.remoteOpenedWt;
     remoteActions.activeRemoteWorktreePathRef.current = remoteActions.activeRemoteWorktreePath;
-  }, [sideTerminalOpen, wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
+  }, [sideTerminalOpenSet, wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
       wslSideTerminalOpen, remoteSideTerminalOpen, activeWorktreePath, openedWorktrees,
       activeProject, wslActions.wslOpenedWt, wslActions.activeWslWorktreePath,
       remoteActions.remoteOpenedWt, remoteActions.activeRemoteWorktreePath]);
@@ -264,7 +270,9 @@ function App() {
   // ── Keyboard shortcuts ──
   useKeyboardShortcuts({
     projects, activeProjectId,
-    sideTerminalOpenRef, setSideTerminalOpen,
+    activeProjectIdRef,
+    sideTerminalOpenRef: sideTerminalOpenSetRef, setSideTerminalOpen,
+    focusedSideTerminalIndex, setFocusedSideTerminalIndex,
     wslEntriesRef, activeWslKeyRef, selectWslProjectRef,
     remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     selectProjectRef,
@@ -317,6 +325,21 @@ function App() {
     const p = projects.find((proj) => proj.id === projectId);
     if (p) handleOpenIdeCallback(p);
   }, [projects, handleOpenIdeCallback]);
+
+  const handleOpenSideTerminal = useCallback(() => {
+    // 打开新的终端窗口（最多 4 个）
+    setSideTerminalOpen(prev => {
+      if (prev.size >= 4) return prev;
+      // 找到最小的可用索引
+      let newIndex = 0;
+      const next = new Set(prev);
+      while (next.has(String(newIndex))) {
+        newIndex++;
+      }
+      next.add(String(newIndex));
+      return next;
+    });
+  }, [setSideTerminalOpen]);
 
   const handleOpenWslSideTerminal = useCallback((_: string, projectId: string) => {
     setWslSideTerminalOpen(prev => new Set(prev).add(projectId));
@@ -426,7 +449,7 @@ function App() {
           onBackToMainTerminal={handleBackToMainTerminal}
           onOpenSettings={handleToggleSettings}
           onOpenIde={handleOpenIdeForSidebar}
-          onOpenSideTerminal={() => setSideTerminalOpen(true)}
+          onOpenSideTerminal={handleOpenSideTerminal}
           onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
           onSelectWslProject={wslActions.handleSelectWslProject}
           onCloseWslProject={handleCloseWslProject}
@@ -461,10 +484,12 @@ function App() {
           activeProject={activeProject}
           activeWorktreePath={activeWorktreePath}
           activeWorktreeBranch={activeWorktreeBranch}
-          sideTerminalOpen={sideTerminalOpen}
+          sideTerminalOpenSet={sideTerminalOpenSet}
           sideTerminalWidth={sideTerminalWidth}
           handleSideDividerMouseDown={handleSideDividerMouseDown}
           setSideTerminalOpen={setSideTerminalOpen}
+          focusedSideTerminalIndex={focusedSideTerminalIndex}
+          onFocusSideTerminal={setFocusedSideTerminalIndex}
           handleSelectProject={handleSelectProject}
           handleAddProject={handleAddProject}
           suppressResizeRef={suppressTerminalResizeRef}
