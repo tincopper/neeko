@@ -136,3 +136,35 @@ Fixed IDE icon display bug in add project dialog (filename text -> img tag). Rep
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Implement multi side terminal with tile layout
+
+**Date**: 2026-04-10
+**Task**: Implement multi side terminal with tile layout
+
+### Summary
+
+Added support for multiple side terminal windows (max 4) with tile layout, focus tracking, and improved resize handling
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b5517f2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
