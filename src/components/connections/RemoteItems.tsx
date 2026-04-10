@@ -180,7 +180,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     }}
                     title={`${wt.path}\nClick to open terminal`}
                   >
-                    <FileIcon size={11} style={{ opacity: 0.6 }} />
+                    <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
@@ -195,20 +195,19 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span className="gh-branch-item-name">{wt.path.split('/').pop()}</span>
+                      <span className="gh-worktree-name">{wt.path.split('/').pop()}</span>
                     )}
-                    <span className="gh-branch-inline" title={wt.branch}>
-                      <BranchIcon size={11} style={{ opacity: 0.6 }} />
-                      {wt.branch}
-                    </span>
                     {!isRenaming && (
                       <button
-                        className="gh-icon-btn gh-icon-btn-danger"
-                        style={{ marginLeft: "auto" }}
+                        className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
                         onClick={(e) => { e.stopPropagation(); onRemoveWorktree(wt.path); }}
                         title="Remove worktree"
                       >×</button>
                     )}
+                    <span className="gh-branch-inline" title={wt.branch}>
+                      <BranchIcon size={11} />
+                      {wt.branch}
+                    </span>
                   </div>
                 );
               })}
