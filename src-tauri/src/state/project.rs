@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::terminal::TerminalSession;
 
 /// 文件状态
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum FileStatus {
     Modified,
     Added,

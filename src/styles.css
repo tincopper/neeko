@@ -1608,6 +1608,29 @@ body {
   transform: rotate(90deg);
 }
 
+/* ── Changes stats (additions/deletions) ── */
+.gh-section-label-collapsible .gh-changes-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 1.1em;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  flex-shrink: 0;
+}
+
+.gh-changes-additions {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.gh-changes-deletions {
+  color: #f85149;
+  font-weight: 600;
+}
+
 /* Worktree list indentation */
 .gh-worktree-list {
   padding: 0 0 4px 16px;

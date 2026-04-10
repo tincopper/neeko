@@ -163,6 +163,21 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
                 }
             }
         }
+
+        // Handle untracked/added files not in diff (count their lines as additions)
+        if let Some(workdir) = repo.workdir() {
+            for file in &mut files {
+                if (file.status == FileStatus::Added) && file.additions == 0 && file.deletions == 0 {
+                    let full_path = workdir.join(&file.path);
+                    if full_path.exists() && full_path.is_file() {
+                        if let Ok(content) = std::fs::read_to_string(&full_path) {
+                            let line_count = content.lines().count();
+                            file.additions = line_count;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(files)
