@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo } from "react";
+import { LucideIcon } from "lucide-react";
 
 export interface ContextMenuItem {
   label: string;
@@ -7,6 +8,7 @@ export interface ContextMenuItem {
   danger?: boolean;
   disabled?: boolean;
   separator?: boolean;
+  icon?: LucideIcon;
 }
 
 interface ContextMenuProps {
@@ -67,6 +69,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
               }
             }}
           >
+            {item.icon && <item.icon size={14} style={{ marginRight: 8, opacity: 0.7 }} />}
             <span className="gh-context-menu-label">{item.label}</span>
             {item.shortcut && (
               <span className="gh-context-menu-shortcut">{item.shortcut}</span>

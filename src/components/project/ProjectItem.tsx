@@ -209,6 +209,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     if (project.git_info) {
       items.push({
         label: "New Branch",
+        icon: GitLogoIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
@@ -220,6 +221,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       });
       items.push({
         label: "New Worktree",
+        icon: FolderGitIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
@@ -398,7 +400,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     New Branch
                   </div>
                   <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
-                    <GitLogoIcon size={12} />
+                    <FolderGitIcon size={12} />
                     New Worktree
                   </div>
                 </div>

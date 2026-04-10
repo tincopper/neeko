@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "../project/FileTree";
 import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
-import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
@@ -347,6 +347,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     if (project.git_info) {
       items.push({
         label: "New Branch",
+        icon: GitLogoIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog?.("new-branch", project.git_info!.branches);
@@ -354,6 +355,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
       });
       items.push({
         label: "New Worktree",
+        icon: FolderGitIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog?.("new-worktree", project.git_info!.branches);
@@ -439,10 +441,12 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
                 <div className="gh-git-dropdown">
                   <div className="gh-git-dropdown-item"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
+                    <GitLogoIcon size={12} />
                     New Branch
                   </div>
                   <div className="gh-git-dropdown-item"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
+                    <FolderGitIcon size={12} />
                     New Worktree
                   </div>
                 </div>
