@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "./FileTree";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -40,6 +40,7 @@ interface ProjectItemProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
+  onDragEnd?: (draggedId: string, targetId: string) => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -60,12 +61,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   agents,
   config,
   onSaveProjectSettings,
+  onDragEnd,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Branch dropdown state
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
@@ -254,6 +257,40 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return items;
   };
 
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", project.id);
+    e.dataTransfer.effectAllowed = "move";
+    // Add a slight delay to allow the drag image to be captured
+    (e.target as HTMLElement).classList.add("dragging");
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.target as HTMLElement).classList.remove("dragging");
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== project.id && onDragEnd) {
+      onDragEnd(draggedId, project.id);
+    }
+  };
+
   const changedFiles = project.git_info?.changed_files ?? [];
   const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
   const { totalAdditions, totalDeletions } = useMemo(() => {
@@ -303,7 +340,15 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
 
   return (
-    <div className={`gh-project ${isActive ? "active" : ""}`}>
+    <div
+      className={`gh-project ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""}`}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
         <span
           className="gh-project-avatar"
@@ -490,7 +535,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                         }}
                         title={`${wt.path}\nClick to open terminal`}
                       >
-                        <FileIcon size={11} style={{ opacity: 0.7 }} />
+                        <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                         {renamingWorktree === wt.path ? (
                           <input
                             ref={renameInputRef}

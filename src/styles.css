@@ -922,6 +922,17 @@ body {
   margin-bottom: 2px;
   border-radius: 6px;
   overflow: visible;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.gh-project.dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
+}
+
+.gh-project.drag-over {
+  border-top: 2px solid #61afef;
+  margin-top: -2px;
 }
 
 .gh-project.active > .gh-project-header {

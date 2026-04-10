@@ -102,6 +102,7 @@ pub fn run() {
             commands::set_view_terminal,
             commands::set_view_diff,
             commands::set_project_collapsed,
+            commands::reorder_projects,
             commands::checkout_branch,
             commands::create_branch,
             commands::rename_branch,
