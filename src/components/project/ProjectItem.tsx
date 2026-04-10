@@ -256,6 +256,15 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   const changedFiles = project.git_info?.changed_files ?? [];
   const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
+  const { totalAdditions, totalDeletions } = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    for (const f of changedFiles) {
+      additions += f.additions;
+      deletions += f.deletions;
+    }
+    return { totalAdditions: additions, totalDeletions: deletions };
+  }, [changedFiles]);
    const branches = project.git_info?.branches ?? [];
    const worktrees = project.git_info?.worktrees ?? [];
 
@@ -443,6 +452,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                   >
                     <ChevronRightIcon size={9} className={`gh-section-chevron ${expandedSections["__changes__"] !== false ? "expanded" : ""}`} />
                     Changes ({changedFiles.length})
+                    {(totalAdditions > 0 || totalDeletions > 0) && (
+                      <span className="gh-changes-stats">
+                        {totalAdditions > 0 && <span className="gh-changes-additions">+{totalAdditions}</span>}
+                        {totalDeletions > 0 && <span className="gh-changes-deletions">-{totalDeletions}</span>}
+                      </span>
+                    )}
                   </div>
                   {expandedSections["__changes__"] !== false && (
                     <div className="gh-file-tree">
