@@ -128,3 +128,23 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
         }
     }
 }
+
+#[tauri::command]
+pub fn reorder_projects(ordered_ids: Vec<String>, state: State<AppStateWrapper>) -> Result<(), String> {
+    let mut pm = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    pm.reorder_projects(&ordered_ids);
+
+    // Persist the new order
+    let projects = pm.list_projects();
+    drop(pm);
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects, None, None, None, None);
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(|e| format!("Failed to save session: {}", e))
+}

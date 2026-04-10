@@ -75,6 +75,7 @@ function App() {
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
     handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,
+    handleDragEnd,
   } = local;
 
   const {
@@ -477,6 +478,7 @@ function App() {
           agents={agents}
           config={config}
           onSaveProjectSettings={handleSaveProjectSettings}
+          onDragEnd={handleDragEnd}
         />
 
         <MainContent

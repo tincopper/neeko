@@ -154,6 +154,27 @@ export function useLocalProjects() {
     }
   }, []);
 
+  const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    setProjects((prev) => {
+      const draggedIndex = prev.findIndex((p) => p.id === draggedId);
+      const targetIndex = prev.findIndex((p) => p.id === targetId);
+      if (draggedIndex < 0 || targetIndex < 0) return prev;
+
+      const newProjects = [...prev];
+      const [dragged] = newProjects.splice(draggedIndex, 1);
+      newProjects.splice(targetIndex, 0, dragged);
+
+      // Persist the new order
+      const orderedIds = newProjects.map((p) => p.id);
+      invoke("reorder_projects", { orderedIds }).catch((e) =>
+        console.error("[App] Failed to persist project order:", e)
+      );
+
+      return newProjects;
+    });
+  }, []);
+
   return {
     projects, setProjects, activeProjectId, setActiveProjectId,
     activeProject, setActiveProject,
@@ -165,5 +186,6 @@ export function useLocalProjects() {
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
     handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,
+    handleDragEnd,
   };
 }

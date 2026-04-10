@@ -15,6 +15,7 @@ import {
   Info,
   OctagonAlert,
   Search,
+  FolderGit2,
   type LucideProps,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ export const ChevronRightIcon = ChevronRight;
 export const TrashIcon = Trash2;
 export const PlusIcon = Plus;
 export const FileIcon = FileCode2;
+export const FolderGitIcon = FolderGit2;
 export const SideTerminalIcon = Terminal;
 export const SettingsIcon = Settings;
 export const EditorIcon = AlignJustify;

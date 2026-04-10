@@ -157,4 +157,18 @@ impl ProjectManager {
             project.collapsed = collapsed;
         }
     }
+
+    /// Reorder projects based on a list of project IDs in the desired order.
+    /// Projects not in the list will be appended at the end.
+    pub fn reorder_projects(&mut self, ordered_ids: &[String]) {
+        let mut ordered: Vec<Project> = Vec::with_capacity(self.projects.len());
+        for id in ordered_ids {
+            if let Some(pos) = self.projects.iter().position(|p| p.id == *id) {
+                ordered.push(self.projects.remove(pos));
+            }
+        }
+        // Append any projects that weren't in the ordered list
+        ordered.append(&mut self.projects);
+        self.projects = ordered;
+    }
 }
