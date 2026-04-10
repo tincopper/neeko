@@ -560,15 +560,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                             {wt.path.split(/[\\/]/).pop()}
                           </span>
                         )}
-                        <span className="gh-branch-inline" title={wt.branch}>
-                          <BranchIcon size={11} />
-                          {wt.branch}
-                        </span>
                         <button
                           className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
                           onClick={(e) => { e.stopPropagation(); handleRemoveWorktree(wt.path, e); }}
                           title="Remove worktree"
-                        >×</button>
+                        >
+                          <TrashIcon size={12} />
+                        </button>
+                        <span className="gh-branch-inline" title={wt.branch}>
+                          <BranchIcon size={11} />
+                          {wt.branch}
+                        </span>
                       </div>
                     ))}
                   </div>

@@ -179,7 +179,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       if (!isRenaming) onStartRenameWorktree(wt.path);
                     }}
                     title={`${wt.path}\nClick to open terminal`}
-                  >
+                      >
                     <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                     {isRenaming ? (
                       <input
@@ -202,7 +202,9 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
                         onClick={(e) => { e.stopPropagation(); onRemoveWorktree(wt.path); }}
                         title="Remove worktree"
-                      >×</button>
+                      >
+                        <TrashIcon size={12} />
+                      </button>
                     )}
                     <span className="gh-branch-inline" title={wt.branch}>
                       <BranchIcon size={11} />
