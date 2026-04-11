@@ -69,6 +69,16 @@ src/
 │   ├── platform.ts          # 平台检测常量
 │   └── terminal.ts          # 终端字体构建器
 │
+│   ├── adapters/            # 项目适配器（统一 local/wsl/remote）
+│   │   ├── ProjectAdapter.ts
+│   │   ├── LocalProjectAdapter.ts
+│   │   ├── WslProjectAdapter.ts
+│   │   └── RemoteProjectAdapter.ts
+│
+│   └── testing/             # 测试配置
+│       ├── setup.ts         # Vitest 全局配置
+│       └── factories.ts     # 测试数据工厂
+│
 └── assets/                  # 静态资源（图片）
     ├── agents/              # Agent 图标（PNG/SVG）
     ├── distros/             # Linux 发行版图标（SVG）
@@ -127,7 +137,10 @@ export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } fr
 | 独立组件 | `components/<Name>.tsx`（顶层） |
 | 自定义 Hook | `hooks/use<Name>.ts` |
 | 纯工具函数 | `utils/<name>.ts` |
+| IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
+| 项目类型适配器 | `adapters/<Name>Adapter.ts` |
 | 共享类型 | `types.ts` |
+| 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>/` |
 
 ---

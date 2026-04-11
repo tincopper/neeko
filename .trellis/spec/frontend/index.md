@@ -20,6 +20,7 @@
 | [状态管理](./state-management.md) | 本地状态、全局状态、服务端状态 | 已填写 |
 | [质量指南](./quality-guidelines.md) | 代码规范、禁止模式 | 已填写 |
 | [类型安全](./type-safety.md) | 类型模式、校验 | 已填写 |
+| [API 层](./api-layer.md) | Tauri IPC 调用、事件监听、适配器模式 | 已填写 |
 
 ---
 
@@ -37,3 +38,12 @@
 ---
 
 **语言**：所有文档以**中文**编写。
+
+---
+
+## 相关主题
+
+| 主题 | 说明 |
+|------|------|
+| [安全配置](../security/index.md) | Tauri v2 权限配置 |
+| [后端开发](../backend/index.md) | Rust/Tauri 后端指南 |
