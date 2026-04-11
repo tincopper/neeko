@@ -17,7 +17,6 @@ interface TerminalViewProps {
   suppressResizeRef?: React.MutableRefObject<boolean>
   agentCommandOverride?: string
   blockCtrlC?: boolean
-  onShowToast?: (message: string, type?: "info" | "error") => void
 }
 
 interface TerminalCache {
@@ -103,7 +102,6 @@ export async function createTerminalForProject(
   backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
   agentCommandOverrides?: Record<string, string>, // 内置 agent 命令覆盖
   blockCtrlC: boolean = false,
-  onShowToast?: (message: string, type?: "info" | "error") => void,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -295,17 +293,30 @@ export async function createTerminalForProject(
       })
     }
 
+    // ── Ctrl+C 拦截（在键盘事件层处理）──
+    // onKey 在 keydown 时触发，早于 onData
+    // 用 onSelectionChange 跟踪选中状态（比瞬时 hasSelection 更可靠）
+    // - 有文本选中：不拦截，xterm.js 处理复制操作
+    // - 无文本选中：preventDefault 阻止默认行为，不发 SIGINT 到 PTY
+    if (blockCtrlC) {
+      let hasSelection = term.hasSelection()
+      term.onSelectionChange(() => {
+        hasSelection = term.hasSelection()
+      })
+      term.onKey(({ key, domEvent }) => {
+        if (isComposing) return
+        if (key === '\x03' && !hasSelection) {
+          domEvent.preventDefault()
+        }
+      })
+    }
+
     term.onData((data) => {
       // composing 期间阻断
       if (isComposing) return
       // compositionend 后 onData 可能携带相同文本，跳过避免重复发送
       if (compositionPendingText && data === compositionPendingText) {
         compositionPendingText = ''
-        return
-      }
-      // 阻止 Ctrl+C 杀死 Agent（有文本选中时允许通过，避免影响复制）
-      if (blockCtrlC && data === '\x03' && !term.hasSelection()) {
-        onShowToast?.("Ctrl+C is disabled. Use Agent dropdown to switch.", "error")
         return
       }
       sendInput(data)
@@ -343,7 +354,6 @@ function TerminalView({
   suppressResizeRef,
   agentCommandOverride,
   blockCtrlC = true,
-  onShowToast,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -422,7 +432,6 @@ function TerminalView({
           ? { [project.selected_agent]: agentCommandOverride }
           : undefined,
         blockCtrlC,
-        onShowToast,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
