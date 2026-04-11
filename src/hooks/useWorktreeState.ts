@@ -71,6 +71,15 @@ export function useWorktreeState(activeProjectIdRef: React.RefObject<string | nu
     [],
   );
 
+  // Clear worktree active path for a specific project (e.g. when switching projects)
+  const clearWorktreeForProject = useCallback((pid: string) => {
+    setWorktreeStateMap(prev => {
+      const cur = prev[pid];
+      if (!cur || cur.activePath === null) return prev;
+      return { ...prev, [pid]: { ...cur, activePath: null, activeBranch: "" } };
+    });
+  }, []);
+
   return {
     activeWorktreePath,
     activeWorktreeBranch,
@@ -81,5 +90,6 @@ export function useWorktreeState(activeProjectIdRef: React.RefObject<string | nu
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
+    clearWorktreeForProject,
   };
 }
