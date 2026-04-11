@@ -1,6 +1,9 @@
 name: Build Neeko
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 env:
@@ -86,6 +89,7 @@ jobs:
           releaseDraft: false
           prerelease: false
           retryAttempts: 3
+          generateReleaseNotes: true
 
       - name: Upload artifacts (Windows)
         if: matrix.platform == 'windows'
