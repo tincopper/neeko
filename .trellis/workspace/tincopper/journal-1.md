@@ -255,3 +255,36 @@ Extracted useSessionPersistence, useAppRefSync, useSideTerminalState, useAppCall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Worktree file diff preview
+
+**Date**: 2026-04-12
+**Task**: Worktree file diff preview
+
+### Summary
+
+Implemented worktree file diff preview feature. Added Tauri commands for getting worktree changed files and file diffs. Created WorktreeList component extracted from ProjectItem. Fixed changes section spacing and collapsible styling.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8cd938d` | (see git log) |
+| `dadd9e7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
