@@ -215,6 +215,9 @@ function App() {
   // ── App callbacks ──
   const callbacks = useAppCallbacks({
     agentCommandOverrides: config.agentCommandOverrides,
+    terminalFontSize: config.fontSize ?? 14,
+    terminalShell: config.shell ?? '',
+    terminalFontFamily: config.fontFamily ?? '',
     activeProject, projects,
     setProjects, setActiveProject,
     handleOpenIde, showToast,
