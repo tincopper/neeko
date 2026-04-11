@@ -17,6 +17,7 @@ interface TerminalViewProps {
   suppressResizeRef?: React.MutableRefObject<boolean>
   agentCommandOverride?: string
   blockCtrlC?: boolean
+  onShowToast?: (message: string, type?: "info" | "error") => void
 }
 
 interface TerminalCache {
@@ -102,6 +103,7 @@ export async function createTerminalForProject(
   backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
   agentCommandOverrides?: Record<string, string>, // 内置 agent 命令覆盖
   blockCtrlC: boolean = false,
+  onShowToast?: (message: string, type?: "info" | "error") => void,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -303,7 +305,7 @@ export async function createTerminalForProject(
       }
       // 阻止 Ctrl+C 杀死 Agent
       if (blockCtrlC && data === '\x03') {
-        term.write('\x1b[33m\r\n[Neeko] Ctrl+C is disabled. Use Agent dropdown to switch.\x1b[0m\r\n')
+        onShowToast?.("Ctrl+C is disabled. Use Agent dropdown to switch.", "error")
         return
       }
       sendInput(data)
@@ -341,6 +343,7 @@ function TerminalView({
   suppressResizeRef,
   agentCommandOverride,
   blockCtrlC = true,
+  onShowToast,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -419,6 +422,7 @@ function TerminalView({
           ? { [project.selected_agent]: agentCommandOverride }
           : undefined,
         blockCtrlC,
+        onShowToast,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸

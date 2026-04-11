@@ -282,6 +282,7 @@ function App() {
         onSelectLocalAgent={callbacks.handleSelectLocalAgent}
         onSelectWslAgent={wslActions.handleSelectWslAgent}
         onSelectRemoteAgent={remoteActions.handleSelectRemoteAgent}
+        showToast={showToast}
       />
 
       <div className="app-container">
@@ -365,6 +366,7 @@ function App() {
           remoteDiffState={remoteActions.remoteDiffState}
           onWslDiffBack={callbacks.handleWslDiffBack}
           onRemoteDiffBack={callbacks.handleRemoteDiffBack}
+          showToast={showToast}
         />
 
         {pendingPath && (

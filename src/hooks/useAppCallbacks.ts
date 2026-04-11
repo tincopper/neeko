@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "../utils/platform";
-import { launchAgentInTerminal } from "../components/terminal";
+import { launchAgentInTerminal, refreshTerminal } from "../components/terminal";
 import { AgentConfig } from "../types";
 import type { Project, WSLEntrySession, RemoteEntrySession, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
@@ -89,11 +89,23 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
 
   // ── Agent / IDE ──
   const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
-    if (agent && activeProject) {
-      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
-      launchAgentInTerminal(activeProject.id, cmd, agent.args);
+    if (activeProject) {
+      if (agent) {
+        const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
+        launchAgentInTerminal(activeProject.id, cmd, agent.args);
+      } else {
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === activeProject.id ? { ...p, selected_agent: null } : p
+          )
+        );
+        setActiveProject((prev) =>
+          prev && prev.id === activeProject.id ? { ...prev, selected_agent: null } : prev
+        );
+        refreshTerminal(activeProject.id);
+      }
     }
-  }, [activeProject, agentCommandOverrides]);
+  }, [activeProject, agentCommandOverrides, setProjects, setActiveProject]);
 
   const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) {

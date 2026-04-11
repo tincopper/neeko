@@ -25,6 +25,7 @@ interface TitleBarProps {
   onSelectLocalAgent: (agent: AgentConfig | null) => void;
   onSelectWslAgent: (agent: AgentConfig | null) => void;
   onSelectRemoteAgent: (agent: AgentConfig | null) => void;
+  showToast: (message: string, type?: "info" | "error") => void;
 }
 
 
@@ -45,6 +46,7 @@ function TitleBar({
   onSelectLocalAgent,
   onSelectWslAgent,
   onSelectRemoteAgent,
+  showToast,
 }: TitleBarProps) {
   return (
     <div className="titlebar" data-tauri-drag-region>
@@ -92,8 +94,9 @@ function TitleBar({
             <AgentSelector
               projectId={activeProject.id}
               currentAgentId={activeProject.selected_agent}
+              onShowToast={showToast}
               onSelectAgent={(agent) => {
-                if (agent) onSelectLocalAgent(agent);
+                onSelectLocalAgent(agent);
                 invoke("save_session").catch(() => {});
               }}
             />
@@ -114,6 +117,7 @@ function TitleBar({
               projectId={activeWslProject.project.id}
               currentAgentId={activeWslProject.project.selected_agent}
               skipBackendPersist
+              onShowToast={showToast}
               onSelectAgent={(agent) => onSelectWslAgent(agent)}
             />
           </>
@@ -133,6 +137,7 @@ function TitleBar({
               projectId={activeRemoteProject.project.id}
               currentAgentId={activeRemoteProject.project.selected_agent}
               skipBackendPersist
+              onShowToast={showToast}
               onSelectAgent={(agent) => onSelectRemoteAgent(agent)}
             />
           </>

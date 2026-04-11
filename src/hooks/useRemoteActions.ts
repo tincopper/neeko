@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { launchAgentInRemoteTerminal, remoteCacheKey } from "../components/terminal";
+import { launchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
 import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
 import type { DiffSetter, WslDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
@@ -164,6 +164,9 @@ export function useRemoteActions(deps: {
     deps.setActiveRemoteProject(prev =>
       prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
     );
+    if (!agent) {
+      refreshRemoteTerminal(key);
+    }
     invoke("save_session", { wslEntries: deps.wslEntriesRefForSave.current, remoteEntries: newEntries }).catch(console.error);
   }, [deps.activeRemoteProject, deps.remoteEntries, deps.setRemoteEntries, deps.setActiveRemoteProject, deps.config.agentCommandOverrides]);
 
