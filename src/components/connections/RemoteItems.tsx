@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "../project/FileTree";
 import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
-import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
