@@ -102,7 +102,9 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
         setActiveProject((prev) =>
           prev && prev.id === activeProject.id ? { ...prev, selected_agent: null } : prev
         );
-        refreshTerminal(activeProject.id);
+        // 延迟重建终端，确保 selected_agent=null 状态已更新
+        // 否则 refreshTerminal 立即触发重建时 project.selected_agent 仍是旧值
+        setTimeout(() => refreshTerminal(activeProject.id), 50);
       }
     }
   }, [activeProject, agentCommandOverrides, setProjects, setActiveProject]);
