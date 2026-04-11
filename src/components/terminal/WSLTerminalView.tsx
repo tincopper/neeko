@@ -54,6 +54,9 @@ export function refreshWslTerminal(key: string) {
 /** WSL 终端重建回调注册表 */
 export const wslRebuildCallbacks = new Map<string, () => void>();
 
+/** DOM wrapper 节点注册表，供 switchAgentInWslTerminal 使用 */
+export const wslWrapperRefs = new Map<string, HTMLDivElement>()
+
 /** 获取已建立的 WSL 终端 sessionId（尚未建立返回 null） */
 export function getWslSessionId(key: string): string | null {
   return wslTerminalCache.get(key)?.sessionId ?? null;
@@ -83,6 +86,57 @@ export function launchAgentInWslTerminal(cacheKey: string, command: string, args
     const bytes = Array.from(new TextEncoder().encode(cmdStr));
     emit(`terminal-input-${sessionId}`, bytes).catch(() => {});
   }, 50);
+}
+
+/**
+ * 即时切换 WSL Agent：清除旧 PTY 缓存 + 触发重建，后台异步关闭旧 PTY。
+ * 组件重建时会读取最新的 selectedAgentId prop 自动启动新 Agent。
+ */
+export async function switchAgentInWslTerminal(
+  cacheKey: string,
+  _distro: string,
+  _projectPath: string,
+  _projectName: string,
+  agentId: string,
+  _fontSize: number,
+  _fontFamily: string,
+  agentCommandOverrides?: Record<string, string>,
+) {
+  const wrapper = wslWrapperRefs.get(cacheKey)
+  if (!wrapper) {
+    // 回退：wrapper 未就绪，用旧路径
+    const agent = await invoke<{ id: string; command: string; args: string[] }>(
+      'get_agent', { agentId }
+    ).catch(() => null)
+    if (agent) {
+      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command
+      launchAgentInWslTerminal(cacheKey, cmd, agent.args)
+    }
+    return
+  }
+
+  // 1. 摘除旧缓存事件监听，防止 terminal-closed 触发意外重建
+  const oldCache = wslTerminalCache.get(cacheKey)
+  if (oldCache) {
+    oldCache.unlisten?.()
+  }
+
+  // 2. 删除旧条目（槽位空出，重建时填入新实例）
+  wslTerminalCache.delete(cacheKey)
+
+  // 3. 清空 wrapper DOM
+  while (wrapper.firstChild) {
+    wrapper.removeChild(wrapper.firstChild)
+  }
+
+  // 4. 触发重建（selectedAgentId 已由 handleSelectWslAgent 更新到 props）
+  wslRebuildCallbacks.get(cacheKey)?.()
+
+  // 5. 后台异步关闭旧 PTY
+  if (oldCache?.sessionId) {
+    invoke('close_terminal_session', { sessionId: oldCache.sessionId }).catch(() => {})
+  }
+  oldCache?.term.dispose()
 }
 
 /** 所有已有活跃终端会话的项目 ID 集合（跨所有 distro） */
@@ -179,6 +233,9 @@ export default React.memo(function WSLTerminalView({
     wslRebuildCallbacks.set(key, () => {
       if (currentKeyRef.current === key) setRebuildCount(c => c + 1);
     });
+    if (wrapperRef.current) {
+      wslWrapperRefs.set(key, wrapperRef.current)
+    }
 
     const attach = (cache: WslTerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -336,6 +393,7 @@ export default React.memo(function WSLTerminalView({
       window.removeEventListener("resize", handleResize);
       detachAll();
       wslRebuildCallbacks.delete(key);
+      wslWrapperRefs.delete(key);
     };
   }, [distro, projectId, projectPath, cacheKeySuffix, rebuildCount]);
 
