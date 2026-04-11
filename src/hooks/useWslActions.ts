@@ -128,7 +128,7 @@ export function useWslActions(deps: {
       prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
     );
     if (!agent) {
-      refreshWslTerminal(key);
+      setTimeout(() => refreshWslTerminal(key), 50);
     }
     invoke("save_session", { wslEntries: newEntries, remoteEntries: deps.remoteEntriesRefForSave.current }).catch(console.error);
   }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config.agentCommandOverrides]);

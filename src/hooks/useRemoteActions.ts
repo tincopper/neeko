@@ -165,7 +165,7 @@ export function useRemoteActions(deps: {
       prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
     );
     if (!agent) {
-      refreshRemoteTerminal(key);
+      setTimeout(() => refreshRemoteTerminal(key), 50);
     }
     invoke("save_session", { wslEntries: deps.wslEntriesRefForSave.current, remoteEntries: newEntries }).catch(console.error);
   }, [deps.activeRemoteProject, deps.remoteEntries, deps.setRemoteEntries, deps.setActiveRemoteProject, deps.config.agentCommandOverrides]);
