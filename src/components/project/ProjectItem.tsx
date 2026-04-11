@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Project, AgentConfig, AppConfig, FileChange } from "../../types";
+import { Project, AgentConfig, AppConfig } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
+import WorktreeList from "./WorktreeList";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { terminalCache, destroyTerminalCache } from "../terminal";
 import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
@@ -81,44 +81,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const branchDropdownRef = useRef<HTMLDivElement>(null);
   const branchSearchInputRef = useRef<HTMLInputElement>(null);
 
-  // Inline rename state (worktree only)
-  const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null); // stores wt.path
-  const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
-  const renameInputRef = useRef<HTMLInputElement>(null);
-
-  // Worktree deletion state
-  const [deletingWorktree, setDeletingWorktree] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
-
-  // Worktree expand state with changed files
-  const [expandedWorktrees, setExpandedWorktrees] = useState<Set<string>>(new Set());
-  const [worktreeChangedFiles, setWorktreeChangedFiles] = useState<Record<string, FileChange[]>>({});
-
-  const toggleWorktreeExpand = useCallback(async (worktreePath: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedWorktrees((prev) => {
-      const next = new Set(prev);
-      if (next.has(worktreePath)) {
-        next.delete(worktreePath);
-      } else {
-        next.add(worktreePath);
-      }
-      return next;
-    });
-    // Fetch changed files if not already loaded
-    if (!worktreeChangedFiles[worktreePath]) {
-      try {
-        const files = await invoke<FileChange[]>("get_worktree_changed_files", {
-          projectId: project.id,
-          worktreePath,
-        });
-        setWorktreeChangedFiles((prev) => ({ ...prev, [worktreePath]: files }));
-      } catch {
-        setWorktreeChangedFiles((prev) => ({ ...prev, [worktreePath]: [] }));
-      }
-    }
-  }, [project.id, worktreeChangedFiles]);
-
   // 切换折叠状态并持久化
   const toggleCollapsed = async () => {
     const newCollapsed = !projectCollapsed;
@@ -157,101 +119,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     }
   }, [branchDropdownOpen]);
 
-  // Auto-focus the rename input when it appears
-  useEffect(() => {
-    if (renamingWorktree !== null && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renamingWorktree]);
-
   const toggleSection = (key: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-
-  const handleRemoveWorktree = async (worktreePath: string, branch: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const isDirty = await invoke<boolean>("is_worktree_dirty", { projectId: project.id, worktreePath });
-      if (isDirty) {
-        setConfirmDelete({ path: worktreePath, branch, isDirty: true });
-        return;
-      }
-      setConfirmDelete({ path: worktreePath, branch, isDirty: false });
-    } catch {
-      // 如果检查失败，仍然允许删除，但提示用户
-      setConfirmDelete({ path: worktreePath, branch, isDirty: false });
-    }
-  };
-
-  const performRemoveWorktree = async (worktreePath: string, branch: string) => {
-    setConfirmDelete(null);
-    setDeletingWorktree(worktreePath);  // loading 阶段：显示 spinner
-    try {
-      // 1. 先关闭 worktree 的 PTY 终端，释放目录占用
-      const wtCacheKey = `${project.id}:wt:${worktreePath}`;
-      const wtCache = terminalCache.get(wtCacheKey);
-      if (wtCache?.sessionId) {
-        await invoke("close_terminal_session", { sessionId: wtCache.sessionId }).catch(() => {});
-      }
-      destroyTerminalCache(wtCacheKey);
-
-      // 2. 删除 worktree
-      await invoke("remove_worktree", { projectId: project.id, worktreePath });
-
-      // 3. 删除分支（失败不影响主流程）
-      let branchError: string | null = null;
-      try {
-        await invoke("delete_branch", { projectId: project.id, branchName: branch });
-      } catch (e: unknown) {
-        branchError = String(e);
-        console.error(`[Worktree] Failed to delete branch "${branch}":`, e);
-      }
-
-      // 4. 淡出动画阶段
-      await new Promise(r => setTimeout(r, 450));
-      onRefreshGit(project.id);
-
-      if (branchError) {
-        onShowToast?.(`Branch "${branch}" could not be deleted: ${branchError}`, "error");
-      }
-    } catch (e: unknown) {
-      console.error("[Worktree] Failed to remove worktree:", e);
-      onShowToast?.(`Failed to remove worktree: ${String(e)}`, "error");
-    } finally {
-      setDeletingWorktree(null);
-    }
-  };
-
-
-  // Worktree rename handlers
-  const startRenameWorktree = (worktreePath: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const dirName = worktreePath.split(/[\\/]/).pop() ?? worktreePath;
-    setRenamingWorktree(worktreePath);
-    setRenameWorktreeValue(dirName);
-  };
-
-  const commitRenameWorktree = async () => {
-    const oldPath = renamingWorktree!;
-    const newName = renameWorktreeValue.trim();
-    setRenamingWorktree(null);
-    if (!newName) return;
-    const oldDirName = oldPath.split(/[\\/]/).pop() ?? "";
-    if (newName === oldDirName) return;
-    try {
-      await invoke("rename_worktree", { projectId: project.id, worktreePath: oldPath, newName });
-      onRefreshGit(project.id);
-    } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
-    }
-  };
-
-  const cancelRenameWorktree = () => {
-    setRenamingWorktree(null);
-    setRenameWorktreeValue("");
   };
 
   const openDialog = (type: DialogType, e: React.MouseEvent) => {
@@ -396,12 +266,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
      return branches.filter((b) => !worktreeBranchSet.has(b));
    }, [worktrees, branches]);
 
-   // Filter out worktrees that are on the current branch (to avoid duplication)
-   const filteredWorktrees = useMemo(() => {
-     const currentBranch = project.git_info?.current_branch ?? "";
-     return worktrees.filter((wt) => wt.branch !== currentBranch);
-   }, [worktrees, project.git_info?.current_branch]);
-
    // Branch dropdown: filter by search query
    const dropdownBranches = useMemo(() => {
      const q = branchSearchQuery.toLowerCase().trim();
@@ -421,8 +285,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         onShowToast?.(String(e), "error");
       }
    };
-
-  const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
 
   return (
     <div
@@ -598,114 +460,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
               )}
 
               {/* ── Worktrees ── */}
-              {worktrees.length > 0 && (
-                <>
-                  <div
-                    className="gh-section-label gh-section-label-collapsible"
-                    onClick={(e) => toggleSection("__worktrees__", e)}
-                  >
-                    <ChevronRightIcon size={9} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
-                    Worktrees
-                  </div>
-               {worktreesExpanded && (
-                   <div className="gh-worktree-list">
-                      {filteredWorktrees.map((wt) => {
-                        const isWtExpanded = expandedWorktrees.has(wt.path);
-                        const wtFiles = worktreeChangedFiles[wt.path] ?? [];
-                        const wtTree = isWtExpanded ? buildTree(wtFiles) : [];
-                        const wtAdditions = wtFiles.reduce((sum, f) => sum + f.additions, 0);
-                        const wtDeletions = wtFiles.reduce((sum, f) => sum + f.deletions, 0);
-
-                        return (
-                        <div key={wt.path} className="gh-worktree-wrapper">
-                          <div
-                            className={`gh-worktree-item gh-worktree-item-standalone${deletingWorktree === wt.path ? " wt-deleting" : ""}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (renamingWorktree === wt.path || deletingWorktree === wt.path) return;
-                              onOpenWorktreeTerminal?.(wt.path, wt.branch);
-                            }}
-                            title={`${wt.path}\nClick to open terminal`}
-                          >
-                            <ChevronRightIcon
-                              size={9}
-                              className={`gh-section-chevron gh-worktree-chevron ${isWtExpanded ? "expanded" : ""}`}
-                              onClick={(e) => toggleWorktreeExpand(wt.path, e)}
-                            />
-                            <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
-                            {renamingWorktree === wt.path ? (
-                              <input
-                                ref={renameInputRef}
-                                className="gh-inline-rename-input"
-                                value={renameWorktreeValue}
-                                onChange={(e) => setRenameWorktreeValue(e.target.value)}
-                                onBlur={commitRenameWorktree}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") { e.preventDefault(); commitRenameWorktree(); }
-                                  if (e.key === "Escape") { e.preventDefault(); cancelRenameWorktree(); }
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            ) : (
-                              <span
-                                className="gh-worktree-name"
-                                onDoubleClick={(e) => { e.stopPropagation(); startRenameWorktree(wt.path, e); }}
-                                title="Double-click to rename"
-                              >
-                                {wt.path.split(/[\\/]/).pop()}
-                              </span>
-                            )}
-                            {deletingWorktree === wt.path ? (
-                              <span className="wt-spinner" title="Removing..." />
-                            ) : (
-                              <button
-                                className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
-                                onClick={(e) => { e.stopPropagation(); handleRemoveWorktree(wt.path, wt.branch, e); }}
-                                title="Remove worktree and branch"
-                              >
-                                <TrashIcon size={12} />
-                              </button>
-                            )}
-                            <span className="gh-branch-inline" title={wt.branch}>
-                              <BranchIcon size={11} />
-                              {wt.branch}
-                            </span>
-                          </div>
-                          {isWtExpanded && (
-                            <div className="gh-worktree-changes">
-                              {wtTree.length > 0 ? (
-                                <>
-                                  <div className="gh-section-label gh-section-label-nested">
-                                    Changes ({wtFiles.length})
-                                    {(wtAdditions > 0 || wtDeletions > 0) && (
-                                      <span className="gh-changes-stats">
-                                        {wtAdditions > 0 && <span className="gh-changes-additions">+{wtAdditions}</span>}
-                                        {wtDeletions > 0 && <span className="gh-changes-deletions">-{wtDeletions}</span>}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="gh-file-tree">
-                                    <FileTree
-                                      nodes={wtTree}
-                                      projectId={project.id}
-                                      onSelectFile={(_, filePath) => onSelectWorktreeFile?.(wt.path, filePath)}
-                                    />
-                                  </div>
-                                </>
-                              ) : worktreeChangedFiles[wt.path] !== undefined ? (
-                                <div className="gh-section-label gh-section-label-nested">No changes</div>
-                              ) : (
-                                <div className="gh-section-label gh-section-label-nested">Loading...</div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        );
-                      })}
-                  </div>
-                  )}
-                </>
-              )}
+              <WorktreeList
+                worktrees={worktrees}
+                currentBranch={project.git_info?.current_branch ?? ""}
+                projectId={project.id}
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                onSelectWorktreeFile={onSelectWorktreeFile}
+                onRefreshGit={onRefreshGit}
+                onShowToast={onShowToast}
+              />
             </>
           )}
         </div>
@@ -732,41 +497,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           }}
         />
       )}
-      {confirmDelete && (
-        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Remove Worktree</h3>
-            {confirmDelete.isDirty ? (
-              <p className="wt-confirm-message wt-confirm-warning">
-                This worktree has uncommitted changes. Removing it will discard all local changes. Are you sure?
-              </p>
-            ) : (
-              <p className="wt-confirm-message">
-                Remove worktree <strong>{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong>{confirmDelete.branch}</strong>?
-              </p>
-            )}
-            <div className="wt-confirm-details">
-              <span className="wt-confirm-path">{confirmDelete.path}</span>
-              <span className="wt-confirm-branch">
-                <BranchIcon size={11} /> {confirmDelete.branch}
-              </span>
-            </div>
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </button>
-              <button
-                className="confirm-btn confirm-btn-danger"
-                onClick={() => performRemoveWorktree(confirmDelete.path, confirmDelete.branch)}
-              >
-                {confirmDelete.isDirty ? "Force Remove" : "Remove"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
 export default React.memo(ProjectItem);
+
