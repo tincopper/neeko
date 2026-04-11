@@ -127,6 +127,7 @@ pub fn run() {
             commands::add_agent,
             commands::remove_agent,
             commands::set_project_agent,
+            commands::check_agents_installed,
             commands::set_project_ide,
             commands::open_ide,
             commands::refresh_wsl_git_info,

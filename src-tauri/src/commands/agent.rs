@@ -1,5 +1,6 @@
 use crate::state::*;
 use crate::AppStateWrapper;
+use std::collections::HashMap;
 use tauri::State;
 
 #[tauri::command]
@@ -80,4 +81,16 @@ pub fn set_project_agent(
     if let Ok(mut pm) = state.project_manager.lock() {
         pm.set_selected_agent(&project_id, agent_id);
     }
+}
+
+#[tauri::command]
+pub fn check_agents_installed(
+    agent_ids: Vec<String>,
+    state: State<AppStateWrapper>,
+) -> Result<HashMap<String, bool>, String> {
+    state
+        .agent_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))
+        .map(|am| am.check_installed(&agent_ids))
 }
