@@ -90,20 +90,21 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
   // ── Agent / IDE ──
   const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
     if (activeProject) {
+      const agentId = agent?.id ?? null;
+      // 统一更新 selected_agent 状态（选择 Agent 和 None 都需要）
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === activeProject.id ? { ...p, selected_agent: agentId } : p
+        )
+      );
+      setActiveProject((prev) =>
+        prev && prev.id === activeProject.id ? { ...prev, selected_agent: agentId } : prev
+      );
       if (agent) {
         const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
         launchAgentInTerminal(activeProject.id, cmd, agent.args);
       } else {
-        setProjects((prev) =>
-          prev.map((p) =>
-            p.id === activeProject.id ? { ...p, selected_agent: null } : p
-          )
-        );
-        setActiveProject((prev) =>
-          prev && prev.id === activeProject.id ? { ...prev, selected_agent: null } : prev
-        );
         // 延迟重建终端，确保 selected_agent=null 状态已更新
-        // 否则 refreshTerminal 立即触发重建时 project.selected_agent 仍是旧值
         setTimeout(() => refreshTerminal(activeProject.id), 50);
       }
     }
