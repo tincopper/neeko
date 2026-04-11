@@ -11,7 +11,7 @@ export function useLocalProjects() {
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, boolean>>({});
+  const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, Set<string>>>({});
 
   const activeProjectIdRef = useRef<string | null>(null);
   const selectProjectRef = useRef<(id: string) => void>(() => {});
@@ -106,6 +106,10 @@ export function useLocalProjects() {
         delete next[projectId];
         return next;
       });
+      // 销毁所有可能的 side terminal 缓存
+      for (let i = 0; i < 4; i++) {
+        destroyTerminalCache(`${projectId}:side:${i}`);
+      }
       destroyTerminalCache(`${projectId}:side`);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
@@ -150,6 +154,27 @@ export function useLocalProjects() {
     }
   }, []);
 
+  const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    setProjects((prev) => {
+      const draggedIndex = prev.findIndex((p) => p.id === draggedId);
+      const targetIndex = prev.findIndex((p) => p.id === targetId);
+      if (draggedIndex < 0 || targetIndex < 0) return prev;
+
+      const newProjects = [...prev];
+      const [dragged] = newProjects.splice(draggedIndex, 1);
+      newProjects.splice(targetIndex, 0, dragged);
+
+      // Persist the new order
+      const orderedIds = newProjects.map((p) => p.id);
+      invoke("reorder_projects", { orderedIds }).catch((e) =>
+        console.error("[App] Failed to persist project order:", e)
+      );
+
+      return newProjects;
+    });
+  }, []);
+
   return {
     projects, setProjects, activeProjectId, setActiveProjectId,
     activeProject, setActiveProject,
@@ -161,5 +186,6 @@ export function useLocalProjects() {
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
     handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,
+    handleDragEnd,
   };
 }

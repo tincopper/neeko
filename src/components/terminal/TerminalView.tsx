@@ -9,8 +9,6 @@ import { buildFontFamily } from '../../utils/terminal'
 import { IS_MACOS } from '../../utils/platform'
 import type { Project, AgentConfig } from '../../types'
 
-const IS_UNIX = !navigator.platform.toLowerCase().includes('win')
-
 interface TerminalViewProps {
   project: Project
   fontSize?: number
@@ -229,34 +227,12 @@ export async function createTerminalForProject(
     //   4. onData 用 compositionPendingText 过滤 compositionend 后的重复触发
     //
     // Windows：PTY 回显由系统负责，onData 正常发送即可（IME 行为不同）
-    const isUnix = IS_UNIX
     let isComposing = false
     let compositionPendingText = ''
-    let inputBuffer = '' // 用户输入缓冲区，只删除用户输入的字符
 
     const sendInput = (text: string) => {
-      // Unix：PTY 已禁用 ECHO，前端手动显示
-      // 维护输入缓冲区，只删除用户输入的字符
-      if (isUnix) {
-        for (const char of text) {
-          if (char === '\r' || char === '\n') {
-            // 回车：发送到 PTY，重置输入缓冲区
-            term.write('\r\n')
-            inputBuffer = ''
-          } else if (char === '\x7f') {
-            // DEL (0x7f)：只有输入缓冲区有内容才删除
-            if (inputBuffer.length > 0) {
-              inputBuffer = inputBuffer.slice(0, -1)
-              term.write('\b \b')
-            }
-          } else {
-            // 其他字符：添加到缓冲区并显示
-            inputBuffer += char
-            term.write(char)
-          }
-        }
-      }
-      // 始终发送到 PTY
+      // Forward all input to PTY, let shell handle line editing
+      // This fixes Tab completion, arrow keys, and backspace on Linux
       const bytes = Array.from(new TextEncoder().encode(text))
       emit(`terminal-input-${sid}`, bytes).catch((err) => {
         log(`Input emit error: ${err}`)
@@ -265,6 +241,21 @@ export async function createTerminalForProject(
 
     const textarea = term.textarea
     if (textarea) {
+      // 将 helper textarea 定位到光标位置，使 IME 候选窗口出现在正确位置
+      // 修复 xterm.js 6.x 中 textarea 位置未同步的问题（7.x 已修复：PR #5759）
+      const syncTextareaToCursor = () => {
+        // 在 xterm 容器内查找光标元素
+        const cursorEl = element.querySelector('.xterm-cursor')
+        if (!cursorEl) return
+        const cursorRect = cursorEl.getBoundingClientRect()
+        const containerRect = element.getBoundingClientRect()
+        // 计算相对于 xterm 容器的偏移
+        const top = cursorRect.top - containerRect.top
+        const left = cursorRect.left - containerRect.left
+        textarea.style.top = `${top}px`
+        textarea.style.left = `${left}px`
+      }
+
       // keyCode 229：IME 组合开始的信号，在 compositionstart 之前触发
       // Linux 下必须在此处提前设置 isComposing，否则 onData 会先一步发出
       // macOS：e.isComposing 是 W3C 标准属性，比 keyCode 229 更可靠
@@ -272,11 +263,15 @@ export async function createTerminalForProject(
         if ((e.isComposing || e.keyCode === 229) && !isComposing) {
           isComposing = true
           compositionPendingText = ''
+          // 在 IME 开始前同步 textarea 位置到光标
+          syncTextareaToCursor()
         }
       })
       textarea.addEventListener('compositionstart', () => {
         isComposing = true
         compositionPendingText = ''
+        // 确保 compositionstart 时 textarea 也在光标位置
+        syncTextareaToCursor()
       })
       textarea.addEventListener('compositionend', (e: CompositionEvent) => {
         const committed = e.data || ''

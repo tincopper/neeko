@@ -12,4 +12,5 @@
     "noEmit": false,
   },
   "include": ["src"],
+  "exclude": ["src/tests", "src/test", "src/**/__tests__", "src/**/setup.ts"]
 }

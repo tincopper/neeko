@@ -1,32 +1,20 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { buildFontFamily, DEFAULT_FONT_FAMILY } from '../../utils/terminal';
 
 describe('buildFontFamily', () => {
-  const originalPlatform = navigator.platform;
-
-  afterEach(() => {
-    Object.defineProperty(navigator, 'platform', {
-      value: originalPlatform,
-      writable: true,
-    });
+  it('返回包含 monospace 的默认字体族', () => {
+    expect(DEFAULT_FONT_FAMILY).toContain('monospace');
   });
 
-  it('should return custom font with fallback when fontFamily is provided', () => {
-    const result = buildFontFamily('Custom Font');
-    expect(result).toContain("'Custom Font'");
-    expect(result).toContain('monospace');
-  });
-
-  it('should return default font stack when fontFamily is empty', () => {
+  it('没有自定义字体时返回默认 monospace', () => {
     const result = buildFontFamily('');
-    expect(result).not.toContain("''");
     expect(result).toContain('monospace');
-  });
-
-  it('should return default font stack when fontFamily is empty string', () => {
-    const result = buildFontFamily('');
     expect(result).toBe(DEFAULT_FONT_FAMILY);
   });
-});
 
-// Import after describe block to ensure proper hoisting
-import { buildFontFamily, DEFAULT_FONT_FAMILY } from '../terminal';
+  it('有自定义字体时在前面添加', () => {
+    const result = buildFontFamily('Fira Code');
+    expect(result).toMatch(/^'Fira Code'/);
+    expect(result).toContain('monospace');
+  });
+});
