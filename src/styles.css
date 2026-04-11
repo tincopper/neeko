@@ -1850,6 +1850,31 @@ body {
   color: rgba(255, 255, 255, 0.7);
 }
 
+.agent-option.not-installed {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-option.not-installed:hover {
+  background: rgba(224, 108, 117, 0.15);
+}
+
+.agent-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.agent-status-dot.installed-dot {
+  background-color: #98c379;
+}
+
+.agent-status-dot.not-installed-dot {
+  background-color: #e06c75;
+}
+
 /* Content Area */
 .content-area {
   flex: 1;
