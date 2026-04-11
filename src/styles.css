@@ -1647,6 +1647,16 @@ body {
   padding: 0 0 4px 16px;
 }
 
+/* Worktree wrapper (item + expandable changes) */
+.gh-worktree-wrapper {
+  margin-bottom: 2px;
+}
+
+.gh-worktree-chevron {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 /* Worktree items */
 .gh-worktree-item {
   display: flex;
@@ -1726,6 +1736,21 @@ body {
   border-radius: 50%;
   animation: wt-spin 0.6s linear infinite;
   flex-shrink: 0;
+}
+
+/* Worktree expanded changes section */
+.gh-worktree-changes {
+  padding: 0 0 0 24px;
+}
+
+.gh-section-label-nested {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  user-select: none;
 }
 
 /* Confirm dialog details */

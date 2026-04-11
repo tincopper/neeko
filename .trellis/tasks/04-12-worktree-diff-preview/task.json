@@ -1,0 +1,44 @@
+{
+  "id": "worktree-diff-preview",
+  "name": "worktree-diff-preview",
+  "title": "Worktree 文件 Diff 预览",
+  "description": "为 Git Worktree 添加变更文件列表和 Diff 预览功能，保持与主项目文件预览一致",
+  "status": "active",
+  "dev_type": "fullstack",
+  "scope": "worktree",
+  "priority": "P1",
+  "creator": "user",
+  "assignee": null,
+  "createdAt": "2026-04-12",
+  "completedAt": null,
+  "branch": "feature/worktree-diff-preview",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "worktree 新增文件Diff预览，worktree文件预览保持和项目的文件预览一致即可。changes 数量以及新增行数以及删减行数也需要进行展示。",
+  "meta": {}
+}

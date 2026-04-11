@@ -1,0 +1,12 @@
+{"path": "src-tauri/src/commands/git.rs", "reason": "需要添加 get_worktree_changed_files 和 get_worktree_file_diff 两个 Tauri 命令"}
+{"path": "src-tauri/src/git/local.rs", "reason": "复用 get_changed_files 和 get_file_diff 逻辑，添加接受路径参数的变体"}
+{"path": "src-tauri/src/lib.rs", "reason": "注册新的 Tauri 命令"}
+{"path": "src-tauri/src/state/diff.rs", "reason": "DiffResult/DiffHunk/DiffLine 数据结构定义"}
+{"path": "src-tauri/src/state/project.rs", "reason": "FileChange 数据结构定义"}
+{"path": "src/components/project/ProjectItem.tsx", "reason": "Worktree 列表项需要添加展开/折叠和 FileTree 显示"}
+{"path": "src/components/project/FileTree.tsx", "reason": "复用文件树组件显示变更文件"}
+{"path": "src/components/DiffView.tsx", "reason": "添加 worktree DiffSource 类型和对应的 diff 加载逻辑"}
+{"path": "src/components/MainContent.tsx", "reason": "添加 worktreeDiffState 渲染逻辑"}
+{"path": "src/hooks/useAppCallbacks.ts", "reason": "添加 handleSelectWorktreeFile 和 handleWorktreeDiffBack 回调"}
+{"path": "src/App.tsx", "reason": "添加 worktreeDiffState 状态管理和回调传递"}
+{"path": "src/types.ts", "reason": "FileChange 类型定义（前端）"}

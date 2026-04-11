@@ -171,6 +171,16 @@ function App() {
     setRemoteSideTerminalOpen,
   );
 
+  // ── Worktree diff state ──
+  const [worktreeDiffState, setWorktreeDiffState] = useState<{
+    worktreePath: string; filePath: string;
+  } | null>(null);
+
+  // Clear worktree diff when switching projects
+  useEffect(() => {
+    setWorktreeDiffState(null);
+  }, [activeProjectId]);
+
   // ── Add menu ──
   const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -235,6 +245,7 @@ function App() {
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
     setOpenedWorktrees, activeProjectIdRef,
     saveWorktreeState: session.saveWorktreeState,
+    setWorktreeDiffState,
     saveSession: session.saveSession,
     wslEntriesRefForSave: session.wslEntriesRefForSave,
     remoteEntriesRefForSave: session.remoteEntriesRefForSave,
@@ -322,6 +333,7 @@ function App() {
           onOpenIde={callbacks.handleOpenIdeForSidebar}
           onOpenSideTerminal={sideTerminal.handleOpenSideTerminal}
           onOpenWorktreeTerminal={callbacks.handleOpenWorktreeTerminal}
+          onSelectWorktreeFile={callbacks.handleSelectWorktreeFile}
           onSelectWslProject={wslActions.handleSelectWslProject}
           onCloseWslProject={handleCloseWslProject}
           onRemoveWslProject={handleRemoveWslProject}
@@ -379,8 +391,10 @@ function App() {
           setRemoteOpenSessions={setRemoteOpenSessions}
           wslDiffState={wslActions.wslDiffState}
           remoteDiffState={remoteActions.remoteDiffState}
+          worktreeDiffState={worktreeDiffState}
           onWslDiffBack={callbacks.handleWslDiffBack}
           onRemoteDiffBack={callbacks.handleRemoteDiffBack}
+          onWorktreeDiffBack={callbacks.handleWorktreeDiffBack}
         />
 
         {pendingPath && (

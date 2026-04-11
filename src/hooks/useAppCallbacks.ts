@@ -27,6 +27,8 @@ export interface UseAppCallbacksParams {
   setOpenedWorktrees: React.Dispatch<React.SetStateAction<import("./useWorktreeState").WorktreeItem[]>>;
   activeProjectIdRef: React.MutableRefObject<string | null>;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
+  // Worktree diff
+  setWorktreeDiffState: (s: { worktreePath: string; filePath: string } | null) => void;
   // Session
   saveSession: SaveSessionFn;
   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
@@ -61,6 +63,8 @@ export interface UseAppCallbacksResult {
   handleOpenIdeForSidebar: (projectId: string) => void;
   handleBackToMainTerminal: (projectId: string) => void;
   handleOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
+  handleSelectWorktreeFile: (worktreePath: string, filePath: string) => void;
+  handleWorktreeDiffBack: () => void;
   handleSaveProjectSettings: (projectId: string, agentId: string | null, ideCommand: string | null) => Promise<void>;
   handleWslDiffBack: () => void;
   handleRemoteDiffBack: () => void;
@@ -82,6 +86,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     handleOpenIde, showToast,
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
     setOpenedWorktrees, activeProjectIdRef, saveWorktreeState,
+    setWorktreeDiffState,
     saveSession, wslEntriesRefForSave, remoteEntriesRefForSave,
     setWslDiffState, setRemoteDiffState,
     pendingAuthEntry, setRemoteAuthStore, setPendingAuthEntry,
@@ -159,6 +164,15 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     }
   }, [setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState, activeProjectIdRef]);
 
+  // ── Worktree file diff ──
+  const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {
+    setWorktreeDiffState({ worktreePath, filePath });
+  }, [setWorktreeDiffState]);
+
+  const handleWorktreeDiffBack = useCallback(() => {
+    setWorktreeDiffState(null);
+  }, [setWorktreeDiffState]);
+
   // ── Project settings ──
   const handleSaveProjectSettings = useCallback(async (
     projectId: string,
@@ -233,6 +247,8 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     handleOpenIdeForSidebar,
     handleBackToMainTerminal,
     handleOpenWorktreeTerminal,
+    handleSelectWorktreeFile,
+    handleWorktreeDiffBack,
     handleSaveProjectSettings,
     handleWslDiffBack,
     handleRemoteDiffBack,

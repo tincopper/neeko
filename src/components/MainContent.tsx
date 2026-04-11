@@ -35,8 +35,10 @@ interface MainContentProps {
   // diff state
   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
   remoteDiffState: { entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string; filePath: string } | null;
+  worktreeDiffState: { worktreePath: string; filePath: string } | null;
   onWslDiffBack: () => void;
   onRemoteDiffBack: () => void;
+  onWorktreeDiffBack: () => void;
   suppressResizeRef?: React.MutableRefObject<boolean>;
 }
 
@@ -66,8 +68,10 @@ function MainContent({
   setRemoteOpenSessions,
   wslDiffState,
   remoteDiffState,
+  worktreeDiffState,
   onWslDiffBack,
   onRemoteDiffBack,
+  onWorktreeDiffBack,
   suppressResizeRef,
 }: MainContentProps) {
   // 稳定的 onSessionReady 回调，避免 WSL/Remote TerminalView 因回调引用变化重渲染
@@ -163,7 +167,14 @@ function MainContent({
       {/* 本地项目视图 */}
       {activeProject ? (
         <div className="content-area">
-          {isTerminalView || activeWorktreePath ? (
+          {worktreeDiffState ? (
+            <DiffView
+              diffSource={{ type: "worktree", projectId: activeProject.id, worktreePath: worktreeDiffState.worktreePath }}
+              filePath={worktreeDiffState.filePath}
+              initialMode={config.diffMode}
+              onBack={onWorktreeDiffBack}
+            />
+          ) : isTerminalView || activeWorktreePath ? (
             <div className="terminal-pane-container">
               {/* 主终端（条件渲染，与 worktree 终端逻辑一致，切换时走 cache attach 无闪屏） */}
               {!activeWorktreePath && (

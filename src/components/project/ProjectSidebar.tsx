@@ -27,6 +27,7 @@ interface ProjectSidebarProps {
   onOpenIde?: (projectId: string) => void;
   onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
+  onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   onSelectWslProject: (distro: string, project: WSLProject) => void;
   onCloseWslProject: (entryId: string, projectId: string) => void;
   onRemoveWslProject: (entryId: string, projectId: string) => void;
@@ -79,6 +80,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onOpenIde,
   onOpenSideTerminal,
   onOpenWorktreeTerminal,
+  onSelectWorktreeFile,
   onSelectWslProject,
   onCloseWslProject,
   onRemoveWslProject,
@@ -196,6 +198,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onOpenIde={onOpenIde}
                   onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  onSelectWorktreeFile={onSelectWorktreeFile}
                   ideCommandOverrides={ideCommandOverrides}
                   onOpenSettings={_onOpenSettings}
                   onRefresh={onRefreshGit}
