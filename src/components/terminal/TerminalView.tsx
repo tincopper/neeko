@@ -33,6 +33,9 @@ export const terminalCache = new Map<string, TerminalCache>()
 // 存储每个 cacheKey 对应的"需要重建"回调，管道关闭时调用
 export const terminalRebuildCallbacks = new Map<string, () => void>()
 
+// 存储每个 cacheKey 对应的 DOM wrapper，供命令式切换 Agent 时使用
+export const terminalWrapperRefs = new Map<string, HTMLDivElement>()
+
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString()
   console.log(`[${ts}] [Terminal] ${msg}`)
@@ -87,6 +90,82 @@ export function launchAgentInTerminal(
   const cmdStr = [command, ...args].join(' ')
   sendToTerminal(projectId, '\x03')
   setTimeout(() => sendToTerminal(projectId, cmdStr + '\r'), 50)
+}
+
+/**
+ * 即时切换 Agent：立即创建新 PTY + 启动新 Agent，后台异步关闭旧 PTY。
+ * 替代 launchAgentInTerminal，消除"等旧 Agent 退出"的等待。
+ */
+export async function switchAgentInTerminal(
+  projectId: string,
+  projectPath: string,
+  projectName: string,
+  agentId: string,
+  fontSize: number,
+  shell: string,
+  fontFamily: string,
+  agentCommandOverrides?: Record<string, string>,
+) {
+  const wrapper = terminalWrapperRefs.get(projectId)
+  if (!wrapper) {
+    // wrapper 未就绪（组件未挂载），回退到旧路径
+    const agent = await invoke<AgentConfig>('get_agent', { agentId }).catch(() => null)
+    if (agent) {
+      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command
+      launchAgentInTerminal(projectId, cmd, agent.args)
+    }
+    return
+  }
+
+  // 1. 摘除旧缓存的事件监听，防止 terminal-closed 触发意外重建
+  const oldCache = terminalCache.get(projectId)
+  if (oldCache) {
+    oldCache.unlistenOutput?.()
+    oldCache.unlistenClosed?.()
+  }
+
+  // 2. 从 Map 删除旧条目（槽位空出），新建时会重新填入同一 key
+  terminalCache.delete(projectId)
+
+  // 3. 清空 wrapper 中旧的 xterm DOM 节点
+  while (wrapper.firstChild) {
+    wrapper.removeChild(wrapper.firstChild)
+  }
+
+  // 4. 创建新终端（复用 createTerminalForProject，直接携带 agentId）
+  try {
+    const newCache = await createTerminalForProject(
+      projectId,
+      projectPath,
+      projectName,
+      agentId,
+      fontSize,
+      wrapper,
+      shell,
+      fontFamily,
+      undefined,
+      agentCommandOverrides,
+    )
+    requestAnimationFrame(() => {
+      newCache.fitAddon.fit()
+      if (newCache.sessionId) {
+        invoke('resize_terminal', {
+          sessionId: newCache.sessionId,
+          cols: newCache.term.cols,
+          rows: newCache.term.rows,
+        }).catch(() => {})
+      }
+      newCache.term.focus()
+    })
+  } catch (err) {
+    log(`switchAgentInTerminal: createTerminalForProject failed: ${err}`)
+  }
+
+  // 5. 后台异步关闭旧 PTY（不阻塞 UI）
+  if (oldCache?.sessionId) {
+    invoke('close_terminal_session', { sessionId: oldCache.sessionId }).catch(() => {})
+  }
+  oldCache?.term.dispose()
 }
 
 export async function createTerminalForProject(
@@ -197,20 +276,14 @@ export async function createTerminalForProject(
     )
     cache.unlistenOutput = unlistenOutput
 
-    // 监听管道关闭事件：显示提示后清理 cache 并触发重建
+    // 监听管道关闭事件：清理 cache 并立即触发重建
     const unlistenClosed = await listen<null>(
       `terminal-closed-${sid}`,
       async () => {
         log(`Session ${sid} closed by backend`)
         unlistenClosed()
-        // 在终端上显示退出提示，3 秒后自动重建
-        term.write(
-          '\r\n\x1b[33m[Terminal] Session ended. Restarting in 3 seconds...\x1b[0m\r\n',
-        )
-        setTimeout(() => {
-          destroyTerminalCache(projectId)
-          terminalRebuildCallbacks.get(projectId)?.()
-        }, 3000)
+        destroyTerminalCache(projectId)
+        terminalRebuildCallbacks.get(projectId)?.()
       },
     )
     cache.unlistenClosed = unlistenClosed
@@ -336,8 +409,12 @@ function TerminalView({
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
+  const selectedAgentRef = useRef<string | null>(project.selected_agent)
   // 管道关闭时递增，触发 useEffect 重建终端
   const [rebuildCount, setRebuildCount] = useState(0)
+
+  // 始终同步最新的 selected_agent 到 ref（避免 useEffect 派生延迟导致 prop 过期）
+  selectedAgentRef.current = project.selected_agent
 
   // fontSize / fontFamily 变化时更新已有终端实例
   useEffect(() => {
@@ -365,6 +442,8 @@ function TerminalView({
         setRebuildCount((c) => c + 1)
       }
     })
+    // 注册 wrapper ref，供命令式 switchAgentInTerminal 使用
+    terminalWrapperRefs.set(projectId, wrapper)
 
     const attach = (cache: TerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -401,14 +480,14 @@ function TerminalView({
         projectId,
         project.path,
         project.name,
-        project.selected_agent,
+        selectedAgentRef.current,
         fontSize,
         wrapper,
         shell,
         fontFamily,
         undefined,
-        agentCommandOverride && project.selected_agent
-          ? { [project.selected_agent]: agentCommandOverride }
+        agentCommandOverride && selectedAgentRef.current
+          ? { [selectedAgentRef.current]: agentCommandOverride }
           : undefined,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
@@ -461,6 +540,7 @@ function TerminalView({
       window.removeEventListener('resize', handleResize)
       detachAll()
       terminalRebuildCallbacks.delete(projectId)
+      terminalWrapperRefs.delete(projectId)
     }
   }, [project.id, rebuildCount])
 
@@ -473,6 +553,7 @@ function TerminalView({
 
 export default React.memo(TerminalView, (prev, next) =>
   prev.project.id === next.project.id &&
+  prev.project.selected_agent === next.project.selected_agent &&
   prev.fontSize === next.fontSize &&
   prev.shell === next.shell &&
   prev.fontFamily === next.fontFamily &&
