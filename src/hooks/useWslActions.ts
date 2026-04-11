@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { launchAgentInWslTerminal, wslCacheKey, refreshWslTerminal } from "../components/terminal";
+import { switchAgentInWslTerminal, wslCacheKey, refreshWslTerminal } from "../components/terminal";
 import type { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../types";
 import type { DiffSetter, RemoteDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
@@ -113,8 +113,16 @@ export function useWslActions(deps: {
     if (!proj) return;
     const key = wslCacheKey(proj.distro, proj.project.id);
     if (agent) {
-      const cmd = deps.config.agentCommandOverrides?.[agent.id] ?? agent.command;
-      launchAgentInWslTerminal(key, cmd, agent.args);
+      void switchAgentInWslTerminal(
+        key,
+        proj.distro,
+        proj.project.path,
+        proj.project.name,
+        agent.id,
+        deps.config.fontSize ?? 14,
+        deps.config.fontFamily ?? '',
+        deps.config.agentCommandOverrides,
+      );
     }
     const agentId = agent?.id ?? null;
     const newEntries = deps.wslEntries.map(e => ({
@@ -131,7 +139,7 @@ export function useWslActions(deps: {
       setTimeout(() => refreshWslTerminal(key), 50);
     }
     invoke("save_session", { wslEntries: newEntries, remoteEntries: deps.remoteEntriesRefForSave.current }).catch(console.error);
-  }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config.agentCommandOverrides]);
+  }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config]);
 
   return {
     wslDiffState, setWslDiffState,
