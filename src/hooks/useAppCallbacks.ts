@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "../utils/platform";
-import { launchAgentInTerminal, refreshTerminal } from "../components/terminal";
+import { switchAgentInTerminal, refreshTerminal } from "../components/terminal";
 import { AgentConfig } from "../types";
 import type { Project, WSLEntrySession, RemoteEntrySession, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
@@ -35,6 +35,10 @@ export interface UseAppCallbacksParams {
   setWslDiffState: (s: null) => void;
   // Remote actions
   setRemoteDiffState: (s: null) => void;
+  // 用于 switchAgentInTerminal 的终端参数
+  terminalFontSize?: number;
+  terminalShell?: string;
+  terminalFontFamily?: string;
   // Remote auth
   pendingAuthEntry: { id: string } | null;
   setRemoteAuthStore: React.Dispatch<React.SetStateAction<Map<string, AuthMethod>>>;
@@ -83,6 +87,9 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     pendingAuthEntry, setRemoteAuthStore, setPendingAuthEntry,
     setRemoteEntries, remoteEntriesRef,
     setActiveRemoteKey, setActiveRemoteProject,
+    terminalFontSize = 14,
+    terminalShell = '',
+    terminalFontFamily = '',
     setSettingsOpen, setShowAddMenu,
     handleAddProject, setWslDialogOpen, setRemoteDialogOpen,
   } = params;
@@ -91,7 +98,6 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
   const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
     if (activeProject) {
       const agentId = agent?.id ?? null;
-      // 统一更新 selected_agent 状态（选择 Agent 和 None 都需要）
       setProjects((prev) =>
         prev.map((p) =>
           p.id === activeProject.id ? { ...p, selected_agent: agentId } : p
@@ -101,14 +107,21 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
         prev && prev.id === activeProject.id ? { ...prev, selected_agent: agentId } : prev
       );
       if (agent) {
-        const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
-        launchAgentInTerminal(activeProject.id, cmd, agent.args);
+        void switchAgentInTerminal(
+          activeProject.id,
+          activeProject.path,
+          activeProject.name,
+          agent.id,
+          terminalFontSize,
+          terminalShell,
+          terminalFontFamily,
+          agentCommandOverrides,
+        );
       } else {
-        // 延迟重建终端，确保 selected_agent=null 状态已更新
         setTimeout(() => refreshTerminal(activeProject.id), 50);
       }
     }
-  }, [activeProject, agentCommandOverrides, setProjects, setActiveProject]);
+  }, [activeProject, agentCommandOverrides, terminalFontSize, terminalShell, terminalFontFamily, setProjects, setActiveProject]);
 
   const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) {
