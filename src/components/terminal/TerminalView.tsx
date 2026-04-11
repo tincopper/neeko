@@ -303,8 +303,8 @@ export async function createTerminalForProject(
         compositionPendingText = ''
         return
       }
-      // 阻止 Ctrl+C 杀死 Agent
-      if (blockCtrlC && data === '\x03') {
+      // 阻止 Ctrl+C 杀死 Agent（有文本选中时允许通过，避免影响复制）
+      if (blockCtrlC && data === '\x03' && !term.hasSelection()) {
         onShowToast?.("Ctrl+C is disabled. Use Agent dropdown to switch.", "error")
         return
       }
