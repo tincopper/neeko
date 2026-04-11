@@ -366,6 +366,7 @@ function App() {
           remoteDiffState={remoteActions.remoteDiffState}
           onWslDiffBack={callbacks.handleWslDiffBack}
           onRemoteDiffBack={callbacks.handleRemoteDiffBack}
+          showToast={showToast}
         />
 
         {pendingPath && (

@@ -17,6 +17,7 @@ interface TerminalViewProps {
   suppressResizeRef?: React.MutableRefObject<boolean>
   agentCommandOverride?: string
   blockCtrlC?: boolean
+  onShowToast?: (message: string, type?: "info" | "error") => void
 }
 
 interface TerminalCache {
@@ -102,6 +103,7 @@ export async function createTerminalForProject(
   backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
   agentCommandOverrides?: Record<string, string>, // 内置 agent 命令覆盖
   blockCtrlC: boolean = false,
+  onShowToast?: (message: string, type?: "info" | "error") => void,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -293,25 +295,33 @@ export async function createTerminalForProject(
       })
     }
 
-    // ── Ctrl+C 拦截（在键盘事件层处理）──
-    // onKey 在 keydown 时触发，早于 onData
-    // 用 onSelectionChange 跟踪选中状态（比瞬时 hasSelection 更可靠）
-    // - 有文本选中：不拦截，xterm.js 处理复制操作
-    // - 无文本选中：preventDefault 阻止默认行为，不发 SIGINT 到 PTY
+    // ── Ctrl+C 拦截 ──
+    // onKey 在 keydown 触发，但 preventDefault 无法阻止 onData 发 \x03 到 PTY
+    // 方案：onKey 设标记 + onData 跳过，彻底阻断 SIGINT
+    let skipNextData = false
     if (blockCtrlC) {
-      let hasSelection = term.hasSelection()
-      term.onSelectionChange(() => {
-        hasSelection = term.hasSelection()
-      })
       term.onKey(({ key, domEvent }) => {
-        if (isComposing) return
-        if (key === '\x03' && !hasSelection) {
+        if (key === '\x03') {
           domEvent.preventDefault()
+          domEvent.stopPropagation()
+          // 有选中文本 → 用 Clipboard API 复制
+          const text = term.getSelection()
+          if (text) {
+            navigator.clipboard.writeText(text).catch(() => {})
+            onShowToast?.("Copied!", "info")
+          }
+          // 标记下一个 onData 数据需要跳过（即 \x03）
+          skipNextData = true
         }
       })
     }
 
     term.onData((data) => {
+      // 跳过 Ctrl+C 产生的数据（onKey 已处理）
+      if (skipNextData) {
+        skipNextData = false
+        return
+      }
       // composing 期间阻断
       if (isComposing) return
       // compositionend 后 onData 可能携带相同文本，跳过避免重复发送
@@ -354,6 +364,7 @@ function TerminalView({
   suppressResizeRef,
   agentCommandOverride,
   blockCtrlC = true,
+  onShowToast,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -432,6 +443,7 @@ function TerminalView({
           ? { [project.selected_agent]: agentCommandOverride }
           : undefined,
         blockCtrlC,
+        onShowToast,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
