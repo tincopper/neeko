@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "../project/FileTree";
 import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
-import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
@@ -179,8 +179,8 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       if (!isRenaming) onStartRenameWorktree(wt.path);
                     }}
                     title={`${wt.path}\nClick to open terminal`}
-                  >
-                    <FileIcon size={11} style={{ opacity: 0.6 }} />
+                      >
+                    <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
@@ -195,20 +195,21 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span className="gh-branch-item-name">{wt.path.split('/').pop()}</span>
+                      <span className="gh-worktree-name">{wt.path.split('/').pop()}</span>
                     )}
-                    <span className="gh-branch-inline" title={wt.branch}>
-                      <BranchIcon size={11} style={{ opacity: 0.6 }} />
-                      {wt.branch}
-                    </span>
                     {!isRenaming && (
                       <button
-                        className="gh-icon-btn gh-icon-btn-danger"
-                        style={{ marginLeft: "auto" }}
+                        className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
                         onClick={(e) => { e.stopPropagation(); onRemoveWorktree(wt.path); }}
                         title="Remove worktree"
-                      >×</button>
+                      >
+                        <TrashIcon size={12} />
+                      </button>
                     )}
+                    <span className="gh-branch-inline" title={wt.branch}>
+                      <BranchIcon size={11} />
+                      {wt.branch}
+                    </span>
                   </div>
                 );
               })}
@@ -347,6 +348,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     if (project.git_info) {
       items.push({
         label: "New Branch",
+        icon: GitLogoIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog?.("new-branch", project.git_info!.branches);
@@ -354,6 +356,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
       });
       items.push({
         label: "New Worktree",
+        icon: FolderGitIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog?.("new-worktree", project.git_info!.branches);
@@ -439,10 +442,12 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
                 <div className="gh-git-dropdown">
                   <div className="gh-git-dropdown-item"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
+                    <GitLogoIcon size={12} />
                     New Branch
                   </div>
                   <div className="gh-git-dropdown-item"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
+                    <FolderGitIcon size={12} />
                     New Worktree
                   </div>
                 </div>

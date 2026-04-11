@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "src/components/terminal/SideTerminalView.tsx", "reason": "Side terminal component - supports index prop for multiple terminals"}
+{"file": "src/components/MainContent.tsx", "reason": "Main content component - renders terminal panes including side terminals"}
+{"file": "src/App.tsx", "reason": "App root component - manages sideTerminalOpen state"}
+{"file": "src/hooks/useKeyboardShortcuts.ts", "reason": "Keyboard shortcuts - Ctrl+Alt+T opens side terminal, Ctrl+W closes"}
+{"file": "src/styles.css", "reason": "CSS styles for terminal layout"}

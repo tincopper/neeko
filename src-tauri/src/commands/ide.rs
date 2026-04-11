@@ -1,4 +1,5 @@
 use crate::AppStateWrapper;
+use anyhow::Result;
 use tauri::State;
 
 #[tauri::command]
@@ -91,6 +92,7 @@ fn split_command(s: &str) -> Vec<String> {
     parts
 }
 
+/// 通过本地命令打开 SSH IDE（VSCode Remote、Cursor、Zed 等）
 #[tauri::command]
 pub fn open_remote_ide(
     host: String,
@@ -99,15 +101,92 @@ pub fn open_remote_ide(
     project_path: String,
     ide: String,
 ) -> Result<(), String> {
-    crate::remote::open_remote_ide(&host, port, &username, &project_path, &ide)
+    open_remote_ide_impl(&host, port, &username, &project_path, &ide)
         .map_err(|e| e.to_string())
+}
+
+fn open_remote_ide_impl(
+    host: &str,
+    port: u16,
+    username: &str,
+    project_path: &str,
+    ide: &str,
+) -> Result<()> {
+    let ide_lower = ide.to_lowercase();
+
+    // 根据 IDE 类型决定参数格式
+    let args: Vec<String> = if ide_lower.contains("code") || ide_lower.contains("cursor") {
+        let ssh_connection = format!("ssh-remote+{}@{}:{}", username, host, port);
+        vec![
+            "--remote".to_string(),
+            ssh_connection,
+            project_path.to_string(),
+        ]
+    } else if ide_lower.contains("zed") {
+        let ssh_url = format!("ssh://{}@{}:{}{}", username, host, port, project_path);
+        vec![ssh_url]
+    } else {
+        return Err(anyhow::anyhow!(
+            "IDE '{}' does not support SSH remote opening. Supported: VSCode (code), Cursor (cursor), Zed (zed)",
+            ide
+        ));
+    };
+
+    spawn_ide_process(ide, &args)
+}
+
+fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
+    use std::process::Command;
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+
+        let full_command = std::iter::once(exe.to_string())
+            .chain(args.iter().cloned())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        Command::new("cmd.exe")
+            .args(["/C", &full_command])
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                    exe,
+                    e
+                )
+            })?;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+
+        Command::new(exe)
+            .args(args)
+            .process_group(0)
+            .spawn()
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                    exe,
+                    e
+                )
+            })?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
 pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        crate::remote::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
+        crate::git::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "windows"))]
     {

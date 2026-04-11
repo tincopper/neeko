@@ -1,4 +1,4 @@
-use crate::state::AgentConfig;
+use crate::state::agent::AgentConfig;
 use std::collections::HashMap;
 
 pub struct AgentManager {
@@ -74,7 +74,7 @@ impl AgentManager {
         self.agents.push(AgentConfig {
             id: "qoder".to_string(),
             name: "qoder".to_string(),
-            command: "qoder".to_string(),
+            command: "qodercli".to_string(),
             args: vec![],
             env: HashMap::new(),
             icon: Some("qoder.svg".to_string()),

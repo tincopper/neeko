@@ -8,7 +8,7 @@ pub async fn refresh_remote_git_info(
     auth: AuthMethod,
     project_path: String,
 ) -> Result<GitInfo, String> {
-    crate::remote::get_remote_git_info(&host, port, &username, &auth, &project_path)
+    crate::git::remote::get_remote_git_info(&host, port, &username, &auth, &project_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -22,7 +22,7 @@ pub async fn get_remote_file_diff_command(
     project_path: String,
     file_path: String,
 ) -> Result<DiffResult, String> {
-    crate::remote::get_remote_file_diff(&host, port, &username, &auth, &project_path, &file_path)
+    crate::git::remote::get_remote_file_diff(&host, port, &username, &auth, &project_path, &file_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -37,7 +37,7 @@ pub async fn remote_checkout_branch(
     branch_name: String,
 ) -> Result<(), String> {
     let cmd = format!("git checkout '{}'", branch_name.replace('\'', "'\\''"));
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -53,7 +53,7 @@ pub async fn remote_create_branch(
     branch_name: String,
 ) -> Result<(), String> {
     let cmd = format!("git branch '{}'", branch_name.replace('\'', "'\\''"));
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -71,7 +71,7 @@ pub async fn remote_rename_branch(
 ) -> Result<(), String> {
     let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let cmd = format!("git branch -m {} {}", q(&old_name), q(&new_name));
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -94,7 +94,7 @@ pub async fn remote_create_worktree(
     } else {
         format!("git worktree add {} {}", q(&worktree_path), q(&branch_name))
     };
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -111,7 +111,7 @@ pub async fn remote_remove_worktree(
 ) -> Result<(), String> {
     let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let cmd = format!("git worktree remove --force {}", q(&worktree_path));
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -134,7 +134,7 @@ pub async fn remote_rename_worktree(
     let new_path = format!("{}/{}", parent, new_name);
     let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let cmd = format!("git worktree move {} {}", q(&worktree_path), q(&new_path));
-    crate::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
         .await
         .map(|_| new_path)
         .map_err(|e| e.to_string())

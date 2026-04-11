@@ -56,6 +56,7 @@ interface ProjectSidebarProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
+  onDragEnd?: (draggedId: string, targetId: string) => void;
 }
 
 const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
@@ -106,6 +107,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   agents,
   config,
   onSaveProjectSettings,
+  onDragEnd,
 }) => {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   // Wrapper to accept WSL/Remote dialog objects (type is string literal union at runtime)
@@ -198,6 +200,7 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   agents={agents}
                   config={config}
                   onSaveProjectSettings={onSaveProjectSettings}
+                  onDragEnd={onDragEnd}
                 />
               ))}
 

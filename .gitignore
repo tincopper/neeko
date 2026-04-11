@@ -11,6 +11,8 @@ build/
 .idea/
 .opencode/
 .claude/
+.agents/
+.superset
 *.swp
 *.swo
 
@@ -24,6 +26,7 @@ Thumbs.db
 
 # Tauri
 src-tauri/target/
+src-tauri/gen/
 
 # Debug
 *.log

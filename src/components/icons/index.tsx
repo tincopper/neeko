@@ -14,6 +14,8 @@ import {
   Grid2x2,
   Info,
   OctagonAlert,
+  Search,
+  FolderGit2,
   type LucideProps,
 } from "lucide-react";
 
@@ -24,6 +26,7 @@ export const ChevronRightIcon = ChevronRight;
 export const TrashIcon = Trash2;
 export const PlusIcon = Plus;
 export const FileIcon = FileCode2;
+export const FolderGitIcon = FolderGit2;
 export const SideTerminalIcon = Terminal;
 export const SettingsIcon = Settings;
 export const EditorIcon = AlignJustify;
@@ -33,6 +36,7 @@ export const GridIcon = Grid2x2;
 export const InfoCircleIcon = Info;
 export const ErrorOctagonIcon = OctagonAlert;
 export const GitLogoIcon = GitBranch;
+export const SearchIcon = Search;
 
 // ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
 

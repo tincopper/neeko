@@ -1,12 +1,13 @@
-mod agent;
+pub mod agent;
 mod commands;
-mod git;
+pub mod git;
 mod logger;
-mod project;
+pub mod project;
 mod remote;
-mod state;
-mod storage;
+pub mod state;
+pub mod storage;
 mod terminal;
+mod utils;
 mod watcher;
 
 use state::*;
@@ -101,6 +102,7 @@ pub fn run() {
             commands::set_view_terminal,
             commands::set_view_diff,
             commands::set_project_collapsed,
+            commands::reorder_projects,
             commands::checkout_branch,
             commands::create_branch,
             commands::rename_branch,

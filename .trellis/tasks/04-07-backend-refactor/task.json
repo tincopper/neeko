@@ -1,0 +1,47 @@
+{
+  "id": "backend-refactor",
+  "name": "backend-refactor",
+  "title": "Tauri 后端模块重构",
+  "description": "对 Neeko 的 Tauri 后端进行全面模块重构，消除代码重复，按职责拆分过大的模块",
+  "status": "in_progress",
+  "dev_type": "backend",
+  "scope": "src-tauri/src",
+  "priority": "P2",
+  "creator": "opencode",
+  "assignee": "opencode",
+  "createdAt": "2026-04-07",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 1,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/remote.rs",
+    "src-tauri/src/terminal.rs",
+    "src-tauri/src/state.rs",
+    "src-tauri/src/git.rs",
+    "src-tauri/src/commands/mod.rs",
+    "src-tauri/src/lib.rs"
+  ],
+  "notes": "",
+  "meta": {}
+}

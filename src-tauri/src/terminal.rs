@@ -1,6 +1,6 @@
 use crate::state::{TerminalSession, TerminalStatus};
 use anyhow::Result;
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -8,6 +8,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, EventId, Listener};
 use uuid::Uuid;
+
+// ─── 数据结构 ───────────────────────────────────────────────────────
 
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
@@ -20,6 +22,24 @@ pub struct TerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     pty_handles: Arc<Mutex<HashMap<String, PtyHandle>>>,
 }
+
+/// Pipeline 配置（区分 PTY 和 WSL）
+struct PipelineConfig {
+    prefix: &'static str,
+    thread_prefix: &'static str,
+}
+
+const PTY_CONFIG: PipelineConfig = PipelineConfig {
+    prefix: "[PTY]",
+    thread_prefix: "pty",
+};
+
+const WSL_CONFIG: PipelineConfig = PipelineConfig {
+    prefix: "[WSL]",
+    thread_prefix: "wsl",
+};
+
+// ─── TerminalManager 实现 ────────────────────────────────────────────
 
 impl TerminalManager {
     pub fn new() -> Self {
@@ -47,25 +67,10 @@ impl TerminalManager {
             return Err(anyhow::anyhow!("Working directory does not exist: {}", cwd));
         }
 
-        let pty_system = native_pty_system();
-        let pair = pty_system.openpty(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })?;
+        let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
-        let mut cmd = if let Some(ref s) = shell_override {
-            if !s.is_empty() {
-                log_info(&format!("[PTY] Using configured shell: {}", s));
-                Self::build_shell_cmd(s)
-            } else {
-                Self::default_shell_cmd()
-            }
-        } else {
-            Self::default_shell_cmd()
-        };
+        let mut cmd = build_local_shell_cmd(&shell_override);
         cmd.env("TERM", "xterm-256color");
         #[cfg(unix)]
         {
@@ -76,169 +81,20 @@ impl TerminalManager {
         cmd.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd)?;
-        let pid = child.process_id();
-        log_info(&format!("[PTY] Shell spawned, PID: {:?}", pid));
 
-        drop(pair.slave);
+        // Note: Do NOT disable echo here - shell handles line editing
+        // PTY native echo will display user input
+        // This preserves Tab completion, arrow keys, and backspace on Linux
 
-        #[cfg(unix)]
-        {
-            if let Some(fd) = pair.master.as_raw_fd() {
-                if let Err(e) = disable_echo(fd) {
-                    log_error(&format!("[PTY] Failed to disable echo: {}", e));
-                } else {
-                    log_info("[PTY] Echo disabled for IME support");
-                }
-            }
-        }
-
-        let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
-
-        let session = TerminalSession {
-            id: id.clone(),
-            pid,
-            status: TerminalStatus::Idle,
-            history: Vec::new(),
-            agent: None,
-        };
-
-        if let Ok(mut sessions) = self.sessions.lock() {
-            sessions.insert(id.clone(), session.clone());
-        }
-
-        let writer_mutex = Arc::new(Mutex::new(writer));
-        let writer_clone = writer_mutex.clone();
-        let input_listener_id =
-            app_handle.listen(&format!("terminal-input-{}", id), move |event| {
-                match serde_json::from_str::<Vec<u8>>(event.payload()) {
-                    Ok(data) => {
-                        if let Ok(mut w) = writer_clone.lock() {
-                            if let Err(e) = w.write_all(&data) {
-                                log_error(&format!("[PTY-WRITER] Write error: {}", e));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log_error(&format!(
-                            "[PTY-WRITER] Parse error: {} payload={}",
-                            e,
-                            event.payload()
-                        ));
-                    }
-                }
-            });
-
-        if let Ok(mut handles) = self.pty_handles.lock() {
-            handles.insert(
-                id.clone(),
-                PtyHandle {
-                    master: pair.master,
-                    child,
-                    input_listener_id,
-                    app_handle: app_handle.clone(),
-                },
-            );
-        }
-
-        let watch_id = id.clone();
-        let watch_pty_handles = self.pty_handles.clone();
-        let watch_sessions = self.sessions.clone();
-        let watch_handle = app_handle.clone();
-        thread::Builder::new()
-            .name(format!("pty-watcher-{}", &id[..8]))
-            .spawn(move || {
-                log_info(&format!(
-                    "[PTY-WATCHER] Thread started for {}",
-                    &watch_id[..8]
-                ));
-
-                loop {
-                    let exited = {
-                        match watch_pty_handles.lock() {
-                            Ok(mut handles) => {
-                                if let Some(handle) = handles.get_mut(&watch_id) {
-                                    match handle.child.try_wait() {
-                                        Ok(Some(_)) => true,
-                                        Ok(None) => false,
-                                        Err(_) => true,
-                                    }
-                                } else {
-                                    log_info(&format!(
-                                        "[PTY-WATCHER] Handle gone, exiting for {}",
-                                        &watch_id[..8]
-                                    ));
-                                    return;
-                                }
-                            }
-                            Err(_) => return,
-                        }
-                    };
-
-                    if exited {
-                        log_info(&format!(
-                            "[PTY-WATCHER] Child exited for {}, cleaning up",
-                            &watch_id[..8]
-                        ));
-                        if let Ok(mut handles) = watch_pty_handles.lock() {
-                            if let Some(handle) = handles.remove(&watch_id) {
-                                handle.app_handle.unlisten(handle.input_listener_id);
-                                drop(handle.master);
-                                drop(handle.child);
-                            }
-                        }
-                        if let Ok(mut sessions) = watch_sessions.lock() {
-                            sessions.remove(&watch_id);
-                        }
-                        let close_event = format!("terminal-closed-{}", watch_id);
-                        if let Err(e) = watch_handle.emit(&close_event, ()) {
-                            log_error(&format!("[PTY-WATCHER] Failed to emit close event: {}", e));
-                        }
-                        return;
-                    }
-
-                    thread::sleep(Duration::from_millis(100));
-                }
-            })?;
-
-        let read_id = id.clone();
-        let read_handle = app_handle.clone();
-        thread::Builder::new()
-            .name(format!("pty-reader-{}", &id[..8]))
-            .spawn(move || {
-                log_info(&format!(
-                    "[PTY-READER] Thread started for {}",
-                    &read_id[..8]
-                ));
-                let mut buf = [0u8; 4096];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => {
-                            log_info("[PTY-READER] EOF");
-                            break;
-                        }
-                        Ok(n) => {
-                            let data = buf[..n].to_vec();
-                            let event_name = format!("terminal-output-{}", read_id);
-                            if let Err(e) = read_handle.emit(&event_name, &data) {
-                                log_error(&format!("[PTY-READER] Emit error: {}", e));
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            log_info(&format!("[PTY-READER] Read ended: {}", e));
-                            break;
-                        }
-                    }
-                }
-                log_info(&format!(
-                    "[PTY-READER] Thread exiting for {}",
-                    &read_id[..8]
-                ));
-            })?;
-
-        log_info(&format!("[PTY] Session {} ready", &id[..8]));
-        Ok(session)
+        spawn_pty_pipeline(
+            &id,
+            pair,
+            child,
+            &PTY_CONFIG,
+            &self.sessions,
+            &self.pty_handles,
+            &app_handle,
+        )
     }
 
     pub fn create_wsl_session(
@@ -254,13 +110,7 @@ impl TerminalManager {
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
 
-        let pty_system = native_pty_system();
-        let pair = pty_system.openpty(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })?;
+        let pair = create_pty(cols, rows)?;
         log_info(&format!("[WSL] PTY opened ({}x{})", cols, rows));
 
         let mut cmd = CommandBuilder::new("wsl.exe");
@@ -274,176 +124,36 @@ impl TerminalManager {
         cmd.env("WSL_UTF8", "1");
 
         let child = pair.slave.spawn_command(cmd)?;
-        let pid = child.process_id();
-        log_info(&format!("[WSL] Shell spawned, PID: {:?}", pid));
 
-        drop(pair.slave);
-
-        let mut reader = pair.master.try_clone_reader()?;
-        let writer = pair.master.take_writer()?;
-
-        let session = TerminalSession {
-            id: id.clone(),
-            pid,
-            status: TerminalStatus::Idle,
-            history: Vec::new(),
-            agent: None,
-        };
-
-        if let Ok(mut sessions) = self.sessions.lock() {
-            sessions.insert(id.clone(), session.clone());
-        }
-
-        let writer_mutex = Arc::new(Mutex::new(writer));
-        let writer_clone = writer_mutex.clone();
-        let input_listener_id =
-            app_handle.listen(&format!("terminal-input-{}", id), move |event| {
-                match serde_json::from_str::<Vec<u8>>(event.payload()) {
-                    Ok(data) => {
-                        if let Ok(mut w) = writer_clone.lock() {
-                            if let Err(e) = w.write_all(&data) {
-                                log_error(&format!("[WSL-WRITER] Write error: {}", e));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log_error(&format!(
-                            "[WSL-WRITER] Parse error: {} payload={}",
-                            e,
-                            event.payload()
-                        ));
-                    }
-                }
-            });
-
-        if let Ok(mut handles) = self.pty_handles.lock() {
-            handles.insert(
-                id.clone(),
-                PtyHandle {
-                    master: pair.master,
-                    child,
-                    input_listener_id,
-                    app_handle: app_handle.clone(),
-                },
-            );
-        }
-
-        let watch_id = id.clone();
-        let watch_pty_handles = self.pty_handles.clone();
-        let watch_sessions = self.sessions.clone();
-        let watch_handle = app_handle.clone();
-        thread::Builder::new()
-            .name(format!("wsl-watcher-{}", &id[..8]))
-            .spawn(move || {
-                log_info(&format!(
-                    "[WSL-WATCHER] Thread started for {}",
-                    &watch_id[..8]
-                ));
-
-                loop {
-                    let exited = {
-                        match watch_pty_handles.lock() {
-                            Ok(mut handles) => {
-                                if let Some(handle) = handles.get_mut(&watch_id) {
-                                    match handle.child.try_wait() {
-                                        Ok(Some(_)) => true,
-                                        Ok(None) => false,
-                                        Err(_) => true,
-                                    }
-                                } else {
-                                    log_info(&format!(
-                                        "[WSL-WATCHER] Handle gone, exiting for {}",
-                                        &watch_id[..8]
-                                    ));
-                                    return;
-                                }
-                            }
-                            Err(_) => return,
-                        }
-                    };
-
-                    if exited {
-                        log_info(&format!(
-                            "[WSL-WATCHER] Child exited for {}, cleaning up",
-                            &watch_id[..8]
-                        ));
-                        if let Ok(mut handles) = watch_pty_handles.lock() {
-                            if let Some(handle) = handles.remove(&watch_id) {
-                                handle.app_handle.unlisten(handle.input_listener_id);
-                                drop(handle.master);
-                                drop(handle.child);
-                            }
-                        }
-                        if let Ok(mut sessions) = watch_sessions.lock() {
-                            sessions.remove(&watch_id);
-                        }
-                        let close_event = format!("terminal-closed-{}", watch_id);
-                        if let Err(e) = watch_handle.emit(&close_event, ()) {
-                            log_error(&format!("[WSL-WATCHER] Failed to emit close event: {}", e));
-                        }
-                        return;
-                    }
-
-                    thread::sleep(Duration::from_millis(100));
-                }
-            })?;
-
-        let read_id = id.clone();
-        let read_handle = app_handle.clone();
-        thread::Builder::new()
-            .name(format!("wsl-reader-{}", &id[..8]))
-            .spawn(move || {
-                log_info(&format!(
-                    "[WSL-READER] Thread started for {}",
-                    &read_id[..8]
-                ));
-                let mut buf = [0u8; 4096];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => {
-                            log_info("[WSL-READER] EOF");
-                            break;
-                        }
-                        Ok(n) => {
-                            let data = buf[..n].to_vec();
-                            let event_name = format!("terminal-output-{}", read_id);
-                            if let Err(e) = read_handle.emit(&event_name, &data) {
-                                log_error(&format!("[WSL-READER] Emit error: {}", e));
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            log_info(&format!("[WSL-READER] Read ended: {}", e));
-                            break;
-                        }
-                    }
-                }
-                log_info(&format!(
-                    "[WSL-READER] Thread exiting for {}",
-                    &read_id[..8]
-                ));
-            })?;
-
-        log_info(&format!("[WSL] Session {} ready", &id[..8]));
-        Ok(session)
+        spawn_pty_pipeline(
+            &id,
+            pair,
+            child,
+            &WSL_CONFIG,
+            &self.sessions,
+            &self.pty_handles,
+            &app_handle,
+        )
     }
 
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
-        if let Ok(handles) = self.pty_handles.lock() {
-            if let Some(handle) = handles.get(session_id) {
-                handle.master.resize(PtySize {
-                    rows,
-                    cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })?;
-                log_info(&format!(
-                    "[PTY] Resized {} to {}x{}",
-                    &session_id[..8],
-                    cols,
-                    rows
-                ));
-            }
+        let mut handles = self
+            .pty_handles
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        if let Some(handle) = handles.get_mut(session_id) {
+            handle.master.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })?;
+            log_info(&format!(
+                "[PTY] Resized {} to {}x{}",
+                &session_id[..8.min(session_id.len())],
+                cols,
+                rows
+            ));
         }
         Ok(())
     }
@@ -453,6 +163,7 @@ impl TerminalManager {
             "[PTY] Closing session {}",
             &session_id[..8.min(session_id.len())]
         ));
+
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.remove(session_id);
         }
@@ -478,65 +189,308 @@ impl TerminalManager {
         }
         log_info("[PTY] All sessions closed");
     }
+}
 
-    fn build_shell_cmd(shell: &str) -> CommandBuilder {
-        let name = std::path::Path::new(shell)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(shell)
-            .to_lowercase();
+// ─── 共享 Pipeline 函数 ─────────────────────────────────────────────
 
-        if name == "powershell.exe" || name == "powershell" || name == "pwsh.exe" || name == "pwsh"
-        {
-            let mut c = CommandBuilder::new(shell);
-            c.arg("-ExecutionPolicy");
-            c.arg("Bypass");
-            c.arg("-NoLogo");
-            c
-        } else {
-            CommandBuilder::new(shell)
+fn spawn_pty_pipeline(
+    id: &str,
+    pair: PtyPair,
+    child: Box<dyn Child + Send + Sync>,
+    config: &PipelineConfig,
+    sessions: &Arc<Mutex<HashMap<String, TerminalSession>>>,
+    pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
+    app_handle: &tauri::AppHandle,
+) -> Result<TerminalSession> {
+    let pid = child.process_id();
+    log_info(&format!("{} Shell spawned, PID: {:?}", config.prefix, pid));
+
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|e| anyhow::anyhow!("Failed to clone reader: {}", e))?;
+
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|e| anyhow::anyhow!("Failed to take writer: {}", e))?;
+
+    let session = TerminalSession {
+        id: id.to_string(),
+        pid,
+        status: TerminalStatus::Idle,
+        history: Vec::new(),
+        agent: None,
+    };
+
+    sessions
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
+        .insert(id.to_string(), session.clone());
+
+    let input_listener_id = spawn_writer_listener(id, writer, app_handle, config.prefix);
+
+    pty_handles
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
+        .insert(
+            id.to_string(),
+            PtyHandle {
+                master: pair.master,
+                child,
+                input_listener_id,
+                app_handle: app_handle.clone(),
+            },
+        );
+
+    spawn_watcher_thread(id, config, pty_handles, sessions, app_handle)?;
+    spawn_reader_thread(id, reader, config, app_handle)?;
+
+    log_info(&format!("{} Session {} ready", config.prefix, &id[..8]));
+    Ok(session)
+}
+
+fn spawn_writer_listener(
+    id: &str,
+    writer: Box<dyn Write + Send>,
+    app_handle: &tauri::AppHandle,
+    prefix: &str,
+) -> EventId {
+    let writer_mutex = Arc::new(Mutex::new(writer));
+    let writer_clone = writer_mutex.clone();
+    let prefix_owned = prefix.to_string();
+
+    app_handle.listen(
+        &format!("terminal-input-{}", id),
+        move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
+            Ok(data) => {
+                if let Ok(mut w) = writer_clone.lock() {
+                    if let Err(e) = w.write_all(&data) {
+                        log_error(&format!("{}-WRITER Write error: {}", prefix_owned, e));
+                    }
+                }
+            }
+            Err(e) => {
+                log_error(&format!(
+                    "{}-WRITER Parse error: {} payload={}",
+                    prefix_owned,
+                    e,
+                    event.payload()
+                ));
+            }
+        },
+    )
+}
+
+fn spawn_watcher_thread(
+    id: &str,
+    config: &PipelineConfig,
+    pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
+    sessions: &Arc<Mutex<HashMap<String, TerminalSession>>>,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    let watch_id = id.to_string();
+    let watch_pty_handles = pty_handles.clone();
+    let watch_sessions = sessions.clone();
+    let watch_handle = app_handle.clone();
+    let prefix = config.prefix.to_string();
+    let prefix_w = prefix.clone();
+
+    thread::Builder::new()
+        .name(format!("{}-watcher-{}", config.thread_prefix, &id[..8]))
+        .spawn(move || {
+            log_info(&format!(
+                "{}-WATCHER Thread started for {}",
+                prefix_w,
+                &watch_id[..8]
+            ));
+
+            loop {
+                let exited = {
+                    match watch_pty_handles.lock() {
+                        Ok(mut handles) => {
+                            if let Some(handle) = handles.get_mut(&watch_id) {
+                                match handle.child.try_wait() {
+                                    Ok(Some(_)) => true,
+                                    Ok(None) => false,
+                                    Err(_) => true,
+                                }
+                            } else {
+                                log_info(&format!(
+                                    "{}-WATCHER Handle gone, exiting for {}",
+                                    prefix_w,
+                                    &watch_id[..8]
+                                ));
+                                return;
+                            }
+                        }
+                        Err(_) => return,
+                    }
+                };
+
+                if exited {
+                    log_info(&format!(
+                        "{}-WATCHER Child exited for {}, cleaning up",
+                        prefix_w,
+                        &watch_id[..8]
+                    ));
+                    if let Ok(mut handles) = watch_pty_handles.lock() {
+                        if let Some(handle) = handles.remove(&watch_id) {
+                            handle.app_handle.unlisten(handle.input_listener_id);
+                            drop(handle.master);
+                            drop(handle.child);
+                        }
+                    }
+                    if let Ok(mut sessions) = watch_sessions.lock() {
+                        sessions.remove(&watch_id);
+                    }
+                    let close_event = format!("terminal-closed-{}", watch_id);
+                    if let Err(e) = watch_handle.emit(&close_event, ()) {
+                        log_error(&format!(
+                            "{}-WATCHER Failed to emit close event: {}",
+                            prefix_w, e
+                        ));
+                    }
+                    return;
+                }
+
+                thread::sleep(Duration::from_millis(100));
+            }
+        })?;
+
+    Ok(())
+}
+
+fn spawn_reader_thread(
+    id: &str,
+    reader: Box<dyn Read + Send>,
+    config: &PipelineConfig,
+    app_handle: &tauri::AppHandle,
+) -> Result<()> {
+    let read_id = id.to_string();
+    let read_handle = app_handle.clone();
+    let prefix = config.prefix.to_string();
+    let mut reader = reader;
+
+    thread::Builder::new()
+        .name(format!("{}-reader-{}", config.thread_prefix, &id[..8]))
+        .spawn(move || {
+            log_info(&format!(
+                "{}-READER Thread started for {}",
+                prefix,
+                &read_id[..8]
+            ));
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        log_info(&format!("{}-READER EOF", prefix));
+                        break;
+                    }
+                    Ok(n) => {
+                        let data = buf[..n].to_vec();
+                        let event_name = format!("terminal-output-{}", read_id);
+                        if let Err(e) = read_handle.emit(&event_name, &data) {
+                            log_error(&format!("{}-READER Emit error: {}", prefix, e));
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        log_info(&format!("{}-READER Read ended: {}", prefix, e));
+                        break;
+                    }
+                }
+            }
+            log_info(&format!(
+                "{}-READER Thread exiting for {}",
+                prefix,
+                &read_id[..8]
+            ));
+        })?;
+
+    Ok(())
+}
+
+// ─── 工具函数 ───────────────────────────────────────────────────────
+
+fn create_pty(cols: u16, rows: u16) -> Result<PtyPair> {
+    let pty_system = native_pty_system();
+    pty_system
+        .openpty(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to open PTY: {}", e))
+}
+
+fn build_local_shell_cmd(shell_override: &Option<String>) -> CommandBuilder {
+    if let Some(ref s) = shell_override {
+        if !s.is_empty() {
+            log_info(&format!("[PTY] Using configured shell: {}", s));
+            return build_shell_cmd(s);
         }
     }
+    default_shell_cmd()
+}
 
-    fn default_shell_cmd() -> CommandBuilder {
-        if cfg!(target_os = "windows") {
-            let mut c = CommandBuilder::new("powershell.exe");
-            c.arg("-ExecutionPolicy");
-            c.arg("Bypass");
-            c.arg("-NoLogo");
-            log_info("[PTY] Using default shell: powershell.exe");
-            c
-        } else {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| {
-                if std::path::Path::new("/bin/bash").exists() {
-                    "/bin/bash".to_string()
-                } else {
-                    "/bin/sh".to_string()
-                }
-            });
-            log_info(&format!("[PTY] Using default shell: {}", shell));
-            let c = CommandBuilder::new(&shell);
-            c
-        }
+fn build_shell_cmd(shell: &str) -> CommandBuilder {
+    let name = std::path::Path::new(shell)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(shell)
+        .to_lowercase();
+
+    if name == "powershell.exe" || name == "powershell" || name == "pwsh.exe" || name == "pwsh" {
+        let mut c = CommandBuilder::new(shell);
+        c.arg("-ExecutionPolicy");
+        c.arg("Bypass");
+        c.arg("-NoLogo");
+        c
+    } else {
+        CommandBuilder::new(shell)
+    }
+}
+
+fn default_shell_cmd() -> CommandBuilder {
+    if cfg!(target_os = "windows") {
+        let mut c = CommandBuilder::new("powershell.exe");
+        c.arg("-ExecutionPolicy");
+        c.arg("Bypass");
+        c.arg("-NoLogo");
+        log_info("[PTY] Using default shell: powershell.exe");
+        c
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+            if std::path::Path::new("/bin/bash").exists() {
+                "/bin/bash".to_string()
+            } else {
+                "/bin/sh".to_string()
+            }
+        });
+        log_info(&format!("[PTY] Using default shell: {}", shell));
+        CommandBuilder::new(&shell)
     }
 }
 
 #[cfg(unix)]
-fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
-    use std::mem::MaybeUninit;
-    unsafe {
-        let mut termios = MaybeUninit::<libc::termios>::uninit();
-        if libc::tcgetattr(fd, termios.as_mut_ptr()) != 0 {
-            return Err(anyhow::anyhow!("tcgetattr failed"));
-        }
-        let mut termios = termios.assume_init();
-        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
-        if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
-            return Err(anyhow::anyhow!("tcsetattr failed"));
+fn disable_echo_if_possible(master: &dyn MasterPty) {
+    if let Some(fd) = master.as_raw_fd() {
+        if let Err(e) = disable_echo(fd) {
+            log_error(&format!("[PTY] Failed to disable echo: {}", e));
+        } else {
+            log_info("[PTY] Echo disabled for IME support");
         }
     }
-    Ok(())
 }
+
+#[cfg(not(unix))]
+fn disable_echo_if_possible(_master: &dyn MasterPty) {
+    // Windows 不需要
+}
+
+// ─── 进程管理 ───────────────────────────────────────────────────────
 
 const GRACEFUL_TIMEOUT_SECS: u64 = 3;
 
@@ -612,6 +566,23 @@ fn graceful_kill(child: &mut dyn Child) {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+#[cfg(unix)]
+fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
+    use std::mem::MaybeUninit;
+    unsafe {
+        let mut termios = MaybeUninit::<libc::termios>::uninit();
+        if libc::tcgetattr(fd, termios.as_mut_ptr()) != 0 {
+            return Err(anyhow::anyhow!("tcgetattr failed"));
+        }
+        let mut termios = termios.assume_init();
+        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
+        if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
+            return Err(anyhow::anyhow!("tcsetattr failed"));
+        }
+    }
+    Ok(())
 }
 
 fn log_info(msg: &str) {

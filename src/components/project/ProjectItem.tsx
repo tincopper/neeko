@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "./FileTree";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { BranchIcon, ChevronRightIcon, FileIcon, SideTerminalIcon, GitLogoIcon, TrashIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -40,6 +40,7 @@ interface ProjectItemProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
+  onDragEnd?: (draggedId: string, targetId: string) => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -60,16 +61,22 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   agents,
   config,
   onSaveProjectSettings,
+  onDragEnd,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
-  // Inline rename state
-  const [renamingBranch, setRenamingBranch] = useState<string | null>(null);
-  const [renameBranchValue, setRenameBranchValue] = useState("");
+  // Branch dropdown state
+  const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
+  const [branchSearchQuery, setBranchSearchQuery] = useState("");
+  const branchDropdownRef = useRef<HTMLDivElement>(null);
+  const branchSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // Inline rename state (worktree only)
   const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null); // stores wt.path
   const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -92,29 +99,39 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return () => document.removeEventListener("click", close);
   }, [gitMenuOpen]);
 
+  // Close branch dropdown on outside click
+  useEffect(() => {
+    if (!branchDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (branchDropdownRef.current && !branchDropdownRef.current.contains(e.target as Node)) {
+        setBranchDropdownOpen(false);
+        setBranchSearchQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [branchDropdownOpen]);
+
+  // Auto-focus search input when branch dropdown opens
+  useEffect(() => {
+    if (branchDropdownOpen && branchSearchInputRef.current) {
+      branchSearchInputRef.current.focus();
+    }
+  }, [branchDropdownOpen]);
+
   // Auto-focus the rename input when it appears
   useEffect(() => {
-    if ((renamingBranch !== null || renamingWorktree !== null) && renameInputRef.current) {
+    if (renamingWorktree !== null && renameInputRef.current) {
       renameInputRef.current.focus();
       renameInputRef.current.select();
     }
-  }, [renamingBranch, renamingWorktree]);
+  }, [renamingWorktree]);
 
   const toggleSection = (key: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleCheckout = async (branchName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await invoke("checkout_branch", { projectId: project.id, branchName });
-      onBackToMainTerminal(project.id);
-      onRefreshGit(project.id);
-    } catch (e: unknown) {
-      alert(String(e));
-    }
-  };
 
   const handleRemoveWorktree = async (worktreePath: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -126,30 +143,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     }
   };
 
-  // Branch rename handlers
-  const startRenameBranch = (branch: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setRenamingBranch(branch);
-    setRenameBranchValue(branch);
-  };
-
-  const commitRenameBranch = async () => {
-    const oldName = renamingBranch!;
-    const newName = renameBranchValue.trim();
-    setRenamingBranch(null);
-    if (!newName || newName === oldName) return;
-    try {
-      await invoke("rename_branch", { projectId: project.id, oldName, newName });
-      onRefreshGit(project.id);
-    } catch (e: unknown) {
-      alert(String(e));
-    }
-  };
-
-  const cancelRenameBranch = () => {
-    setRenamingBranch(null);
-    setRenameBranchValue("");
-  };
 
   // Worktree rename handlers
   const startRenameWorktree = (worktreePath: string, e: React.MouseEvent) => {
@@ -216,6 +209,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     if (project.git_info) {
       items.push({
         label: "New Branch",
+        icon: GitLogoIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
@@ -227,6 +221,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       });
       items.push({
         label: "New Worktree",
+        icon: FolderGitIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
@@ -264,8 +259,51 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return items;
   };
 
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", project.id);
+    e.dataTransfer.effectAllowed = "move";
+    // Add a slight delay to allow the drag image to be captured
+    (e.target as HTMLElement).classList.add("dragging");
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.target as HTMLElement).classList.remove("dragging");
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== project.id && onDragEnd) {
+      onDragEnd(draggedId, project.id);
+    }
+  };
+
   const changedFiles = project.git_info?.changed_files ?? [];
   const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
+  const { totalAdditions, totalDeletions } = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    for (const f of changedFiles) {
+      additions += f.additions;
+      deletions += f.deletions;
+    }
+    return { totalAdditions: additions, totalDeletions: deletions };
+  }, [changedFiles]);
    const branches = project.git_info?.branches ?? [];
    const worktrees = project.git_info?.worktrees ?? [];
 
@@ -281,11 +319,38 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
      return worktrees.filter((wt) => wt.branch !== currentBranch);
    }, [worktrees, project.git_info?.current_branch]);
 
-  const branchesExpanded = expandedSections["__branches__"] ?? true;
+   // Branch dropdown: filter by search query
+   const dropdownBranches = useMemo(() => {
+     const q = branchSearchQuery.toLowerCase().trim();
+     if (!q) return filteredBranches;
+     return filteredBranches.filter((b) => b.toLowerCase().includes(q));
+   }, [filteredBranches, branchSearchQuery]);
+
+   const handleCheckoutFromDropdown = async (branchName: string) => {
+     if (branchName === project.git_info?.current_branch) return;
+     setBranchDropdownOpen(false);
+     setBranchSearchQuery("");
+     try {
+       await invoke("checkout_branch", { projectId: project.id, branchName });
+       onBackToMainTerminal(project.id);
+       onRefreshGit(project.id);
+     } catch (e: unknown) {
+       alert(String(e));
+     }
+   };
+
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
 
   return (
-    <div className={`gh-project ${isActive ? "active" : ""}`}>
+    <div
+      className={`gh-project ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""}`}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
         <span
           className="gh-project-avatar"
@@ -335,7 +400,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     New Branch
                   </div>
                   <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
-                    <GitLogoIcon size={12} />
+                    <FolderGitIcon size={12} />
                     New Worktree
                   </div>
                 </div>
@@ -351,10 +416,73 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           </button>
         </div>
         {project.git_info && (
-          <span className="gh-branch-inline" title={project.git_info.current_branch}>
-            <BranchIcon size={11} />
-            {project.git_info.current_branch}
-          </span>
+          <div className="gh-branch-dropdown-wrap" ref={branchDropdownRef}>
+            <span
+              className={`gh-branch-inline ${branchDropdownOpen ? "active" : ""}`}
+              title={project.git_info.current_branch}
+              onClick={(e) => {
+                e.stopPropagation();
+                setBranchDropdownOpen((v) => !v);
+              }}
+            >
+              <BranchIcon size={11} />
+              {project.git_info.current_branch}
+            </span>
+            {branchDropdownOpen && (
+              <div className="gh-branch-dropdown" onClick={(e) => e.stopPropagation()}>
+                <div className="gh-branch-dropdown-search">
+                  <SearchIcon size={12} className="gh-branch-dropdown-search-icon" />
+                  <input
+                    ref={branchSearchInputRef}
+                    className="gh-branch-dropdown-search-input"
+                    placeholder="Search branches..."
+                    value={branchSearchQuery}
+                    onChange={(e) => setBranchSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setBranchDropdownOpen(false);
+                        setBranchSearchQuery("");
+                      }
+                    }}
+                  />
+                </div>
+                <div className="gh-branch-dropdown-list">
+                  {dropdownBranches.map((branch) => {
+                    const isCurrent = branch === project.git_info!.current_branch;
+                    return (
+                      <div
+                        key={branch}
+                        className={`gh-branch-dropdown-item ${isCurrent ? "current" : ""}`}
+                        onClick={() => handleCheckoutFromDropdown(branch)}
+                        title={isCurrent ? "Current branch" : "Click to checkout"}
+                      >
+                        <BranchIcon size={11} />
+                        <span className="gh-branch-dropdown-item-name">{branch}</span>
+                        {isCurrent && <span className="gh-current-dot" title="current" />}
+                      </div>
+                    );
+                  })}
+                  {dropdownBranches.length === 0 && (
+                    <div className="gh-branch-dropdown-empty">No branches found</div>
+                  )}
+                </div>
+                <div className="gh-branch-dropdown-footer">
+                  <div
+                    className="gh-branch-dropdown-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setBranchDropdownOpen(false);
+                      setBranchSearchQuery("");
+                      openDialog("new-branch", e as unknown as React.MouseEvent);
+                    }}
+                  >
+                    <PlusIcon size={11} />
+                    New Branch
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -362,67 +490,28 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         <div className="gh-project-body">
           {project.git_info && (
             <>
-              {/* ── Branches ── */}
-              <div
-                className="gh-section-label gh-section-label-collapsible"
-                onClick={(e) => toggleSection("__branches__", e)}
-              >
-                <ChevronRightIcon size={9} className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`} />
-                Branches
-              </div>
-              {branchesExpanded && (
-              <div className="gh-branch-list">
-                {filteredBranches.map((branch) => {
-                  const isCurrent = branch === project.git_info!.current_branch;
-                  const branchNodeKey = `br-${branch}`;
-                  const isNodeExpanded = isCurrent
-                    ? (expandedSections[branchNodeKey] ?? true)
-                    : (expandedSections[branchNodeKey] ?? false);
-
-                  return (
-                    <React.Fragment key={branch}>
-                      <div className={`gh-branch-item ${isCurrent ? "current" : ""}`}>
-                        <BranchIcon size={11} />
-                        {renamingBranch === branch ? (
-                          <input
-                            ref={renameInputRef}
-                            className="gh-inline-rename-input"
-                            value={renameBranchValue}
-                            onChange={(e) => setRenameBranchValue(e.target.value)}
-                            onBlur={commitRenameBranch}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") { e.preventDefault(); commitRenameBranch(); }
-                              if (e.key === "Escape") { e.preventDefault(); cancelRenameBranch(); }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <span
-                            className="gh-branch-item-name"
-                            onClick={(e) => {
-                              if (isCurrent) toggleSection(branchNodeKey, e);
-                              else handleCheckout(branch, e);
-                            }}
-                            onDoubleClick={(e) => startRenameBranch(branch, e)}
-                            title="Double-click to rename"
-                          >{branch}</span>
-                        )}
-                        {isCurrent && <span className="gh-current-dot" title="current" />}
-                      </div>
-
-                      {isNodeExpanded && (
-                        <div className="gh-branch-children">
-                          {isCurrent && tree.length > 0 && (
-                            <div className="gh-file-tree">
-                              <FileTree nodes={tree} projectId={project.id} onSelectFile={onSelectFile} />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+              {/* ── Changed Files (current branch) ── */}
+              {tree.length > 0 && (
+                <>
+                  <div
+                    className="gh-section-label gh-section-label-collapsible"
+                    onClick={(e) => toggleSection("__changes__", e)}
+                  >
+                    <ChevronRightIcon size={9} className={`gh-section-chevron ${expandedSections["__changes__"] !== false ? "expanded" : ""}`} />
+                    Changes ({changedFiles.length})
+                    {(totalAdditions > 0 || totalDeletions > 0) && (
+                      <span className="gh-changes-stats">
+                        {totalAdditions > 0 && <span className="gh-changes-additions">+{totalAdditions}</span>}
+                        {totalDeletions > 0 && <span className="gh-changes-deletions">-{totalDeletions}</span>}
+                      </span>
+                    )}
+                  </div>
+                  {expandedSections["__changes__"] !== false && (
+                    <div className="gh-file-tree">
+                      <FileTree nodes={tree} projectId={project.id} onSelectFile={onSelectFile} />
+                    </div>
+                  )}
+                </>
               )}
 
               {/* ── Worktrees ── */}
@@ -448,7 +537,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                         }}
                         title={`${wt.path}\nClick to open terminal`}
                       >
-                        <FileIcon size={11} style={{ opacity: 0.7 }} />
+                        <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                         {renamingWorktree === wt.path ? (
                           <input
                             ref={renameInputRef}
@@ -471,15 +560,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                             {wt.path.split(/[\\/]/).pop()}
                           </span>
                         )}
-                        <span className="gh-branch-inline" title={wt.branch}>
-                          <BranchIcon size={11} />
-                          {wt.branch}
-                        </span>
                         <button
                           className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
                           onClick={(e) => { e.stopPropagation(); handleRemoveWorktree(wt.path, e); }}
                           title="Remove worktree"
-                        >×</button>
+                        >
+                          <TrashIcon size={12} />
+                        </button>
+                        <span className="gh-branch-inline" title={wt.branch}>
+                          <BranchIcon size={11} />
+                          {wt.branch}
+                        </span>
                       </div>
                     ))}
                   </div>

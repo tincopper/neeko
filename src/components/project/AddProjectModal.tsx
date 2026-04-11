@@ -146,11 +146,11 @@ export default function AddProjectModal({
           >
             {selectedIdeId ? (
               <>
-                <span className="agent-icon">
-                  {selectedIdeId.startsWith("custom:")
-                    ? "💻"
-                    : IDE_PRESETS.find((i) => i.id === selectedIdeId)?.icon}
-                </span>
+                {selectedIdeId.startsWith("custom:") ? (
+                  <span className="agent-icon">💻</span>
+                ) : (
+                  <img src={getIdeIconSrc(IDE_PRESETS.find((i) => i.id === selectedIdeId)?.icon)} className="agent-icon" alt="" />
+                )}
                 <span className="agent-name">
                   {selectedIdeId.startsWith("custom:")
                     ? config.customIdes?.[parseInt(selectedIdeId.replace("custom:", ""))]?.name
