@@ -38,7 +38,6 @@ interface MainContentProps {
   onWslDiffBack: () => void;
   onRemoteDiffBack: () => void;
   suppressResizeRef?: React.MutableRefObject<boolean>;
-  showToast: (message: string, type?: "info" | "error") => void;
 }
 
 function MainContent({
@@ -70,7 +69,6 @@ function MainContent({
   onWslDiffBack,
   onRemoteDiffBack,
   suppressResizeRef,
-  showToast,
 }: MainContentProps) {
   // 稳定的 onSessionReady 回调，避免 WSL/Remote TerminalView 因回调引用变化重渲染
   const onWslSessionReady = useCallback((pid: string) => {
@@ -176,7 +174,6 @@ function MainContent({
                   fontFamily={config.fontFamily}
                   suppressResizeRef={suppressResizeRef}
                   agentCommandOverride={config.agentCommandOverrides?.[activeProject.selected_agent ?? ""]}
-                  onShowToast={showToast}
                 />
               )}
               {/* Worktree 终端 */}
