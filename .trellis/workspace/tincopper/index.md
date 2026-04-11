@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-04-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~202 | Active |
+| `journal-1.md` | ~257 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 7 | 2026-04-11 | Quick worktree creation and deletion improvements | `fa5c275` |
 | 6 | 2026-04-11 | Refactor App.tsx — extract 4 orchestration hooks | `2f64520` |
 | 5 | 2026-04-10 | Implement multi side terminal with tile layout | `b5517f2` |
 | 4 | 2026-04-08 | Replace branch list with searchable dropdown | `21cdbcc`, `645ba87` |

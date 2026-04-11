@@ -200,3 +200,58 @@ Extracted useSessionPersistence, useAppRefSync, useSideTerminalState, useAppCall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Quick worktree creation and deletion improvements
+
+**Date**: 2026-04-11
+**Task**: Quick worktree creation and deletion improvements
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Feature | Description |
+|---------|-------------|
+| Quick worktree creation | Add Quick/Custom toggle in GitDialog, default path `.neeko/worktrees/{name}`, branch auto-created with same name |
+| Worktree deletion | Dirty check + confirm dialog + PTY session cleanup + branch deletion + spinner/fade-out animation |
+| Auto terminal switch | When active worktree is deleted, auto-switch back to main terminal |
+| Toast notifications | Replace `alert()` with `onShowToast` for Tauri v2 compatibility |
+
+**Backend**:
+- `src-tauri/src/git/local.rs`: `is_worktree_dirty`, `delete_branch` functions
+- `src-tauri/src/commands/git.rs`: Tauri commands for above
+- `src-tauri/src/lib.rs`: Command registration
+
+**Frontend**:
+- `GitDialog.tsx`: Quick/Custom mode toggle, path preview
+- `ProjectItem.tsx`: Delete flow (close PTY ??remove worktree ??delete branch), spinner animation, toast errors
+- `RemoteItems.tsx`: Confirm dialog + spinner for WSL/SSH
+- `App.tsx`: Auto-switch to main terminal on worktree deletion, pass `showToast`
+- `ProjectSidebar.tsx`: `onShowToast` prop threading
+- `styles.css`: Toggle switch, spinner, fade-out animation, confirm dialog styles
+
+**Bug fixes**:
+- Permission denied on worktree delete: caused by PTY shell holding directory lock
+- Tauri v2 dialog.message permission: replaced alert() with toast
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fa5c275` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
