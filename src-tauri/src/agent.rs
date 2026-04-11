@@ -1,5 +1,24 @@
 use crate::state::agent::AgentConfig;
 use std::collections::HashMap;
+use std::process::{Command, Stdio};
+
+/// Check if a command exists on the system PATH.
+pub fn check_command_exists(command: &str) -> bool {
+    let cmd = if cfg!(target_os = "windows") {
+        Command::new("where")
+            .arg(command)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+    } else {
+        Command::new("which")
+            .arg(command)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+    };
+    cmd.map(|s| s.success()).unwrap_or(false)
+}
 
 pub struct AgentManager {
     agents: Vec<AgentConfig>,
@@ -108,6 +127,23 @@ impl AgentManager {
     pub fn remove_agent(&mut self, agent_id: &str) {
         self.agents.retain(|a| a.id != agent_id);
     }
+
+    /// Check if agents are installed on the system.
+    /// Returns a map of agent_id -> whether the agent's command exists.
+    /// Unknown agent IDs map to false.
+    pub fn check_installed(&self, agent_ids: &[String]) -> HashMap<String, bool> {
+        let mut result = HashMap::new();
+        for id in agent_ids {
+            let installed = self
+                .agents
+                .iter()
+                .find(|a| a.id == *id)
+                .map(|a| check_command_exists(&a.command))
+                .unwrap_or(false);
+            result.insert(id.clone(), installed);
+        }
+        result
+    }
 }
 
 #[cfg(test)]
@@ -184,5 +220,44 @@ mod tests {
     fn should_have_all_agents_enabled_by_default() {
         let manager = AgentManager::new();
         assert!(manager.get_agents().iter().all(|a| a.enabled));
+    }
+
+    #[test]
+    fn should_return_true_for_existing_command() {
+        // "cmd" exists on Windows, "sh" on Unix
+        let cmd = if cfg!(target_os = "windows") {
+            "cmd"
+        } else {
+            "sh"
+        };
+        assert!(check_command_exists(cmd));
+    }
+
+    #[test]
+    fn should_return_false_for_nonexistent_command() {
+        assert!(!check_command_exists("nonexistent_command_xyz_12345"));
+    }
+
+    #[test]
+    fn should_check_installed_returns_map() {
+        let manager = AgentManager::new();
+        let ids = vec!["opencode".to_string()];
+        let result = manager.check_installed(&ids);
+        assert!(result.contains_key("opencode"));
+    }
+
+    #[test]
+    fn should_check_installed_returns_false_for_unknown() {
+        let manager = AgentManager::new();
+        let ids = vec!["nonexistent".to_string()];
+        let result = manager.check_installed(&ids);
+        assert_eq!(result.get("nonexistent"), Some(&false));
+    }
+
+    #[test]
+    fn should_check_installed_empty_input() {
+        let manager = AgentManager::new();
+        let result = manager.check_installed(&[]);
+        assert!(result.is_empty());
     }
 }
