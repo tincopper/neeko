@@ -167,7 +167,8 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
         // Handle untracked/added files not in diff (count their lines as additions)
         if let Some(workdir) = repo.workdir() {
             for file in &mut files {
-                if (file.status == FileStatus::Added) && file.additions == 0 && file.deletions == 0 {
+                if (file.status == FileStatus::Added) && file.additions == 0 && file.deletions == 0
+                {
                     let full_path = workdir.join(&file.path);
                     if full_path.exists() && full_path.is_file() {
                         if let Ok(content) = std::fs::read_to_string(&full_path) {
@@ -394,6 +395,68 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git worktree remove failed: {}", stderr.trim());
+    }
+    Ok(())
+}
+
+/// 检查 worktree 是否有未提交的更改（modified / untracked）
+pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool> {
+    let wt_path_str = worktree_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+
+    // 检查已跟踪文件的修改
+    let diff_output = no_window_cmd("git")
+        .args(["diff", "--quiet", "--"])
+        .current_dir(wt_path_str)
+        .output()
+        .context("Failed to run git diff")?;
+
+    if !diff_output.status.success() {
+        return Ok(true);
+    }
+
+    // 检查暂存区
+    let cached_output = no_window_cmd("git")
+        .args(["diff", "--cached", "--quiet", "--"])
+        .current_dir(wt_path_str)
+        .output()
+        .context("Failed to run git diff --cached")?;
+
+    if !cached_output.status.success() {
+        return Ok(true);
+    }
+
+    // 检查未跟踪文件
+    let untracked_output = no_window_cmd("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(wt_path_str)
+        .output()
+        .context("Failed to run git ls-files")?;
+
+    if !untracked_output.stdout.is_empty() {
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+/// 删除本地分支
+pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result<()> {
+    let flag = if force { "-D" } else { "-d" };
+    let output = no_window_cmd("git")
+        .args(["branch", flag, branch_name])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git branch -D")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // 分支不存在时不报错
+        if stderr.contains("not found") || stderr.contains("does not exist") {
+            return Ok(());
+        }
+        anyhow::bail!("git branch {} failed: {}", flag, stderr.trim());
     }
     Ok(())
 }

@@ -8,6 +8,12 @@ import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
 import { BranchIcon, ChevronRightIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
+// Confirm dialog for worktree removal
+interface WtConfirmState {
+  path: string;
+  branch: string;
+}
+
 // ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
@@ -47,7 +53,7 @@ interface ProjectBodyProps {
   onStartRenameWorktree: (path: string) => void;
   onRenameWorktreeChange: (val: string) => void;
   onCommitRenameWorktree: () => void;
-  onRemoveWorktree: (path: string) => void;
+  onRemoveWorktree: (path: string, branch: string) => void;
   onCancelRenameWorktree: () => void;
   renameInputRef: React.RefObject<HTMLInputElement>;
   renameWtInputRef: React.RefObject<HTMLInputElement>;
@@ -82,6 +88,21 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
   const fileTree = useMemo(() => buildTree(gitInfo.changed_files), [gitInfo.changed_files]);
   const branchesExpanded = expandedSections["__branches__"] ?? true;
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
+  const [deletingWorktree, setDeletingWorktree] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<WtConfirmState | null>(null);
+
+  const handleConfirmRemove = useCallback((path: string, branch: string) => {
+    setConfirmDelete({ path, branch });
+  }, []);
+
+  const performRemove = useCallback(() => {
+    if (!confirmDelete) return;
+    setDeletingWorktree(confirmDelete.path);
+    onRemoveWorktree(confirmDelete.path, confirmDelete.branch);
+    setConfirmDelete(null);
+    // spinner + 淡出动画（450ms），之后由 refresh 重新渲染列表
+    setTimeout(() => setDeletingWorktree(null), 500);
+  }, [confirmDelete, onRemoveWorktree]);
 
   return (
     <div className="gh-project-body">
@@ -167,11 +188,11 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                 return (
                   <div
                     key={wt.path}
-                    className="gh-worktree-item gh-worktree-item-standalone"
+                    className={`gh-worktree-item gh-worktree-item-standalone${deletingWorktree === wt.path ? " wt-deleting" : ""}`}
                     style={{ cursor: "pointer" }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (isRenaming) return;
+                      if (isRenaming || deletingWorktree === wt.path) return;
                       onOpenWorktreeTerminal(wt.path, wt.branch);
                     }}
                     onDoubleClick={(e) => {
@@ -198,13 +219,17 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       <span className="gh-worktree-name">{wt.path.split('/').pop()}</span>
                     )}
                     {!isRenaming && (
-                      <button
-                        className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
-                        onClick={(e) => { e.stopPropagation(); onRemoveWorktree(wt.path); }}
-                        title="Remove worktree"
-                      >
-                        <TrashIcon size={12} />
-                      </button>
+                      deletingWorktree === wt.path ? (
+                        <span className="wt-spinner" title="Removing..." />
+                      ) : (
+                        <button
+                          className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
+                          onClick={(e) => { e.stopPropagation(); handleConfirmRemove(wt.path, wt.branch); }}
+                          title="Remove worktree and branch"
+                        >
+                          <TrashIcon size={12} />
+                        </button>
+                      )
                     )}
                     <span className="gh-branch-inline" title={wt.branch}>
                       <BranchIcon size={11} />
@@ -216,6 +241,33 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
             </div>
           )}
         </>
+      )}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Remove Worktree</h3>
+            <p className="wt-confirm-message">
+              Remove worktree <strong>{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong>{confirmDelete.branch}</strong>?
+            </p>
+            <div className="wt-confirm-details">
+              <span className="wt-confirm-path">{confirmDelete.path}</span>
+              <span className="wt-confirm-branch">
+                <BranchIcon size={11} /> {confirmDelete.branch}
+              </span>
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>
+                Cancel
+              </button>
+              <button
+                className="confirm-btn confirm-btn-danger"
+                onClick={performRemove}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -234,7 +286,7 @@ interface ProjectItemCardProps {
   onCommitRenameBranch: (oldName: string, newName: string) => void;
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
-  onRemoveWorktree: (path: string) => void;
+  onRemoveWorktree: (path: string, branch: string) => void;
   onOpenSideTerminal?: () => void;
   onRemoveProject: () => void;
   onOpenIde?: () => void;
@@ -590,10 +642,11 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
     );
   }, [distro, project.path, project.id, onRefreshGit]);
 
-  const handleRemoveWorktree = useCallback((wtPath: string) => {
+  const handleRemoveWorktree = useCallback((wtPath: string, _branch: string) => {
     import("@tauri-apps/api/core").then(({ invoke }) =>
       invoke("wsl_remove_worktree", { distro, projectPath: project.path, worktreePath: wtPath })
         .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch((e: unknown) => { console.error("[WSL] Failed to remove worktree:", e); })
     );
   }, [distro, project.path, project.id, onRefreshGit]);
 
@@ -825,10 +878,11 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
     }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
 
-  const handleRemoveWorktree = useCallback((wtPath: string) => {
+  const handleRemoveWorktree = useCallback((wtPath: string, _branch: string) => {
     if (invokeRemoteGit) {
       invokeRemoteGit("remote_remove_worktree", entryId, { projectPath: project.path, worktreePath: wtPath })
-        .then(() => onRefreshGit?.(entryId, project.id, project.path));
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch((e: unknown) => { console.error("[SSH] Failed to remove worktree:", e); });
     }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
 

@@ -6,6 +6,7 @@ import FileTree, { buildTree } from "./FileTree";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
+import { terminalCache, destroyTerminalCache } from "../terminal";
 import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
@@ -41,6 +42,7 @@ interface ProjectItemProps {
   config?: AppConfig;
   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -62,6 +64,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   config,
   onSaveProjectSettings,
   onDragEnd,
+  onShowToast,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
@@ -80,6 +83,10 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null); // stores wt.path
   const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Worktree deletion state
+  const [deletingWorktree, setDeletingWorktree] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
 
   // 切换折叠状态并持久化
   const toggleCollapsed = async () => {
@@ -133,13 +140,57 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   };
 
 
-  const handleRemoveWorktree = async (worktreePath: string, e: React.MouseEvent) => {
+  const handleRemoveWorktree = async (worktreePath: string, branch: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      const isDirty = await invoke<boolean>("is_worktree_dirty", { projectId: project.id, worktreePath });
+      if (isDirty) {
+        setConfirmDelete({ path: worktreePath, branch, isDirty: true });
+        return;
+      }
+      setConfirmDelete({ path: worktreePath, branch, isDirty: false });
+    } catch {
+      // 如果检查失败，仍然允许删除，但提示用户
+      setConfirmDelete({ path: worktreePath, branch, isDirty: false });
+    }
+  };
+
+  const performRemoveWorktree = async (worktreePath: string, branch: string) => {
+    setConfirmDelete(null);
+    setDeletingWorktree(worktreePath);  // loading 阶段：显示 spinner
+    try {
+      // 1. 先关闭 worktree 的 PTY 终端，释放目录占用
+      const wtCacheKey = `${project.id}:wt:${worktreePath}`;
+      const wtCache = terminalCache.get(wtCacheKey);
+      if (wtCache?.sessionId) {
+        await invoke("close_terminal_session", { sessionId: wtCache.sessionId }).catch(() => {});
+      }
+      destroyTerminalCache(wtCacheKey);
+
+      // 2. 删除 worktree
       await invoke("remove_worktree", { projectId: project.id, worktreePath });
+
+      // 3. 删除分支（失败不影响主流程）
+      let branchError: string | null = null;
+      try {
+        await invoke("delete_branch", { projectId: project.id, branchName: branch });
+      } catch (e: unknown) {
+        branchError = String(e);
+        console.error(`[Worktree] Failed to delete branch "${branch}":`, e);
+      }
+
+      // 4. 淡出动画阶段
+      await new Promise(r => setTimeout(r, 450));
       onRefreshGit(project.id);
+
+      if (branchError) {
+        onShowToast?.(`Branch "${branch}" could not be deleted: ${branchError}`, "error");
+      }
     } catch (e: unknown) {
-      alert(String(e));
+      console.error("[Worktree] Failed to remove worktree:", e);
+      onShowToast?.(`Failed to remove worktree: ${String(e)}`, "error");
+    } finally {
+      setDeletingWorktree(null);
     }
   };
 
@@ -163,7 +214,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       await invoke("rename_worktree", { projectId: project.id, worktreePath: oldPath, newName });
       onRefreshGit(project.id);
     } catch (e: unknown) {
-      alert(String(e));
+      onShowToast?.(String(e), "error");
     }
   };
 
@@ -228,6 +279,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             type: "new-worktree",
             projectId: project.id,
             branches: project.git_info!.branches,
+            projectPath: project.path,
           });
         },
       });
@@ -330,13 +382,13 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
      if (branchName === project.git_info?.current_branch) return;
      setBranchDropdownOpen(false);
      setBranchSearchQuery("");
-     try {
-       await invoke("checkout_branch", { projectId: project.id, branchName });
-       onBackToMainTerminal(project.id);
-       onRefreshGit(project.id);
-     } catch (e: unknown) {
-       alert(String(e));
-     }
+      try {
+        await invoke("checkout_branch", { projectId: project.id, branchName });
+        onBackToMainTerminal(project.id);
+        onRefreshGit(project.id);
+      } catch (e: unknown) {
+        onShowToast?.(String(e), "error");
+      }
    };
 
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
@@ -526,13 +578,13 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                   </div>
                {worktreesExpanded && (
                    <div className="gh-worktree-list">
-                     {filteredWorktrees.map((wt) => (
+                      {filteredWorktrees.map((wt) => (
                       <div
                         key={wt.path}
-                        className="gh-worktree-item gh-worktree-item-standalone"
+                        className={`gh-worktree-item gh-worktree-item-standalone${deletingWorktree === wt.path ? " wt-deleting" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (renamingWorktree === wt.path) return;
+                          if (renamingWorktree === wt.path || deletingWorktree === wt.path) return;
                           onOpenWorktreeTerminal?.(wt.path, wt.branch);
                         }}
                         title={`${wt.path}\nClick to open terminal`}
@@ -560,13 +612,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                             {wt.path.split(/[\\/]/).pop()}
                           </span>
                         )}
-                        <button
-                          className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
-                          onClick={(e) => { e.stopPropagation(); handleRemoveWorktree(wt.path, e); }}
-                          title="Remove worktree"
-                        >
-                          <TrashIcon size={12} />
-                        </button>
+                        {deletingWorktree === wt.path ? (
+                          <span className="wt-spinner" title="Removing..." />
+                        ) : (
+                          <button
+                            className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
+                            onClick={(e) => { e.stopPropagation(); handleRemoveWorktree(wt.path, wt.branch, e); }}
+                            title="Remove worktree and branch"
+                          >
+                            <TrashIcon size={12} />
+                          </button>
+                        )}
                         <span className="gh-branch-inline" title={wt.branch}>
                           <BranchIcon size={11} />
                           {wt.branch}
@@ -602,6 +658,39 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             setSettingsOpen(false);
           }}
         />
+      )}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Remove Worktree</h3>
+            {confirmDelete.isDirty ? (
+              <p className="wt-confirm-message wt-confirm-warning">
+                This worktree has uncommitted changes. Removing it will discard all local changes. Are you sure?
+              </p>
+            ) : (
+              <p className="wt-confirm-message">
+                Remove worktree <strong>{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong>{confirmDelete.branch}</strong>?
+              </p>
+            )}
+            <div className="wt-confirm-details">
+              <span className="wt-confirm-path">{confirmDelete.path}</span>
+              <span className="wt-confirm-branch">
+                <BranchIcon size={11} /> {confirmDelete.branch}
+              </span>
+            </div>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>
+                Cancel
+              </button>
+              <button
+                className="confirm-btn confirm-btn-danger"
+                onClick={() => performRemoveWorktree(confirmDelete.path, confirmDelete.branch)}
+              >
+                {confirmDelete.isDirty ? "Force Remove" : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
