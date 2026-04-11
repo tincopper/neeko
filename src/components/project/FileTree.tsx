@@ -12,10 +12,17 @@ export interface TreeNode {
   compactName?: string;
 }
 
+const IGNORED_PREFIXES = ['.neeko/'];
+
 export function buildTree(files: FileChange[]): TreeNode[] {
+  const filtered = files.filter((f) => {
+    const norm = f.path.replace(/\\/g, "/");
+    return !IGNORED_PREFIXES.some((p) => norm.startsWith(p) || norm.includes("/" + p));
+  });
+
   const root: TreeNode = { name: "", path: "", isDir: true, children: [] };
 
-  for (const file of files) {
+  for (const file of filtered) {
     const parts = file.path.replace(/\\/g, "/").split("/");
     let node = root;
     for (let i = 0; i < parts.length; i++) {
