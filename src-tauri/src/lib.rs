@@ -110,6 +110,8 @@ pub fn run() {
             commands::get_file_diff_command,
             commands::create_worktree,
             commands::remove_worktree,
+            commands::is_worktree_dirty,
+            commands::delete_branch,
             commands::create_terminal_session,
             commands::close_terminal_session,
             commands::resize_terminal,

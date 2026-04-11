@@ -104,6 +104,17 @@ function App() {
     await handleSelectProject(projectId);
   }, [clearWorktreeForProject, handleSelectProject]);
 
+  // Auto-switch back to main terminal when active worktree is deleted.
+  // The terminal cache is NOT destroyed, so the session persists for re-attachment.
+  useEffect(() => {
+    if (!activeWorktreePath || !activeProject?.git_info) return;
+    const exists = activeProject.git_info.worktrees.some(wt => wt.path === activeWorktreePath);
+    if (!exists) {
+      setActiveWorktreePath(null);
+      setActiveWorktreeBranch("");
+    }
+  }, [activeProject?.git_info?.worktrees, activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, activeProject?.git_info]);
+
   const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, session.saveSideTerminalWidth);
 
   // ── Cross-domain setter refs ──
@@ -338,6 +349,7 @@ function App() {
           config={config}
           onSaveProjectSettings={callbacks.handleSaveProjectSettings}
           onDragEnd={handleDragEnd}
+          onShowToast={showToast}
         />
 
         <MainContent

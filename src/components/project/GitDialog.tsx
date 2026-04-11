@@ -7,6 +7,7 @@ export interface DialogState {
   type: DialogType;
   projectId?: string;           // local project ID
   branches: string[];
+  projectPath?: string;         // local project path (for quick worktree)
   source?: {                    // WSL/SSH source
     type: "wsl" | "remote";
     distro?: string;            // for WSL
@@ -32,6 +33,8 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const [worktreePath, setWorktreePath] = useState("");
   const [worktreeBranch, setWorktreeBranch] = useState("");
   const [newBranch, setNewBranch] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [quickName, setQuickName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const handleCreateBranch = async () => {
@@ -50,6 +53,33 @@ const GitDialog: React.FC<GitDialogProps> = ({
         return;
       } else {
         await invoke("create_branch", { projectId: dialog.projectId, branchName: branchName.trim() });
+        onRefreshGit(dialog.projectId ?? "");
+      }
+      onClose();
+    } catch (e: unknown) {
+      setError(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateQuickWorktree = async () => {
+    if (!quickName.trim()) return;
+    const name = quickName.trim();
+    const computedPath = `.neeko/worktrees/${name}`;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const src = dialog.source;
+      if (src?.type === "wsl") {
+        await invoke("wsl_create_worktree", { distro: src.distro, projectPath: src.projectPath, worktreePath: computedPath, branchName: name, newBranch: true });
+        onRefreshAfterWslSsh?.();
+      } else if (src?.type === "remote") {
+        setError("SSH worktree creation not yet supported");
+        setSubmitting(false);
+        return;
+      } else {
+        await invoke("create_worktree", { projectId: dialog.projectId, worktreePath: computedPath, branchName: name, newBranch: true });
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
@@ -116,53 +146,101 @@ const GitDialog: React.FC<GitDialogProps> = ({
         ) : (
           <>
             <h3>New Worktree</h3>
-            <label className="gh-dialog-label">Worktree path</label>
-            <input
-              className="path-input"
-              placeholder="../my-feature"
-              value={worktreePath}
-              onChange={(e) => setWorktreePath(e.target.value)}
-              autoFocus
-            />
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>
-              Branch
-            </label>
-            <input
-              className="path-input"
-              placeholder="Branch name"
-              value={worktreeBranch}
-              onChange={(e) => setWorktreeBranch(e.target.value)}
-              list={`branches-${dialog.projectId}`}
-            />
-            <datalist id={`branches-${dialog.projectId}`}>
-              {dialog.branches.map((b) => (
-                <option key={b} value={b} />
-              ))}
-            </datalist>
-            <label className="custom-checkbox gh-dialog-checkbox" style={{ marginTop: 10 }}>
-              <input
-                type="checkbox"
-                checked={newBranch}
-                onChange={(e) => setNewBranch(e.target.checked)}
-              />
-              <span className="checkbox-mark" />
-              Create new branch
-            </label>
-            {error && <p className="gh-dialog-error">{error}</p>}
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={onClose}>
-                Cancel
-              </button>
-              <button
-                className="confirm-btn"
-                onClick={handleCreateWorktree}
-                disabled={
-                  !worktreePath.trim() || !worktreeBranch.trim() || submitting
-                }
-              >
-                {submitting ? "Creating..." : "Create Worktree"}
-              </button>
-            </div>
+            {dialog.projectId && !dialog.source && (
+              <div className="wt-mode-toggle">
+                <span className={`wt-mode-label${!customMode ? " active" : ""}`}>Quick</span>
+                <button
+                  className="wt-toggle-switch"
+                  onClick={() => setCustomMode(!customMode)}
+                  title={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
+                  aria-label={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
+                >
+                  <span className={`wt-toggle-thumb${customMode ? " on" : ""}`} />
+                </button>
+                <span className={`wt-mode-label${customMode ? " active" : ""}`}>Custom</span>
+              </div>
+            )}
+            {customMode || !dialog.projectId || dialog.source ? (
+              <>
+                <label className="gh-dialog-label">Worktree path</label>
+                <input
+                  className="path-input"
+                  placeholder="../my-feature"
+                  value={worktreePath}
+                  onChange={(e) => setWorktreePath(e.target.value)}
+                  autoFocus
+                />
+                <label className="gh-dialog-label" style={{ marginTop: 12 }}>
+                  Branch
+                </label>
+                <input
+                  className="path-input"
+                  placeholder="Branch name"
+                  value={worktreeBranch}
+                  onChange={(e) => setWorktreeBranch(e.target.value)}
+                  list={`branches-${dialog.projectId}`}
+                />
+                <datalist id={`branches-${dialog.projectId}`}>
+                  {dialog.branches.map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
+                <label className="custom-checkbox gh-dialog-checkbox" style={{ marginTop: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={newBranch}
+                    onChange={(e) => setNewBranch(e.target.checked)}
+                  />
+                  <span className="checkbox-mark" />
+                  Create new branch
+                </label>
+                {error && <p className="gh-dialog-error">{error}</p>}
+                <div className="modal-actions">
+                  <button className="cancel-btn" onClick={onClose}>
+                    Cancel
+                  </button>
+                  <button
+                    className="confirm-btn"
+                    onClick={handleCreateWorktree}
+                    disabled={
+                      !worktreePath.trim() || !worktreeBranch.trim() || submitting
+                    }
+                  >
+                    {submitting ? "Creating..." : "Create Worktree"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="gh-dialog-label">Worktree name</label>
+                <input
+                  className="path-input"
+                  placeholder="feature-x"
+                  value={quickName}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && quickName.trim() && handleCreateQuickWorktree()}
+                  autoFocus
+                />
+                <div className="wt-path-preview">
+                  {dialog.projectPath && quickName.trim()
+                    ? `${dialog.projectPath}/.neeko/worktrees/${quickName.trim()}`
+                    : "Path: <project>/.neeko/worktrees/<name>"}
+                </div>
+                {error && <p className="gh-dialog-error">{error}</p>}
+                <div className="modal-actions">
+                  <button className="cancel-btn" onClick={onClose}>
+                    Cancel
+                  </button>
+                  <button
+                    className="confirm-btn"
+                    onClick={handleCreateQuickWorktree}
+                    disabled={!quickName.trim() || submitting}
+                  >
+                    {submitting ? "Creating..." : "Create Worktree"}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
