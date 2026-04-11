@@ -7,7 +7,7 @@ import {
   computeWordDiff,
   buildSplitRows,
 } from "../../components/DiffView";
-import type { DiffHunk, DiffLine } from "../../components/DiffView";
+import type { DiffHunk, DiffLine, DiffSource } from "../../components/DiffView";
 
 describe("detectLanguage", () => {
   it(".ts 返回 typescript", () => {
@@ -226,5 +226,28 @@ describe("buildSplitRows", () => {
     expect(rows[1].newLineNum).toBe(1);
     expect(rows[2].oldLineNum).toBe(2);
     expect(rows[2].newLineNum).toBe(2);
+  });
+});
+
+describe("DiffSource worktree type", () => {
+  it("worktree DiffSource 应有正确的类型结构", () => {
+    const source: DiffSource = {
+      type: "worktree",
+      projectId: "proj-123",
+      worktreePath: "/path/to/worktree",
+    };
+    expect(source.type).toBe("worktree");
+    expect(source.projectId).toBe("proj-123");
+    expect(source.worktreePath).toBe("/path/to/worktree");
+  });
+
+  it("worktree DiffSource 与其他类型可区分", () => {
+    const local: DiffSource = { type: "local", projectId: "p1" };
+    const wt: DiffSource = { type: "worktree", projectId: "p1", worktreePath: "/wt" };
+    const wsl: DiffSource = { type: "wsl", distro: "Ubuntu", projectPath: "/home" };
+
+    expect(local.type).toBe("local");
+    expect(wt.type).toBe("worktree");
+    expect(wsl.type).toBe("wsl");
   });
 });

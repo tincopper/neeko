@@ -1,0 +1,4 @@
+{"path": "src-tauri/src/git/local.rs", "reason": "测试 get_changed_files_for_path 和 get_file_diff 函数的正确性"}
+{"path": "src/components/project/__tests__/FileTree.test.tsx", "reason": "FileTree 组件已有测试，验证构建树逻辑"}
+{"path": "src/components/__tests__/DiffView.test.tsx", "reason": "DiffView 组件测试，确保 worktree DiffSource 正确加载"}
+{"path": "src/hooks/__tests__/useAppCallbacks.test.ts", "reason": "回调函数测试"}

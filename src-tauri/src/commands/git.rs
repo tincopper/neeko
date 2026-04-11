@@ -168,3 +168,40 @@ pub fn get_file_diff_command(
         Err(format!("Project not found: {}", project_id))
     }
 }
+
+#[tauri::command]
+pub fn get_worktree_changed_files(
+    project_id: String,
+    worktree_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<FileChange>, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if manager.get_project(&project_id).is_some() {
+        crate::git::get_changed_files_for_path(&PathBuf::from(&worktree_path))
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn get_worktree_file_diff(
+    project_id: String,
+    worktree_path: String,
+    file_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<DiffResult, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if manager.get_project(&project_id).is_some() {
+        crate::git::get_file_diff_for_path(&PathBuf::from(&worktree_path), &file_path)
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}

@@ -68,7 +68,8 @@ type ViewMode = "unified" | "split";
 export type DiffSource =
   | { type: "local"; projectId: string }
   | { type: "wsl"; distro: string; projectPath: string }
-  | { type: "remote"; entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string };
+  | { type: "remote"; entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string }
+  | { type: "worktree"; projectId: string; worktreePath: string };
 
 interface DiffViewProps {
   projectId?: string;    // legacy — for local projects
@@ -399,6 +400,12 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
           username: diffSource.username,
           auth: diffSource.auth,
           projectPath: diffSource.projectPath,
+          filePath,
+        });
+      } else if (diffSource?.type === "worktree") {
+        result = await invoke<DiffResult>("get_worktree_file_diff", {
+          projectId: diffSource.projectId,
+          worktreePath: diffSource.worktreePath,
           filePath,
         });
       } else {

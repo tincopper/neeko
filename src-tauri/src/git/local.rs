@@ -399,6 +399,17 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// 获取指定路径（worktree 或项目路径）的变更文件列表
+pub fn get_changed_files_for_path(repo_path: &Path) -> Result<Vec<FileChange>> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    get_changed_files(&repo)
+}
+
+/// 获取指定路径（worktree 或项目路径）中某文件的 diff
+pub fn get_file_diff_for_path(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
+    get_file_diff(repo_path, file_path)
+}
+
 /// 检查 worktree 是否有未提交的更改（modified / untracked）
 pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool> {
     let wt_path_str = worktree_path
@@ -686,5 +697,141 @@ mod tests {
             DiffLine::Added(s) => assert_eq!(s, "added"),
             _ => panic!("Expected Added"),
         }
+    }
+
+    #[test]
+    fn should_get_changed_files_for_worktree_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        // Init git repo
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // Create initial commit
+        let file_path = repo_path.join("initial.txt");
+        std::fs::write(&file_path, "initial content\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("initial.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // Modify a file
+        std::fs::write(&file_path, "modified content\n").unwrap();
+
+        // Call get_changed_files_for_path (should detect modification)
+        let files = get_changed_files_for_path(repo_path).unwrap();
+        assert!(!files.is_empty(), "Should detect changed file");
+        assert_eq!(files[0].status, FileStatus::Modified);
+    }
+
+    #[test]
+    fn should_return_empty_for_clean_worktree_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // Create initial commit
+        let file_path = repo_path.join("clean.txt");
+        std::fs::write(&file_path, "clean content\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("clean.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // No modifications
+        let files = get_changed_files_for_path(repo_path).unwrap();
+        assert!(files.is_empty(), "Clean repo should have no changes");
+    }
+
+    #[test]
+    fn should_get_file_diff_for_worktree_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // Create initial commit
+        let file_path = repo_path.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\nline3\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("test.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // Modify file
+        std::fs::write(&file_path, "line1\nmodified\nline3\n").unwrap();
+
+        // Get diff
+        let diff_result = get_file_diff_for_path(repo_path, "test.txt").unwrap();
+        assert!(!diff_result.hunks.is_empty(), "Should have hunks");
+        // Should have removed and added lines
+        let has_removed = diff_result
+            .hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|l| matches!(l, DiffLine::Removed(_))));
+        let has_added = diff_result
+            .hunks
+            .iter()
+            .any(|h| h.lines.iter().any(|l| matches!(l, DiffLine::Added(_))));
+        assert!(has_removed, "Should have removed lines");
+        assert!(has_added, "Should have added lines");
+    }
+
+    #[test]
+    fn should_detect_added_file_in_worktree_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // Create initial commit
+        let file_path = repo_path.join("existing.txt");
+        std::fs::write(&file_path, "existing\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("existing.txt"))
+            .unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // Add new untracked file
+        let new_file = repo_path.join("new_file.txt");
+        std::fs::write(&new_file, "new content\n").unwrap();
+
+        let files = get_changed_files_for_path(repo_path).unwrap();
+        let new_file_entry = files
+            .iter()
+            .find(|f| f.path.to_string_lossy().contains("new_file.txt"));
+        assert!(new_file_entry.is_some(), "Should detect new file");
+        assert_eq!(new_file_entry.unwrap().status, FileStatus::Added);
     }
 }

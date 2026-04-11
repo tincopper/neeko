@@ -131,4 +131,29 @@ describe("buildTree", () => {
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("src");
   });
+
+  it("worktree 变更文件正确构建树", () => {
+    const wtFiles: FileChange[] = [
+      { path: "src/main.rs", status: "Modified", additions: 5, deletions: 2 },
+      { path: "src/lib.rs", status: "Added", additions: 10, deletions: 0 },
+      { path: "README.md", status: "Deleted", additions: 0, deletions: 3 },
+    ];
+    const result = buildTree(wtFiles);
+    // Should have src dir and README.md file
+    expect(result).toHaveLength(2);
+    expect(result[0].name).toBe("src");
+    expect(result[0].isDir).toBe(true);
+    expect(result[1].name).toBe("README.md");
+    expect(result[1].file?.status).toBe("Deleted");
+    expect(result[1].file?.deletions).toBe(3);
+  });
+
+  it("worktree 文件统计信息正确传递", () => {
+    const wtFiles: FileChange[] = [
+      { path: "app.ts", status: "Modified", additions: 8, deletions: 4 },
+    ];
+    const result = buildTree(wtFiles);
+    expect(result[0].file?.additions).toBe(8);
+    expect(result[0].file?.deletions).toBe(4);
+  });
 });

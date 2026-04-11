@@ -112,6 +112,8 @@ pub fn run() {
             commands::remove_worktree,
             commands::is_worktree_dirty,
             commands::delete_branch,
+            commands::get_worktree_changed_files,
+            commands::get_worktree_file_diff,
             commands::create_terminal_session,
             commands::close_terminal_session,
             commands::resize_terminal,
