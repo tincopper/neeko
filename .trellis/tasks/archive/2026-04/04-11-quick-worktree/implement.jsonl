@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "src/components/project/GitDialog.tsx", "reason": "Main component to modify — add toggle and quick mode UI"}
+{"file": "src/components/project/ProjectItem.tsx", "reason": "Pass projectPath to GitDialog when opening"}
+{"file": "src/components/project/ProjectSidebar.tsx", "reason": "DialogState import and dialog rendering"}
