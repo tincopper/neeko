@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { IS_WINDOWS } from "./utils/platform";
 import ProjectSidebar, { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
@@ -91,10 +91,18 @@ function App() {
     activeWorktreePath, activeWorktreeBranch, openedWorktrees,
     activeWorktreePathRef, openedWorktreesRef,
     updateWtPath, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees,
+    clearWorktreeForProject,
   } = useWorktreeState(activeProjectIdRef);
 
   // ── Width persistence ──
   const suppressTerminalResizeRef = useRef(false);
+
+  // When switching local projects, always reset that project's activeWorktreePath
+  // so the main terminal is shown instead of a stale worktree terminal.
+  const handleSelectProjectWithClear = useCallback(async (projectId: string) => {
+    clearWorktreeForProject(projectId);
+    await handleSelectProject(projectId);
+  }, [clearWorktreeForProject, handleSelectProject]);
 
   const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, session.saveSideTerminalWidth);
 
@@ -225,6 +233,9 @@ function App() {
     handleAddProject, setWslDialogOpen, setRemoteDialogOpen,
   });
 
+  // Override selectProjectRef so keyboard shortcuts also clear worktree state on project switch.
+  selectProjectRef.current = handleSelectProjectWithClear;
+
   // ── Keyboard shortcuts ──
   useKeyboardShortcuts({
     projects, activeProjectId,
@@ -288,7 +299,7 @@ function App() {
           suppressResizeRef={suppressTerminalResizeRef}
           onAddProject={handleAddProject}
           onRemoveProject={handleRemoveProject}
-          onSelectProject={handleSelectProject}
+          onSelectProject={handleSelectProjectWithClear}
           onSelectFile={handleSelectFile}
           onRefreshGit={handleRefreshGit}
           onBackToMainTerminal={callbacks.handleBackToMainTerminal}
@@ -336,7 +347,7 @@ function App() {
           setSideTerminalOpen={sideTerminal.setSideTerminalOpen}
           focusedSideTerminalIndex={sideTerminal.focusedSideTerminalIndex}
           onFocusSideTerminal={sideTerminal.setFocusedSideTerminalIndex}
-          handleSelectProject={handleSelectProject}
+          handleSelectProject={handleSelectProjectWithClear}
           handleAddProject={handleAddProject}
           suppressResizeRef={suppressTerminalResizeRef}
           activeWslProject={activeWslProject}
