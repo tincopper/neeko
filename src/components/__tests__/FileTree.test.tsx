@@ -111,4 +111,24 @@ describe("buildTree", () => {
       expect(result[0].file?.status).toBe(status);
     }
   });
+
+  it("过滤掉 .neeko/ 路径", () => {
+    const result = buildTree([
+      file("src/main.ts"),
+      file(".neeko/config.json"),
+      file(".neeko/sessions.json"),
+      file("README.md"),
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((n) => n.name)).toEqual(["src", "README.md"]);
+  });
+
+  it("过滤掉子目录中的 .neeko/ 路径", () => {
+    const result = buildTree([
+      file("src/index.ts"),
+      file("some/path/.neeko/secret.json"),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("src");
+  });
 });
