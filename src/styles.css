@@ -1740,7 +1740,7 @@ body {
 
 /* Worktree expanded changes section */
 .gh-worktree-changes {
-  padding: 0 0 0 24px;
+  padding: 0;
 }
 
 .gh-section-label-nested {
@@ -3359,3 +3359,4 @@ body {
   right: 0;
   min-width: unset;
 }
+
