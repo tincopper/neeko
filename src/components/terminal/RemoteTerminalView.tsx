@@ -39,6 +39,51 @@ export function launchAgentInRemoteTerminal(cacheKey: string, command: string, a
   }, 50);
 }
 
+/**
+ * 即时切换 SSH Remote Agent：清除旧 PTY 缓存 + 触发重建，后台异步关闭旧 PTY。
+ */
+export async function switchAgentInRemoteTerminal(
+  cacheKey: string,
+  agentId: string,
+  agentCommandOverrides?: Record<string, string>,
+) {
+  const wrapper = remoteWrapperRefs.get(cacheKey)
+  if (!wrapper) {
+    // 回退：wrapper 未就绪，用旧路径
+    const agent = await invoke<{ id: string; command: string; args: string[] }>(
+      'get_agent', { agentId }
+    ).catch(() => null)
+    if (agent) {
+      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command
+      launchAgentInRemoteTerminal(cacheKey, cmd, agent.args)
+    }
+    return
+  }
+
+  // 1. 摘除旧缓存事件监听
+  const oldCache = remoteTerminalCache.get(cacheKey)
+  if (oldCache) {
+    oldCache.unlisten?.()
+  }
+
+  // 2. 删除旧条目
+  remoteTerminalCache.delete(cacheKey)
+
+  // 3. 清空 wrapper DOM
+  while (wrapper.firstChild) {
+    wrapper.removeChild(wrapper.firstChild)
+  }
+
+  // 4. 触发重建（selectedAgentId 已由 handleSelectRemoteAgent 更新到 props）
+  remoteRebuildCallbacks.get(cacheKey)?.()
+
+  // 5. 后台异步关闭旧 PTY（注意 SSH 用 close_remote_terminal_session）
+  if (oldCache?.sessionId) {
+    invoke('close_remote_terminal_session', { sessionId: oldCache.sessionId }).catch(() => {})
+  }
+  oldCache?.term.dispose()
+}
+
 export function destroyRemoteCache(key: string) {
   const cache = remoteTerminalCache.get(key);
   if (!cache) return;
@@ -65,6 +110,9 @@ export function refreshRemoteTerminal(key: string) {
 
 /** Remote 终端重建回调注册表 */
 export const remoteRebuildCallbacks = new Map<string, () => void>();
+
+/** DOM wrapper 节点注册表，供 switchAgentInRemoteTerminal 使用 */
+export const remoteWrapperRefs = new Map<string, HTMLDivElement>()
 
 interface RemoteTerminalViewProps {
   entryId: string;
@@ -150,6 +198,9 @@ export default React.memo(function RemoteTerminalView({
     remoteRebuildCallbacks.set(key, () => {
       if (currentKeyRef.current === key) setRebuildCount(c => c + 1);
     });
+    if (wrapperRef.current) {
+      remoteWrapperRefs.set(key, wrapperRef.current)
+    }
 
     const attach = (cache: RemoteTerminalCache) => {
       if (!wrapper.contains(cache.element)) {
@@ -310,6 +361,7 @@ export default React.memo(function RemoteTerminalView({
       window.removeEventListener("resize", handleResize);
       detachAll();
       remoteRebuildCallbacks.delete(key);
+      remoteWrapperRefs.delete(key);
     };
   }, [entryId, projectId, projectPath, cacheKeySuffix, rebuildCount]);
 
