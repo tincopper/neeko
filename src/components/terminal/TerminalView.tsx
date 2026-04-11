@@ -157,15 +157,16 @@ export async function switchAgentInTerminal(
       }
       newCache.term.focus()
     })
+    // 5. 新终端创建成功后再关闭旧 PTY（不阻塞 UI）
+    if (oldCache?.sessionId) {
+      invoke('close_terminal_session', { sessionId: oldCache.sessionId }).catch(() => {})
+    }
+    oldCache?.term.dispose()
   } catch (err) {
     log(`switchAgentInTerminal: createTerminalForProject failed: ${err}`)
+    // 创建失败时触发重建，避免用户看到空白终端
+    terminalRebuildCallbacks.get(projectId)?.()
   }
-
-  // 5. 后台异步关闭旧 PTY（不阻塞 UI）
-  if (oldCache?.sessionId) {
-    invoke('close_terminal_session', { sessionId: oldCache.sessionId }).catch(() => {})
-  }
-  oldCache?.term.dispose()
 }
 
 export async function createTerminalForProject(
