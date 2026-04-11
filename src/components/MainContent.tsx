@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+﻿import React, { useCallback } from "react";
 import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
@@ -165,8 +165,8 @@ function MainContent({
         <div className="content-area">
           {isTerminalView || activeWorktreePath ? (
             <div className="terminal-pane-container">
-              {/* 主终端（始终挂载，worktree 终端激活时隐藏） */}
-              <div style={{ display: activeWorktreePath ? "none" : "contents" }}>
+              {/* 主终端（条件渲染，与 worktree 终端逻辑一致，切换时走 cache attach 无闪屏） */}
+              {!activeWorktreePath && (
                 <TerminalView
                   project={activeProject}
                   fontSize={config.fontSize}
@@ -175,7 +175,7 @@ function MainContent({
                   suppressResizeRef={suppressResizeRef}
                   agentCommandOverride={config.agentCommandOverrides?.[activeProject.selected_agent ?? ""]}
                 />
-              </div>
+              )}
               {/* Worktree 终端 */}
               {activeWorktreePath && (
                 <WorktreeTerminalView
