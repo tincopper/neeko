@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { launchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
+import { switchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
 import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
 import type { DiffSetter, WslDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
@@ -150,8 +150,11 @@ export function useRemoteActions(deps: {
     if (!proj) return;
     const key = remoteCacheKey(proj.entry.id, proj.project.id);
     if (agent) {
-      const cmd = deps.config.agentCommandOverrides?.[agent.id] ?? agent.command;
-      launchAgentInRemoteTerminal(key, cmd, agent.args);
+      void switchAgentInRemoteTerminal(
+        key,
+        agent.id,
+        deps.config.agentCommandOverrides,
+      );
     }
     const agentId = agent?.id ?? null;
     const newEntries = deps.remoteEntries.map(e => ({
