@@ -8,6 +8,10 @@
 
 所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目仅使用 **React 内置 Hooks** —— 没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
 
+Hook 分两类：
+- **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
+- **编排 Hook**：从 App.tsx 提取的横切逻辑（保存、回调、ref 同步）
+
 ---
 
 ## 自定义 Hook 模式
@@ -38,6 +42,30 @@ export function useToast() {
 2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 下传
 3. **用 `useRef` 管理可变状态**，适用于不需要触发重渲染的数据（计时器、缓存、当前值镜像）
 4. **返回对象**，包含状态值和操作回调
+
+### 编排 Hook 模式
+
+当 App.tsx 的某个职责区域变得臃肿时，提取为编排 Hook：
+
+```tsx
+// 编排 Hook 接受大量参数（状态 + refs + setters），返回操作回调
+export interface UseAppCallbacksParams {
+  activeProject: Project | null;
+  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  // ... 更多参数
+}
+
+export interface UseAppCallbacksResult {
+  handleSelectLocalAgent: (agent: AgentConfig | null) => void;
+  handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
+  // ... 更多回调
+}
+```
+
+**规则**：
+- 编排 Hook 的文件名以 `useApp` 开头（如 `useAppCallbacks`、`useAppRefSync`）
+- 编排 Hook 接受状态/setter/ref 作为参数，不自行创建领域状态
+- 编排 Hook 内部使用 `useCallback` 保证返回的回调引用稳定
 
 ### Ref 镜像模式
 
@@ -111,6 +139,21 @@ export function useAppConfig() {
 }
 ```
 
+### 会话保存防抖模式
+
+```tsx
+// useSessionPersistence.ts
+const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
+  // 更新 ref
+  worktreeStateRef.current[projectId] = wtPath;
+  // 防抖保存（500ms）
+  if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
+  wtSaveTimerRef.current = setTimeout(() => {
+    invoke("save_session", { worktreeState: worktreeStateRef.current }).catch(() => {});
+  }, 500);
+}, []);
+```
+
 ---
 
 ## 命名约定
@@ -118,6 +161,7 @@ export function useAppConfig() {
 | 约定 | 示例 |
 |------|------|
 | 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
+| 文件名（编排）：`useApp<Purpose>.ts` | `useAppCallbacks.ts`、`useAppRefSync.ts` |
 | 导出：命名函数 | `export function useAppConfig()` |
 | 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
 | 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
@@ -125,6 +169,8 @@ export function useAppConfig() {
 ---
 
 ## 现有 Hooks 参考
+
+### 领域 Hook
 
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
@@ -136,6 +182,15 @@ export function useAppConfig() {
 | `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
 | `useSideTerminalResize` | 拖拽调整终端面板大小 | 宽度状态、鼠标事件处理 |
 | `useWorktreeState` | 按项目追踪 worktree 状态 | 路径、分支、已打开的 worktrees |
+
+### 编排 Hook（从 App.tsx 提取）
+
+| Hook | 用途 | 关键返回值 |
+|------|------|-----------|
+| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`saveSideTerminalWidth`、相关 refs |
+| `useAppRefSync` | 批量同步状态到 refs | （仅副作用，无返回值） |
+| `useSideTerminalState` | 本地/WSL/远程 side terminal 统一管理 | `sideTerminalOpenSet`、`setSideTerminalOpen`、open handlers、focus 状态 |
+| `useAppCallbacks` | IDE、agent、worktree、auth、UI 回调 | 所有 `handle*` 回调 |
 
 ---
 
@@ -178,4 +233,17 @@ useEffect(() => {
   const unlisten = listen("event", handler);
   return () => { unlisten.then(fn => fn()); };
 }, []);
+```
+
+### 4. 编排 Hook 缺少 `useCallback` 包裹返回的回调
+
+编排 Hook 返回的回调必须用 `useCallback` 包裹，否则每次渲染破坏下游 `React.memo`：
+
+```tsx
+// 错误 —— 每次渲染创建新函数
+return { handleSelect: (id) => { ... } };
+
+// 正确 —— 引用稳定
+const handleSelect = useCallback((id) => { ... }, [deps]);
+return { handleSelect };
 ```

@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "src/App.tsx", "reason": "重构目标文件"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 编写规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理约束（无 Context、Props 下传）"}
+{"file": "src/hooks/useCrossDomainRefs.ts", "reason": "跨域 ref 类型定义"}
+{"file": "src/components/MainContent.tsx", "reason": "主要 prop 消费者"}
