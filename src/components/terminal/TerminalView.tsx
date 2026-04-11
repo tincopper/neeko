@@ -16,6 +16,7 @@ interface TerminalViewProps {
   fontFamily?: string
   suppressResizeRef?: React.MutableRefObject<boolean>
   agentCommandOverride?: string
+  blockCtrlC?: boolean
 }
 
 interface TerminalCache {
@@ -100,6 +101,7 @@ export async function createTerminalForProject(
   fontFamily: string,
   backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
   agentCommandOverrides?: Record<string, string>, // 内置 agent 命令覆盖
+  blockCtrlC: boolean = false,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -299,6 +301,11 @@ export async function createTerminalForProject(
         compositionPendingText = ''
         return
       }
+      // 阻止 Ctrl+C 杀死 Agent
+      if (blockCtrlC && data === '\x03') {
+        term.write('\x1b[33m\r\n[Neeko] Ctrl+C is disabled. Use Agent dropdown to switch.\x1b[0m\r\n')
+        return
+      }
       sendInput(data)
     })
     // 如果项目有预设 agent，连接成功后自动启动
@@ -333,6 +340,7 @@ function TerminalView({
   fontFamily = '',
   suppressResizeRef,
   agentCommandOverride,
+  blockCtrlC = true,
 }: TerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const currentProjectIdRef = useRef<string | null>(null)
@@ -410,6 +418,7 @@ function TerminalView({
         agentCommandOverride && project.selected_agent
           ? { [project.selected_agent]: agentCommandOverride }
           : undefined,
+        blockCtrlC,
       ).then((cache) => {
         if (currentProjectIdRef.current !== projectId) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
@@ -476,5 +485,6 @@ export default React.memo(TerminalView, (prev, next) =>
   prev.fontSize === next.fontSize &&
   prev.shell === next.shell &&
   prev.fontFamily === next.fontFamily &&
-  prev.agentCommandOverride === next.agentCommandOverride
+  prev.agentCommandOverride === next.agentCommandOverride &&
+  prev.blockCtrlC === next.blockCtrlC
 )
