@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "neeko"
-version = "0.1.0"
+version = "1.0.4"
 dependencies = [
  "anyhow",
  "chrono",
