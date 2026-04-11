@@ -168,3 +168,35 @@ Added support for multiple side terminal windows (max 4) with tile layout, focus
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Refactor App.tsx — extract 4 orchestration hooks
+
+**Date**: 2026-04-11
+**Task**: Refactor App.tsx — extract 4 orchestration hooks
+
+### Summary
+
+Extracted useSessionPersistence, useAppRefSync, useSideTerminalState, useAppCallbacks from App.tsx. Reduced from 575 to 419 lines. Updated hook-guidelines.md with orchestration hook pattern docs. All 189 tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2f64520` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
