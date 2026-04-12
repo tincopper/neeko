@@ -5,10 +5,12 @@ use std::process::{Command, Stdio};
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
     let cmd = if cfg!(target_os = "windows") {
+        use std::os::windows::process::CommandExt;
         Command::new("cmd")
             .args(["/c", &format!("where {}", command)])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .status()
     } else {
         Command::new("sh")
@@ -143,6 +145,36 @@ impl AgentManager {
             result.insert(id.clone(), installed);
         }
         result
+    }
+
+    /// Async parallel check if agents are installed.
+    /// Spawns concurrent tasks for each agent check.
+    pub async fn check_installed_async(&self, agent_ids: &[String]) -> HashMap<String, bool> {
+        use futures::future::join_all;
+
+        let tasks: Vec<_> = agent_ids
+            .iter()
+            .map(|id| {
+                let command = self
+                    .agents
+                    .iter()
+                    .find(|a| a.id == *id)
+                    .map(|a| a.command.clone());
+                let id = id.clone();
+                tokio::spawn(async move {
+                    let installed = command
+                        .map(|cmd| check_command_exists(&cmd))
+                        .unwrap_or(false);
+                    (id, installed)
+                })
+            })
+            .collect();
+
+        let results = join_all(tasks).await;
+        results
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect()
     }
 }
 

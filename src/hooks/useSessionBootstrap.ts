@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { SessionStore, WSLEntrySession, RemoteEntrySession } from "../types";
+import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project } from "../types";
 
 export function useSessionBootstrap(deps: {
   loadAgents: () => Promise<void>;
@@ -16,7 +16,17 @@ export function useSessionBootstrap(deps: {
 
   useEffect(() => {
     deps.loadAgents();
-    deps.loadProjects();
+    deps.loadProjects().then(async () => {
+      // Lazy refresh git info for all projects in background
+      try {
+        const projects = await invoke<Project[]>("list_projects");
+        for (const p of projects) {
+          if (!p.git_info) {
+            invoke("refresh_git_info", { projectId: p.id }).catch(() => {});
+          }
+        }
+      } catch {}
+    });
 
     invoke<SessionStore>("load_session").then((session) => {
       const wslE = session.wsl_entries ?? [];

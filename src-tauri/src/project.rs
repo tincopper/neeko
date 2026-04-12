@@ -78,11 +78,7 @@ impl ProjectManager {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let git_info = if git::is_git_repo(&path) {
-            git::get_git_info(&path).ok()
-        } else {
-            None
-        };
+        // Skip git_info on startup - will be refreshed lazily via refresh_git_info command
         let terminal_session = TerminalSession {
             id: Uuid::new_v4().to_string(),
             pid: None,
@@ -94,7 +90,7 @@ impl ProjectManager {
             id,
             name,
             path,
-            git_info,
+            git_info: None,
             terminal: terminal_session,
             selected_agent: agent_id,
             selected_ide: ide,

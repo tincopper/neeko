@@ -84,9 +84,9 @@ pub fn set_project_agent(
 }
 
 #[tauri::command]
-pub fn check_agents_installed(
+pub async fn check_agents_installed(
     agent_ids: Option<Vec<String>>,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<HashMap<String, bool>, String> {
     let ids = agent_ids.unwrap_or_else(|| {
         state
@@ -95,9 +95,25 @@ pub fn check_agents_installed(
             .map(|am| am.get_agents().iter().map(|a| a.id.clone()).collect())
             .unwrap_or_default()
     });
-    state
+    // Drop lock before await point
+    let agents = state
         .agent_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))
-        .map(|am| am.check_installed(&ids))
+        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .get_agents();
+    // Perform async check without holding lock
+    let mut result = HashMap::new();
+    for id in &ids {
+        let command = agents.iter().find(|a| a.id == *id).map(|a| a.command.clone());
+        let installed = match command {
+            Some(cmd) => {
+                tokio::task::spawn_blocking(move || crate::agent::check_command_exists(&cmd))
+                    .await
+                    .unwrap_or(false)
+            }
+            None => false,
+        };
+        result.insert(id.clone(), installed);
+    }
+    Ok(result)
 }
