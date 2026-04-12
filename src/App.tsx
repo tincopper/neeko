@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { IS_WINDOWS } from "./utils/platform";
 import { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
@@ -24,6 +24,8 @@ import { useSessionPersistence } from "./hooks/useSessionPersistence";
 import { useSideTerminalState } from "./hooks/useSideTerminalState";
 import { useAppRefSync } from "./hooks/useAppRefSync";
 import { useAppCallbacks } from "./hooks/useAppCallbacks";
+import { useDelayedInit } from "./hooks/useDelayedInit";
+import { SplashScreen } from "./components/SplashScreen";
 import { AppProvider } from "./context/app-context";
 import { SidebarProvider } from "./context/sidebar-context";
 
@@ -94,9 +96,6 @@ function App() {
     updateWtPath, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees,
     clearWorktreeForProject,
   } = useWorktreeState(activeProjectIdRef);
-
-  // ── Width persistence ──
-  const suppressTerminalResizeRef = useRef(false);
 
   // Auto-switch back to main terminal when active worktree is deleted.
   // The terminal cache is NOT destroyed, so the session persists for re-attachment.
@@ -184,13 +183,16 @@ function App() {
   }, [clearWorktreeForProject, handleSelectProject, setWorktreeDiffState]);
 
   // ── Session bootstrap ──
-  const { initialSidebarWidth } = useSessionBootstrap({
-    loadAgents, loadProjects,
+  const { initialSidebarWidth, initializing } = useSessionBootstrap({
+    loadProjects,
     setWslEntries, setRemoteEntries,
     setSideTerminalWidth,
     worktreeStateRef: session.worktreeStateRef,
     restoreAuthFromEntries,
   });
+
+  // ── Delayed init (load agents after first paint) ──
+  useDelayedInit({ loadAgents });
 
   // ── Ref sync ──
   const isTerminalView = activeProject?.active_view === "Terminal";
@@ -274,6 +276,10 @@ function App() {
   });
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (initializing) {
+    return <SplashScreen />;
+  }
+
   return (
     <div className="w-screen h-screen flex flex-col">
       <TitleBar
@@ -362,7 +368,6 @@ function App() {
               onFocusSideTerminal={sideTerminal.setFocusedSideTerminalIndex}
               handleSelectProject={handleSelectProjectWithClear}
               handleAddProject={handleAddProject}
-              suppressResizeRef={suppressTerminalResizeRef}
               activeWslProject={activeWslProject}
               activeWslWorktreePath={wslActions.activeWslWorktreePath}
               wslSideTerminalOpen={wslSideTerminalOpen}
