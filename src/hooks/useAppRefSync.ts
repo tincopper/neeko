@@ -3,14 +3,10 @@ import type { Project, WSLEntrySession, RemoteEntrySession } from "../types";
 import type { WorktreeItem } from "./useWorktreeState";
 
 export interface UseAppRefSyncParams {
-  // Values to sync
-  sideTerminalOpenSet: Set<string>;
   wslEntries: WSLEntrySession[];
   activeWslKey: { distro: string; projectId: string } | null;
   remoteEntries: RemoteEntrySession[];
   activeRemoteKey: { host: string; projectId: string } | null;
-  wslSideTerminalOpen: Set<string>;
-  remoteSideTerminalOpen: Set<string>;
   activeWorktreePath: string | null;
   openedWorktrees: WorktreeItem[];
   activeProject: Project | null;
@@ -18,14 +14,10 @@ export interface UseAppRefSyncParams {
   activeWslWorktreePath: string | null;
   remoteOpenedWt: WorktreeItem[];
   activeRemoteWorktreePath: string | null;
-  // Refs to sync into
-  sideTerminalOpenSetRef: React.MutableRefObject<Set<string>>;
   wslEntriesRef: React.MutableRefObject<WSLEntrySession[]>;
   activeWslKeyRef: React.MutableRefObject<{ distro: string; projectId: string } | null>;
   remoteEntriesRef: React.MutableRefObject<RemoteEntrySession[]>;
   activeRemoteKeyRef: React.MutableRefObject<{ host: string; projectId: string } | null>;
-  wslSideOpenRef: React.MutableRefObject<Set<string>>;
-  remoteSideOpenRef: React.MutableRefObject<Set<string>>;
   activeWorktreePathRef: React.MutableRefObject<string | null>;
   openedWorktreesRef: React.MutableRefObject<WorktreeItem[]>;
   activeProjectRef: React.MutableRefObject<Project | null>;
@@ -41,17 +33,13 @@ export interface UseAppRefSyncParams {
 
 export function useAppRefSync(params: UseAppRefSyncParams): void {
   const {
-    sideTerminalOpenSet,
     wslEntries, activeWslKey,
     remoteEntries, activeRemoteKey,
-    wslSideTerminalOpen, remoteSideTerminalOpen,
     activeWorktreePath, openedWorktrees, activeProject,
     wslOpenedWt, activeWslWorktreePath,
     remoteOpenedWt, activeRemoteWorktreePath,
-    sideTerminalOpenSetRef,
     wslEntriesRef, activeWslKeyRef,
     remoteEntriesRef, activeRemoteKeyRef,
-    wslSideOpenRef, remoteSideOpenRef,
     activeWorktreePathRef, openedWorktreesRef, activeProjectRef,
     wslEntriesRefForSave, remoteEntriesRefForSave,
     wslOpenedWtRef, activeWslWorktreePathRef,
@@ -59,15 +47,11 @@ export function useAppRefSync(params: UseAppRefSyncParams): void {
     isTerminalViewRef, isTerminalView,
   } = params;
 
-  // Ref sync
   useEffect(() => {
-    sideTerminalOpenSetRef.current = sideTerminalOpenSet;
     wslEntriesRef.current = wslEntries;
     activeWslKeyRef.current = activeWslKey;
     remoteEntriesRef.current = remoteEntries;
     activeRemoteKeyRef.current = activeRemoteKey;
-    wslSideOpenRef.current = wslSideTerminalOpen;
-    remoteSideOpenRef.current = remoteSideTerminalOpen;
     activeWorktreePathRef.current = activeWorktreePath;
     openedWorktreesRef.current = openedWorktrees;
     activeProjectRef.current = activeProject;
@@ -77,18 +61,17 @@ export function useAppRefSync(params: UseAppRefSyncParams): void {
     activeWslWorktreePathRef.current = activeWslWorktreePath;
     remoteOpenedWtRef.current = remoteOpenedWt;
     activeRemoteWorktreePathRef.current = activeRemoteWorktreePath;
-  }, [sideTerminalOpenSet, wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
-      wslSideTerminalOpen, remoteSideTerminalOpen, activeWorktreePath, openedWorktrees,
+  }, [wslEntries, activeWslKey, remoteEntries, activeRemoteKey,
+      activeWorktreePath, openedWorktrees,
       activeProject, wslOpenedWt, activeWslWorktreePath,
       remoteOpenedWt, activeRemoteWorktreePath,
-      sideTerminalOpenSetRef, wslEntriesRef, activeWslKeyRef,
-      remoteEntriesRef, activeRemoteKeyRef, wslSideOpenRef, remoteSideOpenRef,
+      wslEntriesRef, activeWslKeyRef,
+      remoteEntriesRef, activeRemoteKeyRef,
       activeWorktreePathRef, openedWorktreesRef, activeProjectRef,
       wslEntriesRefForSave, remoteEntriesRefForSave,
       wslOpenedWtRef, activeWslWorktreePathRef,
       remoteOpenedWtRef, activeRemoteWorktreePathRef]);
 
-  // isTerminalView ref sync
   useEffect(() => {
     isTerminalViewRef.current = isTerminalView || activeWorktreePath !== null;
   }, [isTerminalView, activeWorktreePath, isTerminalViewRef]);

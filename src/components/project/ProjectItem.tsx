@@ -7,7 +7,7 @@ import WorktreeList from "./WorktreeList";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -33,7 +33,6 @@ interface ProjectItemProps {
   onBackToMainTerminal: (projectId: string) => void;
   onOpenDialog: (dialog: DialogState) => void;
   onOpenIde?: (projectId: string) => void;
-  onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   ideCommandOverrides?: Record<string, string>;
@@ -56,7 +55,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onBackToMainTerminal,
   onOpenDialog,
   onOpenIde,
-  onOpenSideTerminal,
   onOpenWorktreeTerminal,
   onSelectWorktreeFile,
   ideCommandOverrides,
@@ -147,14 +145,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         label: "Open in IDE",
         shortcut: "Ctrl+O",
         action: () => onOpenIde(project.id),
-      });
-    }
-
-    if (isActive && project.active_view === "Terminal" && onOpenSideTerminal) {
-      items.push({
-        label: "Open Side Terminal",
-        shortcut: "Ctrl+Alt+T",
-        action: () => onOpenSideTerminal(project.id),
       });
     }
 
@@ -318,16 +308,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           </button>
         )}
         <div className="gh-project-actions">
-          {/* Side Terminal 按钮 */}
-          {onOpenSideTerminal && isActive && project.active_view === "Terminal" && (
-            <button
-              className="gh-icon-btn"
-              onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
-              title="Open side terminal (Ctrl+Alt+T)"
-            >
-              <SideTerminalIcon size={12} />
-            </button>
-          )}
           {/* Git 操作下拉菜单 */}
           {project.git_info && (
             <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>

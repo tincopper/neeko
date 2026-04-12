@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "./utils/platform";
 import ProjectSidebar, { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
@@ -9,7 +10,6 @@ import { WSLDialog, RemoteDialog, RemoteAuthDialog } from "./components/connecti
 import type { ActiveWslKey } from "./components/connections";
 import type { ActiveRemoteKey } from "./hooks/useRemoteProjects";
 import { useToast } from "./hooks/useToast";
-import { useSideTerminalResize } from "./hooks/useSideTerminalResize";
 import { useWorktreeState } from "./hooks/useWorktreeState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useAppConfig } from "./hooks/useAppConfig";
@@ -21,21 +21,19 @@ import { useRemoteActions } from "./hooks/useRemoteActions";
 import { useCrossDomainRefs } from "./hooks/useCrossDomainRefs";
 import { useSessionBootstrap } from "./hooks/useSessionBootstrap";
 import { useSessionPersistence } from "./hooks/useSessionPersistence";
-import { useSideTerminalState } from "./hooks/useSideTerminalState";
-import { useAppRefSync } from "./hooks/useAppRefSync";
+import { useTerminalTabs } from "./hooks/useTerminalTabs";
 import { useAppCallbacks } from "./hooks/useAppCallbacks";
+import { useAppRefSync } from "./hooks/useAppRefSync";
+import type { AgentConfig } from "./types";
 import "./styles.css";
 
-// ── re-export to keep hook import clean ──
 export type { ActiveWslKey, ActiveRemoteKey };
 
 function App() {
-  // ── Core hooks ────────────────────────────────────────────────────────────
   const { config, settingsOpen, setSettingsOpen, saveConfig } = useAppConfig();
   const { toast, showToast } = useToast();
   const local = useLocalProjects();
 
-  // ── Session persistence ──
   const session = useSessionPersistence();
 
   const wsl = useWslProjects(session.saveSession);
@@ -47,7 +45,6 @@ function App() {
     loading,
     pendingPath, setPendingPath,
     agents,
-    sideTerminalOpenMap, setSideTerminalOpenMap,
     activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
@@ -60,10 +57,9 @@ function App() {
     activeWslKey, setActiveWslKey,
     activeWslProject, setActiveWslProject,
     wslOpenSessions, setWslOpenSessions,
-    wslSideTerminalOpen, setWslSideTerminalOpen,
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,
-    wslEntriesRef, activeWslKeyRef, selectWslProjectRef, wslSideOpenRef,
+    wslEntriesRef, activeWslKeyRef, selectWslProjectRef,
     handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,
@@ -74,38 +70,31 @@ function App() {
     activeRemoteKey, setActiveRemoteKey,
     activeRemoteProject, setActiveRemoteProject,
     remoteOpenSessions, setRemoteOpenSessions,
-    remoteSideTerminalOpen, setRemoteSideTerminalOpen,
     remoteDialogOpen, setRemoteDialogOpen,
     remoteAddToEntryId,
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
-    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef, remoteSideOpenRef,
+    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
     restoreAuthFromEntries,
   } = remote;
 
-  // ── Worktree state (local) ──
   const {
-    activeWorktreePath, activeWorktreeBranch, openedWorktrees,
+    activeWorktreePath, activeWorktreeBranch,
     activeWorktreePathRef, openedWorktreesRef,
     updateWtPath, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees,
     clearWorktreeForProject,
   } = useWorktreeState(activeProjectIdRef);
 
-  // ── Width persistence ──
   const suppressTerminalResizeRef = useRef(false);
 
-  // When switching local projects, always reset that project's activeWorktreePath
-  // so the main terminal is shown instead of a stale worktree terminal.
   const handleSelectProjectWithClear = useCallback(async (projectId: string) => {
     clearWorktreeForProject(projectId);
     await handleSelectProject(projectId);
   }, [clearWorktreeForProject, handleSelectProject]);
 
-  // Auto-switch back to main terminal when active worktree is deleted.
-  // The terminal cache is NOT destroyed, so the session persists for re-attachment.
   useEffect(() => {
     if (!activeWorktreePath || !activeProject?.git_info) return;
     const exists = activeProject.git_info.worktrees.some(wt => wt.path === activeWorktreePath);
@@ -115,12 +104,8 @@ function App() {
     }
   }, [activeProject?.git_info?.worktrees, activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, activeProject?.git_info]);
 
-  const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, session.saveSideTerminalWidth);
-
-  // ── Cross-domain setter refs ──
   const xdomain = useCrossDomainRefs();
 
-  // ── Remote actions ──
   const remoteActions = useRemoteActions({
     setActiveProjectId, setActiveProject,
     setActiveWslKey, setActiveWslProject,
@@ -136,7 +121,6 @@ function App() {
     config, showToast, saveSession: session.saveSession,
   });
 
-  // ── WSL actions ──
   const wslActions = useWslActions({
     setActiveProjectId, setActiveProject,
     setActiveRemoteKey, setActiveRemoteProject,
@@ -151,7 +135,6 @@ function App() {
     config, showToast, saveSession: session.saveSession,
   });
 
-  // Wire cross-domain refs after both hooks return
   xdomain.setRemoteDiffStateRef.current = remoteActions.setRemoteDiffState;
   xdomain.remoteActiveWtBranchSetterRef.current = remoteActions.setRemoteActiveWtBranch;
   xdomain.remoteOpenedWtSetterRef.current = remoteActions.setRemoteOpenedWt;
@@ -161,25 +144,58 @@ function App() {
   xdomain.wslOpenedWtSetterRef.current = wslActions.setWslOpenedWt;
   xdomain.wslWorktreePathSetterRef.current = wslActions.setActiveWslWorktreePath;
 
-  // ── Side terminal state ──
-  const sideTerminal = useSideTerminalState(
-    activeProjectId,
-    activeProjectIdRef,
-    sideTerminalOpenMap,
-    setSideTerminalOpenMap,
-    setWslSideTerminalOpen,
-    setRemoteSideTerminalOpen,
+  // ── Terminal Tabs ──
+  const {
+    getTabs,
+    getActiveTab,
+    getActiveTabId,
+    ensureDefaultTab,
+    addTab,
+    closeTab,
+    activateTab,
+    updateTabStatus,
+    handleAgentClick: handleTabAgentClick,
+  } = useTerminalTabs();
+
+  const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
+
+  useEffect(() => {
+    if (currentProjectId) {
+      ensureDefaultTab(currentProjectId);
+    }
+  }, [currentProjectId, ensureDefaultTab]);
+
+  const tabs = currentProjectId ? getTabs(currentProjectId) : [];
+  const activeTabId = currentProjectId ? getActiveTabId(currentProjectId) : null;
+
+  const handleAddTab = useCallback(() => {
+    if (!currentProjectId) return;
+    addTab(currentProjectId);
+  }, [currentProjectId, addTab]);
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (!currentProjectId) return;
+      closeTab(currentProjectId, tabId);
+    },
+    [currentProjectId, closeTab]
   );
 
-  // ── Worktree diff state ──
-  const [worktreeDiffState, setWorktreeDiffState] = useState<{
-    worktreePath: string; filePath: string;
-  } | null>(null);
+  const handleActivateTab = useCallback(
+    (tabId: string) => {
+      if (!currentProjectId) return;
+      activateTab(currentProjectId, tabId);
+    },
+    [currentProjectId, activateTab]
+  );
 
-  // Clear worktree diff when switching projects
-  useEffect(() => {
-    setWorktreeDiffState(null);
-  }, [activeProjectId]);
+  const handleTabStatusChange = useCallback(
+    (tabId: string, status: "Idle" | "Running" | "Failed") => {
+      if (!currentProjectId) return;
+      updateTabStatus(currentProjectId, tabId, status);
+    },
+    [currentProjectId, updateTabStatus]
+  );
 
   // ── Add menu ──
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -201,37 +217,19 @@ function App() {
   const { initialSidebarWidth } = useSessionBootstrap({
     loadAgents, loadProjects,
     setWslEntries, setRemoteEntries,
-    setSideTerminalWidth,
     worktreeStateRef: session.worktreeStateRef,
     restoreAuthFromEntries,
   });
 
-  // ── Ref sync ──
-  const isTerminalView = activeProject?.active_view === "Terminal";
-  useAppRefSync({
-    sideTerminalOpenSet: sideTerminal.sideTerminalOpenSet,
-    wslEntries, activeWslKey,
-    remoteEntries, activeRemoteKey,
-    wslSideTerminalOpen, remoteSideTerminalOpen,
-    activeWorktreePath, openedWorktrees, activeProject,
-    wslOpenedWt: wslActions.wslOpenedWt,
-    activeWslWorktreePath: wslActions.activeWslWorktreePath,
-    remoteOpenedWt: remoteActions.remoteOpenedWt,
-    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
-    sideTerminalOpenSetRef: sideTerminal.sideTerminalOpenSetRef,
-    wslEntriesRef, activeWslKeyRef,
-    remoteEntriesRef, activeRemoteKeyRef,
-    wslSideOpenRef, remoteSideOpenRef,
-    activeWorktreePathRef, openedWorktreesRef, activeProjectRef,
-    wslEntriesRefForSave: session.wslEntriesRefForSave,
-    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
-    wslOpenedWtRef: wslActions.wslOpenedWtRef,
-    activeWslWorktreePathRef: wslActions.activeWslWorktreePathRef,
-    remoteOpenedWtRef: remoteActions.remoteOpenedWtRef,
-    activeRemoteWorktreePathRef: remoteActions.activeRemoteWorktreePathRef,
-    isTerminalViewRef,
-    isTerminalView,
-  });
+  // ── Worktree diff state ──
+  const [worktreeDiffState, setWorktreeDiffState] = useState<{
+    worktreePath: string; filePath: string;
+  } | null>(null);
+
+  // Clear worktree diff when switching projects
+  useEffect(() => {
+    setWorktreeDiffState(null);
+  }, [activeProjectId]);
 
   // ── App callbacks ──
   const callbacks = useAppCallbacks({
@@ -258,23 +256,13 @@ function App() {
     handleAddProject, setWslDialogOpen, setRemoteDialogOpen,
   });
 
-  // Override selectProjectRef so keyboard shortcuts also clear worktree state on project switch.
-  selectProjectRef.current = handleSelectProjectWithClear;
-
-  // ── Keyboard shortcuts ──
+  // ── Keyboard shortcuts (without side terminal) ──
   useKeyboardShortcuts({
     projects, activeProjectId,
-    activeProjectIdRef,
-    sideTerminalOpenRef: sideTerminal.sideTerminalOpenSetRef,
-    setSideTerminalOpen: sideTerminal.setSideTerminalOpen,
-    focusedSideTerminalIndex: sideTerminal.focusedSideTerminalIndex,
-    setFocusedSideTerminalIndex: sideTerminal.setFocusedSideTerminalIndex,
+    activeWorktreePathRef, openedWorktreesRef, updateWtPath,
     wslEntriesRef, activeWslKeyRef, selectWslProjectRef,
     remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     selectProjectRef,
-    wslSideOpenRef, remoteSideOpenRef,
-    setWslSideTerminalOpen, setRemoteSideTerminalOpen,
-    activeWorktreePathRef, openedWorktreesRef, updateWtPath,
     wslOpenedWtRef: wslActions.wslOpenedWtRef,
     activeWslWorktreePathRef: wslActions.activeWslWorktreePathRef,
     setWslWorktreePath: wslActions.setActiveWslWorktreePath,
@@ -286,6 +274,55 @@ function App() {
     isTerminalViewRef, activeProjectRef,
     handleOpenIde: callbacks.handleOpenIdeCallback,
   });
+
+  // Override selectProjectRef so keyboard shortcuts also clear worktree state on project switch.
+  selectProjectRef.current = handleSelectProjectWithClear;
+
+    // ── Ref sync ──
+  const isTerminalView = activeProject?.active_view === "Terminal";
+  useAppRefSync({
+    wslEntries, activeWslKey,
+    remoteEntries, activeRemoteKey,
+    activeWorktreePath, openedWorktrees: openedWorktreesRef.current ?? [],
+    activeProject,
+    wslOpenedWt: wslActions.wslOpenedWt,
+    activeWslWorktreePath: wslActions.activeWslWorktreePath,
+    remoteOpenedWt: remoteActions.remoteOpenedWt,
+    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
+    wslEntriesRef, activeWslKeyRef,
+    remoteEntriesRef, activeRemoteKeyRef,
+    activeWorktreePathRef, openedWorktreesRef, activeProjectRef,
+    wslEntriesRefForSave: session.wslEntriesRefForSave,
+    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
+    wslOpenedWtRef: wslActions.wslOpenedWtRef,
+    activeWslWorktreePathRef: wslActions.activeWslWorktreePathRef,
+    remoteOpenedWtRef: remoteActions.remoteOpenedWtRef,
+    activeRemoteWorktreePathRef: remoteActions.activeRemoteWorktreePathRef,
+    isTerminalViewRef,
+    isTerminalView,
+  });
+
+  // ── Agent click handler ──
+  const handleAgentClick = useCallback(
+    (agent: AgentConfig) => {
+      if (!currentProjectId) return;
+      const activeTab = getActiveTab(currentProjectId);
+      const status = activeTab?.status ?? "Idle";
+      handleTabAgentClick(currentProjectId, agent, status);
+
+      if (activeProject) {
+        invoke("set_project_agent", { projectId: activeProject.id, agentId: agent.id }).catch((err: unknown) => {
+          console.error("[TitleBar] Failed to set agent:", err);
+        });
+        callbacks.handleSelectLocalAgent(agent);
+      } else if (activeWslProject) {
+        wslActions.handleSelectWslAgent(agent);
+      } else if (activeRemoteProject) {
+        remoteActions.handleSelectRemoteAgent(agent);
+      }
+    },
+    [currentProjectId, getActiveTab, handleTabAgentClick, activeProject, activeWslProject, activeRemoteProject, callbacks, wslActions, remoteActions]
+  );
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -302,6 +339,12 @@ function App() {
         agents={agents}
         compactMode={config.agentSelectorCompactMode ?? false}
         showAgentBar={config.agentSelectorShowPresetBar !== false}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onActivateTab={handleActivateTab}
+        onCloseTab={handleCloseTab}
+        onAddTab={handleAddTab}
+        onAgentClick={handleAgentClick}
         onOpenSettings={callbacks.handleToggleSettings}
         onToggleAddMenu={callbacks.handleToggleAddMenu}
         onAddProject={callbacks.handleAddProjectClick}
@@ -334,7 +377,6 @@ function App() {
           onBackToMainTerminal={callbacks.handleBackToMainTerminal}
           onOpenSettings={callbacks.handleToggleSettings}
           onOpenIde={callbacks.handleOpenIdeForSidebar}
-          onOpenSideTerminal={sideTerminal.handleOpenSideTerminal}
           onOpenWorktreeTerminal={callbacks.handleOpenWorktreeTerminal}
           onSelectWorktreeFile={callbacks.handleSelectWorktreeFile}
           onSelectWslProject={wslActions.handleSelectWslProject}
@@ -347,8 +389,6 @@ function App() {
           onRemoveRemoteProject={handleRemoveRemoteProject}
           onRemoveRemoteEntry={handleRemoveRemoteEntry}
           onAddRemoteProject={handleAddRemoteProject}
-          onOpenWslSideTerminal={sideTerminal.handleOpenWslSideTerminal}
-          onOpenRemoteSideTerminal={sideTerminal.handleOpenRemoteSideTerminal}
           onSelectWslFile={wslActions.handleSelectWslFile}
           onSelectRemoteFile={remoteActions.handleSelectRemoteFile}
           onRefreshWslGit={wslActions.handleRefreshWslGit}
@@ -372,25 +412,18 @@ function App() {
           activeProject={activeProject}
           activeWorktreePath={activeWorktreePath}
           activeWorktreeBranch={activeWorktreeBranch}
-          sideTerminalOpenSet={sideTerminal.sideTerminalOpenSet}
-          sideTerminalWidth={sideTerminalWidth}
-          handleSideDividerMouseDown={handleSideDividerMouseDown}
-          setSideTerminalOpen={sideTerminal.setSideTerminalOpen}
-          focusedSideTerminalIndex={sideTerminal.focusedSideTerminalIndex}
-          onFocusSideTerminal={sideTerminal.setFocusedSideTerminalIndex}
           handleSelectProject={handleSelectProjectWithClear}
           handleAddProject={handleAddProject}
           suppressResizeRef={suppressTerminalResizeRef}
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onTabStatusChange={handleTabStatusChange}
           activeWslProject={activeWslProject}
           activeWslWorktreePath={wslActions.activeWslWorktreePath}
-          wslSideTerminalOpen={wslSideTerminalOpen}
-          setWslSideTerminalOpen={setWslSideTerminalOpen}
           setWslOpenSessions={setWslOpenSessions}
           activeRemoteProject={activeRemoteProject}
           activeRemoteWorktreePath={remoteActions.activeRemoteWorktreePath}
           remoteAuthStore={remoteAuthStore}
-          remoteSideTerminalOpen={remoteSideTerminalOpen}
-          setRemoteSideTerminalOpen={setRemoteSideTerminalOpen}
           setRemoteOpenSessions={setRemoteOpenSessions}
           wslDiffState={wslActions.wslDiffState}
           remoteDiffState={remoteActions.remoteDiffState}
@@ -432,16 +465,16 @@ function App() {
         />
       )}
 
-        <RemoteDialog
-          isOpen={remoteDialogOpen}
-          onClose={handleRemoteDialogClose}
-          onAdd={handleRemoteEntryAdd}
-          existingEntries={remoteEntries}
-          addProjectMode={remoteAddToEntryId !== null}
-          selectedEntryId={remoteAddToEntryId ?? undefined}
-          agents={agents}
-          config={config}
-          existingEntryAuth={remoteAuthStore}
+      <RemoteDialog
+        isOpen={remoteDialogOpen}
+        onClose={handleRemoteDialogClose}
+        onAdd={handleRemoteEntryAdd}
+        existingEntries={remoteEntries}
+        addProjectMode={remoteAddToEntryId !== null}
+        selectedEntryId={remoteAddToEntryId ?? undefined}
+        agents={agents}
+        config={config}
+        existingEntryAuth={remoteAuthStore}
       />
 
       {pendingAuthEntry && (

@@ -147,6 +147,16 @@ export type ActiveProjectAdapter =
   | WslProjectAdapter 
   | RemoteProjectAdapter;
 
+// Terminal Tab
+export interface TerminalTab {
+  id: string;
+  projectId: string;
+  agentId: string | null;
+  title: string;
+  status: "Idle" | "Running" | "Failed";
+  order: number;
+}
+
 // 持久化会话存储（与 Rust SessionStore 对应）
 export interface SessionStore {
   projects: { id: string; name: string; path: string; selected_agent: string | null; selected_ide: string | null; terminal_history: string[]; last_status: string; collapsed: boolean }[];

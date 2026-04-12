@@ -8,7 +8,6 @@ export function useSessionBootstrap(deps: {
   loadProjects: () => Promise<void>;
   setWslEntries: React.Dispatch<React.SetStateAction<WSLEntrySession[]>>;
   setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
-  setSideTerminalWidth: (w: number) => void;
   worktreeStateRef: React.MutableRefObject<Record<string, string>>;
   restoreAuthFromEntries: (entries: RemoteEntrySession[]) => void;
 }) {
@@ -25,9 +24,6 @@ export function useSessionBootstrap(deps: {
       deps.setRemoteEntries(remoteE);
       if (session.sidebar_width) {
         setInitialSidebarWidth(session.sidebar_width);
-      }
-      if (session.side_terminal_width) {
-        deps.setSideTerminalWidth(session.side_terminal_width);
       }
       const wtState = session.worktree_state;
       if (wtState && typeof wtState === "object") {

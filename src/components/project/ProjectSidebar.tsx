@@ -25,7 +25,6 @@ interface ProjectSidebarProps {
   onBackToMainTerminal: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenIde?: (projectId: string) => void;
-  onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   onSelectWslProject: (distro: string, project: WSLProject) => void;
@@ -38,8 +37,6 @@ interface ProjectSidebarProps {
   onRemoveRemoteProject: (entryId: string, projectId: string) => void;
   onRemoveRemoteEntry: (entryId: string) => void;
   onAddRemoteProject: (entryId: string) => void;
-  onOpenWslSideTerminal?: (entryId: string, projectId: string) => void;
-  onOpenRemoteSideTerminal?: (entryId: string, projectId: string) => void;
   onSelectWslFile?: (distro: string, projectPath: string, filePath: string) => void;
   onSelectRemoteFile?: (entryId: string, projectPath: string, filePath: string) => void;
   onRefreshWslGit?: (distro: string, projectId: string, projectPath: string) => void;
@@ -78,7 +75,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onBackToMainTerminal,
   onOpenSettings: _onOpenSettings,
   onOpenIde,
-  onOpenSideTerminal,
   onOpenWorktreeTerminal,
   onSelectWorktreeFile,
   onSelectWslProject,
@@ -91,8 +87,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onRemoveRemoteProject,
   onRemoveRemoteEntry,
   onAddRemoteProject,
-  onOpenWslSideTerminal,
-  onOpenRemoteSideTerminal,
   onSelectWslFile,
   onSelectRemoteFile,
   onRefreshWslGit,
@@ -196,7 +190,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onBackToMainTerminal={onBackToMainTerminal}
                   onOpenDialog={setDialog}
                   onOpenIde={onOpenIde}
-                  onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
                   onSelectWorktreeFile={onSelectWorktreeFile}
                   ideCommandOverrides={ideCommandOverrides}
@@ -222,7 +215,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveProject={onRemoveWslProject}
                   onRemoveEntry={onRemoveWslEntry}
                   onAddProject={onAddWslProject}
-                  onOpenSideTerminal={onOpenWslSideTerminal}
                   onSelectFile={onSelectWslFile}
                   onRefreshGit={onRefreshWslGit}
                   onOpenIde={onOpenWslIde}
@@ -257,7 +249,6 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   onRemoveProject={onRemoveRemoteProject}
                   onRemoveEntry={onRemoveRemoteEntry}
                   onAddProject={onAddRemoteProject}
-                  onOpenSideTerminal={onOpenRemoteSideTerminal}
                   onSelectFile={onSelectRemoteFile}
                   onRefreshGit={onRefreshRemoteGit}
                   onOpenIde={onOpenRemoteIde}
