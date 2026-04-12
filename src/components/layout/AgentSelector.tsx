@@ -19,6 +19,7 @@ interface AgentSelectorProps {
   /** WSL/SSH 项目传 true，跳过后端 set_project_agent，由外部回调自行持久化 */
   skipBackendPersist?: boolean;
   onShowToast?: (message: string, type?: "info" | "error") => void;
+  installedMap?: Record<string, boolean>;
 }
 
 const AgentSelector: React.FC<AgentSelectorProps> = ({
@@ -27,11 +28,11 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   onSelectAgent,
   skipBackendPersist = false,
   onShowToast,
+  installedMap = {},
 }) => {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgentId);
   const [isOpen, setIsOpen] = useState(false);
-  const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,17 +54,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
     setSelectedAgentId(currentAgentId);
   }, [projectId, currentAgentId]);
 
-  useEffect(() => {
-    if (!isOpen || agents.length === 0) return;
-    const agentIds = agents.map((a) => a.id);
-    invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
-      .then((result) => {
-        setInstalledMap(new Map(Object.entries(result)));
-      })
-      .catch((err) => {
-        console.error("Failed to check agents installed:", err);
-      });
-  }, [isOpen, agents]);
+  // 移除下拉时检测逻辑，使用外部传入的 installedMap
 
   const loadAgents = async () => {
     try {
@@ -124,7 +115,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             <span className="agent-name">None</span>
           </div>
           {agents.map((agent) => {
-            const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+            const installed = installedMap[agent.id] ?? true;
             const handleClick = () => {
               if (!installed) {
                 onShowToast?.(agent.name + " (" + agent.command + ") is not installed", "error");
@@ -141,7 +132,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
                 <AgentIcon icon={agent.icon} />
                 <span className="agent-name">{agent.name}</span>
                 <span className="agent-command">{agent.command}</span>
-                {installedMap.size > 0 && (
+                {Object.keys(installedMap).length > 0 && (
                   <span className={`agent-status-dot ${installed ? "installed-dot" : "not-installed-dot"}`} />
                 )}
               </div>

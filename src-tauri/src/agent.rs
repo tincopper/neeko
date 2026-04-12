@@ -5,14 +5,14 @@ use std::process::{Command, Stdio};
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
     let cmd = if cfg!(target_os = "windows") {
-        Command::new("where")
-            .arg(command)
+        Command::new("cmd")
+            .args(["/c", &format!("where {}", command)])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
     } else {
-        Command::new("which")
-            .arg(command)
+        Command::new("sh")
+            .args(["-c", &format!("which {}", command)])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
