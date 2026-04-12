@@ -8,7 +8,7 @@ import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import { cn } from "../../utils/cn";
-import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -71,7 +71,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
-  const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -96,13 +95,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       console.error("Failed to save collapsed state:", e);
     }
   };
-
-  useEffect(() => {
-    if (!gitMenuOpen) return;
-    const close = () => setGitMenuOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [gitMenuOpen]);
 
   // Close branch dropdown on outside click
   useEffect(() => {
@@ -168,7 +160,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         label: "New Branch",
         icon: GitLogoIcon,
         action: () => {
-          setGitMenuOpen(false);
           onOpenDialog({
             type: "new-branch",
             projectId: project.id,
@@ -180,7 +171,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         label: "New Worktree",
         icon: FolderGitIcon,
         action: () => {
-          setGitMenuOpen(false);
           onOpenDialog({
             type: "new-worktree",
             projectId: project.id,
@@ -306,7 +296,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       data-project-id={project.id}
     >
       <div
-        className="group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover"
+        className={cn("group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover", isActive && "bg-bg-tertiary")}
         onClick={() => onSelectProject(project.id)}
         onContextMenu={handleContextMenu}
         onPointerDown={handleHeaderPointerDown}
@@ -321,66 +311,28 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-[0.93em] font-semibold text-text-primary truncate">{project.name}</span>
+          <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
         </div>
         {/* IDE button */}
         {project.selected_ide && onOpenIde && (
           <button
-            className={cn(
-              "bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 opacity-100 ml-0.5 text-text-muted hover:!text-accent-blue",
-              isActive ? "opacity-0 hover:opacity-100" : "opacity-0 group-hover:opacity-100"
-            )}
+            className={cn("bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0", isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none")}
             title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
             onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
           >
             <img src={getIdeIconByCommand(project.selected_ide, ideCommandOverrides)} className="w-3.5 h-3.5 object-contain block" alt="" />
           </button>
         )}
-        <div className={cn(
-          "flex gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-        )}>
-          {/* Side Terminal button */}
-          {onOpenSideTerminal && isActive && project.active_view === "Terminal" && (
-            <button
-              className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
-              onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
-              title="Open side terminal (Ctrl+Alt+T)"
-            >
-              <SideTerminalIcon size={12} />
-            </button>
-          )}
-          {/* Git actions dropdown */}
-          {project.git_info && (
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary flex items-center gap-0.5"
-                onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
-                title="Git actions"
-              >
-                <GitLogoIcon size={12} />
-              </button>
-              {gitMenuOpen && (
-                <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-tertiary border border-border rounded-md min-w-[150px] z-[1000] shadow-lg overflow-hidden">
-                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover" onClick={(e) => { setGitMenuOpen(false); openDialog("new-branch", e); }}>
-                    <GitLogoIcon size={12} />
-                    New Branch
-                  </div>
-                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
-                    <FolderGitIcon size={12} />
-                    New Worktree
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Side Terminal button */}
+        {onOpenSideTerminal && project.active_view === "Terminal" && (
           <button
-            className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red"
-            onClick={(e) => { e.stopPropagation(); onRemoveProject(project.id); }}
-            title="Remove"
+            className={cn("bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0", isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none")}
+            onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
+            title="Open side terminal (Ctrl+Alt+T)"
           >
-            <TrashIcon size={12} />
+            <SideTerminalIcon size={12} />
           </button>
-        </div>
+        )}
         {project.git_info && (
           <div className="relative shrink-0" ref={branchDropdownRef}>
             <span
@@ -466,7 +418,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
               {tree.length > 0 && (
                 <>
                   <div
-                    className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+                    className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
                     onClick={(e) => toggleSection("__changes__", e)}
                   >
                     <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["__changes__"] !== false && "rotate-90")} />
@@ -479,7 +431,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     )}
                   </div>
                   {expandedSections["__changes__"] !== false && (
-                    <div className="mt-0.5 pl-4">
+                    <div className="pl-4">
                       <FileTree nodes={tree} projectId={project.id} onSelectFile={onSelectFile} />
                     </div>
                   )}

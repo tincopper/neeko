@@ -1,10 +1,14 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { WSLProject, WSLEntrySession, AgentConfig, AppConfig } from "../../types";
+import { WSLProject, WSLEntrySession } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
+import { useAppContext } from "../../context/app-context";
 import { getDistroIcon } from "../../utils/distros";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import { cn } from "../../utils/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
 
 interface WSLDialogProps {
   isOpen: boolean;
@@ -13,11 +17,10 @@ interface WSLDialogProps {
   existingEntries: WSLEntrySession[];
   /** 传入时直接跳到 select-path 步骤并预选该发行版 */
   selectedEntryId?: string;
-  agents: AgentConfig[];
-  config: AppConfig;
 }
 
-export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEntryId, agents, config }: WSLDialogProps) {
+export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEntryId }: WSLDialogProps) {
+  const { agents, config } = useAppContext();
   const [step, setStep] = useState<"select-distro" | "select-path">("select-distro");
   const [distros, setDistros] = useState<string[]>([]);
   const [selectedDistro, setSelectedDistro] = useState<string>("");
@@ -224,15 +227,15 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
     onClose();
   };
 
-  if (!isOpen) return null;
-
   const previewName = inputPath.replace(/\/$/, "").split("/").filter(Boolean).pop() || inputPath;
   const selectedAgent = agents.find(a => a.id === selectedAgentId);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={handleClose}>
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[460px] max-w-[560px] shadow-xl overflow-visible" onClick={e => e.stopPropagation()}>
-        <h3 className="mb-3 text-lg font-semibold text-text-primary">{step === "select-distro" ? "Select WSL Distro" : "Add WSL Project"}</h3>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent className="max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{step === "select-distro" ? "Select WSL Distro" : "Add WSL Project"}</DialogTitle>
+        </DialogHeader>
 
         {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
 
@@ -267,15 +270,13 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
 
             <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Project Path</label>
             <div className="relative w-full" ref={wrapperRef}>
-              <input
+              <Input
                 ref={inputRef}
-                type="text"
                 value={inputPath}
                 onChange={e => handlePathChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 placeholder="/home/user/my-project"
-                className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -418,19 +419,19 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
           </>
         )}
 
-        <div className="flex justify-end gap-3 mt-5">
-          <button className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-border bg-bg-tertiary text-text-primary hover:bg-bg-hover" onClick={handleClose}>Cancel</button>
+        <DialogFooter>
+          <Button variant="secondary" onClick={handleClose}>Cancel</Button>
           {step === "select-path" && (
-            <button
-              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
+            <Button
+              variant="primary"
               onClick={handleConfirmPath}
               disabled={!inputPath || inputPath === "/"}
             >
               Add
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

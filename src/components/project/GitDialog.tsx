@@ -1,18 +1,22 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "../../utils/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 export type DialogType = "new-branch" | "new-worktree";
 
 export interface DialogState {
   type: DialogType;
-  projectId?: string;           // local project ID
+  projectId?: string;
   branches: string[];
-  projectPath?: string;         // local project path (for quick worktree)
-  source?: {                    // WSL/SSH source
+  projectPath?: string;
+  source?: {
     type: "wsl" | "remote";
-    distro?: string;            // for WSL
-    entryId?: string;           // for SSH
+    distro?: string;
+    entryId?: string;
     projectPath: string;
   };
 }
@@ -21,7 +25,15 @@ interface GitDialogProps {
   dialog: DialogState;
   onClose: () => void;
   onRefreshGit: (projectId: string) => void;
-  onRefreshAfterWslSsh?: () => void;  // 用于 WSL/SSH dialog 完成后刷新
+  onRefreshAfterWslSsh?: () => void;
+}
+
+function ErrorMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mt-3 text-[13px]">
+      {children}
+    </p>
+  );
 }
 
 const GitDialog: React.FC<GitDialogProps> = ({
@@ -38,6 +50,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const [quickName, setQuickName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
     setSubmitting(true);
@@ -48,7 +61,6 @@ const GitDialog: React.FC<GitDialogProps> = ({
         await invoke("wsl_create_branch", { distro: src.distro, projectPath: src.projectPath, branchName: branchName.trim() });
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
-        // SSH git commands need auth — not supported in this dialog yet
         setError("SSH branch creation not yet supported");
         setSubmitting(false);
         return;
@@ -117,36 +129,33 @@ const GitDialog: React.FC<GitDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[400px] max-w-[500px] shadow-xl overflow-visible" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[500px]">
         {dialog.type === "new-branch" ? (
           <>
-            <h3 className="mb-3 text-lg font-semibold text-text-primary">New Branch</h3>
-            <input
-              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
+            <DialogHeader>
+              <DialogTitle>New Branch</DialogTitle>
+            </DialogHeader>
+            <Input
               placeholder="Branch name"
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
               autoFocus
             />
-            {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
-            <div className="flex justify-end gap-3 mt-5">
-              <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleCreateBranch}
-                disabled={!branchName.trim() || submitting}
-              >
+            {error && <ErrorMessage>{error}</ErrorMessage>}
+            <DialogFooter>
+              <Button variant="secondary" onClick={onClose}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreateBranch} disabled={!branchName.trim() || submitting}>
                 {submitting ? "Creating..." : "Create Branch"}
-              </button>
-            </div>
+              </Button>
+            </DialogFooter>
           </>
         ) : (
           <>
-            <h3 className="mb-3 text-lg font-semibold text-text-primary">New Worktree</h3>
+            <DialogHeader>
+              <DialogTitle>New Worktree</DialogTitle>
+            </DialogHeader>
             {dialog.projectId && !dialog.source && (
               <div className="flex items-center gap-2 mb-3.5">
                 <span className={cn("text-xs text-text-muted font-medium uppercase tracking-[0.3px] transition-colors duration-150", !customMode && "text-text-primary")}>Quick</span>
@@ -164,18 +173,16 @@ const GitDialog: React.FC<GitDialogProps> = ({
             {customMode || !dialog.projectId || dialog.source ? (
               <>
                 <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree path</label>
-                <input
-                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
+                <Input
                   placeholder="../my-feature"
                   value={worktreePath}
                   onChange={(e) => setWorktreePath(e.target.value)}
                   autoFocus
                 />
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 mt-3 uppercase tracking-wide">
                   Branch
                 </label>
-                <input
-                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
+                <Input
                   placeholder="Branch name"
                   value={worktreeBranch}
                   onChange={(e) => setWorktreeBranch(e.target.value)}
@@ -186,36 +193,29 @@ const GitDialog: React.FC<GitDialogProps> = ({
                     <option key={b} value={b} />
                   ))}
                 </datalist>
-                <label className="custom-checkbox flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer" style={{ marginTop: 10 }}>
-                  <input
-                    type="checkbox"
+                <div className="mt-2.5">
+                  <Checkbox
                     checked={newBranch}
-                    onChange={(e) => setNewBranch(e.target.checked)}
+                    onCheckedChange={(checked) => setNewBranch(!!checked)}
+                    label="Create new branch"
                   />
-                  <span className="checkbox-mark" />
-                  Create new branch
-                </label>
-                {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
-                <div className="flex justify-end gap-3 mt-5">
-                  <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
-                    Cancel
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
+                </div>
+                {error && <ErrorMessage>{error}</ErrorMessage>}
+                <DialogFooter>
+                  <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                  <Button
+                    variant="primary"
                     onClick={handleCreateWorktree}
-                    disabled={
-                      !worktreePath.trim() || !worktreeBranch.trim() || submitting
-                    }
+                    disabled={!worktreePath.trim() || !worktreeBranch.trim() || submitting}
                   >
                     {submitting ? "Creating..." : "Create Worktree"}
-                  </button>
-                </div>
+                  </Button>
+                </DialogFooter>
               </>
             ) : (
               <>
                 <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree name</label>
-                <input
-                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
+                <Input
                   placeholder="feature-x"
                   value={quickName}
                   onChange={(e) => setQuickName(e.target.value)}
@@ -227,25 +227,23 @@ const GitDialog: React.FC<GitDialogProps> = ({
                     ? `${dialog.projectPath}/.neeko/worktrees/${quickName.trim()}`
                     : "Path: <project>/.neeko/worktrees/<name>"}
                 </div>
-                {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
-                <div className="flex justify-end gap-3 mt-5">
-                  <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
-                    Cancel
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
+                {error && <ErrorMessage>{error}</ErrorMessage>}
+                <DialogFooter>
+                  <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                  <Button
+                    variant="primary"
                     onClick={handleCreateQuickWorktree}
                     disabled={!quickName.trim() || submitting}
                   >
                     {submitting ? "Creating..." : "Create Worktree"}
-                  </button>
-                </div>
+                  </Button>
+                </DialogFooter>
               </>
             )}
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

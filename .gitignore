@@ -11,7 +11,7 @@ build/
 .idea/
 .opencode/
 # .claude/
-.agents/
+# .agents/
 .superset
 *.swp
 *.swo

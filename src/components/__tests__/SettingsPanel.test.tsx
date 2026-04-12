@@ -2,6 +2,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPanel from "../../components/SettingsPanel";
+import { AppProvider } from "../../context/app-context";
 import type { AppConfig } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -22,8 +23,18 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
   const config = { ...defaultConfig, ...overrides };
   const onConfigChange = vi.fn();
   const onClose = vi.fn();
+  const appContext = {
+    config,
+    agents: [],
+    agentInstalledMap: {},
+    loading: false,
+    ideCommandOverrides: config.ideCommandOverrides ?? {},
+    showToast: vi.fn(),
+  };
   const result = render(
-    <SettingsPanel config={config} onConfigChange={onConfigChange} onClose={onClose} />
+    <AppProvider value={appContext}>
+      <SettingsPanel onConfigChange={onConfigChange} onClose={onClose} />
+    </AppProvider>
   );
   return { ...result, onConfigChange, onClose, config };
 }

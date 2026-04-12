@@ -1,10 +1,15 @@
 ﻿import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig, AppConfig } from "../../types";
+import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
+import { useAppContext } from "../../context/app-context";
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../utils/idePresets";
 import serverIcon from "../../assets/server.svg";
 import { cn } from "../../utils/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 interface RemoteDialogProps {
   isOpen: boolean;
@@ -14,8 +19,6 @@ interface RemoteDialogProps {
   existingEntries: RemoteEntrySession[];
   addProjectMode?: boolean;
   selectedEntryId?: string;
-  agents: AgentConfig[];
-  config: AppConfig;
   /** 已有服务器的 auth 缓存（entryId → AuthMethod），用于向已有服务器添加项目时的路径补全 */
   existingEntryAuth?: Map<string, AuthMethod>;
 }
@@ -27,10 +30,9 @@ export function RemoteDialog({
   existingEntries,
   addProjectMode = false,
   selectedEntryId: selectedEntryIdProp,
-  agents,
-  config,
   existingEntryAuth,
 }: RemoteDialogProps) {
+  const { agents, config } = useAppContext();
   const [step, setStep] = useState<"server-config" | "add-project">(
     addProjectMode ? "add-project" : "server-config"
   );
@@ -298,42 +300,39 @@ export function RemoteDialog({
 
   const previewName = projectPath.replace(/\/$/, "").split("/").filter(Boolean).pop() || projectPath;
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={handleClose}>
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[460px] max-w-[560px] shadow-xl overflow-visible" onClick={e => e.stopPropagation()}>
-        <h3 className="mb-3 text-lg font-semibold text-text-primary">{step === "server-config" ? "Add Remote Server" : "Add Remote Project"}</h3>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+      <DialogContent className="min-w-[460px] max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{step === "server-config" ? "Add Remote Server" : "Add Remote Project"}</DialogTitle>
+        </DialogHeader>
 
         {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
 
         {step === "server-config" ? (
           <>
             <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Host</label>
-            <input
+            <Input
               type="text"
               value={host}
               onChange={e => setHost(e.target.value)}
               placeholder="192.168.1.100 or example.com"
-              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
             <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Port</label>
-            <input
+            <Input
               type="number"
               value={port}
               onChange={e => setPort(e.target.value)}
               placeholder="22"
-              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
             <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Username</label>
-            <input
+            <Input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               placeholder="root"
-              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
             <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Auth Type</label>
@@ -353,36 +352,31 @@ export function RemoteDialog({
             {authType === "password" ? (
               <>
                 <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Password</label>
-                <input
+                <Input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 />
               </>
             ) : (
               <>
                 <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Key File Path</label>
-                <input
+                <Input
                   type="text"
                   value={keyPath}
                   onChange={e => setKeyPath(e.target.value)}
                   placeholder="~/.ssh/id_rsa"
-                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 />
               </>
             )}
 
-            <label className="custom-checkbox flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer mt-3.5">
-              <input
-                type="checkbox"
-                checked={saveCredentials}
-                onChange={e => setSaveCredentials(e.target.checked)}
-              />
-              <span className="checkbox-mark" />
-              Save credentials (stored locally with Base64 obfuscation)
-            </label>
+            <Checkbox
+              className="mt-3.5"
+              checked={saveCredentials}
+              onCheckedChange={c => setSaveCredentials(!!c)}
+              label="Save credentials (stored locally with Base64 obfuscation)"
+            />
           </>
         ) : (
           <>
@@ -548,27 +542,27 @@ export function RemoteDialog({
           </>
         )}
 
-        <div className="flex justify-end gap-3 mt-5">
-          <button className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-border bg-bg-tertiary text-text-primary hover:bg-bg-hover" onClick={handleClose}>Cancel</button>
+        <DialogFooter>
+          <Button variant="secondary" onClick={handleClose}>Cancel</Button>
           {step === "server-config" ? (
-            <button
-              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
+            <Button
+              variant="primary"
               onClick={handleConnect}
               disabled={!host || !username || connecting}
             >
               {connecting ? "Connecting..." : "Connect"}
-            </button>
+            </Button>
           ) : (
-            <button
-              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
+            <Button
+              variant="primary"
               onClick={handleAddProject}
               disabled={!projectName || !projectPath}
             >
               Add
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
