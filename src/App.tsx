@@ -46,7 +46,7 @@ function App() {
     activeProject, setActiveProject,
     loading,
     pendingPath, setPendingPath,
-    agents,
+    agents, agentInstalledMap,
     sideTerminalOpenMap, setSideTerminalOpenMap,
     activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
@@ -299,6 +299,7 @@ function App() {
         activeRemoteWorktreeBranch={remoteActions.remoteActiveWtBranch}
         showAddMenu={showAddMenu}
         loading={loading}
+        installedMap={agentInstalledMap}
         onOpenSettings={callbacks.handleToggleSettings}
         onToggleAddMenu={callbacks.handleToggleAddMenu}
         onAddProject={callbacks.handleAddProjectClick}

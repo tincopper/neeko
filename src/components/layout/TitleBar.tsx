@@ -17,6 +17,7 @@ interface TitleBarProps {
   activeRemoteWorktreeBranch: string;
   showAddMenu: boolean;
   loading: boolean;
+  installedMap: Record<string, boolean>;
   onOpenSettings: () => void;
   onToggleAddMenu: () => void;
   onAddProject: () => void;
@@ -38,6 +39,7 @@ function TitleBar({
   activeRemoteWorktreeBranch,
   showAddMenu,
   loading,
+  installedMap,
   onOpenSettings,
   onToggleAddMenu,
   onAddProject,
@@ -94,6 +96,7 @@ function TitleBar({
             <AgentSelector
               projectId={activeProject.id}
               currentAgentId={activeProject.selected_agent}
+              installedMap={installedMap}
               onShowToast={showToast}
               onSelectAgent={(agent) => {
                 onSelectLocalAgent(agent);
@@ -117,6 +120,7 @@ function TitleBar({
               projectId={activeWslProject.project.id}
               currentAgentId={activeWslProject.project.selected_agent}
               skipBackendPersist
+              installedMap={installedMap}
               onShowToast={showToast}
               onSelectAgent={(agent) => onSelectWslAgent(agent)}
             />
@@ -137,6 +141,7 @@ function TitleBar({
               projectId={activeRemoteProject.project.id}
               currentAgentId={activeRemoteProject.project.selected_agent}
               skipBackendPersist
+              installedMap={installedMap}
               onShowToast={showToast}
               onSelectAgent={(agent) => onSelectRemoteAgent(agent)}
             />

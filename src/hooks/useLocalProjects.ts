@@ -11,6 +11,7 @@ export function useLocalProjects() {
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [agentInstalledMap, setAgentInstalledMap] = useState<Record<string, boolean>>({});
   const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, Set<string>>>({});
 
   const activeProjectIdRef = useRef<string | null>(null);
@@ -45,6 +46,8 @@ export function useLocalProjects() {
     try {
       const agentList = await invoke<AgentConfig[]>("list_agents");
       setAgents(agentList);
+      const installedMap = await invoke<Record<string, boolean>>("check_agents_installed", {});
+      setAgentInstalledMap(installedMap);
     } catch (error) {
       console.error("[App] Failed to load agents:", error);
     }
@@ -180,7 +183,7 @@ export function useLocalProjects() {
     activeProject, setActiveProject,
     loading, setLoading,
     pendingPath, setPendingPath,
-    agents,
+    agents, agentInstalledMap,
     sideTerminalOpenMap, setSideTerminalOpenMap,
     activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
