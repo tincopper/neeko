@@ -97,13 +97,6 @@ function App() {
   // ── Width persistence ──
   const suppressTerminalResizeRef = useRef(false);
 
-  // When switching local projects, always reset that project's activeWorktreePath
-  // so the main terminal is shown instead of a stale worktree terminal.
-  const handleSelectProjectWithClear = useCallback(async (projectId: string) => {
-    clearWorktreeForProject(projectId);
-    await handleSelectProject(projectId);
-  }, [clearWorktreeForProject, handleSelectProject]);
-
   // Auto-switch back to main terminal when active worktree is deleted.
   // The terminal cache is NOT destroyed, so the session persists for re-attachment.
   useEffect(() => {
@@ -181,6 +174,14 @@ function App() {
     setWorktreeDiffState(null);
   }, [activeProjectId]);
 
+  // When switching local projects, always reset that project's activeWorktreePath
+  // so the main terminal is shown instead of a stale worktree terminal.
+  const handleSelectProjectWithClear = useCallback(async (projectId: string) => {
+    clearWorktreeForProject(projectId);
+    setWorktreeDiffState(null);
+    await handleSelectProject(projectId);
+  }, [clearWorktreeForProject, handleSelectProject, setWorktreeDiffState]);
+
   // ── Add menu ──
   const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -240,7 +241,7 @@ function App() {
     terminalShell: config.shell ?? '',
     terminalFontFamily: config.fontFamily ?? '',
     activeProject, projects,
-    setProjects, setActiveProject,
+    setProjects, setActiveProject, setActiveProjectId,
     handleOpenIde, showToast,
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
     setOpenedWorktrees, activeProjectIdRef,

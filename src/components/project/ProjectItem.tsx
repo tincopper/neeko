@@ -34,7 +34,7 @@ interface ProjectItemProps {
   onOpenDialog: (dialog: DialogState) => void;
   onOpenIde?: (projectId: string) => void;
   onOpenSideTerminal?: (projectId: string) => void;
-  onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
+  onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
@@ -462,7 +462,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
               {/* ── Worktrees ── */}
               <WorktreeList
                 worktrees={worktrees}
-                currentBranch={project.git_info?.current_branch ?? ""}
                 projectId={project.id}
                 expandedSections={expandedSections}
                 toggleSection={toggleSection}

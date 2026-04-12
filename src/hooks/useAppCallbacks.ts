@@ -16,6 +16,7 @@ export interface UseAppCallbacksParams {
   projects: Project[];
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   setActiveProject: React.Dispatch<React.SetStateAction<Project | null>>;
+  setActiveProjectId: React.Dispatch<React.SetStateAction<string | null>>;
   // IDE
   handleOpenIde: (project: { id: string; selected_ide: string | null }) => Promise<void>;
   // Toast
@@ -62,7 +63,7 @@ export interface UseAppCallbacksResult {
   handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
   handleOpenIdeForSidebar: (projectId: string) => void;
   handleBackToMainTerminal: (projectId: string) => void;
-  handleOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
+  handleOpenWorktreeTerminal: (projectId: string, worktreePath: string, branch: string) => void;
   handleSelectWorktreeFile: (worktreePath: string, filePath: string) => void;
   handleWorktreeDiffBack: () => void;
   handleSaveProjectSettings: (projectId: string, agentId: string | null, ideCommand: string | null) => Promise<void>;
@@ -82,7 +83,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
   const {
     agentCommandOverrides,
     activeProject, projects,
-    setProjects, setActiveProject,
+    setProjects, setActiveProject, setActiveProjectId,
     handleOpenIde, showToast,
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
     setOpenedWorktrees, activeProjectIdRef, saveWorktreeState,
@@ -148,21 +149,26 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
       setActiveWorktreePath(null);
       setActiveWorktreeBranch("");
     }
+    setWorktreeDiffState(null);
     invoke("set_view_terminal", { projectId }).catch(() => {});
-  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch]);
+  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, setWorktreeDiffState]);
 
-  const handleOpenWorktreeTerminal = useCallback((worktreePath: string, branch: string) => {
+  const handleOpenWorktreeTerminal = useCallback(async (projectId: string, worktreePath: string, branch: string) => {
+    // 若目标项目未激活，先激活它，确保 MainContent 的 {activeProject ?} 分支能渲染
+    if (activeProjectIdRef.current !== projectId) {
+      setActiveProjectId(projectId);
+      await invoke("set_active_project", { projectId });
+    }
+    setWorktreeDiffState(null);
     setActiveWorktreePath(worktreePath);
     setActiveWorktreeBranch(branch);
     setOpenedWorktrees((prev) => {
       if (prev.some((w) => w.path === worktreePath)) return prev;
       return [...prev, { path: worktreePath, branch }];
     });
-    if (activeProjectIdRef.current) {
-      saveWorktreeState(activeProjectIdRef.current, worktreePath);
-      invoke("set_view_terminal", { projectId: activeProjectIdRef.current }).catch(() => {});
-    }
-  }, [setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState, activeProjectIdRef]);
+    saveWorktreeState(projectId, worktreePath);
+    invoke("set_view_terminal", { projectId }).catch(() => {});
+  }, [setActiveProjectId, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState, activeProjectIdRef, setWorktreeDiffState]);
 
   // ── Worktree file diff ──
   const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {

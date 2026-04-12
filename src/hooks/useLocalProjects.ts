@@ -131,6 +131,10 @@ export function useLocalProjects() {
     if (activeProjectIdRef.current !== projectId) {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
+      // 先把 active_view 置为 Terminal，确保 activeProject 在 MainContent 中
+      // 被渲染出来（activeProject !== null），随后再切换到 diff 视图才生效
+      await invoke("set_view_terminal", { projectId });
+      await loadProjects();
     }
     await invoke("set_view_diff", { projectId, filePath });
     await loadProjects();
