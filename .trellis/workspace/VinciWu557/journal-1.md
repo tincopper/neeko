@@ -234,3 +234,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 重构 TitleBar 布局并添加多 Tab 终端支持
+
+**Date**: 2026-04-12
+**Task**: 重构 TitleBar 布局并添加多 Tab 终端支持
+
+### Summary
+
+重构 TitleBar 为左右布局，添加 Terminal Tabs 支持，优化 Agent 执行逻辑
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8441037` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
