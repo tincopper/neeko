@@ -3,8 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../utils/idePresets";
 import { getAgentIconSrc } from "../utils/agents";
 import type { AppConfig, DiffMode, AgentConfig } from "../types";
+import { useAppContext } from "../context/app-context";
 import { cn } from "../utils/cn";
-import { EditorIcon, TerminalIcon, CodeIcon, GridIcon, GitLogoIcon, CloseIcon } from "./icons";
+import { EditorIcon, TerminalIcon, CodeIcon, GridIcon, GitLogoIcon, CloseIcon, AppearanceIcon } from "./icons";
+import { Input, Button } from "./ui";
 
 // re-export for backward compatibility
 export type { AppConfig, DiffMode };
@@ -40,7 +42,7 @@ export const PRESET_SHELLS: { label: string; value: string }[] = (
       ]
 );
 
-type NavCategory = "editor" | "terminal" | "agents" | "ide" | "git";
+type NavCategory = "editor" | "terminal" | "agents" | "ide" | "git" | "appearance";
 
 interface NavItem {
   id: NavCategory;
@@ -49,6 +51,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { id: "appearance", label: "Appearance", icon: <AppearanceIcon size={16} /> },
   { id: "editor", label: "Editor", icon: <EditorIcon size={16} /> },
   { id: "terminal", label: "Terminal", icon: <TerminalIcon size={16} /> },
   { id: "agents", label: "Agents", icon: <GridIcon size={16} /> },
@@ -57,12 +60,12 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 interface SettingsPanelProps {
-  config: AppConfig;
   onConfigChange: (next: AppConfig) => void;
   onClose: () => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConfigChange, onClose }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange, onClose }) => {
+  const { config } = useAppContext();
   const [activeNav, setActiveNav] = useState<NavCategory>("editor");
   const [shellInput, setShellInput] = useState(config.shell);
 
@@ -331,7 +334,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                     {fontListOpen && (
                       <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-bg-secondary border border-accent-blue rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-[100] overflow-hidden">
                         <div className="py-2 px-2 pb-1.5 border-b border-border">
-                          <input className="w-full box-border py-1 px-2 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Search fonts..." value={fontSearch} onChange={e => setFontSearch(e.target.value)} autoFocus spellCheck={false} />
+                          <Input className="w-full box-border py-1 px-2 text-[0.86em]" type="text" placeholder="Search fonts..." value={fontSearch} onChange={e => setFontSearch(e.target.value)} autoFocus spellCheck={false} />
                         </div>
                         <div className="w-full max-h-[200px] overflow-y-auto">
                           {fontsLoading ? (
@@ -372,9 +375,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                       </button>
                     ))}
                   </div>
-                  <input
+                  <Input
                     className={cn(
-                      "w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue",
+                      "py-[7px] px-2.5 text-[0.86em]",
                       isCustomShell && "!border-accent-blue"
                     )}
                     type="text" placeholder="Custom path, e.g. /usr/bin/zsh" value={shellInput}
@@ -409,7 +412,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                           )}
                           <span className="text-text-primary font-medium min-w-[100px] shrink-0">{agent.name}</span>
                           {isEditing ? (
-                            <input className="flex-1 min-w-0 py-0.5 px-1.5 bg-bg-primary border border-accent-blue rounded text-text-primary font-mono text-[0.82em] outline-none" value={editingValue} autoFocus spellCheck={false}
+                            <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={editingValue} autoFocus spellCheck={false}
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => saveAgentOverride(agent.id)}
                               onKeyDown={e => { if (e.key === "Enter") saveAgentOverride(agent.id); if (e.key === "Escape") cancelPresetEdit(); }} />
@@ -449,10 +452,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                     </div>
                   )}
                   <div className="flex flex-col gap-1.5 w-full">
-                    <input className="w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Name, e.g. My Agent" value={newAgentName} onChange={e => setNewAgentName(e.target.value)} spellCheck={false} />
-                    <input className="w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Command, e.g. my-agent" value={newAgentCommand} onChange={e => setNewAgentCommand(e.target.value)} spellCheck={false} />
-                    <input className="w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Args (comma separated), e.g. --verbose, --model gpt-4" value={newAgentArgs} onChange={e => setNewAgentArgs(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }} spellCheck={false} />
-                    <button className="self-end py-1 px-3.5 bg-accent-blue border-none rounded text-white text-[0.82em] cursor-pointer transition-opacity duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-85" onClick={addCustomAgent} disabled={!newAgentName.trim() || !newAgentCommand.trim()}>Add Agent</button>
+                    <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Name, e.g. My Agent" value={newAgentName} onChange={e => setNewAgentName(e.target.value)} spellCheck={false} />
+                    <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Command, e.g. my-agent" value={newAgentCommand} onChange={e => setNewAgentCommand(e.target.value)} spellCheck={false} />
+                    <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Args (comma separated), e.g. --verbose, --model gpt-4" value={newAgentArgs} onChange={e => setNewAgentArgs(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }} spellCheck={false} />
+                    <Button variant="primary" size="sm" className="self-end" onClick={addCustomAgent} disabled={!newAgentName.trim() || !newAgentCommand.trim()}>Add Agent</Button>
                   </div>
                 </div>
               </>
@@ -477,7 +480,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                           <img src={iconSrc} className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain" alt="" />
                           <span className="text-text-primary font-medium min-w-[100px] shrink-0">{ide.name}</span>
                           {isEditing ? (
-                            <input className="flex-1 min-w-0 py-0.5 px-1.5 bg-bg-primary border border-accent-blue rounded text-text-primary font-mono text-[0.82em] outline-none" value={editingValue} autoFocus spellCheck={false}
+                            <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={editingValue} autoFocus spellCheck={false}
                               onChange={e => setEditingValue(e.target.value)}
                               onBlur={() => savePresetOverride(ide.id)}
                               onKeyDown={e => { if (e.key === "Enter") savePresetOverride(ide.id); if (e.key === "Escape") cancelPresetEdit(); }} />
@@ -514,9 +517,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                     </div>
                   )}
                   <div className="flex flex-col gap-1.5 w-full">
-                    <input className="w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Name, e.g. My Editor" value={newIdeName} onChange={e => setNewIdeName(e.target.value)} spellCheck={false} />
-                    <input className="w-full box-border py-[7px] px-2.5 bg-bg-tertiary border border-border rounded text-text-primary text-[0.86em] font-mono outline-none transition-[border-color] duration-150 focus:border-accent-blue" type="text" placeholder="Command or path, e.g. D:/zed.exe" value={newIdeCommand} onChange={e => setNewIdeCommand(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomIde(); }} spellCheck={false} />
-                    <button className="self-end py-1 px-3.5 bg-accent-blue border-none rounded text-white text-[0.82em] cursor-pointer transition-opacity duration-150 disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-85" onClick={addCustomIde} disabled={!newIdeName.trim() || !newIdeCommand.trim()}>Add IDE</button>
+                    <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Name, e.g. My Editor" value={newIdeName} onChange={e => setNewIdeName(e.target.value)} spellCheck={false} />
+                    <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Command or path, e.g. D:/zed.exe" value={newIdeCommand} onChange={e => setNewIdeCommand(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomIde(); }} spellCheck={false} />
+                    <Button variant="primary" size="sm" className="self-end" onClick={addCustomIde} disabled={!newIdeName.trim() || !newIdeCommand.trim()}>Add IDE</Button>
                   </div>
                 </div>
               </>
@@ -530,6 +533,41 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
                   <span>No Git settings yet</span>
                 </div>
               </>
+            )}
+
+            {activeNav === "appearance" && (
+              <div className="flex flex-col">
+                <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
+                <label className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Theme</label>
+                <div className="flex gap-3">
+                  {/* Dark card */}
+                  <button
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                      config.theme === "dark" ? "border-accent-blue" : "border-transparent"
+                    )}
+                    onClick={() => onConfigChange({ ...config, theme: "dark" })}
+                  >
+                    <div className="w-16 h-10 rounded border border-border bg-[#282c34] flex items-center justify-center">
+                      <span className="text-[#61afef] text-xs font-semibold">Aa</span>
+                    </div>
+                    <span className="text-sm text-text-primary">Dark</span>
+                  </button>
+                  {/* Light card */}
+                  <button
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                      config.theme === "light" ? "border-accent-blue" : "border-transparent"
+                    )}
+                    onClick={() => onConfigChange({ ...config, theme: "light" })}
+                  >
+                    <div className="w-16 h-10 rounded border border-border bg-[#ffffff] flex items-center justify-center">
+                      <span className="text-[#2f7cd3] text-xs font-semibold">Aa</span>
+                    </div>
+                    <span className="text-sm text-text-primary">Light</span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

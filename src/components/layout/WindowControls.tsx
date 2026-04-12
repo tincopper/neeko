@@ -18,13 +18,13 @@ function WindowControls() {
   }, []);
 
   return (
-    <div className="flex items-stretch shrink-0 ml-auto">
+    <div className="flex items-stretch shrink-0">
       <button
         className="wc-btn"
         onClick={() => appWindow.minimize()}
         title="Minimize"
       >
-        <Minus size={10} strokeWidth={1.5} />
+        <Minus size={14} strokeWidth={1.5} />
       </button>
       <button
         className="wc-btn"
@@ -32,9 +32,9 @@ function WindowControls() {
         title={isMaximized ? "Restore" : "Maximize"}
       >
         {isMaximized ? (
-          <Copy size={10} strokeWidth={1.2} />
+          <Copy size={14} strokeWidth={1.2} />
         ) : (
-          <Square size={10} strokeWidth={1.2} />
+          <Square size={14} strokeWidth={1.2} />
         )}
       </button>
       <button
@@ -42,7 +42,7 @@ function WindowControls() {
         onClick={() => appWindow.close()}
         title="Close"
       >
-        <X size={10} strokeWidth={1.5} />
+        <X size={14} strokeWidth={1.5} />
       </button>
     </div>
   );

@@ -139,14 +139,14 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   return (
     <>
       <div
-        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
         onClick={(e) => toggleSection("__worktrees__", e)}
       >
         <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", worktreesExpanded && "rotate-90")} />
         Worktrees
       </div>
       {worktreesExpanded && (
-        <div className="py-0 pb-1 pl-4">
+        <div className="pl-4">
           {filtered.map((wt) => {
             const isExpanded = expandedWt.has(wt.path);
             const wtFiles = changedFiles[wt.path] ?? [];
@@ -157,7 +157,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
               <div key={wt.path} className="mb-0.5">
                 <div
                   className={cn(
-                    "flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
+                    "flex items-center gap-1 py-1 px-2 text-sm rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
                     deleting === wt.path && "wt-deleting"
                   )}
                   onClick={(e) => {
@@ -190,7 +190,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="flex-1 text-base truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
+                    <span className="flex-1 text-sm truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
                       {wt.path.split(/[\\/]/).pop()}
                     </span>
                   )}
@@ -198,7 +198,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                     <span className="wt-spinner" title="Removing..." />
                   ) : (
                     <button
-                      className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red opacity-0 transition-opacity duration-150 text-base px-1.5 py-0.5 group-hover:opacity-100 hover:opacity-100"
+                      className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red opacity-0 transition-opacity duration-150 text-sm px-1.5 py-0.5 group-hover:opacity-100 hover:opacity-100"
                       onClick={(e) => handleRemove(wt.path, wt.branch, e)}
                       title="Remove worktree and branch"
                     >
@@ -217,7 +217,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                     {wtTree.length > 0 ? (
                       <>
                         <div
-                          className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+                          className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
                           onClick={(e) => toggleSection("wt-changes:" + wt.path, e)}
                         >
                           <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["wt-changes:" + wt.path] !== false && "rotate-90")} />

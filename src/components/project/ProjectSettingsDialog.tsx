@@ -2,6 +2,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import AgentIcon from "../layout/AgentIcon";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Button } from "../ui/button";
 import type { AppConfig, AgentConfig } from "../../types";
 import { cn } from "../../utils/cn";
 
@@ -72,14 +74,6 @@ function ProjectSettingsDialog({
     return () => document.removeEventListener("mousedown", handler);
   }, [ideOpen]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
-
   const handleSave = useCallback(async () => {
     let ideCommand: string | null = null;
     if (selectedIdeId) {
@@ -123,9 +117,11 @@ function ProjectSettingsDialog({
   const ideDisplay = resolveIdeDisplay(selectedIdeId);
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[400px] max-w-[500px] shadow-xl overflow-visible" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 text-lg font-semibold text-text-primary">Project Settings</h3>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="min-w-[400px] max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Project Settings</DialogTitle>
+        </DialogHeader>
         <p className="font-mono text-sm text-text-muted break-all mb-4">{projectName}</p>
 
         <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>Agent</label>
@@ -195,12 +191,12 @@ function ProjectSettingsDialog({
           )}
         </div>
 
-        <div className="flex justify-end gap-3 mt-5">
-          <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>Cancel</button>
-          <button className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSave}>Save</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 export default React.memo(ProjectSettingsDialog);

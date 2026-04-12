@@ -2,11 +2,11 @@ import React, { useCallback } from "react";
 import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
-import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
+import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod } from "../types";
+import { useAppContext } from "../context/app-context";
 
 
 interface MainContentProps {
-  config: AppConfig;
   // local
   activeProject: Project | null;
   activeWorktreePath: string | null;
@@ -43,7 +43,6 @@ interface MainContentProps {
 }
 
 function MainContent({
-  config,
   activeProject,
   activeWorktreePath,
   activeWorktreeBranch,
@@ -74,6 +73,8 @@ function MainContent({
   onWorktreeDiffBack,
   suppressResizeRef,
 }: MainContentProps) {
+  const { config } = useAppContext();
+
   // 稳定的 onSessionReady 回调，避免 WSL/Remote TerminalView 因回调引用变化重渲染
   const onWslSessionReady = useCallback((pid: string) => {
     setWslOpenSessions(prev => new Set(prev).add(pid));

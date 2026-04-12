@@ -1,14 +1,13 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
-import type { AppConfig } from "../SettingsPanel";
-import type { AgentConfig } from "../../types";
+import { useAppContext } from "../../context/app-context";
 import AgentIcon from "../layout/AgentIcon";
 import { cn } from "../../utils/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Button } from "../ui/button";
 
 interface AddProjectModalProps {
   pendingPath: string;
-  agents: AgentConfig[];
-  config: AppConfig;
   onConfirm: (agentId: string | null, ideCommand: string | null) => Promise<void>;
   onCancel: () => void;
   loading: boolean;
@@ -16,12 +15,11 @@ interface AddProjectModalProps {
 
 function AddProjectModal({
   pendingPath,
-  agents,
-  config,
   onConfirm,
   onCancel,
   loading,
 }: AddProjectModalProps) {
+  const { agents, config } = useAppContext();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [pendingAgentOpen, setPendingAgentOpen] = useState(false);
   const pendingAgentRef = useRef<HTMLDivElement>(null);
@@ -29,7 +27,6 @@ function AddProjectModal({
   const [pendingIdeOpen, setPendingIdeOpen] = useState(false);
   const pendingIdeRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭 dropdown
   useEffect(() => {
     if (!pendingIdeOpen) return;
     const handler = (e: MouseEvent) => {
@@ -69,20 +66,18 @@ function AddProjectModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]">
-      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[400px] max-w-[500px] shadow-xl overflow-visible" key={pendingPath}>
-        <h3 className="mb-3 text-lg font-semibold text-text-primary">Add Project</h3>
+    <Dialog open onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="max-w-[500px]" key={pendingPath}>
+        <DialogHeader>
+          <DialogTitle>Add Project</DialogTitle>
+        </DialogHeader>
         <p className="font-mono text-sm text-text-muted break-all mb-4">{pendingPath}</p>
 
-        {/* Agent 选择 */}
-        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>
+        {/* Agent selection */}
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
           Agent
         </label>
-        <div
-          className="relative"
-          ref={pendingAgentRef}
-          style={{ width: "100%", marginTop: 4 }}
-        >
+        <div className="relative" ref={pendingAgentRef}>
           <button
             className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
             onClick={() => setPendingAgentOpen((v) => !v)}
@@ -101,7 +96,7 @@ function AddProjectModal({
               </>
             )}
             <span className="text-xs text-text-secondary ml-auto">
-              {pendingAgentOpen ? "\u2212" : "+"}
+              {pendingAgentOpen ? "−" : "+"}
             </span>
           </button>
           {pendingAgentOpen && (
@@ -130,15 +125,11 @@ function AddProjectModal({
           )}
         </div>
 
-        {/* IDE 选择 */}
-        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>
+        {/* IDE selection */}
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 mt-3 uppercase tracking-wide">
           IDE
         </label>
-        <div
-          className="relative"
-          ref={pendingIdeRef}
-          style={{ width: "100%", marginTop: 4 }}
-        >
+        <div className="relative" ref={pendingIdeRef}>
           <button
             className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
             onClick={() => setPendingIdeOpen((v) => !v)}
@@ -163,7 +154,7 @@ function AddProjectModal({
               </>
             )}
             <span className="text-xs text-text-secondary ml-auto">
-              {pendingIdeOpen ? "\u2212" : "+"}
+              {pendingIdeOpen ? "−" : "+"}
             </span>
           </button>
           {pendingIdeOpen && (
@@ -206,16 +197,15 @@ function AddProjectModal({
           )}
         </div>
 
-        <div className="flex justify-end gap-3 mt-5">
-          <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onCancel} disabled={loading}>
-            Cancel
-          </button>
-          <button className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleConfirm} disabled={loading}>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>Cancel</Button>
+          <Button variant="primary" onClick={handleConfirm} disabled={loading}>
             {loading ? "Adding..." : "Add"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
+
 export default React.memo(AddProjectModal);

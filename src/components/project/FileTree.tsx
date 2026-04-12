@@ -1,6 +1,7 @@
-﻿import React, { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { FileChange } from "../../types";
 import { fileIconSrc } from "../../utils/fileIcons";
+import { Badge } from "../ui/badge";
 
 export interface TreeNode {
   name: string;
@@ -83,12 +84,12 @@ function compactTree(nodes: TreeNode[]) {
   }
 }
 
-const STATUS_BADGE: Record<FileChange["status"], { label: string; cls: string }> = {
-  Modified: { label: "M", cls: "gh-badge-modified" },
-  Added: { label: "A", cls: "gh-badge-added" },
-  Deleted: { label: "D", cls: "gh-badge-deleted" },
-  Renamed: { label: "R", cls: "gh-badge-renamed" },
-  Untracked: { label: "U", cls: "gh-badge-untracked" },
+const STATUS_BADGE: Record<FileChange["status"], { label: string; variant: "modified" | "added" | "deleted" | "default" }> = {
+  Modified: { label: "M", variant: "modified" },
+  Added: { label: "A", variant: "added" },
+  Deleted: { label: "D", variant: "deleted" },
+  Renamed: { label: "R", variant: "default" },
+  Untracked: { label: "U", variant: "default" },
 };
 
 interface FileTreeProps {
@@ -124,7 +125,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
           return (
             <React.Fragment key={node.path}>
               <div
-                className="flex items-center gap-1 py-0.5 pr-2 text-base cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
+                className="flex items-center gap-1 py-0.5 pr-2 text-sm cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
                 style={{ paddingLeft: indent }}
                 onClick={(e) => { e.stopPropagation(); toggle(node.path); }}
                 title={node.path}
@@ -155,7 +156,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
         return (
           <div
             key={node.path}
-            className="flex items-center gap-1 py-0.5 pr-2 text-base cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
+            className="flex items-center gap-1 py-0.5 pr-2 text-sm cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
             style={{ paddingLeft: indent }}
             onClick={(e) => {
               e.stopPropagation();
@@ -171,7 +172,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
               height={16}
             />
             <span className="flex-1 text-text-secondary truncate group-hover:text-text-primary">{node.name}</span>
-            <span className={`gh-badge ${badge.cls}`}>{badge.label}</span>
+            <Badge variant={badge.variant}>{badge.label}</Badge>
           </div>
         );
       })}
