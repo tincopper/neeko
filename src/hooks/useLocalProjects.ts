@@ -11,7 +11,6 @@ export function useLocalProjects() {
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, Set<string>>>({});
 
   const activeProjectIdRef = useRef<string | null>(null);
   const selectProjectRef = useRef<(id: string) => void>(() => {});
@@ -101,16 +100,7 @@ export function useLocalProjects() {
         }
         return next;
       });
-      setSideTerminalOpenMap(prev => {
-        const next = { ...prev };
-        delete next[projectId];
-        return next;
-      });
-      // 销毁所有可能的 side terminal 缓存
-      for (let i = 0; i < 4; i++) {
-        destroyTerminalCache(`${projectId}:side:${i}`);
-      }
-      destroyTerminalCache(`${projectId}:side`);
+      destroyTerminalCache(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
@@ -181,7 +171,6 @@ export function useLocalProjects() {
     loading, setLoading,
     pendingPath, setPendingPath,
     agents,
-    sideTerminalOpenMap, setSideTerminalOpenMap,
     activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,

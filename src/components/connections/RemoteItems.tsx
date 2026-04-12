@@ -6,7 +6,7 @@ import FileTree, { buildTree } from "../project/FileTree";
 import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
-import { BranchIcon, ChevronRightIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
 // Confirm dialog for worktree removal
 interface WtConfirmState {
@@ -287,7 +287,6 @@ interface ProjectItemCardProps {
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
   onRemoveWorktree: (path: string, branch: string) => void;
-  onOpenSideTerminal?: () => void;
   onRemoveProject: () => void;
   onOpenIde?: () => void;
   onOpenDialog?: (type: string, branches: string[]) => void;
@@ -305,7 +304,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onSelectProject, onSelectFile,
   onCheckoutBranch, onCommitRenameBranch,
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
-  onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
+  onRemoveProject, onOpenIde, onOpenDialog,
   currentBranch, ideCommandOverrides,
   onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
@@ -389,14 +388,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
       });
     }
 
-    if (isActive && onOpenSideTerminal) {
-      items.push({
-        label: "Open Side Terminal",
-        shortcut: "Ctrl+Alt+T",
-        action: () => onOpenSideTerminal(),
-      });
-    }
-
     if (project.git_info) {
       items.push({
         label: "New Branch",
@@ -473,13 +464,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
         )}
 
         <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
-          {/* Side Terminal 按钮 */}
-          {isActive && onOpenSideTerminal && (
-            <button className="gh-icon-btn" title="Open side terminal (Ctrl+Alt+T)"
-              onClick={() => onOpenSideTerminal()}>
-              <SideTerminalIcon size={11} />
-            </button>
-          )}
           {/* Git 操作下拉菜单 */}
           {gitInfo && onOpenDialog && (
             <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
@@ -593,7 +577,6 @@ interface WSLProjectCardProps {
   onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
@@ -607,7 +590,7 @@ interface WSLProjectCardProps {
 const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
   project, entryId, distro, isActive, hasSession,
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
-  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal, onOpenDialog,
+  onOpenIde, onOpenWorktreeTerminal, onOpenDialog,
   ideCommandOverrides,
   onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
@@ -650,11 +633,6 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
     );
   }, [distro, project.path, project.id, onRefreshGit]);
 
-  const handleOpenSide = useMemo(() =>
-    onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined,
-    [onOpenSideTerminal, entryId, project.id]
-  );
-
   const handleRemove = useCallback(() => {
     onRemoveProject(entryId, project.id);
   }, [onRemoveProject, entryId, project.id]);
@@ -684,7 +662,6 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
       onOpenWorktreeTerminal={handleOpenWorktree}
       onCommitRenameWorktree={handleRenameWorktree}
       onRemoveWorktree={handleRemoveWorktree}
-      onOpenSideTerminal={handleOpenSide}
       onRemoveProject={handleRemove}
       onOpenIde={handleOpenIde}
       onOpenDialog={handleOpenDialog}
@@ -711,7 +688,6 @@ interface WSLItemProps {
   onRemoveProject: (entryId: string, projectId: string) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
@@ -735,7 +711,6 @@ export const WSLItem = React.memo<WSLItemProps>(({
   onRemoveProject,
   onRemoveEntry,
   onAddProject,
-  onOpenSideTerminal,
   onSelectFile,
   onRefreshGit,
   onOpenIde,
@@ -796,7 +771,6 @@ export const WSLItem = React.memo<WSLItemProps>(({
                   onSelectFile={onSelectFile}
                   onRefreshGit={onRefreshGit}
                   onOpenIde={onOpenIde}
-                  onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
                   onOpenDialog={onOpenDialog}
                   ideCommandOverrides={ideCommandOverrides}
@@ -828,7 +802,6 @@ interface RemoteProjectCardProps {
   onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
@@ -843,7 +816,7 @@ interface RemoteProjectCardProps {
 const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
   project, entryId, host, isActive, hasSession,
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
-  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal,
+  onOpenIde, onOpenWorktreeTerminal,
   invokeRemoteGit, onOpenDialog, ideCommandOverrides,
   onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
@@ -886,11 +859,6 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
     }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
 
-  const handleOpenSide = useMemo(() =>
-    onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined,
-    [onOpenSideTerminal, entryId, project.id]
-  );
-
   const handleRemove = useCallback(() => {
     onRemoveProject(entryId, project.id);
   }, [onRemoveProject, entryId, project.id]);
@@ -920,7 +888,6 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
       onOpenWorktreeTerminal={handleOpenWorktree}
       onCommitRenameWorktree={handleRenameWorktree}
       onRemoveWorktree={handleRemoveWorktree}
-      onOpenSideTerminal={handleOpenSide}
       onRemoveProject={handleRemove}
       onOpenIde={handleOpenIde}
       onOpenDialog={handleOpenDialog}
@@ -947,7 +914,6 @@ interface RemoteItemProps {
   onRemoveProject: (entryId: string, projectId: string) => void;
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
@@ -971,7 +937,6 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
   onRemoveProject,
   onRemoveEntry,
   onAddProject,
-  onOpenSideTerminal,
   onSelectFile,
   onRefreshGit,
   onOpenIde,
@@ -1034,7 +999,6 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
                   onSelectFile={onSelectFile}
                   onRefreshGit={onRefreshGit}
                   onOpenIde={onOpenIde}
-                  onOpenSideTerminal={onOpenSideTerminal}
                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
                   invokeRemoteGit={invokeRemoteGit}
                   onOpenDialog={onOpenDialog}

@@ -1,36 +1,30 @@
-﻿import React, { useCallback } from "react";
-import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
+import React, { useCallback } from "react";
+import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
-import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig } from "../types";
+import type { Project, WSLProject, RemoteProject, RemoteEntrySession, AuthMethod, AppConfig, TerminalTab } from "../types";
 
 
 interface MainContentProps {
   config: AppConfig;
-  // local
   activeProject: Project | null;
   activeWorktreePath: string | null;
   activeWorktreeBranch: string;
-  sideTerminalOpenSet: Set<string>;
-  sideTerminalWidth: number;
-  handleSideDividerMouseDown: (e: React.MouseEvent) => void;
-  setSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
-  focusedSideTerminalIndex: string | null;
-  onFocusSideTerminal: (index: string | null) => void;
   handleSelectProject: (projectId: string) => void;
   handleAddProject: () => void;
+  suppressResizeRef?: React.MutableRefObject<boolean>;
+  // tabs
+  tabs: TerminalTab[];
+  activeTabId: string | null;
+  onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
   // wsl
   activeWslProject: { distro: string; project: WSLProject } | null;
   activeWslWorktreePath: string | null;
-  wslSideTerminalOpen: Set<string>;
-  setWslSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   // remote
   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
   activeRemoteWorktreePath: string | null;
   remoteAuthStore: Map<string, AuthMethod>;
-  remoteSideTerminalOpen: Set<string>;
-  setRemoteSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   // diff state
   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
@@ -39,7 +33,6 @@ interface MainContentProps {
   onWslDiffBack: () => void;
   onRemoteDiffBack: () => void;
   onWorktreeDiffBack: () => void;
-  suppressResizeRef?: React.MutableRefObject<boolean>;
 }
 
 function MainContent({
@@ -47,24 +40,18 @@ function MainContent({
   activeProject,
   activeWorktreePath,
   activeWorktreeBranch,
-  sideTerminalOpenSet,
-  sideTerminalWidth,
-  handleSideDividerMouseDown,
-  setSideTerminalOpen,
-  focusedSideTerminalIndex,
-  onFocusSideTerminal,
   handleSelectProject,
   handleAddProject,
+  suppressResizeRef,
+  tabs,
+  activeTabId,
+  onTabStatusChange,
   activeWslProject,
   activeWslWorktreePath,
-  wslSideTerminalOpen,
-  setWslSideTerminalOpen,
   setWslOpenSessions,
   activeRemoteProject,
   activeRemoteWorktreePath,
   remoteAuthStore,
-  remoteSideTerminalOpen,
-  setRemoteSideTerminalOpen,
   setRemoteOpenSessions,
   wslDiffState,
   remoteDiffState,
@@ -72,9 +59,17 @@ function MainContent({
   onWslDiffBack,
   onRemoteDiffBack,
   onWorktreeDiffBack,
-  suppressResizeRef,
 }: MainContentProps) {
-  // 稳定的 onSessionReady 回调，避免 WSL/Remote TerminalView 因回调引用变化重渲染
+  // 获取当前 active tab 的 agentId
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeTabAgentId = activeTab?.agentId ?? null;
+
+  // 处理 Tab 状态变化
+  const handleTabStatusChange = useCallback((status: "Idle" | "Running" | "Failed") => {
+    if (activeTabId) {
+      onTabStatusChange?.(activeTabId, status);
+    }
+  }, [activeTabId, onTabStatusChange]);
   const onWslSessionReady = useCallback((pid: string) => {
     setWslOpenSessions(prev => new Set(prev).add(pid));
   }, [setWslOpenSessions]);
@@ -82,6 +77,7 @@ function MainContent({
   const onRemoteSessionReady = useCallback((pid: string) => {
     setRemoteOpenSessions(prev => new Set(prev).add(pid));
   }, [setRemoteOpenSessions]);
+
   const isTerminalView = activeProject?.active_view === "Terminal";
   const diffFilePath =
     typeof activeProject?.active_view === "object"
@@ -110,37 +106,10 @@ function MainContent({
               projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
               fontSize={config.fontSize}
               fontFamily={config.fontFamily}
-              // worktree 模式使用不同缓存键，避免与主终端冲突
               cacheKeySuffix={activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}` : ""}
               selectedAgentId={activeWslProject.project.selected_agent}
               onSessionReady={onWslSessionReady}
             />
-            {wslSideTerminalOpen.has(activeWslProject.project.id) && (
-              <>
-                <div
-                  className="terminal-pane-divider"
-                  onMouseDown={handleSideDividerMouseDown}
-                />
-                <WSLTerminalView
-                  distro={activeWslProject.distro}
-                  projectId={activeWslProject.project.id}
-                  projectName={activeWslProject.project.name}
-                  projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
-                  fontSize={config.fontSize}
-                  fontFamily={config.fontFamily}
-                  cacheKeySuffix={activeWslWorktreePath ? `:side:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}` : ":side"}
-                  sideMode
-                  width={sideTerminalWidth}
-                  onClose={() =>
-                    setWslSideTerminalOpen(prev => {
-                      const n = new Set(prev);
-                      n.delete(activeWslProject.project.id);
-                      return n;
-                    })
-                  }
-                />
-              </>
-            )}
           </div>
           )}
         </div>
@@ -156,10 +125,6 @@ function MainContent({
           config={config}
           onRemoteDiffBack={onRemoteDiffBack}
           activeRemoteWorktreePath={activeRemoteWorktreePath}
-          remoteSideTerminalOpen={remoteSideTerminalOpen}
-          setRemoteSideTerminalOpen={setRemoteSideTerminalOpen}
-          handleSideDividerMouseDown={handleSideDividerMouseDown}
-          sideTerminalWidth={sideTerminalWidth}
           onRemoteSessionReady={onRemoteSessionReady}
         />
       )}
@@ -176,18 +141,19 @@ function MainContent({
             />
           ) : isTerminalView || activeWorktreePath ? (
             <div className="terminal-pane-container">
-              {/* 主终端（条件渲染，与 worktree 终端逻辑一致，切换时走 cache attach 无闪屏） */}
               {!activeWorktreePath && (
                 <TerminalView
                   project={activeProject}
+                  tabId={activeTabId}
+                  tabAgentId={activeTabAgentId}
                   fontSize={config.fontSize}
                   shell={config.shell}
                   fontFamily={config.fontFamily}
                   suppressResizeRef={suppressResizeRef}
-                  agentCommandOverride={config.agentCommandOverrides?.[activeProject.selected_agent ?? ""]}
+                  agentCommandOverride={activeTabAgentId ? config.agentCommandOverrides?.[activeTabAgentId] : undefined}
+                  onTabStatusChange={handleTabStatusChange}
                 />
               )}
-              {/* Worktree 终端 */}
               {activeWorktreePath && (
                 <WorktreeTerminalView
                   projectId={activeProject.id}
@@ -199,71 +165,6 @@ function MainContent({
                   shell={config.shell}
                   fontFamily={config.fontFamily}
                 />
-              )}
-              {sideTerminalOpenSet.size > 0 && !activeWorktreePath && (
-                <>
-                  <div
-                    className="terminal-pane-divider"
-                    onMouseDown={handleSideDividerMouseDown}
-                  />
-                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
-                    {Array.from(sideTerminalOpenSet).map((indexStr) => {
-                      const index = parseInt(indexStr, 10);
-                      return (
-                        <SideTerminalView
-                          key={`${activeProject.id}:side:${index}`}
-                          project={activeProject}
-                          fontSize={config.fontSize}
-                          shell={config.shell}
-                          fontFamily={config.fontFamily}
-                          onClose={() => setSideTerminalOpen(prev => {
-                            const n = new Set(prev);
-                            n.delete(indexStr);
-                            return n;
-                          })}
-                          onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${index}`)}
-                          index={index}
-                          terminalCount={sideTerminalOpenSet.size}
-                          isFocused={focusedSideTerminalIndex === indexStr}
-                          onFocus={() => onFocusSideTerminal(indexStr)}
-                        />
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-              {sideTerminalOpenSet.size > 0 && activeWorktreePath && (
-                <>
-                  <div
-                    className="terminal-pane-divider"
-                    onMouseDown={handleSideDividerMouseDown}
-                  />
-                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
-                    {Array.from(sideTerminalOpenSet).map((indexStr) => {
-                      const index = parseInt(indexStr, 10);
-                      return (
-                        <SideTerminalView
-                          key={`${activeProject.id}:side:${index}`}
-                          project={activeProject}
-                          fontSize={config.fontSize}
-                          shell={config.shell}
-                          fontFamily={config.fontFamily}
-                          onClose={() => setSideTerminalOpen(prev => {
-                            const n = new Set(prev);
-                            n.delete(indexStr);
-                            return n;
-                          })}
-                          onDestroy={() => destroyTerminalCache(`${activeProject.id}:side:${index}`)}
-                          index={index}
-                          worktreePath={activeWorktreePath}
-                          terminalCount={sideTerminalOpenSet.size}
-                          isFocused={focusedSideTerminalIndex === indexStr}
-                          onFocus={() => onFocusSideTerminal(indexStr)}
-                        />
-                      );
-                    })}
-                  </div>
-                </>
               )}
             </div>
           ) : diffFilePath ? (

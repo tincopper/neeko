@@ -11,10 +11,6 @@ interface RemoteProjectViewProps {
   config: AppConfig;
   onRemoteDiffBack: () => void;
   activeRemoteWorktreePath: string | null;
-  remoteSideTerminalOpen: Set<string>;
-  setRemoteSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
-  handleSideDividerMouseDown: (e: React.MouseEvent) => void;
-  sideTerminalWidth: number;
   onRemoteSessionReady: (pid: string) => void;
 }
 
@@ -26,10 +22,6 @@ function RemoteProjectView({
   config,
   onRemoteDiffBack,
   activeRemoteWorktreePath,
-  remoteSideTerminalOpen,
-  setRemoteSideTerminalOpen,
-  handleSideDividerMouseDown,
-  sideTerminalWidth,
   onRemoteSessionReady,
 }: RemoteProjectViewProps) {
   const auth = remoteAuthStore.get(entry.id);
@@ -79,36 +71,6 @@ function RemoteProjectView({
             selectedAgentId={project.selected_agent}
             onSessionReady={onRemoteSessionReady}
           />
-          {remoteSideTerminalOpen.has(project.id) && (
-            <>
-              <div
-                className="terminal-pane-divider"
-                onMouseDown={handleSideDividerMouseDown}
-              />
-              <RemoteTerminalView
-                entryId={entry.id}
-                projectId={project.id}
-                projectName={project.name}
-                projectPath={activeRemoteWorktreePath ?? project.path}
-                host={entry.host}
-                port={entry.port}
-                username={entry.username}
-                auth={auth}
-                fontSize={config.fontSize}
-                fontFamily={config.fontFamily}
-                cacheKeySuffix={activeRemoteWorktreePath ? `:side:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ":side"}
-                sideMode
-                width={sideTerminalWidth}
-                onClose={() =>
-                  setRemoteSideTerminalOpen(prev => {
-                    const n = new Set(prev);
-                    n.delete(project.id);
-                    return n;
-                  })
-                }
-              />
-            </>
-          )}
         </div>
       )}
     </div>
