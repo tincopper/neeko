@@ -7,11 +7,10 @@ import { terminalCache, destroyTerminalCache } from "../terminal";
 
 interface WorktreeListProps {
   worktrees: Worktree[];
-  currentBranch: string;
   projectId: string;
   expandedSections: Record<string, boolean>;
   toggleSection: (key: string, e: React.MouseEvent) => void;
-  onOpenWorktreeTerminal?: (path: string, branch: string) => void;
+  onOpenWorktreeTerminal?: (projectId: string, path: string, branch: string) => void;
   onSelectWorktreeFile?: (path: string, filePath: string) => void;
   onRefreshGit: (projectId: string) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
@@ -19,7 +18,6 @@ interface WorktreeListProps {
 
 const WorktreeList: React.FC<WorktreeListProps> = ({
   worktrees,
-  currentBranch,
   projectId,
   expandedSections,
   toggleSection,
@@ -37,8 +35,8 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
 
   const filtered = useMemo(
-    () => worktrees.filter((wt) => wt.branch !== currentBranch),
-    [worktrees, currentBranch],
+    () => worktrees,
+    [worktrees],
   );
 
   const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
@@ -158,12 +156,19 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     if (renaming === wt.path || deleting === wt.path) return;
-                    toggleExpand(wt.path);
-                    onOpenWorktreeTerminal?.(wt.path, wt.branch);
+                    onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
                   }}
                   title={`${wt.path}\nClick to open terminal`}
                 >
-                  <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
+                  <FolderGitIcon
+                    size={15}
+                    style={{ opacity: 0.7, cursor: "pointer", flexShrink: 0 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (renaming === wt.path || deleting === wt.path) return;
+                      toggleExpand(wt.path);
+                    }}
+                  />
                   {renaming === wt.path ? (
                     <input
                       ref={renameInputRef}
