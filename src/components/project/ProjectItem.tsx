@@ -73,7 +73,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const dragRef = useRef<{ startY: number; started: boolean; prevTarget: HTMLElement | null } | null>(null);
 
   // Branch dropdown state
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
@@ -212,38 +212,51 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return items;
   };
 
-  // Drag handlers
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData("text/plain", project.id);
-    e.dataTransfer.effectAllowed = "move";
-    // Add a slight delay to allow the drag image to be captured
-    (e.target as HTMLElement).classList.add("dragging");
+  // Pointer-based drag handlers (avoids conflicts with Tauri data-tauri-drag-region on Windows)
+  const handleHeaderPointerDown = (e: React.PointerEvent) => {
+    // Only primary button, and not on interactive elements
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, select, a, .gh-branch-dropdown, .gh-git-dropdown")) return;
+
+    dragRef.current = { startY: e.clientY, started: false, prevTarget: null };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    (e.target as HTMLElement).classList.remove("dragging");
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    const draggedId = e.dataTransfer.getData("text/plain");
-    if (draggedId && draggedId !== project.id && onDragEnd) {
-      onDragEnd(draggedId, project.id);
+  const handleHeaderPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const DRAG_THRESHOLD = 5;
+    if (!dragRef.current.started) {
+      if (Math.abs(e.clientY - dragRef.current.startY) < DRAG_THRESHOLD) return;
+      dragRef.current.started = true;
+      (e.currentTarget.closest(".gh-project") as HTMLElement)?.classList.add("dragging");
     }
+    // Detect drop target via elementFromPoint
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest(".gh-project") as HTMLElement | null;
+    const prev = dragRef.current.prevTarget;
+    if (prev && prev !== el) prev.classList.remove("drag-over");
+    if (el && el !== (e.currentTarget.closest(".gh-project") as HTMLElement)) {
+      el.classList.add("drag-over");
+      dragRef.current.prevTarget = el;
+    } else {
+      dragRef.current.prevTarget = null;
+    }
+  };
+
+  const handleHeaderPointerUp = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const wasDragging = dragRef.current.started;
+    const prev = dragRef.current.prevTarget;
+    (e.currentTarget.closest(".gh-project") as HTMLElement)?.classList.remove("dragging");
+    if (prev) prev.classList.remove("drag-over");
+    if (wasDragging && prev && onDragEnd) {
+      // prev = drop target element; project.id = the dragged source
+      const targetId = prev.dataset.projectId;
+      if (targetId && targetId !== project.id) {
+        onDragEnd(project.id, targetId);
+      }
+    }
+    dragRef.current = null;
   };
 
   const changedFiles = project.git_info?.changed_files ?? [];
@@ -288,15 +301,10 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div
-      className={`gh-project ${isActive ? "active" : ""} ${isDragOver ? "drag-over" : ""}`}
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      className={`gh-project ${isActive ? "active" : ""}`}
+      data-project-id={project.id}
     >
-      <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
+      <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu} onPointerDown={handleHeaderPointerDown} onPointerMove={handleHeaderPointerMove} onPointerUp={handleHeaderPointerUp}>
         <span
           className="gh-project-avatar"
           style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
