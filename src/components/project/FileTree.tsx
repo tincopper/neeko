@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+﻿import React, { useState, useCallback } from "react";
 import { FileChange } from "../../types";
 import { fileIconSrc } from "../../utils/fileIcons";
 
@@ -8,7 +8,7 @@ export interface TreeNode {
   isDir: boolean;
   children: TreeNode[];
   file?: FileChange;
-  // 压缩显示名（如 "com.tomgs.app"），仅目录节点使用
+  // compact display name (e.g. "com.tomgs.app"), directories only
   compactName?: string;
 }
 
@@ -52,21 +52,20 @@ export function buildTree(files: FileChange[]): TreeNode[] {
   };
   sort(root.children);
 
-  // 压缩只有单个目录子节点的中间路径（IDEA "Compact Middle Packages" 风格）
+  // compact intermediate directories with single child (IDEA "Compact Middle Packages" style)
   compactTree(root.children);
 
   return root.children;
 }
 
 /**
- * 将形如 a/ -> b/ -> c/ (每层只有一个目录子节点) 压缩为单节点，
- * compactName = "a.b.c"，children 变为 c 的 children。
+ * Compress chains like a/ -> b/ -> c/ (each level has single dir child) into a single node,
+ * compactName = "a.b.c", children becomes c's children.
  */
 function compactTree(nodes: TreeNode[]) {
   for (const node of nodes) {
     if (!node.isDir) continue;
 
-    // 向下合并：只要当前节点只有 1 个子节点，且该子节点是目录
     const parts: string[] = [node.name];
     let cur = node;
     while (cur.children.length === 1 && cur.children[0].isDir) {
@@ -80,7 +79,6 @@ function compactTree(nodes: TreeNode[]) {
       node.path = cur.path;
     }
 
-    // 递归处理子节点
     compactTree(node.children);
   }
 }
@@ -126,19 +124,19 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
           return (
             <React.Fragment key={node.path}>
               <div
-                className="gh-tree-dir"
+                className="flex items-center gap-1 py-0.5 pr-2 text-base cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
                 style={{ paddingLeft: indent }}
                 onClick={(e) => { e.stopPropagation(); toggle(node.path); }}
                 title={node.path}
               >
                 <img
-                  className="gh-dir-icon"
+                  className="w-4 h-4 shrink-0 block"
                   src={`/icons/${!isExpanded ? "_folder" : "_folder_open"}.svg`}
                   alt=""
                   width={16}
                   height={16}
                 />
-                <span className="gh-dir-name">{displayName}</span>
+                <span className="flex-1 text-text-primary font-medium truncate">{displayName}</span>
               </div>
               {isExpanded && (
                 <FileTree
@@ -157,7 +155,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
         return (
           <div
             key={node.path}
-            className="gh-tree-file"
+            className="flex items-center gap-1 py-0.5 pr-2 text-base cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
             style={{ paddingLeft: indent }}
             onClick={(e) => {
               e.stopPropagation();
@@ -166,13 +164,13 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
             title={file.path}
           >
             <img
-              className="gh-file-icon"
+              className="w-4 h-4 shrink-0 block opacity-70"
               src={fileIconSrc(node.name)}
               alt=""
               width={16}
               height={16}
             />
-            <span className="gh-file-name">{node.name}</span>
+            <span className="flex-1 text-text-secondary truncate group-hover:text-text-primary">{node.name}</span>
             <span className={`gh-badge ${badge.cls}`}>{badge.label}</span>
           </div>
         );

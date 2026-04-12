@@ -177,10 +177,10 @@ const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   return (
     <>
       <div className="sidebar">
-        <div className="sidebar-resize-handle" onMouseDown={onMouseDown} />
-        <div className="project-list">
+        <div className="sidebar-resize-handle absolute top-0 right-[-3px] w-1.5 h-full cursor-col-resize z-10 hover:bg-accent-blue/50 active:bg-accent-blue/50" onMouseDown={onMouseDown} />
+        <div className="project-list flex-1 overflow-y-auto py-1.5">
           {isEmpty ? (
-            <div className="no-projects">No projects added</div>
+            <div className="no-projects p-5 text-center text-text-muted text-[0.86em]">No projects added</div>
           ) : (
             <>
               {/* 本地项目 */}

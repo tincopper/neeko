@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
-import '@xterm/xterm/css/xterm.css'
 import { buildFontFamily } from '../../utils/terminal'
 import { IS_MACOS } from '../../utils/platform'
 import type { Project, AgentConfig } from '../../types'
@@ -546,8 +545,8 @@ function TerminalView({
   }, [project.id, rebuildCount])
 
   return (
-    <div className='terminal-container'>
-      <div className='terminal-wrapper' ref={wrapperRef} />
+    <div className='flex-1 flex flex-col overflow-hidden min-w-0'>
+      <div className='flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0' ref={wrapperRef} />
     </div>
   )
 }

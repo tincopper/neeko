@@ -35,18 +35,18 @@ function RemoteProjectView({
   const auth = remoteAuthStore.get(entry.id);
   if (!auth) {
     return (
-      <div className="empty-state">
-        <div className="empty-body">
-          <div className="empty-icon">🔑</div>
-          <h2>Authentication required</h2>
-          <p>Waiting for credentials...</p>
+      <div className="empty-state flex-1 flex flex-col text-text-secondary">
+        <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="empty-icon text-[3.43em] opacity-50">🔑</div>
+          <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
+          <p className="text-[var(--font-size)]">Waiting for credentials...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="content-area">
+    <div className="content-area flex-1 overflow-hidden flex flex-col">
       {remoteDiffState ? (
         <DiffView
           diffSource={{
@@ -63,7 +63,7 @@ function RemoteProjectView({
           onBack={onRemoteDiffBack}
         />
       ) : (
-        <div className="terminal-pane-container">
+        <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
           <RemoteTerminalView
             entryId={entry.id}
             projectId={project.id}
@@ -82,7 +82,7 @@ function RemoteProjectView({
           {remoteSideTerminalOpen.has(project.id) && (
             <>
               <div
-                className="terminal-pane-divider"
+                className="terminal-pane-divider w-[5px] bg-border shrink-0 cursor-col-resize transition-colors duration-150 relative hover:bg-accent-blue active:bg-accent-blue"
                 onMouseDown={handleSideDividerMouseDown}
               />
               <RemoteTerminalView

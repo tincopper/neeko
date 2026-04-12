@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { WSLProject, WSLEntrySession, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
 import { getDistroIcon } from "../../utils/distros";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
+import { cn } from "../../utils/cn";
 
 interface WSLDialogProps {
   isOpen: boolean;
@@ -229,29 +230,29 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
   const selectedAgent = agents.find(a => a.id === selectedAgentId);
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal wsl-modal" onClick={e => e.stopPropagation()}>
-        <h3>{step === "select-distro" ? "Select WSL Distro" : "Add WSL Project"}</h3>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={handleClose}>
+      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[460px] max-w-[560px] shadow-xl overflow-visible" onClick={e => e.stopPropagation()}>
+        <h3 className="mb-3 text-lg font-semibold text-text-primary">{step === "select-distro" ? "Select WSL Distro" : "Add WSL Project"}</h3>
 
-        {error && <p className="gh-dialog-error">{error}</p>}
+        {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
 
         {step === "select-distro" ? (
           <>
             {loadingDistros ? (
-              <p className="wsl-loading">Loading WSL distros...</p>
+              <p className="text-text-secondary text-center py-5">Loading WSL distros...</p>
             ) : distros.length === 0 ? (
-              <p className="wsl-empty">No WSL distros found. Please install a WSL distro first.</p>
+              <p className="text-text-secondary text-center py-5">No WSL distros found. Please install a WSL distro first.</p>
             ) : (
-              <div className="wsl-distro-list">
+              <div className="flex flex-col gap-1 mb-4 max-h-[300px] overflow-y-auto">
                 {distros.map(distro => (
                   <div
                     key={distro}
-                    className="wsl-distro-item"
+                    className="flex items-center gap-2.5 py-3 px-3.5 rounded-md cursor-pointer border border-border bg-bg-tertiary transition-all duration-150 hover:bg-bg-hover hover:border-accent-blue"
                     onClick={() => handleSelectDistro(distro)}
                   >
-                    <img className="wsl-distro-icon" src={getDistroIcon(distro)} width={15} height={15} alt="" />
-                    <span className="wsl-distro-name">{distro}</span>
-                    <span className="wsl-distro-arrow">›</span>
+                    <img className="text-[18px] text-text-secondary" src={getDistroIcon(distro)} width={15} height={15} alt="" />
+                    <span className="text-sm text-text-primary">{distro}</span>
+                    <span className="ml-auto text-text-muted text-lg">›</span>
                   </div>
                 ))}
               </div>
@@ -259,13 +260,13 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
           </>
         ) : (
           <>
-            <div className="wsl-path-header">
-              <img className="wsl-distro-icon" src={getDistroIcon(selectedDistro)} width={15} height={15} alt="" />
-              <span className="wsl-distro-label">{selectedDistro}</span>
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-bg-tertiary rounded-md mb-4">
+              <img className="text-[18px] text-text-secondary" src={getDistroIcon(selectedDistro)} width={15} height={15} alt="" />
+              <span className="text-sm font-medium text-text-primary">{selectedDistro}</span>
             </div>
 
-            <label className="gh-dialog-label">Project Path</label>
-            <div className="wsl-path-autocomplete" ref={wrapperRef}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Project Path</label>
+            <div className="relative w-full" ref={wrapperRef}>
               <input
                 ref={inputRef}
                 type="text"
@@ -274,14 +275,14 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                 onKeyDown={handleKeyDown}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 placeholder="/home/user/my-project"
-                className="gh-dialog-input"
+                className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 autoComplete="off"
                 spellCheck={false}
               />
               {showSuggestions && (
-                <div className="wsl-suggestions">
+                <div className="absolute top-[calc(100%+2px)] left-0 right-0 bg-bg-secondary border border-accent-blue rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.45)] z-[1100] max-h-[220px] overflow-y-auto">
                   {loadingSuggestions ? (
-                    <div className="wsl-suggestion-loading">Loading...</div>
+                    <div className="p-3 text-center text-xs text-text-muted">Loading...</div>
                   ) : (
                     suggestions.map((s, i) => {
                       const parts = s.split("/");
@@ -290,12 +291,12 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                       return (
                         <div
                           key={s}
-                          className={`wsl-suggestion-item${i === activeSuggestion ? " active" : ""}`}
+                          className={cn("flex items-center gap-2 py-[7px] px-3 cursor-pointer border-b border-white/[0.04] transition-[background-color] duration-100 last:border-b-none hover:bg-[rgba(97,175,239,0.15)]", i === activeSuggestion && "bg-[rgba(97,175,239,0.15)]")}
                           onMouseDown={() => handleSelectSuggestion(s)}
                         >
-                          <span className="wsl-suggestion-icon">📁</span>
-                          <span className="wsl-suggestion-name">{name}</span>
-                          <span className="wsl-suggestion-parent">{parent}</span>
+                          <span className="text-[13px] shrink-0 text-text-muted">&#128193;</span>
+                          <span className="font-mono text-[13px] text-text-primary font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">{name}</span>
+                          <span className="font-mono text-[11px] text-text-muted whitespace-nowrap shrink-0 ml-1">{parent}</span>
                         </div>
                       );
                     })
@@ -305,53 +306,52 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
             </div>
 
             {inputPath && inputPath !== "/" && (
-              <div className="wsl-project-preview">
-                <span className="wsl-preview-label">Project name:</span>
-                <span className="wsl-preview-name">{previewName}</span>
+              <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[rgba(97,175,239,0.08)] border border-[rgba(97,175,239,0.3)] rounded-md mt-3">
+                <span className="text-xs text-text-secondary shrink-0">Project name:</span>
+                <span className="font-mono text-[13px] text-accent-blue font-medium whitespace-nowrap overflow-hidden text-ellipsis">{previewName}</span>
               </div>
             )}
 
             {/* Agent 选择 */}
-            <label className="gh-dialog-label" style={{ marginTop: 14 }}>Agent</label>
-            <div className="agent-selector" ref={agentDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 14 }}>Agent</label>
+            <div className="relative w-full mt-1" ref={agentDropdownRef}>
               <button
-                className="agent-dropdown-btn"
-                style={{ width: "100%" }}
+                className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
                 onClick={() => setAgentDropdownOpen(v => !v)}
               >
                 {selectedAgent ? (
                   <>
                     <AgentIcon icon={selectedAgent.icon} />
-                    <span className="agent-name">{selectedAgent.name}</span>
+                    <span className="font-medium">{selectedAgent.name}</span>
                   </>
                 ) : (
                   <>
-                    <AgentIcon icon={null} fallback="⚡" />
-                    <span className="agent-name">None</span>
+                    <AgentIcon icon={null} fallback="&#9889;" />
+                    <span className="font-medium">None</span>
                   </>
                 )}
-                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
-                  {agentDropdownOpen ? "−" : "+"}
+                <span className="text-xs text-text-secondary ml-auto">
+                  {agentDropdownOpen ? "\u2212" : "+"}
                 </span>
               </button>
               {agentDropdownOpen && (
-                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
-                    className={`agent-option${!selectedAgentId ? " selected" : ""}`}
+                    className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedAgentId && "bg-accent-blue text-white")}
                     onClick={() => { setSelectedAgentId(null); setAgentDropdownOpen(false); }}
                   >
-                    <AgentIcon icon={null} fallback="⚡" />
-                    <span className="agent-name">None</span>
+                    <AgentIcon icon={null} fallback="&#9889;" />
+                    <span className="font-medium">None</span>
                   </div>
                   {agents.filter(a => a.enabled).map(agent => (
                     <div
                       key={agent.id}
-                      className={`agent-option${selectedAgentId === agent.id ? " selected" : ""}`}
+                      className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedAgentId === agent.id && "bg-accent-blue text-white")}
                       onClick={() => { setSelectedAgentId(agent.id); setAgentDropdownOpen(false); }}
                     >
                       <AgentIcon icon={agent.icon} />
-                      <span className="agent-name">{agent.name}</span>
-                      <span className="agent-command">{agent.command}</span>
+                      <span className="font-medium">{agent.name}</span>
+                      <span className="ml-auto text-xs text-text-muted">{agent.command}</span>
                     </div>
                   ))}
                 </div>
@@ -359,11 +359,10 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
             </div>
 
             {/* IDE 选择 */}
-            <label className="gh-dialog-label" style={{ marginTop: 14 }}>IDE</label>
-            <div className="agent-selector" ref={ideDropdownRef} style={{ width: "100%", marginTop: 4 }}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 14 }}>IDE</label>
+            <div className="relative w-full mt-1" ref={ideDropdownRef}>
               <button
-                className="agent-dropdown-btn"
-                style={{ width: "100%" }}
+                className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
                 onClick={() => setIdeDropdownOpen(v => !v)}
               >
                 {(() => {
@@ -373,7 +372,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                     return (
                       <>
                         <img src={getIdeIconSrc(selectedPreset.icon)} alt="" style={{ width: 16, height: 16 }} />
-                        <span className="agent-name">{selectedPreset.name}</span>
+                        <span className="font-medium">{selectedPreset.name}</span>
                       </>
                     );
                   }
@@ -383,34 +382,34 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
                     return (
                       <>
                         <img src={getIdeIconSrc(null)} alt="" style={{ width: 16, height: 16 }} />
-                        <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>
+                        <span className="font-medium">{customIde?.name ?? "Custom IDE"}</span>
                       </>
                     );
                   }
-                  return <><span className="agent-name" style={{ opacity: 0.5 }}>None (VSCode/Cursor/Zed)</span></>;
+                  return <><span className="font-medium opacity-50">None (VSCode/Cursor/Zed)</span></>;
                 })()}
-                <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>
-                  {ideDropdownOpen ? "−" : "+"}
+                <span className="text-xs text-text-secondary ml-auto">
+                  {ideDropdownOpen ? "\u2212" : "+"}
                 </span>
               </button>
               {ideDropdownOpen && (
-                <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
+                <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
-                    className={`agent-option${!selectedIdeId ? " selected" : ""}`}
+                    className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedIdeId && "bg-accent-blue text-white")}
                     onClick={() => { setSelectedIdeId(null); setIdeDropdownOpen(false); }}
                   >
-                    <span className="agent-name">None</span>
+                    <span className="font-medium">None</span>
                   </div>
                   {/* 支持 VSCode、Cursor 和 Zed */}
                   {IDE_PRESETS.filter(p => ["vscode", "cursor", "zed"].includes(p.id)).map(preset => (
                     <div
                       key={preset.id}
-                      className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
+                      className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedIdeId === preset.id && "bg-accent-blue text-white")}
                       onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
                     >
                       <img src={getIdeIconSrc(preset.icon)} alt="" style={{ width: 16, height: 16 }} />
-                      <span className="agent-name">{preset.name}</span>
-                      <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
+                      <span className="font-medium">{preset.name}</span>
+                      <span className="ml-auto text-xs text-text-muted">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>
                   ))}
                 </div>
@@ -419,11 +418,11 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
           </>
         )}
 
-        <div className="modal-actions">
-          <button className="modal-btn cancel" onClick={handleClose}>Cancel</button>
+        <div className="flex justify-end gap-3 mt-5">
+          <button className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-border bg-bg-tertiary text-text-primary hover:bg-bg-hover" onClick={handleClose}>Cancel</button>
           {step === "select-path" && (
             <button
-              className="modal-btn confirm"
+              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleConfirmPath}
               disabled={!inputPath || inputPath === "/"}
             >

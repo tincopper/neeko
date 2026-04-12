@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { IS_WINDOWS } from "./utils/platform";
 import ProjectSidebar, { AddProjectModal } from "./components/project";
 import SettingsPanel from "./components/SettingsPanel";
@@ -24,18 +24,17 @@ import { useSessionPersistence } from "./hooks/useSessionPersistence";
 import { useSideTerminalState } from "./hooks/useSideTerminalState";
 import { useAppRefSync } from "./hooks/useAppRefSync";
 import { useAppCallbacks } from "./hooks/useAppCallbacks";
-import "./styles.css";
 
-// ── re-export to keep hook import clean ──
+// 鈹€鈹€ re-export to keep hook import clean 鈹€鈹€
 export type { ActiveWslKey, ActiveRemoteKey };
 
 function App() {
-  // ── Core hooks ────────────────────────────────────────────────────────────
+  // 鈹€鈹€ Core hooks 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   const { config, settingsOpen, setSettingsOpen, saveConfig } = useAppConfig();
   const { toast, showToast } = useToast();
   const local = useLocalProjects();
 
-  // ── Session persistence ──
+  // 鈹€鈹€ Session persistence 鈹€鈹€
   const session = useSessionPersistence();
 
   const wsl = useWslProjects(session.saveSession);
@@ -86,7 +85,7 @@ function App() {
     restoreAuthFromEntries,
   } = remote;
 
-  // ── Worktree state (local) ──
+  // 鈹€鈹€ Worktree state (local) 鈹€鈹€
   const {
     activeWorktreePath, activeWorktreeBranch, openedWorktrees,
     activeWorktreePathRef, openedWorktreesRef,
@@ -94,7 +93,7 @@ function App() {
     clearWorktreeForProject,
   } = useWorktreeState(activeProjectIdRef);
 
-  // ── Width persistence ──
+  // 鈹€鈹€ Width persistence 鈹€鈹€
   const suppressTerminalResizeRef = useRef(false);
 
   // Auto-switch back to main terminal when active worktree is deleted.
@@ -110,10 +109,10 @@ function App() {
 
   const { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown } = useSideTerminalResize(480, session.saveSideTerminalWidth);
 
-  // ── Cross-domain setter refs ──
+  // 鈹€鈹€ Cross-domain setter refs 鈹€鈹€
   const xdomain = useCrossDomainRefs();
 
-  // ── Remote actions ──
+  // 鈹€鈹€ Remote actions 鈹€鈹€
   const remoteActions = useRemoteActions({
     setActiveProjectId, setActiveProject,
     setActiveWslKey, setActiveWslProject,
@@ -129,7 +128,7 @@ function App() {
     config, showToast, saveSession: session.saveSession,
   });
 
-  // ── WSL actions ──
+  // 鈹€鈹€ WSL actions 鈹€鈹€
   const wslActions = useWslActions({
     setActiveProjectId, setActiveProject,
     setActiveRemoteKey, setActiveRemoteProject,
@@ -154,7 +153,7 @@ function App() {
   xdomain.wslOpenedWtSetterRef.current = wslActions.setWslOpenedWt;
   xdomain.wslWorktreePathSetterRef.current = wslActions.setActiveWslWorktreePath;
 
-  // ── Side terminal state ──
+  // 鈹€鈹€ Side terminal state 鈹€鈹€
   const sideTerminal = useSideTerminalState(
     activeProjectId,
     activeProjectIdRef,
@@ -164,7 +163,7 @@ function App() {
     setRemoteSideTerminalOpen,
   );
 
-  // ── Worktree diff state ──
+  // 鈹€鈹€ Worktree diff state 鈹€鈹€
   const [worktreeDiffState, setWorktreeDiffState] = useState<{
     worktreePath: string; filePath: string;
   } | null>(null);
@@ -182,7 +181,7 @@ function App() {
     await handleSelectProject(projectId);
   }, [clearWorktreeForProject, handleSelectProject, setWorktreeDiffState]);
 
-  // ── Add menu ──
+  // 鈹€鈹€ Add menu 鈹€鈹€
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   useEffect(() => {
@@ -198,7 +197,7 @@ function App() {
     }
   }, [showAddMenu]);
 
-  // ── Session bootstrap ──
+  // 鈹€鈹€ Session bootstrap 鈹€鈹€
   const { initialSidebarWidth } = useSessionBootstrap({
     loadAgents, loadProjects,
     setWslEntries, setRemoteEntries,
@@ -207,7 +206,7 @@ function App() {
     restoreAuthFromEntries,
   });
 
-  // ── Ref sync ──
+  // 鈹€鈹€ Ref sync 鈹€鈹€
   const isTerminalView = activeProject?.active_view === "Terminal";
   useAppRefSync({
     sideTerminalOpenSet: sideTerminal.sideTerminalOpenSet,
@@ -234,7 +233,7 @@ function App() {
     isTerminalView,
   });
 
-  // ── App callbacks ──
+  // 鈹€鈹€ App callbacks 鈹€鈹€
   const callbacks = useAppCallbacks({
     agentCommandOverrides: config.agentCommandOverrides,
     terminalFontSize: config.fontSize ?? 14,
@@ -262,7 +261,7 @@ function App() {
   // Override selectProjectRef so keyboard shortcuts also clear worktree state on project switch.
   selectProjectRef.current = handleSelectProjectWithClear;
 
-  // ── Keyboard shortcuts ──
+  // 鈹€鈹€ Keyboard shortcuts 鈹€鈹€
   useKeyboardShortcuts({
     projects, activeProjectId,
     activeProjectIdRef,
@@ -288,9 +287,9 @@ function App() {
     handleOpenIde: callbacks.handleOpenIdeCallback,
   });
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // 鈹€鈹€ Render 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
   return (
-    <div className="app-root">
+    <div className="w-screen h-screen flex flex-col">
       <TitleBar
         activeProject={activeProject}
         activeWslProject={activeWslProject}
@@ -312,7 +311,7 @@ function App() {
         showToast={showToast}
       />
 
-      <div className="app-container">
+      <div className="flex flex-1 min-h-0 w-screen relative">
         <ProjectSidebar
           projects={projects}
           activeProjectId={activeProjectId}

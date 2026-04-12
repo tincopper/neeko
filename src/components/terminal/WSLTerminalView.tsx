@@ -8,7 +8,6 @@ import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
 import { CloseRoundIcon } from "../icons";
-import "@xterm/xterm/css/xterm.css";
 
 interface WslTerminalCache {
   term: Terminal;
@@ -400,24 +399,24 @@ export default React.memo(function WSLTerminalView({
   if (sideMode) {
     return (
       <div
-        className="side-terminal-container"
+        className="shrink-0 flex flex-col overflow-hidden min-w-0 min-h-0 bg-bg-primary"
         style={width ? { flex: "none", width } : undefined}
       >
-        <div className="side-terminal-header">
-          <span className="side-terminal-title">Terminal</span>
-          <span className="side-terminal-hint">Ctrl+W to close</span>
-          <button className="side-terminal-close" onClick={onClose} title="Close (Ctrl+W)">
+        <div className="flex items-center gap-2 p-1 px-2.5 bg-bg-secondary border-b border-border shrink-0 h-7 box-border">
+          <span className="text-xs font-medium text-text-secondary">Terminal</span>
+          <span className="text-[0.72em] text-text-muted ml-1">Ctrl+W to close</span>
+          <button className="ml-auto bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors duration-150" onClick={onClose} title="Close (Ctrl+W)">
             <CloseRoundIcon size={12} />
           </button>
         </div>
-        <div className="terminal-wrapper" ref={wrapperRef} />
+        <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
       </div>
     );
   }
 
   return (
-    <div className="terminal-container">
-      <div className="terminal-wrapper" ref={wrapperRef} />
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
     </div>
   );
 });

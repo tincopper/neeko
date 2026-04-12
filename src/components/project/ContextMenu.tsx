@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useMemo } from "react";
+﻿import React, { useEffect, useRef, useMemo } from "react";
 import { LucideIcon } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 export interface ContextMenuItem {
   label: string;
@@ -52,7 +53,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
   return (
     <div
       ref={menuRef}
-      className="gh-context-menu"
+      className="fixed bg-bg-tertiary border border-border rounded-md min-w-[200px] z-[10000] shadow-[0_4px_16px_rgba(0,0,0,0.5)] overflow-hidden py-1"
       style={{ left: pos.left, top: pos.top }}
     >
       {items.map((item, idx) =>
@@ -61,7 +62,11 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
         ) : (
           <div
             key={idx}
-            className={`gh-context-menu-item${item.danger ? " gh-context-menu-item-danger" : ""}${item.disabled ? " gh-context-menu-item-disabled" : ""}`}
+            className={cn(
+              "flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover",
+              item.danger && "text-[#e06c75] hover:bg-[rgba(224,108,117,0.15)]",
+              item.disabled && "gh-context-menu-item-disabled"
+            )}
             onClick={() => {
               if (!item.disabled) {
                 item.action();
@@ -70,9 +75,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
             }}
           >
             {item.icon && <item.icon size={14} style={{ marginRight: 8, opacity: 0.7 }} />}
-            <span className="gh-context-menu-label">{item.label}</span>
+            <span className="flex-1">{item.label}</span>
             {item.shortcut && (
-              <span className="gh-context-menu-shortcut">{item.shortcut}</span>
+              <span className="text-[0.85em] text-text-muted ml-4 font-mono">{item.shortcut}</span>
             )}
           </div>
         )

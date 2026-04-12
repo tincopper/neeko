@@ -7,6 +7,7 @@ import WorktreeList from "./WorktreeList";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
+import { cn } from "../../utils/cn";
 import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
@@ -73,7 +74,11 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const dragRef = useRef<{ startY: number; started: boolean; prevTarget: HTMLElement | null } | null>(null);
+
+  // State-based drag (replaces classList manipulation)
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const dragRef = useRef<{ startY: number; started: boolean } | null>(null);
 
   // Branch dropdown state
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
@@ -81,7 +86,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const branchDropdownRef = useRef<HTMLDivElement>(null);
   const branchSearchInputRef = useRef<HTMLInputElement>(null);
 
-  // 切换折叠状态并持久化
+  // Toggle collapsed and persist
   const toggleCollapsed = async () => {
     const newCollapsed = !projectCollapsed;
     setProjectCollapsed(newCollapsed);
@@ -212,14 +217,13 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return items;
   };
 
-  // Pointer-based drag handlers (avoids conflicts with Tauri data-tauri-drag-region on Windows)
+  // Pointer-based drag handlers (state-based instead of classList)
   const handleHeaderPointerDown = (e: React.PointerEvent) => {
-    // Only primary button, and not on interactive elements
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
-    if (target.closest("button, input, select, a, .gh-branch-dropdown, .gh-git-dropdown")) return;
+    if (target.closest("button, input, select, a")) return;
 
-    dragRef.current = { startY: e.clientY, started: false, prevTarget: null };
+    dragRef.current = { startY: e.clientY, started: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -229,33 +233,26 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     if (!dragRef.current.started) {
       if (Math.abs(e.clientY - dragRef.current.startY) < DRAG_THRESHOLD) return;
       dragRef.current.started = true;
-      (e.currentTarget.closest(".gh-project") as HTMLElement)?.classList.add("dragging");
+      setIsDragging(true);
     }
     // Detect drop target via elementFromPoint
-    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest(".gh-project") as HTMLElement | null;
-    const prev = dragRef.current.prevTarget;
-    if (prev && prev !== el) prev.classList.remove("drag-over");
-    if (el && el !== (e.currentTarget.closest(".gh-project") as HTMLElement)) {
-      el.classList.add("drag-over");
-      dragRef.current.prevTarget = el;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-project-id]") as HTMLElement | null;
+    const targetId = el?.dataset.projectId;
+    if (targetId && targetId !== project.id) {
+      setDragOverTarget(targetId);
     } else {
-      dragRef.current.prevTarget = null;
+      setDragOverTarget(null);
     }
   };
 
-  const handleHeaderPointerUp = (e: React.PointerEvent) => {
+  const handleHeaderPointerUp = (_e: React.PointerEvent) => {
     if (!dragRef.current) return;
     const wasDragging = dragRef.current.started;
-    const prev = dragRef.current.prevTarget;
-    (e.currentTarget.closest(".gh-project") as HTMLElement)?.classList.remove("dragging");
-    if (prev) prev.classList.remove("drag-over");
-    if (wasDragging && prev && onDragEnd) {
-      // prev = drop target element; project.id = the dragged source
-      const targetId = prev.dataset.projectId;
-      if (targetId && targetId !== project.id) {
-        onDragEnd(project.id, targetId);
-      }
+    if (wasDragging && dragOverTarget && onDragEnd) {
+      onDragEnd(project.id, dragOverTarget);
     }
+    setIsDragging(false);
+    setDragOverTarget(null);
     dragRef.current = null;
   };
 
@@ -273,7 +270,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
    const branches = project.git_info?.branches ?? [];
    const worktrees = project.git_info?.worktrees ?? [];
 
-   // 被 worktree 占用的 branch 不在 Branches 列表中展示
+   // Branches occupied by worktrees are not shown in the Branches list
    const filteredBranches = useMemo(() => {
      const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
      return branches.filter((b) => !worktreeBranchSet.has(b));
@@ -301,58 +298,74 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div
-      className={`gh-project ${isActive ? "active" : ""}`}
+      className={cn(
+        "mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150",
+        isDragging && "opacity-40 scale-[0.98] cursor-grabbing",
+        dragOverTarget === project.id && "border-t-2 border-accent-blue -mt-0.5"
+      )}
       data-project-id={project.id}
     >
-      <div className="gh-project-header" onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu} onPointerDown={handleHeaderPointerDown} onPointerMove={handleHeaderPointerMove} onPointerUp={handleHeaderPointerUp}>
+      <div
+        className="group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover"
+        onClick={() => onSelectProject(project.id)}
+        onContextMenu={handleContextMenu}
+        onPointerDown={handleHeaderPointerDown}
+        onPointerMove={handleHeaderPointerMove}
+        onPointerUp={handleHeaderPointerUp}
+      >
         <span
-          className="gh-project-avatar"
-          style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
+          className="w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase cursor-pointer"
+          style={getAvatarStyle(project.name)}
           onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
         >
           {project.name.charAt(0).toUpperCase()}
         </span>
-        <div className="gh-project-meta">
-          <span className="gh-project-name">{project.name}</span>
+        <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="text-[0.93em] font-semibold text-text-primary truncate">{project.name}</span>
         </div>
-        {/* IDE 按钮 */}
+        {/* IDE button */}
         {project.selected_ide && onOpenIde && (
           <button
-            className="gh-icon-btn gh-ide-btn"
+            className={cn(
+              "bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 opacity-100 ml-0.5 text-text-muted hover:!text-accent-blue",
+              isActive ? "opacity-0 hover:opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
             onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
           >
-            <img src={getIdeIconByCommand(project.selected_ide, ideCommandOverrides)} className="gh-ide-icon" alt="" />
+            <img src={getIdeIconByCommand(project.selected_ide, ideCommandOverrides)} className="w-3.5 h-3.5 object-contain block" alt="" />
           </button>
         )}
-        <div className="gh-project-actions">
-          {/* Side Terminal 按钮 */}
+        <div className={cn(
+          "flex gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+        )}>
+          {/* Side Terminal button */}
           {onOpenSideTerminal && isActive && project.active_view === "Terminal" && (
             <button
-              className="gh-icon-btn"
+              className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
               onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
               title="Open side terminal (Ctrl+Alt+T)"
             >
               <SideTerminalIcon size={12} />
             </button>
           )}
-          {/* Git 操作下拉菜单 */}
+          {/* Git actions dropdown */}
           {project.git_info && (
-            <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
-                className="gh-icon-btn gh-git-menu-btn"
+                className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary flex items-center gap-0.5"
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
                 <GitLogoIcon size={12} />
               </button>
               {gitMenuOpen && (
-                <div className="gh-git-dropdown">
-                  <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-branch", e); }}>
+                <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-tertiary border border-border rounded-md min-w-[150px] z-[1000] shadow-lg overflow-hidden">
+                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover" onClick={(e) => { setGitMenuOpen(false); openDialog("new-branch", e); }}>
                     <GitLogoIcon size={12} />
                     New Branch
                   </div>
-                  <div className="gh-git-dropdown-item" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
+                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
                     <FolderGitIcon size={12} />
                     New Worktree
                   </div>
@@ -361,7 +374,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             </div>
           )}
           <button
-            className="gh-icon-btn gh-icon-btn-danger"
+            className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red"
             onClick={(e) => { e.stopPropagation(); onRemoveProject(project.id); }}
             title="Remove"
           >
@@ -369,9 +382,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           </button>
         </div>
         {project.git_info && (
-          <div className="gh-branch-dropdown-wrap" ref={branchDropdownRef}>
+          <div className="relative shrink-0" ref={branchDropdownRef}>
             <span
-              className={`gh-branch-inline ${branchDropdownOpen ? "active" : ""}`}
+              className={cn(
+                "flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40",
+                branchDropdownOpen && "bg-accent-blue/20 border-accent-blue/40"
+              )}
               title={project.git_info.current_branch}
               onClick={(e) => {
                 e.stopPropagation();
@@ -382,12 +398,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
               {project.git_info.current_branch}
             </span>
             {branchDropdownOpen && (
-              <div className="gh-branch-dropdown" onClick={(e) => e.stopPropagation()}>
-                <div className="gh-branch-dropdown-search">
-                  <SearchIcon size={12} className="gh-branch-dropdown-search-icon" />
+              <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-secondary border border-border rounded-lg min-w-[220px] max-w-[320px] z-[1000] shadow-xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5 p-2 px-2.5 border-b border-border">
+                  <SearchIcon size={12} className="text-text-muted shrink-0" />
                   <input
                     ref={branchSearchInputRef}
-                    className="gh-branch-dropdown-search-input"
+                    className="flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
                     placeholder="Search branches..."
                     value={branchSearchQuery}
                     onChange={(e) => setBranchSearchQuery(e.target.value)}
@@ -399,29 +415,32 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     }}
                   />
                 </div>
-                <div className="gh-branch-dropdown-list">
+                <div className="max-h-[240px] overflow-y-auto py-1">
                   {dropdownBranches.map((branch) => {
                     const isCurrent = branch === project.git_info!.current_branch;
                     return (
                       <div
                         key={branch}
-                        className={`gh-branch-dropdown-item ${isCurrent ? "current" : ""}`}
+                        className={cn(
+                          "flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary",
+                          isCurrent && "text-accent-blue cursor-default"
+                        )}
                         onClick={() => handleCheckoutFromDropdown(branch)}
                         title={isCurrent ? "Current branch" : "Click to checkout"}
                       >
                         <BranchIcon size={11} />
-                        <span className="gh-branch-dropdown-item-name">{branch}</span>
-                        {isCurrent && <span className="gh-current-dot" title="current" />}
+                        <span className="flex-1 truncate">{branch}</span>
+                        {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] shrink-0" title="current" />}
                       </div>
                     );
                   })}
                   {dropdownBranches.length === 0 && (
-                    <div className="gh-branch-dropdown-empty">No branches found</div>
+                    <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
                   )}
                 </div>
-                <div className="gh-branch-dropdown-footer">
+                <div className="border-t border-border py-1">
                   <div
-                    className="gh-branch-dropdown-action"
+                    className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
                     onClick={(e) => {
                       e.stopPropagation();
                       setBranchDropdownOpen(false);
@@ -440,34 +459,34 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       </div>
 
       {!projectCollapsed && (
-        <div className="gh-project-body">
+        <div className="py-0.5 pb-1">
           {project.git_info && (
             <>
-              {/* ── Changed Files (current branch) ── */}
+              {/* Changed Files (current branch) */}
               {tree.length > 0 && (
                 <>
                   <div
-                    className="gh-section-label gh-section-label-collapsible"
+                    className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
                     onClick={(e) => toggleSection("__changes__", e)}
                   >
-                    <ChevronRightIcon size={9} className={`gh-section-chevron ${expandedSections["__changes__"] !== false ? "expanded" : ""}`} />
+                    <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["__changes__"] !== false && "rotate-90")} />
                     Changes ({changedFiles.length})
                     {(totalAdditions > 0 || totalDeletions > 0) && (
-                      <span className="gh-changes-stats">
-                        {totalAdditions > 0 && <span className="gh-changes-additions">+{totalAdditions}</span>}
-                        {totalDeletions > 0 && <span className="gh-changes-deletions">-{totalDeletions}</span>}
+                      <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
+                        {totalAdditions > 0 && <span className="text-[#3fb950] font-semibold">+{totalAdditions}</span>}
+                        {totalDeletions > 0 && <span className="text-[#f85149] font-semibold">-{totalDeletions}</span>}
                       </span>
                     )}
                   </div>
                   {expandedSections["__changes__"] !== false && (
-                    <div className="gh-file-tree">
+                    <div className="mt-0.5 pl-4">
                       <FileTree nodes={tree} projectId={project.id} onSelectFile={onSelectFile} />
                     </div>
                   )}
                 </>
               )}
 
-              {/* ── Worktrees ── */}
+              {/* Worktrees */}
               <WorktreeList
                 worktrees={worktrees}
                 projectId={project.id}
@@ -509,4 +528,3 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 };
 
 export default React.memo(ProjectItem);
-
