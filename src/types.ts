@@ -10,6 +10,8 @@ export interface AppConfig {
   ideCommandOverrides: Record<string, string>;
   agentCommandOverrides: Record<string, string>;
   customAgents: AgentConfig[];
+  agentSelectorShowPresetBar: boolean;
+  agentSelectorCompactMode: boolean;
 }
 
 export interface FileChange {

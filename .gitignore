@@ -10,8 +10,9 @@ build/
 .vscode/
 .idea/
 .opencode/
-# .claude/
+.claude/
 .agents/
+.snow/
 .superset
 *.swp
 *.swo

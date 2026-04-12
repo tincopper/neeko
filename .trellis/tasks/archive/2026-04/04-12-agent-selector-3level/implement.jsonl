@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件开发指南 - Props、样式、React.memo 规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 开发指南 - useCallback、ref 模式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全指南 - types.ts 模式"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量指南 - tsc 检查、React.memo 要求"}
+{"file": "src/components/layout/AgentSelector.tsx", "reason": "当前 AgentSelector 实现 - 需要重构的源文件"}
+{"file": "src/components/layout/TitleBar.tsx", "reason": "TitleBar 使用示例 - 了解 AgentSelector 的 Props"}
+{"file": "src/types.ts", "reason": "类型定义 - AppConfig 和 AgentConfig"}
