@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project } from "../types";
 
 export function useSessionBootstrap(deps: {
-  loadAgents: () => Promise<void>;
   loadProjects: () => Promise<void>;
   setWslEntries: React.Dispatch<React.SetStateAction<WSLEntrySession[]>>;
   setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
@@ -13,11 +12,10 @@ export function useSessionBootstrap(deps: {
   restoreAuthFromEntries: (entries: RemoteEntrySession[]) => void;
 }) {
   const [initialSidebarWidth, setInitialSidebarWidth] = useState<number>(280);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
-    deps.loadAgents();
     deps.loadProjects().then(async () => {
-      // Lazy refresh git info for all projects in background
       try {
         const projects = await invoke<Project[]>("list_projects");
         for (const p of projects) {
@@ -44,6 +42,7 @@ export function useSessionBootstrap(deps: {
         deps.worktreeStateRef.current = wtState;
       }
       deps.restoreAuthFromEntries(remoteE);
+      setInitializing(false);
     }).catch(console.error);
 
     const unlistenPromise = listen<string>("git-changed", (event) => {
@@ -58,5 +57,5 @@ export function useSessionBootstrap(deps: {
     };
   }, []);
 
-  return { initialSidebarWidth };
+  return { initialSidebarWidth, initializing };
 }

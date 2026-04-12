@@ -5,6 +5,8 @@ import {
   terminalCache,
   terminalRebuildCallbacks,
   destroyTerminalCache,
+  pendingPtyResize,
+  setPendingPtyResize,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
 import { CloseRoundIcon } from "../icons";
@@ -105,38 +107,6 @@ function SideTerminalView({
     cache.fitAddon.fit();
   }, [fontSize, fontFamily, project.id, index, worktreePath]);
 
-  // side terminal 容器尺寸变化时重算 PTY 尺寸（使用 ResizeObserver）
-  useEffect(() => {
-    const key = sideKey(project.id, index, worktreePath);
-    const cache = terminalCache.get(key);
-    if (!cache || !wrapperRef.current) return;
-
-    let rafId: number | null = null;
-    const ro = new ResizeObserver(() => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        const c = terminalCache.get(key);
-        if (c) {
-          c.fitAddon.fit();
-          if (c.sessionId) {
-            invoke("resize_terminal", {
-              sessionId: c.sessionId,
-              cols: c.term.cols,
-              rows: c.term.rows,
-            }).catch(() => {});
-          }
-        }
-      });
-    });
-    ro.observe(wrapperRef.current);
-
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      ro.disconnect();
-    };
-  }, [project.id, index, worktreePath]);
-
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -221,7 +191,30 @@ function SideTerminalView({
     };
     window.addEventListener("resize", handleResize);
 
+    // 监听容器尺寸变化：平时只做 fit，拖拽结束后第一次触发时额外做 PTY resize
+    let resizeRafId: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = null;
+        const c = terminalCache.get(key);
+        if (!c) return;
+        c.fitAddon.fit();
+        if (pendingPtyResize && c.sessionId) {
+          setPendingPtyResize(false);
+          invoke("resize_terminal", {
+            sessionId: c.sessionId,
+            cols: c.term.cols,
+            rows: c.term.rows,
+          }).catch(() => {});
+        }
+      });
+    });
+    ro.observe(wrapper);
+
     return () => {
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+      ro.disconnect();
       window.removeEventListener("resize", handleResize);
       detachAll();
       terminalRebuildCallbacks.delete(key);

@@ -1,38 +1,35 @@
 import { useState, useRef, useCallback } from "react";
+import { setPendingPtyResize } from "../components/terminal/TerminalView";
 
 export function useSideTerminalResize(
   initialWidth: number,
   onWidthChange: (width: number) => void,
 ) {
   const [sideTerminalWidth, setSideTerminalWidth] = useState(initialWidth);
-  const sideResizingRef = useRef(false);
-  const sideResizeStartX = useRef(0);
-  const sideResizeStartWidth = useRef(initialWidth);
   const lastWidthRef = useRef(initialWidth);
   const rafRef = useRef<number | null>(null);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(initialWidth);
 
   const handleSideDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    sideResizingRef.current = true;
-    sideResizeStartX.current = e.clientX;
-    sideResizeStartWidth.current = sideTerminalWidth;
+    startXRef.current = e.clientX;
+    startWidthRef.current = lastWidthRef.current;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
     const onMouseMove = (ev: MouseEvent) => {
-      if (!sideResizingRef.current) return;
-      const delta = sideResizeStartX.current - ev.clientX;
-      const next = Math.min(1200, Math.max(200, sideResizeStartWidth.current + delta));
+      const delta = startXRef.current - ev.clientX;
+      const next = Math.min(1200, Math.max(200, startWidthRef.current + delta));
       lastWidthRef.current = next;
-      // rAF 节流：每帧最多 setState 一次
       if (rafRef.current !== null) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         setSideTerminalWidth(lastWidthRef.current);
       });
     };
+
     const onMouseUp = () => {
-      sideResizingRef.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       if (rafRef.current !== null) {
@@ -41,13 +38,17 @@ export function useSideTerminalResize(
       }
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      // 拖拽结束时同步最终值
+
+      // 标记需要 PTY resize：等 React 渲染 + DOM 更新后
+      // ResizeObserver 自然触发时会读到正确尺寸并通知 PTY
+      setPendingPtyResize(true);
       setSideTerminalWidth(lastWidthRef.current);
       onWidthChange(lastWidthRef.current);
     };
+
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-  }, [sideTerminalWidth, onWidthChange]);
+  }, [onWidthChange]);
 
   return { sideTerminalWidth, setSideTerminalWidth, handleSideDividerMouseDown };
 }

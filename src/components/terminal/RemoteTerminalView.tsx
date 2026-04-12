@@ -8,6 +8,7 @@ import { emit } from "@tauri-apps/api/event";
 import { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
 import { CloseRoundIcon } from "../icons";
+import { pendingPtyResize } from "./TerminalView";
 
 interface RemoteTerminalCache {
   term: Terminal;
@@ -18,7 +19,7 @@ interface RemoteTerminalCache {
 }
 
 // 全局缓存：key = "remote:{entryId}:{projectId}"
-const remoteTerminalCache = new Map<string, RemoteTerminalCache>();
+export const remoteTerminalCache = new Map<string, RemoteTerminalCache>();
 
 export function remoteCacheKey(entryId: string, projectId: string) {
   return `remote:${entryId}:${projectId}`;
@@ -342,14 +343,22 @@ export default React.memo(function RemoteTerminalView({
       }
     };
     window.addEventListener("resize", handleResize);
-    // 监听容器尺寸变化（side terminal 拖拽时主终端宽度变化也会触发）
-    // rAF 节流：避免拖拽时每像素触发 fit()+PTY resize 导致终端闪烁
+    // 监听容器尺寸变化：平时只做 fit，拖拽结束后第一次触发时额外做 PTY resize
     let resizeRafId: number | null = null;
     const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) return;
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null;
-        handleResize();
+        const c = remoteTerminalCache.get(key);
+        if (!c) return;
+        c.fitAddon.fit();
+        if (pendingPtyResize && c.sessionId) {
+          invoke("resize_remote_terminal", {
+            sessionId: c.sessionId,
+            cols: c.term.cols,
+            rows: c.term.rows,
+          }).catch(() => {});
+        }
       });
     });
     ro.observe(wrapper);

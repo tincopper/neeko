@@ -4,6 +4,7 @@ import {
   createTerminalForProject,
   terminalCache,
   terminalRebuildCallbacks,
+  pendingPtyResize,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
 
@@ -131,14 +132,22 @@ function WorktreeTerminalView({
     };
     window.addEventListener("resize", handleResize);
 
-    // 鐩戝惉瀹瑰櫒灏哄鍙樺寲锛坰ide terminal 鎷栨嫿鏃朵篃浼氳Е鍙戯級
-    // rAF 鑺傛祦锛氶伩鍏嶆嫋鎷芥椂姣忓儚绱犺Е鍙?fit()+PTY resize 瀵艰嚧缁堢闂儊
+    // 监听容器尺寸变化：平时只做 fit，拖拽结束后第一次触发时额外做 PTY resize
     let resizeRafId: number | null = null;
     const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) return;
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null;
-        handleResize();
+        const c = terminalCache.get(key);
+        if (!c) return;
+        c.fitAddon.fit();
+        if (pendingPtyResize && c.sessionId) {
+          invoke("resize_terminal", {
+            sessionId: c.sessionId,
+            cols: c.term.cols,
+            rows: c.term.rows,
+          }).catch(() => {});
+        }
       });
     });
     ro.observe(wrapper);
