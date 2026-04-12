@@ -85,12 +85,19 @@ pub fn set_project_agent(
 
 #[tauri::command]
 pub fn check_agents_installed(
-    agent_ids: Vec<String>,
+    agent_ids: Option<Vec<String>>,
     state: State<AppStateWrapper>,
 ) -> Result<HashMap<String, bool>, String> {
+    let ids = agent_ids.unwrap_or_else(|| {
+        state
+            .agent_manager
+            .lock()
+            .map(|am| am.get_agents().iter().map(|a| a.id.clone()).collect())
+            .unwrap_or_default()
+    });
     state
         .agent_manager
         .lock()
         .map_err(|e| format!("Lock poisoned: {}", e))
-        .map(|am| am.check_installed(&agent_ids))
+        .map(|am| am.check_installed(&ids))
 }

@@ -226,6 +226,61 @@ describe('useLocalProjects', () => {
     });
   });
 
+  it('handleSelectFile 在项目未激活时先激活项目再设 diff 视图', async () => {
+    const project = createProject({ id: 'p-diff', name: 'diff-proj' });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_projects') return [project];
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useLocalProjects());
+
+    await act(async () => {
+      await result.current.loadProjects();
+    });
+
+    // 此时 activeProjectId 为 null（项目从未被激活）
+    expect(result.current.activeProjectId).toBeNull();
+
+    await act(async () => {
+      await result.current.handleSelectFile('p-diff', 'src/foo.ts');
+    });
+
+    // 激活项目
+    expect(result.current.activeProjectId).toBe('p-diff');
+    // 激活项目时必须先调用 set_view_terminal（使 activeProject 在 diff 前有效）
+    const calls = mockInvoke.mock.calls.map((c) => c[0]);
+    const terminalIdx = calls.lastIndexOf('set_view_terminal');
+    const diffIdx = calls.lastIndexOf('set_view_diff');
+    expect(terminalIdx).toBeGreaterThanOrEqual(0);
+    expect(diffIdx).toBeGreaterThan(terminalIdx);
+  });
+
+  it('handleSelectFile 在项目已激活时不重复调用 set_view_terminal', async () => {
+    const project = createProject({ id: 'p-active' });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_projects') return [project];
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useLocalProjects());
+
+    await act(async () => {
+      await result.current.handleSelectProject('p-active');
+    });
+
+    mockInvoke.mockClear();
+
+    await act(async () => {
+      await result.current.handleSelectFile('p-active', 'src/bar.ts');
+    });
+
+    // 项目已激活，不应再调用 set_active_project 和 set_view_terminal
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_view_terminal', expect.anything());
+    expect(mockInvoke).toHaveBeenCalledWith('set_view_diff', { projectId: 'p-active', filePath: 'src/bar.ts' });
+  });
+
   it('activeProject 随 activeProjectId 同步', async () => {
     const projects = [createProject({ id: 'p1', name: '同步测试' })];
     mockInvoke.mockResolvedValue(projects);

@@ -25,7 +25,7 @@ interface ProjectSidebarProps {
   onBackToMainTerminal: (projectId: string) => void;
   onOpenSettings: () => void;
   onOpenIde?: (projectId: string) => void;
-  onOpenWorktreeTerminal?: (worktreePath: string, branch: string) => void;
+  onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   onSelectWslProject: (distro: string, project: WSLProject) => void;
   onCloseWslProject: (entryId: string, projectId: string) => void;

@@ -238,7 +238,7 @@ function App() {
     terminalShell: config.shell ?? '',
     terminalFontFamily: config.fontFamily ?? '',
     activeProject, projects,
-    setProjects, setActiveProject,
+    setProjects, setActiveProject, setActiveProjectId,
     handleOpenIde, showToast,
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
     setOpenedWorktrees, activeProjectIdRef,
