@@ -124,6 +124,9 @@
   .diff-table-split .col-linenum { width: 48px; }
   .diff-table-split .col-code { width: calc(50% - 48px); }
 
+  /* Diff split cell content - preserve whitespace/indentation */
+  .split-cell { white-space: pre-wrap; word-break: break-all; }
+
   /* Diff split row backgrounds */
   .split-cell.added, .split-linenum.added { background-color: var(--diff-added); }
   .split-cell.removed, .split-linenum.removed { background-color: var(--diff-removed); }
