@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import React from "react";
-import AgentSelector from "./AgentSelector";
+import AgentBar from "./AgentBar";
 import WindowControls from "./WindowControls";
 import type { Project, WSLProject, RemoteEntrySession, RemoteProject, AgentConfig } from "../../types";
 import { IS_WINDOWS, IS_MACOS } from "../../utils/platform";
@@ -17,6 +17,9 @@ interface TitleBarProps {
   activeRemoteWorktreeBranch: string;
   showAddMenu: boolean;
   loading: boolean;
+  agents: AgentConfig[];
+  compactMode: boolean;
+  showAgentBar: boolean;
   onOpenSettings: () => void;
   onToggleAddMenu: () => void;
   onAddProject: () => void;
@@ -28,7 +31,6 @@ interface TitleBarProps {
   showToast: (message: string, type?: "info" | "error") => void;
 }
 
-
 function TitleBar({
   activeProject,
   activeWslProject,
@@ -38,6 +40,9 @@ function TitleBar({
   activeRemoteWorktreeBranch,
   showAddMenu,
   loading,
+  agents,
+  compactMode,
+  showAgentBar,
   onOpenSettings,
   onToggleAddMenu,
   onAddProject,
@@ -48,6 +53,39 @@ function TitleBar({
   onSelectRemoteAgent,
   showToast,
 }: TitleBarProps) {
+  const getCurrentProjectId = () => {
+    if (activeProject) return activeProject.id;
+    if (activeWslProject) return activeWslProject.project.id;
+    if (activeRemoteProject) return activeRemoteProject.project.id;
+    return null;
+  };
+
+  const getCurrentAgentId = () => {
+    if (activeProject) return activeProject.selected_agent;
+    if (activeWslProject) return activeWslProject.project.selected_agent;
+    if (activeRemoteProject) return activeRemoteProject.project.selected_agent;
+    return null;
+  };
+
+  const handleSelectAgent = (agentId: string | null) => {
+    const agent = agentId ? agents.find((a) => a.id === agentId) ?? null : null;
+    
+    if (activeProject) {
+      // Persist to backend for local projects
+      invoke("set_project_agent", { projectId: activeProject.id, agentId }).catch((err) => {
+        console.error("[TitleBar] Failed to set agent:", err);
+      });
+      onSelectLocalAgent(agent);
+      invoke("save_session").catch(() => {});
+    } else if (activeWslProject) {
+      onSelectWslAgent(agent);
+    } else if (activeRemoteProject) {
+      onSelectRemoteAgent(agent);
+    }
+  };
+
+  const currentAgentId = getCurrentAgentId();
+
   return (
     <div className="titlebar" data-tauri-drag-region>
       {/* Left: NEEKO + Settings + Add */}
@@ -81,7 +119,7 @@ function TitleBar({
 
       <div className="titlebar-divider" data-tauri-drag-region />
 
-      {/* Right: project name + branch + agent + window controls */}
+      {/* Right: project name + branch + agent bar + window controls */}
       <div className="titlebar-right" data-tauri-drag-region>
         {activeProject ? (
           <>
@@ -91,15 +129,6 @@ function TitleBar({
                 {activeWorktreeBranch || activeProject.git_info.current_branch}
               </span>
             )}
-            <AgentSelector
-              projectId={activeProject.id}
-              currentAgentId={activeProject.selected_agent}
-              onShowToast={showToast}
-              onSelectAgent={(agent) => {
-                onSelectLocalAgent(agent);
-                invoke("save_session").catch(() => {});
-              }}
-            />
           </>
         ) : activeWslProject ? (
           <>
@@ -113,13 +142,6 @@ function TitleBar({
                 WSL: {activeWslProject.distro}
               </span>
             )}
-            <AgentSelector
-              projectId={activeWslProject.project.id}
-              currentAgentId={activeWslProject.project.selected_agent}
-              skipBackendPersist
-              onShowToast={showToast}
-              onSelectAgent={(agent) => onSelectWslAgent(agent)}
-            />
           </>
         ) : activeRemoteProject ? (
           <>
@@ -133,17 +155,24 @@ function TitleBar({
                 SSH: {activeRemoteProject.entry.host}
               </span>
             )}
-            <AgentSelector
-              projectId={activeRemoteProject.project.id}
-              currentAgentId={activeRemoteProject.project.selected_agent}
-              skipBackendPersist
-              onShowToast={showToast}
-              onSelectAgent={(agent) => onSelectRemoteAgent(agent)}
-            />
           </>
         ) : (
           <span className="titlebar-placeholder" data-tauri-drag-region />
         )}
+
+        {/* Agent Bar - directly embedded in TitleBar */}
+        {showAgentBar && getCurrentProjectId() && (
+          <div className="titlebar-agent-bar">
+            <AgentBar
+              agents={agents}
+              selectedAgentId={currentAgentId}
+              compactMode={compactMode}
+              onSelectAgent={handleSelectAgent}
+              onShowToast={showToast}
+            />
+          </div>
+        )}
+
         {!IS_MACOS && <WindowControls />}
       </div>
     </div>

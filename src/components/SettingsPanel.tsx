@@ -482,6 +482,37 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ config, onConf
               <>
                 <div className="settings-content-title">Agents</div>
 
+                {/* Agent Bar Display Settings */}
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Show Agent Bar</div>
+                    <div className="settings-item-desc">Display agent buttons in the title bar for quick selection</div>
+                  </div>
+                  <div className="settings-item-control">
+                    <button
+                      className={`settings-toggle ${config.agentSelectorShowPresetBar !== false ? "active" : ""}`}
+                      onClick={() => onConfigChange({ ...config, agentSelectorShowPresetBar: config.agentSelectorShowPresetBar !== false ? false : true })}
+                    >
+                      {config.agentSelectorShowPresetBar !== false ? "On" : "Off"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <div className="settings-item-name">Compact Mode</div>
+                    <div className="settings-item-desc">Show only icons in the agent bar</div>
+                  </div>
+                  <div className="settings-item-control">
+                    <button
+                      className={`settings-toggle ${config.agentSelectorCompactMode ? "active" : ""}`}
+                      onClick={() => onConfigChange({ ...config, agentSelectorCompactMode: !config.agentSelectorCompactMode })}
+                    >
+                      {config.agentSelectorCompactMode ? "On" : "Off"}
+                    </button>
+                  </div>
+                </div>
+
                 {/* 内置 Agent 列表 */}
                 <div className="settings-item settings-item-col">
                   <div className="settings-item-info">

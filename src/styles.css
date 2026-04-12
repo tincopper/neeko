@@ -132,6 +132,85 @@ body {
   flex: 1;
 }
 
+/* TitleBar Agent Bar */
+.titlebar-agent-bar {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin-left: 8px;
+  margin-right: 8px;
+  overflow: hidden;
+}
+
+.titlebar-agent-bar .agent-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.titlebar-agent-bar .agent-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.titlebar-agent-bar .agent-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 0.86em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  height: 28px;
+}
+
+.titlebar-agent-bar .agent-bar-btn.compact {
+  padding: 4px 6px;
+  min-width: 28px;
+  justify-content: center;
+}
+
+.titlebar-agent-bar .agent-bar-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+
+.titlebar-agent-bar .agent-bar-btn.selected {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.titlebar-agent-bar .agent-bar-btn.not-installed {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.titlebar-agent-bar .agent-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.titlebar-agent-bar .agent-bar-btn .agent-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.titlebar-agent-bar .agent-bar-btn-name {
+  font-weight: 500;
+}
+
 /* Titlebar icon buttons (settings, add project) */
 .tb-icon-btn {
   width: 32px;
@@ -475,6 +554,30 @@ body {
 
 .settings-seg-btn.active {
   background-color: var(--accent-blue);
+  color: #fff;
+}
+
+/* Toggle button for settings */
+.settings-toggle {
+  padding: 6px 16px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 0.86em;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 60px;
+}
+
+.settings-toggle:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.settings-toggle.active {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
   color: #fff;
 }
 
@@ -1951,6 +2054,10 @@ body {
 /* Agent Selector */
 .agent-selector {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 140px;
 }
 
 .agent-dropdown-btn {
@@ -3343,6 +3450,215 @@ body {
 .agent-selector-full {
   width: 100%;
   margin-top: 4px;
+}
+
+/* ── Agent Selector 3-Level UI ── */
+
+/* Level 1: Main selector area */
+.agent-selector-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+  height: 36px;
+  box-sizing: border-box;
+}
+
+.agent-selector-main:hover {
+  border-color: var(--accent-blue);
+}
+
+.agent-current-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  cursor: default;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.agent-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.agent-add-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.agent-add-btn.open {
+  background-color: var(--accent-blue);
+  color: #fff;
+}
+
+.agent-add-icon {
+  font-size: 1.2em;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Level 2: Add Menu Dropdown */
+.agent-add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.agent-add-menu .add-menu-item {
+  position: relative;
+}
+
+.agent-add-menu .add-menu-item.active {
+  background-color: rgba(97, 175, 239, 0.15);
+  color: var(--accent-blue);
+}
+
+.agent-menu-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 8px;
+}
+
+.menu-shortcut {
+  margin-left: auto;
+  font-size: 0.79em;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.menu-badge {
+  margin-left: auto;
+  font-size: 0.71em;
+  color: var(--accent-yellow);
+  background-color: rgba(229, 192, 123, 0.15);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.menu-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu-checkbox-item .custom-checkbox {
+  flex-shrink: 0;
+}
+
+/* Level 3: Agent Bar */
+.agent-bar-wrapper {
+  padding: 8px;
+  background-color: var(--bg-secondary);
+}
+
+.agent-bar-inline {
+  margin-top: 4px;
+  padding: 4px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.agent-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.agent-bar.compact {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.agent-bar-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.86em;
+}
+
+.agent-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 0.86em;
+}
+
+.agent-bar-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-blue);
+}
+
+.agent-bar-btn.selected {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.agent-bar-btn.not-installed {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-bar-btn.not-installed:hover {
+  background-color: rgba(224, 108, 117, 0.15);
+  border-color: var(--accent-red);
+}
+
+.agent-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.agent-bar-btn.compact {
+  padding: 6px;
+  min-width: 32px;
+  justify-content: center;
+}
+
+.agent-bar-btn .agent-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-bar-btn-name {
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .dialog-path-wrapper {

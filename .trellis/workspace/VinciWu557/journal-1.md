@@ -202,3 +202,35 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 重构 AgentSelector: 直接集成 AgentBar 到 TitleBar
+
+**Date**: 2026-04-12
+**Task**: 重构 AgentSelector: 直接集成 AgentBar 到 TitleBar
+
+### Summary
+
+将 AgentSelector 从三级下拉菜单重构为直接在 TitleBar 中显示 Agent Bar，解决布局堆叠问题。配置选项移至 SettingsPanel。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c2486a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

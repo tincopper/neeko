@@ -299,6 +299,9 @@ function App() {
         activeRemoteWorktreeBranch={remoteActions.remoteActiveWtBranch}
         showAddMenu={showAddMenu}
         loading={loading}
+        agents={agents}
+        compactMode={config.agentSelectorCompactMode ?? false}
+        showAgentBar={config.agentSelectorShowPresetBar !== false}
         onOpenSettings={callbacks.handleToggleSettings}
         onToggleAddMenu={callbacks.handleToggleAddMenu}
         onAddProject={callbacks.handleAddProjectClick}
