@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import AgentIcon from "../layout/AgentIcon";
 import type { AppConfig, AgentConfig } from "../../types";
+import { cn } from "../../utils/cn";
 
 interface ProjectSettingsDialogProps {
   projectId: string;
@@ -15,7 +16,7 @@ interface ProjectSettingsDialogProps {
   onSave: (agentId: string | null, ideCommand: string | null) => void;
 }
 
-export default function ProjectSettingsDialog({
+function ProjectSettingsDialog({
   projectId,
   projectName,
   currentAgent,
@@ -122,71 +123,71 @@ export default function ProjectSettingsDialog({
   const ideDisplay = resolveIdeDisplay(selectedIdeId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Project Settings</h3>
-        <p className="modal-path">{projectName}</p>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
+      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[400px] max-w-[500px] shadow-xl overflow-visible" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-3 text-lg font-semibold text-text-primary">Project Settings</h3>
+        <p className="font-mono text-sm text-text-muted break-all mb-4">{projectName}</p>
 
-        <label className="gh-dialog-label" style={{ marginTop: 12 }}>Agent</label>
-        <div className="agent-selector" ref={agentRef} style={{ width: "100%", marginTop: 4 }}>
-          <button className="agent-dropdown-btn" style={{ width: "100%" }} onClick={() => setAgentOpen((v) => !v)}>
-            <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null} size={16} fallback="⚡" />
-            <span className="agent-name">{agents.find((a) => a.id === selectedAgentId)?.name ?? "None"}</span>
-            <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{agentOpen ? "−" : "+"}</span>
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>Agent</label>
+        <div className="relative" ref={agentRef} style={{ width: "100%", marginTop: 4 }}>
+          <button className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full" onClick={() => setAgentOpen((v) => !v)}>
+            <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null} size={16} fallback="&#9889;" />
+            <span className="font-medium">{agents.find((a) => a.id === selectedAgentId)?.name ?? "None"}</span>
+            <span className="text-xs text-text-secondary ml-auto">{agentOpen ? "\u2212" : "+"}</span>
           </button>
           {agentOpen && (
-            <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
-              <div className={`agent-option${!selectedAgentId ? " selected" : ""}`}
+            <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
+              <div className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedAgentId && "bg-accent-blue text-white")}
                 onClick={() => { setSelectedAgentId(null); setAgentOpen(false); }}>
-                <AgentIcon icon={null} size={16} fallback="⚡" />
-                <span className="agent-name">None</span>
+                <AgentIcon icon={null} size={16} fallback="&#9889;" />
+                <span className="font-medium">None</span>
               </div>
               {agents.filter((a) => a.enabled).map((agent) => (
-                <div key={agent.id} className={`agent-option${selectedAgentId === agent.id ? " selected" : ""}`}
+                <div key={agent.id} className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedAgentId === agent.id && "bg-accent-blue text-white")}
                   onClick={() => { setSelectedAgentId(agent.id); setAgentOpen(false); }}>
                   <AgentIcon icon={agent.icon} size={16} />
-                  <span className="agent-name">{agent.name}</span>
-                  <span className="agent-command">{agent.command}</span>
+                  <span className="font-medium">{agent.name}</span>
+                  <span className="ml-auto text-xs text-text-muted">{agent.command}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <label className="gh-dialog-label" style={{ marginTop: 12 }}>IDE</label>
-        <div className="agent-selector" ref={ideRef} style={{ width: "100%", marginTop: 4 }}>
-          <button className="agent-dropdown-btn" style={{ width: "100%" }} onClick={() => setIdeOpen((v) => !v)}>
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>IDE</label>
+        <div className="relative" ref={ideRef} style={{ width: "100%", marginTop: 4 }}>
+          <button className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full" onClick={() => setIdeOpen((v) => !v)}>
             {selectedIdeId?.startsWith("custom:") ? (
-              <span className="agent-icon" style={{ fontSize: 16 }}>💻</span>
+              <span className="text-[14px] w-[18px] h-[18px] object-contain" style={{ fontSize: 16 }}>&#128187;</span>
             ) : (
-              <img src={getIdeIconSrc(ideDisplay.icon)} className="agent-icon" alt="" />
+              <img src={getIdeIconSrc(ideDisplay.icon)} className="w-[18px] h-[18px] object-contain" alt="" />
             )}
-            <span className="agent-name">{ideDisplay.name}</span>
-            <span className="dropdown-arrow" style={{ marginLeft: "auto" }}>{ideOpen ? "−" : "+"}</span>
+            <span className="font-medium">{ideDisplay.name}</span>
+            <span className="text-xs text-text-secondary ml-auto">{ideOpen ? "\u2212" : "+"}</span>
           </button>
           {ideOpen && (
-            <div className="agent-dropdown" style={{ left: 0, right: 0, minWidth: "unset" }}>
-              <div className={`agent-option${!selectedIdeId ? " selected" : ""}`}
+            <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
+              <div className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedIdeId && "bg-accent-blue text-white")}
                 onClick={() => { setSelectedIdeId(null); setIdeOpen(false); }}>
-                <span className="agent-icon" style={{ fontSize: 16 }}>💻</span>
-                <span className="agent-name">None</span>
+                <span style={{ fontSize: 16 }}>&#128187;</span>
+                <span className="font-medium">None</span>
               </div>
               {IDE_PRESETS.map((ide) => (
-                <div key={ide.id} className={`agent-option${selectedIdeId === ide.id ? " selected" : ""}`}
+                <div key={ide.id} className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedIdeId === ide.id && "bg-accent-blue text-white")}
                   onClick={() => { setSelectedIdeId(ide.id); setIdeOpen(false); }}>
-                  <img src={getIdeIconSrc(ide.icon)} className="agent-icon" alt="" />
-                  <span className="agent-name">{ide.name}</span>
-                  <span className="agent-command">{config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide)}</span>
+                  <img src={getIdeIconSrc(ide.icon)} className="w-[18px] h-[18px] object-contain" alt="" />
+                  <span className="font-medium">{ide.name}</span>
+                  <span className="ml-auto text-xs text-text-muted">{config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide)}</span>
                 </div>
               ))}
               {(config.customIdes || []).map((ide, idx) => {
                 const customId = `custom:${idx}`;
                 return (
-                  <div key={customId} className={`agent-option${selectedIdeId === customId ? " selected" : ""}`}
+                  <div key={customId} className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedIdeId === customId && "bg-accent-blue text-white")}
                     onClick={() => { setSelectedIdeId(customId); setIdeOpen(false); }}>
-                    <span className="agent-icon" style={{ fontSize: 16 }}>💻</span>
-                    <span className="agent-name">{ide.name}</span>
-                    <span className="agent-command">{ide.command}</span>
+                    <span style={{ fontSize: 16 }}>&#128187;</span>
+                    <span className="font-medium">{ide.name}</span>
+                    <span className="ml-auto text-xs text-text-muted">{ide.command}</span>
                   </div>
                 );
               })}
@@ -194,11 +195,12 @@ export default function ProjectSettingsDialog({
           )}
         </div>
 
-        <div className="modal-actions">
-          <button className="cancel-btn" onClick={onClose}>Cancel</button>
-          <button className="confirm-btn" onClick={handleSave}>Save</button>
+        <div className="flex justify-end gap-3 mt-5">
+          <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>Cancel</button>
+          <button className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleSave}>Save</button>
         </div>
       </div>
     </div>
   );
 }
+export default React.memo(ProjectSettingsDialog);

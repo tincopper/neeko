@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { cn } from "../../utils/cn";
 
 export type DialogType = "new-branch" | "new-worktree";
 
@@ -116,26 +117,26 @@ const GitDialog: React.FC<GitDialogProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
+      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[400px] max-w-[500px] shadow-xl overflow-visible" onClick={(e) => e.stopPropagation()}>
         {dialog.type === "new-branch" ? (
           <>
-            <h3>New Branch</h3>
+            <h3 className="mb-3 text-lg font-semibold text-text-primary">New Branch</h3>
             <input
-              className="path-input"
+              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
               placeholder="Branch name"
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
               autoFocus
             />
-            {error && <p className="gh-dialog-error">{error}</p>}
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={onClose}>
+            {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
+            <div className="flex justify-end gap-3 mt-5">
+              <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
                 Cancel
               </button>
               <button
-                className="confirm-btn"
+                className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleCreateBranch}
                 disabled={!branchName.trim() || submitting}
               >
@@ -145,36 +146,36 @@ const GitDialog: React.FC<GitDialogProps> = ({
           </>
         ) : (
           <>
-            <h3>New Worktree</h3>
+            <h3 className="mb-3 text-lg font-semibold text-text-primary">New Worktree</h3>
             {dialog.projectId && !dialog.source && (
-              <div className="wt-mode-toggle">
-                <span className={`wt-mode-label${!customMode ? " active" : ""}`}>Quick</span>
+              <div className="flex items-center gap-2 mb-3.5">
+                <span className={cn("text-xs text-text-muted font-medium uppercase tracking-[0.3px] transition-colors duration-150", !customMode && "text-text-primary")}>Quick</span>
                 <button
-                  className="wt-toggle-switch"
+                  className="relative w-[34px] h-[18px] bg-bg-tertiary border border-border rounded-[9px] cursor-pointer p-0 outline-none transition-background duration-200 hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-accent-blue focus-visible:outline-offset-[1px]"
                   onClick={() => setCustomMode(!customMode)}
                   title={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
                   aria-label={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
                 >
-                  <span className={`wt-toggle-thumb${customMode ? " on" : ""}`} />
+                  <span className={cn("absolute top-0.5 left-0.5 w-3 h-3 bg-text-secondary rounded-full transition-all duration-200", customMode && "translate-x-4 bg-accent-blue")} />
                 </button>
-                <span className={`wt-mode-label${customMode ? " active" : ""}`}>Custom</span>
+                <span className={cn("text-xs text-text-muted font-medium uppercase tracking-[0.3px] transition-colors duration-150", customMode && "text-text-primary")}>Custom</span>
               </div>
             )}
             {customMode || !dialog.projectId || dialog.source ? (
               <>
-                <label className="gh-dialog-label">Worktree path</label>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree path</label>
                 <input
-                  className="path-input"
+                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                   placeholder="../my-feature"
                   value={worktreePath}
                   onChange={(e) => setWorktreePath(e.target.value)}
                   autoFocus
                 />
-                <label className="gh-dialog-label" style={{ marginTop: 12 }}>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>
                   Branch
                 </label>
                 <input
-                  className="path-input"
+                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                   placeholder="Branch name"
                   value={worktreeBranch}
                   onChange={(e) => setWorktreeBranch(e.target.value)}
@@ -185,7 +186,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
                     <option key={b} value={b} />
                   ))}
                 </datalist>
-                <label className="custom-checkbox gh-dialog-checkbox" style={{ marginTop: 10 }}>
+                <label className="custom-checkbox flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer" style={{ marginTop: 10 }}>
                   <input
                     type="checkbox"
                     checked={newBranch}
@@ -194,13 +195,13 @@ const GitDialog: React.FC<GitDialogProps> = ({
                   <span className="checkbox-mark" />
                   Create new branch
                 </label>
-                {error && <p className="gh-dialog-error">{error}</p>}
-                <div className="modal-actions">
-                  <button className="cancel-btn" onClick={onClose}>
+                {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
+                <div className="flex justify-end gap-3 mt-5">
+                  <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
                     Cancel
                   </button>
                   <button
-                    className="confirm-btn"
+                    className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleCreateWorktree}
                     disabled={
                       !worktreePath.trim() || !worktreeBranch.trim() || submitting
@@ -212,27 +213,27 @@ const GitDialog: React.FC<GitDialogProps> = ({
               </>
             ) : (
               <>
-                <label className="gh-dialog-label">Worktree name</label>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree name</label>
                 <input
-                  className="path-input"
+                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                   placeholder="feature-x"
                   value={quickName}
                   onChange={(e) => setQuickName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && quickName.trim() && handleCreateQuickWorktree()}
                   autoFocus
                 />
-                <div className="wt-path-preview">
+                <div className="mt-1.5 text-[11px] text-text-muted font-mono break-all leading-[1.4]">
                   {dialog.projectPath && quickName.trim()
                     ? `${dialog.projectPath}/.neeko/worktrees/${quickName.trim()}`
                     : "Path: <project>/.neeko/worktrees/<name>"}
                 </div>
-                {error && <p className="gh-dialog-error">{error}</p>}
-                <div className="modal-actions">
-                  <button className="cancel-btn" onClick={onClose}>
+                {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
+                <div className="flex justify-end gap-3 mt-5">
+                  <button className="px-4 py-2 bg-bg-tertiary border border-border rounded-md text-text-primary text-[var(--font-size)] cursor-pointer transition-all duration-200 hover:bg-bg-hover" onClick={onClose}>
                     Cancel
                   </button>
                   <button
-                    className="confirm-btn"
+                    className="px-4 py-2 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleCreateQuickWorktree}
                     disabled={!quickName.trim() || submitting}
                   >
@@ -248,4 +249,4 @@ const GitDialog: React.FC<GitDialogProps> = ({
   );
 };
 
-export default GitDialog;
+export default React.memo(GitDialog);

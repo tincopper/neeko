@@ -246,15 +246,15 @@ function SideTerminalView({
   }, [isFocused, project.id, index, worktreePath, onFocus]);
 
   return (
-    <div className="side-terminal-container">
-      <div className="side-terminal-header">
-        <span className="side-terminal-title">Terminal</span>
-        <span className="side-terminal-hint">Ctrl+W to close</span>
-        <button className="side-terminal-close" onClick={handleClose} title="Close (Ctrl+W)">
+    <div className="shrink-0 flex flex-col overflow-hidden min-w-0 min-h-0 bg-bg-primary">
+      <div className="flex items-center gap-2 p-1 px-2.5 bg-bg-secondary border-b border-border shrink-0 h-7 box-border">
+        <span className="text-xs font-medium text-text-secondary">Terminal</span>
+        <span className="text-[0.72em] text-text-muted ml-1">Ctrl+W to close</span>
+        <button className="ml-auto bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors duration-150" onClick={handleClose} title="Close (Ctrl+W)">
           <CloseRoundIcon size={12} />
         </button>
       </div>
-      <div className="terminal-wrapper" ref={wrapperRef} />
+      <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
     </div>
   );
 }

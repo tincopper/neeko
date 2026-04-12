@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RemoteProject, RemoteEntrySession, AuthMethod, AgentConfig, AppConfig } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../utils/idePresets";
 import serverIcon from "../../assets/server.svg";
+import { cn } from "../../utils/cn";
 
 interface RemoteDialogProps {
   isOpen: boolean;
@@ -300,43 +301,43 @@ export function RemoteDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal wsl-modal" onClick={e => e.stopPropagation()}>
-        <h3>{step === "server-config" ? "Add Remote Server" : "Add Remote Project"}</h3>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={handleClose}>
+      <div className="bg-bg-secondary border border-border rounded-lg p-6 min-w-[460px] max-w-[560px] shadow-xl overflow-visible" onClick={e => e.stopPropagation()}>
+        <h3 className="mb-3 text-lg font-semibold text-text-primary">{step === "server-config" ? "Add Remote Server" : "Add Remote Project"}</h3>
 
-        {error && <p className="gh-dialog-error">{error}</p>}
+        {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
 
         {step === "server-config" ? (
           <>
-            <label className="gh-dialog-label">Host</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Host</label>
             <input
               type="text"
               value={host}
               onChange={e => setHost(e.target.value)}
               placeholder="192.168.1.100 or example.com"
-              className="gh-dialog-input"
+              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
-            <label className="gh-dialog-label mt-12">Port</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Port</label>
             <input
               type="number"
               value={port}
               onChange={e => setPort(e.target.value)}
               placeholder="22"
-              className="gh-dialog-input"
+              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
-            <label className="gh-dialog-label mt-12">Username</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Username</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               placeholder="root"
-              className="gh-dialog-input"
+              className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
             />
 
-            <label className="gh-dialog-label mt-12">Auth Type</label>
-            <div className="auth-type-selector">
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Auth Type</label>
+            <div className="flex gap-5 mb-4">
               <label className="custom-radio">
                 <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
                 <span className="radio-mark" />
@@ -351,29 +352,29 @@ export function RemoteDialog({
 
             {authType === "password" ? (
               <>
-                <label className="gh-dialog-label mt-12">Password</label>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="gh-dialog-input"
+                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 />
               </>
             ) : (
               <>
-                <label className="gh-dialog-label mt-12">Key File Path</label>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Key File Path</label>
                 <input
                   type="text"
                   value={keyPath}
                   onChange={e => setKeyPath(e.target.value)}
                   placeholder="~/.ssh/id_rsa"
-                  className="gh-dialog-input"
+                  className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 />
               </>
             )}
 
-            <label className="custom-checkbox save-credentials-label mt-14">
+            <label className="custom-checkbox flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer mt-3.5">
               <input
                 type="checkbox"
                 checked={saveCredentials}
@@ -386,15 +387,15 @@ export function RemoteDialog({
         ) : (
           <>
             {/* 服务器信息 */}
-            <label className="gh-dialog-label">Server</label>
-            <div className="remote-selected-server">
-              <img className="remote-server-icon" src={serverIcon} width={15} height={15} alt="" />
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Server</label>
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-bg-tertiary border border-border rounded-md mb-4">
+              <img className="text-[16px] text-text-secondary" src={serverIcon} width={15} height={15} alt="" />
               <span>{selectedServer ? selectedServer.host : `${host}:${port}`}</span>
             </div>
 
             {/* 路径输入 + 自动补全 */}
-            <label className="gh-dialog-label mt-12">Project Path (on server)</label>
-            <div className="wsl-path-autocomplete" ref={pathWrapperRef}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">Project Path (on server)</label>
+            <div className="relative w-full" ref={pathWrapperRef}>
               <input
                 ref={pathInputRef}
                 type="text"
@@ -403,14 +404,14 @@ export function RemoteDialog({
                 onKeyDown={handlePathKeyDown}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                 placeholder="/home/user/my-project"
-                className="gh-dialog-input"
+                className="w-full p-3 bg-bg-primary border border-border rounded-md text-text-primary text-[var(--font-size)] font-mono outline-none transition-border-color duration-200 focus:border-accent-blue"
                 autoComplete="off"
                 spellCheck={false}
               />
               {showSuggestions && (
-                <div className="wsl-suggestions">
+                <div className="absolute top-[calc(100%+2px)] left-0 right-0 bg-bg-secondary border border-accent-blue rounded-md shadow-[0_6px_20px_rgba(0,0,0,0.45)] z-[1100] max-h-[220px] overflow-y-auto">
                   {loadingSuggestions ? (
-                    <div className="wsl-suggestion-loading">Loading...</div>
+                    <div className="p-3 text-center text-xs text-text-muted">Loading...</div>
                   ) : (
                     suggestions.map((s, i) => {
                       const parts = s.split("/");
@@ -419,12 +420,12 @@ export function RemoteDialog({
                       return (
                         <div
                           key={s}
-                          className={`wsl-suggestion-item${i === activeSuggestion ? " active" : ""}`}
+                          className={cn("flex items-center gap-2 py-[7px] px-3 cursor-pointer border-b border-white/[0.04] transition-[background-color] duration-100 last:border-b-none hover:bg-[rgba(97,175,239,0.15)]", i === activeSuggestion && "bg-[rgba(97,175,239,0.15)]")}
                           onMouseDown={() => handleSelectSuggestion(s)}
                         >
-                          <span className="wsl-suggestion-icon">📁</span>
-                          <span className="wsl-suggestion-name">{name}</span>
-                          <span className="wsl-suggestion-parent">{parent}</span>
+                          <span className="text-[13px] shrink-0 text-text-muted">&#128193;</span>
+                          <span className="font-mono text-[13px] text-text-primary font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">{name}</span>
+                          <span className="font-mono text-[11px] text-text-muted whitespace-nowrap shrink-0 ml-1">{parent}</span>
                         </div>
                       );
                     })
@@ -435,17 +436,17 @@ export function RemoteDialog({
 
             {/* 项目名预览 */}
             {projectPath && projectPath !== "/" && (
-              <div className="wsl-project-preview">
-                <span className="wsl-preview-label">Project name:</span>
-                <span className="wsl-preview-name">{previewName}</span>
+              <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[rgba(97,175,239,0.08)] border border-[rgba(97,175,239,0.3)] rounded-md mt-3">
+                <span className="text-xs text-text-secondary shrink-0">Project name:</span>
+                <span className="font-mono text-[13px] text-accent-blue font-medium whitespace-nowrap overflow-hidden text-ellipsis">{previewName}</span>
               </div>
             )}
 
             {/* Agent 选择 */}
-            <label className="gh-dialog-label mt-14">Agent</label>
-            <div className="agent-selector agent-selector-full" ref={agentDropdownRef}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">Agent</label>
+            <div className="relative w-full mt-1" ref={agentDropdownRef}>
               <button
-                className="agent-dropdown-btn w-full"
+                className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
                 onClick={() => setAgentDropdownOpen(v => !v)}
               >
                 {(() => {
@@ -453,37 +454,37 @@ export function RemoteDialog({
                   return agent ? (
                     <>
                       <AgentIcon icon={agent.icon} />
-                      <span className="agent-name">{agent.name}</span>
+                      <span className="font-medium">{agent.name}</span>
                     </>
                   ) : (
                     <>
-                      <AgentIcon icon={null} fallback="⚡" />
-                      <span className="agent-name">None</span>
+                      <AgentIcon icon={null} fallback="&#9889;" />
+                      <span className="font-medium">None</span>
                     </>
                   );
                 })()}
-                <span className="dropdown-arrow ml-auto">
-                  {agentDropdownOpen ? "−" : "+"}
+                <span className="text-xs text-text-secondary ml-auto">
+                  {agentDropdownOpen ? "\u2212" : "+"}
                 </span>
               </button>
               {agentDropdownOpen && (
-                <div className="agent-dropdown dropdown-position-unset">
+                <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
-                    className={`agent-option${!selectedAgentId ? " selected" : ""}`}
+                    className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedAgentId && "bg-accent-blue text-white")}
                     onClick={() => { setSelectedAgentId(null); setAgentDropdownOpen(false); }}
                   >
-                    <AgentIcon icon={null} fallback="⚡" />
-                    <span className="agent-name">None</span>
+                    <AgentIcon icon={null} fallback="&#9889;" />
+                    <span className="font-medium">None</span>
                   </div>
                   {agents.filter(a => a.enabled).map(agent => (
                     <div
                       key={agent.id}
-                      className={`agent-option${selectedAgentId === agent.id ? " selected" : ""}`}
+                      className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedAgentId === agent.id && "bg-accent-blue text-white")}
                       onClick={() => { setSelectedAgentId(agent.id); setAgentDropdownOpen(false); }}
                     >
                       <AgentIcon icon={agent.icon} />
-                      <span className="agent-name">{agent.name}</span>
-                      <span className="agent-command">{agent.command}</span>
+                      <span className="font-medium">{agent.name}</span>
+                      <span className="ml-auto text-xs text-text-muted">{agent.command}</span>
                     </div>
                   ))}
                 </div>
@@ -491,10 +492,10 @@ export function RemoteDialog({
             </div>
 
             {/* IDE 选择 */}
-            <label className="gh-dialog-label mt-14">IDE</label>
-            <div className="agent-selector agent-selector-full" ref={ideDropdownRef}>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">IDE</label>
+            <div className="relative w-full mt-1" ref={ideDropdownRef}>
               <button
-                className="agent-dropdown-btn w-full"
+                className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
                 onClick={() => setIdeDropdownOpen(v => !v)}
               >
                 {(() => {
@@ -502,8 +503,8 @@ export function RemoteDialog({
                     ? IDE_PRESETS.find(i => i.id === selectedIdeId) : null;
                   if (preset) return (
                     <>
-                      <img src={getIdeIconSrc(preset.icon)} alt="" className="icon-16" />
-                      <span className="agent-name">{preset.name}</span>
+                      <img src={getIdeIconSrc(preset.icon)} alt="" className="w-4 h-4" />
+                      <span className="font-medium">{preset.name}</span>
                     </>
                   );
                   if (selectedIdeId?.startsWith("custom:")) {
@@ -511,34 +512,34 @@ export function RemoteDialog({
                     const customIde = config.customIdes?.[ci];
                     return (
                       <>
-                        <img src={getIdeIconSrc(null)} alt="" className="icon-16" />
-                        <span className="agent-name">{customIde?.name ?? "Custom IDE"}</span>
+                        <img src={getIdeIconSrc(null)} alt="" className="w-4 h-4" />
+                        <span className="font-medium">{customIde?.name ?? "Custom IDE"}</span>
                       </>
                     );
                   }
-                  return <span className="agent-name opacity-50">None (VSCode/Cursor/Zed)</span>;
+                  return <span className="font-medium opacity-50">None (VSCode/Cursor/Zed)</span>;
                 })()}
-                <span className="dropdown-arrow ml-auto">
-                  {ideDropdownOpen ? "−" : "+"}
+                <span className="text-xs text-text-secondary ml-auto">
+                  {ideDropdownOpen ? "\u2212" : "+"}
                 </span>
               </button>
               {ideDropdownOpen && (
-                <div className="agent-dropdown dropdown-position-unset">
+                <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
-                    className={`agent-option${!selectedIdeId ? " selected" : ""}`}
+                    className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedIdeId && "bg-accent-blue text-white")}
                     onClick={() => { setSelectedIdeId(null); setIdeDropdownOpen(false); }}
                   >
-                    <span className="agent-name">None</span>
+                    <span className="font-medium">None</span>
                   </div>
                   {IDE_PRESETS.filter(p => ["vscode", "cursor", "zed"].includes(p.id)).map(preset => (
                     <div
                       key={preset.id}
-                      className={`agent-option${selectedIdeId === preset.id ? " selected" : ""}`}
+                      className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedIdeId === preset.id && "bg-accent-blue text-white")}
                       onClick={() => { setSelectedIdeId(preset.id); setIdeDropdownOpen(false); }}
                     >
-                      <img src={getIdeIconSrc(preset.icon)} alt="" className="icon-16" />
-                      <span className="agent-name">{preset.name}</span>
-                      <span className="agent-command">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
+                      <img src={getIdeIconSrc(preset.icon)} alt="" className="w-4 h-4" />
+                      <span className="font-medium">{preset.name}</span>
+                      <span className="ml-auto text-xs text-text-muted">{config.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset)}</span>
                     </div>
                   ))}
                 </div>
@@ -547,11 +548,11 @@ export function RemoteDialog({
           </>
         )}
 
-        <div className="modal-actions">
-          <button className="modal-btn cancel" onClick={handleClose}>Cancel</button>
+        <div className="flex justify-end gap-3 mt-5">
+          <button className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-border bg-bg-tertiary text-text-primary hover:bg-bg-hover" onClick={handleClose}>Cancel</button>
           {step === "server-config" ? (
             <button
-              className="modal-btn confirm"
+              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleConnect}
               disabled={!host || !username || connecting}
             >
@@ -559,7 +560,7 @@ export function RemoteDialog({
             </button>
           ) : (
             <button
-              className="modal-btn confirm"
+              className="px-4 py-2 rounded-md text-[var(--font-size)] cursor-pointer transition-all duration-200 border border-accent-blue bg-accent-blue text-white hover:bg-[#519aba] disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleAddProject}
               disabled={!projectName || !projectPath}
             >

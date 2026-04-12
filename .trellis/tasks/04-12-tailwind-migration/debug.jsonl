@@ -1,0 +1,4 @@
+{"file": "AGENTS.md", "reason": "Development conventions and debugging guidelines"}
+{"file": "src/styles.css", "reason": "Original CSS reference for debugging visual regressions"}
+{"file": "src/utils/cn.ts", "reason": "cn() utility — verify twMerge+clsx working correctly for dynamic classes"}
+{"file": "vite.config.ts", "reason": "Tailwind plugin configuration — debug build issues"}

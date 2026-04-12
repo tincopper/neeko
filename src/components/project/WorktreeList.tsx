@@ -4,6 +4,7 @@ import { Worktree, FileChange } from "../../types";
 import FileTree, { buildTree } from "./FileTree";
 import { BranchIcon, ChevronRightIcon, TrashIcon, FolderGitIcon } from "../icons";
 import { terminalCache, destroyTerminalCache } from "../terminal";
+import { cn } from "../../utils/cn";
 
 interface WorktreeListProps {
   worktrees: Worktree[];
@@ -137,12 +138,15 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
 
   return (
     <>
-      <div className="gh-section-label gh-section-label-collapsible" onClick={(e) => toggleSection("__worktrees__", e)}>
-        <ChevronRightIcon size={9} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
+      <div
+        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+        onClick={(e) => toggleSection("__worktrees__", e)}
+      >
+        <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", worktreesExpanded && "rotate-90")} />
         Worktrees
       </div>
       {worktreesExpanded && (
-        <div className="gh-worktree-list">
+        <div className="py-0 pb-1 pl-4">
           {filtered.map((wt) => {
             const isExpanded = expandedWt.has(wt.path);
             const wtFiles = changedFiles[wt.path] ?? [];
@@ -150,9 +154,12 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
             const wtAdd = wtFiles.reduce((s, f) => s + f.additions, 0);
             const wtDel = wtFiles.reduce((s, f) => s + f.deletions, 0);
             return (
-              <div key={wt.path} className="gh-worktree-wrapper">
+              <div key={wt.path} className="mb-0.5">
                 <div
-                  className={`gh-worktree-item gh-worktree-item-standalone${deleting === wt.path ? " wt-deleting" : ""}`}
+                  className={cn(
+                    "flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
+                    deleting === wt.path && "wt-deleting"
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (renaming === wt.path || deleting === wt.path) return;
@@ -162,7 +169,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                 >
                   <FolderGitIcon
                     size={15}
-                    style={{ opacity: 0.7, cursor: "pointer", flexShrink: 0 }}
+                    className="opacity-70 cursor-pointer shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
                       if (renaming === wt.path || deleting === wt.path) return;
@@ -172,7 +179,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                   {renaming === wt.path ? (
                     <input
                       ref={renameInputRef}
-                      className="gh-inline-rename-input"
+                      className="flex-1 min-w-0 bg-bg-tertiary border border-accent-blue rounded text-text-primary text-inherit font-inherit px-1 py-0.5 outline-none box-border"
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       onBlur={commitRename}
@@ -183,48 +190,58 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="gh-worktree-name" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
+                    <span className="flex-1 text-base truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
                       {wt.path.split(/[\\/]/).pop()}
                     </span>
                   )}
                   {deleting === wt.path ? (
                     <span className="wt-spinner" title="Removing..." />
                   ) : (
-                    <button className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove" onClick={(e) => handleRemove(wt.path, wt.branch, e)} title="Remove worktree and branch">
+                    <button
+                      className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red opacity-0 transition-opacity duration-150 text-base px-1.5 py-0.5 group-hover:opacity-100 hover:opacity-100"
+                      onClick={(e) => handleRemove(wt.path, wt.branch, e)}
+                      title="Remove worktree and branch"
+                    >
                       <TrashIcon size={12} />
                     </button>
                   )}
-                  <span className="gh-branch-inline" title={wt.branch}>
+                  <span
+                    className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
+                    title={wt.branch}
+                  >
                     <BranchIcon size={11} /> {wt.branch}
                   </span>
                 </div>
                 {isExpanded && (
-                  <div className="gh-worktree-changes">
+                  <div>
                     {wtTree.length > 0 ? (
                       <>
-                        <div className="gh-section-label gh-section-label-collapsible" onClick={(e) => toggleSection("wt-changes:" + wt.path, e)}>
-                          <ChevronRightIcon size={9} className={`gh-section-chevron ${expandedSections["wt-changes:" + wt.path] !== false ? "expanded" : ""}`} />
+                        <div
+                          className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded py-1 px-2 transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+                          onClick={(e) => toggleSection("wt-changes:" + wt.path, e)}
+                        >
+                          <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["wt-changes:" + wt.path] !== false && "rotate-90")} />
                           Changes ({wtFiles.length})
                           {(wtAdd > 0 || wtDel > 0) && (
-                            <span className="gh-changes-stats">
-                              {wtAdd > 0 && <span className="gh-changes-additions">+{wtAdd}</span>}
-                              {wtDel > 0 && <span className="gh-changes-deletions">-{wtDel}</span>}
+                            <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
+                              {wtAdd > 0 && <span className="text-[#3fb950] font-semibold">+{wtAdd}</span>}
+                              {wtDel > 0 && <span className="text-[#f85149] font-semibold">-{wtDel}</span>}
                             </span>
                           )}
                         </div>
                         {expandedSections["wt-changes:" + wt.path] !== false && (
-                          <div className="gh-file-tree">
+                          <div className="mt-0.5 pl-4">
                             <FileTree nodes={wtTree} projectId={projectId} onSelectFile={(_, fp) => onSelectWorktreeFile?.(wt.path, fp)} />
                           </div>
                         )}
                       </>
                     ) : changedFiles[wt.path] !== undefined ? (
-                      <div className="gh-section-label gh-section-label-collapsible" style={{ cursor: "default" }}>
-                        <ChevronRightIcon size={9} style={{ opacity: 0 }} />No changes
+                      <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-default rounded py-1 px-2">
+                        <ChevronRightIcon size={9} className="opacity-0" />No changes
                       </div>
                     ) : (
-                      <div className="gh-section-label gh-section-label-collapsible" style={{ cursor: "default" }}>
-                        <ChevronRightIcon size={9} style={{ opacity: 0 }} />Loading...
+                      <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-default rounded py-1 px-2">
+                        <ChevronRightIcon size={9} className="opacity-0" />Loading...
                       </div>
                     )}
                   </div>
@@ -239,13 +256,13 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Remove Worktree</h3>
             {confirmDelete.isDirty ? (
-              <p className="wt-confirm-message wt-confirm-warning">This worktree has uncommitted changes. Removing it will discard all local changes. Are you sure?</p>
+              <p className="text-[13px] text-text-primary mb-3 leading-relaxed text-accent-yellow bg-accent-yellow/[0.08] p-2 px-3 rounded-md border-l-[3px] border-accent-yellow">This worktree has uncommitted changes. Removing it will discard all local changes. Are you sure?</p>
             ) : (
-              <p className="wt-confirm-message">Remove worktree <strong>{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong>{confirmDelete.branch}</strong>?</p>
+              <p className="text-[13px] text-text-primary mb-3 leading-relaxed">Remove worktree <strong className="text-accent-blue">{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong className="text-accent-blue">{confirmDelete.branch}</strong>?</p>
             )}
-            <div className="wt-confirm-details">
-              <span className="wt-confirm-path">{confirmDelete.path}</span>
-              <span className="wt-confirm-branch"><BranchIcon size={11} /> {confirmDelete.branch}</span>
+            <div className="flex flex-col gap-1 p-2 px-3 bg-bg-tertiary rounded-md mb-4 font-mono text-xs">
+              <span className="text-text-muted break-all">{confirmDelete.path}</span>
+              <span className="flex items-center gap-1 text-accent-green"><BranchIcon size={11} /> {confirmDelete.branch}</span>
             </div>
             <div className="modal-actions">
               <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>Cancel</button>

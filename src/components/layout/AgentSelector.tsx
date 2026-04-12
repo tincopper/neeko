@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AgentIcon from "./AgentIcon";
+import { cn } from "../../utils/cn";
 
 interface AgentConfig {
   id: string;
@@ -86,33 +87,36 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
 
   return (
-    <div className="agent-selector" ref={containerRef}>
+    <div className="agent-selector relative" ref={containerRef}>
       <button
-        className="agent-dropdown-btn"
+        className="agent-dropdown-btn flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-[0.86em] transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue"
         onClick={() => setIsOpen(!isOpen)}
       >
         {selectedAgent ? (
           <>
             <AgentIcon icon={selectedAgent.icon} />
-            <span className="agent-name">{selectedAgent.name}</span>
+            <span className="agent-name font-medium">{selectedAgent.name}</span>
           </>
         ) : (
           <>
             <AgentIcon icon={null} fallback="⚡" />
-            <span className="agent-name">Select Agent</span>
+            <span className="agent-name font-medium">Select Agent</span>
           </>
         )}
-        <span className="dropdown-arrow">{isOpen ? "−" : "+"}</span>
+        <span className="dropdown-arrow text-xs text-text-secondary ml-1">{isOpen ? "−" : "+"}</span>
       </button>
 
       {isOpen && (
-        <div className="agent-dropdown">
+        <div className="agent-dropdown absolute top-full right-0 mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] min-w-[200px] overflow-hidden">
           <div
-            className={`agent-option ${!selectedAgentId ? "selected" : ""}`}
+            className={cn(
+              "agent-option flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover",
+              !selectedAgentId && "selected bg-accent-blue text-white"
+            )}
             onClick={() => handleSelectAgent(null)}
           >
             <AgentIcon icon={null} fallback="⚡" />
-            <span className="agent-name">None</span>
+            <span className="agent-name font-medium">None</span>
           </div>
           {agents.map((agent) => {
             const installed = installedMap[agent.id] ?? true;
@@ -126,14 +130,19 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             return (
               <div
                 key={agent.id}
-                className={`agent-option ${selectedAgentId === agent.id ? "selected" : ""} ${!agent.enabled ? "disabled" : ""} ${!installed ? "not-installed" : ""}`}
+                className={cn(
+                  "agent-option flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover",
+                  selectedAgentId === agent.id && "selected bg-accent-blue text-white",
+                  !agent.enabled && "disabled opacity-50 cursor-not-allowed",
+                  !installed && "not-installed opacity-50 cursor-not-allowed"
+                )}
                 onClick={handleClick}
               >
                 <AgentIcon icon={agent.icon} />
-                <span className="agent-name">{agent.name}</span>
-                <span className="agent-command">{agent.command}</span>
+                <span className="agent-name font-medium">{agent.name}</span>
+                <span className="agent-command ml-auto text-[0.79em] text-text-muted">{agent.command}</span>
                 {Object.keys(installedMap).length > 0 && (
-                  <span className={`agent-status-dot ${installed ? "installed-dot" : "not-installed-dot"}`} />
+                  <span className={cn("agent-status-dot w-2 h-2 rounded-full ml-auto shrink-0", installed ? "installed-dot" : "not-installed-dot")} />
                 )}
               </div>
             );

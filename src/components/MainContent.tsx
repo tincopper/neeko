@@ -1,4 +1,4 @@
-﻿import React, { useCallback } from "react";
+import React, { useCallback } from "react";
 import { TerminalView, destroyTerminalCache, SideTerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
@@ -90,10 +90,10 @@ function MainContent({
       : null;
 
   return (
-    <div className="main-content">
+    <div className="main-content flex-1 flex flex-col overflow-hidden">
       {/* WSL 终端视图 */}
       {activeWslProject && !activeProject && (
-        <div className="content-area">
+        <div className="content-area flex-1 overflow-hidden flex flex-col">
           {wslDiffState ? (
             <DiffView
               diffSource={{ type: "wsl", distro: wslDiffState.distro, projectPath: wslDiffState.projectPath }}
@@ -102,7 +102,7 @@ function MainContent({
               onBack={onWslDiffBack}
             />
           ) : (
-          <div className="terminal-pane-container">
+          <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
             <WSLTerminalView
               distro={activeWslProject.distro}
               projectId={activeWslProject.project.id}
@@ -118,7 +118,7 @@ function MainContent({
             {wslSideTerminalOpen.has(activeWslProject.project.id) && (
               <>
                 <div
-                  className="terminal-pane-divider"
+                  className="terminal-pane-divider w-[5px] bg-border shrink-0 cursor-col-resize transition-colors duration-150 relative hover:bg-accent-blue active:bg-accent-blue"
                   onMouseDown={handleSideDividerMouseDown}
                 />
                 <WSLTerminalView
@@ -166,7 +166,7 @@ function MainContent({
 
       {/* 本地项目视图 */}
       {activeProject ? (
-        <div className="content-area">
+        <div className="content-area flex-1 overflow-hidden flex flex-col">
           {worktreeDiffState ? (
             <DiffView
               diffSource={{ type: "worktree", projectId: activeProject.id, worktreePath: worktreeDiffState.worktreePath }}
@@ -175,7 +175,7 @@ function MainContent({
               onBack={onWorktreeDiffBack}
             />
           ) : isTerminalView || activeWorktreePath ? (
-            <div className="terminal-pane-container">
+            <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
               {/* 主终端（条件渲染，与 worktree 终端逻辑一致，切换时走 cache attach 无闪屏） */}
               {!activeWorktreePath && (
                 <TerminalView
@@ -203,10 +203,10 @@ function MainContent({
               {sideTerminalOpenSet.size > 0 && !activeWorktreePath && (
                 <>
                   <div
-                    className="terminal-pane-divider"
+                    className="terminal-pane-divider w-[5px] bg-border shrink-0 cursor-col-resize transition-colors duration-150 relative hover:bg-accent-blue active:bg-accent-blue"
                     onMouseDown={handleSideDividerMouseDown}
                   />
-                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
+                  <div className="side-terminal-grid-container flex-none shrink-0 min-h-0 overflow-hidden bg-bg-primary" style={{ width: sideTerminalWidth }}>
                     {Array.from(sideTerminalOpenSet).map((indexStr) => {
                       const index = parseInt(indexStr, 10);
                       return (
@@ -235,10 +235,10 @@ function MainContent({
               {sideTerminalOpenSet.size > 0 && activeWorktreePath && (
                 <>
                   <div
-                    className="terminal-pane-divider"
+                    className="terminal-pane-divider w-[5px] bg-border shrink-0 cursor-col-resize transition-colors duration-150 relative hover:bg-accent-blue active:bg-accent-blue"
                     onMouseDown={handleSideDividerMouseDown}
                   />
-                  <div className="side-terminal-grid-container" style={{ width: sideTerminalWidth }}>
+                  <div className="side-terminal-grid-container flex-none shrink-0 min-h-0 overflow-hidden bg-bg-primary" style={{ width: sideTerminalWidth }}>
                     {Array.from(sideTerminalOpenSet).map((indexStr) => {
                       const index = parseInt(indexStr, 10);
                       return (
@@ -276,12 +276,12 @@ function MainContent({
           ) : null}
         </div>
       ) : !activeWslProject && !activeRemoteProject ? (
-        <div className="empty-state">
-          <div className="empty-body">
-            <div className="empty-icon">📁</div>
-            <h2>Welcome to Neeko</h2>
-            <p>Select a project or add a new one to get started</p>
-            <button className="add-project-btn" onClick={handleAddProject}>
+        <div className="empty-state flex-1 flex flex-col text-text-secondary">
+          <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
+            <div className="empty-icon text-[3.43em] opacity-50">📁</div>
+            <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
+            <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
+            <button className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e]" onClick={handleAddProject}>
               Add Project
             </button>
           </div>

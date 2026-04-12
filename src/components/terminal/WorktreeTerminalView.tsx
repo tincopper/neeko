@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   createTerminalForProject,
@@ -18,12 +18,12 @@ interface WorktreeTerminalViewProps {
   fontFamily?: string;
 }
 
-// cache key 格式：projectId + ":wt:" + worktreePath
+// cache key 鏍煎紡锛歱rojectId + ":wt:" + worktreePath
 export function worktreeKey(projectId: string, worktreePath: string) {
   return `${projectId}:wt:${worktreePath}`;
 }
 
-export default function WorktreeTerminalView({
+function WorktreeTerminalView({
   projectId,
   projectName,
   worktreePath,
@@ -37,7 +37,7 @@ export default function WorktreeTerminalView({
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
 
-  // fontSize / fontFamily 变化时同步到已有实例
+  // fontSize / fontFamily 鍙樺寲鏃跺悓姝ュ埌宸叉湁瀹炰緥
   useEffect(() => {
     const key = worktreeKey(projectId, worktreePath);
     const cache = terminalCache.get(key);
@@ -54,7 +54,7 @@ export default function WorktreeTerminalView({
     const key = worktreeKey(projectId, worktreePath);
     currentKeyRef.current = key;
 
-    // 注册重建回调
+    // 娉ㄥ唽閲嶅缓鍥炶皟
     terminalRebuildCallbacks.set(key, () => {
       if (currentKeyRef.current === key) {
         setRebuildCount((c) => c + 1);
@@ -89,7 +89,7 @@ export default function WorktreeTerminalView({
     if (terminalCache.has(key)) {
       attach(terminalCache.get(key)!);
     } else {
-      // worktreePath 作为终端工作目录，selectedAgent 自动启动 Agent，backendProjectId 为父项目 ID
+      // worktreePath 浣滀负缁堢宸ヤ綔鐩綍锛宻electedAgent 鑷姩鍚姩 Agent锛宐ackendProjectId 涓虹埗椤圭洰 ID
       createTerminalForProject(
         key,
         worktreePath,
@@ -131,8 +131,8 @@ export default function WorktreeTerminalView({
     };
     window.addEventListener("resize", handleResize);
 
-    // 监听容器尺寸变化（side terminal 拖拽时也会触发）
-    // rAF 节流：避免拖拽时每像素触发 fit()+PTY resize 导致终端闪烁
+    // 鐩戝惉瀹瑰櫒灏哄鍙樺寲锛坰ide terminal 鎷栨嫿鏃朵篃浼氳Е鍙戯級
+    // rAF 鑺傛祦锛氶伩鍏嶆嫋鎷芥椂姣忓儚绱犺Е鍙?fit()+PTY resize 瀵艰嚧缁堢闂儊
     let resizeRafId: number | null = null;
     const ro = new ResizeObserver(() => {
       if (resizeRafId !== null) return;
@@ -153,8 +153,10 @@ export default function WorktreeTerminalView({
   }, [projectId, worktreePath, rebuildCount]);
 
   return (
-    <div className="terminal-container">
-      <div className="terminal-wrapper" ref={wrapperRef} />
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
     </div>
   );
 }
+
+export default React.memo(WorktreeTerminalView);
