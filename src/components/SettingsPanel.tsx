@@ -564,40 +564,66 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
                      </>
                   )}
 
-                  {activeNav === "appearance" && (
-                     <div className="flex flex-col">
-                        <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
-                        <label className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Theme</label>
-                        <div className="flex gap-3">
-                           {/* Dark card */}
-                           <button
-                              className={cn(
-                                 "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-                                 config.theme === "dark" ? "border-accent-blue" : "border-transparent"
-                              )}
-                              onClick={() => onConfigChange({ ...config, theme: "dark" })}
-                           >
-                              <div className="w-16 h-10 rounded border border-border bg-[#282c34] flex items-center justify-center">
-                                 <span className="text-[#61afef] text-xs font-semibold">Aa</span>
-                              </div>
-                              <span className="text-sm text-text-primary">Dark</span>
-                           </button>
-                           {/* Light card */}
-                           <button
-                              className={cn(
-                                 "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-                                 config.theme === "light" ? "border-accent-blue" : "border-transparent"
-                              )}
-                              onClick={() => onConfigChange({ ...config, theme: "light" })}
-                           >
-                              <div className="w-16 h-10 rounded border border-border bg-[#ffffff] flex items-center justify-center">
-                                 <span className="text-[#2f7cd3] text-xs font-semibold">Aa</span>
-                              </div>
-                              <span className="text-sm text-text-primary">Light</span>
-                           </button>
-                        </div>
-                     </div>
-                  )}
+                   {activeNav === "appearance" && (
+                      <div className="flex flex-col">
+                         <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
+                         <label className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Theme</label>
+                         <div className="flex gap-3 flex-wrap">
+                            {/* Dark card */}
+                            <button
+                               className={cn(
+                                  "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                                  config.theme === "dark" ? "border-accent-blue" : "border-transparent"
+                               )}
+                               onClick={() => onConfigChange({ ...config, theme: "dark" })}
+                            >
+                               <div className="w-16 h-10 rounded border border-white/10 bg-[#000000] flex items-center justify-center">
+                                  <span className="text-[#61afef] text-xs font-semibold">Aa</span>
+                               </div>
+                               <span className="text-sm text-text-primary">Dark</span>
+                            </button>
+                            {/* One Dark Pro card */}
+                            <button
+                               className={cn(
+                                  "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                                  config.theme === "one-dark-pro" ? "border-accent-blue" : "border-transparent"
+                               )}
+                               onClick={() => onConfigChange({ ...config, theme: "one-dark-pro" })}
+                            >
+                               <div className="w-16 h-10 rounded border border-white/10 bg-[#282c34] flex items-center justify-center">
+                                  <span className="text-[#61afef] text-xs font-semibold">Aa</span>
+                               </div>
+                               <span className="text-sm text-text-primary">One Dark Pro</span>
+                            </button>
+                             {/* Claude card */}
+                             <button
+                                className={cn(
+                                   "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                                   config.theme === "claude" ? "border-accent-blue" : "border-transparent"
+                                )}
+                                onClick={() => onConfigChange({ ...config, theme: "claude" })}
+                             >
+                                <div className="w-16 h-10 rounded border border-black/10 bg-[#f5f0e8] flex items-center justify-center">
+                                   <span className="text-[#c96442] text-xs font-semibold">Aa</span>
+                                </div>
+                                <span className="text-sm text-text-primary">Claude</span>
+                             </button>
+                             {/* Light card */}
+                             <button
+                                className={cn(
+                                   "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                                   config.theme === "light" ? "border-accent-blue" : "border-transparent"
+                                )}
+                                onClick={() => onConfigChange({ ...config, theme: "light" })}
+                             >
+                                <div className="w-16 h-10 rounded border border-black/10 bg-[#ffffff] flex items-center justify-center">
+                                   <span className="text-[#2f7cd3] text-xs font-semibold">Aa</span>
+                                </div>
+                                <span className="text-sm text-text-primary">Light</span>
+                             </button>
+                         </div>
+                      </div>
+                   )}
                </div>
             </div>
          </div>
