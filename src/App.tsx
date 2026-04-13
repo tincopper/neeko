@@ -273,22 +273,6 @@ function App() {
       [currentProjectId, updateTabStatus]
    );
 
-   const [showAddMenu, setShowAddMenu] = useState(false);
-
-   useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-         const target = event.target as HTMLElement;
-         if (!target.closest(".add-menu-dropdown") && !target.closest(".tb-icon-btn")) {
-            setShowAddMenu(false);
-         }
-      };
-
-      if (showAddMenu) {
-         document.addEventListener("click", handleClickOutside);
-         return () => document.removeEventListener("click", handleClickOutside);
-      }
-   }, [showAddMenu]);
-
    const { initialSidebarWidth, initializing } = useSessionBootstrap({
       loadProjects,
       setWslEntries,
@@ -438,13 +422,6 @@ function App() {
             activeWorktreeBranch={activeWorktreeBranch}
             activeWslWorktreeBranch={wslActions.wslActiveWtBranch}
             activeRemoteWorktreeBranch={remoteActions.remoteActiveWtBranch}
-            showAddMenu={showAddMenu}
-            loading={loading}
-            onOpenSettings={callbacks.handleToggleSettings}
-            onToggleAddMenu={() => setShowAddMenu((v) => !v)}
-            onAddProject={callbacks.handleAddProjectClick}
-            onAddWsl={callbacks.handleAddWslOrNoop}
-            onAddRemote={callbacks.handleAddRemoteClick}
          />
 
          <AppProvider
@@ -468,6 +445,8 @@ function App() {
                   wslOpenSessions={wslOpenSessions}
                   remoteOpenSessions={remoteOpenSessions}
                   onAddProject={handleAddProject}
+                  onAddWsl={callbacks.handleAddWslOrNoop}
+                  onAddRemote={callbacks.handleAddRemoteClick}
                   onRemoveProject={handleRemoveProject}
                   onOpenSettings={callbacks.handleToggleSettings}
                   onSelectProject={handleSelectProjectWithClear}

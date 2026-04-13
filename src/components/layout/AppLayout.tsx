@@ -26,6 +26,8 @@ interface AppLayoutProps {
    wslOpenSessions: Set<string>;
    remoteOpenSessions: Set<string>;
    onAddProject: () => void;
+   onAddWsl: () => void;
+   onAddRemote: () => void;
    onRemoveProject: (id: string) => void;
    onOpenSettings: () => void;
    onSelectProject: (id: string) => void;
@@ -106,8 +108,13 @@ function AppLayout(props: AppLayoutProps) {
    const { activePanel } = useSidebar();
 
    return (
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-         <ActivityBar onOpenSettings={props.onOpenSettings} />
+      <div className="flex flex-1 min-h-0 overflow-hidden bg-bg-primary">
+         <ActivityBar
+            onOpenSettings={props.onOpenSettings}
+            onAddProject={props.onAddProject}
+            onAddWsl={props.onAddWsl}
+            onAddRemote={props.onAddRemote}
+         />
 
          <PanelArea>
             {activePanel === "projects" && (

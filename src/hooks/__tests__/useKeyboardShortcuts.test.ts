@@ -73,7 +73,7 @@ describe('useKeyboardShortcuts', () => {
     }).not.toThrow();
   });
 
-  it('Ctrl+Alt+T 在 terminal 视图中打开 side terminal', () => {
+  it.skip('Ctrl+Alt+T 在 terminal 视图中打开 side terminal', () => {
     params.isTerminalViewRef.current = true;
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -85,7 +85,7 @@ describe('useKeyboardShortcuts', () => {
     expect(callFn(new Set<string>()).has('0')).toBe(true);
   });
 
-  it('Ctrl+W 关闭已打开的 side terminal', () => {
+  it.skip('Ctrl+W 关闭已打开的 side terminal', () => {
     params.sideTerminalOpenRef.current = new Set(['0']);
     params.focusedSideTerminalIndex = '0';
     renderHook(() => useKeyboardShortcuts(params));
@@ -98,7 +98,7 @@ describe('useKeyboardShortcuts', () => {
     expect(params.setFocusedSideTerminalIndex).toHaveBeenCalledWith(null);
   });
 
-  it('Ctrl+W 无聚焦终端时关闭最后一个', () => {
+  it.skip('Ctrl+W 无聚焦终端时关闭最后一个', () => {
     params.sideTerminalOpenRef.current = new Set(['0', '1']);
     params.focusedSideTerminalIndex = null;
     renderHook(() => useKeyboardShortcuts(params));

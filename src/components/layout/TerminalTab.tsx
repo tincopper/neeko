@@ -31,9 +31,9 @@ function TerminalTab({
 
    return (
       <div
-         className={`flex items-center gap-1 h-6 px-2 rounded-md border cursor-pointer min-w-0 ${isActive
-               ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-               : "border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+         className={`flex items-center gap-1 h-6 px-2 rounded-md border cursor-pointer min-w-0 transition-colors ${isActive
+               ? "border-white/20 bg-white/10 text-white"
+               : "border-transparent text-text-secondary hover:bg-white/5 hover:text-white"
             }`}
          onClick={handleClick}
          title={title}
@@ -41,7 +41,7 @@ function TerminalTab({
          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-status-running shrink-0" />}
          <span className="text-xs truncate">{title}</span>
          <button
-            className="tb-icon-btn w-4 h-4 rounded text-xs text-inherit hover:bg-bg-hover"
+            className="tb-icon-btn w-4 h-4 rounded text-xs text-inherit hover:bg-white/20 transition-colors"
             onClick={handleClose}
             title="Close tab"
          >
