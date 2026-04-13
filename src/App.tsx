@@ -440,24 +440,11 @@ function App() {
             activeRemoteWorktreeBranch={remoteActions.remoteActiveWtBranch}
             showAddMenu={showAddMenu}
             loading={loading}
-            agents={agents}
-            compactMode={config.agentSelectorCompactMode ?? false}
-            showAgentBar={config.agentSelectorShowPresetBar !== false}
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onActivateTab={handleActivateTab}
-            onCloseTab={handleCloseTab}
-            onAddTab={handleAddTab}
-            onAgentClick={handleAgentClick}
             onOpenSettings={callbacks.handleToggleSettings}
             onToggleAddMenu={() => setShowAddMenu((v) => !v)}
             onAddProject={callbacks.handleAddProjectClick}
             onAddWsl={callbacks.handleAddWslOrNoop}
             onAddRemote={callbacks.handleAddRemoteClick}
-            onSelectLocalAgent={callbacks.handleSelectLocalAgent}
-            onSelectWslAgent={wslActions.handleSelectWslAgent}
-            onSelectRemoteAgent={remoteActions.handleSelectRemoteAgent}
-            showToast={showToast}
          />
 
          <AppProvider
@@ -516,9 +503,17 @@ function App() {
                   activeWorktreeBranch={activeWorktreeBranch}
                   handleSelectProject={handleSelectProjectWithClear}
                   handleAddProject={handleAddProject}
-                  tabs={tabs}
-                  activeTabId={activeTabId}
-                  onTabStatusChange={handleTabStatusChange}
+                   tabs={tabs}
+                   activeTabId={activeTabId}
+                   onActivateTab={handleActivateTab}
+                   onCloseTab={handleCloseTab}
+                   onAddTab={handleAddTab}
+                   onTabStatusChange={handleTabStatusChange}
+                   agents={agents}
+                   compactMode={config.agentSelectorCompactMode ?? false}
+                   showAgentBar={config.agentSelectorShowPresetBar !== false}
+                   onAgentClick={handleAgentClick}
+                   showToast={showToast}
                   activeWslProject={activeWslProject}
                   activeWslWorktreePath={wslActions.activeWslWorktreePath}
                   setWslOpenSessions={setWslOpenSessions}

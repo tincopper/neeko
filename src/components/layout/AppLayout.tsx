@@ -11,6 +11,7 @@ import type {
    RemoteEntrySession,
    RemoteProject,
    AuthMethod,
+   AgentConfig,
    TerminalTab,
 } from "../../types";
 import type { ActiveWslKey, ActiveRemoteKey } from "../connections/RemoteItems";
@@ -65,7 +66,16 @@ interface AppLayoutProps {
 
    tabs: TerminalTab[];
    activeTabId: string | null;
+   onActivateTab: (tabId: string) => void;
+   onCloseTab: (tabId: string) => void;
+   onAddTab: () => void;
    onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
+
+   agents: AgentConfig[];
+   compactMode: boolean;
+   showAgentBar: boolean;
+   onAgentClick: (agent: AgentConfig) => void;
+   showToast: (message: string, type?: "info" | "error") => void;
 
    activeWslProject: { distro: string; project: WSLProject } | null;
    activeWslWorktreePath: string | null;
@@ -153,7 +163,15 @@ function AppLayout(props: AppLayoutProps) {
             suppressResizeRef={props.suppressResizeRef}
             tabs={props.tabs}
             activeTabId={props.activeTabId}
+            onActivateTab={props.onActivateTab}
+            onCloseTab={props.onCloseTab}
+            onAddTab={props.onAddTab}
             onTabStatusChange={props.onTabStatusChange}
+            agents={props.agents}
+            compactMode={props.compactMode}
+            showAgentBar={props.showAgentBar}
+            onAgentClick={props.onAgentClick}
+            showToast={props.showToast}
             activeWslProject={props.activeWslProject}
             activeWslWorktreePath={props.activeWslWorktreePath}
             setWslOpenSessions={props.setWslOpenSessions}
