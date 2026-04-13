@@ -3,6 +3,7 @@ use crate::AppStateWrapper;
 use tauri::State;
 
 fn wsl_command(program: &str) -> std::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {
