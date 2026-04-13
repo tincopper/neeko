@@ -198,11 +198,11 @@ export async function createTerminalForProject(
     fontSize: fontSize,
     fontFamily: buildFontFamily(fontFamily),
     theme: {
-      background: '#282c34',
-      foreground: '#abb2bf',
-      cursor: '#528bff',
-      selectionBackground: '#3e4451',
-      black: '#282c34',
+      background: '#000000',
+      foreground: '#ededed',
+      cursor: '#ffffff',
+      selectionBackground: '#333333',
+      black: '#000000',
       red: '#e06c75',
       green: '#98c379',
       yellow: '#e5c07b',
@@ -549,7 +549,7 @@ function TerminalView({
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null;
         if (suppressResizeRef?.current) return
-        const c = terminalCache.get(projectId)
+        const c = terminalCache.get(cacheKey)
         if (!c) return
         c.fitAddon.fit()
         if (pendingPtyResize && c.sessionId) {

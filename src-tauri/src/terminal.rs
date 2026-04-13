@@ -474,22 +474,6 @@ fn default_shell_cmd() -> CommandBuilder {
     }
 }
 
-#[cfg(unix)]
-fn disable_echo_if_possible(master: &dyn MasterPty) {
-    if let Some(fd) = master.as_raw_fd() {
-        if let Err(e) = disable_echo(fd) {
-            log_error(&format!("[PTY] Failed to disable echo: {}", e));
-        } else {
-            log_info("[PTY] Echo disabled for IME support");
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn disable_echo_if_possible(_master: &dyn MasterPty) {
-    // Windows 不需要
-}
-
 // ─── 进程管理 ───────────────────────────────────────────────────────
 
 const GRACEFUL_TIMEOUT_SECS: u64 = 3;
@@ -566,23 +550,6 @@ fn graceful_kill(child: &mut dyn Child) {
         let _ = child.kill();
         let _ = child.wait();
     }
-}
-
-#[cfg(unix)]
-fn disable_echo(fd: std::os::unix::io::RawFd) -> anyhow::Result<()> {
-    use std::mem::MaybeUninit;
-    unsafe {
-        let mut termios = MaybeUninit::<libc::termios>::uninit();
-        if libc::tcgetattr(fd, termios.as_mut_ptr()) != 0 {
-            return Err(anyhow::anyhow!("tcgetattr failed"));
-        }
-        let mut termios = termios.assume_init();
-        termios.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL);
-        if libc::tcsetattr(fd, libc::TCSANOW, &termios) != 0 {
-            return Err(anyhow::anyhow!("tcsetattr failed"));
-        }
-    }
-    Ok(())
 }
 
 fn log_info(msg: &str) {

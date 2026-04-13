@@ -165,7 +165,7 @@ function MainContent({
          : null;
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden">
+      <div className="main-content flex-1 flex flex-col overflow-hidden bg-bg-primary">
          {hasActiveProject && (
             <div className="shrink-0 bg-bg-secondary border-b border-border">
                <div className="h-8 flex items-center px-2 gap-1">
@@ -188,7 +188,7 @@ function MainContent({
                         return (
                            <button
                               key={agent.id}
-                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md border text-xs ${selected ? "border-accent-blue text-accent-blue bg-accent-blue/10" : "border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover"} ${!installed ? "opacity-50" : ""}`}
+                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md border text-xs transition-colors ${selected ? "border-white/30 text-white bg-white/10 shadow-sm" : "bg-white/5 border-white/10 text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
                               onClick={() => handleAgentClick(agent)}
                               disabled={!installed}
                               title={agent.name}

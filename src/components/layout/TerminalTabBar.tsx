@@ -43,7 +43,7 @@ function TerminalTabBar({
 
          {tabs.length < 10 && (
             <button
-               className="tb-icon-btn w-6 h-6 rounded-md border border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+               className="tb-icon-btn w-6 h-6 rounded-md bg-white/5 border border-white/10 text-text-secondary hover:bg-white/10 hover:text-white transition-colors"
                onClick={onAddTab}
                title="New terminal tab"
             >
