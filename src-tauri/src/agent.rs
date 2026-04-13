@@ -4,20 +4,28 @@ use std::process::{Command, Stdio};
 
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
-    let cmd = if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
         Command::new("cmd")
             .args(["/c", &format!("where {}", command)])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .status()
-    } else {
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
         Command::new("sh")
             .args(["-c", &format!("which {}", command)])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-    };
-    cmd.map(|s| s.success()).unwrap_or(false)
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
 }
 
 pub struct AgentManager {
@@ -224,12 +232,10 @@ mod tests {
 
     #[test]
     fn should_return_true_for_existing_command() {
-        // "cmd" exists on Windows, "sh" on Unix
-        let cmd = if cfg!(target_os = "windows") {
-            "cmd"
-        } else {
-            "sh"
-        };
+        #[cfg(target_os = "windows")]
+        let cmd = "cmd";
+        #[cfg(not(target_os = "windows"))]
+        let cmd = "sh";
         assert!(check_command_exists(cmd));
     }
 
