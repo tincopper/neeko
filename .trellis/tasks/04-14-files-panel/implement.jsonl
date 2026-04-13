@@ -1,0 +1,12 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "src/context/sidebar-context.tsx", "reason": "ActivityPanel union type — add 'files' here"}
+{"file": "src/components/layout/ActivityBar.tsx", "reason": "navItems array — add Files icon entry"}
+{"file": "src/components/layout/AppLayout.tsx", "reason": "PanelArea conditional rendering — add FilesPanel here"}
+{"file": "src/components/project/FileTree.tsx", "reason": "Existing git-file tree — reference for new full-dir tree component"}
+{"file": "src/components/DiffView.tsx", "reason": "detectLanguage, ensureLanguageRegistered, EXT_TO_LANG patterns to reuse"}
+{"file": "src/utils/fileIcons.ts", "reason": "fileIconSrc utility — reuse for file tree icons"}
+{"file": "src-tauri/src/lib.rs", "reason": "Tauri command registration — add new commands here"}
+{"file": "src-tauri/src/state/mod.rs", "reason": "Core data structures — add FileNode and FileContent types here"}
+{"file": "src-tauri/src/commands/git.rs", "reason": "Reference for project_manager lock pattern in commands"}
