@@ -1,13 +1,17 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
+import TerminalTabBar from "./layout/TerminalTabBar";
+import AgentIcon from "./layout/AgentIcon";
 import type {
    Project,
    WSLProject,
    RemoteProject,
    RemoteEntrySession,
    AuthMethod,
+   AgentConfig,
    TerminalTab,
 } from "../types";
 import { useAppContext } from "../context/app-context";
@@ -22,7 +26,16 @@ interface MainContentProps {
 
    tabs: TerminalTab[];
    activeTabId: string | null;
+   onActivateTab: (tabId: string) => void;
+   onCloseTab: (tabId: string) => void;
+   onAddTab: () => void;
    onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
+
+   agents: AgentConfig[];
+   compactMode: boolean;
+   showAgentBar: boolean;
+   onAgentClick: (agent: AgentConfig) => void;
+   showToast: (message: string, type?: "info" | "error") => void;
 
    activeWslProject: { distro: string; project: WSLProject } | null;
    activeWslWorktreePath: string | null;
@@ -59,7 +72,15 @@ function MainContent({
    suppressResizeRef,
    tabs,
    activeTabId,
+   onActivateTab,
+   onCloseTab,
+   onAddTab,
    onTabStatusChange,
+   agents,
+   compactMode,
+   showAgentBar,
+   onAgentClick,
+   showToast,
    activeWslProject,
    activeWslWorktreePath,
    setWslOpenSessions,
@@ -78,6 +99,41 @@ function MainContent({
 
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
    const activeTabAgentId = activeTab?.agentId ?? null;
+
+   // Agent installed status
+   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
+
+   useEffect(() => {
+      if (agents.length === 0) return;
+      const agentIds = agents.map((a) => a.id);
+      invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
+         .then((result) => setInstalledMap(new Map(Object.entries(result))))
+         .catch((err) => console.error("[MainContent] Failed to check agents installed:", err));
+   }, [agents]);
+
+   const handleAgentClick = useCallback(
+      (agent: AgentConfig) => {
+         const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+         if (!installed) {
+            showToast(`${agent.name} (${agent.command}) is not installed`, "error");
+            return;
+         }
+         if (!agent.enabled) return;
+         onAgentClick(agent);
+      },
+      [installedMap, onAgentClick, showToast]
+   );
+
+   const currentAgentId =
+      activeTab?.agentId ??
+      activeProject?.selected_agent ??
+      activeWslProject?.project.selected_agent ??
+      activeRemoteProject?.project.selected_agent ??
+      null;
+
+   const enabledAgents = useMemo(() => agents.filter((a) => a.enabled), [agents]);
+   const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
+   const showAgentBarContent = showAgentBar && hasActiveProject && enabledAgents.length > 0;
 
    const handleTerminalTabStatusChange = useCallback(
       (status: "Idle" | "Running" | "Failed") => {
@@ -110,6 +166,43 @@ function MainContent({
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden">
+         {hasActiveProject && (
+            <div className="shrink-0 bg-bg-secondary border-b border-border">
+               <div className="h-8 flex items-center px-2 gap-1">
+                  <div className="flex-1 min-w-0">
+                     <TerminalTabBar
+                        tabs={tabs}
+                        activeTabId={activeTabId}
+                        onActivateTab={onActivateTab}
+                        onCloseTab={onCloseTab}
+                        onAddTab={onAddTab}
+                     />
+                  </div>
+               </div>
+
+               {showAgentBarContent && (
+                  <div className="h-8 px-2 pb-1 flex items-center gap-1 overflow-x-auto">
+                     {enabledAgents.map((agent) => {
+                        const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+                        const selected = currentAgentId === agent.id;
+                        return (
+                           <button
+                              key={agent.id}
+                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md border text-xs ${selected ? "border-accent-blue text-accent-blue bg-accent-blue/10" : "border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover"} ${!installed ? "opacity-50" : ""}`}
+                              onClick={() => handleAgentClick(agent)}
+                              disabled={!installed}
+                              title={agent.name}
+                           >
+                              <AgentIcon icon={agent.icon} />
+                              {!compactMode && <span>{agent.name}</span>}
+                           </button>
+                        );
+                     })}
+                  </div>
+               )}
+            </div>
+         )}
+
          {activeWslProject && !activeProject && (
             <div className="content-area flex-1 overflow-hidden flex flex-col">
                {wslDiffState ? (

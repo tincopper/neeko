@@ -105,17 +105,17 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
   }, [confirmDelete, onRemoveWorktree]);
 
   return (
-    <div className="gh-project-body">
+    <div className="py-0.5 pb-1">
       {/* Branches section */}
       <div
-        className="gh-section-label gh-section-label-collapsible"
+        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
         onClick={(e) => onToggleSection("__branches__", e)}
       >
-        <ChevronRightIcon size={10} className={`gh-section-chevron ${branchesExpanded ? "expanded" : ""}`} />
+        <ChevronRightIcon size={10} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${branchesExpanded ? "rotate-90" : ""}`} />
         Branches
       </div>
       {branchesExpanded && (
-        <div className="gh-branch-list">
+        <div className="py-0 pb-1 pl-2">
           {gitInfo.branches.map((branch) => {
             const isCurrent = branch === gitInfo.current_branch;
             const isRenaming = renamingBranch === branch;
@@ -125,8 +125,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
             return (
               <div key={branch}>
                 <div
-                  className={`gh-branch-item${isCurrent ? " current" : ""}`}
-                  style={{ cursor: "pointer" }}
+                  className={`gh-branch-item flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary cursor-pointer ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isRenaming) return;
@@ -145,7 +144,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                   {isRenaming ? (
                     <input
                       ref={renameInputRef}
-                      className="gh-rename-input"
+                      className="flex-1 min-w-0 bg-bg-tertiary border border-accent-blue rounded text-text-primary text-inherit font-inherit px-1 py-0.5 outline-none box-border"
                       value={renameBranchValue}
                       onChange={(e) => onRenameBranchChange(e.target.value)}
                       onKeyDown={(e) => {
@@ -156,12 +155,12 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="gh-branch-item-name">{branch}</span>
+                    <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis text-base cursor-pointer">{branch}</span>
                   )}
                 </div>
                 {/* Expanded current branch: show changed files as tree */}
                 {isCurrent && isExpanded && gitInfo.changed_files.length > 0 && (
-                  <div className="gh-file-tree">
+                  <div className="mt-0.5 pl-4">
                     <FileTree nodes={fileTree} projectId={projectId} onSelectFile={(_, fp) => onSelectFile(fp)} />
                   </div>
                 )}
@@ -175,21 +174,20 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
       {gitInfo.worktrees.length > 0 && (
         <>
           <div
-            className="gh-section-label gh-section-label-collapsible"
+            className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
             onClick={(e) => onToggleSection("__worktrees__", e)}
           >
-            <ChevronRightIcon size={10} className={`gh-section-chevron ${worktreesExpanded ? "expanded" : ""}`} />
+            <ChevronRightIcon size={10} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${worktreesExpanded ? "rotate-90" : ""}`} />
             Worktrees
           </div>
           {worktreesExpanded && (
-            <div className="gh-worktree-list">
+            <div className="py-0 pb-1 pl-4">
               {gitInfo.worktrees.filter((wt) => wt.branch !== currentBranch).map((wt) => {
                 const isRenaming = renamingWorktree === wt.path;
                 return (
                   <div
                     key={wt.path}
-                    className={`gh-worktree-item gh-worktree-item-standalone${deletingWorktree === wt.path ? " wt-deleting" : ""}`}
-                    style={{ cursor: "pointer" }}
+                    className={`flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover ${deletingWorktree === wt.path ? "wt-deleting" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (isRenaming || deletingWorktree === wt.path) return;
@@ -205,7 +203,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
-                        className="gh-rename-input"
+                        className="flex-1 min-w-0 bg-bg-tertiary border border-accent-blue rounded text-text-primary text-inherit font-inherit px-1 py-0.5 outline-none box-border"
                         value={renameWorktreeValue}
                         onChange={(e) => onRenameWorktreeChange(e.target.value)}
                         onKeyDown={(e) => {
@@ -216,14 +214,14 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span className="gh-worktree-name">{wt.path.split('/').pop()}</span>
+                      <span className="flex-1 text-base truncate min-w-0">{wt.path.split('/').pop()}</span>
                     )}
                     {!isRenaming && (
                       deletingWorktree === wt.path ? (
                         <span className="wt-spinner" title="Removing..." />
                       ) : (
                         <button
-                          className="gh-icon-btn gh-icon-btn-danger gh-worktree-remove"
+                          className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red opacity-0 group-hover:opacity-100"
                           onClick={(e) => { e.stopPropagation(); handleConfirmRemove(wt.path, wt.branch); }}
                           title="Remove worktree and branch"
                         >
@@ -231,7 +229,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         </button>
                       )
                     )}
-                    <span className="gh-branch-inline" title={wt.branch}>
+                    <span className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40" title={wt.branch}>
                       <BranchIcon size={11} />
                       {wt.branch}
                     </span>
@@ -246,12 +244,12 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Remove Worktree</h3>
-            <p className="wt-confirm-message">
-              Remove worktree <strong>{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong>{confirmDelete.branch}</strong>?
+            <p className="text-[13px] text-text-primary mb-3 leading-relaxed">
+              Remove worktree <strong className="text-accent-blue">{confirmDelete.path.split(/[\\/]/).pop()}</strong> and delete branch <strong className="text-accent-blue">{confirmDelete.branch}</strong>?
             </p>
-            <div className="wt-confirm-details">
-              <span className="wt-confirm-path">{confirmDelete.path}</span>
-              <span className="wt-confirm-branch">
+            <div className="flex flex-col gap-1 p-2 px-3 bg-bg-tertiary rounded-md mb-4 font-mono text-xs">
+              <span className="text-text-muted break-all">{confirmDelete.path}</span>
+              <span className="flex items-center gap-1 text-accent-green">
                 <BranchIcon size={11} /> {confirmDelete.branch}
               </span>
             </div>
@@ -434,54 +432,54 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   };
 
   return (
-    <div className={`gh-project${isActive ? " active" : ""}`}>
+    <div className={`gh-project mb-0.5 rounded-md overflow-visible ${isActive ? "active" : ""}`}>
       {/* Project header */}
       <div
-        className="gh-project-header"
+        className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""}`}
         onClick={() => onSelectProject()}
         onContextMenu={handleContextMenu}
       >
         <span
-          className="gh-project-avatar"
-          style={{ ...getAvatarStyle(project.name), cursor: "pointer" }}
+          className="w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase cursor-pointer"
+          style={getAvatarStyle(project.name)}
           onClick={(e) => { e.stopPropagation(); setCollapsed(v => !v); }}
         >
           {project.name.charAt(0).toUpperCase()}
         </span>
-        <div className="gh-project-meta">
-          <span className="gh-project-name">{project.name}</span>
+        <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
         </div>
 
         {/* IDE 按钮 */}
         {onOpenIde && (
           <button
-            className="gh-icon-btn gh-ide-btn"
+            className={`gh-ide-btn bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"}`}
             title={project.selected_ide ? `Open in IDE (Ctrl+O)\n${project.selected_ide}` : "Open in IDE (Ctrl+O)"}
             onClick={(e) => { e.stopPropagation(); onOpenIde(); }}
           >
-            <img src={getIdeIconByCommand(project.selected_ide ?? null, ideCommandOverrides)} className="gh-ide-icon" alt="" />
+            <img src={getIdeIconByCommand(project.selected_ide ?? null, ideCommandOverrides)} className="w-3.5 h-3.5 object-contain block" alt="" />
           </button>
         )}
 
-        <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
+        <div className={`gh-project-actions flex items-center gap-0.5 shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-150`} onClick={(e) => e.stopPropagation()}>
           {/* Git 操作下拉菜单 */}
           {gitInfo && onOpenDialog && (
-            <div className="gh-git-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
-                className="gh-icon-btn gh-git-menu-btn"
+                className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
                 <GitLogoIcon size={11} />
               </button>
               {gitMenuOpen && (
-                <div className="gh-git-dropdown">
-                  <div className="gh-git-dropdown-item"
+                <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
                     <GitLogoIcon size={12} />
                     New Branch
                   </div>
-                  <div className="gh-git-dropdown-item"
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
                     <FolderGitIcon size={12} />
                     New Worktree
@@ -491,18 +489,18 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
             </div>
           )}
           {hasSession && (
-            <button className="gh-icon-btn" title="Close terminal"
+            <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Close terminal"
               onClick={() => onRemoveProject()}>
               <CloseTerminalIcon size={10} />
             </button>
           )}
-          <button className="gh-icon-btn gh-icon-btn-danger" title="Remove project"
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove project"
             onClick={() => onRemoveProject()}>×</button>
         </div>
 
         {/* Branch badge */}
         {gitInfo && (
-          <span className="gh-branch-inline" title={gitInfo.current_branch}>
+          <span className="gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate" title={gitInfo.current_branch}>
             <BranchIcon size={11} style={{ opacity: 0.6 }} />
             {gitInfo.current_branch}
           </span>
@@ -727,33 +725,33 @@ export const WSLItem = React.memo<WSLItemProps>(({
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="gh-project">
-      <div className="gh-project-header">
+    <div className="gh-project mb-0.5 rounded-md overflow-visible">
+      <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
         <img
           src={getDistroIcon(entry.distro)}
-          className="sidebar-distro-icon"
+          className="sidebar-distro-icon w-5 h-5 shrink-0"
           alt=""
           style={{ cursor: "pointer" }}
           onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
         />
-        <div className="gh-project-meta">
-          <span className="gh-project-name">{entry.distro}</span>
+        <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="text-sm font-semibold text-text-primary truncate">{entry.distro}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>WSL</span>
         </div>
-        <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="gh-icon-btn" title="Add WSL project" onClick={() => onAddProject(entry.id)}>
+        <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Add WSL project" onClick={() => onAddProject(entry.id)}>
             <PlusIcon size={11} />
           </button>
-          <button className="gh-icon-btn gh-icon-btn-danger" title="Remove distro" onClick={() => onRemoveEntry(entry.id)}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove distro" onClick={() => onRemoveEntry(entry.id)}>
             <TrashIcon size={11} />
           </button>
         </div>
       </div>
 
       {!collapsed && (
-        <div className="gh-project-body" style={{ paddingLeft: 16 }}>
+        <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
-            <div className="gh-empty-section" style={{ paddingLeft: 28 }}>No projects</div>
+            <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>No projects</div>
           ) : (
             entry.projects.map((project) => {
               const isActive = activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
@@ -955,33 +953,33 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
   const label = `${entry.host}:${entry.port}`;
 
   return (
-    <div className="gh-project">
-      <div className="gh-project-header">
+    <div className="gh-project mb-0.5 rounded-md overflow-visible">
+      <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
         <img
           src={serverIcon}
-          className="sidebar-distro-icon"
+          className="sidebar-distro-icon w-5 h-5 shrink-0"
           alt=""
           style={{ cursor: "pointer" }}
           onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
         />
-        <div className="gh-project-meta">
-          <span className="gh-project-name">{label}</span>
+        <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
+          <span className="text-sm font-semibold text-text-primary truncate">{label}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>SSH</span>
         </div>
-        <div className="gh-project-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="gh-icon-btn" title="Add remote project" onClick={() => onAddProject(entry.id)}>
+        <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Add remote project" onClick={() => onAddProject(entry.id)}>
             <PlusIcon size={11} />
           </button>
-          <button className="gh-icon-btn gh-icon-btn-danger" title="Remove server" onClick={() => onRemoveEntry(entry.id)}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove server" onClick={() => onRemoveEntry(entry.id)}>
             <TrashIcon size={11} />
           </button>
         </div>
       </div>
 
       {!collapsed && (
-        <div className="gh-project-body" style={{ paddingLeft: 16 }}>
+        <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
-            <div className="gh-empty-section" style={{ paddingLeft: 28 }}>No projects</div>
+            <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>No projects</div>
           ) : (
             entry.projects.map((project) => {
               const isActive = activeKey?.host === entry.host && activeKey?.projectId === project.id;
