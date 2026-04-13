@@ -1,7 +1,7 @@
 import { useEffect, RefObject } from "react";
 import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
-import { refreshTerminal, refreshSideTerminal, refreshWslTerminal, refreshRemoteTerminal } from "../components/terminal";
+import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal } from "../components/terminal";
 
 type ActiveWslKey = { distro: string; projectId: string } | null;
 type ActiveRemoteKey = { host: string; projectId: string } | null;
@@ -14,11 +14,6 @@ type SwitchItem =
 interface UseKeyboardShortcutsParams {
   projects: { id: string }[];
   activeProjectId: string | null;
-  activeProjectIdRef: RefObject<string | null>;
-  sideTerminalOpenRef: RefObject<Set<string>>;
-  setSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
-  focusedSideTerminalIndex: string | null;
-  setFocusedSideTerminalIndex: (index: string | null) => void;
   wslEntriesRef: RefObject<WSLEntrySession[]>;
   activeWslKeyRef: RefObject<ActiveWslKey>;
   selectWslProjectRef: RefObject<(distro: string, project: WSLProject) => void>;
@@ -26,19 +21,13 @@ interface UseKeyboardShortcutsParams {
   activeRemoteKeyRef: RefObject<ActiveRemoteKey>;
   selectRemoteProjectRef: RefObject<(host: string, project: RemoteProject) => void>;
   selectProjectRef: RefObject<(id: string) => void>;
-  wslSideOpenRef: RefObject<Set<string>>;
-  remoteSideOpenRef: RefObject<Set<string>>;
-  setWslSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
-  setRemoteSideTerminalOpen: (updater: (prev: Set<string>) => Set<string>) => void;
   activeWorktreePathRef: RefObject<string | null>;
   openedWorktreesRef: RefObject<{ path: string; branch: string }[]>;
   updateWtPath: (path: string | null, branch: string) => void;
-  // WSL worktree cycling
   wslOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
   activeWslWorktreePathRef: RefObject<string | null>;
   setWslWorktreePath: (path: string | null) => void;
   setWslWtBranch: (branch: string) => void;
-  // SSH worktree cycling
   remoteOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
   activeRemoteWorktreePathRef: RefObject<string | null>;
   setRemoteWorktreePath: (path: string | null) => void;
@@ -51,11 +40,6 @@ interface UseKeyboardShortcutsParams {
 export function useKeyboardShortcuts({
   projects,
   activeProjectId,
-  activeProjectIdRef,
-  sideTerminalOpenRef,
-  setSideTerminalOpen,
-  focusedSideTerminalIndex,
-  setFocusedSideTerminalIndex,
   wslEntriesRef,
   activeWslKeyRef,
   selectWslProjectRef,
@@ -63,10 +47,6 @@ export function useKeyboardShortcuts({
   activeRemoteKeyRef,
   selectRemoteProjectRef,
   selectProjectRef,
-  wslSideOpenRef,
-  remoteSideOpenRef,
-  setWslSideTerminalOpen,
-  setRemoteSideTerminalOpen,
   activeWorktreePathRef,
   openedWorktreesRef,
   updateWtPath,
@@ -84,34 +64,8 @@ export function useKeyboardShortcuts({
 }: UseKeyboardShortcutsParams) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.altKey && e.code === "KeyT") {
-        e.preventDefault();
-        if (isTerminalViewRef.current) {
-          // 打开新的终端窗口（最多 4 个）
-          setSideTerminalOpen(prev => {
-            const next = new Set(prev);
-            if (next.size >= 4) return prev;
-            // 找到最小的可用索引
-            let newIndex = 0;
-            while (next.has(String(newIndex))) {
-              newIndex++;
-            }
-            next.add(String(newIndex));
-            return next;
-          });
-        } else if (IS_WINDOWS && activeWslKeyRef.current) {
-          const pid = activeWslKeyRef.current.projectId;
-          setWslSideTerminalOpen(prev => new Set(prev).add(pid));
-        } else if (activeRemoteKeyRef.current) {
-          const pid = activeRemoteKeyRef.current.projectId;
-          setRemoteSideTerminalOpen(prev => new Set(prev).add(pid));
-        }
-        return;
-      }
-
       if (e.ctrlKey && !e.altKey && e.code === "KeyN") {
         e.preventDefault();
-        // Local project worktree cycling
         if (isTerminalViewRef.current) {
           const opened = openedWorktreesRef.current ?? [];
           if (opened.length === 0) return;
@@ -127,7 +81,6 @@ export function useKeyboardShortcuts({
             }
           }
         }
-        // WSL worktree cycling
         else if (activeWslKeyRef.current) {
           const opened = wslOpenedWtRef.current ?? [];
           if (opened.length === 0) return;
@@ -146,7 +99,6 @@ export function useKeyboardShortcuts({
             }
           }
         }
-        // SSH worktree cycling
         else if (activeRemoteKeyRef.current) {
           const opened = remoteOpenedWtRef.current ?? [];
           if (opened.length === 0) return;
@@ -168,60 +120,6 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      if (e.ctrlKey && !e.altKey && e.code === "KeyW") {
-        const currentSet = sideTerminalOpenRef.current ?? new Set<string>();
-        if (currentSet.size > 0) {
-          e.preventDefault();
-          // 如果有聚焦的终端，关闭聚焦的终端；否则关闭最近打开的终端
-          const indexToRemove = focusedSideTerminalIndex && currentSet.has(focusedSideTerminalIndex)
-            ? focusedSideTerminalIndex
-            : (() => {
-                const arr = Array.from(currentSet);
-                return arr[arr.length - 1];
-              })();
-          const projectId = activeProjectIdRef.current;
-          
-          // 销毁 PTY 会话
-          if (projectId) {
-            const idx = parseInt(indexToRemove, 10);
-            const cacheKey = `${projectId}:side:${idx}`;
-            import("../components/terminal").then(({ terminalCache, destroyTerminalCache }) => {
-              // 先获取 sessionId，再销毁
-              const cache = terminalCache.get(cacheKey);
-              if (cache?.sessionId) {
-                import("@tauri-apps/api/core").then(({ invoke }) => {
-                  invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
-                });
-              }
-              destroyTerminalCache(cacheKey);
-            });
-          }
-          
-          // 从 Set 中移除
-          setSideTerminalOpen(prev => {
-            const next = new Set(prev);
-            next.delete(indexToRemove);
-            return next;
-          });
-          
-          // 清除聚焦索引
-          setFocusedSideTerminalIndex(null);
-        } else if (IS_WINDOWS && activeWslKeyRef.current) {
-          const pid = activeWslKeyRef.current.projectId;
-          if ((wslSideOpenRef.current ?? new Set()).has(pid)) {
-            e.preventDefault();
-            setWslSideTerminalOpen(prev => { const n = new Set(prev); n.delete(pid); return n; });
-          }
-        } else if (activeRemoteKeyRef.current) {
-          const pid = activeRemoteKeyRef.current.projectId;
-          if ((remoteSideOpenRef.current ?? new Set()).has(pid)) {
-            e.preventDefault();
-            setRemoteSideTerminalOpen(prev => { const n = new Set(prev); n.delete(pid); return n; });
-          }
-        }
-        return;
-      }
-
       if (e.ctrlKey && !e.altKey && e.code === "KeyO") {
         const p = activeProjectRef.current;
         if (p) {
@@ -233,13 +131,7 @@ export function useKeyboardShortcuts({
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyR") {
         e.preventDefault();
-        const currentSet = sideTerminalOpenRef.current ?? new Set<string>();
-        if (currentSet.size > 0 && activeProjectId) {
-          // 刷新所有打开的 side terminals
-          currentSet.forEach(indexStr => {
-            refreshSideTerminal(activeProjectId, parseInt(indexStr, 10));
-          });
-        } else if (activeProjectId && isTerminalViewRef.current) {
+        if (activeProjectId && isTerminalViewRef.current) {
           refreshTerminal(activeProjectId);
         } else if (IS_WINDOWS && activeWslKeyRef.current) {
           const k = `wsl:${activeWslKeyRef.current.distro}:${activeWslKeyRef.current.projectId}`;
