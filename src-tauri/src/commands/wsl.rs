@@ -7,8 +7,7 @@ fn wsl_command(program: &str) -> std::process::Command {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     cmd
 }
