@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
+- **Total Sessions**: 10
 - **Last Active**: 2026-04-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~379 | Active |
+| `journal-1.md` | ~411 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 10 | 2026-04-13 | Title Bar 简化与深色主题调整 | `dfec4c1` |
 | 9 | 2026-04-13 | 解决 enhance/title_bar 合并 main 分支冲突 | `247e152`, `c3421f9`, `760d6b0` |
 | 8 | 2026-04-13 | fix: macOS/Linux GUI 应用 Agent 检测失败 | `d547497` |
 | 7 | 2026-04-12 | 重构 TitleBar 布局并添加多 Tab 终端支持 | `8441037` |

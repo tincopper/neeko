@@ -377,3 +377,35 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Title Bar 简化与深色主题调整
+
+**Date**: 2026-04-13
+**Task**: Title Bar 简化与深色主题调整
+
+### Summary
+
+将添加项目菜单从 TitleBar 迁移到 ActivityBar 底部 '+' 按钮；TitleBar 简化为仅显示 Neeko 图标；深色主题从 One Dark Pro (#282c34) 切换为纯黑 (#000000)；统一三个终端视图的配色；清理 Rust 未使用代码；更新不稳定测试
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dfec4c1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
