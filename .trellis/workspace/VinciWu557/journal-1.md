@@ -202,3 +202,210 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 重构 AgentSelector: 直接集成 AgentBar 到 TitleBar
+
+**Date**: 2026-04-12
+**Task**: 重构 AgentSelector: 直接集成 AgentBar 到 TitleBar
+
+### Summary
+
+将 AgentSelector 从三级下拉菜单重构为直接在 TitleBar 中显示 Agent Bar，解决布局堆叠问题。配置选项移至 SettingsPanel。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c2486a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 7: 重构 TitleBar 布局并添加多 Tab 终端支持
+
+**Date**: 2026-04-12
+**Task**: 重构 TitleBar 布局并添加多 Tab 终端支持
+
+### Summary
+
+重构 TitleBar 为左右布局，添加 Terminal Tabs 支持，优化 Agent 执行逻辑
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8441037` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 8: fix: macOS/Linux GUI 应用 Agent 检测失败
+
+**Date**: 2026-04-13
+**Task**: fix: macOS/Linux GUI 应用 Agent 检测失败
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+
+macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH（/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin），导致 `check_command_exists()` 无法找到安装在 /opt/homebrew/bin、~/.local/bin 等路径下的 Agent CLI 工具。
+
+## 修复方案
+
+在 `run()` 启动阶段，通过 `$SHELL -lc "echo $PATH"` 获取用户 login shell 的完整 PATH 并注入进程环境变量。
+
+| 改动文件 | 内容 |
+|---------|------|
+| `src-tauri/src/lib.rs` | 新增 `resolve_user_path()` + run() 中调用，`#[cfg(unix)]` 门控 |
+| `src-tauri/src/commands/wsl.rs` | `#[allow(unused_mut)]` 消除编译警告 |
+| `src-tauri/src/git/local.rs` | `#[allow(unused_mut)]` 消除编译警告 |
+
+## 跨平台兼容性
+
+- macOS/Linux: 通过 login shell 解析完整 PATH
+- Windows: 不受影响（`#[cfg(unix)]` 门控），GUI 应用天然继承完整 PATH
+- 失败时静默降级，不影响应用启动
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d547497` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 9: 解决 enhance/title_bar 合并 main 分支冲突
+
+**Date**: 2026-04-13
+**Task**: 解决 enhance/title_bar 合并 main 分支冲突
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Feature | Description |
+|---------|-------------|
+| 合并冲突解决 | 解决 enhance/title_bar 与 main 分支的 15 个冲突文件 |
+| 架构合并 | 以 main 的 Context/Tailwind/AppLayout 为基础，集成 HEAD 的 Tab 系统和 IDE 风格 TitleBar |
+| SideTerminal 清理 | 彻底移除 SideTerminal 相关代码（SideTerminalView, useSideTerminalResize） |
+| 样式迁移 | TitleBar/AgentSelector 样式从 CSS 类迁移到 Tailwind |
+| Agent 编译修复 | agent.rs 条件编译修复，解决非 Windows 平台编译问题 |
+| shadcn/ui 集成 | 合并 main 分支的 shadcn DropdownMenu 等组件 |
+| .claude 配置 | 更新 Claude Code 配置文件 |
+
+**关键决策**:
+- 终端模型：采用 Tab 系统，删除 SideTerminal
+- 架构基底：采用 main 的 Context 体系 (AppProvider/SidebarProvider)
+- UI 设计：保留 HEAD 的 IDE 风格 TitleBar/AgentSelector
+
+**解决的冲突文件**:
+- `src/App.tsx` — 架构级冲突，合并 Context 体系与 Tab 系统
+- `src/components/layout/TitleBar.tsx` — IDE 风格设计 + Tailwind 迁移
+- `src/components/layout/AgentSelector.tsx` — 多功能面板 + Tailwind 迁移
+- `src/components/MainContent.tsx` — Context 获取 + Tab 逻辑
+- `src/components/project/ProjectSidebar.tsx` — 重导出到 ProjectsPanel
+- `.gitignore` — 采用 main（.claude/ .agents/ 纳入版本控制）
+- `src-tauri/src/agent.rs` — HEAD 条件编译修复
+- `src/components/SettingsPanel.tsx` — Agent Bar 配置项保留
+- `src/hooks/useSessionBootstrap.ts` — 采用 main（SplashScreen 支持）
+- 其他 SideTerminal 清理类文件
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `247e152` | (see git log) |
+| `c3421f9` | (see git log) |
+| `760d6b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 10: Title Bar 简化与深色主题调整
+
+**Date**: 2026-04-13
+**Task**: Title Bar 简化与深色主题调整
+
+### Summary
+
+将添加项目菜单从 TitleBar 迁移到 ActivityBar 底部 '+' 按钮；TitleBar 简化为仅显示 Neeko 图标；深色主题从 One Dark Pro (#282c34) 切换为纯黑 (#000000)；统一三个终端视图的配色；清理 Rust 未使用代码；更新不稳定测试
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dfec4c1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

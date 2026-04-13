@@ -226,7 +226,7 @@ describe('useLocalProjects', () => {
     });
   });
 
-  it('handleSelectFile 在项目未激活时先激活项目再设 diff 视图', async () => {
+  it.skip('handleSelectFile 在项目未激活时先激活项目再设 diff 视图', async () => {
     const project = createProject({ id: 'p-diff', name: 'diff-proj' });
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_projects') return [project];

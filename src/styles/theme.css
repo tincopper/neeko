@@ -11,24 +11,25 @@
 :root[data-theme="dark"],
 :root:not([data-theme]) {
   /* Titlebar gradient */
-  --titlebar-gradient-start: #1e3a52;
+  --titlebar-gradient-start: #000000;
 
   /* Background layers */
-  --bg-primary:   #282c34;
-  --bg-secondary: #21252b;
-  --bg-tertiary:  #2c313a;
-  --bg-hover:     #323842;
+  --bg-primary:   #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary:  #141414;
+  --bg-hover:     #222222;
 
   /* Text */
-  --text-primary:   #abb2bf;
-  --text-secondary: #5c6370;
-  --text-muted:     #4b5263;
+  --text-primary:   #ededed;
+  --text-secondary: #888888;
+  --text-muted:     #666666;
 
   /* Border */
-  --border-color: #181a1f;
+  --border-color: #333333;
 
   /* Accent colors */
-  --accent-blue:   #61afef;
+  --accent-blue:       #61afef;
+  --accent-blue-rgb:   97, 175, 239;
   --accent-green:  #98c379;
   --accent-yellow: #e5c07b;
   --accent-red:    #e06c75;
@@ -64,7 +65,8 @@
   --border-color: #d4d4d4;
 
   /* Accent colors */
-  --accent-blue:   #2f7cd3;
+  --accent-blue:       #2f7cd3;
+  --accent-blue-rgb:   47, 124, 211;
   --accent-green:  #4a9e3f;
   --accent-yellow: #c49000;
   --accent-red:    #d32f2f;

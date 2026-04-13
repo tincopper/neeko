@@ -12,6 +12,8 @@ export interface AppConfig {
   ideCommandOverrides: Record<string, string>;
   agentCommandOverrides: Record<string, string>;
   customAgents: AgentConfig[];
+  agentSelectorShowPresetBar: boolean;
+  agentSelectorCompactMode: boolean;
 }
 
 export interface FileChange {
@@ -146,6 +148,16 @@ export type ActiveProjectAdapter =
   | { type: 'local'; project: UnifiedProject }
   | WslProjectAdapter 
   | RemoteProjectAdapter;
+
+// Terminal Tab
+export interface TerminalTab {
+  id: string;
+  projectId: string;
+  agentId: string | null;
+  title: string;
+  status: "Idle" | "Running" | "Failed";
+  order: number;
+}
 
 // 持久化会话存储（与 Rust SessionStore 对应）
 export interface SessionStore {

@@ -33,7 +33,6 @@ function makeParams(overrides: Partial<Parameters<typeof useAppCallbacks>[0]> = 
   const setActiveRemoteKey = vi.fn();
   const setActiveRemoteProject = vi.fn();
   const setSettingsOpen = vi.fn();
-  const setShowAddMenu = vi.fn();
   const handleAddProject = vi.fn();
   const setWslDialogOpen = vi.fn();
   const setRemoteDialogOpen = vi.fn();
@@ -69,7 +68,6 @@ function makeParams(overrides: Partial<Parameters<typeof useAppCallbacks>[0]> = 
     setActiveRemoteKey,
     setActiveRemoteProject,
     setSettingsOpen,
-    setShowAddMenu,
     handleAddProject,
     setWslDialogOpen,
     setRemoteDialogOpen,

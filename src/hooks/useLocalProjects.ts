@@ -11,8 +11,6 @@ export function useLocalProjects() {
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [agentInstalledMap, setAgentInstalledMap] = useState<Record<string, boolean>>({});
-  const [sideTerminalOpenMap, setSideTerminalOpenMap] = useState<Record<string, Set<string>>>({});
 
   const activeProjectIdRef = useRef<string | null>(null);
   const selectProjectRef = useRef<(id: string) => void>(() => {});
@@ -46,8 +44,6 @@ export function useLocalProjects() {
     try {
       const agentList = await invoke<AgentConfig[]>("list_agents");
       setAgents(agentList);
-      const installedMap = await invoke<Record<string, boolean>>("check_agents_installed", {});
-      setAgentInstalledMap(installedMap);
     } catch (error) {
       console.error("[App] Failed to load agents:", error);
     }
@@ -104,16 +100,7 @@ export function useLocalProjects() {
         }
         return next;
       });
-      setSideTerminalOpenMap(prev => {
-        const next = { ...prev };
-        delete next[projectId];
-        return next;
-      });
-      // 销毁所有可能的 side terminal 缓存
-      for (let i = 0; i < 4; i++) {
-        destroyTerminalCache(`${projectId}:side:${i}`);
-      }
-      destroyTerminalCache(`${projectId}:side`);
+      destroyTerminalCache(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
@@ -131,10 +118,6 @@ export function useLocalProjects() {
     if (activeProjectIdRef.current !== projectId) {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
-      // 先把 active_view 置为 Terminal，确保 activeProject 在 MainContent 中
-      // 被渲染出来（activeProject !== null），随后再切换到 diff 视图才生效
-      await invoke("set_view_terminal", { projectId });
-      await loadProjects();
     }
     await invoke("set_view_diff", { projectId, filePath });
     await loadProjects();
@@ -187,8 +170,7 @@ export function useLocalProjects() {
     activeProject, setActiveProject,
     loading, setLoading,
     pendingPath, setPendingPath,
-    agents, agentInstalledMap,
-    sideTerminalOpenMap, setSideTerminalOpenMap,
+    agents,
     activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,

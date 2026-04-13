@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": "src-tauri/src/lib.rs", "reason": "唯一改动文件，需要在 run() 中添加 PATH 修复逻辑"}
+{"file": "src-tauri/src/agent.rs", "reason": "check_command_exists() 函数，理解当前检测逻辑"}

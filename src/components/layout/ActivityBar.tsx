@@ -1,7 +1,10 @@
-import React from "react";
-import { LibraryBig, Settings } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { LibraryBig, Settings, Plus } from "lucide-react";
 import { useSidebar, type ActivityPanel } from "../../context/sidebar-context";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
+import { IS_WINDOWS } from "../../utils/platform";
+import linuxIcon from "../../assets/linux.svg";
+import serverIcon from "../../assets/server.svg";
 
 function FolderIcon({ size = 22 }: { size?: number }) {
   return (
@@ -17,10 +20,29 @@ function FolderIcon({ size = 22 }: { size?: number }) {
 
 interface ActivityBarProps {
   onOpenSettings: () => void;
+  onAddProject: () => void;
+  onAddWsl: () => void;
+  onAddRemote: () => void;
 }
 
-function ActivityBar({ onOpenSettings }: ActivityBarProps) {
+function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote }: ActivityBarProps) {
   const { activePanel, togglePanel } = useSidebar();
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    if (showAddMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showAddMenu]);
 
   const navItems: { id: ActivityPanel; icon: React.ReactNode; title: string }[] = [
     { id: "projects", icon: <FolderIcon />, title: "Projects" },
@@ -46,6 +68,41 @@ function ActivityBar({ onOpenSettings }: ActivityBarProps) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <div className="relative flex flex-col items-center w-full" ref={addMenuRef}>
+              <SidebarMenuButton tooltip="Add Project" onClick={() => setShowAddMenu((v) => !v)}>
+                <Plus size={24} strokeWidth={1.8} />
+              </SidebarMenuButton>
+
+              {showAddMenu && (
+                <div className="absolute left-12 bottom-0 z-50 w-48 rounded-md border border-border bg-bg-tertiary shadow-lg overflow-hidden">
+                  <div 
+                    className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center" 
+                    onClick={() => { setShowAddMenu(false); onAddProject(); }}
+                  >
+                    <span className="mr-2">📁</span>
+                    <span>Add Local Project</span>
+                  </div>
+                  {IS_WINDOWS && (
+                    <div 
+                      className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center" 
+                      onClick={() => { setShowAddMenu(false); onAddWsl(); }}
+                    >
+                      <img src={linuxIcon} className="w-3.5 h-3.5 mr-2" alt="" />
+                      <span>Add WSL Distro</span>
+                    </div>
+                  )}
+                  <div 
+                    className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center" 
+                    onClick={() => { setShowAddMenu(false); onAddRemote(); }}
+                  >
+                    <img src={serverIcon} className="w-3.5 h-3.5 mr-2" alt="" />
+                    <span>Add Remote Server</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings" onClick={onOpenSettings}>
               <Settings size={22} strokeWidth={1.8} />

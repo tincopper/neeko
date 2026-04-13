@@ -7,8 +7,7 @@ import WorktreeList from "./WorktreeList";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { cn } from "../../utils/cn";
-import { BranchIcon, ChevronRightIcon, SideTerminalIcon, GitLogoIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -34,7 +33,6 @@ interface ProjectItemProps {
   onBackToMainTerminal: (projectId: string) => void;
   onOpenDialog: (dialog: DialogState) => void;
   onOpenIde?: (projectId: string) => void;
-  onOpenSideTerminal?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   ideCommandOverrides?: Record<string, string>;
@@ -57,7 +55,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onBackToMainTerminal,
   onOpenDialog,
   onOpenIde,
-  onOpenSideTerminal,
   onOpenWorktreeTerminal,
   onSelectWorktreeFile,
   ideCommandOverrides,
@@ -71,13 +68,10 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
+  const [gitMenuOpen, setGitMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-  // State-based drag (replaces classList manipulation)
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
-  const dragRef = useRef<{ startY: number; started: boolean } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Branch dropdown state
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
@@ -85,7 +79,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const branchDropdownRef = useRef<HTMLDivElement>(null);
   const branchSearchInputRef = useRef<HTMLInputElement>(null);
 
-  // Toggle collapsed and persist
+  // 切换折叠状态并持久化
   const toggleCollapsed = async () => {
     const newCollapsed = !projectCollapsed;
     setProjectCollapsed(newCollapsed);
@@ -95,6 +89,13 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       console.error("Failed to save collapsed state:", e);
     }
   };
+
+  useEffect(() => {
+    if (!gitMenuOpen) return;
+    const close = () => setGitMenuOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [gitMenuOpen]);
 
   // Close branch dropdown on outside click
   useEffect(() => {
@@ -147,19 +148,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       });
     }
 
-    if (isActive && project.active_view === "Terminal" && onOpenSideTerminal) {
-      items.push({
-        label: "Open Side Terminal",
-        shortcut: "Ctrl+Alt+T",
-        action: () => onOpenSideTerminal(project.id),
-      });
-    }
-
     if (project.git_info) {
       items.push({
         label: "New Branch",
         icon: GitLogoIcon,
         action: () => {
+          setGitMenuOpen(false);
           onOpenDialog({
             type: "new-branch",
             projectId: project.id,
@@ -171,6 +165,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         label: "New Worktree",
         icon: FolderGitIcon,
         action: () => {
+          setGitMenuOpen(false);
           onOpenDialog({
             type: "new-worktree",
             projectId: project.id,
@@ -207,43 +202,38 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     return items;
   };
 
-  // Pointer-based drag handlers (state-based instead of classList)
-  const handleHeaderPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("button, input, select, a")) return;
-
-    dragRef.current = { startY: e.clientY, started: false };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", project.id);
+    e.dataTransfer.effectAllowed = "move";
+    // Add a slight delay to allow the drag image to be captured
+    (e.target as HTMLElement).classList.add("dragging");
   };
 
-  const handleHeaderPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    const DRAG_THRESHOLD = 5;
-    if (!dragRef.current.started) {
-      if (Math.abs(e.clientY - dragRef.current.startY) < DRAG_THRESHOLD) return;
-      dragRef.current.started = true;
-      setIsDragging(true);
-    }
-    // Detect drop target via elementFromPoint
-    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-project-id]") as HTMLElement | null;
-    const targetId = el?.dataset.projectId;
-    if (targetId && targetId !== project.id) {
-      setDragOverTarget(targetId);
-    } else {
-      setDragOverTarget(null);
-    }
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.target as HTMLElement).classList.remove("dragging");
   };
 
-  const handleHeaderPointerUp = (_e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    const wasDragging = dragRef.current.started;
-    if (wasDragging && dragOverTarget && onDragEnd) {
-      onDragEnd(project.id, dragOverTarget);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== project.id && onDragEnd) {
+      onDragEnd(draggedId, project.id);
     }
-    setIsDragging(false);
-    setDragOverTarget(null);
-    dragRef.current = null;
   };
 
   const changedFiles = project.git_info?.changed_files ?? [];
@@ -260,7 +250,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
    const branches = project.git_info?.branches ?? [];
    const worktrees = project.git_info?.worktrees ?? [];
 
-   // Branches occupied by worktrees are not shown in the Branches list
+   // 被 worktree 占用的 branch 不在 Branches 列表中展示
    const filteredBranches = useMemo(() => {
      const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
      return branches.filter((b) => !worktreeBranchSet.has(b));
@@ -288,23 +278,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   return (
     <div
-      className={cn(
-        "mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150",
-        isDragging && "opacity-40 scale-[0.98] cursor-grabbing",
-        dragOverTarget === project.id && "border-t-2 border-accent-blue -mt-0.5"
-      )}
-      data-project-id={project.id}
+      className={`gh-project mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150 ${isActive ? "active" : ""} ${isDragOver ? "border-t-2 border-accent-blue -mt-0.5" : ""}`}
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      <div
-        className={cn("group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover", isActive && "bg-bg-tertiary")}
-        onClick={() => onSelectProject(project.id)}
-        onContextMenu={handleContextMenu}
-        onPointerDown={handleHeaderPointerDown}
-        onPointerMove={handleHeaderPointerMove}
-        onPointerUp={handleHeaderPointerUp}
-      >
+      <div className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""}`} onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
         <span
-          className="w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase cursor-pointer"
+          className="gh-project-avatar w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase cursor-pointer"
           style={getAvatarStyle(project.name)}
           onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
         >
@@ -313,33 +297,53 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
           <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
         </div>
-        {/* IDE button */}
+        {/* IDE 按钮 */}
         {project.selected_ide && onOpenIde && (
           <button
-            className={cn("bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0", isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none")}
+            className={`gh-ide-btn bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"}`}
             title={`Open in IDE (Ctrl+O)\n${project.selected_ide}`}
             onClick={(e) => { e.stopPropagation(); onOpenIde(project.id); }}
           >
             <img src={getIdeIconByCommand(project.selected_ide, ideCommandOverrides)} className="w-3.5 h-3.5 object-contain block" alt="" />
           </button>
         )}
-        {/* Side Terminal button */}
-        {onOpenSideTerminal && project.active_view === "Terminal" && (
+        <div className={`gh-project-actions flex items-center gap-0.5 shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-150`}>
+          {/* Git 操作下拉菜单 */}
+          {project.git_info && (
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
+                onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
+                title="Git actions"
+              >
+                <GitLogoIcon size={12} />
+              </button>
+              {gitMenuOpen && (
+                <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100" onClick={(e) => { setGitMenuOpen(false); openDialog("new-branch", e); }}>
+                    <GitLogoIcon size={12} />
+                    New Branch
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100" onClick={(e) => { setGitMenuOpen(false); openDialog("new-worktree", e); }}>
+                    <FolderGitIcon size={12} />
+                    New Worktree
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <button
-            className={cn("bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0", isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none")}
-            onClick={(e) => { e.stopPropagation(); onOpenSideTerminal(project.id); }}
-            title="Open side terminal (Ctrl+Alt+T)"
+            className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150"
+            onClick={(e) => { e.stopPropagation(); onRemoveProject(project.id); }}
+            title="Remove"
           >
-            <SideTerminalIcon size={12} />
+            <TrashIcon size={12} />
           </button>
-        )}
+        </div>
         {project.git_info && (
           <div className="relative shrink-0" ref={branchDropdownRef}>
             <span
-              className={cn(
-                "flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40",
-                branchDropdownOpen && "bg-accent-blue/20 border-accent-blue/40"
-              )}
+              className={`gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40 ${branchDropdownOpen ? "bg-accent-blue/20 border-accent-blue/40" : ""}`}
               title={project.git_info.current_branch}
               onClick={(e) => {
                 e.stopPropagation();
@@ -355,7 +359,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                   <SearchIcon size={12} className="text-text-muted shrink-0" />
                   <input
                     ref={branchSearchInputRef}
-                    className="flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
+                    className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
                     placeholder="Search branches..."
                     value={branchSearchQuery}
                     onChange={(e) => setBranchSearchQuery(e.target.value)}
@@ -373,10 +377,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                     return (
                       <div
                         key={branch}
-                        className={cn(
-                          "flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary",
-                          isCurrent && "text-accent-blue cursor-default"
-                        )}
+                        className={`flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
                         onClick={() => handleCheckoutFromDropdown(branch)}
                         title={isCurrent ? "Current branch" : "Click to checkout"}
                       >
@@ -414,14 +415,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         <div className="py-0.5 pb-1">
           {project.git_info && (
             <>
-              {/* Changed Files (current branch) */}
+              {/* ── Changed Files (current branch) ── */}
               {tree.length > 0 && (
                 <>
                   <div
                     className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
                     onClick={(e) => toggleSection("__changes__", e)}
                   >
-                    <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["__changes__"] !== false && "rotate-90")} />
+                    <ChevronRightIcon size={9} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${expandedSections["__changes__"] !== false ? "rotate-90" : ""}`} />
                     Changes ({changedFiles.length})
                     {(totalAdditions > 0 || totalDeletions > 0) && (
                       <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
@@ -438,7 +439,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                 </>
               )}
 
-              {/* Worktrees */}
+              {/* ── Worktrees ── */}
               <WorktreeList
                 worktrees={worktrees}
                 projectId={project.id}
