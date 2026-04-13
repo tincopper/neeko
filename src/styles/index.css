@@ -75,7 +75,8 @@
 
   /* xterm.js overrides */
   .terminal-wrapper .xterm { height: 100%; padding: 0; background-color: var(--bg-primary) !important; }
-  .terminal-wrapper .xterm-viewport { overflow-y: auto !important; background-color: var(--bg-primary) !important; }
+  .terminal-wrapper .xterm-viewport { overflow-y: scroll !important; background-color: var(--bg-primary) !important; scrollbar-width: none !important; }
+  .terminal-wrapper .xterm-viewport::-webkit-scrollbar { display: none !important; }
   .terminal-wrapper .xterm-screen { height: 100%; background-color: var(--bg-primary) !important; }
 
   /* Side terminal grid :has() layout */
