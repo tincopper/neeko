@@ -47,9 +47,24 @@ export function useTerminalTabs() {
   );
 
   const ensureDefaultTab = useCallback(
-    (projectId: string): string => {
+    (projectId: string, agentId?: string | null, agentName?: string): string => {
       const existing = tabState[projectId];
       if (existing && existing.tabs.length > 0) {
+        // Backfill agentId only on the sole auto-created tab (not user-added blank tabs)
+        if (agentId && existing.tabs.length === 1 && existing.tabs[0].agentId === null) {
+          setTabState(prev => {
+            const s = prev[projectId];
+            if (!s || s.tabs.length !== 1 || s.tabs[0].agentId !== null) return prev;
+            const tab = s.tabs[0];
+            return {
+              ...prev,
+              [projectId]: {
+                ...s,
+                tabs: [{ ...tab, agentId, title: agentName ?? agentId }],
+              },
+            };
+          });
+        }
         if (!existing.activeTabId) {
           const firstTabId = existing.tabs[0].id;
           setTabState((prev) => ({
@@ -64,8 +79,8 @@ export function useTerminalTabs() {
       const defaultTab: TerminalTab = {
         id: generateTabId(),
         projectId,
-        agentId: null,
-        title: "Terminal",
+        agentId: agentId ?? null,
+        title: agentName ?? (agentId ?? "Terminal"),
         status: "Idle",
         order: 0,
       };
