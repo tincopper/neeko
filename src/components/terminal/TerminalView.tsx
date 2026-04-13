@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, emit } from '@tauri-apps/api/event'
-import '@xterm/xterm/css/xterm.css'
 import { buildFontFamily } from '../../utils/terminal'
 import { IS_MACOS } from '../../utils/platform'
 import type { Project, AgentConfig } from '../../types'
@@ -32,6 +31,10 @@ interface TerminalCache {
 
 // 全局缓存，切换项目时保留会话（key 可为 projectId 或 projectId+":side"）
 export const terminalCache = new Map<string, TerminalCache>()
+
+// 拖拽结束 flag：下一次 ResizeObserver 触发时需要同时做 PTY resize
+export let pendingPtyResize = false
+export function setPendingPtyResize(v: boolean) { pendingPtyResize = v }
 
 // 存储每个 cacheKey 对应的"需要重建"回调，管道关闭时调用
 export const terminalRebuildCallbacks = new Map<string, () => void>()
@@ -538,14 +541,25 @@ function TerminalView({
     }
     window.addEventListener('resize', handleResize)
 
-    // 监听容器尺寸变化（side terminal 拖拽时也会触发）
-    // rAF 节流：避免拖拽时每像素触发 fit()+PTY resize 导致终端闪烁
+    // 监听容器尺寸变化：平时只做 fit（纯前端重排）
+    // 拖拽结束后第一次触发时额外做 PTY resize（pendingPtyResize flag）
     let resizeRafId: number | null = null;
     const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) return;
+      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null;
-        handleResize();
+        if (suppressResizeRef?.current) return
+        const c = terminalCache.get(projectId)
+        if (!c) return
+        c.fitAddon.fit()
+        if (pendingPtyResize && c.sessionId) {
+          setPendingPtyResize(false)
+          invoke('resize_terminal', {
+            sessionId: c.sessionId,
+            cols: c.term.cols,
+            rows: c.term.rows,
+          }).catch(() => {})
+        }
       });
     });
     ro.observe(wrapper)
@@ -600,8 +614,8 @@ function TerminalView({
   }, [tabAgentId, cacheKey, agentCommandOverride]);
 
   return (
-    <div className='terminal-container'>
-      <div className='terminal-wrapper' ref={wrapperRef} />
+    <div className='flex-1 flex flex-col overflow-hidden min-w-0'>
+      <div className='flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0' ref={wrapperRef} />
     </div>
   )
 }

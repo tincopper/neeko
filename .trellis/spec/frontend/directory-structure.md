@@ -16,7 +16,7 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 src/
 ├── App.tsx                  # 根组件 & 状态协调器
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
-├── styles.css               # 单一全局 CSS 文件
+├── tailwind.css             # Tailwind CSS v4 入口 + @theme + @layer components
 ├── types.ts                 # 共享 TypeScript 接口
 ├── vite-env.d.ts            # 资源模块声明
 │

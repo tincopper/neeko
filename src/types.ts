@@ -1,7 +1,9 @@
 // App configuration (persisted)
 export type DiffMode = "unified" | "split";
+export type AppTheme = "dark" | "light";
 
 export interface AppConfig {
+  theme: AppTheme;
   fontSize: number;
   diffMode: DiffMode;
   shell: string;

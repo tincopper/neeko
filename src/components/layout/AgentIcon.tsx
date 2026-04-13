@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { getAgentIconSrc } from "../../utils/agents";
 
 interface AgentIconProps {
@@ -7,12 +7,12 @@ interface AgentIconProps {
   fallback?: string;
 }
 
-const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "🤖" }) => {
+const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "" }) => {
   const src = getAgentIconSrc(icon);
   if (src) {
     return (
       <img
-        className="agent-icon"
+        className="w-[18px] h-[18px] object-contain"
         src={src}
         width={size}
         height={size}
@@ -21,7 +21,7 @@ const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "🤖
       />
     );
   }
-  return <span className="agent-icon">{icon || fallback}</span>;
+  return <span>{icon || fallback}</span>;
 };
 
 export default React.memo(AgentIcon);

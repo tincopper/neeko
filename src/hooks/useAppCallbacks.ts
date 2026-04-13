@@ -52,7 +52,6 @@ export interface UseAppCallbacksParams {
   setActiveRemoteProject: (project: null) => void;
   // UI
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowAddMenu: React.Dispatch<React.SetStateAction<boolean>>;
   handleAddProject: () => void;
   setWslDialogOpen: (open: boolean) => void;
   setRemoteDialogOpen: (open: boolean) => void;
@@ -72,7 +71,6 @@ export interface UseAppCallbacksResult {
   handleRemoteAuthCancel: () => void;
   handleRemoteAuthSuccess: (auth: AuthMethod, saved_auth: string | null | undefined) => void;
   handleToggleSettings: () => void;
-  handleToggleAddMenu: () => void;
   handleAddProjectClick: () => void;
   handleAddWslClick: () => void;
   handleAddRemoteClick: () => void;
@@ -96,7 +94,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     terminalFontSize = 14,
     terminalShell = '',
     terminalFontFamily = '',
-    setSettingsOpen, setShowAddMenu,
+    setSettingsOpen,
     handleAddProject, setWslDialogOpen, setRemoteDialogOpen,
   } = params;
 
@@ -241,10 +239,9 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
 
   // ── UI toggles ──
   const handleToggleSettings = useCallback(() => setSettingsOpen((v) => !v), [setSettingsOpen]);
-  const handleToggleAddMenu = useCallback(() => setShowAddMenu(v => !v), [setShowAddMenu]);
-  const handleAddProjectClick = useCallback(() => { setShowAddMenu(false); handleAddProject(); }, [handleAddProject, setShowAddMenu]);
-  const handleAddWslClick = useCallback(() => { setShowAddMenu(false); setWslDialogOpen(true); }, [setShowAddMenu, setWslDialogOpen]);
-  const handleAddRemoteClick = useCallback(() => { setShowAddMenu(false); setRemoteDialogOpen(true); }, [setShowAddMenu, setRemoteDialogOpen]);
+  const handleAddProjectClick = useCallback(() => { handleAddProject(); }, [handleAddProject]);
+  const handleAddWslClick = useCallback(() => { setWslDialogOpen(true); }, [setWslDialogOpen]);
+  const handleAddRemoteClick = useCallback(() => { setRemoteDialogOpen(true); }, [setRemoteDialogOpen]);
   const handleAddWslOrNoop = IS_WINDOWS ? handleAddWslClick : noop;
 
   return {
@@ -261,7 +258,6 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     handleRemoteAuthCancel,
     handleRemoteAuthSuccess,
     handleToggleSettings,
-    handleToggleAddMenu,
     handleAddProjectClick,
     handleAddWslClick,
     handleAddRemoteClick,

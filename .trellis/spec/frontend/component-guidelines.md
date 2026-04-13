@@ -6,7 +6,7 @@
 
 ## 概述
 
-组件使用 **React 18** + **TypeScript** 构建。大多数组件用 `React.memo` 包裹以优化性能。样式使用**单一全局 CSS 文件**（`styles.css`）——不使用 CSS Modules、Tailwind 或 CSS-in-JS。
+组件使用 **React 18** + **TypeScript** 构建。大多数组件用 `React.memo` 包裹以优化性能。样式使用 **Tailwind CSS v4**（`src/tailwind.css`）——通过 `@theme` 映射 CSS 变量到 Tailwind 主题色。
 
 ---
 
@@ -113,39 +113,57 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
 ## 样式模式
 
-### 全局 CSS + 自定义属性
+### Tailwind CSS v4 + CSS 自定义属性
 
-所有样式在 `src/styles.css` 中，使用 CSS 自定义属性进行主题化：
+样式使用 **Tailwind CSS v4**，入口文件为 `src/tailwind.css`。CSS 自定义属性通过 `@theme` 块映射到 Tailwind 主题色：
 
 ```css
-:root {
-  --bg-primary: #282c34;
-  --text-primary: #abb2bf;
-  --accent: #61afef;
-  --font-size: 14px;
-  /* One Dark Pro 配色 */
+@theme {
+  --color-primary: var(--bg-primary);
+  --color-accent: var(--accent);
+  --color-text: var(--text-primary);
 }
 ```
 
-### 类名命名：BEM-lite，kebab-case
+### 实用类优先
 
-```css
-.titlebar { }
-.titlebar-left { }
-.titlebar-right { }
-.app-toast--error { }
-.gh-badge-modified { }
-.tb-icon-btn { }
+组件内直接使用 Tailwind 实用类，不写自定义 CSS：
+
+```tsx
+<div className="flex items-center gap-2 px-3 py-1">
+  <span className="text-sm text-accent">{name}</span>
+  <button className="p-1 hover:bg-white/10 rounded">
+    <Icon />
+  </button>
+</div>
+```
+
+### 动态类合并：`cn()`
+
+需要条件组合类名时使用 `cn()`（`clsx` + `tailwind-merge`）：
+
+```tsx
+import { cn } from "../utils/cn";
+
+<div className={cn(
+  "flex items-center gap-1 px-2 py-0.5 rounded",
+  isActive && "bg-accent/10",
+  isDragging && "opacity-50 ring-2 ring-accent",
+)} />
 ```
 
 ### 动态样式
 
-仅在运行时需要计算的值使用内联 `style` 属性：
+仅在运行时需要计算的值仍使用内联 `style` 属性：
 
 ```tsx
 <div style={{ display: isVisible ? "block" : "none" }}>
 <img width={size} height={size} style={{ display: "inline-block", verticalAlign: "middle" }} />
 ```
+
+### 复杂 CSS
+
+无法用实用类表达的样式（`:has()` 选择器、伪元素 `::after`、动画、滚动条样式、xterm 终端覆盖等）保留在 `src/tailwind.css` 的 `@layer components` 中。
 
 ### Tauri 拖拽区域
 
