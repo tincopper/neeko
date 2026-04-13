@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../types";
 
 const DEFAULT_CONFIG: AppConfig = {
+  theme: "dark",
   fontSize: 14,
   diffMode: "unified",
   shell: "",
@@ -27,11 +28,17 @@ export function useAppConfig() {
     );
   }, [config.fontSize]);
 
+  // 同步主题到 data-theme 属性
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", config.theme);
+  }, [config.theme]);
+
   // 持久化保存配置
   const saveConfig = useCallback(async (next: AppConfig) => {
     setConfig(prev => {
       // 浅比较：所有字段相同则返回旧引用，避免不必要的重渲染
       if (
+        prev.theme === next.theme &&
         prev.fontSize === next.fontSize &&
         prev.diffMode === next.diffMode &&
         prev.shell === next.shell &&
@@ -59,6 +66,7 @@ export function useAppConfig() {
         const saved = await invoke<AppConfig>("load_config");
         if (saved && typeof saved === "object") {
           setConfig({
+            theme: (saved as any).theme === "light" ? "light" : "dark",
             fontSize:
               typeof saved.fontSize === "number"
                 ? saved.fontSize

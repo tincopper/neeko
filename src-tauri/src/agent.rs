@@ -152,6 +152,36 @@ impl AgentManager {
         }
         result
     }
+
+    /// Async parallel check if agents are installed.
+    /// Spawns concurrent tasks for each agent check.
+    pub async fn check_installed_async(&self, agent_ids: &[String]) -> HashMap<String, bool> {
+        use futures::future::join_all;
+
+        let tasks: Vec<_> = agent_ids
+            .iter()
+            .map(|id| {
+                let command = self
+                    .agents
+                    .iter()
+                    .find(|a| a.id == *id)
+                    .map(|a| a.command.clone());
+                let id = id.clone();
+                tokio::spawn(async move {
+                    let installed = command
+                        .map(|cmd| check_command_exists(&cmd))
+                        .unwrap_or(false);
+                    (id, installed)
+                })
+            })
+            .collect();
+
+        let results = join_all(tasks).await;
+        results
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect()
+    }
 }
 
 #[cfg(test)]

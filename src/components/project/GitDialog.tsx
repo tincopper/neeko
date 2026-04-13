@@ -1,17 +1,22 @@
 import React, { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { cn } from "../../utils/cn";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 export type DialogType = "new-branch" | "new-worktree";
 
 export interface DialogState {
   type: DialogType;
-  projectId?: string;           // local project ID
+  projectId?: string;
   branches: string[];
-  projectPath?: string;         // local project path (for quick worktree)
-  source?: {                    // WSL/SSH source
+  projectPath?: string;
+  source?: {
     type: "wsl" | "remote";
-    distro?: string;            // for WSL
-    entryId?: string;           // for SSH
+    distro?: string;
+    entryId?: string;
     projectPath: string;
   };
 }
@@ -20,7 +25,15 @@ interface GitDialogProps {
   dialog: DialogState;
   onClose: () => void;
   onRefreshGit: (projectId: string) => void;
-  onRefreshAfterWslSsh?: () => void;  // 用于 WSL/SSH dialog 完成后刷新
+  onRefreshAfterWslSsh?: () => void;
+}
+
+function ErrorMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mt-3 text-[13px]">
+      {children}
+    </p>
+  );
 }
 
 const GitDialog: React.FC<GitDialogProps> = ({
@@ -37,6 +50,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const [quickName, setQuickName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
     setSubmitting(true);
@@ -47,7 +61,6 @@ const GitDialog: React.FC<GitDialogProps> = ({
         await invoke("wsl_create_branch", { distro: src.distro, projectPath: src.projectPath, branchName: branchName.trim() });
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
-        // SSH git commands need auth — not supported in this dialog yet
         setError("SSH branch creation not yet supported");
         setSubmitting(false);
         return;
@@ -116,65 +129,60 @@ const GitDialog: React.FC<GitDialogProps> = ({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[500px]">
         {dialog.type === "new-branch" ? (
           <>
-            <h3>New Branch</h3>
-            <input
-              className="path-input"
+            <DialogHeader>
+              <DialogTitle>New Branch</DialogTitle>
+            </DialogHeader>
+            <Input
               placeholder="Branch name"
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleCreateBranch()}
               autoFocus
             />
-            {error && <p className="gh-dialog-error">{error}</p>}
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={onClose}>
-                Cancel
-              </button>
-              <button
-                className="confirm-btn"
-                onClick={handleCreateBranch}
-                disabled={!branchName.trim() || submitting}
-              >
+            {error && <ErrorMessage>{error}</ErrorMessage>}
+            <DialogFooter>
+              <Button variant="secondary" onClick={onClose}>Cancel</Button>
+              <Button variant="primary" onClick={handleCreateBranch} disabled={!branchName.trim() || submitting}>
                 {submitting ? "Creating..." : "Create Branch"}
-              </button>
-            </div>
+              </Button>
+            </DialogFooter>
           </>
         ) : (
           <>
-            <h3>New Worktree</h3>
+            <DialogHeader>
+              <DialogTitle>New Worktree</DialogTitle>
+            </DialogHeader>
             {dialog.projectId && !dialog.source && (
-              <div className="wt-mode-toggle">
-                <span className={`wt-mode-label${!customMode ? " active" : ""}`}>Quick</span>
+              <div className="flex items-center gap-2 mb-3.5">
+                <span className={cn("text-xs text-text-muted font-medium uppercase tracking-[0.3px] transition-colors duration-150", !customMode && "text-text-primary")}>Quick</span>
                 <button
-                  className="wt-toggle-switch"
+                  className="relative w-[34px] h-[18px] bg-bg-tertiary border border-border rounded-[9px] cursor-pointer p-0 outline-none transition-background duration-200 hover:bg-bg-hover focus-visible:outline-2 focus-visible:outline-accent-blue focus-visible:outline-offset-[1px]"
                   onClick={() => setCustomMode(!customMode)}
                   title={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
                   aria-label={customMode ? "Switch to Quick mode" : "Switch to Custom mode"}
                 >
-                  <span className={`wt-toggle-thumb${customMode ? " on" : ""}`} />
+                  <span className={cn("absolute top-0.5 left-0.5 w-3 h-3 bg-text-secondary rounded-full transition-all duration-200", customMode && "translate-x-4 bg-accent-blue")} />
                 </button>
-                <span className={`wt-mode-label${customMode ? " active" : ""}`}>Custom</span>
+                <span className={cn("text-xs text-text-muted font-medium uppercase tracking-[0.3px] transition-colors duration-150", customMode && "text-text-primary")}>Custom</span>
               </div>
             )}
             {customMode || !dialog.projectId || dialog.source ? (
               <>
-                <label className="gh-dialog-label">Worktree path</label>
-                <input
-                  className="path-input"
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree path</label>
+                <Input
                   placeholder="../my-feature"
                   value={worktreePath}
                   onChange={(e) => setWorktreePath(e.target.value)}
                   autoFocus
                 />
-                <label className="gh-dialog-label" style={{ marginTop: 12 }}>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 mt-3 uppercase tracking-wide">
                   Branch
                 </label>
-                <input
-                  className="path-input"
+                <Input
                   placeholder="Branch name"
                   value={worktreeBranch}
                   onChange={(e) => setWorktreeBranch(e.target.value)}
@@ -185,67 +193,58 @@ const GitDialog: React.FC<GitDialogProps> = ({
                     <option key={b} value={b} />
                   ))}
                 </datalist>
-                <label className="custom-checkbox gh-dialog-checkbox" style={{ marginTop: 10 }}>
-                  <input
-                    type="checkbox"
+                <div className="mt-2.5">
+                  <Checkbox
                     checked={newBranch}
-                    onChange={(e) => setNewBranch(e.target.checked)}
+                    onCheckedChange={(checked) => setNewBranch(!!checked)}
+                    label="Create new branch"
                   />
-                  <span className="checkbox-mark" />
-                  Create new branch
-                </label>
-                {error && <p className="gh-dialog-error">{error}</p>}
-                <div className="modal-actions">
-                  <button className="cancel-btn" onClick={onClose}>
-                    Cancel
-                  </button>
-                  <button
-                    className="confirm-btn"
+                </div>
+                {error && <ErrorMessage>{error}</ErrorMessage>}
+                <DialogFooter>
+                  <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                  <Button
+                    variant="primary"
                     onClick={handleCreateWorktree}
-                    disabled={
-                      !worktreePath.trim() || !worktreeBranch.trim() || submitting
-                    }
+                    disabled={!worktreePath.trim() || !worktreeBranch.trim() || submitting}
                   >
                     {submitting ? "Creating..." : "Create Worktree"}
-                  </button>
-                </div>
+                  </Button>
+                </DialogFooter>
               </>
             ) : (
               <>
-                <label className="gh-dialog-label">Worktree name</label>
-                <input
-                  className="path-input"
+                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Worktree name</label>
+                <Input
                   placeholder="feature-x"
                   value={quickName}
                   onChange={(e) => setQuickName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && quickName.trim() && handleCreateQuickWorktree()}
                   autoFocus
                 />
-                <div className="wt-path-preview">
+                <div className="mt-1.5 text-[11px] text-text-muted font-mono break-all leading-[1.4]">
                   {dialog.projectPath && quickName.trim()
                     ? `${dialog.projectPath}/.neeko/worktrees/${quickName.trim()}`
                     : "Path: <project>/.neeko/worktrees/<name>"}
                 </div>
-                {error && <p className="gh-dialog-error">{error}</p>}
-                <div className="modal-actions">
-                  <button className="cancel-btn" onClick={onClose}>
-                    Cancel
-                  </button>
-                  <button
-                    className="confirm-btn"
+                {error && <ErrorMessage>{error}</ErrorMessage>}
+                <DialogFooter>
+                  <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                  <Button
+                    variant="primary"
                     onClick={handleCreateQuickWorktree}
                     disabled={!quickName.trim() || submitting}
                   >
                     {submitting ? "Creating..." : "Create Worktree"}
-                  </button>
-                </div>
+                  </Button>
+                </DialogFooter>
               </>
             )}
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
-export default GitDialog;
+export default React.memo(GitDialog);

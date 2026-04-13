@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AuthMethod } from "../../types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 interface RemoteAuthDialogProps {
   isOpen: boolean;
@@ -8,7 +12,6 @@ interface RemoteAuthDialogProps {
   port: number;
   username: string;
   onCancel: () => void;
-  /** 认证成功后回调，返回用户输入的 auth 和可选的 Base64 编码凭据 */
   onSuccess: (auth: AuthMethod, saved_auth?: string | null) => void;
 }
 
@@ -59,20 +62,20 @@ export function RemoteAuthDialog({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="modal-overlay" onClick={handleCancel}>
-      <div className="modal wsl-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <h3>Authentication Required</h3>
-        <p style={{ margin: "0 0 12px", color: "var(--text-secondary, #888)", fontSize: 13 }}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
+      <DialogContent className="max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Authentication Required</DialogTitle>
+        </DialogHeader>
+        <p className="text-[13px] text-text-secondary mb-3">
           {username}@{host}:{port}
         </p>
 
-        {error && <p className="gh-dialog-error">{error}</p>}
+        {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
 
-        <label className="gh-dialog-label">Auth Type</label>
-        <div className="auth-type-selector">
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Auth Type</label>
+        <div className="flex gap-5 mb-4">
           <label className="custom-radio">
             <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
             <span className="radio-mark" />
@@ -87,53 +90,49 @@ export function RemoteAuthDialog({
 
         {authType === "password" ? (
           <>
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Password</label>
-            <input
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Password</label>
+            <Input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !connecting && handleConnect()}
-              placeholder="••••••••"
-              className="gh-dialog-input"
+              placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
               autoFocus
             />
           </>
         ) : (
           <>
-            <label className="gh-dialog-label" style={{ marginTop: 12 }}>Key File Path</label>
-            <input
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Key File Path</label>
+            <Input
               type="text"
               value={keyPath}
               onChange={e => setKeyPath(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !connecting && handleConnect()}
               placeholder="~/.ssh/id_rsa"
-              className="gh-dialog-input"
               autoFocus
             />
           </>
         )}
 
-        <label className="custom-checkbox save-credentials-label" style={{ marginTop: 14 }}>
-          <input
-            type="checkbox"
+        <div className="mt-3.5">
+          <Checkbox
             checked={saveCredentials}
-            onChange={e => setSaveCredentials(e.target.checked)}
+            onCheckedChange={checked => setSaveCredentials(!!checked)}
+            label="\u8BB0\u4F4F\u5BC6\u7801\uFF08\u672C\u5730\u5B58\u50A8\uFF09"
           />
-          <span className="checkbox-mark" />
-          记住密码（本地存储）
-        </label>
+        </div>
 
-        <div className="modal-actions">
-          <button className="modal-btn cancel" onClick={handleCancel}>Cancel</button>
-          <button
-            className="modal-btn confirm"
+        <DialogFooter>
+          <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
+          <Button
+            variant="primary"
             onClick={handleConnect}
             disabled={connecting || (authType === "password" ? !password : !keyPath)}
           >
             {connecting ? "Connecting..." : "Connect"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPanel from "../../components/SettingsPanel";
+import { AppProvider } from "../../context/app-context";
 import type { AppConfig } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -22,8 +23,18 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
   const config = { ...defaultConfig, ...overrides };
   const onConfigChange = vi.fn();
   const onClose = vi.fn();
+  const appContext = {
+    config,
+    agents: [],
+    agentInstalledMap: {},
+    loading: false,
+    ideCommandOverrides: config.ideCommandOverrides ?? {},
+    showToast: vi.fn(),
+  };
   const result = render(
-    <SettingsPanel config={config} onConfigChange={onConfigChange} onClose={onClose} />
+    <AppProvider value={appContext}>
+      <SettingsPanel onConfigChange={onConfigChange} onClose={onClose} />
+    </AppProvider>
   );
   return { ...result, onConfigChange, onClose, config };
 }
@@ -41,11 +52,12 @@ describe("SettingsPanel", () => {
 
     it("渲染导航项", () => {
       renderPanel();
-      const nav = document.querySelector(".settings-nav");
-      expect(nav).not.toBeNull();
-      const navItems = nav!.querySelectorAll(".settings-nav-label");
-      const labels = Array.from(navItems).map((el) => el.textContent);
-      expect(labels).toEqual(["Editor", "Terminal", "Agents", "IDE", "Git"]);
+      // Use role-based query for nav buttons
+      expect(screen.getByRole("button", { name: "Editor" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Terminal" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Agents" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "IDE" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Git" })).toBeInTheDocument();
     });
   });
 
@@ -80,7 +92,7 @@ describe("SettingsPanel", () => {
       // 测试边界：调用 setFontSize 间接验证 clamp
       // fontSize=11 时减 1 应该得到 10
       const { onConfigChange } = renderPanel({ fontSize: 11 });
-      fireEvent.click(screen.getByText("−"));
+      fireEvent.click(screen.getByText("\u2212"));
       expect(onConfigChange).toHaveBeenCalledWith(
         expect.objectContaining({ fontSize: 10 })
       );
@@ -199,9 +211,10 @@ describe("SettingsPanel", () => {
       const user = userEvent.setup();
       renderPanel();
       await user.click(screen.getByRole("button", { name: "Terminal" }));
-      const trigger = document.querySelector(".settings-font-trigger");
-      expect(trigger).toBeTruthy();
-      await user.click(trigger as HTMLElement);
+      // Find font trigger by text content (shows current font or "Select font...")
+      const fontTrigger = screen.getByText(/default.*mono/i);
+      expect(fontTrigger).toBeTruthy();
+      await user.click(fontTrigger);
       expect(screen.getByText("Fira Code")).toBeInTheDocument();
       expect(screen.getByText("JetBrains Mono")).toBeInTheDocument();
     });

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AuthMethod } from "../types";
 import { fileIconSrc } from "../utils/fileIcons";
 import { ChevronRightIcon } from "./icons";
+import { cn } from "../utils/cn";
 import hljs from "highlight.js/lib/core";
 
 const LANGUAGE_MAP: Record<string, () => Promise<unknown>> = {
@@ -72,7 +73,7 @@ export type DiffSource =
   | { type: "worktree"; projectId: string; worktreePath: string };
 
 interface DiffViewProps {
-  projectId?: string;    // legacy — for local projects
+  projectId?: string;
   diffSource?: DiffSource;
   filePath: string;
   initialMode?: ViewMode;
@@ -143,7 +144,7 @@ function highlightLine(text: string, language: string): string {
   }
 }
 
-// ── Word-level diff using LCS ──
+// Word-level diff using LCS
 
 export interface WordDiffPart {
   value: string;
@@ -158,10 +159,7 @@ export function tokenizeForDiff(text: string): string[] {
     if (/[a-zA-Z0-9_\u4e00-\u9fff]/.test(ch)) {
       current += ch;
     } else {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
+      if (current) { tokens.push(current); current = ""; }
       tokens.push(ch);
     }
   }
@@ -175,25 +173,16 @@ export function computeLCS(a: string[], b: string[]): boolean[][] {
   const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
+      if (a[i - 1] === b[j - 1]) { dp[i][j] = dp[i - 1][j - 1] + 1; }
+      else { dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]); }
     }
   }
   const lcs: boolean[][] = Array.from({ length: m }, () => new Array(n).fill(false));
   let i = m, j = n;
   while (i > 0 && j > 0) {
-    if (a[i - 1] === b[j - 1]) {
-      lcs[i - 1][j - 1] = true;
-      i--;
-      j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
+    if (a[i - 1] === b[j - 1]) { lcs[i - 1][j - 1] = true; i--; j--; }
+    else if (dp[i - 1][j] >= dp[i][j - 1]) { i--; }
+    else { j--; }
   }
   return lcs;
 }
@@ -202,132 +191,74 @@ export function computeWordDiff(oldText: string, newText: string): { oldParts: W
   const oldTokens = tokenizeForDiff(oldText);
   const newTokens = tokenizeForDiff(newText);
   const lcs = computeLCS(oldTokens, newTokens);
-
   const oldParts: WordDiffPart[] = [];
   const newParts: WordDiffPart[] = [];
-
   let oi = 0, ni = 0;
   while (oi < oldTokens.length || ni < newTokens.length) {
     if (oi < oldTokens.length && ni < newTokens.length && lcs[oi][ni]) {
-      // Both are in LCS → equal
       oldParts.push({ value: oldTokens[oi], type: "equal" });
       newParts.push({ value: newTokens[ni], type: "equal" });
-      oi++;
-      ni++;
+      oi++; ni++;
     } else {
-      // Collect removed tokens
       let removedChunk = "";
-      while (oi < oldTokens.length && (ni >= newTokens.length || !lcs[oi][ni])) {
-        removedChunk += oldTokens[oi];
-        oi++;
-      }
-      if (removedChunk) {
-        oldParts.push({ value: removedChunk, type: "removed" });
-      }
-      // Collect added tokens
+      while (oi < oldTokens.length && (ni >= newTokens.length || !lcs[oi][ni])) { removedChunk += oldTokens[oi]; oi++; }
+      if (removedChunk) oldParts.push({ value: removedChunk, type: "removed" });
       let addedChunk = "";
-      while (ni < newTokens.length && (oi >= oldTokens.length || !lcs[oi][ni])) {
-        addedChunk += newTokens[ni];
-        ni++;
-      }
-      if (addedChunk) {
-        newParts.push({ value: addedChunk, type: "added" });
-      }
+      while (ni < newTokens.length && (oi >= oldTokens.length || !lcs[oi][ni])) { addedChunk += newTokens[ni]; ni++; }
+      if (addedChunk) newParts.push({ value: addedChunk, type: "added" });
     }
   }
   return { oldParts, newParts };
 }
 
-// ── Render helpers ──
+// Render helpers
 
 function renderHighlightedHtml(text: string, language: string): string {
   return highlightLine(text, language);
 }
 
-function renderWordDiffHtml(
-  parts: WordDiffPart[],
-  side: "old" | "new",
-  language: string
-): string {
-  return parts
-    .map((p) => {
-      const escaped = highlightLine(p.value, language);
-      if (p.type === "equal") return escaped;
-      if (side === "old" && p.type === "removed") {
-        return `<span class="word-diff-removed">${escaped}</span>`;
-      }
-      if (side === "new" && p.type === "added") {
-        return `<span class="word-diff-added">${escaped}</span>`;
-      }
-      return escaped;
-    })
-    .join("");
+function renderWordDiffHtml(parts: WordDiffPart[], side: "old" | "new", language: string): string {
+  return parts.map((p) => {
+    const escaped = highlightLine(p.value, language);
+    if (p.type === "equal") return escaped;
+    if (side === "old" && p.type === "removed") return `<span class="word-diff-removed">${escaped}</span>`;
+    if (side === "new" && p.type === "added") return `<span class="word-diff-added">${escaped}</span>`;
+    return escaped;
+  }).join("");
 }
 
-// ── Split view builder with word-level diff ──
+// Split view builder with word-level diff
 
 export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   const rows: SplitRow[] = [];
-  rows.push({
-    type: "hunk-header",
-    hunkHeader: `@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`,
-  });
-
-  const getType = (l: DiffLine) =>
-    l.Added !== undefined ? "added" : l.Removed !== undefined ? "removed" : "context";
-  const getContent = (l: DiffLine) =>
-    l.Added ?? l.Removed ?? l.Context ?? "";
-
-  let i = 0;
-  let oldNum = hunk.old_start;
-  let newNum = hunk.new_start;
-
+  rows.push({ type: "hunk-header", hunkHeader: `@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@` });
+  const getType = (l: DiffLine) => l.Added !== undefined ? "added" : l.Removed !== undefined ? "removed" : "context";
+  const getContent = (l: DiffLine) => l.Added ?? l.Removed ?? l.Context ?? "";
+  let i = 0, oldNum = hunk.old_start, newNum = hunk.new_start;
   while (i < hunk.lines.length) {
     const line = hunk.lines[i];
     const t = getType(line);
-
     if (t === "context") {
       const content = getContent(line);
-      rows.push({
-        type: "context",
-        oldLineNum: oldNum,
-        newLineNum: newNum,
-        oldContent: content,
-        newContent: content,
-        oldType: "context",
-        newType: "context",
-      });
-      oldNum++;
-      newNum++;
-      i++;
+      rows.push({ type: "context", oldLineNum: oldNum, newLineNum: newNum, oldContent: content, newContent: content, oldType: "context", newType: "context" });
+      oldNum++; newNum++; i++;
     } else {
       const removed: DiffLine[] = [];
       const added: DiffLine[] = [];
-      while (i < hunk.lines.length && getType(hunk.lines[i]) === "removed") {
-        removed.push(hunk.lines[i++]);
-      }
-      while (i < hunk.lines.length && getType(hunk.lines[i]) === "added") {
-        added.push(hunk.lines[i++]);
-      }
+      while (i < hunk.lines.length && getType(hunk.lines[i]) === "removed") { removed.push(hunk.lines[i++]); }
+      while (i < hunk.lines.length && getType(hunk.lines[i]) === "added") { added.push(hunk.lines[i++]); }
       const maxLen = Math.max(removed.length, added.length);
       for (let j = 0; j < maxLen; j++) {
-        const r = removed[j];
-        const a = added[j];
+        const r = removed[j], a = added[j];
         rows.push({
-          type: "change",
-          oldLineNum: r ? oldNum : undefined,
-          newLineNum: a ? newNum : undefined,
-          oldContent: r ? getContent(r) : undefined,
-          newContent: a ? getContent(a) : undefined,
-          oldType: r ? "removed" : "empty",
-          newType: a ? "added" : "empty",
+          type: "change", oldLineNum: r ? oldNum : undefined, newLineNum: a ? newNum : undefined,
+          oldContent: r ? getContent(r) : undefined, newContent: a ? getContent(a) : undefined,
+          oldType: r ? "removed" : "empty", newType: a ? "added" : "empty",
         });
-        if (r) oldNum++;
-        if (a) newNum++;
+        if (r) oldNum++; if (a) newNum++;
       }
     }
   }
-
   return rows;
 }
 
@@ -341,12 +272,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
 
   const language = useMemo(() => detectLanguage(filePath), [filePath]);
 
-  // Eagerly register the highlight.js language when it changes
-  useEffect(() => {
-    ensureLanguageRegistered(language);
-  }, [language]);
+  useEffect(() => { ensureLanguageRegistered(language); }, [language]);
 
-  // 计算改动统计
   const changeStats = useMemo(() => {
     if (!diffResult) return { additions: 0, deletions: 0 };
     let additions = 0, deletions = 0;
@@ -359,8 +286,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
     return { additions, deletions };
   }, [diffResult]);
 
-  // 计算所有"连续改动块"的全局序号总数
-  // 每当连续的 added/removed 行序列开始时，就是一个新块
   const totalChangeBlocks = useMemo((): number => {
     if (!diffResult) return 0;
     let count = 0;
@@ -388,31 +313,13 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
     try {
       let result: DiffResult;
       if (diffSource?.type === "wsl") {
-        result = await invoke<DiffResult>("get_wsl_file_diff_command", {
-          distro: diffSource.distro,
-          projectPath: diffSource.projectPath,
-          filePath,
-        });
+        result = await invoke<DiffResult>("get_wsl_file_diff_command", { distro: diffSource.distro, projectPath: diffSource.projectPath, filePath });
       } else if (diffSource?.type === "remote") {
-        result = await invoke<DiffResult>("get_remote_file_diff_command", {
-          host: diffSource.host,
-          port: diffSource.port,
-          username: diffSource.username,
-          auth: diffSource.auth,
-          projectPath: diffSource.projectPath,
-          filePath,
-        });
+        result = await invoke<DiffResult>("get_remote_file_diff_command", { host: diffSource.host, port: diffSource.port, username: diffSource.username, auth: diffSource.auth, projectPath: diffSource.projectPath, filePath });
       } else if (diffSource?.type === "worktree") {
-        result = await invoke<DiffResult>("get_worktree_file_diff", {
-          projectId: diffSource.projectId,
-          worktreePath: diffSource.worktreePath,
-          filePath,
-        });
+        result = await invoke<DiffResult>("get_worktree_file_diff", { projectId: diffSource.projectId, worktreePath: diffSource.worktreePath, filePath });
       } else {
-        result = await invoke<DiffResult>("get_file_diff_command", {
-          projectId: projectId ?? diffSource?.projectId,
-          filePath,
-        });
+        result = await invoke<DiffResult>("get_file_diff_command", { projectId: projectId ?? diffSource?.projectId, filePath });
       }
       setDiffResult(result);
       setCurrentBlockIndex(0);
@@ -423,10 +330,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
     }
   };
 
-  const getLineContent = (line: DiffLine): string => {
-    return line.Context ?? line.Added ?? line.Removed ?? "";
-  };
-
+  const getLineContent = (line: DiffLine): string => line.Context ?? line.Added ?? line.Removed ?? "";
   const getLineType = (line: DiffLine): string => {
     if (line.Context !== undefined) return "context";
     if (line.Added !== undefined) return "added";
@@ -437,11 +341,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
   const navigateBlock = (direction: "prev" | "next") => {
     if (totalChangeBlocks === 0) return;
     let newIndex = currentBlockIndex;
-    if (direction === "prev" && currentBlockIndex > 0) {
-      newIndex = currentBlockIndex - 1;
-    } else if (direction === "next" && currentBlockIndex < totalChangeBlocks - 1) {
-      newIndex = currentBlockIndex + 1;
-    }
+    if (direction === "prev" && currentBlockIndex > 0) newIndex = currentBlockIndex - 1;
+    else if (direction === "next" && currentBlockIndex < totalChangeBlocks - 1) newIndex = currentBlockIndex + 1;
     setCurrentBlockIndex(newIndex);
     requestAnimationFrame(() => {
       const el = document.getElementById(`cb-${newIndex}`);
@@ -449,93 +350,68 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
     });
   };
 
-  const getFileName = (path: string): string => {
-    return path.split(/[\\/]/).pop() || path;
-  };
+  const getFileName = (path: string): string => path.split(/[\\/]/).pop() || path;
 
   if (loading) {
-    return <div className="diff-container"><div className="diff-loading">Loading diff...</div></div>;
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-center h-full text-text-muted text-[var(--font-size)]">Loading diff...</div>
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div className="diff-container">
-        <div className="diff-error">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-center h-full text-text-muted text-[var(--font-size)] flex-col gap-3">
           <p>Error: {error}</p>
-          <button onClick={loadDiff}>Retry</button>
+          <button className="py-2 px-4 bg-accent-blue border-none rounded text-white cursor-pointer" onClick={loadDiff}>Retry</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="diff-container">
-      <div className="diff-header">
-        <div className="diff-title">
-          <img
-            src={fileIconSrc(getFileName(filePath))}
-            alt=""
-            width={16}
-            height={16}
-            style={{ flexShrink: 0 }}
-          />
-          <span className="file-name">{getFileName(filePath)}</span>
-          <span className="file-path">{filePath}</span>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between py-2 px-4 bg-bg-secondary border-b border-border">
+        <div className="flex items-center gap-2">
+          <img src={fileIconSrc(getFileName(filePath))} alt="" width={16} height={16} className="shrink-0" />
+          <span className="font-semibold">{getFileName(filePath)}</span>
+          <span className="text-text-muted text-sm">{filePath}</span>
           {diffResult && (changeStats.additions > 0 || changeStats.deletions > 0) && (
-            <span className="hunk-count">
-              <span className="stat-additions">+{changeStats.additions}</span>
+            <span className="bg-bg-tertiary py-0.5 px-2 rounded-full text-xs text-text-secondary flex gap-1">
+              <span className="text-[#3fb950] font-semibold">+{changeStats.additions}</span>
               {" "}
-              <span className="stat-deletions">-{changeStats.deletions}</span>
+              <span className="text-[#f85149] font-semibold">-{changeStats.deletions}</span>
             </span>
           )}
         </div>
-        <div className="diff-actions">
-          <div className="diff-mode-toggle">
+        <div className="flex items-center gap-2">
+          <div className="flex border border-border rounded overflow-hidden">
             <button
-              className={`mode-btn ${viewMode === "unified" ? "active" : ""}`}
-              onClick={() => setViewMode("unified")}
-              title="Unified view"
-            >
-              Unified
-            </button>
+              className={cn("bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-sm transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0", viewMode === "unified" && "!bg-accent-blue !text-white")}
+              onClick={() => setViewMode("unified")} title="Unified view">Unified</button>
             <button
-              className={`mode-btn ${viewMode === "split" ? "active" : ""}`}
-              onClick={() => setViewMode("split")}
-              title="Split view"
-            >
-              Split
-            </button>
+              className={cn("bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-sm transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0", viewMode === "split" && "!bg-accent-blue !text-white")}
+              onClick={() => setViewMode("split")} title="Split view">Split</button>
           </div>
-            <button
-              className="nav-btn"
-              onClick={() => navigateBlock("prev")}
-              disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
-              title="Previous Change"
-            >
-              <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
-            </button>
-          <span className="hunk-index">
-            {totalChangeBlocks > 0
-              ? `${currentBlockIndex + 1} / ${totalChangeBlocks}`
-              : "0 / 0"}
+          <button className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed" onClick={() => navigateBlock("prev")} disabled={totalChangeBlocks === 0 || currentBlockIndex === 0} title="Previous Change">
+            <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
+          </button>
+          <span className="text-sm text-text-secondary min-w-[60px] text-center">
+            {totalChangeBlocks > 0 ? `${currentBlockIndex + 1} / ${totalChangeBlocks}` : "0 / 0"}
           </span>
-            <button
-              className="nav-btn"
-              onClick={() => navigateBlock("next")}
-              disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
-              title="Next Change"
-            >
-              <ChevronRightIcon size={14} />
-            </button>
-          <button className="back-btn" onClick={onBack} title="Back to Terminal">✕</button>
+          <button className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed" onClick={() => navigateBlock("next")} disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1} title="Next Change">
+            <ChevronRightIcon size={14} />
+          </button>
+          <button className="bg-transparent border-none text-text-secondary text-lg cursor-pointer px-2 py-1 rounded transition-all duration-200 hover:bg-bg-hover hover:text-text-primary" onClick={onBack} title="Back to Terminal">&times;</button>
         </div>
       </div>
 
-      <div className="diff-content">
+      <div className="flex-1 overflow-auto bg-bg-primary">
         {diffResult && diffResult.hunks.length > 0 ? (
           viewMode === "unified" ? (
-            /* ── Unified 模式 ── */
-            <table className="diff-table">
+            <table className="w-full border-collapse font-mono text-base">
               <tbody>
                 {(() => {
                   let globalBlockIdx = 0;
@@ -545,8 +421,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
                     let inBlock = false;
                     return (
                       <React.Fragment key={hunkIndex}>
-                        <tr className="hunk-header">
-                          <td colSpan={4}>
+                        <tr className="bg-bg-tertiary text-accent-blue font-medium">
+                          <td colSpan={4} className="py-1 px-2">
                             @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},{hunk.new_lines} @@
                           </td>
                         </tr>
@@ -560,12 +436,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
 
                           const isChanged = lineType === "added" || lineType === "removed";
                           let blockId: string | undefined;
-                          if (isChanged && !inBlock) {
-                            blockId = `cb-${globalBlockIdx++}`;
-                            inBlock = true;
-                          } else if (!isChanged) {
-                            inBlock = false;
-                          }
+                          if (isChanged && !inBlock) { blockId = `cb-${globalBlockIdx++}`; inBlock = true; }
+                          else if (!isChanged) { inBlock = false; }
 
                           let cellHtml = renderHighlightedHtml(content, language);
                           if (lineType === "removed") {
@@ -586,14 +458,14 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
                             <tr
                               key={`${hunkIndex}-${lineIndex}`}
                               id={blockId}
-                              className={`diff-line ${lineType}`}
+                              className={cn("border-none", lineType === "added" && "bg-diff-added", lineType === "removed" && "bg-diff-removed")}
                             >
-                              <td className="line-number old">{lineType !== "added" ? curOld : ""}</td>
-                              <td className="line-number new">{lineType !== "removed" ? curNew : ""}</td>
-                              <td className="line-indicator">
+                              <td className="w-[50px] text-right text-text-muted select-none">{lineType !== "added" ? curOld : ""}</td>
+                              <td className="w-[50px] text-right text-text-muted select-none">{lineType !== "removed" ? curNew : ""}</td>
+                              <td className="w-5 text-center select-none">
                                 {lineType === "added" ? "+" : lineType === "removed" ? "-" : " "}
                               </td>
-                              <td className="line-content" dangerouslySetInnerHTML={{ __html: cellHtml }} />
+                              <td className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: cellHtml }} />
                             </tr>
                           );
                         })}
@@ -604,8 +476,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
               </tbody>
             </table>
           ) : (
-            /* ── Split 模式 ── */
-            <table className="diff-table diff-table-split">
+            /* Split mode */
+            <table className="w-full border-collapse font-mono text-base diff-table-split">
               <colgroup>
                 <col className="col-linenum" />
                 <col className="col-code" />
@@ -620,27 +492,21 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
                     return buildSplitRows(hunk).map((row, rowIndex) => {
                       if (row.type === "hunk-header") {
                         return (
-                          <tr key={`${hunkIndex}-${rowIndex}`} className="hunk-header">
-                            <td colSpan={4}>{row.hunkHeader}</td>
+                          <tr key={`${hunkIndex}-${rowIndex}`} className="bg-bg-tertiary text-accent-blue font-medium">
+                            <td colSpan={4} className="py-1 px-2">{row.hunkHeader}</td>
                           </tr>
                         );
                       }
 
                       const isChanged = row.type === "change" && (row.oldType === "removed" || row.newType === "added");
                       let blockId: string | undefined;
-                      if (isChanged && !inBlock) {
-                        blockId = `cb-${globalBlockIdx++}`;
-                        inBlock = true;
-                      } else if (!isChanged) {
-                        inBlock = false;
-                      }
+                      if (isChanged && !inBlock) { blockId = `cb-${globalBlockIdx++}`; inBlock = true; }
+                      else if (!isChanged) { inBlock = false; }
 
-                      let oldCellHtml = "";
-                      let newCellHtml = "";
+                      let oldCellHtml = "", newCellHtml = "";
                       if (row.type === "context") {
                         const highlighted = renderHighlightedHtml(row.oldContent || "", language);
-                        oldCellHtml = highlighted;
-                        newCellHtml = highlighted;
+                        oldCellHtml = highlighted; newCellHtml = highlighted;
                       } else if (row.type === "change") {
                         if (row.oldType === "removed" && row.newType === "added" && row.oldContent && row.newContent) {
                           const { oldParts, newParts } = computeWordDiff(row.oldContent, row.newContent);
@@ -654,23 +520,17 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
                       }
 
                       return (
-                        <tr
-                          key={`${hunkIndex}-${rowIndex}`}
-                          id={blockId}
-                          className="diff-line split-row"
-                        >
-                          <td className={`line-number old split-linenum ${row.oldType}`}>
+                        <tr key={`${hunkIndex}-${rowIndex}`} id={blockId} className="diff-line split-row">
+                          <td className={cn("line-number old split-linenum", row.oldType)}>
                             {row.oldLineNum ?? ""}
                           </td>
-                          <td className={`line-content split-cell ${row.oldType}`}
-                            dangerouslySetInnerHTML={{ __html: oldCellHtml || (row.oldType === "empty" ? "" : row.oldContent || "") }}
-                          />
-                          <td className={`line-number new split-linenum ${row.newType}`}>
+                          <td className={cn("line-content split-cell", row.oldType)}
+                            dangerouslySetInnerHTML={{ __html: oldCellHtml || (row.oldType === "empty" ? "" : row.oldContent || "") }} />
+                          <td className={cn("line-number new split-linenum", row.newType)}>
                             {row.newLineNum ?? ""}
                           </td>
-                          <td className={`line-content split-cell ${row.newType}`}
-                            dangerouslySetInnerHTML={{ __html: newCellHtml || (row.newType === "empty" ? "" : row.newContent || "") }}
-                          />
+                          <td className={cn("line-content split-cell", row.newType)}
+                            dangerouslySetInnerHTML={{ __html: newCellHtml || (row.newType === "empty" ? "" : row.newContent || "") }} />
                         </tr>
                       );
                     });
@@ -680,7 +540,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(({ projectId, diffSource, f
             </table>
           )
         ) : (
-          <div className="no-changes">No changes to display</div>
+          <div className="flex items-center justify-center h-full text-text-muted text-[var(--font-size)]">No changes to display</div>
         )}
       </div>
     </div>

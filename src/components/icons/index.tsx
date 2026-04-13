@@ -16,6 +16,7 @@ import {
   OctagonAlert,
   Search,
   FolderGit2,
+  Sun,
   type LucideProps,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ export const InfoCircleIcon = Info;
 export const ErrorOctagonIcon = OctagonAlert;
 export const GitLogoIcon = GitBranch;
 export const SearchIcon = Search;
+export const AppearanceIcon = Sun;
 
 // ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
 

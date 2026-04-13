@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import React from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, Copy, X } from "lucide-react";
 
-export default function WindowControls() {
+function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
   const appWindow = getCurrentWindow();
 
@@ -17,23 +18,23 @@ export default function WindowControls() {
   }, []);
 
   return (
-    <div className="window-controls">
+    <div className="flex items-stretch shrink-0">
       <button
-        className="wc-btn wc-minimize"
+        className="wc-btn"
         onClick={() => appWindow.minimize()}
         title="Minimize"
       >
-        <Minus size={10} strokeWidth={1.5} />
+        <Minus size={14} strokeWidth={1.5} />
       </button>
       <button
-        className="wc-btn wc-maximize"
+        className="wc-btn"
         onClick={() => isMaximized ? appWindow.unmaximize() : appWindow.maximize()}
         title={isMaximized ? "Restore" : "Maximize"}
       >
         {isMaximized ? (
-          <Copy size={10} strokeWidth={1.2} />
+          <Copy size={14} strokeWidth={1.2} />
         ) : (
-          <Square size={10} strokeWidth={1.2} />
+          <Square size={14} strokeWidth={1.2} />
         )}
       </button>
       <button
@@ -41,8 +42,10 @@ export default function WindowControls() {
         onClick={() => appWindow.close()}
         title="Close"
       >
-        <X size={10} strokeWidth={1.5} />
+        <X size={14} strokeWidth={1.5} />
       </button>
     </div>
   );
 }
+
+export default React.memo(WindowControls);
