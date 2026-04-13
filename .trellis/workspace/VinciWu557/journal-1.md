@@ -266,3 +266,54 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: fix: macOS/Linux GUI 应用 Agent 检测失败
+
+**Date**: 2026-04-13
+**Task**: fix: macOS/Linux GUI 应用 Agent 检测失败
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+
+macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH（/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin），导致 `check_command_exists()` 无法找到安装在 /opt/homebrew/bin、~/.local/bin 等路径下的 Agent CLI 工具。
+
+## 修复方案
+
+在 `run()` 启动阶段，通过 `$SHELL -lc "echo $PATH"` 获取用户 login shell 的完整 PATH 并注入进程环境变量。
+
+| 改动文件 | 内容 |
+|---------|------|
+| `src-tauri/src/lib.rs` | 新增 `resolve_user_path()` + run() 中调用，`#[cfg(unix)]` 门控 |
+| `src-tauri/src/commands/wsl.rs` | `#[allow(unused_mut)]` 消除编译警告 |
+| `src-tauri/src/git/local.rs` | `#[allow(unused_mut)]` 消除编译警告 |
+
+## 跨平台兼容性
+
+- macOS/Linux: 通过 login shell 解析完整 PATH
+- Windows: 不受影响（`#[cfg(unix)]` 门控），GUI 应用天然继承完整 PATH
+- 失败时静默降级，不影响应用启动
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d547497` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
