@@ -1,6 +1,6 @@
 // App configuration (persisted)
 export type DiffMode = "unified" | "split";
-export type AppTheme = "dark" | "light";
+export type AppTheme = "dark" | "light" | "one-dark-pro" | "claude";
 
 export interface AppConfig {
   theme: AppTheme;

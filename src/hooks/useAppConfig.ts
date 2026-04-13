@@ -66,7 +66,9 @@ export function useAppConfig() {
         const saved = await invoke<AppConfig>("load_config");
         if (saved && typeof saved === "object") {
           setConfig({
-            theme: (saved as any).theme === "light" ? "light" : "dark",
+            theme: (["light", "one-dark-pro", "claude"] as const).includes((saved as any).theme)
+                ? (saved as any).theme
+                : "dark",
             fontSize:
               typeof saved.fontSize === "number"
                 ? saved.fontSize
