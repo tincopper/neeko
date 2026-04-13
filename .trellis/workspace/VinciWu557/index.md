@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-04-12
+- **Total Sessions**: 8
+- **Last Active**: 2026-04-13
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~268 | Active |
+| `journal-1.md` | ~319 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 8 | 2026-04-13 | fix: macOS/Linux GUI 应用 Agent 检测失败 | `d547497` |
 | 7 | 2026-04-12 | 重构 TitleBar 布局并添加多 Tab 终端支持 | `8441037` |
 | 6 | 2026-04-12 | 重构 AgentSelector: 直接集成 AgentBar 到 TitleBar | `7c2486a` |
 | 5 | 2026-04-06 | CI Workflow Trigger 调整 | `d300cfb` |
