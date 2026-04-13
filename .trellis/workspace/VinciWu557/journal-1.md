@@ -317,3 +317,63 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 解决 enhance/title_bar 合并 main 分支冲突
+
+**Date**: 2026-04-13
+**Task**: 解决 enhance/title_bar 合并 main 分支冲突
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Feature | Description |
+|---------|-------------|
+| 合并冲突解决 | 解决 enhance/title_bar 与 main 分支的 15 个冲突文件 |
+| 架构合并 | 以 main 的 Context/Tailwind/AppLayout 为基础，集成 HEAD 的 Tab 系统和 IDE 风格 TitleBar |
+| SideTerminal 清理 | 彻底移除 SideTerminal 相关代码（SideTerminalView, useSideTerminalResize） |
+| 样式迁移 | TitleBar/AgentSelector 样式从 CSS 类迁移到 Tailwind |
+| Agent 编译修复 | agent.rs 条件编译修复，解决非 Windows 平台编译问题 |
+| shadcn/ui 集成 | 合并 main 分支的 shadcn DropdownMenu 等组件 |
+| .claude 配置 | 更新 Claude Code 配置文件 |
+
+**关键决策**:
+- 终端模型：采用 Tab 系统，删除 SideTerminal
+- 架构基底：采用 main 的 Context 体系 (AppProvider/SidebarProvider)
+- UI 设计：保留 HEAD 的 IDE 风格 TitleBar/AgentSelector
+
+**解决的冲突文件**:
+- `src/App.tsx` — 架构级冲突，合并 Context 体系与 Tab 系统
+- `src/components/layout/TitleBar.tsx` — IDE 风格设计 + Tailwind 迁移
+- `src/components/layout/AgentSelector.tsx` — 多功能面板 + Tailwind 迁移
+- `src/components/MainContent.tsx` — Context 获取 + Tab 逻辑
+- `src/components/project/ProjectSidebar.tsx` — 重导出到 ProjectsPanel
+- `.gitignore` — 采用 main（.claude/ .agents/ 纳入版本控制）
+- `src-tauri/src/agent.rs` — HEAD 条件编译修复
+- `src/components/SettingsPanel.tsx` — Agent Bar 配置项保留
+- `src/hooks/useSessionBootstrap.ts` — 采用 main（SplashScreen 支持）
+- 其他 SideTerminal 清理类文件
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `247e152` | (see git log) |
+| `c3421f9` | (see git log) |
+| `760d6b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
