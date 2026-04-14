@@ -1,0 +1,4 @@
+{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "src/components/ui/", "type": "directory", "reason": "UI components directory structure"}
+{"file": "src/types.ts", "reason": "AppTheme type definition"}
