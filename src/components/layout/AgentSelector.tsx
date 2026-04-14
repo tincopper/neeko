@@ -134,6 +134,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   // Config state
   const [showPresetBar, setShowPresetBar] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
+  const [hiddenAgentIds, setHiddenAgentIds] = useState<string[]>([]);
   const [configLoaded, setConfigLoaded] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -198,6 +199,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       if (saved && typeof saved === "object") {
         setShowPresetBar(saved.agentSelectorShowPresetBar ?? true);
         setCompactMode(saved.agentSelectorCompactMode ?? false);
+        setHiddenAgentIds(Array.isArray(saved.hiddenAgentIds) ? saved.hiddenAgentIds.filter((id: unknown) => typeof id === "string") : []);
       }
     } catch (e) {
       console.error("[AgentSelector] Failed to load config:", e);
@@ -267,7 +269,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   }, [onShowToast]);
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const enabledAgents = agents.filter(a => a.enabled);
+  const enabledAgents = agents.filter(a => a.enabled && !hiddenAgentIds.includes(a.id));
 
   return (
     <div className="agent-selector" ref={containerRef}>
@@ -357,7 +359,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
               <div className="agent-menu-divider" />
               <div className="agent-bar-wrapper">
                 <AgentBar
-                  agents={agents}
+                  agents={enabledAgents}
                   selectedAgentId={selectedAgentId}
                   installedMap={installedMap}
                   compactMode={compactMode}
@@ -374,7 +376,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       {showPresetBar && !isAddMenuOpen && enabledAgents.length > 0 && (
         <div className="agent-bar-inline">
           <AgentBar
-            agents={agents}
+            agents={enabledAgents}
             selectedAgentId={selectedAgentId}
             installedMap={installedMap}
             compactMode={compactMode}

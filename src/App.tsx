@@ -417,6 +417,17 @@ function App() {
       ]
    );
 
+   const handleToggleHiddenAgent = useCallback(
+      (agentId: string) => {
+         const current = config.hiddenAgentIds ?? [];
+         const next = current.includes(agentId)
+            ? current.filter((id) => id !== agentId)
+            : [...current, agentId];
+         saveConfig({ ...config, hiddenAgentIds: next });
+      },
+      [config, saveConfig]
+   );
+
    if (initializing) {
       return <SplashScreen />;
    }
@@ -499,6 +510,8 @@ function App() {
                    agents={agents}
                    compactMode={config.agentSelectorCompactMode ?? false}
                    showAgentBar={config.agentSelectorShowPresetBar !== false}
+                   hiddenAgentIds={config.hiddenAgentIds ?? []}
+                   onToggleHiddenAgent={handleToggleHiddenAgent}
                    onAgentClick={handleAgentClick}
                    showToast={showToast}
                   activeWslProject={activeWslProject}

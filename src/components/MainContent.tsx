@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
@@ -34,6 +34,8 @@ interface MainContentProps {
    agents: AgentConfig[];
    compactMode: boolean;
    showAgentBar: boolean;
+   hiddenAgentIds: string[];
+   onToggleHiddenAgent: (agentId: string) => void;
    onAgentClick: (agent: AgentConfig) => void;
    showToast: (message: string, type?: "info" | "error") => void;
 
@@ -79,6 +81,8 @@ function MainContent({
    agents,
    compactMode,
    showAgentBar,
+   hiddenAgentIds,
+   onToggleHiddenAgent,
    onAgentClick,
    showToast,
    activeWslProject,
@@ -96,6 +100,23 @@ function MainContent({
    onWorktreeDiffBack,
 }: MainContentProps) {
    const { config } = useAppContext();
+
+   // Manage Presets dropdown
+   const [managerOpen, setManagerOpen] = useState(false);
+   const managerRef = useRef<HTMLDivElement>(null);
+
+   useEffect(() => {
+      if (!managerOpen) return;
+      const handler = (e: MouseEvent) => {
+         if (managerRef.current && !managerRef.current.contains(e.target as Node)) {
+            setManagerOpen(false);
+         }
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+   }, [managerOpen]);
+
+   const allEnabledAgents = useMemo(() => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)), [agents]);
 
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
    const activeTabAgentId = activeTab?.agentId ?? null;
@@ -131,9 +152,9 @@ function MainContent({
       activeRemoteProject?.project.selected_agent ??
       null;
 
-   const enabledAgents = useMemo(() => agents.filter((a) => a.enabled), [agents]);
+   const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)), [agents, hiddenAgentIds]);
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
-   const showAgentBarContent = showAgentBar && hasActiveProject && enabledAgents.length > 0;
+   const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    const handleTerminalTabStatusChange = useCallback(
       (status: "Idle" | "Running" | "Failed") => {
@@ -182,6 +203,47 @@ function MainContent({
 
                {showAgentBarContent && (
                   <div className="h-8 px-2 pb-1 flex items-center gap-1 overflow-x-auto">
+                     {/* Gear button */}
+                     <div className="relative" ref={managerRef}>
+                        <button
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md border text-xs transition-colors bg-white/5 border-white/10 text-text-secondary hover:bg-white/10 hover:text-white"
+                           onClick={() => setManagerOpen((v) => !v)}
+                           title="Manage Presets"
+                        >
+                           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="8" cy="8" r="2.5" />
+                              <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
+                           </svg>
+                        </button>
+                        {/* Manage Presets dropdown */}
+                        {managerOpen && (
+                           <div
+                              className="absolute left-0 top-full mt-1 z-50 min-w-[180px] max-h-[280px] overflow-y-auto rounded-md border border-border bg-bg-secondary shadow-lg py-1"
+                           >
+                              {allEnabledAgents.map((agent) => {
+                                 const pinned = !hiddenAgentIds.includes(agent.id);
+                                 return (
+                                    <div
+                                       key={agent.id}
+                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-xs text-text-primary"
+                                       onClick={() => onToggleHiddenAgent(agent.id)}
+                                    >
+                                       <AgentIcon icon={agent.icon} />
+                                       <span className="flex-1 truncate">{agent.name}</span>
+                                       {pinned ? (
+                                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-text-secondary shrink-0">
+                                             <path d="M9.828.722a.5.5 0 01.354.146l4.95 4.95a.5.5 0 010 .707c-.48.48-1.307.848-2.21.988V14.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5v-2.5H6v2.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5V6.81c-.903-.14-1.73-.508-2.21-.988a.5.5 0 010-.707l4.95-4.95a.5.5 0 01.354-.146z" />
+                                          </svg>
+                                       ) : (
+                                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-text-secondary text-[10px] leading-none shrink-0">+</span>
+                                       )}
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
+                     </div>
+                     {/* Agent buttons */}
                      {enabledAgents.map((agent) => {
                         const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
                         const selected = currentAgentId === agent.id;
