@@ -1,6 +1,6 @@
 ﻿import React, { createContext, useCallback, useContext, useState } from "react";
 
-export type ActivityPanel = "projects" | "skills";
+export type ActivityPanel = "projects" | "skills" | "files";
 
 const PANEL_MIN = 180;
 const PANEL_MAX = 480;

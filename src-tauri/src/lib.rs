@@ -191,6 +191,10 @@ pub fn run() {
             commands::save_config,
             commands::load_config,
             commands::get_system_fonts,
+            // ─── 文件操作命令 ────────────────────────────────────────────
+            commands::read_dir_tree,
+            commands::read_file_content,
+            commands::write_file_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

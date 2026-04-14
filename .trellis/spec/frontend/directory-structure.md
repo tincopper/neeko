@@ -32,10 +32,16 @@ src/
 │   │   └── WSLDialog.tsx
 │   ├── layout/              # 窗口边框 & 导航
 │   │   ├── index.ts
+│   │   ├── ActivityBar.tsx  # 左侧活动栏（projects/files/skills 切换）
+│   │   ├── AppLayout.tsx    # 顶层布局编排（ActivityBar + PanelArea + MainContent）
 │   │   ├── AgentIcon.tsx
 │   │   ├── AgentSelector.tsx
 │   │   ├── TitleBar.tsx
 │   │   └── WindowControls.tsx
+│   ├── panels/              # 侧栏面板内容（按活动栏选项切换）
+│   │   ├── FilesPanel.tsx   # 文件树面板（files 活动）
+│   │   ├── FileViewer.tsx   # 文件编辑器（CodeMirror，多 Tab）
+│   │   └── ProjectsPanel.tsx
 │   ├── project/             # 项目侧边栏 & Git UI
 │   │   ├── index.tsx
 │   │   ├── AddProjectModal.tsx
@@ -53,6 +59,7 @@ src/
 │
 ├── hooks/                   # 自定义 React Hooks（扁平目录）
 │   ├── useAppConfig.ts
+│   ├── useFileView.ts       # 文件面板：多 Tab 状态管理（openFile/closeTab/saveFile）
 │   ├── useKeyboardShortcuts.ts
 │   ├── useLocalProjects.ts
 │   ├── useRemoteProjects.ts
@@ -63,6 +70,7 @@ src/
 │
 ├── utils/                   # 纯工具函数（扁平目录）
 │   ├── agents.ts            # Agent 图标查找表
+│   ├── codemirror.ts        # CodeMirror 配置（语言加载、主题、字体样式扩展）
 │   ├── distros.ts           # WSL 发行版图标映射
 │   ├── fileIcons.ts         # 文件扩展名到图标的映射
 │   ├── idePresets.ts        # IDE 预设定义
@@ -105,7 +113,8 @@ src-tauri/
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
-| `components/layout/` | 窗口边框 | 标题栏、窗口控制、Agent 选择器 |
+| `components/layout/` | 窗口边框 | 标题栏、窗口控制、Activity Bar、全局布局 |
+| `components/panels/` | 侧栏面板 | FilesPanel（文件树）、FileViewer（多 Tab 编辑器）、ProjectsPanel |
 | `components/project/` | 项目管理 | 侧边栏、文件树、Git 对话框 |
 | `components/terminal/` | 终端视图 | 所有 xterm.js 终端变体 |
 | `components/connections/` | 远程连接 | SSH/WSL 对话框 |

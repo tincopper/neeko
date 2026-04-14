@@ -3,8 +3,8 @@
   "name": "04-14-files-panel",
   "title": "Files Panel: file tree, viewer with syntax highlighting, markdown preview",
   "description": "Add Files panel to left sidebar below Projects. ListTree icon. File tree view in active panel, file content viewer with syntax highlighting (hljs), markdown preview support.",
-  "status": "planning",
-  "dev_type": null,
+  "status": "in_progress",
+  "dev_type": "fullstack",
   "scope": "files",
   "priority": "P2",
   "creator": "tincopper",
@@ -14,12 +14,8 @@
   "branch": "feature/files-panel",
   "base_branch": "main",
   "worktree_path": null,
-  "current_phase": 0,
+  "current_phase": 1,
   "next_action": [
-    {
-      "phase": 1,
-      "action": "implement"
-    },
     {
       "phase": 2,
       "action": "check"
@@ -39,6 +35,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Implementation complete. Rust compiles cleanly. TypeScript needs pnpm install to verify (codemirror packages already in package.json).",
   "meta": {}
 }

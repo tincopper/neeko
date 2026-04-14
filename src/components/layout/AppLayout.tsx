@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useSidebar } from "../../context/sidebar-context";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
 import ProjectsPanel from "../panels/ProjectsPanel";
+import FilesPanel from "../panels/FilesPanel";
 import MainContent from "../MainContent";
 import type {
    Project,
@@ -13,6 +14,8 @@ import type {
    AuthMethod,
    AgentConfig,
    TerminalTab,
+   FileNode,
+   FileTab,
 } from "../../types";
 import type { ActiveWslKey, ActiveRemoteKey } from "../connections/RemoteItems";
 
@@ -102,10 +105,33 @@ interface AppLayoutProps {
    onWslDiffBack: () => void;
    onRemoteDiffBack: () => void;
    onWorktreeDiffBack: () => void;
+
+   // File view props
+   fileTree: FileNode[];
+   fileTabs: FileTab[];
+   activeFileTabId: string | null;
+   fileViewLoading: boolean;
+   activeFilePath: string | null;
+   onFileSelect: (filePath: string) => void;
+   onFileRefresh: () => void;
+   onFileCloseTab: (tabId: string) => void;
+   onFileActivateTab: (tabId: string) => void;
+   onFileSave: (content: string) => Promise<boolean>;
+   onFileContentChange: (tabId: string, content: string) => void;
+   onLoadFileTree: (projectId: string) => void;
 }
 
 function AppLayout(props: AppLayoutProps) {
    const { activePanel } = useSidebar();
+
+   const activeProjectName = props.activeProject?.name ?? null;
+
+   // Load file tree when files panel is opened with an active local project
+   useEffect(() => {
+      if (activePanel === "files" && props.activeProjectId) {
+         props.onLoadFileTree(props.activeProjectId);
+      }
+   }, [activePanel, props.activeProjectId, props.onLoadFileTree]);
 
    return (
       <div className="flex flex-1 min-h-0 overflow-hidden bg-bg-primary">
@@ -159,6 +185,16 @@ function AppLayout(props: AppLayoutProps) {
                   onSaveProjectSettings={props.onSaveProjectSettings}
                />
             )}
+            {activePanel === "files" && (
+               <FilesPanel
+                  projectName={activeProjectName}
+                  fileTree={props.fileTree}
+                  isLoading={props.fileViewLoading}
+                  activeFilePath={props.activeFilePath}
+                  onSelectFile={props.onFileSelect}
+                  onRefresh={props.onFileRefresh}
+               />
+            )}
          </PanelArea>
 
          <MainContent
@@ -192,6 +228,13 @@ function AppLayout(props: AppLayoutProps) {
             onWslDiffBack={props.onWslDiffBack}
             onRemoteDiffBack={props.onRemoteDiffBack}
             onWorktreeDiffBack={props.onWorktreeDiffBack}
+            // File view props
+            fileTabs={props.fileTabs}
+            activeFileTabId={props.activeFileTabId}
+            onFileCloseTab={props.onFileCloseTab}
+            onFileActivateTab={props.onFileActivateTab}
+            onFileSave={props.onFileSave}
+            onFileContentChange={props.onFileContentChange}
          />
       </div>
    );

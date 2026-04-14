@@ -1,5 +1,6 @@
 mod agent;
 mod config;
+mod file;
 mod git;
 mod ide;
 mod project;
@@ -11,6 +12,7 @@ mod wsl_git;
 
 pub use agent::*;
 pub use config::*;
+pub use file::*;
 pub use git::*;
 pub use ide::*;
 pub use project::*;

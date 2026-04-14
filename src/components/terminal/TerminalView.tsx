@@ -42,6 +42,10 @@ export const terminalRebuildCallbacks = new Map<string, () => void>()
 // 存储每个 cacheKey 对应的 DOM wrapper，供命令式切换 Agent 时使用
 export const terminalWrapperRefs = new Map<string, HTMLDivElement>()
 
+// 模块级：记录哪些 cacheKey 已经执行过 agent，生命周期与 terminalCache 绑定
+// 不放在组件 state/ref 中，避免 unmount/remount 时丢失已执行标记
+export const executedAgentKeys = new Set<string>()
+
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString()
   console.log(`[${ts}] [Terminal] ${msg}`)
@@ -54,6 +58,7 @@ export function destroyTerminalCache(cacheKey: string) {
   cache.unlistenClosed?.()
   cache.term.dispose()
   terminalCache.delete(cacheKey)
+  executedAgentKeys.delete(cacheKey)
   log(`Cache destroyed for ${cacheKey}`)
 }
 
@@ -431,8 +436,7 @@ function TerminalView({
   const currentCacheKeyRef = useRef<string | null>(null)
   // 管道关闭时递增，触发 useEffect 重建终端
   const [rebuildCount, setRebuildCount] = useState(0)
-  // 跟踪已经执行过的 agent，per-cacheKey 避免 tab 切换时重复执行
-  const executedAgentsRef = useRef<Set<string>>(new Set())
+  // executedAgentsRef 已移至模块级 executedAgentKeys，此处仅保留引用
 
   // 计算 cacheKey：如果有 tabId，使用 `${project.id}:${tabId}`，否则使用 project.id
   const cacheKey = tabId ? `${project.id}:${tabId}` : project.id
@@ -525,7 +529,7 @@ function TerminalView({
         })
         
         // 终端创建完成后，如果 tabAgentId 存在且此 cacheKey 未执行过 agent，则执行
-        if (tabAgentId && !executedAgentsRef.current.has(cacheKey) && cache.sessionId) {
+        if (tabAgentId && !executedAgentKeys.has(cacheKey) && cache.sessionId) {
           log(`Executing agent after terminal creation: ${tabAgentId}`);
           (async () => {
             try {
@@ -538,7 +542,7 @@ function TerminalView({
                 log(`Execute agent error: ${err}`);
               });
               
-              executedAgentsRef.current.add(cacheKey);
+              executedAgentKeys.add(cacheKey);
               log(`Executed agent after creation: ${cmd}`);
               
               // 更新 Tab 状态为 Running
@@ -602,7 +606,7 @@ function TerminalView({
   // 监听 tabAgentId 变化，执行 Agent 命令
   useEffect(() => {
     // 如果没有 agentId，或者此 cacheKey 已执行过 agent，则不执行
-    if (!tabAgentId || executedAgentsRef.current.has(cacheKey)) return;
+    if (!tabAgentId || executedAgentKeys.has(cacheKey)) return;
 
     const cache = terminalCache.get(cacheKey);
     if (!cache?.sessionId) return;
@@ -620,7 +624,7 @@ function TerminalView({
           log(`Execute agent error: ${err}`);
         });
 
-        executedAgentsRef.current.add(cacheKey);
+        executedAgentKeys.add(cacheKey);
         log(`Executed agent: ${cmd}`);
         
         // 更新 Tab 状态为 Running
