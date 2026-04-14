@@ -1,4 +1,16 @@
 {"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
 {"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "src/types.ts", "reason": "AppConfig type definition - fontSize field needs to be split"}
+{"file": "src/types.ts", "reason": "AppConfig type definition - remove fontSize, add appearanceFontSize/editorFontSize/terminalFontSize"}
+{"file": "src/hooks/useAppConfig.ts", "reason": "Config defaults, CSS variable sync (--font-size, --terminal-font-size), migration logic, equality check"}
+{"file": "src/components/SettingsPanel.tsx", "reason": "Add Font Size controls to Appearance, Editor, Terminal panels; remove old shared fontSize control"}
+{"file": "src/styles/theme.css", "reason": "Add --terminal-font-size CSS variable; update --font-size default to 12"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "Update fontSize prop to use editorFontSize"}
+{"file": "src/components/terminal/TerminalView.tsx", "reason": "Update fontSize prop to accept terminalFontSize"}
+{"file": "src/components/terminal/WorktreeTerminalView.tsx", "reason": "Update fontSize prop to accept terminalFontSize"}
+{"file": "src/components/terminal/WSLTerminalView.tsx", "reason": "Update fontSize prop to accept terminalFontSize"}
+{"file": "src/components/terminal/RemoteTerminalView.tsx", "reason": "Update fontSize prop to accept terminalFontSize"}
+{"file": "src/components/MainContent.tsx", "reason": "Pass config.terminalFontSize to terminal components, config.editorFontSize to FileViewer"}
+{"file": "src/components/RemoteProjectView.tsx", "reason": "Replace config.fontSize with config.terminalFontSize"}
+{"file": "src/hooks/useAppCallbacks.ts", "reason": "Update terminalFontSize pass-through to use config.terminalFontSize"}
+{"file": "src/hooks/useWslActions.ts", "reason": "Check and update any fontSize reference to terminalFontSize"}
+{"file": "src/components/layout/TerminalTab.tsx", "reason": "Apply --terminal-font-size CSS variable for terminal tab font size"}
