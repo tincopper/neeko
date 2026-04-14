@@ -295,7 +295,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
+          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">{project.name}</span>
         </div>
         {/* IDE 按钮 */}
         {project.selected_ide && onOpenIde && (

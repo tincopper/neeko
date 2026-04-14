@@ -226,7 +226,8 @@ function MainContent({
                      {/* Gear button */}
                      <div className="relative shrink-0" ref={managerRef}>
                         <button
-                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md text-xs transition-colors text-text-secondary hover:bg-white/10 hover:text-white"
+                            className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-white/10 hover:text-white"
+                            style={{ fontSize: "var(--terminal-font-size)" }}
                            onClick={() => setManagerOpen((v) => !v)}
                            title="Manage Presets"
                         >
@@ -245,7 +246,8 @@ function MainContent({
                                  return (
                                     <div
                                        key={agent.id}
-                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-xs text-text-primary"
+                                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
+                                        style={{ fontSize: "var(--terminal-font-size)" }}
                                        onClick={() => onToggleHiddenAgent(agent.id)}
                                     >
                                        <AgentIcon icon={agent.icon} />
@@ -271,7 +273,8 @@ function MainContent({
                         return (
                            <button
                               key={agent.id}
-                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md text-xs transition-colors ${selected ? "text-white bg-white/10" : "text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
+                               className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-white bg-white/10" : "text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
+                               style={{ fontSize: "var(--terminal-font-size)" }}
                               onClick={() => handleAgentClick(agent)}
                               disabled={!installed}
                               title={agent.name}

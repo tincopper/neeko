@@ -125,7 +125,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
           return (
             <React.Fragment key={node.path}>
               <div
-                className="flex items-center gap-1 py-0.5 pr-2 text-sm cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
+                className="flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
                 style={{ paddingLeft: indent }}
                 onClick={(e) => { e.stopPropagation(); toggle(node.path); }}
                 title={node.path}
@@ -156,7 +156,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
         return (
           <div
             key={node.path}
-            className="flex items-center gap-1 py-0.5 pr-2 text-sm cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
+            className="flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
             style={{ paddingLeft: indent }}
             onClick={(e) => {
               e.stopPropagation();

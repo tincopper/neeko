@@ -1,5 +1,4 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
-import { ChevronRight, ChevronDown, FolderOpen, Folder } from "lucide-react";
 import { fileIconSrc } from "../../utils/fileIcons";
 import type { FileNode } from "../../types";
 
@@ -57,7 +56,7 @@ function FileTreeNode({
   return (
     <>
       <div
-        className={`flex items-center gap-1 py-0.5 pr-2 text-sm cursor-pointer rounded select-none min-w-0 ${
+        className={`flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded select-none min-w-0 ${
           isActive ? "bg-accent/10" : "hover:bg-bg-hover"
         }`}
         style={{ paddingLeft: indent }}
@@ -66,21 +65,17 @@ function FileTreeNode({
       >
         {node.is_dir ? (
           <>
-            {isExpanded ? (
-              <ChevronDown size={14} className="shrink-0 text-text-secondary" />
-            ) : (
-              <ChevronRight size={14} className="shrink-0 text-text-secondary" />
-            )}
-            {isExpanded ? (
-              <FolderOpen size={14} className="shrink-0 text-accent" />
-            ) : (
-              <Folder size={14} className="shrink-0 text-accent" />
-            )}
+            <img
+              className="w-4 h-4 shrink-0 block"
+              src={`/icons/${isExpanded ? "_folder_open" : "_folder"}.svg`}
+              alt=""
+              width={16}
+              height={16}
+            />
             <span className="flex-1 text-text-primary font-medium truncate">{node.name}</span>
           </>
         ) : (
           <>
-            <span className="w-3.5 shrink-0" />
             <img
               className="w-3.5 h-3.5 shrink-0 block opacity-70"
               src={fileIconSrc(node.name)}
@@ -157,7 +152,7 @@ function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelect
   if (!projectName) {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
-        <p className="text-sm text-text-secondary text-center">
+        <p className="text-[var(--font-size)] text-text-secondary text-center">
           请选择一个项目以浏览文件
         </p>
       </div>
@@ -167,7 +162,7 @@ function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelect
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-sm font-medium text-text-primary truncate">{projectName}</span>
+        <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
         <button
           className="p-1 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
           onClick={onRefresh}
@@ -185,11 +180,11 @@ function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelect
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
-            <span className="text-sm text-text-secondary">Loading...</span>
+            <span className="text-[var(--font-size)] text-text-secondary">Loading...</span>
           </div>
         ) : fileTree.length === 0 ? (
           <div className="flex items-center justify-center p-4">
-            <span className="text-sm text-text-secondary">No files found</span>
+            <span className="text-[var(--font-size)] text-text-secondary">No files found</span>
           </div>
         ) : (
           fileTree.map((node) => (

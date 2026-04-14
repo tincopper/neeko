@@ -120,7 +120,16 @@ useEffect(() => {
 export function useAppConfig() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
 
-  // 挂载时加载
+  // 同步 CSS 变量：appearanceFontSize → --font-size，terminalFontSize → --terminal-font-size
+  useEffect(() => {
+    document.documentElement.style.setProperty("--font-size", `${config.appearanceFontSize}px`);
+  }, [config.appearanceFontSize]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--terminal-font-size", `${config.terminalFontSize}px`);
+  }, [config.terminalFontSize]);
+
+  // 挂载时加载（含旧字段迁移：fontSize → terminalFontSize）
   useEffect(() => {
     (async () => {
       const saved = await invoke<Record<string, any>>("load_config");
@@ -138,6 +147,16 @@ export function useAppConfig() {
   return { config, saveConfig };
 }
 ```
+
+#### AppConfig 字体字段
+
+| 字段 | 默认值 | 用途 |
+|------|--------|------|
+| `appearanceFontSize` | `12` | 整体 UI 字体，驱动 `--font-size` CSS 变量 |
+| `editorFontSize` | `14` | CodeMirror 编辑器字体，通过 prop 传入 `FileViewer` |
+| `terminalFontSize` | `14` | 终端字体，驱动 `--terminal-font-size` CSS 变量 |
+
+> ⚠️ 旧字段 `fontSize`（单一字体大小）已在 2026-04-14 拆分为上述三字段。`useAppConfig` 中包含迁移逻辑，读取旧配置时将 `fontSize` 迁移为 `terminalFontSize`。新代码中**不得**使用 `config.fontSize`。
 
 ### 会话保存防抖模式
 

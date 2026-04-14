@@ -447,7 +447,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
+          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">{project.name}</span>
         </div>
 
         {/* IDE 按钮 */}
@@ -735,7 +735,7 @@ export const WSLItem = React.memo<WSLItemProps>(({
           onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
         />
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-sm font-semibold text-text-primary truncate">{entry.distro}</span>
+          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">{entry.distro}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>WSL</span>
         </div>
         <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
@@ -963,7 +963,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(({
           onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
         />
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-sm font-semibold text-text-primary truncate">{label}</span>
+          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">{label}</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>SSH</span>
         </div>
         <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
