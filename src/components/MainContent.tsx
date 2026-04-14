@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
@@ -36,6 +36,8 @@ interface MainContentProps {
    agents: AgentConfig[];
    compactMode: boolean;
    showAgentBar: boolean;
+   hiddenAgentIds: string[];
+   onToggleHiddenAgent: (agentId: string) => void;
    onAgentClick: (agent: AgentConfig) => void;
    showToast: (message: string, type?: "info" | "error") => void;
 
@@ -89,6 +91,8 @@ function MainContent({
    agents,
    compactMode,
    showAgentBar,
+   hiddenAgentIds,
+   onToggleHiddenAgent,
    onAgentClick,
    showToast,
    activeWslProject,
@@ -112,6 +116,23 @@ function MainContent({
    onFileContentChange,
 }: MainContentProps) {
    const { config } = useAppContext();
+
+   // Manage Presets dropdown
+   const [managerOpen, setManagerOpen] = useState(false);
+   const managerRef = useRef<HTMLDivElement>(null);
+
+   useEffect(() => {
+      if (!managerOpen) return;
+      const handler = (e: MouseEvent) => {
+         if (managerRef.current && !managerRef.current.contains(e.target as Node)) {
+            setManagerOpen(false);
+         }
+      };
+      document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+   }, [managerOpen]);
+
+   const allEnabledAgents = useMemo(() => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)), [agents]);
 
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
    const activeTabAgentId = activeTab?.agentId ?? null;
@@ -147,9 +168,9 @@ function MainContent({
       activeRemoteProject?.project.selected_agent ??
       null;
 
-   const enabledAgents = useMemo(() => agents.filter((a) => a.enabled), [agents]);
+   const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)), [agents, hiddenAgentIds]);
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
-   const showAgentBarContent = showAgentBar && hasActiveProject && enabledAgents.length > 0;
+   const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    const handleTerminalTabStatusChange = useCallback(
       (status: "Idle" | "Running" | "Failed") => {
@@ -201,14 +222,56 @@ function MainContent({
                </div>
 
                {showAgentBarContent && (
-                  <div className="h-8 px-2 pb-1 flex items-center gap-1 overflow-x-auto">
+                  <div className="h-8 px-2 pb-1 flex items-center gap-1">
+                     {/* Gear button */}
+                     <div className="relative shrink-0" ref={managerRef}>
+                        <button
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md text-xs transition-colors text-text-secondary hover:bg-white/10 hover:text-white"
+                           onClick={() => setManagerOpen((v) => !v)}
+                           title="Manage Presets"
+                        >
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.573-1.066z" />
+                              <circle cx="12" cy="12" r="3" />
+                           </svg>
+                        </button>
+                        {/* Manage Presets dropdown */}
+                        {managerOpen && (
+                           <div
+                              className="absolute left-0 top-full mt-1 z-50 min-w-[180px] max-h-[280px] overflow-y-auto rounded-md border border-border bg-bg-secondary shadow-lg py-1"
+                           >
+                              {allEnabledAgents.map((agent) => {
+                                 const pinned = !hiddenAgentIds.includes(agent.id);
+                                 return (
+                                    <div
+                                       key={agent.id}
+                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-xs text-text-primary"
+                                       onClick={() => onToggleHiddenAgent(agent.id)}
+                                    >
+                                       <AgentIcon icon={agent.icon} />
+                                       <span className="flex-1 truncate">{agent.name}</span>
+                                       {pinned ? (
+                                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-text-secondary shrink-0">
+                                             <path d="M9.828.722a.5.5 0 01.354.146l4.95 4.95a.5.5 0 010 .707c-.48.48-1.307.848-2.21.988V14.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5v-2.5H6v2.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5V6.81c-.903-.14-1.73-.508-2.21-.988a.5.5 0 010-.707l4.95-4.95a.5.5 0 01.354-.146z" />
+                                          </svg>
+                                       ) : (
+                                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-text-secondary text-[10px] leading-none shrink-0">+</span>
+                                       )}
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        )}
+                     </div>
+                     {/* Agent buttons */}
+                     <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
                      {enabledAgents.map((agent) => {
                         const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
                         const selected = currentAgentId === agent.id;
                         return (
                            <button
                               key={agent.id}
-                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md border text-xs transition-colors ${selected ? "border-white/30 text-white bg-white/10 shadow-sm" : "bg-white/5 border-white/10 text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
+                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md text-xs transition-colors ${selected ? "text-white bg-white/10" : "text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
                               onClick={() => handleAgentClick(agent)}
                               disabled={!installed}
                               title={agent.name}
@@ -218,6 +281,7 @@ function MainContent({
                            </button>
                         );
                      })}
+                     </div>
                   </div>
                )}
             </div>

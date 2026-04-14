@@ -31,9 +31,9 @@ function TerminalTab({
 
    return (
       <div
-         className={`flex items-center gap-1 h-6 px-2 rounded-md border cursor-pointer min-w-0 transition-colors ${isActive
-               ? "border-white/20 bg-white/10 text-white"
-               : "border-transparent text-text-secondary hover:bg-white/5 hover:text-white"
+         className={`flex items-center gap-1 h-6 px-2 rounded-md cursor-pointer min-w-0 transition-colors ${isActive
+               ? "bg-white/10 text-white"
+               : "text-text-secondary hover:bg-white/5 hover:text-white"
             }`}
          onClick={handleClick}
          title={title}

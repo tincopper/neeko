@@ -79,6 +79,8 @@ interface AppLayoutProps {
    agents: AgentConfig[];
    compactMode: boolean;
    showAgentBar: boolean;
+   hiddenAgentIds: string[];
+   onToggleHiddenAgent: (agentId: string) => void;
    onAgentClick: (agent: AgentConfig) => void;
    showToast: (message: string, type?: "info" | "error") => void;
 
@@ -213,6 +215,8 @@ function AppLayout(props: AppLayoutProps) {
             agents={props.agents}
             compactMode={props.compactMode}
             showAgentBar={props.showAgentBar}
+            hiddenAgentIds={props.hiddenAgentIds}
+            onToggleHiddenAgent={props.onToggleHiddenAgent}
             onAgentClick={props.onAgentClick}
             showToast={props.showToast}
             activeWslProject={props.activeWslProject}

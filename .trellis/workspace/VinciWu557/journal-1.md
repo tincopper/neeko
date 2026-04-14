@@ -409,3 +409,45 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Fix gear button icon, dropdown clipping, and flatten bar styles
+
+**Date**: 2026-04-14
+**Task**: Fix gear button icon, dropdown clipping, and flatten bar styles
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Fix | Description |
+|-----|-------------|
+| Gear icon | Replaced sun/asterisk SVG with proper gear (Tabler settings) icon |
+| Dropdown clipping | Moved gear button outside `overflow-x-auto` container so dropdown panel renders correctly |
+| Flat button styles | Removed borders and default backgrounds from agent buttons, tabs, and add-tab button |
+
+**Updated Files**:
+- `src/components/MainContent.tsx` — gear icon SVG, layout restructure, agent button style
+- `src/components/layout/TerminalTab.tsx` — remove tab border
+- `src/components/layout/TerminalTabBar.tsx` — remove add-tab button border
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `823ca36` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
