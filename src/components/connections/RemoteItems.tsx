@@ -6,8 +6,7 @@ import FileTree, { buildTree } from "../project/FileTree";
 import ContextMenu, { ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import serverIcon from "../../assets/server.svg";
-import { BranchIcon, ChevronRightIcon, SideTerminalIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
-import { cn } from "../../utils/cn";
+import { BranchIcon, ChevronRightIcon, CloseTerminalIcon, GitLogoIcon, PlusIcon, TrashIcon, FolderGitIcon } from "../icons";
 
 // Confirm dialog for worktree removal
 interface WtConfirmState {
@@ -15,7 +14,7 @@ interface WtConfirmState {
   branch: string;
 }
 
-// Active selection type
+// ─── Active selection type ───────────────────────────────────────────────────
 export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
 
@@ -33,7 +32,7 @@ function getAvatarStyle(name: string): React.CSSProperties {
   return { color, backgroundColor: color + "26" };
 }
 
-// Generic project body (branches, worktrees, changed files)
+// ─── Generic project body (branches, worktrees, changed files) ───────────────
 
 interface ProjectBodyProps {
   gitInfo: GitInfo;
@@ -101,6 +100,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
     setDeletingWorktree(confirmDelete.path);
     onRemoveWorktree(confirmDelete.path, confirmDelete.branch);
     setConfirmDelete(null);
+    // spinner + 淡出动画（450ms），之后由 refresh 重新渲染列表
     setTimeout(() => setDeletingWorktree(null), 500);
   }, [confirmDelete, onRemoveWorktree]);
 
@@ -111,7 +111,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
         className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
         onClick={(e) => onToggleSection("__branches__", e)}
       >
-        <ChevronRightIcon size={10} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", branchesExpanded && "rotate-90")} />
+        <ChevronRightIcon size={10} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${branchesExpanded ? "rotate-90" : ""}`} />
         Branches
       </div>
       {branchesExpanded && (
@@ -119,15 +119,13 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
           {gitInfo.branches.map((branch) => {
             const isCurrent = branch === gitInfo.current_branch;
             const isRenaming = renamingBranch === branch;
+            // 当前分支默认展开显示变更文件；其他分支默认折叠
             const isExpanded = expandedSections[`branch:${branch}`] ?? isCurrent;
 
             return (
               <div key={branch}>
                 <div
-                  className={cn(
-                    "flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary cursor-pointer",
-                    isCurrent && "!text-accent-blue cursor-default"
-                  )}
+                  className={`gh-branch-item flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary cursor-pointer ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isRenaming) return;
@@ -142,7 +140,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                     if (!isRenaming) onStartRenameBranch(branch, gitInfo.current_branch);
                   }}
                 >
-                  <BranchIcon size={11} className="opacity-60" />
+                  <BranchIcon size={11} style={{ opacity: 0.6 }} />
                   {isRenaming ? (
                     <input
                       ref={renameInputRef}
@@ -179,7 +177,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
             className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
             onClick={(e) => onToggleSection("__worktrees__", e)}
           >
-            <ChevronRightIcon size={10} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", worktreesExpanded && "rotate-90")} />
+            <ChevronRightIcon size={10} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${worktreesExpanded ? "rotate-90" : ""}`} />
             Worktrees
           </div>
           {worktreesExpanded && (
@@ -189,10 +187,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                 return (
                   <div
                     key={wt.path}
-                    className={cn(
-                      "flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
-                      deletingWorktree === wt.path && "wt-deleting"
-                    )}
+                    className={`flex items-center gap-1 py-1 px-2 text-base rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover ${deletingWorktree === wt.path ? "wt-deleting" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (isRenaming || deletingWorktree === wt.path) return;
@@ -203,8 +198,8 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                       if (!isRenaming) onStartRenameWorktree(wt.path);
                     }}
                     title={`${wt.path}\nClick to open terminal`}
-                  >
-                    <FolderGitIcon size={15} className="opacity-70" />
+                      >
+                    <FolderGitIcon size={15} style={{ opacity: 0.7 }} />
                     {isRenaming ? (
                       <input
                         ref={renameWtInputRef}
@@ -226,7 +221,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         <span className="wt-spinner" title="Removing..." />
                       ) : (
                         <button
-                          className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red opacity-0 text-base px-1.5 py-0.5"
+                          className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red opacity-0 group-hover:opacity-100"
                           onClick={(e) => { e.stopPropagation(); handleConfirmRemove(wt.path, wt.branch); }}
                           title="Remove worktree and branch"
                         >
@@ -234,10 +229,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
                         </button>
                       )
                     )}
-                    <span
-                      className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
-                      title={wt.branch}
-                    >
+                    <span className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40" title={wt.branch}>
                       <BranchIcon size={11} />
                       {wt.branch}
                     </span>
@@ -280,7 +272,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(({
 });
 ProjectBody.displayName = "ProjectBody";
 
-// Generic project item header + expandable body
+// ─── Generic project item header + expandable body ──────────────────────────
 
 interface ProjectItemCardProps {
   project: { id: string; name: string; path: string; git_info?: GitInfo | null; selected_ide?: string | null; selected_agent?: string | null };
@@ -293,7 +285,6 @@ interface ProjectItemCardProps {
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
   onRemoveWorktree: (path: string, branch: string) => void;
-  onOpenSideTerminal?: () => void;
   onRemoveProject: () => void;
   onOpenIde?: () => void;
   onOpenDialog?: (type: string, branches: string[]) => void;
@@ -311,7 +302,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
   onSelectProject, onSelectFile,
   onCheckoutBranch, onCommitRenameBranch,
   onOpenWorktreeTerminal, onCommitRenameWorktree, onRemoveWorktree,
-  onOpenSideTerminal, onRemoveProject, onOpenIde, onOpenDialog,
+  onRemoveProject, onOpenIde, onOpenDialog,
   currentBranch, ideCommandOverrides,
   onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
@@ -330,6 +321,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
 
   const gitInfo = project.git_info;
 
+  // git_info 异步加载后自动展开（只展开一次）
   React.useEffect(() => {
     if (gitInfo && !gitInfoLoaded.current) {
       gitInfoLoaded.current = true;
@@ -369,6 +361,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     setRenamingWorktree(null);
   }, [renamingWorktree, renameWorktreeValue, onCommitRenameWorktree]);
 
+  // Close git menu on outside click
   React.useEffect(() => {
     if (!gitMenuOpen) return;
     const handler = () => setGitMenuOpen(false);
@@ -386,36 +379,63 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
     const items: ContextMenuItem[] = [];
 
     if (project.selected_ide && onOpenIde) {
-      items.push({ label: "Open in IDE", shortcut: "Ctrl+O", action: () => onOpenIde() });
+      items.push({
+        label: "Open in IDE",
+        shortcut: "Ctrl+O",
+        action: () => onOpenIde(),
+      });
     }
-    if (isActive && onOpenSideTerminal) {
-      items.push({ label: "Open Side Terminal", shortcut: "Ctrl+Alt+T", action: () => onOpenSideTerminal() });
-    }
+
     if (project.git_info) {
       items.push({
-        label: "New Branch", icon: GitLogoIcon,
-        action: () => { setGitMenuOpen(false); onOpenDialog?.("new-branch", project.git_info!.branches); },
+        label: "New Branch",
+        icon: GitLogoIcon,
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-branch", project.git_info!.branches);
+        },
       });
       items.push({
-        label: "New Worktree", icon: FolderGitIcon,
-        action: () => { setGitMenuOpen(false); onOpenDialog?.("new-worktree", project.git_info!.branches); },
+        label: "New Worktree",
+        icon: FolderGitIcon,
+        action: () => {
+          setGitMenuOpen(false);
+          onOpenDialog?.("new-worktree", project.git_info!.branches);
+        },
       });
     }
+
     if (onRefresh) {
-      items.push({ label: "Refresh Terminal", shortcut: "Ctrl+R", action: () => onRefresh() });
+      items.push({
+        label: "Refresh Terminal",
+        shortcut: "Ctrl+R",
+        action: () => onRefresh(),
+      });
     }
+
     items.push({ label: "", separator: true, action: () => {} });
+
     if (onOpenSettings && config) {
-      items.push({ label: "Project Settings", action: () => setSettingsOpen(true) });
+      items.push({
+        label: "Project Settings",
+        action: () => setSettingsOpen(true),
+      });
     }
-    items.push({ label: "Remove Project", action: () => onRemoveProject(), danger: true });
+
+    items.push({
+      label: "Remove Project",
+      action: () => onRemoveProject(),
+      danger: true,
+    });
+
     return items;
   };
 
   return (
-    <div className="mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150">
+    <div className={`gh-project mb-0.5 rounded-md overflow-visible ${isActive ? "active" : ""}`}>
+      {/* Project header */}
       <div
-        className="group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover"
+        className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""}`}
         onClick={() => onSelectProject()}
         onContextMenu={handleContextMenu}
       >
@@ -427,71 +447,76 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           {project.name.charAt(0).toUpperCase()}
         </span>
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-[0.93em] font-semibold text-text-primary truncate">{project.name}</span>
+          <span className="text-sm font-semibold text-text-primary truncate">{project.name}</span>
         </div>
+
+        {/* IDE 按钮 */}
         {onOpenIde && (
           <button
-            className="bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 opacity-0 group-hover:opacity-100 ml-0.5 text-text-muted hover:!text-accent-blue"
+            className={`gh-ide-btn bg-transparent border-none cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 ml-0.5 text-text-muted hover:!text-accent-blue shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"}`}
             title={project.selected_ide ? `Open in IDE (Ctrl+O)\n${project.selected_ide}` : "Open in IDE (Ctrl+O)"}
             onClick={(e) => { e.stopPropagation(); onOpenIde(); }}
           >
             <img src={getIdeIconByCommand(project.selected_ide ?? null, ideCommandOverrides)} className="w-3.5 h-3.5 object-contain block" alt="" />
           </button>
         )}
-        <div className="flex gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-          {isActive && onOpenSideTerminal && (
-            <button
-              className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
-              title="Open side terminal (Ctrl+Alt+T)" onClick={() => onOpenSideTerminal()}>
-              <SideTerminalIcon size={11} />
-            </button>
-          )}
+
+        <div className={`gh-project-actions flex items-center gap-0.5 shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-150`} onClick={(e) => e.stopPropagation()}>
+          {/* Git 操作下拉菜单 */}
           {gitInfo && onOpenDialog && (
             <div className="relative" onClick={(e) => e.stopPropagation()}>
               <button
-                className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary gap-0.5"
+                className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
                 <GitLogoIcon size={11} />
               </button>
               {gitMenuOpen && (
-                <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-tertiary border border-border rounded-md min-w-[150px] z-[1000] shadow-lg overflow-hidden">
-                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover"
+                <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-branch", gitInfo.branches); }}>
-                    <GitLogoIcon size={12} /> New Branch
+                    <GitLogoIcon size={12} />
+                    New Branch
                   </div>
-                  <div className="flex items-center gap-2 p-1.5 px-3 text-base text-text-primary cursor-pointer transition-colors duration-100 hover:bg-bg-hover"
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
                     onClick={() => { setGitMenuOpen(false); onOpenDialog("new-worktree", gitInfo.branches); }}>
-                    <FolderGitIcon size={12} /> New Worktree
+                    <FolderGitIcon size={12} />
+                    New Worktree
                   </div>
                 </div>
               )}
             </div>
           )}
           {hasSession && (
-            <button className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
-              title="Close terminal" onClick={() => onRemoveProject()}>
+            <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Close terminal"
+              onClick={() => onRemoveProject()}>
               <CloseTerminalIcon size={10} />
             </button>
           )}
-          <button
-            className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red"
-            title="Remove project" onClick={() => onRemoveProject()}>&times;</button>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove project"
+            onClick={() => onRemoveProject()}>×</button>
         </div>
+
+        {/* Branch badge */}
         {gitInfo && (
-          <span className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
-            title={gitInfo.current_branch}>
-            <BranchIcon size={11} className="opacity-60" />
+          <span className="gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate" title={gitInfo.current_branch}>
+            <BranchIcon size={11} style={{ opacity: 0.6 }} />
             {gitInfo.current_branch}
           </span>
         )}
       </div>
+
+      {/* Expandable git body */}
       {!collapsed && gitInfo && (
         <ProjectBody
-          gitInfo={gitInfo} projectId={project.id} expandedSections={expandedSections}
-          renamingBranch={renamingBranch} renameBranchValue={renameBranchValue}
-          renamingWorktree={renamingWorktree} renameWorktreeValue={renameWorktreeValue}
+          gitInfo={gitInfo}
+          projectId={project.id}
+          expandedSections={expandedSections}
+          renamingBranch={renamingBranch}
+          renameBranchValue={renameBranchValue}
+          renamingWorktree={renamingWorktree}
+          renameWorktreeValue={renameWorktreeValue}
           onToggleSection={toggleSection}
           onCheckoutBranch={(branch) => onCheckoutBranch(branch)}
           onStartRenameBranch={handleStartRenameBranch}
@@ -505,18 +530,31 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
           onCommitRenameWorktree={handleCommitRenameWorktree}
           onRemoveWorktree={onRemoveWorktree}
           onCancelRenameWorktree={() => setRenamingWorktree(null)}
-          renameInputRef={renameInputRef} renameWtInputRef={renameWtInputRef}
+          renameInputRef={renameInputRef}
+          renameWtInputRef={renameWtInputRef}
           currentBranch={currentBranch}
         />
       )}
-      {contextMenu && <ContextMenu position={contextMenu} onClose={() => setContextMenu(null)} items={buildContextMenuItems()} />}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems()}
+        />
+      )}
       {settingsOpen && config && (
         <ProjectSettingsDialog
-          projectId={project.id} projectName={project.name}
-          currentAgent={project.selected_agent ?? null} currentIde={project.selected_ide ?? null}
-          agents={agents ?? []} config={config}
+          projectId={project.id}
+          projectName={project.name}
+          currentAgent={project.selected_agent ?? null}
+          currentIde={project.selected_ide ?? null}
+          agents={agents ?? []}
+          config={config}
           onClose={() => setSettingsOpen(false)}
-          onSave={(agentId, ideCmd) => { onSaveProjectSettings?.(agentId, ideCmd); setSettingsOpen(false); }}
+          onSave={(agentId, ideCmd) => {
+            onSaveProjectSettings?.(agentId, ideCmd);
+            setSettingsOpen(false);
+          }}
         />
       )}
     </div>
@@ -524,205 +562,356 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(({
 });
 ProjectItemCard.displayName = "ProjectItemCard";
 
-// WSL Project Card
+// ─── WSL Project Card (extracted to stabilize callbacks for React.memo) ──
 
 interface WSLProjectCardProps {
-  project: WSLProject; entryId: string; distro: string;
-  isActive: boolean; hasSession: boolean;
+  project: WSLProject;
+  entryId: string;
+  distro: string;
+  isActive: boolean;
+  hasSession: boolean;
   onSelectProject: (distro: string, project: WSLProject) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
   onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
-  onOpenSettings?: () => void; onRefresh?: () => void;
-  agents?: AgentConfig[]; config?: AppConfig;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(({
   project, entryId, distro, isActive, hasSession,
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
-  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal, onOpenDialog,
-  ideCommandOverrides, onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
+  onOpenIde, onOpenWorktreeTerminal, onOpenDialog,
+  ideCommandOverrides,
+  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
-  const handleSelectFile = useCallback((fp: string) => { onSelectFile?.(distro, project.path, fp); }, [onSelectFile, distro, project.path]);
+  const handleSelectFile = useCallback((fp: string) => {
+    onSelectFile?.(distro, project.path, fp);
+  }, [onSelectFile, distro, project.path]);
+
   const handleCheckout = useCallback((branch: string) => {
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("wsl_checkout_branch", { distro, projectPath: project.path, branchName: branch }).then(() => onRefreshGit?.(distro, project.id, project.path)));
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_checkout_branch", { distro, projectPath: project.path, branchName: branch })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+    );
   }, [distro, project.path, project.id, onRefreshGit]);
+
   const handleRenameBranch = useCallback((oldName: string, newName: string) => {
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("wsl_rename_branch", { distro, projectPath: project.path, oldName, newName }).then(() => onRefreshGit?.(distro, project.id, project.path)).catch(console.error));
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_rename_branch", { distro, projectPath: project.path, oldName, newName })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch(console.error)
+    );
   }, [distro, project.path, project.id, onRefreshGit]);
-  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => { onOpenWorktreeTerminal?.(distro, wtPath, branch); }, [onOpenWorktreeTerminal, distro]);
+
+  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => {
+    onOpenWorktreeTerminal?.(distro, wtPath, branch);
+  }, [onOpenWorktreeTerminal, distro]);
+
   const handleRenameWorktree = useCallback((oldPath: string, newName: string) => {
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("wsl_rename_worktree", { distro, projectPath: project.path, worktreePath: oldPath, newName }).then(() => onRefreshGit?.(distro, project.id, project.path)).catch(console.error));
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_rename_worktree", { distro, projectPath: project.path, worktreePath: oldPath, newName })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch(console.error)
+    );
   }, [distro, project.path, project.id, onRefreshGit]);
+
   const handleRemoveWorktree = useCallback((wtPath: string, _branch: string) => {
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("wsl_remove_worktree", { distro, projectPath: project.path, worktreePath: wtPath }).then(() => onRefreshGit?.(distro, project.id, project.path)).catch((e: unknown) => { console.error("[WSL] Failed to remove worktree:", e); }));
+    import("@tauri-apps/api/core").then(({ invoke }) =>
+      invoke("wsl_remove_worktree", { distro, projectPath: project.path, worktreePath: wtPath })
+        .then(() => onRefreshGit?.(distro, project.id, project.path))
+        .catch((e: unknown) => { console.error("[WSL] Failed to remove worktree:", e); })
+    );
   }, [distro, project.path, project.id, onRefreshGit]);
-  const handleOpenSide = useMemo(() => onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined, [onOpenSideTerminal, entryId, project.id]);
-  const handleRemove = useCallback(() => { onRemoveProject(entryId, project.id); }, [onRemoveProject, entryId, project.id]);
-  const handleOpenIde = useMemo(() => onOpenIde ? () => onOpenIde(distro, project.path, project.selected_ide ?? "") : undefined, [onOpenIde, distro, project.path, project.selected_ide]);
-  const handleOpenDialog = useMemo(() => onOpenDialog ? (type: string, branches: string[]) => onOpenDialog({ type, source: { type: "wsl", distro, projectPath: project.path }, branches }) : undefined, [onOpenDialog, distro, project.path]);
+
+  const handleRemove = useCallback(() => {
+    onRemoveProject(entryId, project.id);
+  }, [onRemoveProject, entryId, project.id]);
+
+  const handleOpenIde = useMemo(() =>
+    onOpenIde ? () => onOpenIde(distro, project.path, project.selected_ide ?? "") : undefined,
+    [onOpenIde, distro, project.path, project.selected_ide]
+  );
+
+  const handleOpenDialog = useMemo(() =>
+    onOpenDialog
+      ? (type: string, branches: string[]) =>
+          onOpenDialog({ type, source: { type: "wsl", distro, projectPath: project.path }, branches })
+      : undefined,
+    [onOpenDialog, distro, project.path]
+  );
 
   return (
-    <ProjectItemCard project={project} isActive={isActive} hasSession={hasSession}
-      onSelectProject={() => onSelectProject(distro, project)} onSelectFile={handleSelectFile}
-      onCheckoutBranch={handleCheckout} onCommitRenameBranch={handleRenameBranch}
-      onOpenWorktreeTerminal={handleOpenWorktree} onCommitRenameWorktree={handleRenameWorktree}
-      onRemoveWorktree={handleRemoveWorktree} onOpenSideTerminal={handleOpenSide}
-      onRemoveProject={handleRemove} onOpenIde={handleOpenIde} onOpenDialog={handleOpenDialog}
-      currentBranch={project.git_info?.current_branch ?? ""} ideCommandOverrides={ideCommandOverrides}
-      onOpenSettings={onOpenSettings} onRefresh={onRefresh} agents={agents} config={config}
-      onSaveProjectSettings={onSaveProjectSettings} />
+    <ProjectItemCard
+      project={project}
+      isActive={isActive}
+      hasSession={hasSession}
+      onSelectProject={() => onSelectProject(distro, project)}
+      onSelectFile={handleSelectFile}
+      onCheckoutBranch={handleCheckout}
+      onCommitRenameBranch={handleRenameBranch}
+      onOpenWorktreeTerminal={handleOpenWorktree}
+      onCommitRenameWorktree={handleRenameWorktree}
+      onRemoveWorktree={handleRemoveWorktree}
+      onRemoveProject={handleRemove}
+      onOpenIde={handleOpenIde}
+      onOpenDialog={handleOpenDialog}
+      currentBranch={project.git_info?.current_branch ?? ""}
+      ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
+    />
   );
 });
 WSLProjectCard.displayName = "WSLProjectCard";
 
-// WSLItem
+// ─── WSLItem ──────────────────────────────────────────────────────────────────
 
 interface WSLItemProps {
-  entry: WSLEntrySession; activeKey: ActiveWslKey; openSessions: Set<string>;
+  entry: WSLEntrySession;
+  activeKey: ActiveWslKey;
+  openSessions: Set<string>;
   onSelectProject: (distro: string, project: WSLProject) => void;
   onCloseProject: (entryId: string, projectId: string) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
-  onRemoveEntry: (entryId: string) => void; onAddProject: (entryId: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
+  onRemoveEntry: (entryId: string) => void;
+  onAddProject: (entryId: string) => void;
   onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: { type: string; source: { type: string; distro: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
-  onOpenSettings?: () => void; onRefresh?: (distro: string, projectId: string) => void;
-  agents?: AgentConfig[]; config?: AppConfig;
+  onOpenSettings?: () => void;
+  onRefresh?: (distro: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const WSLItem = React.memo<WSLItemProps>(({
-  entry, activeKey, openSessions, onSelectProject,
+  entry,
+  activeKey,
+  openSessions,
+  onSelectProject,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onCloseProject, onRemoveProject, onRemoveEntry, onAddProject,
-  onOpenSideTerminal, onSelectFile, onRefreshGit, onOpenIde,
-  onOpenWorktreeTerminal, onOpenDialog, ideCommandOverrides,
-  onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
+  onCloseProject,
+  onRemoveProject,
+  onRemoveEntry,
+  onAddProject,
+  onSelectFile,
+  onRefreshGit,
+  onOpenIde,
+  onOpenWorktreeTerminal,
+  onOpenDialog,
+  ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
-  void onCloseProject;
+  void onCloseProject; // intentionally unused — close handled by terminal session
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150">
-      <div className="group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
-        <img src={getDistroIcon(entry.distro)} className="w-[15px] h-[15px] fill-current stroke-current text-text-secondary cursor-pointer" alt=""
-          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }} />
+    <div className="gh-project mb-0.5 rounded-md overflow-visible">
+      <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
+        <img
+          src={getDistroIcon(entry.distro)}
+          className="sidebar-distro-icon w-5 h-5 shrink-0"
+          alt=""
+          style={{ cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
+        />
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-[0.93em] font-semibold text-text-primary truncate">{entry.distro}</span>
-          <span className="text-[11px] text-text-muted ml-1">WSL</span>
+          <span className="text-sm font-semibold text-text-primary truncate">{entry.distro}</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>WSL</span>
         </div>
-        <div className="flex gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-          <button className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
-            title="Add WSL project" onClick={() => onAddProject(entry.id)}><PlusIcon size={11} /></button>
-          <button className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red"
-            title="Remove distro" onClick={() => onRemoveEntry(entry.id)}><TrashIcon size={11} /></button>
+        <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Add WSL project" onClick={() => onAddProject(entry.id)}>
+            <PlusIcon size={11} />
+          </button>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove distro" onClick={() => onRemoveEntry(entry.id)}>
+            <TrashIcon size={11} />
+          </button>
         </div>
       </div>
+
       {!collapsed && (
-        <div className="py-0.5 pb-1 pl-4">
+        <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
-            <div className="py-1 px-2 text-xs text-text-muted pl-7">No projects</div>
-          ) : entry.projects.map((project) => {
-            const isActive = activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
-            const hasSession = openSessions.has(project.id);
-            return (
-              <WSLProjectCard key={project.id} project={project} entryId={entry.id} distro={entry.distro}
-                isActive={isActive} hasSession={hasSession}
-                onSelectProject={onSelectProject} onRemoveProject={onRemoveProject}
-                onSelectFile={onSelectFile} onRefreshGit={onRefreshGit} onOpenIde={onOpenIde}
-                onOpenSideTerminal={onOpenSideTerminal} onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                onOpenDialog={onOpenDialog} ideCommandOverrides={ideCommandOverrides}
-                onOpenSettings={onOpenSettings}
-                onRefresh={onRefresh ? () => onRefresh(entry.distro, project.id) : undefined}
-                agents={agents} config={config} onSaveProjectSettings={onSaveProjectSettings} />
-            );
-          })}
+            <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>No projects</div>
+          ) : (
+            entry.projects.map((project) => {
+              const isActive = activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
+              const hasSession = openSessions.has(project.id);
+              return (
+                <WSLProjectCard
+                  key={project.id}
+                  project={project}
+                  entryId={entry.id}
+                  distro={entry.distro}
+                  isActive={isActive}
+                  hasSession={hasSession}
+                  onSelectProject={onSelectProject}
+                  onRemoveProject={onRemoveProject}
+                  onSelectFile={onSelectFile}
+                  onRefreshGit={onRefreshGit}
+                  onOpenIde={onOpenIde}
+                  onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  onOpenDialog={onOpenDialog}
+                  ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.distro, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
+                />
+              );
+            })
+          )}
         </div>
       )}
     </div>
   );
 });
 
-// Remote Project Card
+// ─── Remote Project Card (extracted to stabilize callbacks for React.memo) ──
 
 interface RemoteProjectCardProps {
-  project: RemoteProject; entryId: string; host: string;
-  isActive: boolean; hasSession: boolean;
+  project: RemoteProject;
+  entryId: string;
+  host: string;
+  isActive: boolean;
+  hasSession: boolean;
   onSelectProject: (host: string, project: RemoteProject) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
   onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
-  onOpenSettings?: () => void; onRefresh?: () => void;
-  agents?: AgentConfig[]; config?: AppConfig;
+  onOpenSettings?: () => void;
+  onRefresh?: () => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(({
   project, entryId, host, isActive, hasSession,
   onSelectProject, onRemoveProject, onSelectFile, onRefreshGit,
-  onOpenIde, onOpenSideTerminal, onOpenWorktreeTerminal,
+  onOpenIde, onOpenWorktreeTerminal,
   invokeRemoteGit, onOpenDialog, ideCommandOverrides,
   onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
 }) => {
-  const handleSelectFile = useCallback((fp: string) => { onSelectFile?.(entryId, project.path, fp); }, [onSelectFile, entryId, project.path]);
+  const handleSelectFile = useCallback((fp: string) => {
+    onSelectFile?.(entryId, project.path, fp);
+  }, [onSelectFile, entryId, project.path]);
+
   const handleCheckout = useCallback((branch: string) => {
-    if (invokeRemoteGit) invokeRemoteGit("remote_checkout_branch", entryId, { projectPath: project.path, branchName: branch }).then(() => onRefreshGit?.(entryId, project.id, project.path));
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_checkout_branch", entryId, { projectPath: project.path, branchName: branch })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path));
+    }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
   const handleRenameBranch = useCallback((oldName: string, newName: string) => {
-    if (invokeRemoteGit) invokeRemoteGit("remote_rename_branch", entryId, { projectPath: project.path, oldName, newName }).then(() => onRefreshGit?.(entryId, project.id, project.path)).catch(console.error);
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_rename_branch", entryId, { projectPath: project.path, oldName, newName })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch(console.error);
+    }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
-  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => { onOpenWorktreeTerminal?.(entryId, wtPath, branch); }, [onOpenWorktreeTerminal, entryId]);
+
+  const handleOpenWorktree = useCallback((wtPath: string, branch: string) => {
+    onOpenWorktreeTerminal?.(entryId, wtPath, branch);
+  }, [onOpenWorktreeTerminal, entryId]);
+
   const handleRenameWorktree = useCallback((oldPath: string, newName: string) => {
-    if (invokeRemoteGit) invokeRemoteGit("remote_rename_worktree", entryId, { projectPath: project.path, worktreePath: oldPath, newName }).then(() => onRefreshGit?.(entryId, project.id, project.path)).catch(console.error);
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_rename_worktree", entryId, { projectPath: project.path, worktreePath: oldPath, newName })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch(console.error);
+    }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
+
   const handleRemoveWorktree = useCallback((wtPath: string, _branch: string) => {
-    if (invokeRemoteGit) invokeRemoteGit("remote_remove_worktree", entryId, { projectPath: project.path, worktreePath: wtPath }).then(() => onRefreshGit?.(entryId, project.id, project.path)).catch((e: unknown) => { console.error("[SSH] Failed to remove worktree:", e); });
+    if (invokeRemoteGit) {
+      invokeRemoteGit("remote_remove_worktree", entryId, { projectPath: project.path, worktreePath: wtPath })
+        .then(() => onRefreshGit?.(entryId, project.id, project.path))
+        .catch((e: unknown) => { console.error("[SSH] Failed to remove worktree:", e); });
+    }
   }, [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit]);
-  const handleOpenSide = useMemo(() => onOpenSideTerminal ? () => onOpenSideTerminal(entryId, project.id) : undefined, [onOpenSideTerminal, entryId, project.id]);
-  const handleRemove = useCallback(() => { onRemoveProject(entryId, project.id); }, [onRemoveProject, entryId, project.id]);
-  const handleOpenIde = useMemo(() => onOpenIde ? () => onOpenIde(entryId, project.path, project.selected_ide ?? "") : undefined, [onOpenIde, entryId, project.path, project.selected_ide]);
-  const handleOpenDialog = useMemo(() => onOpenDialog ? (type: string, branches: string[]) => onOpenDialog({ type, source: { type: "remote", entryId, projectPath: project.path }, branches }) : undefined, [onOpenDialog, entryId, project.path]);
+
+  const handleRemove = useCallback(() => {
+    onRemoveProject(entryId, project.id);
+  }, [onRemoveProject, entryId, project.id]);
+
+  const handleOpenIde = useMemo(() =>
+    onOpenIde ? () => onOpenIde(entryId, project.path, project.selected_ide ?? "") : undefined,
+    [onOpenIde, entryId, project.path, project.selected_ide]
+  );
+
+  const handleOpenDialog = useMemo(() =>
+    onOpenDialog
+      ? (type: string, branches: string[]) =>
+          onOpenDialog({ type, source: { type: "remote", entryId, projectPath: project.path }, branches })
+      : undefined,
+    [onOpenDialog, entryId, project.path]
+  );
 
   return (
-    <ProjectItemCard project={project} isActive={isActive} hasSession={hasSession}
-      onSelectProject={() => onSelectProject(host, project)} onSelectFile={handleSelectFile}
-      onCheckoutBranch={handleCheckout} onCommitRenameBranch={handleRenameBranch}
-      onOpenWorktreeTerminal={handleOpenWorktree} onCommitRenameWorktree={handleRenameWorktree}
-      onRemoveWorktree={handleRemoveWorktree} onOpenSideTerminal={handleOpenSide}
-      onRemoveProject={handleRemove} onOpenIde={handleOpenIde} onOpenDialog={handleOpenDialog}
-      currentBranch={project.git_info?.current_branch ?? ""} ideCommandOverrides={ideCommandOverrides}
-      onOpenSettings={onOpenSettings} onRefresh={onRefresh} agents={agents} config={config}
-      onSaveProjectSettings={onSaveProjectSettings} />
+    <ProjectItemCard
+      project={project}
+      isActive={isActive}
+      hasSession={hasSession}
+      onSelectProject={() => onSelectProject(host, project)}
+      onSelectFile={handleSelectFile}
+      onCheckoutBranch={handleCheckout}
+      onCommitRenameBranch={handleRenameBranch}
+      onOpenWorktreeTerminal={handleOpenWorktree}
+      onCommitRenameWorktree={handleRenameWorktree}
+      onRemoveWorktree={handleRemoveWorktree}
+      onRemoveProject={handleRemove}
+      onOpenIde={handleOpenIde}
+      onOpenDialog={handleOpenDialog}
+      currentBranch={project.git_info?.current_branch ?? ""}
+      ideCommandOverrides={ideCommandOverrides}
+      onOpenSettings={onOpenSettings}
+      onRefresh={onRefresh}
+      agents={agents}
+      config={config}
+      onSaveProjectSettings={onSaveProjectSettings}
+    />
   );
 });
 RemoteProjectCard.displayName = "RemoteProjectCard";
 
-// RemoteItem
+// ─── RemoteItem ───────────────────────────────────────────────────────────────
 
 interface RemoteItemProps {
-  entry: RemoteEntrySession; activeKey: ActiveRemoteKey; openSessions: Set<string>;
+  entry: RemoteEntrySession;
+  activeKey: ActiveRemoteKey;
+  openSessions: Set<string>;
   onSelectProject: (host: string, project: RemoteProject) => void;
   onCloseProject: (entryId: string, projectId: string) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
-  onRemoveEntry: (entryId: string) => void; onAddProject: (entryId: string) => void;
-  onOpenSideTerminal?: (entryId: string, projectId: string) => void;
+  onRemoveEntry: (entryId: string) => void;
+  onAddProject: (entryId: string) => void;
   onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
   onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
@@ -730,57 +919,97 @@ interface RemoteItemProps {
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
   onOpenDialog?: (dialog: { type: string; source: { type: string; entryId: string; projectPath: string }; branches: string[] }) => void;
   ideCommandOverrides?: Record<string, string>;
-  onOpenSettings?: () => void; onRefresh?: (entryId: string, projectId: string) => void;
-  agents?: AgentConfig[]; config?: AppConfig;
+  onOpenSettings?: () => void;
+  onRefresh?: (entryId: string, projectId: string) => void;
+  agents?: AgentConfig[];
+  config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
 }
 
 export const RemoteItem = React.memo<RemoteItemProps>(({
-  entry, activeKey, openSessions, onSelectProject,
-  onCloseProject, onRemoveProject, onRemoveEntry, onAddProject,
-  onOpenSideTerminal, onSelectFile, onRefreshGit, onOpenIde,
-  onOpenWorktreeTerminal, invokeRemoteGit, onOpenDialog,
-  ideCommandOverrides, onOpenSettings, onRefresh, agents, config, onSaveProjectSettings,
+  entry,
+  activeKey,
+  openSessions,
+  onSelectProject,
+  onCloseProject,
+  onRemoveProject,
+  onRemoveEntry,
+  onAddProject,
+  onSelectFile,
+  onRefreshGit,
+  onOpenIde,
+  onOpenWorktreeTerminal,
+  invokeRemoteGit,
+  onOpenDialog,
+  ideCommandOverrides,
+  onOpenSettings,
+  onRefresh,
+  agents,
+  config,
+  onSaveProjectSettings,
 }) => {
   void onCloseProject;
   const [collapsed, setCollapsed] = useState(false);
   const label = `${entry.host}:${entry.port}`;
 
   return (
-    <div className="mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150">
-      <div className="group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
-        <img src={serverIcon} className="w-[15px] h-[15px] fill-current stroke-current text-text-secondary cursor-pointer" alt=""
-          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }} />
+    <div className="gh-project mb-0.5 rounded-md overflow-visible">
+      <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
+        <img
+          src={serverIcon}
+          className="sidebar-distro-icon w-5 h-5 shrink-0"
+          alt=""
+          style={{ cursor: "pointer" }}
+          onClick={(e) => { e.stopPropagation(); setCollapsed((v) => !v); }}
+        />
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span className="text-[0.93em] font-semibold text-text-primary truncate">{label}</span>
-          <span className="text-[11px] text-text-muted ml-1">SSH</span>
+          <span className="text-sm font-semibold text-text-primary truncate">{label}</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>SSH</span>
         </div>
-        <div className="flex gap-0.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-          <button className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary"
-            title="Add remote project" onClick={() => onAddProject(entry.id)}><PlusIcon size={11} /></button>
-          <button className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-accent-red"
-            title="Remove server" onClick={() => onRemoveEntry(entry.id)}><TrashIcon size={11} /></button>
+        <div className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => e.stopPropagation()}>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150" title="Add remote project" onClick={() => onAddProject(entry.id)}>
+            <PlusIcon size={11} />
+          </button>
+          <button className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150" title="Remove server" onClick={() => onRemoveEntry(entry.id)}>
+            <TrashIcon size={11} />
+          </button>
         </div>
       </div>
+
       {!collapsed && (
-        <div className="py-0.5 pb-1 pl-4">
+        <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
           {entry.projects.length === 0 ? (
-            <div className="py-1 px-2 text-xs text-text-muted pl-7">No projects</div>
-          ) : entry.projects.map((project) => {
-            const isActive = activeKey?.host === entry.host && activeKey?.projectId === project.id;
-            const hasSession = openSessions.has(project.id);
-            return (
-              <RemoteProjectCard key={project.id} project={project} entryId={entry.id} host={entry.host}
-                isActive={isActive} hasSession={hasSession}
-                onSelectProject={onSelectProject} onRemoveProject={onRemoveProject}
-                onSelectFile={onSelectFile} onRefreshGit={onRefreshGit} onOpenIde={onOpenIde}
-                onOpenSideTerminal={onOpenSideTerminal} onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                invokeRemoteGit={invokeRemoteGit} onOpenDialog={onOpenDialog}
-                ideCommandOverrides={ideCommandOverrides} onOpenSettings={onOpenSettings}
-                onRefresh={onRefresh ? () => onRefresh(entry.id, project.id) : undefined}
-                agents={agents} config={config} onSaveProjectSettings={onSaveProjectSettings} />
-            );
-          })}
+            <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>No projects</div>
+          ) : (
+            entry.projects.map((project) => {
+              const isActive = activeKey?.host === entry.host && activeKey?.projectId === project.id;
+              const hasSession = openSessions.has(project.id);
+              return (
+                <RemoteProjectCard
+                  key={project.id}
+                  project={project}
+                  entryId={entry.id}
+                  host={entry.host}
+                  isActive={isActive}
+                  hasSession={hasSession}
+                  onSelectProject={onSelectProject}
+                  onRemoveProject={onRemoveProject}
+                  onSelectFile={onSelectFile}
+                  onRefreshGit={onRefreshGit}
+                  onOpenIde={onOpenIde}
+                  onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                  invokeRemoteGit={invokeRemoteGit}
+                  onOpenDialog={onOpenDialog}
+                  ideCommandOverrides={ideCommandOverrides}
+                  onOpenSettings={onOpenSettings}
+                  onRefresh={onRefresh ? () => onRefresh(entry.id, project.id) : undefined}
+                  agents={agents}
+                  config={config}
+                  onSaveProjectSettings={onSaveProjectSettings}
+                />
+              );
+            })
+          )}
         </div>
       )}
     </div>

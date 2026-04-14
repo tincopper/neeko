@@ -10,14 +10,12 @@ export function useWslProjects(saveSession: SaveSessionFn) {
   const [activeWslKey, setActiveWslKey] = useState<ActiveWslKey>(null);
   const [activeWslProject, setActiveWslProject] = useState<{ distro: string; project: WSLProject } | null>(null);
   const [wslOpenSessions, setWslOpenSessions] = useState<Set<string>>(new Set());
-  const [wslSideTerminalOpen, setWslSideTerminalOpen] = useState<Set<string>>(new Set());
   const [wslDialogOpen, setWslDialogOpen] = useState(false);
   const [wslAddToEntryId, setWslAddToEntryId] = useState<string | null>(null);
 
   const wslEntriesRef = useRef<WSLEntrySession[]>([]);
   const activeWslKeyRef = useRef<ActiveWslKey>(null);
   const selectWslProjectRef = useRef<(distro: string, project: WSLProject) => void>(() => {});
-  const wslSideOpenRef = useRef<Set<string>>(new Set());
 
   const handleWSLEntryAdd = useCallback(async (entry: WSLEntrySession) => {
     try {
@@ -40,28 +38,24 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
       destroyWslCache(wslCacheKey(entry.distro, projectId));
-      destroyWslCache(wslCacheKey(entry.distro, projectId) + ":side");
     }
     if (activeWslKey?.projectId === projectId) {
       setActiveWslKey(null);
       setActiveWslProject(null);
     }
     setWslOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-    setWslSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
   }, [wslEntries, activeWslKey]);
 
   const handleRemoveWslProject = useCallback(async (entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
       destroyWslCache(wslCacheKey(entry.distro, projectId));
-      destroyWslCache(wslCacheKey(entry.distro, projectId) + ":side");
     }
     if (activeWslKey?.projectId === projectId) {
       setActiveWslKey(null);
       setActiveWslProject(null);
     }
     setWslOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-    setWslSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
     const newEntries = wslEntries.map(e => {
       if (e.id !== entryId) return e;
       return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
@@ -103,10 +97,9 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     activeWslKey, setActiveWslKey,
     activeWslProject, setActiveWslProject,
     wslOpenSessions, setWslOpenSessions,
-    wslSideTerminalOpen, setWslSideTerminalOpen,
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,
-    wslEntriesRef, activeWslKeyRef, selectWslProjectRef, wslSideOpenRef,
+    wslEntriesRef, activeWslKeyRef, selectWslProjectRef,
     handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,

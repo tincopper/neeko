@@ -1,0 +1,4 @@
+{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".claude/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": "src-tauri/src/lib.rs", "reason": "验证 PATH 修复逻辑正确性"}
+{"file": "src-tauri/src/agent.rs", "reason": "验证 check_command_exists 不需要改动"}

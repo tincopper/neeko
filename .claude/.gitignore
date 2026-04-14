@@ -2,6 +2,7 @@ node_modules
 package.json
 package-lock.json
 bun.lock
+__pycache__
 agents
 commands
 hooks

@@ -12,6 +12,8 @@ const DEFAULT_CONFIG: AppConfig = {
   ideCommandOverrides: {},
   agentCommandOverrides: {},
   customAgents: [],
+  agentSelectorShowPresetBar: true,
+  agentSelectorCompactMode: false,
 };
 
 export function useAppConfig() {
@@ -44,7 +46,9 @@ export function useAppConfig() {
         prev.customIdes === next.customIdes &&
         prev.ideCommandOverrides === next.ideCommandOverrides &&
         prev.agentCommandOverrides === next.agentCommandOverrides &&
-        prev.customAgents === next.customAgents
+        prev.customAgents === next.customAgents &&
+        prev.agentSelectorShowPresetBar === next.agentSelectorShowPresetBar &&
+        prev.agentSelectorCompactMode === next.agentSelectorCompactMode
       ) return prev;
       return next;
     });
@@ -62,7 +66,9 @@ export function useAppConfig() {
         const saved = await invoke<AppConfig>("load_config");
         if (saved && typeof saved === "object") {
           setConfig({
-            theme: (saved as any).theme === "light" ? "light" : "dark",
+            theme: (["light", "one-dark-pro", "claude"] as const).includes((saved as any).theme)
+                ? (saved as any).theme
+                : "dark",
             fontSize:
               typeof saved.fontSize === "number"
                 ? saved.fontSize
@@ -92,6 +98,14 @@ export function useAppConfig() {
             customAgents: Array.isArray(saved.customAgents)
               ? saved.customAgents
               : DEFAULT_CONFIG.customAgents,
+            agentSelectorShowPresetBar:
+              typeof saved.agentSelectorShowPresetBar === "boolean"
+                ? saved.agentSelectorShowPresetBar
+                : DEFAULT_CONFIG.agentSelectorShowPresetBar,
+            agentSelectorCompactMode:
+              typeof saved.agentSelectorCompactMode === "boolean"
+                ? saved.agentSelectorCompactMode
+                : DEFAULT_CONFIG.agentSelectorCompactMode,
           });
         }
       } catch (e) {

@@ -1,0 +1,44 @@
+{
+  "id": "one-dark-pro-theme",
+  "name": "one-dark-pro-theme",
+  "title": "在设置面板中新增 One Dark Pro 主题选项：在现有的主题配置基础上，添加官方 One Dark Pro 配色方案（背景 #282c34，前景 #abb2bf，强调色 #61afef 等），用户可在设置面板的 Editor/Terminal 主题选择器中选择该主题，选择后 CSS 变量实时生效，持久化保存到 config.json",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-13",
+  "completedAt": "2026-04-13",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -1,0 +1,3 @@
+{"file": ".opencode/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "src/components/layout/AppLayout.tsx", "reason": "Panel rendering location for troubleshooting"}
