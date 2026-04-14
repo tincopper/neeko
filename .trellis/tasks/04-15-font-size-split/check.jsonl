@@ -1,3 +1,5 @@
-{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".opencode/commands/trellis/check-backend.md", "reason": "Backend check spec"}
-{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend check spec - TypeScript, React patterns"}
+{"file": "src/types.ts", "reason": "Verify AppConfig has three new fields and no legacy fontSize"}
+{"file": "src/hooks/useAppConfig.ts", "reason": "Verify CSS variable sync for --font-size and --terminal-font-size, migration logic"}
+{"file": "src/components/SettingsPanel.tsx", "reason": "Verify three independent Font Size controls in correct panels"}
+{"file": "src/hooks/__tests__/useAppConfig.test.ts", "reason": "Verify migration and default value tests"}
