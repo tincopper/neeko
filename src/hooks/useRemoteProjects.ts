@@ -13,7 +13,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     project: RemoteProject;
   } | null>(null);
   const [remoteOpenSessions, setRemoteOpenSessions] = useState<Set<string>>(new Set());
-  const [remoteSideTerminalOpen, setRemoteSideTerminalOpen] = useState<Set<string>>(new Set());
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
   const [remoteAuthStore, setRemoteAuthStore] = useState<Map<string, AuthMethod>>(new Map());
@@ -22,7 +21,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
   const remoteEntriesRef = useRef<RemoteEntrySession[]>([]);
   const activeRemoteKeyRef = useRef<ActiveRemoteKey>(null);
   const selectRemoteProjectRef = useRef<(host: string, project: RemoteProject) => void>(() => {});
-  const remoteSideOpenRef = useRef<Set<string>>(new Set());
 
   // Trigger SSH auth dialog via effect
   useEffect(() => {
@@ -62,24 +60,20 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
 
   const handleCloseRemoteProject = useCallback((entryId: string, projectId: string) => {
     destroyRemoteCache(remoteCacheKey(entryId, projectId));
-    destroyRemoteCache(remoteCacheKey(entryId, projectId) + ":side");
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
     }
     setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-    setRemoteSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
   }, [activeRemoteKey]);
 
   const handleRemoveRemoteProject = useCallback(async (entryId: string, projectId: string) => {
     destroyRemoteCache(remoteCacheKey(entryId, projectId));
-    destroyRemoteCache(remoteCacheKey(entryId, projectId) + ":side");
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
     }
     setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-    setRemoteSideTerminalOpen(prev => { const n = new Set(prev); n.delete(projectId); return n; });
     const newEntries = remoteEntries.map(e => {
       if (e.id !== entryId) return e;
       return { ...e, projects: e.projects.filter(p => p.id !== projectId) };
@@ -143,12 +137,11 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     activeRemoteKey, setActiveRemoteKey,
     activeRemoteProject, setActiveRemoteProject,
     remoteOpenSessions, setRemoteOpenSessions,
-    remoteSideTerminalOpen, setRemoteSideTerminalOpen,
     remoteDialogOpen, setRemoteDialogOpen,
     remoteAddToEntryId,
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
-    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef, remoteSideOpenRef,
+    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,

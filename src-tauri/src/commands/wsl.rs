@@ -3,12 +3,12 @@ use crate::AppStateWrapper;
 use tauri::State;
 
 fn wsl_command(program: &str) -> std::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     cmd
 }

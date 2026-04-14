@@ -15,6 +15,25 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 
+// ─── Unix PATH 修复 ─────────────────────────────────────────────────
+
+/// macOS/Linux 从 Dock/Finder/桌面启动的 GUI 应用只继承 launchd 提供的最小 PATH，
+/// 通过用户的 login shell 获取完整 PATH 并注入当前进程环境变量。
+#[cfg(unix)]
+fn resolve_user_path() -> Option<String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+    std::process::Command::new(&shell)
+        .args(["-lc", "echo $PATH"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().lines().last().unwrap_or("").trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+// ─── 应用状态 ───────────────────────────────────────────────────────
+
 pub struct AppStateWrapper {
     pub project_manager: Mutex<project::ProjectManager>,
     pub terminal_manager: terminal::TerminalManager,
@@ -42,6 +61,20 @@ impl AppStateWrapper {
 pub fn run() {
     logger::init_logger();
     log::info!("Neeko starting");
+
+    // Unix: 从用户 login shell 获取完整 PATH，修复 GUI 应用 Agent 检测问题
+    #[cfg(unix)]
+    {
+        match resolve_user_path() {
+            Some(full_path) => {
+                log::info!("Resolved user PATH from login shell, injecting into process env");
+                std::env::set_var("PATH", &full_path);
+            }
+            None => {
+                log::warn!("Failed to resolve user PATH from login shell, using default PATH");
+            }
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

@@ -1,0 +1,44 @@
+{
+  "id": "04-13-agent-detect-macos",
+  "name": "04-13-agent-detect-macos",
+  "title": "brainstorm: macOS GUI 应用 Agent 检测失败分析",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "priority": "P2",
+  "creator": "VinciWu557",
+  "assignee": "VinciWu557",
+  "createdAt": "2026-04-13",
+  "completedAt": "2026-04-13",
+  "branch": null,
+  "base_branch": "enhance/title_bar",
+  "worktree_path": null,
+  "current_phase": 2,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

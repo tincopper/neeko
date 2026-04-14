@@ -35,7 +35,7 @@ function Sidebar({ variant, className, children, ...props }: SidebarProps) {
       >
         {children}
         <div
-          className="absolute top-0 right-[-3px] w-1.5 h-full cursor-col-resize z-10 hover:bg-accent-blue/50 active:bg-accent-blue/50"
+          className="absolute top-0 right-[-3px] w-1.5 h-full cursor-col-resize z-10 hover:bg-white/20 active:bg-white/20"
           onMouseDown={onPanelResizeStart}
         />
       </div>
@@ -111,18 +111,17 @@ function SidebarMenuButton({ isActive, tooltip, className, children, ...props }:
     <button
       title={tooltip}
       className={cn(
-        "relative w-full h-12 flex items-center justify-center",
-        "transition-colors duration-150 focus:outline-none",
-        isActive
-          ? [
-              "text-text-primary",
-              "before:absolute before:left-0 before:top-2 before:bottom-2",
-              "before:w-0.5 before:bg-accent-blue before:rounded-r",
-            ]
-          : "text-text-secondary hover:text-text-primary hover:bg-bg-hover",
-        className
-      )}
-      {...props}
+      "relative w-full h-12 flex items-center justify-center",
+      "transition-colors duration-150 focus:outline-none",
+      isActive
+        ? [
+            "text-text-primary",
+            "before:absolute before:left-0 before:top-2 before:bottom-2",
+            "before:w-0.5 before:bg-white before:rounded-r",
+          ]
+        : "text-text-secondary hover:text-text-primary hover:bg-bg-hover",
+      className
+      )}      {...props}
     >
       {children}
     </button>
