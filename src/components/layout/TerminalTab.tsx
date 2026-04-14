@@ -39,7 +39,7 @@ function TerminalTab({
          title={title}
       >
          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-status-running shrink-0" />}
-         <span className="text-xs truncate">{title}</span>
+         <span className="truncate" style={{ fontSize: "var(--terminal-font-size)" }}>{title}</span>
          <button
             className="tb-icon-btn w-4 h-4 rounded text-xs text-inherit hover:bg-white/20 transition-colors"
             onClick={handleClose}

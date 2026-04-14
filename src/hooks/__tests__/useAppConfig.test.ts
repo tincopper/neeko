@@ -14,7 +14,9 @@ describe('useAppConfig', () => {
     mockInvoke.mockResolvedValue({});
     const { result } = renderHook(() => useAppConfig());
 
-    expect(result.current.config.fontSize).toBe(14);
+    expect(result.current.config.appearanceFontSize).toBe(12);
+    expect(result.current.config.editorFontSize).toBe(14);
+    expect(result.current.config.terminalFontSize).toBe(14);
     expect(result.current.config.diffMode).toBe('unified');
     expect(result.current.config.shell).toBe('');
     expect(result.current.config.fontFamily).toBe('');
@@ -23,7 +25,9 @@ describe('useAppConfig', () => {
 
   it('挂载时加载配置', async () => {
     mockInvoke.mockResolvedValue({
-      fontSize: 16,
+      appearanceFontSize: 13,
+      editorFontSize: 16,
+      terminalFontSize: 15,
       diffMode: 'split',
       shell: '/bin/zsh',
       fontFamily: 'JetBrains Mono',
@@ -36,7 +40,9 @@ describe('useAppConfig', () => {
     const { result } = renderHook(() => useAppConfig());
 
     await waitFor(() => {
-      expect(result.current.config.fontSize).toBe(16);
+      expect(result.current.config.appearanceFontSize).toBe(13);
+      expect(result.current.config.editorFontSize).toBe(16);
+      expect(result.current.config.terminalFontSize).toBe(15);
       expect(result.current.config.diffMode).toBe('split');
       expect(result.current.config.shell).toBe('/bin/zsh');
       expect(result.current.config.fontFamily).toBe('JetBrains Mono');
@@ -51,7 +57,9 @@ describe('useAppConfig', () => {
     const { result } = renderHook(() => useAppConfig());
 
     await waitFor(() => {
-      expect(result.current.config.fontSize).toBe(14);
+      expect(result.current.config.appearanceFontSize).toBe(12);
+      expect(result.current.config.editorFontSize).toBe(14);
+      expect(result.current.config.terminalFontSize).toBe(14);
       expect(result.current.config.diffMode).toBe('unified');
     });
   });
@@ -66,13 +74,15 @@ describe('useAppConfig', () => {
       expect(spy).toHaveBeenCalled();
     });
 
-    expect(result.current.config.fontSize).toBe(14);
+    expect(result.current.config.terminalFontSize).toBe(14);
     spy.mockRestore();
   });
 
   it('无效配置字段类型回退到默认值', async () => {
     mockInvoke.mockResolvedValue({
-      fontSize: 'not-a-number',
+      appearanceFontSize: 'not-a-number',
+      editorFontSize: null,
+      terminalFontSize: 'invalid',
       diffMode: 'invalid-mode',
       shell: 123,
     });
@@ -80,9 +90,40 @@ describe('useAppConfig', () => {
     const { result } = renderHook(() => useAppConfig());
 
     await waitFor(() => {
-      expect(result.current.config.fontSize).toBe(14); // 回退
+      expect(result.current.config.appearanceFontSize).toBe(12); // 回退
+      expect(result.current.config.editorFontSize).toBe(14); // 回退
+      expect(result.current.config.terminalFontSize).toBe(14); // 回退
       expect(result.current.config.diffMode).toBe('unified'); // 回退
       expect(result.current.config.shell).toBe(''); // 回退
+    });
+  });
+
+  it('旧 fontSize 字段迁移为 terminalFontSize', async () => {
+    mockInvoke.mockResolvedValue({
+      fontSize: 18, // 旧字段
+      diffMode: 'unified',
+    });
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.terminalFontSize).toBe(18); // 迁移
+      expect(result.current.config.appearanceFontSize).toBe(12); // 默认
+      expect(result.current.config.editorFontSize).toBe(14); // 默认
+    });
+  });
+
+  it('旧 fontSize 字段迁移时不覆盖已存在的 terminalFontSize', async () => {
+    mockInvoke.mockResolvedValue({
+      fontSize: 18, // 旧字段
+      terminalFontSize: 16, // 已有新字段
+    });
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      // 已有 terminalFontSize，不应被旧 fontSize 覆盖
+      expect(result.current.config.terminalFontSize).toBe(16);
     });
   });
 
@@ -93,7 +134,7 @@ describe('useAppConfig', () => {
 
     const newConfig = {
       ...result.current.config,
-      fontSize: 18,
+      terminalFontSize: 18,
     };
 
     await act(async () => {
@@ -112,7 +153,7 @@ describe('useAppConfig', () => {
     await act(async () => {
       await result.current.saveConfig({
         ...result.current.config,
-        fontSize: 20,
+        terminalFontSize: 20,
       });
     });
 
@@ -132,7 +173,7 @@ describe('useAppConfig', () => {
     });
 
     // 浅比较：saveConfig 传入相同对象时 setConfig 返回 prev，值不变
-    expect(result.current.config.fontSize).toBe(before.fontSize);
+    expect(result.current.config.terminalFontSize).toBe(before.terminalFontSize);
     expect(result.current.config.diffMode).toBe(before.diffMode);
   });
 
@@ -151,7 +192,7 @@ describe('useAppConfig', () => {
     expect(result.current.settingsOpen).toBe(false);
   });
 
-  it('fontSize 变化时同步 CSS 变量', async () => {
+  it('appearanceFontSize 变化时同步 CSS 变量 --font-size', async () => {
     mockInvoke.mockResolvedValue({});
 
     const { result } = renderHook(() => useAppConfig());
@@ -159,16 +200,37 @@ describe('useAppConfig', () => {
     await waitFor(() => {
       expect(
         document.documentElement.style.getPropertyValue('--font-size'),
-      ).toBe('14px');
+      ).toBe('12px');
     });
 
-    const newConfig = { ...result.current.config, fontSize: 20 };
+    const newConfig = { ...result.current.config, appearanceFontSize: 16 };
     await act(async () => {
       await result.current.saveConfig(newConfig);
     });
 
     expect(
       document.documentElement.style.getPropertyValue('--font-size'),
+    ).toBe('16px');
+  });
+
+  it('terminalFontSize 变化时同步 CSS 变量 --terminal-font-size', async () => {
+    mockInvoke.mockResolvedValue({});
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(
+        document.documentElement.style.getPropertyValue('--terminal-font-size'),
+      ).toBe('14px');
+    });
+
+    const newConfig = { ...result.current.config, terminalFontSize: 20 };
+    await act(async () => {
+      await result.current.saveConfig(newConfig);
+    });
+
+    expect(
+      document.documentElement.style.getPropertyValue('--terminal-font-size'),
     ).toBe('20px');
   });
 });
