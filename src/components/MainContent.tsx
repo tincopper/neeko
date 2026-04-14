@@ -202,17 +202,17 @@ function MainContent({
                </div>
 
                {showAgentBarContent && (
-                  <div className="h-8 px-2 pb-1 flex items-center gap-1 overflow-x-auto">
+                  <div className="h-8 px-2 pb-1 flex items-center gap-1">
                      {/* Gear button */}
-                     <div className="relative" ref={managerRef}>
+                     <div className="relative shrink-0" ref={managerRef}>
                         <button
-                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md border text-xs transition-colors bg-white/5 border-white/10 text-text-secondary hover:bg-white/10 hover:text-white"
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md text-xs transition-colors text-text-secondary hover:bg-white/10 hover:text-white"
                            onClick={() => setManagerOpen((v) => !v)}
                            title="Manage Presets"
                         >
-                           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="8" cy="8" r="2.5" />
-                              <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.573-1.066z" />
+                              <circle cx="12" cy="12" r="3" />
                            </svg>
                         </button>
                         {/* Manage Presets dropdown */}
@@ -244,13 +244,14 @@ function MainContent({
                         )}
                      </div>
                      {/* Agent buttons */}
+                     <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
                      {enabledAgents.map((agent) => {
                         const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
                         const selected = currentAgentId === agent.id;
                         return (
                            <button
                               key={agent.id}
-                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md border text-xs transition-colors ${selected ? "border-white/30 text-white bg-white/10 shadow-sm" : "bg-white/5 border-white/10 text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
+                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md text-xs transition-colors ${selected ? "text-white bg-white/10" : "text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
                               onClick={() => handleAgentClick(agent)}
                               disabled={!installed}
                               title={agent.name}
@@ -260,6 +261,7 @@ function MainContent({
                            </button>
                         );
                      })}
+                     </div>
                   </div>
                )}
             </div>
