@@ -14,6 +14,7 @@ export interface AppConfig {
   customAgents: AgentConfig[];
   agentSelectorShowPresetBar: boolean;
   agentSelectorCompactMode: boolean;
+  hiddenAgentIds: string[];
 }
 
 export interface FileChange {
