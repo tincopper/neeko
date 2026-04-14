@@ -121,8 +121,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
       return () => document.removeEventListener("keydown", handler);
    }, [onClose]);
 
-   const setFontSize = (size: number) =>
-      onConfigChange({ ...config, fontSize: Math.min(24, Math.max(10, size)) });
+   const setAppearanceFontSize = (size: number) =>
+      onConfigChange({ ...config, appearanceFontSize: Math.min(24, Math.max(10, size)) });
+
+   const setEditorFontSize = (size: number) =>
+      onConfigChange({ ...config, editorFontSize: Math.min(24, Math.max(10, size)) });
+
+   const setTerminalFontSize = (size: number) =>
+      onConfigChange({ ...config, terminalFontSize: Math.min(24, Math.max(10, size)) });
 
    const setDiffMode = (diffMode: DiffMode) =>
       onConfigChange({ ...config, diffMode });
@@ -281,12 +287,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
                         <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
                            <div className="flex-1 min-w-0">
                               <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Font Size</div>
-                              <div className="text-[0.79em] text-text-muted leading-relaxed">Terminal and UI font size in pixels</div>
+                              <div className="text-[0.79em] text-text-muted leading-relaxed">Font size for the file editor.</div>
                            </div>
                            <div className="flex items-center gap-2 shrink-0">
-                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setFontSize(config.fontSize - 1)} disabled={config.fontSize <= 10}>&minus;</button>
-                              <span className="min-w-[44px] text-center text-[0.86em] text-text-primary tabular-nums">{config.fontSize}px</span>
-                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setFontSize(config.fontSize + 1)} disabled={config.fontSize >= 24}>+</button>
+                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setEditorFontSize(config.editorFontSize - 1)} disabled={config.editorFontSize <= 10}>&minus;</button>
+                              <span className="min-w-[44px] text-center text-[0.86em] text-text-primary tabular-nums">{config.editorFontSize}px</span>
+                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setEditorFontSize(config.editorFontSize + 1)} disabled={config.editorFontSize >= 24}>+</button>
                            </div>
                         </div>
                         <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
@@ -307,6 +313,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
                   {activeNav === "terminal" && (
                      <>
                         <div className="text-[1em] font-semibold text-text-primary mb-5 pb-2.5 border-b border-border">Terminal</div>
+                        {/* Font Size */}
+                        <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
+                           <div className="flex-1 min-w-0">
+                              <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Font Size</div>
+                              <div className="text-[0.79em] text-text-muted leading-relaxed">Font size for terminals and terminal tabs.</div>
+                           </div>
+                           <div className="flex items-center gap-2 shrink-0">
+                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setTerminalFontSize(config.terminalFontSize - 1)} disabled={config.terminalFontSize <= 10}>&minus;</button>
+                              <span className="min-w-[44px] text-center text-[0.86em] text-text-primary tabular-nums">{config.terminalFontSize}px</span>
+                              <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setTerminalFontSize(config.terminalFontSize + 1)} disabled={config.terminalFontSize >= 24}>+</button>
+                           </div>
+                        </div>
                         {/* Font Family */}
                         <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
                            <div className="flex-1 min-w-0">
@@ -567,6 +585,18 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
                    {activeNav === "appearance" && (
                       <div className="flex flex-col">
                          <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
+                         {/* Font Size */}
+                         <div className="flex items-center justify-between py-3 mb-4 border-b border-white/[0.04] gap-6">
+                            <div className="flex-1 min-w-0">
+                               <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Font Size</div>
+                               <div className="text-[0.79em] text-text-muted leading-relaxed">Controls sidebar, project list, file tree, and tab font size.</div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                               <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setAppearanceFontSize(config.appearanceFontSize - 1)} disabled={config.appearanceFontSize <= 10}>&minus;</button>
+                               <span className="min-w-[44px] text-center text-[0.86em] text-text-primary tabular-nums">{config.appearanceFontSize}px</span>
+                               <button className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed" onClick={() => setAppearanceFontSize(config.appearanceFontSize + 1)} disabled={config.appearanceFontSize >= 24}>+</button>
+                            </div>
+                         </div>
                          <label className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Theme</label>
                          <div className="flex gap-3 flex-wrap">
                             {/* Dark card */}

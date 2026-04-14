@@ -19,7 +19,7 @@ interface FileViewerProps {
   activeTabId: string | null;
   theme: AppTheme;
   fontFamily: string;
-  fontSize: number;
+  editorFontSize: number;
   onSave: (content: string) => Promise<boolean>;
   onCloseTab: (tabId: string) => void;
   onActivateTab: (tabId: string) => void;
@@ -31,7 +31,7 @@ function FileViewer({
   activeTabId,
   theme,
   fontFamily,
-  fontSize,
+  editorFontSize: fontSize,
   onSave,
   onCloseTab,
   onActivateTab,

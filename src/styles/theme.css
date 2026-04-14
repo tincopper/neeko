@@ -5,7 +5,8 @@
 
 :root {
   --sidebar-width: 280px;
-  --font-size: 14px;
+  --font-size: 12px;           /* UI 整体字体，由 appearanceFontSize 驱动 */
+  --terminal-font-size: 14px;  /* 终端字体，由 terminalFontSize 驱动 */
 }
 
 :root[data-theme="dark"],
