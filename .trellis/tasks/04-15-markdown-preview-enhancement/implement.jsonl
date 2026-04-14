@@ -1,0 +1,5 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "package.json", "reason": "Project dependencies - react-markdown, remark-gfm, rehype-highlight"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "Current Markdown preview implementation in FileViewer"}
+{"file": "src/styles/index.css", "reason": "Tailwind CSS configuration"}
