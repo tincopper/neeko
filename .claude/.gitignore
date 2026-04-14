@@ -2,3 +2,8 @@ node_modules
 package.json
 package-lock.json
 bun.lock
+agents
+commands
+hooks
+settings.json
+settings.local.json
