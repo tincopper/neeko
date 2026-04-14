@@ -1,0 +1,44 @@
+{
+  "id": "04-15-font-size-split",
+  "name": "04-15-font-size-split",
+  "title": "Settings: split fontSize into Appearance/Editor/Terminal",
+  "description": "将 Setting 的字体大小调整拆分为 3 个独立设置：Appearance（整体 UI 字体）、Editor（编辑器字体）、Terminal（终端字体）。每个设置独立调整，互不影响。Appearance 负责侧边栏、文件树等 UI 字体；Editor 负责 CodeMirror 编辑器字体；Terminal 负责 xterm.js 终端字体。",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "settings",
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-14",
+  "completedAt": null,
+  "branch": "feature/font-size-split",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
