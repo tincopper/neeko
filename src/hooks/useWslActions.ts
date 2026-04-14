@@ -119,7 +119,7 @@ export function useWslActions(deps: {
         proj.project.path,
         proj.project.name,
         agent.id,
-        deps.config.fontSize ?? 14,
+        deps.config.terminalFontSize ?? 14,
         deps.config.fontFamily ?? '',
         deps.config.agentCommandOverrides,
       );

@@ -65,8 +65,8 @@ function RemoteProjectView({
                   port={entry.port}
                   username={entry.username}
                   auth={auth}
-                  fontSize={config.fontSize}
-                  fontFamily={config.fontFamily}
+                   fontSize={config.terminalFontSize}
+                   fontFamily={config.fontFamily}
                   cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
                   selectedAgentId={project.selected_agent}
                   onSessionReady={onRemoteSessionReady}

@@ -13,7 +13,7 @@
   "completedAt": null,
   "branch": "feature/font-size-split",
   "base_branch": "main",
-  "worktree_path": null,
+  "worktree_path": "E:\\workspaces\\rust_space\\trellis-worktrees\\feature\\font-size-split",
   "current_phase": 0,
   "next_action": [
     {
