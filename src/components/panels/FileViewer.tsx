@@ -69,7 +69,7 @@ function FileViewer({
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`flex items-center gap-1 px-3 py-1.5 text-xs cursor-pointer border-r border-border whitespace-nowrap select-none transition-colors ${
+            className={`flex items-center gap-1 px-3 py-1.5 text-[var(--font-size)] cursor-pointer border-r border-border whitespace-nowrap select-none transition-colors ${
               tab.id === activeTabId
                 ? "bg-bg-primary text-text-primary"
                 : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"

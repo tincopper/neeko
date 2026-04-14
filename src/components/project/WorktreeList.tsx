@@ -157,7 +157,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
               <div key={wt.path} className="mb-0.5">
                 <div
                   className={cn(
-                    "flex items-center gap-1 py-1 px-2 text-sm rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
+                    "flex items-center gap-1 py-1 px-2 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
                     deleting === wt.path && "wt-deleting"
                   )}
                   onClick={(e) => {
@@ -190,7 +190,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
-                    <span className="flex-1 text-sm truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
+                    <span className="flex-1 text-[var(--font-size)] truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
                       {wt.path.split(/[\\/]/).pop()}
                     </span>
                   )}

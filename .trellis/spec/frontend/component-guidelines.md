@@ -211,3 +211,40 @@ import { Project, AgentConfig } from "../../types";
 ### 3. 在 JSX 中内联 SVG 图标
 
 项目中将小型 SVG 图标直接嵌入 JSX（参见 `TitleBar.tsx`）。对于简单图标这是可接受的。对于可复用的图标，考虑提取为独立组件或资源文件。
+
+### 4. 字体大小使用硬编码 Tailwind 类
+
+**错误做法** —— 在侧边栏、文件树、Tab 等 UI 元素中使用 `text-xs`、`text-sm` 等固定类：
+
+```tsx
+// 不要这样做：硬编码字体大小，无法响应用户设置
+<span className="text-sm font-semibold">{project.name}</span>
+<div className="text-xs cursor-pointer">{fileName}</div>
+```
+
+**正确做法** —— 使用 CSS 变量，确保元素跟随用户在 Settings 中的字体大小设置：
+
+```tsx
+// UI 元素（侧边栏、文件树、Tab 标签等）→ --font-size（由 appearanceFontSize 驱动）
+<span className="text-[var(--font-size)] font-semibold">{project.name}</span>
+
+// 终端区域元素（终端 Tab、Agent 按钮等）→ --terminal-font-size（由 terminalFontSize 驱动）
+<span style={{ fontSize: "var(--terminal-font-size)" }}>{tabTitle}</span>
+```
+
+---
+
+## CSS 字体大小变量规范
+
+项目使用三套独立的字体大小配置，均由用户在 Settings → Appearance/Editor/Terminal 中调整：
+
+| CSS 变量 | 默认值 | 驱动字段 | 适用范围 |
+|----------|--------|---------|---------|
+| `--font-size` | `12px` | `config.appearanceFontSize` | 侧边栏项目名、文件树、Tab 标签、TitleBar 等所有 UI 文本 |
+| `--terminal-font-size` | `14px` | `config.terminalFontSize` | 终端 Tab、Agent 按钮列表、终端相关 UI |
+| （直接传 prop）| `14px` | `config.editorFontSize` | CodeMirror 编辑器，通过 `editorFontSize` prop 传入 `FileViewer` |
+
+**使用原则**：
+- Tailwind 类语法（推荐用于静态文本）：`className="text-[var(--font-size)]"`
+- 内联 style（用于动态或按钮元素）：`style={{ fontSize: "var(--terminal-font-size)" }}`
+- 新增任何侧边栏/文件树/Tab 组件时，**禁止**使用 `text-xs`、`text-sm`、`text-base` 等固定 Tailwind 字体类

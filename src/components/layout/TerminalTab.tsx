@@ -40,13 +40,14 @@ function TerminalTab({
       >
          {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-status-running shrink-0" />}
          <span className="truncate" style={{ fontSize: "var(--terminal-font-size)" }}>{title}</span>
-         <button
-            className="tb-icon-btn w-4 h-4 rounded text-xs text-inherit hover:bg-white/20 transition-colors"
-            onClick={handleClose}
-            title="Close tab"
-         >
-            ×
-         </button>
+          <button
+             className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-white/20 transition-colors flex items-center justify-center shrink-0 leading-none"
+             style={{ fontSize: "var(--terminal-font-size)" }}
+             onClick={handleClose}
+             title="Close tab"
+          >
+             ×
+          </button>
       </div>
    );
 }

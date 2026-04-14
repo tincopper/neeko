@@ -53,8 +53,8 @@ function TitleBar({
          <div className="flex-1 min-w-0 flex items-center px-2 gap-2" data-tauri-drag-region>
             <div className="flex-1" data-tauri-drag-region />
             <div className="flex items-center gap-2 shrink-0" data-tauri-drag-region>
-               {currentProjectName && <span className="text-xs font-medium text-text-primary max-w-[220px] truncate">{currentProjectName}</span>}
-               {currentBranch && <span className="text-[11px] px-2 py-0.5 rounded-full bg-bg-tertiary text-accent-green">{currentBranch}</span>}
+               {currentProjectName && <span className="text-[var(--font-size)] font-medium text-text-primary max-w-[220px] truncate">{currentProjectName}</span>}
+               {currentBranch && <span className="text-[var(--font-size)] px-2 py-0.5 rounded-full bg-bg-tertiary text-accent-green">{currentBranch}</span>}
                {!IS_MACOS && <WindowControls />}
             </div>
          </div>
