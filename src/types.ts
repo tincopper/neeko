@@ -170,3 +170,36 @@ export interface SessionStore {
   side_terminal_width: number | null;
   worktree_state: Record<string, string>;
 }
+
+// 文件树节点（目录树返回类型）
+export interface FileNode {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  children: FileNode[];
+}
+
+// 文件内容（读取文件返回类型）
+export interface FileContent {
+  path: string;
+  content: string;
+  size: number;
+  is_binary: boolean;
+}
+
+// 文件视图状态
+export interface FileViewState {
+  projectId: string;
+  filePath: string;
+}
+
+// 文件标签页
+export interface FileTab {
+  id: string;           // unique id: projectId:filePath
+  projectId: string;
+  filePath: string;
+  fileName: string;     // display name
+  content: FileContent;
+  isDirty: boolean;
+  order: number;
+}

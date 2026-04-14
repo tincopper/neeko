@@ -25,6 +25,7 @@ import { useAppRefSync } from "./hooks/useAppRefSync";
 import { useAppCallbacks } from "./hooks/useAppCallbacks";
 import { useDelayedInit } from "./hooks/useDelayedInit";
 import { useTerminalTabs } from "./hooks/useTerminalTabs";
+import { useFileView } from "./hooks/useFileView";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppProvider } from "./context/app-context";
 import { SidebarProvider } from "./context/sidebar-context";
@@ -211,13 +212,16 @@ function App() {
       setWorktreeDiffState(null);
    }, [activeProjectId]);
 
+   const fileView = useFileView();
+
    const handleSelectProjectWithClear = useCallback(
       async (projectId: string) => {
          clearWorktreeForProject(projectId);
          setWorktreeDiffState(null);
+         fileView.clearFileView();
          await handleSelectProject(projectId);
       },
-      [clearWorktreeForProject, handleSelectProject]
+      [clearWorktreeForProject, handleSelectProject, fileView]
    );
 
    const {
@@ -280,6 +284,21 @@ function App() {
       },
       [currentProjectId, updateTabStatus]
    );
+
+   const handleFileSelect = useCallback(
+      (filePath: string) => {
+         if (activeProjectId) {
+            fileView.openFile(activeProjectId, filePath);
+         }
+      },
+      [activeProjectId, fileView.openFile]
+   );
+
+   const handleFileRefresh = useCallback(() => {
+      if (activeProjectId) {
+         fileView.loadFileTree(activeProjectId);
+      }
+   }, [activeProjectId, fileView.loadFileTree]);
 
    const { initialSidebarWidth, initializing } = useSessionBootstrap({
       loadProjects,
@@ -508,13 +527,26 @@ function App() {
                   activeRemoteWorktreePath={remoteActions.activeRemoteWorktreePath}
                   remoteAuthStore={remoteAuthStore}
                   setRemoteOpenSessions={setRemoteOpenSessions}
-                  wslDiffState={wslActions.wslDiffState}
-                  remoteDiffState={remoteActions.remoteDiffState}
-                  worktreeDiffState={worktreeDiffState}
-                  onWslDiffBack={callbacks.handleWslDiffBack}
-                  onRemoteDiffBack={callbacks.handleRemoteDiffBack}
-                  onWorktreeDiffBack={callbacks.handleWorktreeDiffBack}
-               />
+                   wslDiffState={wslActions.wslDiffState}
+                   remoteDiffState={remoteActions.remoteDiffState}
+                   worktreeDiffState={worktreeDiffState}
+                   onWslDiffBack={callbacks.handleWslDiffBack}
+                   onRemoteDiffBack={callbacks.handleRemoteDiffBack}
+                   onWorktreeDiffBack={callbacks.handleWorktreeDiffBack}
+                   // File view props
+                   fileTree={fileView.fileTree}
+                   fileTabs={fileView.tabs}
+                   activeFileTabId={fileView.activeTabId}
+                   fileViewLoading={fileView.isLoading}
+                   activeFilePath={fileView.activeFilePath}
+                   onFileSelect={handleFileSelect}
+                   onFileRefresh={handleFileRefresh}
+                   onFileCloseTab={fileView.closeTab}
+                   onFileActivateTab={fileView.activateTab}
+                   onFileSave={fileView.saveFile}
+                   onFileContentChange={fileView.updateTabContent}
+                   onLoadFileTree={fileView.loadFileTree}
+                />
 
                {pendingPath && (
                   <AddProjectModal

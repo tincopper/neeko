@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { LibraryBig, Settings, Plus } from "lucide-react";
+import { LibraryBig, Settings, Plus, ListTree } from "lucide-react";
 import { useSidebar, type ActivityPanel } from "../../context/sidebar-context";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
 import { IS_WINDOWS } from "../../utils/platform";
@@ -46,6 +46,7 @@ function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote }: Ac
 
   const navItems: { id: ActivityPanel; icon: React.ReactNode; title: string }[] = [
     { id: "projects", icon: <FolderIcon />, title: "Projects" },
+    { id: "files", icon: <ListTree size={22} strokeWidth={1.8} />, title: "Files" },
     { id: "skills", icon: <LibraryBig size={22} strokeWidth={1.8} />, title: "Skills" },
   ];
 

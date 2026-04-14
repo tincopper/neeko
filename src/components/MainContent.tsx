@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
+import FileViewer from "./panels/FileViewer";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import type {
@@ -13,6 +14,7 @@ import type {
    AuthMethod,
    AgentConfig,
    TerminalTab,
+   FileTab,
 } from "../types";
 import { useAppContext } from "../context/app-context";
 
@@ -61,6 +63,14 @@ interface MainContentProps {
    onWslDiffBack: () => void;
    onRemoteDiffBack: () => void;
    onWorktreeDiffBack: () => void;
+
+   // File view props
+   fileTabs: FileTab[];
+   activeFileTabId: string | null;
+   onFileCloseTab: (tabId: string) => void;
+   onFileActivateTab: (tabId: string) => void;
+   onFileSave: (content: string) => Promise<boolean>;
+   onFileContentChange: (tabId: string, content: string) => void;
 }
 
 function MainContent({
@@ -94,6 +104,12 @@ function MainContent({
    onWslDiffBack,
    onRemoteDiffBack,
    onWorktreeDiffBack,
+   fileTabs,
+   activeFileTabId,
+   onFileCloseTab,
+   onFileActivateTab,
+   onFileSave,
+   onFileContentChange,
 }: MainContentProps) {
    const { config } = useAppContext();
 
@@ -164,9 +180,13 @@ function MainContent({
          ? (activeProject.active_view as { Diff: { file_path: string } }).Diff?.file_path || null
          : null;
 
+   // Determine if we should show FileViewer
+   const showFileViewer = fileTabs.length > 0;
+
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden bg-bg-primary">
-         {hasActiveProject && (
+         {/* 终端头部：只在非 FileViewer 模式下显示 */}
+         {hasActiveProject && !showFileViewer && (
             <div className="shrink-0 bg-bg-secondary border-b border-border">
                <div className="h-8 flex items-center px-2 gap-1">
                   <div className="flex-1 min-w-0">
@@ -245,9 +265,21 @@ function MainContent({
             />
          )}
 
-         {activeProject ? (
-            <div className="content-area flex-1 overflow-hidden flex flex-col">
-               {worktreeDiffState ? (
+          {activeProject ? (
+             <div className="content-area flex-1 overflow-hidden flex flex-col">
+                {showFileViewer ? (
+                   <FileViewer
+                      tabs={fileTabs}
+                      activeTabId={activeFileTabId}
+                      theme={config.theme}
+                      fontFamily={config.fontFamily}
+                      fontSize={config.fontSize}
+                      onSave={onFileSave}
+                      onCloseTab={onFileCloseTab}
+                      onActivateTab={onFileActivateTab}
+                      onContentChange={onFileContentChange}
+                   />
+                ) : worktreeDiffState ? (
                   <DiffView
                      diffSource={{
                         type: "worktree",

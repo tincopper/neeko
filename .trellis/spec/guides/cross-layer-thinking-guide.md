@@ -92,3 +92,52 @@
 - 涉及多个团队
 - 数据格式复杂
 - 该功能以前出过 bug
+
+---
+
+## 已知 Bug 模式（经验积累）
+
+### Bug 1：共享 loading 状态导致 UI 闪烁
+
+**场景**：文件面板中，`openFile()` 和 `loadFileTree()` 共用同一个 `isLoading` state。
+
+**问题**：`openFile()` 设置 `isLoading=true` 会让 FilesPanel 瞬间渲染 Loading 状态，导致文件树闪烁消失再出现。
+
+**教训**：不同业务操作应使用**独立的 loading 状态**，按用途命名（如 `fileTreeLoading` vs `fileContentLoading`）。不要用单一的 `isLoading` 代表整个 hook 的加载状态。
+
+```typescript
+// ❌ 错误：共享 loading
+const [isLoading, setIsLoading] = useState(false);
+
+// ✅ 正确：分离 loading
+const [fileTreeLoading, setFileTreeLoading] = useState(false);
+// openFile() 完全不触碰 fileTreeLoading
+```
+
+---
+
+### Bug 2：组件级 ref 在 unmount/remount 后丢失状态
+
+**场景**：TerminalView 使用 `useRef<Set<string>>` 记录已执行过的 agent cacheKey。当 FileViewer 打开时 TerminalView 被条件渲染 unmount，关闭 FileViewer 后 TerminalView remount，ref 重置为空，导致 agent 命令被重复执行。
+
+**问题链路**：
+```
+打开 FileViewer → showFileViewer=true → TerminalView unmount → executedAgentsRef 销毁
+关闭 FileViewer → showFileViewer=false → TerminalView remount → ref 为空 Set → agent 重新执行
+```
+
+**教训**：需要跨 unmount/remount 持久的状态，应放在**模块级变量**（而非组件 ref），并与 cache 生命周期同步清理。
+
+```typescript
+// ❌ 错误：组件 ref，随 unmount 销毁
+const executedAgentsRef = useRef<Set<string>>(new Set());
+
+// ✅ 正确：模块级，生命周期与 terminalCache 绑定
+export const executedAgentKeys = new Set<string>();
+
+// 销毁 cache 时同步清理
+export function destroyTerminalCache(cacheKey: string) {
+  terminalCache.delete(cacheKey);
+  executedAgentKeys.delete(cacheKey); // ← 同步清理
+}
+```

@@ -60,3 +60,21 @@ pub struct Project {
     pub active_view: ViewMode,
     pub collapsed: bool,
 }
+
+/// 文件树节点（目录树返回类型）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileNode {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Vec<FileNode>,
+}
+
+/// 文件内容（读取文件返回类型）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileContent {
+    pub path: String,
+    pub content: String,
+    pub size: u64,
+    pub is_binary: bool,
+}
