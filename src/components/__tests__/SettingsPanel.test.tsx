@@ -9,7 +9,9 @@ import { invoke } from "@tauri-apps/api/core";
 const mockInvoke = vi.mocked(invoke);
 
 const defaultConfig: AppConfig = {
-  fontSize: 14,
+  appearanceFontSize: 12,
+  editorFontSize: 14,
+  terminalFontSize: 14,
   diffMode: "unified",
   shell: "",
   fontFamily: "",
@@ -75,34 +77,33 @@ describe("SettingsPanel", () => {
       expect(screen.getByText("Font Size")).toBeInTheDocument();
     });
 
-    it("显示当前字号", () => {
-      renderPanel({ fontSize: 16 });
+    it("显示当前编辑器字号", () => {
+      renderPanel({ editorFontSize: 16 });
       expect(screen.getByText("16px")).toBeInTheDocument();
     });
 
     it("中间值可以正常增减", () => {
-      const { onConfigChange } = renderPanel({ fontSize: 14 });
+      const { onConfigChange } = renderPanel({ editorFontSize: 14 });
       fireEvent.click(screen.getByText("+"));
       expect(onConfigChange).toHaveBeenCalledWith(
-        expect.objectContaining({ fontSize: 15 })
+        expect.objectContaining({ editorFontSize: 15 })
       );
     });
 
     it("字号被 clamp 在 10-24 范围", () => {
-      // 测试边界：调用 setFontSize 间接验证 clamp
-      // fontSize=11 时减 1 应该得到 10
-      const { onConfigChange } = renderPanel({ fontSize: 11 });
+      // editorFontSize=11 时减 1 应该得到 10
+      const { onConfigChange } = renderPanel({ editorFontSize: 11 });
       fireEvent.click(screen.getByText("\u2212"));
       expect(onConfigChange).toHaveBeenCalledWith(
-        expect.objectContaining({ fontSize: 10 })
+        expect.objectContaining({ editorFontSize: 10 })
       );
     });
 
     it("字号上限 clamp 到 24", () => {
-      const { onConfigChange } = renderPanel({ fontSize: 23 });
+      const { onConfigChange } = renderPanel({ editorFontSize: 23 });
       fireEvent.click(screen.getByText("+"));
       expect(onConfigChange).toHaveBeenCalledWith(
-        expect.objectContaining({ fontSize: 24 })
+        expect.objectContaining({ editorFontSize: 24 })
       );
     });
   });

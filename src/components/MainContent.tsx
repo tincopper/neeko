@@ -303,7 +303,7 @@ function MainContent({
                         projectId={activeWslProject.project.id}
                         projectName={activeWslProject.project.name}
                         projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
-                        fontSize={config.fontSize}
+                        fontSize={config.terminalFontSize}
                         fontFamily={config.fontFamily}
                         cacheKeySuffix={
                            activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}` : ""
@@ -337,7 +337,7 @@ function MainContent({
                       activeTabId={activeFileTabId}
                       theme={config.theme}
                       fontFamily={config.fontFamily}
-                      fontSize={config.fontSize}
+                      editorFontSize={config.editorFontSize}
                       onSave={onFileSave}
                       onCloseTab={onFileCloseTab}
                       onActivateTab={onFileActivateTab}
@@ -361,7 +361,7 @@ function MainContent({
                            project={activeProject}
                            tabId={activeTabId}
                            tabAgentId={activeTabAgentId}
-                           fontSize={config.fontSize}
+                           fontSize={config.terminalFontSize}
                            shell={config.shell}
                            fontFamily={config.fontFamily}
                            suppressResizeRef={suppressResizeRef}
@@ -381,7 +381,7 @@ function MainContent({
                            worktreePath={activeWorktreePath}
                            worktreeBranch={activeWorktreeBranch}
                            selectedAgent={activeProject.selected_agent}
-                           fontSize={config.fontSize}
+                           fontSize={config.terminalFontSize}
                            shell={config.shell}
                            fontFamily={config.fontFamily}
                         />

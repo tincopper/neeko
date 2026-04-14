@@ -1,2 +1,4 @@
-{"file": ".opencode/commands/trellis/check-backend.md", "reason": "Backend check spec"}
-{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend debug spec"}
+{"file": "src/hooks/useAppConfig.ts", "reason": "Debug CSS variable sync and migration logic issues"}
+{"file": "src/components/terminal/TerminalView.tsx", "reason": "Debug terminal font size not updating in live sessions"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "Debug editor font size not applying to CodeMirror"}

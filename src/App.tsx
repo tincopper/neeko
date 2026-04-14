@@ -342,7 +342,7 @@ function App() {
 
    const callbacks = useAppCallbacks({
       agentCommandOverrides: config.agentCommandOverrides,
-      terminalFontSize: config.fontSize ?? 14,
+      terminalFontSize: config.terminalFontSize ?? 14,
       terminalShell: config.shell ?? "",
       terminalFontFamily: config.fontFamily ?? "",
       activeProject,

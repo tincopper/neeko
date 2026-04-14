@@ -4,7 +4,9 @@ export type AppTheme = "dark" | "light" | "one-dark-pro" | "claude";
 
 export interface AppConfig {
   theme: AppTheme;
-  fontSize: number;
+  appearanceFontSize: number;  // UI 整体字体（侧边栏、文件树、Tab 等）
+  editorFontSize: number;      // 编辑器字体（CodeMirror / FileViewer）
+  terminalFontSize: number;    // 终端字体（xterm.js + 终端 Tab）
   diffMode: DiffMode;
   shell: string;
   fontFamily: string;
