@@ -7,7 +7,7 @@ import WorktreeList from "./WorktreeList";
 import ContextMenu, { ContextMenuItem } from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { BranchIcon, ChevronRightIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, GitLogoIcon, TrashIcon, SearchIcon, PlusIcon, FolderGitIcon, TerminalIcon } from "../icons";
 
 const AVATAR_COLORS = [
   "#61afef", "#98c379", "#e5c07b", "#e06c75", "#c678dd",
@@ -139,6 +139,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
   const buildContextMenuItems = (): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [];
+    const gitInfo = project.git_info;
 
     if (project.selected_ide && onOpenIde) {
       items.push({
@@ -148,7 +149,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       });
     }
 
-    if (project.git_info) {
+    if (gitInfo) {
       items.push({
         label: "New Branch",
         icon: GitLogoIcon,
@@ -157,7 +158,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           onOpenDialog({
             type: "new-branch",
             projectId: project.id,
-            branches: project.git_info!.branches,
+            branches: gitInfo.branches,
           });
         },
       });
@@ -169,7 +170,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           onOpenDialog({
             type: "new-worktree",
             projectId: project.id,
-            branches: project.git_info!.branches,
+            branches: gitInfo.branches,
             projectPath: project.path,
           });
         },
@@ -249,6 +250,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   }, [changedFiles]);
    const branches = project.git_info?.branches ?? [];
    const worktrees = project.git_info?.worktrees ?? [];
+   const currentBranch = project.git_info?.current_branch ?? "";
+   const localExpanded = expandedSections["__local__"] !== false;
+   const localChangesExpanded = expandedSections["__local_changes__"] !== false;
 
    // 被 worktree 占用的 branch 不在 Branches 列表中展示
    const filteredBranches = useMemo(() => {
@@ -286,11 +290,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""}`} onClick={() => onSelectProject(project.id)} onContextMenu={handleContextMenu}>
+      <div
+        className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""}`}
+        onClick={() => void toggleCollapsed()}
+        onContextMenu={handleContextMenu}
+      >
         <span
-          className="gh-project-avatar w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase cursor-pointer"
+          className="gh-project-avatar w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase"
           style={getAvatarStyle(project.name)}
-          onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
         >
           {project.name.charAt(0).toUpperCase()}
         </span>
@@ -340,89 +347,105 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
             <TrashIcon size={12} />
           </button>
         </div>
-        {project.git_info && (
-          <div className="relative shrink-0" ref={branchDropdownRef}>
-            <span
-              className={`gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40 ${branchDropdownOpen ? "bg-accent-blue/20 border-accent-blue/40" : ""}`}
-              title={project.git_info.current_branch}
-              onClick={(e) => {
-                e.stopPropagation();
-                setBranchDropdownOpen((v) => !v);
-              }}
-            >
-              <BranchIcon size={11} />
-              {project.git_info.current_branch}
-            </span>
-            {branchDropdownOpen && (
-              <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-secondary border border-border rounded-lg min-w-[220px] max-w-[320px] z-[1000] shadow-xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-1.5 p-2 px-2.5 border-b border-border">
-                  <SearchIcon size={12} className="text-text-muted shrink-0" />
-                  <input
-                    ref={branchSearchInputRef}
-                    className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
-                    placeholder="Search branches..."
-                    value={branchSearchQuery}
-                    onChange={(e) => setBranchSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setBranchDropdownOpen(false);
-                        setBranchSearchQuery("");
-                      }
-                    }}
-                  />
-                </div>
-                <div className="max-h-[240px] overflow-y-auto py-1">
-                  {dropdownBranches.map((branch) => {
-                    const isCurrent = branch === project.git_info!.current_branch;
-                    return (
-                      <div
-                        key={branch}
-                        className={`flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
-                        onClick={() => handleCheckoutFromDropdown(branch)}
-                        title={isCurrent ? "Current branch" : "Click to checkout"}
-                      >
-                        <BranchIcon size={11} />
-                        <span className="flex-1 truncate">{branch}</span>
-                        {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] shrink-0" title="current" />}
-                      </div>
-                    );
-                  })}
-                  {dropdownBranches.length === 0 && (
-                    <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
-                  )}
-                </div>
-                <div className="border-t border-border py-1">
-                  <div
-                    className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBranchDropdownOpen(false);
-                      setBranchSearchQuery("");
-                      openDialog("new-branch", e as unknown as React.MouseEvent);
-                    }}
-                  >
-                    <PlusIcon size={11} />
-                    New Branch
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        <ChevronRightIcon
+          size={13}
+          className={`text-text-muted w-3.5 shrink-0 transition-transform duration-150 ${projectCollapsed ? "" : "rotate-90"}`}
+        />
       </div>
 
       {!projectCollapsed && (
         <div className="py-0.5 pb-1">
-          {project.git_info && (
+          <div
+            className={`group flex items-center gap-1 py-1 px-2 ml-2 mr-1 rounded-md transition-colors duration-100 cursor-pointer ${isActive ? "bg-bg-tertiary/60 text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"}`}
+            onClick={() => onSelectProject(project.id)}
+            title="Open primary terminal"
+          >
+            <button
+              className="bg-transparent border-none cursor-pointer p-0 m-0 w-3 h-3 flex items-center justify-center text-text-muted hover:text-text-primary"
+              onClick={(e) => toggleSection("__local__", e)}
+              title="Toggle local details"
+            >
+              <ChevronRightIcon size={9} className={`transition-transform duration-150 ${localExpanded ? "rotate-90" : ""}`} />
+            </button>
+            <TerminalIcon size={13} className="opacity-70 shrink-0" />
+            <span className="flex-1 text-[var(--font-size)] font-semibold truncate min-w-0">local</span>
+            {project.git_info && (
+              <div className="relative min-w-0" ref={branchDropdownRef} onClick={(e) => e.stopPropagation()}>
+                <span
+                  className={`gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40 ${branchDropdownOpen ? "bg-accent-blue/20 border-accent-blue/40" : ""}`}
+                  title={project.git_info.current_branch}
+                  onClick={() => setBranchDropdownOpen((v) => !v)}
+                >
+                  <BranchIcon size={11} />
+                  {project.git_info.current_branch}
+                </span>
+                {branchDropdownOpen && (
+                  <div className="absolute top-[calc(100%+4px)] right-0 bg-bg-secondary border border-border rounded-lg min-w-[220px] max-w-[320px] z-[1000] shadow-xl overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5 p-2 px-2.5 border-b border-border">
+                      <SearchIcon size={12} className="text-text-muted shrink-0" />
+                      <input
+                        ref={branchSearchInputRef}
+                        className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
+                        placeholder="Search branches..."
+                        value={branchSearchQuery}
+                        onChange={(e) => setBranchSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            setBranchDropdownOpen(false);
+                            setBranchSearchQuery("");
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto py-1">
+                      {dropdownBranches.map((branch) => {
+                        const isCurrent = branch === currentBranch;
+                        return (
+                          <div
+                            key={branch}
+                            className={`flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
+                            onClick={() => handleCheckoutFromDropdown(branch)}
+                            title={isCurrent ? "Current branch" : "Click to checkout"}
+                          >
+                            <BranchIcon size={11} />
+                            <span className="flex-1 truncate">{branch}</span>
+                            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] shrink-0" title="current" />}
+                          </div>
+                        );
+                      })}
+                      {dropdownBranches.length === 0 && (
+                        <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
+                      )}
+                    </div>
+                    <div className="border-t border-border py-1">
+                      <div
+                        className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBranchDropdownOpen(false);
+                          setBranchSearchQuery("");
+                          openDialog("new-branch", e as unknown as React.MouseEvent);
+                        }}
+                      >
+                        <PlusIcon size={11} />
+                        New Branch
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {localExpanded && project.git_info && (
             <>
-              {/* ── Changed Files (current branch) ── */}
               {tree.length > 0 && (
                 <>
                   <div
-                    className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
-                    onClick={(e) => toggleSection("__changes__", e)}
+                    className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 ml-8 mr-1 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+                    onClick={(e) => toggleSection("__local_changes__", e)}
                   >
-                    <ChevronRightIcon size={9} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${expandedSections["__changes__"] !== false ? "rotate-90" : ""}`} />
+                    <ChevronRightIcon size={9} className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${localChangesExpanded ? "rotate-90" : ""}`} />
                     Changes ({changedFiles.length})
                     {(totalAdditions > 0 || totalDeletions > 0) && (
                       <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
@@ -431,15 +454,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                       </span>
                     )}
                   </div>
-                  {expandedSections["__changes__"] !== false && (
-                    <div className="pl-4">
+                  {localChangesExpanded && (
+                    <div className="ml-10">
                       <FileTree nodes={tree} projectId={project.id} onSelectFile={onSelectFile} />
                     </div>
                   )}
                 </>
               )}
+            </>
+          )}
 
-              {/* ── Worktrees ── */}
+          <div className="ml-6">
               <WorktreeList
                 worktrees={worktrees}
                 projectId={project.id}
@@ -450,8 +475,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                 onRefreshGit={onRefreshGit}
                 onShowToast={onShowToast}
               />
-            </>
-          )}
+          </div>
         </div>
       )}
       {contextMenu && (
