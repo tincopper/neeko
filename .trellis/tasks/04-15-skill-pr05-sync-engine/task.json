@@ -1,0 +1,39 @@
+{
+  "id": "skill-pr05-sync-engine",
+  "name": "skill-pr05-sync-engine",
+  "title": "PR#5: Skill Sync 部署引擎",
+  "description": "实现 Skill 从中央仓库部署到各 Agent 工具目录的同步引擎（symlink/copy），以及按标签组合批量 sync/unsync",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": "feature/skill-pr05-sync-engine",
+  "base_branch": "feature/skill-pr04-tag-system",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [],
+  "notes": "依赖 PR#1~PR#4",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/core/sync_engine.rs",
+      "src-tauri/src/commands/sync.rs",
+      "src-tauri/src/commands/scenarios.rs"
+    ]
+  }
+}

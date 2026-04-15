@@ -1,0 +1,70 @@
+{
+  "id": "skill-pr06-skill-panel-ui",
+  "name": "skill-pr06-skill-panel-ui",
+  "title": "PR#6: SkillsPanel 前端 UI（左侧栏面板，组件化架构）",
+  "description": "在左侧 ActivityBar 已预留的 Skills 面板入口中实现 Skill 管理 UI。采用 SkillContext + 子 hook 架构，低耦合高内聚，ShadcnUI + Tailwind",
+  "status": "planning",
+  "dev_type": "frontend",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": "feature/skill-pr06-skill-panel-ui",
+  "base_branch": "feature/skill-pr05-sync-engine",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src/components/layout/AppLayout.tsx",
+    "src/components/layout/ActivityBar.tsx",
+    "src/context/sidebar-context.tsx",
+    "src/context/app-context.tsx",
+    "src/components/panels/ProjectsPanel.tsx",
+    "src/components/panels/FilesPanel.tsx",
+    "src/components/ui/index.ts",
+    "src/types.ts"
+  ],
+  "notes": "核心架构原则：(1) 专属 SkillContext 封装全部 Skill 领域状态，子组件 zero-props; (2) 4个子hook按职责拆分; (3) 展示组件props≤5; (4) 对话框自管理; (5) 与宿主应用仅 activeProjectId 一个耦合点",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src/views/MySkills.tsx",
+      "src/components/SkillDetailPanel.tsx",
+      "src/components/CreateScenarioDialog.tsx",
+      "src/context/AppContext.tsx"
+    ],
+    "existing_entry_points": {
+      "sidebar_context": "src/context/sidebar-context.tsx:3 — ActivityPanel type includes 'skills'",
+      "activity_bar": "src/components/layout/ActivityBar.tsx:50 — navItems includes skills",
+      "app_layout_gap": "src/components/layout/AppLayout.tsx:147-200 — MISSING activePanel === 'skills' block"
+    },
+    "architecture": {
+      "pattern": "Context + Container/Presentation + Hook-per-domain",
+      "context": "src/context/skill-context.tsx — SkillProvider + useSkillContext",
+      "hooks": [
+        "hooks/useSkillData.ts — Skill CRUD",
+        "hooks/useTagGroups.ts — TagGroup CRUD",
+        "hooks/useSkillInstall.ts — Install state machine",
+        "hooks/useToolStatus.ts — Tool detection + toggles"
+      ],
+      "external_props": "SkillsPanel receives ONLY activeProjectId",
+      "anti_patterns_avoided": "No prop-drilling, no giant props interface, no business logic in presentation components"
+    },
+    "available_shadcn_components": [
+      "Button", "Input", "Textarea", "Dialog", "Select", "DropdownMenu",
+      "Checkbox", "Badge", "Sidebar", "MarkdownPreview"
+    ]
+  }
+}

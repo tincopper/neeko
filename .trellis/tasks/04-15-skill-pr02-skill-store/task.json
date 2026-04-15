@@ -1,0 +1,42 @@
+{
+  "id": "skill-pr02-skill-store",
+  "name": "skill-pr02-skill-store",
+  "title": "PR#2: SkillStore SQLite 持久化与 CRUD Tauri 命令",
+  "description": "基于 rusqlite 实现 SkillStore 的 SQLite 持久化、数据库迁移、核心 CRUD 操作和 Tauri IPC 命令",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": "feature/skill-pr02-skill-store",
+  "base_branch": "feature/skill-pr01-data-model",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src-tauri/src/lib.rs",
+    "src-tauri/Cargo.toml"
+  ],
+  "notes": "依赖 PR#1。使用 SQLite（rusqlite）而非 JSON 文件持久化",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/core/skill_store.rs",
+      "src-tauri/src/core/migrations.rs",
+      "src-tauri/src/commands/skills.rs"
+    ]
+  }
+}
