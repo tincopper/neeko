@@ -73,6 +73,11 @@ pub fn run() {
         log::warn!("Failed to ensure skill central repo: {e}");
     }
 
+    // Ensure skill central repo directories exist
+    if let Err(e) = skill::central_repo::ensure_central_repo() {
+        log::warn!("Failed to ensure skill central repo: {e}");
+    }
+
     // Unix: 从用户 login shell 获取完整 PATH，修复 GUI 应用 Agent 检测问题
     #[cfg(unix)]
     {
@@ -126,6 +131,30 @@ pub fn run() {
                 }
             }
 
+
+            // Auto-create Default tag group if none exist
+            {
+                let store = state.skill_store.clone();
+                if let Ok(groups) = store.get_all_tag_groups() {
+                    if groups.is_empty() {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let default_tg = skill::types::TagGroupRecord {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            name: "Default".to_string(),
+                            description: Some("Default skill group".to_string()),
+                            icon: Some("clipboard-list".to_string()),
+                            sort_order: 0,
+                            created_at: now,
+                            updated_at: now,
+                        };
+                        if let Err(e) = store.insert_tag_group(&default_tg) {
+                            log::warn!("Failed to create Default tag group: {e}");
+                        } else {
+                            log::info!("Created Default tag group");
+                        }
+                    }
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
