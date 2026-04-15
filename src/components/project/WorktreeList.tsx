@@ -35,12 +35,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
 
-  const filtered = useMemo(
-    () => worktrees,
-    [worktrees],
-  );
-
-  const worktreesExpanded = expandedSections["__worktrees__"] ?? true;
+  const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
   useEffect(() => {
     if (renaming !== null && renameInputRef.current) {
@@ -134,123 +129,114 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     setRenameValue("");
   };
 
-  if (filtered.length === 0) return null;
+  if (filteredWorktrees.length === 0) return null;
 
   return (
     <>
-      <div
-        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
-        onClick={(e) => toggleSection("__worktrees__", e)}
-      >
-        <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", worktreesExpanded && "rotate-90")} />
-        Worktrees
-      </div>
-      {worktreesExpanded && (
-        <div className="pl-4">
-          {filtered.map((wt) => {
-            const isExpanded = expandedWt.has(wt.path);
-            const wtFiles = changedFiles[wt.path] ?? [];
-            const wtTree = isExpanded ? buildTree(wtFiles) : [];
-            const wtAdd = wtFiles.reduce((s, f) => s + f.additions, 0);
-            const wtDel = wtFiles.reduce((s, f) => s + f.deletions, 0);
-            return (
-              <div key={wt.path} className="mb-0.5">
-                <div
-                  className={cn(
-                    "flex items-center gap-1 py-1 px-2 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
-                    deleting === wt.path && "wt-deleting"
-                  )}
+      <div className="pl-0.5">
+        {filteredWorktrees.map((wt) => {
+          const isExpanded = expandedWt.has(wt.path);
+          const wtFiles = changedFiles[wt.path] ?? [];
+          const wtTree = isExpanded ? buildTree(wtFiles) : [];
+          const wtAdd = wtFiles.reduce((s, f) => s + f.additions, 0);
+          const wtDel = wtFiles.reduce((s, f) => s + f.deletions, 0);
+          return (
+            <div key={wt.path} className="mb-0.5">
+              <div
+                className={cn(
+                  "group flex items-center gap-1 py-1 px-2 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
+                  deleting === wt.path && "wt-deleting"
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (renaming === wt.path || deleting === wt.path) return;
+                  onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
+                }}
+                title={`${wt.path}\nClick to open terminal`}
+              >
+                <FolderGitIcon
+                  size={15}
+                  className="opacity-70 cursor-pointer shrink-0"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (renaming === wt.path || deleting === wt.path) return;
-                    onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
+                    toggleExpand(wt.path);
                   }}
-                  title={`${wt.path}\nClick to open terminal`}
-                >
-                  <FolderGitIcon
-                    size={15}
-                    className="opacity-70 cursor-pointer shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (renaming === wt.path || deleting === wt.path) return;
-                      toggleExpand(wt.path);
+                />
+                {renaming === wt.path ? (
+                  <input
+                    ref={renameInputRef}
+                    className="flex-1 min-w-0 bg-bg-tertiary border border-accent-blue rounded text-text-primary text-inherit font-inherit px-1 py-0.5 outline-none box-border"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+                      if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
                     }}
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  {renaming === wt.path ? (
-                    <input
-                      ref={renameInputRef}
-                      className="flex-1 min-w-0 bg-bg-tertiary border border-accent-blue rounded text-text-primary text-inherit font-inherit px-1 py-0.5 outline-none box-border"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={commitRename}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); commitRename(); }
-                        if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span className="flex-1 text-[var(--font-size)] truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
-                      {wt.path.split(/[\\/]/).pop()}
-                    </span>
-                  )}
-                  {deleting === wt.path ? (
-                    <span className="wt-spinner" title="Removing..." />
-                  ) : (
-                    <button
-                      className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-1 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red opacity-0 transition-opacity duration-150 text-sm px-1.5 py-0.5 group-hover:opacity-100 hover:opacity-100"
-                      onClick={(e) => handleRemove(wt.path, wt.branch, e)}
-                      title="Remove worktree and branch"
-                    >
-                      <TrashIcon size={12} />
-                    </button>
-                  )}
-                  <span
-                    className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
-                    title={wt.branch}
-                  >
-                    <BranchIcon size={11} /> {wt.branch}
+                ) : (
+                  <span className="flex-1 text-[var(--font-size)] truncate min-w-0" onDoubleClick={(e) => startRename(wt.path, e)} title="Double-click to rename">
+                    {wt.path.split(/[\\/]/).pop()}
                   </span>
-                </div>
-                {isExpanded && (
-                  <div>
-                    {wtTree.length > 0 ? (
-                      <>
-                        <div
-                          className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
-                          onClick={(e) => toggleSection("wt-changes:" + wt.path, e)}
-                        >
-                          <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["wt-changes:" + wt.path] !== false && "rotate-90")} />
-                          Changes ({wtFiles.length})
-                          {(wtAdd > 0 || wtDel > 0) && (
-                            <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
-                              {wtAdd > 0 && <span className="text-[#3fb950] font-semibold">+{wtAdd}</span>}
-                              {wtDel > 0 && <span className="text-[#f85149] font-semibold">-{wtDel}</span>}
-                            </span>
-                          )}
-                        </div>
-                        {expandedSections["wt-changes:" + wt.path] !== false && (
-                          <div className="mt-0.5 pl-4">
-                            <FileTree nodes={wtTree} projectId={projectId} onSelectFile={(_, fp) => onSelectWorktreeFile?.(wt.path, fp)} />
-                          </div>
-                        )}
-                      </>
-                    ) : changedFiles[wt.path] !== undefined ? (
-                      <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-default rounded py-1 px-2">
-                        <ChevronRightIcon size={9} className="opacity-0" />No changes
-                      </div>
-                    ) : (
-                      <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1.5 px-2.5 select-none flex items-center gap-1 cursor-default rounded py-1 px-2">
-                        <ChevronRightIcon size={9} className="opacity-0" />Loading...
-                      </div>
-                    )}
-                  </div>
                 )}
+                {deleting === wt.path ? (
+                  <span className="wt-spinner" title="Removing..." />
+                ) : (
+                  <button
+                    className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:text-text-primary hover:text-accent-red opacity-0 group-hover:opacity-100"
+                    onClick={(e) => handleRemove(wt.path, wt.branch, e)}
+                    title="Remove worktree and branch"
+                  >
+                    <TrashIcon size={12} />
+                  </button>
+                )}
+                <span
+                  className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
+                  title={wt.branch}
+                >
+                  <BranchIcon size={11} /> {wt.branch}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      )}
+              {isExpanded && (
+                <div>
+                  {wtTree.length > 0 ? (
+                    <>
+                      <div
+                        className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 select-none flex items-center gap-1 cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary"
+                        onClick={(e) => toggleSection("wt-changes:" + wt.path, e)}
+                      >
+                        <ChevronRightIcon size={9} className={cn("text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150", expandedSections["wt-changes:" + wt.path] !== false && "rotate-90")} />
+                        Changes ({wtFiles.length})
+                        {(wtAdd > 0 || wtDel > 0) && (
+                          <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
+                            {wtAdd > 0 && <span className="text-[#3fb950] font-semibold">+{wtAdd}</span>}
+                            {wtDel > 0 && <span className="text-[#f85149] font-semibold">-{wtDel}</span>}
+                          </span>
+                        )}
+                      </div>
+                      {expandedSections["wt-changes:" + wt.path] !== false && (
+                        <div className="mt-0.5 pl-4">
+                          <FileTree nodes={wtTree} projectId={projectId} onSelectFile={(_, fp) => onSelectWorktreeFile?.(wt.path, fp)} />
+                        </div>
+                      )}
+                    </>
+                  ) : changedFiles[wt.path] !== undefined ? (
+                    <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1 px-2 select-none flex items-center gap-1 cursor-default rounded">
+                      <ChevronRightIcon size={9} className="opacity-0" />No changes
+                    </div>
+                  ) : (
+                    <div className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-1 px-2 select-none flex items-center gap-1 cursor-default rounded">
+                      <ChevronRightIcon size={9} className="opacity-0" />Loading...
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
       {confirmDelete && (
         <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

@@ -1,0 +1,13 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "本次改造以 ProjectItem/WorktreeList 组件结构重排为主"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "保持 useAppCallbacks/useWorktreeState 回调与状态语义不变"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "不引入新全局状态，仅复用现有 App 协调状态"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "保持 Project/GitInfo/Worktree 类型兼容"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "实现后按 tsc 与测试门禁验收"}
+{"file": "src/components/project/ProjectItem.tsx", "reason": "主改造文件，重排组头/local/worktree 层级"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用已有 WorktreeList 与 ProjectItem 模式，避免重复实现"}
+{"file": "src/hooks/useAppCallbacks.ts", "reason": "校验 local/worktree 行点击行为与回调映射"}
+{"file": "src/styles/index.css", "reason": "补充本地项目层级样式，不影响 WSL/Remote"}
+{"file": "src/components/connections/RemoteItems.tsx", "reason": "参考已存在分组渲染模式，保持视觉语义一致"}
+{"file": "src/components/project/WorktreeList.tsx", "reason": "调整为无标题行模式并承接 local 子层级"}
