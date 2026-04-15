@@ -1,0 +1,10 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check-frontend.toml", "reason": "Frontend check spec"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查组件拆分与 memo 规则"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "检查回调稳定性与依赖完整性"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查新增 props 与 invoke 类型一致性"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "执行 tsc 与测试前质量检查"}
+{"file": "src/components/project/ProjectItem.tsx", "reason": "检查 local/worktree 层级渲染与事件语义"}
+{"file": "src/components/project/WorktreeList.tsx", "reason": "检查 worktree 行行为与变更文件展示"}
+{"file": "src/styles/index.css", "reason": "检查新增样式是否影响其他域"}
+{"file": "src/components/panels/ProjectsPanel.tsx", "reason": "检查父组件调用接口是否兼容"}
