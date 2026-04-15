@@ -442,3 +442,35 @@ Implemented worktree file diff preview feature. Added Tauri commands for getting
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 实现 MarkdownPreview 组件：GFM + Mermaid + PlantUML + SVG 支持
+
+**Date**: 2026-04-15
+**Task**: 实现 MarkdownPreview 组件：GFM + Mermaid + PlantUML + SVG 支持
+
+### Summary
+
+创建独立的 MarkdownPreview 组件，从 FileViewer 中解耦，支持 GFM、代码高亮、Mermaid（懒加载）、PlantUML、SVG、HTML 渲染，4 个主题的排版和高亮配色
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d3f663` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
