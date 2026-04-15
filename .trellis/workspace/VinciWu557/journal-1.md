@@ -451,3 +451,50 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 项目侧边栏分组结构改造
+
+**Date**: 2026-04-15
+**Task**: 项目侧边栏分组结构改造
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 项目 | 内容 |
+|------|------|
+| 任务归档 | 归档 `04-15-project-sidebar-grouped-display` 到 `archive/2026-04/` |
+| 结构改造 | 本地项目侧边栏调整为 `Project 组头 -> local 行 -> worktree 行` |
+| 交互语义 | 组头负责折叠展开，local 行负责主终端选择，worktree 行负责子终端打开 |
+| 测试覆盖 | 新增 `ProjectItem` 相关单元测试，覆盖层级渲染与点击行为 |
+
+**涉及代码提交**：
+- `f06221e` feat(sidebar): restructure project sidebar to grouped display with local/worktree sections
+
+**关键文件**：
+- `src/components/project/ProjectItem.tsx`
+- `src/components/project/WorktreeList.tsx`
+- `src/components/__tests__/ProjectItem.test.tsx`
+- `.trellis/tasks/archive/2026-04/04-15-project-sidebar-grouped-display/*`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f06221e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

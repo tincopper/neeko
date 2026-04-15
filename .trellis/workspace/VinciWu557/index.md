@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
-- **Last Active**: 2026-04-14
+- **Total Sessions**: 12
+- **Last Active**: 2026-04-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~453 | Active |
+| `journal-1.md` | ~500 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 12 | 2026-04-15 | 项目侧边栏分组结构改造 | `f06221e` |
 | 11 | 2026-04-14 | Fix gear button icon, dropdown clipping, and flatten bar styles | `823ca36` |
 | 10 | 2026-04-13 | Title Bar 简化与深色主题调整 | `dfec4c1` |
 | 9 | 2026-04-13 | 解决 enhance/title_bar 合并 main 分支冲突 | `247e152`, `c3421f9`, `760d6b0` |
