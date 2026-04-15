@@ -298,3 +298,108 @@ pub async fn import_discovered_skill(
         })
     }).await.map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn update_tag_group_cmd(
+    id: String,
+    name: String,
+    description: Option<String>,
+    icon: Option<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.update_tag_group(&id, &name, description.as_deref(), icon.as_deref()).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn reorder_tag_groups_cmd(
+    ids: Vec<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.reorder_tag_groups(&ids).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_skill_to_tag_group_cmd(
+    tag_group_id: String,
+    skill_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.add_skill_to_tag_group(&tag_group_id, &skill_id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_skill_from_tag_group_cmd(
+    tag_group_id: String,
+    skill_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.remove_skill_from_tag_group(&tag_group_id, &skill_id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_skills_for_tag_group_cmd(
+    tag_group_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<ManagedSkillDtoOut>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let skills = store.get_skills_for_tag_group(&tag_group_id).map_err(|e| e.to_string())?;
+        let tags_map = store.get_tags_map().map_err(|e| e.to_string())?;
+        Ok(skills.into_iter().map(|s| ManagedSkillDtoOut {
+            tags: tags_map.get(&s.id).cloned().unwrap_or_default(),
+            id: s.id, name: s.name, description: s.description,
+            source_type: s.source_type, source_ref: s.source_ref,
+            central_path: s.central_path, enabled: s.enabled,
+            status: s.status, update_status: s.update_status,
+            created_at: s.created_at, updated_at: s.updated_at,
+        }).collect())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_all_tags_cmd(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<String>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.get_all_tags().map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn set_skill_tags_cmd(
+    skill_id: String,
+    tags: Vec<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.set_tags_for_skill(&skill_id, &tags).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn set_skill_tool_toggle_cmd(
+    tag_group_id: String,
+    skill_id: String,
+    tool: String,
+    enabled: bool,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.set_tag_group_skill_tool_enabled(&tag_group_id, &skill_id, &tool, enabled).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
