@@ -275,6 +275,52 @@ impl SkillStore {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+
+    // Project-TagGroup binding
+
+    pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM project_tag_groups WHERE project_id = ?1", params![project_id])?;
+        let now = chrono::Utc::now().timestamp_millis();
+        for tg_id in tag_group_ids {
+            tx.execute(
+                "INSERT OR IGNORE INTO project_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
+                params![project_id, tg_id, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_project_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT tag_group_id FROM project_tag_groups WHERE project_id = ?1 ORDER BY added_at",
+        )?;
+        let rows = stmt.query_map(params![project_id], |row| row.get::<_, String>(0))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT OR IGNORE INTO project_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
+            params![project_id, tag_group_id, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM project_tag_groups WHERE project_id = ?1 AND tag_group_id = ?2",
+            params![project_id, tag_group_id],
+        )?;
+        Ok(())
+    }
+
     // Settings
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
