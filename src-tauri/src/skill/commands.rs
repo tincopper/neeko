@@ -472,3 +472,57 @@ pub async fn unsync_tag_group_cmd(
         Ok(())
     }).await.map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn get_project_tag_groups_cmd(
+    project_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<TagGroupDtoOut>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let tg_ids = store.get_project_tag_groups(&project_id).map_err(|e| e.to_string())?;
+        let all_groups = store.get_all_tag_groups().map_err(|e| e.to_string())?;
+        Ok(all_groups.into_iter()
+            .filter(|g| tg_ids.contains(&g.id))
+            .map(|g| {
+                let count = store.count_skills_for_tag_group(&g.id).unwrap_or(0);
+                TagGroupDtoOut { id: g.id, name: g.name, description: g.description, icon: g.icon, sort_order: g.sort_order, skill_count: count, created_at: g.created_at, updated_at: g.updated_at }
+            }).collect())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn set_project_tag_groups_cmd(
+    project_id: String,
+    tag_group_ids: Vec<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.set_project_tag_groups(&project_id, &tag_group_ids).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_project_tag_group_cmd(
+    project_id: String,
+    tag_group_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.add_project_tag_group(&project_id, &tag_group_id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_project_tag_group_cmd(
+    project_id: String,
+    tag_group_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        store.remove_project_tag_group(&project_id, &tag_group_id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
