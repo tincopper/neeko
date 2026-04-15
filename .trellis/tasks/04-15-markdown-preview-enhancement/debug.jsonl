@@ -1,1 +1,5 @@
-{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "src/components/ui/MarkdownPreview.tsx", "reason": "Primary component to debug if rendering issues occur"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "Integration point - debug if preview not displaying in FileViewer"}
+{"file": "src/styles/theme.css", "reason": "Debug theme-following issues: prose colors, hljs highlight colors"}
+{"file": "src/styles/index.css", "reason": "Debug typography plugin loading or prose class issues"}
+{"file": "vite.config.ts", "reason": "Debug mermaid chunk splitting if lazy load fails"}

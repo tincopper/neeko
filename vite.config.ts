@@ -1,4 +1,4 @@
-﻿import { defineConfig } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -22,6 +22,7 @@ export default defineConfig(async () => ({
           xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-unicode11"],
           highlight: ["highlight.js/lib/core"],
           lucide: ["lucide-react"],
+          mermaid: ["mermaid"],
         },
       },
     },
