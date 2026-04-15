@@ -9,6 +9,7 @@ pub mod storage;
 mod terminal;
 mod utils;
 mod watcher;
+pub mod skill;
 
 use state::*;
 use std::path::PathBuf;
@@ -61,6 +62,11 @@ impl AppStateWrapper {
 pub fn run() {
     logger::init_logger();
     log::info!("Neeko starting");
+
+    // Ensure skill central repo directories exist
+    if let Err(e) = skill::central_repo::ensure_central_repo() {
+        log::warn!("Failed to ensure skill central repo: {e}");
+    }
 
     // Unix: 从用户 login shell 获取完整 PATH，修复 GUI 应用 Agent 检测问题
     #[cfg(unix)]
