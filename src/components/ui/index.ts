@@ -1,4 +1,4 @@
-﻿export { Button, buttonVariants } from "./button";
+export { Button, buttonVariants } from "./button";
 export { Input, Textarea } from "./input";
 export {
   Dialog, DialogTrigger, DialogPortal, DialogClose,
@@ -16,3 +16,4 @@ export {
 export { Checkbox } from "./checkbox";
 export { Badge, badgeVariants } from "./badge";
 export { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "./sidebar";
+export { MarkdownPreview } from "./MarkdownPreview";

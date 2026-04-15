@@ -5,11 +5,9 @@ import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirro
 import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { oneDark } from "@codemirror/theme-one-dark";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeHighlight from "rehype-highlight";
 import { X, Eye, Save, FileCode } from "lucide-react";
 import { getLanguageExtension, getCmFontStyle, isMarkdownFile } from "../../utils/codemirror";
+import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme } from "../../types";
 
 type MarkdownMode = "preview" | "source";
@@ -267,10 +265,8 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {showPreview ? (
-          <div className="h-full overflow-y-auto px-6 py-4 prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-              {currentContent}
-            </ReactMarkdown>
+          <div className="h-full overflow-y-auto px-6 py-4">
+            <MarkdownPreview content={currentContent} theme={theme} />
           </div>
         ) : (
           <CodeMirror

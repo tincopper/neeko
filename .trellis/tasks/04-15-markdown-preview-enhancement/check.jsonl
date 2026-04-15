@@ -1,4 +1,8 @@
-{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
-{"file": "src/components/ui/", "type": "directory", "reason": "UI components directory structure"}
-{"file": "src/types.ts", "reason": "AppTheme type definition"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Code review checklist: tsc, React.memo, useCallback, no unused imports, barrel exports"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component conventions to verify: Props interface, memo wrapping, cn() usage, CSS variable font sizes"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "Testing standards for MarkdownPreview test verification"}
+{"file": "src/components/ui/", "type": "directory", "reason": "UI components directory - verify MarkdownPreview.tsx exists and follows structure"}
+{"file": "src/types.ts", "reason": "Verify AppTheme type imported correctly, no local re-declarations"}
+{"file": "src/styles/theme.css", "reason": "Verify prose bridges and hljs styles added for all 4 themes"}
+{"file": "src/styles/index.css", "reason": "Verify typography plugin or fallback styles correctly added"}
+{"file": "vite.config.ts", "reason": "Verify mermaid added to manualChunks"}

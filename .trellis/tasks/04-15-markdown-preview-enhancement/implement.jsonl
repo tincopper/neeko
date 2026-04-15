@@ -1,5 +1,11 @@
 {"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
 {"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": "package.json", "reason": "Project dependencies - react-markdown, remark-gfm, rehype-highlight"}
-{"file": "src/components/panels/FileViewer.tsx", "reason": "Current Markdown preview implementation in FileViewer"}
-{"file": "src/styles/index.css", "reason": "Tailwind CSS configuration"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns: React.memo, Props interface, barrel export, cn() usage - MarkdownPreview must follow these"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality standards: tsc --noEmit, React.memo required, useCallback for callbacks, Vitest testing"}
+{"file": "package.json", "reason": "Current dependencies - react-markdown, remark-gfm, rehype-highlight already installed"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "Current Markdown preview implementation to be replaced - lines 8-10 (imports) and 269-274 (ReactMarkdown usage)"}
+{"file": "src/styles/index.css", "reason": "Tailwind v4 CSS config - add @plugin @tailwindcss/typography (or hand-write .markdown-preview styles as fallback). NOTE: existing .hljs-* styles on lines 141-158 are DiffView-scoped only"}
+{"file": "src/styles/theme.css", "reason": "CRITICAL: 4 theme blocks need (1) --tw-prose-* bridges OR hand-written prose vars, (2) .markdown-preview .hljs-* highlight colors per theme"}
+{"file": "src/components/ui/index.ts", "reason": "Barrel export - must add MarkdownPreview export"}
+{"file": "src/types.ts", "reason": "AppTheme type definition (4 variants: dark, light, one-dark-pro, claude) - MarkdownPreview props depend on this"}
+{"file": "vite.config.ts", "reason": "manualChunks config - must add mermaid chunk to prevent 2.5MB loading on startup"}
