@@ -4,6 +4,7 @@ import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
 import ProjectsPanel from "../panels/ProjectsPanel";
 import FilesPanel from "../panels/FilesPanel";
+import SkillsPanel from "../panels/SkillsPanel";
 import MainContent from "../MainContent";
 import type {
    Project,
@@ -196,6 +197,9 @@ function AppLayout(props: AppLayoutProps) {
                   onSelectFile={props.onFileSelect}
                   onRefresh={props.onFileRefresh}
                />
+            )}
+            {activePanel === "skills" && (
+               <SkillsPanel activeProjectId={props.activeProjectId} />
             )}
          </PanelArea>
 
