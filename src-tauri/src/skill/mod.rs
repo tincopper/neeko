@@ -8,3 +8,4 @@ pub mod commands;
 pub mod content_hash;
 pub mod installer;
 pub mod scanner;
+pub mod sync_engine;
