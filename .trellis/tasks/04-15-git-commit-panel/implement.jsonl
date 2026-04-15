@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件设计指南：React组件规范、Props定义、样式模式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全指南：TypeScript类型定义规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "后端命令指南：Tauri命令定义规范"}
