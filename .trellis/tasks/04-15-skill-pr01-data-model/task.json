@@ -1,0 +1,51 @@
+{
+  "id": "skill-pr01-data-model",
+  "name": "skill-pr01-data-model",
+  "title": "PR#1: Skill 数据模型与类型定义",
+  "description": "定义 Skill 系统核心数据结构（Rust + TypeScript），包括 SkillRecord、TagGroup、ToolAdapter 等类型，添加 rusqlite 依赖",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": "feature/skill-pr01-data-model",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "update-spec" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "skill-pr02-skill-store",
+    "skill-pr03-scanner-installer",
+    "skill-pr04-tag-system",
+    "skill-pr05-sync-engine",
+    "skill-pr06-skill-panel-ui",
+    "skill-pr07-project-tag-binding"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/lib.rs",
+    "src/types.ts",
+    "docs/skill-management-design.md"
+  ],
+  "notes": "这是 Skill 管理功能的基础 PR，后续所有 PR 都依赖此数据模型。需新增 rusqlite 依赖",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/core/skill_store.rs",
+      "src-tauri/src/core/tool_adapters.rs",
+      "src-tauri/src/core/skill_metadata.rs"
+    ]
+  }
+}
