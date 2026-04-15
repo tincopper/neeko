@@ -30,9 +30,13 @@ russh = "0.50.0-beta.7"
 russh-keys = "0.50.0-beta.7"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde_yaml = "0.9"
+walkdir = "2"
+zip = "2"
+sha2 = "0.10"
+hex = "0.4"
+tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-[dev-dependencies]
-tempfile = "3"
+

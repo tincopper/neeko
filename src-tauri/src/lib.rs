@@ -13,7 +13,7 @@ pub mod skill;
 
 use state::*;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
 // ─── Unix PATH 修复 ─────────────────────────────────────────────────
@@ -43,6 +43,7 @@ pub struct AppStateWrapper {
     pub storage_manager: storage::StorageManager,
     pub active_project_id: Mutex<Option<String>>,
     pub watcher_manager: watcher::WatcherManager,
+    pub skill_store: Arc<skill::skill_store::SkillStore>,
 }
 
 impl AppStateWrapper {
@@ -55,6 +56,10 @@ impl AppStateWrapper {
             storage_manager: storage::StorageManager::new().expect("Failed to create storage manager"),
             active_project_id: Mutex::new(None),
             watcher_manager: watcher::WatcherManager::new(),
+            skill_store: {
+                skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
+                Arc::new(skill::skill_store::SkillStore::new(&skill::central_repo::db_path()).expect("Failed to create skill store"))
+            },
         }
     }
 }
