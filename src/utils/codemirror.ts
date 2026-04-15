@@ -92,31 +92,237 @@ const LANG_MAP: Record<string, () => Promise<Extension>> = {
     const { lua } = await import("@codemirror/legacy-modes/mode/lua");
     return StreamLanguage.define(lua);
   },
+  // YAML language (using legacy modes)
+  ".yaml": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { yaml } = await import("@codemirror/legacy-modes/mode/yaml");
+    return StreamLanguage.define(yaml);
+  },
+  ".yml": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { yaml } = await import("@codemirror/legacy-modes/mode/yaml");
+    return StreamLanguage.define(yaml);
+  },
+  // Shell scripts
+  ".sh": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { shell } = await import("@codemirror/legacy-modes/mode/shell");
+    return StreamLanguage.define(shell);
+  },
+  ".bash": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { shell } = await import("@codemirror/legacy-modes/mode/shell");
+    return StreamLanguage.define(shell);
+  },
+  ".zsh": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { shell } = await import("@codemirror/legacy-modes/mode/shell");
+    return StreamLanguage.define(shell);
+  },
+  // TOML
+  ".toml": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { toml } = await import("@codemirror/legacy-modes/mode/toml");
+    return StreamLanguage.define(toml);
+  },
+  // XML
+  ".xml": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { xml } = await import("@codemirror/legacy-modes/mode/xml");
+    return StreamLanguage.define(xml);
+  },
+  ".svg": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { xml } = await import("@codemirror/legacy-modes/mode/xml");
+    return StreamLanguage.define(xml);
+  },
+  // SQL
+  ".sql": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { standardSQL } = await import("@codemirror/legacy-modes/mode/sql");
+    return StreamLanguage.define(standardSQL);
+  },
+  // Dockerfile
+  ".dockerfile": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { dockerFile } = await import("@codemirror/legacy-modes/mode/dockerfile");
+    return StreamLanguage.define(dockerFile);
+  },
+  // Ruby
+  ".rb": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { ruby } = await import("@codemirror/legacy-modes/mode/ruby");
+    return StreamLanguage.define(ruby);
+  },
+  // Perl
+  ".pl": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { perl } = await import("@codemirror/legacy-modes/mode/perl");
+    return StreamLanguage.define(perl);
+  },
+  // PowerShell
+  ".ps1": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { powerShell } = await import("@codemirror/legacy-modes/mode/powershell");
+    return StreamLanguage.define(powerShell);
+  },
+  // Swift
+  ".swift": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { swift } = await import("@codemirror/legacy-modes/mode/swift");
+    return StreamLanguage.define(swift);
+  },
+  // Properties / ini / env (use properties mode)
+  ".properties": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
+  ".ini": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
+  ".env": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
+  ".conf": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
+  // Diff / patch
+  ".diff": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { diff } = await import("@codemirror/legacy-modes/mode/diff");
+    return StreamLanguage.define(diff);
+  },
+  ".patch": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { diff } = await import("@codemirror/legacy-modes/mode/diff");
+    return StreamLanguage.define(diff);
+  },
+  // Protobuf
+  ".proto": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { protobuf } = await import("@codemirror/legacy-modes/mode/protobuf");
+    return StreamLanguage.define(protobuf);
+  },
+  // C#
+  ".cs": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { csharp } = await import("@codemirror/legacy-modes/mode/clike");
+    return StreamLanguage.define(csharp);
+  },
+  // C / C++
+  ".c": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { c } = await import("@codemirror/legacy-modes/mode/clike");
+    return StreamLanguage.define(c);
+  },
+  ".h": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { c } = await import("@codemirror/legacy-modes/mode/clike");
+    return StreamLanguage.define(c);
+  },
+  ".cpp": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { cpp } = await import("@codemirror/legacy-modes/mode/clike");
+    return StreamLanguage.define(cpp);
+  },
+  ".hpp": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { cpp } = await import("@codemirror/legacy-modes/mode/clike");
+    return StreamLanguage.define(cpp);
+  },
+};
+
+// Filename-based mapping (files without standard extensions)
+const FILENAME_MAP: Record<string, () => Promise<Extension>> = {
+  "dockerfile": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { dockerFile } = await import("@codemirror/legacy-modes/mode/dockerfile");
+    return StreamLanguage.define(dockerFile);
+  },
+  "makefile": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { shell } = await import("@codemirror/legacy-modes/mode/shell");
+    return StreamLanguage.define(shell);
+  },
+  ".gitignore": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
+  ".editorconfig": async () => {
+    const { StreamLanguage } = await import("@codemirror/language");
+    const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+    return StreamLanguage.define(properties);
+  },
 };
 
 // Cache for loaded language extensions
 const langCache = new Map<string, Extension>();
 
 /**
- * Get the CodeMirror language extension for a file based on its extension
+ * Get the CodeMirror language extension for a file based on its extension.
+ * Falls back to properties mode for unknown text files.
  */
 export async function getLanguageExtension(filename: string): Promise<Extension | null> {
   const ext = getFileExtension(filename);
+  const baseName = filename.split(/[/\\]/).pop()?.toLowerCase() || "";
 
-  if (langCache.has(ext)) {
+  // 1. Check extension-based cache
+  if (langCache.has(ext) && ext) {
     return langCache.get(ext)!;
   }
 
-  const loader = LANG_MAP[ext];
-  if (!loader) return null;
-
-  try {
-    const lang = await loader();
-    langCache.set(ext, lang);
-    return lang;
-  } catch {
-    return null;
+  // 2. Check filename-based cache
+  if (langCache.has(baseName)) {
+    return langCache.get(baseName)!;
   }
+
+  // 3. Try extension-based mapping
+  const extLoader = LANG_MAP[ext];
+  if (extLoader) {
+    try {
+      const lang = await extLoader();
+      langCache.set(ext, lang);
+      return lang;
+    } catch {
+      return null;
+    }
+  }
+
+  // 4. Try filename-based mapping (Dockerfile, Makefile, etc.)
+  const fnLoader = FILENAME_MAP[baseName];
+  if (fnLoader) {
+    try {
+      const lang = await fnLoader();
+      langCache.set(baseName, lang);
+      return lang;
+    } catch {
+      return null;
+    }
+  }
+
+  // 5. Fallback: use properties mode for unknown files with extensions
+  //    (gives basic key-value / comment highlighting)
+  if (ext) {
+    try {
+      const { StreamLanguage } = await import("@codemirror/language");
+      const { properties } = await import("@codemirror/legacy-modes/mode/properties");
+      const fallback = StreamLanguage.define(properties);
+      langCache.set(ext, fallback);
+      return fallback;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 /**
