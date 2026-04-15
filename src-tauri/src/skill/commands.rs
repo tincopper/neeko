@@ -403,3 +403,72 @@ pub async fn set_skill_tool_toggle_cmd(
         store.set_tag_group_skill_tool_enabled(&tag_group_id, &skill_id, &tool, enabled).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn sync_tag_group_cmd(
+    tag_group_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let skills = store.get_skills_for_tag_group(&tag_group_id).map_err(|e| e.to_string())?;
+        let configured_mode = store.get_setting("sync_mode").map_err(|e| e.to_string())?;
+        for skill in &skills {
+            let source = std::path::PathBuf::from(&skill.central_path);
+            if !source.exists() { continue; }
+            let adapter_keys: Vec<String> = super::tool_adapters::default_tool_adapters()
+                .iter().map(|a| a.key.clone()).collect();
+            for tool_key in &adapter_keys {
+                let toggle = store.get_enabled_tools_for_tag_group_skill(&tag_group_id, &skill.id)
+                    .map_err(|e| e.to_string())?;
+                if !toggle.contains(tool_key) { continue; }
+                let adapter = super::tool_adapters::default_tool_adapters()
+                    .into_iter().find(|a| a.key == *tool_key);
+                if let Some(a) = adapter {
+                    let target = a.skills_dir().join(&skill.name);
+                    let mode = super::sync_engine::sync_mode_for_tool(tool_key, configured_mode.as_deref());
+                    match super::sync_engine::sync_skill(&source, &target, mode) {
+                        Ok(actual_mode) => {
+                            let now = chrono::Utc::now().timestamp_millis();
+                            let rec = super::types::SkillTargetRecord {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                skill_id: skill.id.clone(),
+                                tool: tool_key.clone(),
+                                target_path: target.to_string_lossy().to_string(),
+                                mode: actual_mode.as_str().to_string(),
+                                status: "ok".to_string(),
+                                synced_at: Some(now),
+                                last_error: None,
+                            };
+                            let _ = store.insert_target(&rec);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to sync skill {} to {}: {e}", skill.id, target.display());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn unsync_tag_group_cmd(
+    tag_group_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let skill_ids = store.get_skills_for_tag_group(&tag_group_id).map_err(|e| e.to_string())?;
+        for skill in &skill_ids {
+            let targets = store.get_targets_for_skill(&skill.id).unwrap_or_default();
+            for target in &targets {
+                let path = std::path::PathBuf::from(&target.target_path);
+                let _ = super::sync_engine::remove_target(&path);
+                let _ = store.delete_target(&skill.id, &target.tool);
+            }
+        }
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
+}
