@@ -1,8 +1,12 @@
 ﻿import React, { useCallback, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
+import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, keymap } from "@codemirror/view";
+import { defaultKeymap } from "@codemirror/commands";
+import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView } from "@codemirror/view";
+import { getCmFontStyle } from "../../utils/codemirror";
 import { useAppContext } from "../../context/app-context";
 
 interface MarkdownEditorProps {
@@ -21,48 +25,28 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
       [onChange]
     );
 
+    const isDark = config.theme === "dark" || config.theme === "one-dark-pro";
+
     const extensions = useMemo(() => {
       const exts = [
         markdown(),
-        EditorView.theme({
-          "&": {
-            fontSize: `${config.editorFontSize}px`,
-            fontFamily: config.fontFamily,
-            backgroundColor: "transparent",
-            color: "var(--text-primary)",
-            height: "100%",
-          },
-          ".cm-scroller": {
-            overflow: "auto",
-            fontFamily: "inherit",
-          },
-          ".cm-content": {
-            fontFamily: "inherit",
-            caretColor: "var(--accent-blue)",
-          },
-          ".cm-cursor, .cm-dropCursor": {
-            borderLeftColor: "var(--accent-blue)",
-          },
-          ".cm-activeLine": {
-            backgroundColor: "rgba(0,0,0,0.08)",
-          },
-          ".cm-gutters": {
-            backgroundColor: "transparent",
-            color: "var(--text-muted)",
-            border: "none",
-          },
-        }),
+        lineNumbers(),
+        highlightActiveLine(),
+        highlightActiveLineGutter(),
+        foldGutter(),
+        bracketMatching(),
+        closeBrackets(),
+        indentOnInput(),
+        drawSelection(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        keymap.of([...closeBracketsKeymap, ...defaultKeymap]),
+        getCmFontStyle(config.fontFamily, config.editorFontSize),
       ];
 
-      if (
-        config.theme === "dark" ||
-        config.theme === "one-dark-pro"
-      ) {
-        exts.push(oneDark);
-      }
+      if (isDark) exts.push(oneDark);
 
       return exts;
-    }, [config.theme, config.fontFamily, config.editorFontSize]);
+    }, [config.theme, config.fontFamily, config.editorFontSize, isDark]);
 
     return (
       <CodeMirror
@@ -71,15 +55,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         extensions={extensions}
         placeholder={placeholder}
         className={className}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLine: true,
-          foldGutter: true,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: false,
-          indentOnInput: true,
-        }}
+        basicSetup={false}
       />
     );
   }
