@@ -28,6 +28,7 @@ interface SkillContextValue {
 
   installLocal: () => Promise<void>;
   scanSkills: () => Promise<void>;
+  createSkill: (name: string, description?: string) => Promise<void>;
 
   setSearchQuery: (q: string) => void;
 }
@@ -38,7 +39,7 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
   const { skills, loading: skillsLoading, refreshSkills, deleteSkill } = useSkillData();
   const { tagGroups, loading: tagLoading, refreshTagGroups, createTagGroup, deleteTagGroup } = useTagGroups();
   const { tools, refreshTools } = useToolStatus();
-  const { installLocal, scanSkills } = useSkillInstall(refreshSkills);
+  const { installLocal, scanSkills, createSkill } = useSkillInstall(refreshSkills);
 
   const [activeSkillView, setActiveSkillView] = useState<SkillView>("local");
   const [activeTagGroupId, setActiveTagGroupId] = useState<string | null>(null);
@@ -61,8 +62,8 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
     activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId,
     setActiveSkillView, refreshSkills, deleteSkill, viewSkillDetail,
     refreshTagGroups, createTagGroup, deleteTagGroup, setActiveTagGroupId,
-    installLocal, scanSkills, setSearchQuery,
-  }), [skills, tagGroups, tools, skillsLoading, tagLoading, activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId, refreshSkills, deleteSkill, viewSkillDetail, refreshTagGroups, createTagGroup, deleteTagGroup, installLocal, scanSkills]);
+    installLocal, scanSkills, createSkill, setSearchQuery,
+  }), [skills, tagGroups, tools, skillsLoading, tagLoading, activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId, refreshSkills, deleteSkill, viewSkillDetail, refreshTagGroups, createTagGroup, deleteTagGroup, installLocal, scanSkills, createSkill]);
 
   return <SkillContext.Provider value={value}>{children}</SkillContext.Provider>;
 }
