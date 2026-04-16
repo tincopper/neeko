@@ -1,4 +1,4 @@
-pub mod agent;
+﻿pub mod agent;
 mod commands;
 pub mod git;
 mod logger;
@@ -16,10 +16,10 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-// ─── Unix PATH 修复 ─────────────────────────────────────────────────
+// 鈹€鈹€鈹€ Unix PATH 淇 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
-/// macOS/Linux 从 Dock/Finder/桌面启动的 GUI 应用只继承 launchd 提供的最小 PATH，
-/// 通过用户的 login shell 获取完整 PATH 并注入当前进程环境变量。
+/// macOS/Linux 浠?Dock/Finder/妗岄潰鍚姩鐨?GUI 搴旂敤鍙户鎵?launchd 鎻愪緵鐨勬渶灏?PATH锛?
+/// 閫氳繃鐢ㄦ埛鐨?login shell 鑾峰彇瀹屾暣 PATH 骞舵敞鍏ュ綋鍓嶈繘绋嬬幆澧冨彉閲忋€?
 #[cfg(unix)]
 fn resolve_user_path() -> Option<String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
@@ -33,7 +33,7 @@ fn resolve_user_path() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-// ─── 应用状态 ───────────────────────────────────────────────────────
+// 鈹€鈹€鈹€ 搴旂敤鐘舵€?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 pub struct AppStateWrapper {
     pub project_manager: Mutex<project::ProjectManager>,
@@ -47,7 +47,8 @@ pub struct AppStateWrapper {
 }
 
 impl AppStateWrapper {
-    pub fn new() -> Self {
+    /// Create with an external shared Arc<SkillStore> (used for Tauri state injection)
+    pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
         Self {
             project_manager: Mutex::new(project::ProjectManager::new()),
             terminal_manager: terminal::TerminalManager::new(),
@@ -56,11 +57,16 @@ impl AppStateWrapper {
             storage_manager: storage::StorageManager::new().expect("Failed to create storage manager"),
             active_project_id: Mutex::new(None),
             watcher_manager: watcher::WatcherManager::new(),
-            skill_store: {
-                skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
-                Arc::new(skill::skill_store::SkillStore::new(&skill::central_repo::db_path()).expect("Failed to create skill store"))
-            },
+            skill_store,
         }
+    }
+
+    /// Standalone creation with auto-initialized SkillStore
+    pub fn new() -> Self {
+        skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
+        let store = Arc::new(skill::skill_store::SkillStore::new(&skill::central_repo::db_path())
+            .expect("Failed to create skill store"));
+        Self::new_with_skill_store(store)
     }
 }
 
@@ -73,12 +79,7 @@ pub fn run() {
         log::warn!("Failed to ensure skill central repo: {e}");
     }
 
-    // Ensure skill central repo directories exist
-    if let Err(e) = skill::central_repo::ensure_central_repo() {
-        log::warn!("Failed to ensure skill central repo: {e}");
-    }
-
-    // Unix: 从用户 login shell 获取完整 PATH，修复 GUI 应用 Agent 检测问题
+    // Unix: 浠庣敤鎴?login shell 鑾峰彇瀹屾暣 PATH锛屼慨澶?GUI 搴旂敤 Agent 妫€娴嬮棶棰?
     #[cfg(unix)]
     {
         match resolve_user_path() {
@@ -92,9 +93,17 @@ pub fn run() {
         }
     }
 
+
+    let skill_store: Arc<skill::skill_store::SkillStore> = {
+        skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
+        Arc::new(skill::skill_store::SkillStore::new(&skill::central_repo::db_path())
+            .expect("Failed to create skill store"))
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppStateWrapper::new())
+        .manage(skill_store.clone())
+        .manage(AppStateWrapper::new_with_skill_store(skill_store))
         .setup(|app| {
             let state = app.handle().state::<AppStateWrapper>();
             if let Ok(session) = state.storage_manager.load_session() {
@@ -231,10 +240,35 @@ pub fn run() {
             commands::save_config,
             commands::load_config,
             commands::get_system_fonts,
-            // ─── 文件操作命令 ────────────────────────────────────────────
+            // 鈹€鈹€鈹€ 鏂囦欢鎿嶄綔鍛戒护 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
             commands::read_dir_tree,
             commands::read_file_content,
             commands::write_file_content,
+            // --- SKILL COMMANDS ---
+            skill::commands::get_managed_skills,
+            skill::commands::get_skill_document,
+            skill::commands::delete_managed_skill,
+            skill::commands::get_tool_status,
+            skill::commands::get_tag_groups,
+            skill::commands::create_tag_group,
+            skill::commands::delete_tag_group_cmd,
+            skill::commands::install_local_skill,
+            skill::commands::scan_local_skills,
+            skill::commands::import_discovered_skill,
+            skill::commands::update_tag_group_cmd,
+            skill::commands::reorder_tag_groups_cmd,
+            skill::commands::add_skill_to_tag_group_cmd,
+            skill::commands::remove_skill_from_tag_group_cmd,
+            skill::commands::get_skills_for_tag_group_cmd,
+            skill::commands::get_all_tags_cmd,
+            skill::commands::set_skill_tags_cmd,
+            skill::commands::set_skill_tool_toggle_cmd,
+            skill::commands::sync_tag_group_cmd,
+            skill::commands::unsync_tag_group_cmd,
+            skill::commands::get_project_tag_groups_cmd,
+            skill::commands::set_project_tag_groups_cmd,
+            skill::commands::add_project_tag_group_cmd,
+            skill::commands::remove_project_tag_group_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
