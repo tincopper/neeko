@@ -1,12 +1,11 @@
-﻿import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, keymap } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
-import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { oneDark } from "@codemirror/theme-one-dark";
-import { getCmFontStyle } from "../../utils/codemirror";
+import { getCmFontStyle, getCmSyntaxHighlighting } from "../../utils/codemirror";
 import { useAppContext } from "../../context/app-context";
 
 interface MarkdownEditorProps {
@@ -25,11 +24,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
       [onChange]
     );
 
-    const isDark = config.theme === "dark" || config.theme === "one-dark-pro";
-
     const extensions = useMemo(() => {
-      const exts = [
-        markdown(),
+      const exts: import("@codemirror/state").Extension[] = [
+        markdown({ base: markdownLanguage }),
         lineNumbers(),
         highlightActiveLine(),
         highlightActiveLineGutter(),
@@ -38,15 +35,13 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         closeBrackets(),
         indentOnInput(),
         drawSelection(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         keymap.of([...closeBracketsKeymap, ...defaultKeymap]),
         getCmFontStyle(config.fontFamily, config.editorFontSize),
+        getCmSyntaxHighlighting(),
       ];
 
-      if (isDark) exts.push(oneDark);
-
       return exts;
-    }, [config.theme, config.fontFamily, config.editorFontSize, isDark]);
+    }, [config.fontFamily, config.editorFontSize, config.theme]);
 
     return (
       <CodeMirror
@@ -55,6 +50,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         extensions={extensions}
         placeholder={placeholder}
         className={className}
+        theme={undefined}
         basicSetup={false}
       />
     );

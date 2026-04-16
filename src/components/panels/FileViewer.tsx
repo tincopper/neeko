@@ -2,11 +2,10 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, keymap } from "@codemirror/view";
 import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirror/commands";
-import { foldGutter, indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { X, Eye, Save, FileCode } from "lucide-react";
-import { getLanguageExtension, getCmFontStyle, isMarkdownFile } from "../../utils/codemirror";
+import { getLanguageExtension, getCmFontStyle, getCmSyntaxHighlighting, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme } from "../../types";
 
@@ -169,7 +168,6 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
       drawSelection(),
       dropCursor(),
       indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       bracketMatching(),
       closeBrackets(),
       autocompletion(),
@@ -183,13 +181,13 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
       ]),
       saveKeymap,
       getCmFontStyle(fontFamily, fontSize),
+      getCmSyntaxHighlighting(),
     ];
 
     if (langExtension) exts.push(langExtension);
-    if (isDarkTheme) exts.push(oneDark);
 
     return exts;
-  }, [langExtension, isDarkTheme, fontFamily, fontSize, saveKeymap]);
+  }, [langExtension, fontFamily, fontSize, saveKeymap]);
 
   // Breadcrumb path segments
   const pathSegments = tab.filePath.replace(/\\/g, "/").split("/");

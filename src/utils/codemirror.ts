@@ -1,5 +1,7 @@
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { buildFontFamily } from "./terminal";
 
 // Extension to file extension mapping (lazy loaded)
@@ -392,6 +394,49 @@ export function getCmFontStyle(fontFamily: string, fontSize: number): Extension 
       backgroundColor: "rgba(var(--accent-blue-rgb), 0.4)",
     },
   });
+}
+
+/**
+ * Build custom syntax highlighting that uses CSS variables for theming
+ */
+export function getCmSyntaxHighlighting(): Extension {
+  const highlightStyle = HighlightStyle.define([
+    // Keywords: if, else, for, while, etc.
+    { tag: t.keyword, color: "var(--cm-keyword)", fontWeight: "bold" },
+    // Comments: // and /* */
+    { tag: t.comment, color: "var(--cm-comment)", fontStyle: "italic" },
+    // Strings: "foo", 'bar'
+    { tag: t.string, color: "var(--cm-string)" },
+    // Numbers: 42, 3.14
+    { tag: t.number, color: "var(--cm-number)" },
+    // Operators: +, -, *, /, =, etc.
+    { tag: t.operator, color: "var(--cm-operator)" },
+    // Variables: foo, bar
+    { tag: t.variableName, color: "var(--cm-variableName)" },
+    // Type names: String, Number
+    { tag: t.typeName, color: "var(--cm-typeName)" },
+    // Property names: obj.prop
+    { tag: t.propertyName, color: "var(--cm-propertyName)" },
+    // Functions: foo()
+    { tag: t.function(t.variableName), color: "var(--cm-function)" },
+    // Class names: class Foo
+    { tag: t.className, color: "var(--cm-className)" },
+    // Definitions: function definition
+    { tag: t.definition(t.variableName), color: "var(--cm-definition)" },
+    // Meta: @decorator
+    { tag: t.meta, color: "var(--cm-meta)" },
+    // Tags: <html>
+    { tag: t.tagName, color: "var(--cm-tag)" },
+    // Atoms: true, false, null
+    { tag: t.atom, color: "var(--cm-atom)" },
+    // Booleans: true, false
+    { tag: t.bool, color: "var(--cm-bool)" },
+    // Punctuation: (), {}, []
+    { tag: t.punctuation, color: "var(--cm-punctuation)" },
+    // Brackets: (), {}, []
+    { tag: t.bracket, color: "var(--cm-bracket)" },
+  ]);
+  return syntaxHighlighting(highlightStyle);
 }
 
 /**
