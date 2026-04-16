@@ -1,0 +1,45 @@
+{
+  "id": "skill-pr15-auto-sync-on-switch",
+  "name": "skill-pr15-auto-sync-on-switch",
+  "title": "PR#15: Auto sync/unsync skills on project switch and app startup",
+  "description": "实现项目切换时自动 unsync 旧项目 skill + sync 新项目 skill，以及应用启动时自动加载活跃项目的 skill",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-16",
+  "completedAt": null,
+  "branch": "feature/skill-pr15-auto-sync-on-switch",
+  "base_branch": "feature/skill-pr14-project-skill-panel",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src-tauri/src/skill/commands.rs",
+    "src-tauri/src/skill/sync_engine.rs",
+    "src-tauri/src/lib.rs",
+    "src/hooks/useLocalProjects.ts",
+    "src/hooks/useWslProjects.ts",
+    "src/hooks/useRemoteProjects.ts",
+    "src/hooks/useSessionBootstrap.ts"
+  ],
+  "notes": "这是 Skill 管理系统的最终集成 PR，串联所有功能实现端到端自动化",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/commands/scenarios.rs"
+    ]
+  }
+}
