@@ -10,8 +10,8 @@
 
 ## 参考项目
 
-- `skills-manager/src/views/MySkills.tsx` — Skill 列表 + 操作
-- `skills-manager/src/views/InstallSkills.tsx` — Local tab 安装流程
+- `/media/tomgs/DATA/workspace/workspace_rust/skills-manager/src/views/MySkills.tsx` — Skill 列表 + 操作
+- `/media/tomgs/DATA/workspace/workspace_rust/skills-manager/src/views/InstallSkills.tsx` — Local tab 安装流程
 
 ## 需求
 
@@ -73,28 +73,28 @@ ActivityBar(48px) | SkillsPanel(导航菜单) | SkillContent(内容展示)
 
 主内容区组件，按 `activeSkillView` 渲染对应视图：
 
-| 菜单项 | 路由值 | 内容 |
-|--------|--------|------|
-| Local Skills | `local` | Skill 列表 + 安装/扫描/创建 |
-| Marketplace | `marketplace` | 占位（后续 PR） |
-| Project Skills | `project` | 占位（后续 PR） |
-| Tool Status | `tools` | 工具安装状态网格 |
+| 菜单项         | 路由值        | 内容                        |
+| -------------- | ------------- | --------------------------- |
+| Local Skills   | `local`       | Skill 列表 + 安装/扫描/创建 |
+| Marketplace    | `marketplace` | 占位（后续 PR）             |
+| Project Skills | `project`     | 占位（后续 PR）             |
+| Tool Status    | `tools`       | 工具安装状态网格            |
 
 ### 4. Local Skill Tab 内容
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Local Skills          [+ Create] [Install] [Scan]   │
-├─────────────────────────────────────────────────────┤
-│ 🔍 Search skills...                                 │
-├─────────────────────────────────────────────────────┤
-│ ┌─────────────────────────────────────────────────┐ │
-│ │ 📦 skill-name                       [local]     │ │
-│ │ Description text...                             │ │
-│ │ Tags: #tag1 #tag2                        [🗑️]  │ │
-│ └─────────────────────────────────────────────────┘ │
-│ ...                                                 │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│ Local Skills          [+ Create] [Install] [Scan]                     │
+├───────────────────────────────────────────────────────────────────────┤
+│ 🔍 Search skills...                                                    │
+├───────────────────────────────────────────────────────────────────────┤
+│ ┌─────────────────────────────┐ ┌────────────────────────────┐        │
+│ │ 📦 skill-name      [local]  │  │ 📦 skill-name2     [local]  │      │
+│ │ Description text...         │ │ Description text..         │        │
+│ │ Tags: #tag1 #tag2     [🗑️]  │  │ Tags: #tag1 #tag2    [🗑️]  │        │
+│ └────────────────────────────┘  └───────────────────────────┘         │
+│ ...                                      页[1][2]...[10]            │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 #### 功能：
@@ -134,10 +134,10 @@ ActivityBar(48px) | SkillsPanel(导航菜单) | SkillContent(内容展示)
 ```tsx
 // src/components/skills/MarkdownEditor.tsx
 interface MarkdownEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  className?: string
 }
 ```
 
@@ -145,6 +145,7 @@ interface MarkdownEditorProps {
 - `@codemirror/lang-markdown` 语法支持
 - `oneDark` 语法高亮（仅 dark 主题）
 - 从 `useAppContext()` 获取主题/字体/字号配置
+- 输入框背景色跟应用主题色保持一致，通过切换主题能够输入框背景色以及字体颜色需要同步切换
 
 ### 6. Skill Context 扩展
 
@@ -153,9 +154,9 @@ interface MarkdownEditorProps {
 ```typescript
 interface SkillContextValue {
   // 新增
-  activeSkillView: SkillView;       // "local" | "marketplace" | "project" | "tools"
-  setActiveSkillView: (view: SkillView) => void;
-  createSkill: (name: string, skillContent: string) => Promise<void>;
+  activeSkillView: SkillView // "local" | "marketplace" | "project" | "tools"
+  setActiveSkillView: (view: SkillView) => void
+  createSkill: (name: string, skillContent: string) => Promise<void>
   // ... 其余不变
 }
 ```
@@ -172,6 +173,7 @@ pub async fn create_skill(
 ```
 
 流程：
+
 1. `sanitize_skill_name(name)` 验证名称
 2. 创建 `~/.neeko/skills/{name}/` 目录
 3. 写入 `skill_content` 为 SKILL.md
@@ -181,22 +183,22 @@ pub async fn create_skill(
 
 ## 文件清单
 
-| 文件 | 类型 | 说明 |
-|------|------|------|
-| `src/types.ts` | 修改 | 新增 `SkillView` 类型 |
-| `src/context/skill-context.tsx` | 修改 | 新增 `activeSkillView` / `setActiveSkillView` / `createSkill` |
-| `src/components/panels/SkillsPanel.tsx` | 重构 | 从内容展示改为导航菜单 |
-| `src/components/layout/AppLayout.tsx` | 修改 | 三栏布局 + SkillProvider 提升 |
-| `src/components/skills/SkillContent.tsx` | 新增 | 内容路由组件 |
-| `src/components/skills/LocalSkillContent.tsx` | 新增 | 本地 Skill 列表视图 |
-| `src/components/skills/MarketplaceContent.tsx` | 新增 | Marketplace 占位 |
-| `src/components/skills/ProjectSkillContent.tsx` | 新增 | Project Skill 占位 |
-| `src/components/skills/ToolStatusContent.tsx` | 新增 | 工具状态视图 |
-| `src/components/skills/CreateSkillDialog.tsx` | 新增 | Slide-over 创建面板（Name + Markdown 编辑器） |
-| `src/components/skills/MarkdownEditor.tsx` | 新增 | 独立 CodeMirror markdown 编辑器 |
-| `src/hooks/useSkillInstall.ts` | 修改 | 新增 `createSkill` 方法 |
-| `src-tauri/src/skill/commands.rs` | 修改 | 新增 `create_skill` 命令 |
-| `src-tauri/src/lib.rs` | 修改 | 注册 `create_skill` 命令 |
+| 文件                                            | 类型 | 说明                                                          |
+| ----------------------------------------------- | ---- | ------------------------------------------------------------- |
+| `src/types.ts`                                  | 修改 | 新增 `SkillView` 类型                                         |
+| `src/context/skill-context.tsx`                 | 修改 | 新增 `activeSkillView` / `setActiveSkillView` / `createSkill` |
+| `src/components/panels/SkillsPanel.tsx`         | 重构 | 从内容展示改为导航菜单                                        |
+| `src/components/layout/AppLayout.tsx`           | 修改 | 三栏布局 + SkillProvider 提升                                 |
+| `src/components/skills/SkillContent.tsx`        | 新增 | 内容路由组件                                                  |
+| `src/components/skills/LocalSkillContent.tsx`   | 新增 | 本地 Skill 列表视图                                           |
+| `src/components/skills/MarketplaceContent.tsx`  | 新增 | Marketplace 占位                                              |
+| `src/components/skills/ProjectSkillContent.tsx` | 新增 | Project Skill 占位                                            |
+| `src/components/skills/ToolStatusContent.tsx`   | 新增 | 工具状态视图                                                  |
+| `src/components/skills/CreateSkillDialog.tsx`   | 新增 | Slide-over 创建面板（Name + Markdown 编辑器）                 |
+| `src/components/skills/MarkdownEditor.tsx`      | 新增 | 独立 CodeMirror markdown 编辑器                               |
+| `src/hooks/useSkillInstall.ts`                  | 修改 | 新增 `createSkill` 方法                                       |
+| `src-tauri/src/skill/commands.rs`               | 修改 | 新增 `create_skill` 命令                                      |
+| `src-tauri/src/lib.rs`                          | 修改 | 注册 `create_skill` 命令                                      |
 
 ## 验收标准
 
@@ -204,13 +206,13 @@ pub async fn create_skill(
 - [x] SkillsPanel 为导航菜单，不展示内容
 - [x] Local Skills 列表展示已安装 skill
 - [x] 搜索过滤功能正常
-- [x] "Create" 按钮打开 Slide-over + CodeMirror 编辑器
-- [x] "Install" 按钮能选择目录并安装
-- [x] "Scan" 按钮能发现未管理的 skill
-- [x] 删除 skill 功能正常
-- [x] 所有操作后列表自动刷新
+- [ ] "Create" 按钮打开 Slide-over + CodeMirror 编辑器
+- [ ] "Install" 按钮能选择目录并安装
+- [ ] "Scan" 按钮能发现未管理的 skill
+- [ ] 删除 skill 功能正常
+- [ ] 所有操作后列表自动刷新
 - [x] `cargo check` + `npx tsc --noEmit` 通过
-- [x] 编辑器样式跟随应用主题（CSS 变量）
+- [ ] 编辑器样式跟随应用主题（CSS 变量）
 
 ## 不包含
 
