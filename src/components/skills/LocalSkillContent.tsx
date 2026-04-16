@@ -10,8 +10,8 @@ const LocalSkillContent: React.FC = React.memo(() => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const handleCreate = useCallback(
-    async (name: string, description?: string) => {
-      await createSkill(name, description);
+    async (name: string, skillContent: string) => {
+      await createSkill(name, skillContent);
     },
     [createSkill]
   );

@@ -28,7 +28,7 @@ interface SkillContextValue {
 
   installLocal: () => Promise<void>;
   scanSkills: () => Promise<void>;
-  createSkill: (name: string, description?: string) => Promise<void>;
+  createSkill: (name: string, skillContent: string) => Promise<void>;
 
   setSearchQuery: (q: string) => void;
 }

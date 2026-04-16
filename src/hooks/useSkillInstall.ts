@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+﻿import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -36,10 +36,10 @@ export function useSkillInstall(onInstalled: () => void) {
     }
   }, [onInstalled]);
 
-  const createSkill = useCallback(async (name: string, description?: string) => {
+  const createSkill = useCallback(async (name: string, skillContent: string) => {
     try {
       setInstalling(true);
-      await invoke("create_skill", { name, description: description || null });
+      await invoke("create_skill", { name, skillContent });
       onInstalled();
     } catch (e) {
       console.error("Failed to create skill:", e);

@@ -1,4 +1,4 @@
-use serde::Serialize;
+﻿use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
@@ -527,10 +527,11 @@ pub async fn remove_project_tag_group_cmd(
     }).await.map_err(|e| e.to_string())?
 }
 
+
 #[tauri::command]
 pub async fn create_skill(
     name: String,
-    description: Option<String>,
+    skill_content: String,
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, String> {
     let store = store.inner().clone();
@@ -544,13 +545,11 @@ pub async fn create_skill(
         }
 
         std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+        std::fs::write(dest.join("SKILL.md"), &skill_content).map_err(|e| e.to_string())?;
 
-        let desc_line = description.as_deref().unwrap_or("A custom skill");
-        let skill_md = format!(
-            "---\nname: {}\ndescription: {}\n---\n\n# {}\n\n{}\n",
-            sanitized, desc_line, sanitized, desc_line
-        );
-        std::fs::write(dest.join("SKILL.md"), &skill_md).map_err(|e| e.to_string())?;
+        // Extract description from frontmatter if present
+        let metadata = super::skill_metadata::parse_skill_md(&dest);
+        let description = metadata.description;
 
         let hash = super::content_hash::hash_directory(&dest).map_err(|e| e.to_string())?;
 
