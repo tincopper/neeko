@@ -36,5 +36,18 @@ export function useSkillInstall(onInstalled: () => void) {
     }
   }, [onInstalled]);
 
-  return { installing, installLocal, installGit, scanSkills };
+  const createSkill = useCallback(async (name: string, description?: string) => {
+    try {
+      setInstalling(true);
+      await invoke("create_skill", { name, description: description || null });
+      onInstalled();
+    } catch (e) {
+      console.error("Failed to create skill:", e);
+      throw e;
+    } finally {
+      setInstalling(false);
+    }
+  }, [onInstalled]);
+
+  return { installing, installLocal, installGit, scanSkills, createSkill };
 }

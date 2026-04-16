@@ -526,3 +526,74 @@ pub async fn remove_project_tag_group_cmd(
         store.remove_project_tag_group(&project_id, &tag_group_id).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
+
+#[tauri::command]
+pub async fn create_skill(
+    name: String,
+    description: Option<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ManagedSkillDtoOut, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let sanitized = super::skill_metadata::sanitize_skill_name(&name)
+            .ok_or_else(|| format!("Invalid skill name: {}", name))?;
+
+        let dest = super::central_repo::skills_dir().join(&sanitized);
+        if dest.exists() {
+            return Err(format!("Skill directory already exists: {}", sanitized));
+        }
+
+        std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+
+        let desc_line = description.as_deref().unwrap_or("A custom skill");
+        let skill_md = format!(
+            "---\nname: {}\ndescription: {}\n---\n\n# {}\n\n{}\n",
+            sanitized, desc_line, sanitized, desc_line
+        );
+        std::fs::write(dest.join("SKILL.md"), &skill_md).map_err(|e| e.to_string())?;
+
+        let hash = super::content_hash::hash_directory(&dest).map_err(|e| e.to_string())?;
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let skill = super::types::SkillRecord {
+            id: id.clone(),
+            name: sanitized.clone(),
+            description: description.clone(),
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: dest.to_string_lossy().to_string(),
+            content_hash: Some(hash),
+            enabled: true,
+            status: "ok".to_string(),
+            update_status: "unknown".to_string(),
+            last_checked_at: None,
+            last_check_error: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.insert_skill(&skill).map_err(|e| e.to_string())?;
+
+        Ok(ManagedSkillDtoOut {
+            id,
+            name: sanitized,
+            description,
+            source_type: "local".to_string(),
+            source_ref: None,
+            central_path: dest.to_string_lossy().to_string(),
+            enabled: true,
+            status: "ok".to_string(),
+            update_status: "unknown".to_string(),
+            tags: vec![],
+            created_at: now,
+            updated_at: now,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

@@ -1,4 +1,4 @@
-﻿pub mod agent;
+pub mod agent;
 mod commands;
 pub mod git;
 mod logger;
@@ -269,6 +269,7 @@ pub fn run() {
             skill::commands::set_project_tag_groups_cmd,
             skill::commands::add_project_tag_group_cmd,
             skill::commands::remove_project_tag_group_cmd,
+            skill::commands::create_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
