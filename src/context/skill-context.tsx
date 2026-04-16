@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
-import type { ManagedSkillDto, TagGroup, ToolInfo } from "../types";
+import type { ManagedSkillDto, TagGroup, ToolInfo, SkillView } from "../types";
 import { useSkillData } from "../hooks/useSkillData";
 import { useTagGroups } from "../hooks/useTagGroups";
 import { useSkillInstall } from "../hooks/useSkillInstall";
@@ -10,11 +10,13 @@ interface SkillContextValue {
   tagGroups: TagGroup[];
   tools: ToolInfo[];
   loading: boolean;
+  activeSkillView: SkillView;
   activeTagGroupId: string | null;
   searchQuery: string;
   selectedSkillId: string | null;
   activeProjectId: string | null;
 
+  setActiveSkillView: (view: SkillView) => void;
   refreshSkills: () => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
   viewSkillDetail: (id: string | null) => void;
@@ -38,6 +40,7 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
   const { tools, refreshTools } = useToolStatus();
   const { installLocal, scanSkills } = useSkillInstall(refreshSkills);
 
+  const [activeSkillView, setActiveSkillView] = useState<SkillView>("local");
   const [activeTagGroupId, setActiveTagGroupId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
@@ -55,11 +58,11 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
   const value = useMemo<SkillContextValue>(() => ({
     skills, tagGroups, tools,
     loading: skillsLoading || tagLoading,
-    activeTagGroupId, searchQuery, selectedSkillId, activeProjectId,
-    refreshSkills, deleteSkill, viewSkillDetail,
+    activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId,
+    setActiveSkillView, refreshSkills, deleteSkill, viewSkillDetail,
     refreshTagGroups, createTagGroup, deleteTagGroup, setActiveTagGroupId,
     installLocal, scanSkills, setSearchQuery,
-  }), [skills, tagGroups, tools, skillsLoading, tagLoading, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId, refreshSkills, deleteSkill, viewSkillDetail, refreshTagGroups, createTagGroup, deleteTagGroup, installLocal, scanSkills]);
+  }), [skills, tagGroups, tools, skillsLoading, tagLoading, activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId, refreshSkills, deleteSkill, viewSkillDetail, refreshTagGroups, createTagGroup, deleteTagGroup, installLocal, scanSkills]);
 
   return <SkillContext.Provider value={value}>{children}</SkillContext.Provider>;
 }
