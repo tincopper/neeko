@@ -2,7 +2,7 @@
 
 # Neeko
 
-**A Multi-Project Terminal Manager Built for the AI Coding Era**
+**A Multi-Project Agent Manager Built for the AI Coding Era**
 
 Manage all your project's AI Agent sessions in a single window — local, WSL, and SSH remote — putting opencode, claude-code, and other tools at your fingertips.
 
@@ -25,8 +25,8 @@ Neeko consolidates all project Agent terminals into a single desktop application
 
 ## Preview
 
-| Main Interface | Side Terminal Panel |
-|----------------|---------------------|
+| Main Interface                         | Side Terminal Panel                                 |
+| -------------------------------------- | --------------------------------------------------- |
 | ![Main Interface](docs/.img/index.png) | ![Side Terminal Panel](docs/.img/side-terminal.png) |
 
 ## Features
@@ -60,18 +60,21 @@ Neeko consolidates all project Agent terminals into a single desktop application
 ### Linux System Dependencies
 
 **Ubuntu / Debian**
+
 ```bash
 sudo apt install -y build-essential libwebkit2gtk-4.1-dev \
   libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
 ```
 
 **Fedora**
+
 ```bash
 sudo dnf install -y gcc gcc-c++ webkit2gtk4.1-devel \
   libappindicator-gtk3-devel librsvg2-devel
 ```
 
 **Arch Linux**
+
 ```bash
 sudo pacman -S base-devel webkit2gtk-4.1 libappindicator-gtk3 librsvg
 ```
@@ -91,22 +94,22 @@ pnpm tauri build
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Application Framework | Tauri 2.0 |
-| Backend | Rust + tokio + anyhow |
-| Frontend | React 18 + TypeScript + Vite |
-| Terminal Backend | portable-pty |
-| Terminal Frontend | @xterm/xterm 6 + @xterm/addon-fit |
-| Git | git2-rs (libgit2 bindings) |
-| SSH | russh (async SSH2 client) |
-| Syntax Highlighting | highlight.js |
-| File Watching | notify + notify-debouncer-mini |
-| Dialogs | tauri-plugin-dialog |
-| Serialization | serde + serde_json |
-| System Calls | libc (Unix PTY echo control) |
-| Icons | SVG (Simple Icons, Charm Icons) |
-| Styling | Pure CSS, One Dark Pro theme |
+| Layer                 | Technology                        |
+| --------------------- | --------------------------------- |
+| Application Framework | Tauri 2.0                         |
+| Backend               | Rust + tokio + anyhow             |
+| Frontend              | React 18 + TypeScript + Vite      |
+| Terminal Backend      | portable-pty                      |
+| Terminal Frontend     | @xterm/xterm 6 + @xterm/addon-fit |
+| Git                   | git2-rs (libgit2 bindings)        |
+| SSH                   | russh (async SSH2 client)         |
+| Syntax Highlighting   | highlight.js                      |
+| File Watching         | notify + notify-debouncer-mini    |
+| Dialogs               | tauri-plugin-dialog               |
+| Serialization         | serde + serde_json                |
+| System Calls          | libc (Unix PTY echo control)      |
+| Icons                 | SVG (Simple Icons, Charm Icons)   |
+| Styling               | Pure CSS, One Dark Pro theme      |
 
 ## Preset Agents
 
@@ -116,29 +119,29 @@ Custom Agents can be added and built-in Agent commands can be overridden in the 
 
 ## Preset IDEs
 
-| ID | Name |
-|----|------|
-| `vscode` | VS Code |
-| `cursor` | Cursor |
-| `zed` | Zed |
-| `idea` | IntelliJ IDEA |
-| `goland` | GoLand |
-| `rustrover` | RustRover |
-| `pycharm` | PyCharm |
+| ID          | Name          |
+| ----------- | ------------- |
+| `vscode`    | VS Code       |
+| `cursor`    | Cursor        |
+| `zed`       | Zed           |
+| `idea`      | IntelliJ IDEA |
+| `goland`    | GoLand        |
+| `rustrover` | RustRover     |
+| `pycharm`   | PyCharm       |
 
 Override launch commands for each IDE or add custom IDEs in the settings panel.
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+1` ~ `Ctrl+9` | Jump directly to project N |
-| `Ctrl+Q` | Cycle to next project |
-| `Ctrl+N` | Cycle through main terminal and worktree terminals |
-| `Ctrl+Alt+T` | Open side terminal panel |
-| `Ctrl+W` | Close side terminal panel |
-| `Ctrl+R` | Refresh/rebuild current terminal |
-| `Ctrl+O` | Open current project in bound IDE |
+| Shortcut            | Action                                             |
+| ------------------- | -------------------------------------------------- |
+| `Ctrl+1` ~ `Ctrl+9` | Jump directly to project N                         |
+| `Ctrl+Q`            | Cycle to next project                              |
+| `Ctrl+N`            | Cycle through main terminal and worktree terminals |
+| `Ctrl+Alt+T`        | Open side terminal panel                           |
+| `Ctrl+W`            | Close side terminal panel                          |
+| `Ctrl+R`            | Refresh/rebuild current terminal                   |
+| `Ctrl+O`            | Open current project in bound IDE                  |
 
 ## License
 
