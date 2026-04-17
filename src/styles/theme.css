@@ -49,6 +49,9 @@
   /* Border */
   --border-color: #333333;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(97, 175, 239, 0.3);
+
   /* Accent colors */
   --accent-blue:       #61afef;
   --accent-blue-rgb:   97, 175, 239;
@@ -175,6 +178,9 @@
   /* Border */
   --border-color: #3e4451;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(97, 175, 239, 0.3);
+
   /* Accent colors */
   --accent-blue:       #61afef;
   --accent-blue-rgb:   97, 175, 239;
@@ -262,6 +268,9 @@
   /* Border */
   --border-color: #d4c9bb;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(201, 100, 66, 0.2);
+
   /* Accent colors — Claude orange-brown palette */
   --accent-blue:       #c96442;
   --accent-blue-rgb:   201, 100, 66;
@@ -348,6 +357,9 @@
 
   /* Border */
   --border-color: #d4d4d4;
+
+  /* Terminal selection */
+  --terminal-selection: rgba(47, 124, 211, 0.2);
 
   /* Accent colors */
   --accent-blue:       #2f7cd3;
