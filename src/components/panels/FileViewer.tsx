@@ -5,7 +5,7 @@ import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirro
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { X, Eye, Save, FileCode } from "lucide-react";
-import { getLanguageExtension, getCmFontStyle, getCmSyntaxHighlighting, isMarkdownFile } from "../../utils/codemirror";
+import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme } from "../../types";
 
@@ -154,8 +154,8 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
     preventDefault: true,
   }]), [tab.isDirty, handleSave]);
 
-  // Determine if dark theme
-  const isDarkTheme = theme === "dark" || theme === "one-dark-pro";
+  // Create theme object (new reference triggers CodeMirror reconfigure)
+  const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
 
   // Build CodeMirror extensions
   const extensions = useMemo(() => {
@@ -180,14 +180,13 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
         indentWithTab,
       ]),
       saveKeymap,
-      getCmFontStyle(fontFamily, fontSize),
-      getCmSyntaxHighlighting(),
+      cmTheme,
     ];
 
     if (langExtension) exts.push(langExtension);
 
     return exts;
-  }, [langExtension, fontFamily, fontSize, saveKeymap]);
+  }, [langExtension, fontFamily, fontSize, saveKeymap, theme]);
 
   // Breadcrumb path segments
   const pathSegments = tab.filePath.replace(/\\/g, "/").split("/");
@@ -274,7 +273,7 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
             onChange={handleEditorChange}
             editable={true}
             readOnly={!canEdit}
-            theme={isDarkTheme ? "dark" : "light"}
+            theme={cmTheme}
             basicSetup={false}
             className="h-full overflow-auto"
           />

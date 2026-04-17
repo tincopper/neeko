@@ -5,7 +5,7 @@ import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelect
 import { defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { getCmFontStyle, getCmSyntaxHighlighting } from "../../utils/codemirror";
+import { createCmTheme } from "../../utils/codemirror";
 import { useAppContext } from "../../context/app-context";
 
 interface MarkdownEditorProps {
@@ -24,6 +24,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
       [onChange]
     );
 
+    const cmTheme = useMemo(
+      () => createCmTheme(config.fontFamily, config.editorFontSize),
+      [config.fontFamily, config.editorFontSize, config.theme]
+    );
+
     const extensions = useMemo(() => {
       const exts: import("@codemirror/state").Extension[] = [
         markdown({ base: markdownLanguage }),
@@ -36,8 +41,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         indentOnInput(),
         drawSelection(),
         keymap.of([...closeBracketsKeymap, ...defaultKeymap]),
-        getCmFontStyle(config.fontFamily, config.editorFontSize),
-        getCmSyntaxHighlighting(),
+        cmTheme,
       ];
 
       return exts;
@@ -50,7 +54,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         extensions={extensions}
         placeholder={placeholder}
         className={className}
-        theme={undefined}
+        theme={cmTheme}
         basicSetup={false}
       />
     );

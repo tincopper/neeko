@@ -1,7 +1,6 @@
 import type { Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { createTheme } from "@uiw/codemirror-themes";
 import { buildFontFamily } from "./terminal";
 
 // Extension to file extension mapping (lazy loaded)
@@ -337,106 +336,46 @@ function getFileExtension(filename: string): string {
 }
 
 /**
- * Build CodeMirror EditorView theme that uses CSS variables for theming
+ * Build a CodeMirror theme that reads all colors from CSS variables.
+ * Creates a new theme object each call so CodeMirror reconfigures on prop change.
  */
-export function getCmFontStyle(fontFamily: string, fontSize: number): Extension {
+export function createCmTheme(fontFamily: string, fontSize: number) {
   const ff = buildFontFamily(fontFamily);
-  return EditorView.theme({
-    "&": {
+  return createTheme({
+    theme: "dark",
+    settings: {
       fontSize: `${fontSize}px`,
       fontFamily: ff,
-      backgroundColor: "var(--bg-primary)",
-      color: "var(--text-primary)",
+      background: "var(--bg-primary)",
+      foreground: "var(--text-primary)",
+      caret: "var(--accent-blue)",
+      selection: "rgba(var(--accent-blue-rgb), 0.3)",
+      selectionMatch: "rgba(var(--accent-blue-rgb), 0.2)",
+      lineHighlight: "rgba(var(--accent-blue-rgb), 0.05)",
+      gutterBackground: "var(--bg-secondary)",
+      gutterForeground: "var(--text-muted)",
+      gutterActiveForeground: "var(--text-primary)",
     },
-    ".cm-content": {
-      fontFamily: ff,
-      caretColor: "var(--accent-blue)",
-    },
-    ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "var(--accent-blue)",
-    },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-      backgroundColor: "rgba(var(--accent-blue-rgb), 0.3)",
-    },
-    ".cm-gutters": {
-      fontFamily: ff,
-      backgroundColor: "var(--bg-secondary)",
-      color: "var(--text-muted)",
-      borderRight: "1px solid var(--border-color)",
-    },
-    ".cm-activeLineGutter": {
-      backgroundColor: "var(--bg-hover)",
-    },
-    ".cm-activeLine": {
-      backgroundColor: "rgba(var(--accent-blue-rgb), 0.05)",
-    },
-    ".cm-foldPlaceholder": {
-      backgroundColor: "var(--bg-tertiary)",
-      border: "1px solid var(--border-color)",
-      color: "var(--text-secondary)",
-    },
-    ".cm-tooltip": {
-      backgroundColor: "var(--bg-tertiary)",
-      border: "1px solid var(--border-color)",
-      color: "var(--text-primary)",
-    },
-    ".cm-tooltip-autocomplete": {
-      "& > ul > li[aria-selected]": {
-        backgroundColor: "var(--bg-hover)",
-        color: "var(--text-primary)",
-      },
-    },
-    ".cm-searchMatch": {
-      backgroundColor: "rgba(var(--accent-blue-rgb), 0.2)",
-      outline: "1px solid rgba(var(--accent-blue-rgb), 0.4)",
-    },
-    ".cm-searchMatch.cm-searchMatch-selected": {
-      backgroundColor: "rgba(var(--accent-blue-rgb), 0.4)",
-    },
+    styles: [
+      { tag: t.keyword, color: "var(--cm-keyword)", fontWeight: "bold" },
+      { tag: t.comment, color: "var(--cm-comment)", fontStyle: "italic" },
+      { tag: t.string, color: "var(--cm-string)" },
+      { tag: t.number, color: "var(--cm-number)" },
+      { tag: t.operator, color: "var(--cm-operator)" },
+      { tag: t.variableName, color: "var(--cm-variableName)" },
+      { tag: t.typeName, color: "var(--cm-typeName)" },
+      { tag: t.propertyName, color: "var(--cm-propertyName)" },
+      { tag: t.function(t.variableName), color: "var(--cm-function)" },
+      { tag: t.className, color: "var(--cm-className)" },
+      { tag: t.definition(t.variableName), color: "var(--cm-definition)" },
+      { tag: t.meta, color: "var(--cm-meta)" },
+      { tag: t.tagName, color: "var(--cm-tag)" },
+      { tag: t.atom, color: "var(--cm-atom)" },
+      { tag: t.bool, color: "var(--cm-bool)" },
+      { tag: t.punctuation, color: "var(--cm-punctuation)" },
+      { tag: t.bracket, color: "var(--cm-bracket)" },
+    ],
   });
-}
-
-/**
- * Build custom syntax highlighting that uses CSS variables for theming
- */
-export function getCmSyntaxHighlighting(): Extension {
-  const highlightStyle = HighlightStyle.define([
-    // Keywords: if, else, for, while, etc.
-    { tag: t.keyword, color: "var(--cm-keyword)", fontWeight: "bold" },
-    // Comments: // and /* */
-    { tag: t.comment, color: "var(--cm-comment)", fontStyle: "italic" },
-    // Strings: "foo", 'bar'
-    { tag: t.string, color: "var(--cm-string)" },
-    // Numbers: 42, 3.14
-    { tag: t.number, color: "var(--cm-number)" },
-    // Operators: +, -, *, /, =, etc.
-    { tag: t.operator, color: "var(--cm-operator)" },
-    // Variables: foo, bar
-    { tag: t.variableName, color: "var(--cm-variableName)" },
-    // Type names: String, Number
-    { tag: t.typeName, color: "var(--cm-typeName)" },
-    // Property names: obj.prop
-    { tag: t.propertyName, color: "var(--cm-propertyName)" },
-    // Functions: foo()
-    { tag: t.function(t.variableName), color: "var(--cm-function)" },
-    // Class names: class Foo
-    { tag: t.className, color: "var(--cm-className)" },
-    // Definitions: function definition
-    { tag: t.definition(t.variableName), color: "var(--cm-definition)" },
-    // Meta: @decorator
-    { tag: t.meta, color: "var(--cm-meta)" },
-    // Tags: <html>
-    { tag: t.tagName, color: "var(--cm-tag)" },
-    // Atoms: true, false, null
-    { tag: t.atom, color: "var(--cm-atom)" },
-    // Booleans: true, false
-    { tag: t.bool, color: "var(--cm-bool)" },
-    // Punctuation: (), {}, []
-    { tag: t.punctuation, color: "var(--cm-punctuation)" },
-    // Brackets: (), {}, []
-    { tag: t.bracket, color: "var(--cm-bracket)" },
-  ]);
-  return syntaxHighlighting(highlightStyle);
 }
 
 /**
