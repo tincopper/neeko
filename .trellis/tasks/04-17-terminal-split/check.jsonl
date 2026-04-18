@@ -1,0 +1,6 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "检查 useSplitLayout 是否使用稳定回调并正确清理副作用"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "校验测试 mock 边界是否正确"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "校验 memo、invoke 错误处理与无新增 any"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查 TS/Rust 会话字段与序列化一致性"}

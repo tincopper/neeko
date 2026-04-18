@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { remoteCacheKey, destroyRemoteCache } from "../components/terminal";
+import { remoteCacheKey, destroyRemoteCachesByPrefix } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
 
@@ -59,7 +59,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
   }, [remoteEntries, saveSession]);
 
   const handleCloseRemoteProject = useCallback((entryId: string, projectId: string) => {
-    destroyRemoteCache(remoteCacheKey(entryId, projectId));
+    destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
@@ -68,7 +68,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
   }, [activeRemoteKey]);
 
   const handleRemoveRemoteProject = useCallback(async (entryId: string, projectId: string) => {
-    destroyRemoteCache(remoteCacheKey(entryId, projectId));
+    destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
@@ -86,8 +86,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     const entry = remoteEntries.find(e => e.id === entryId);
     if (entry) {
       entry.projects.forEach(p => {
-        destroyRemoteCache(remoteCacheKey(entryId, p.id));
-        destroyRemoteCache(remoteCacheKey(entryId, p.id) + ":side");
+        destroyRemoteCachesByPrefix(remoteCacheKey(entryId, p.id));
       });
       if (activeRemoteKey && entry.projects.some(p => p.id === activeRemoteKey.projectId)) {
         setActiveRemoteKey(null);

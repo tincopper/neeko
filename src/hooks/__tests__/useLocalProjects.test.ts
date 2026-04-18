@@ -7,7 +7,7 @@ import { createProject } from '../../testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
 vi.mock('../../components/terminal', () => ({
-  destroyTerminalCache: vi.fn(),
+  destroyTerminalCachesByPrefix: vi.fn(),
   refreshTerminal: vi.fn(),
   refreshSideTerminal: vi.fn(),
 }));

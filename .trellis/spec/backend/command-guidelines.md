@@ -226,3 +226,55 @@ fn some_wsl_command() -> Result<(), String> {
     Err("WSL is only supported on Windows".into())
 }
 ```
+
+---
+
+## 终端分屏会话契约 2026-04-17
+
+### 变更文件
+
+- `src-tauri/src/commands/config.rs`
+- `src-tauri/src/storage.rs`
+- `src-tauri/src/state/session.rs`
+
+### 命令签名
+
+`save_session` 当前签名：
+
+```rust
+#[tauri::command]
+pub fn save_session(
+    wsl_entries: Vec<WSLEntrySession>,
+    remote_entries: Vec<RemoteEntrySession>,
+    sidebar_width: Option<u32>,
+    worktree_state: Option<std::collections::HashMap<String, String>>,
+    state: State<AppStateWrapper>,
+) -> Result<(), String>
+```
+
+### 字段契约
+
+- 已移除字段：`side_terminal_width`
+- 持久化字段保留：`sidebar_width`、`worktree_state`
+- `SessionStore` 必须与前端 `src/types.ts` 的 `SessionStore` 同步
+
+### 校验与错误矩阵
+
+| 场景 | 输入 | 期望行为 | 错误输出 |
+|------|------|----------|----------|
+| Good | `wsl_entries`、`remote_entries` 正常数组，`worktree_state` 为 `Some` | 正常保存 sessions.json | 无 |
+| Base | `worktree_state=None` | 使用已有 `SessionStore.worktree_state` | 无 |
+| Bad | `state.project_manager` 锁失败 | 立即返回错误 | `Err(\"Lock poisoned: ...\")` |
+| Bad | 序列化或写文件失败 | 返回字符串化错误 | `Err(e.to_string())` |
+
+### Good/Base/Bad 用例
+
+- Good：`src-tauri/tests/unit/storage_test.rs::save_and_load_session_with_projects`
+- Base：`src-tauri/tests/unit/state_test.rs::session_store_defaults_for_missing_fields`
+- Bad：命令层通过 `map_err(|e| e.to_string())` 覆盖，测试关注返回 `Result::Err`
+
+### 必测断言点
+
+- `SessionStore` 默认反序列化不再包含 `side_terminal_width`
+- `create_session_from_projects` 签名与调用点已同步为 4 个业务参数
+- `save_session` 命令参数与前端调用参数名保持一致

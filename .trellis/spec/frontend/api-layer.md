@@ -261,3 +261,57 @@ export const projectService = {
 - [Hook 指南](../frontend/hook-guidelines.md)
 - [Tauri v2 invoke API](https://tauri.app/v2/api/js/core/#invoke)
 - [Tauri v2 listen API](https://tauri.app/v2/api/js/event/#listen)
+
+---
+
+## 终端分屏 IPC 契约 2026-04-17
+
+### 变更文件
+
+- `src/components/terminal/TerminalView.tsx`
+- `src/components/terminal/WSLTerminalView.tsx`
+- `src/components/terminal/RemoteTerminalView.tsx`
+- `src/components/MainContent.tsx`
+- `src/components/RemoteProjectView.tsx`
+- `src/types.ts`
+
+### 会话键契约
+
+分屏后每个 pane 对应独立会话键：
+
+| 终端类型 | 键格式 |
+|------|------|
+| Local | `${projectId}:${tabId}:${paneId}` |
+| WSL | `wsl:${distro}:${projectId}${cacheKeySuffix}:${paneId}` |
+| Remote | `remote:${entryId}:${projectId}${cacheKeySuffix}:${paneId}` |
+
+### 命令调用契约
+
+- Local 新建会话：`create_terminal_session`
+  - 参数：`projectId`、`cols`、`rows`、`shell`、`workingDir`
+- WSL 新建会话：`create_wsl_terminal_session`
+  - 参数：`distro`、`projectPath`、`cols`、`rows`
+- Remote 新建会话：`create_remote_terminal_session`
+  - 参数：`host`、`port`、`username`、`auth`、`projectPath`、`cols`、`rows`
+
+### 校验与错误矩阵
+
+| 场景 | 输入 | 期望行为 | 错误处理 |
+|------|------|----------|----------|
+| Good | pane 初次创建 | 显示 `Connecting...`，会话建立后挂载 xterm | 无 |
+| Base | 切换 tab 或重新挂载 | 复用缓存并重新 `fit + resize` | 无 |
+| Bad | `invoke` 创建会话失败 | 保持 pane 可见并显示失败消息 | 终端输出 `Failed to connect` |
+| Bad | 分屏超上限 4 | split 按钮禁用 | 前端阻断操作 |
+
+### Good/Base/Bad 用例
+
+- Good：`src/hooks/__tests__/useSplitLayout.test.ts::splitPane 创建新 pane 并设置为 active`
+- Base：`src/hooks/__tests__/useSplitLayout.test.ts::layoutId 变化会重置布局`
+- Bad：`src/hooks/__tests__/useSplitLayout.test.ts::达到上限后 canSplit=false`
+
+### 必测断言点
+
+- pane 数量上限为 4，`canSplit=false` 时按钮禁用
+- pane 关闭后 active pane 正确回退
+- 缓存前缀清理会删除同项目同 tab 的所有 pane 会话
+- `save_session` 不再发送 `side_terminal_width`

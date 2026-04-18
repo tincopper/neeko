@@ -162,6 +162,27 @@ export interface TerminalTab {
   order: number;
 }
 
+export type PaneId = string;
+export type PaneDirection = "horizontal" | "vertical";
+export type SplitPathStep = "first" | "second";
+
+export type PaneNode =
+  | { type: "leaf"; paneId: PaneId }
+  | {
+      type: "split";
+      direction: PaneDirection;
+      ratio: number;
+      first: PaneNode;
+      second: PaneNode;
+    };
+
+export interface SplitState {
+  root: PaneNode;
+  activePaneId: PaneId;
+  paneCount: number;
+}
+
+
 // 持久化会话存储（与 Rust SessionStore 对应）
 export interface SessionStore {
   projects: { id: string; name: string; path: string; selected_agent: string | null; selected_ide: string | null; terminal_history: string[]; last_status: string; collapsed: boolean }[];
@@ -170,7 +191,6 @@ export interface SessionStore {
   wsl_entries: WSLEntrySession[];
   remote_entries: RemoteEntrySession[];
   sidebar_width: number | null;
-  side_terminal_width: number | null;
   worktree_state: Record<string, string>;
 }
 

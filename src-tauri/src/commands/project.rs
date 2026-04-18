@@ -42,7 +42,7 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) {
         let projects = pm.list_projects();
         let session = state
             .storage_manager
-            .create_session_from_projects(&projects, None, None, None, None);
+            .create_session_from_projects(&projects, None, None, None);
         if let Err(e) = state.storage_manager.save_session(&session) {
             log::error!(
                 "Failed to save session after removing project {}: {}",
@@ -118,7 +118,7 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
         let projects = pm.list_projects();
         let session = state
             .storage_manager
-            .create_session_from_projects(&projects, None, None, None, None);
+            .create_session_from_projects(&projects, None, None, None);
         if let Err(e) = state.storage_manager.save_session(&session) {
             log::error!(
                 "Failed to save session after collapsing project {}: {}",
@@ -142,7 +142,7 @@ pub fn reorder_projects(ordered_ids: Vec<String>, state: State<AppStateWrapper>)
     drop(pm);
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects, None, None, None, None);
+        .create_session_from_projects(&projects, None, None, None);
     state
         .storage_manager
         .save_session(&session)
