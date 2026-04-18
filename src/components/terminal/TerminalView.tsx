@@ -10,6 +10,7 @@ import type { Project, AgentConfig } from '../../types'
 
 interface TerminalViewProps {
   project: Project
+  paneId?: string
   tabId?: string | null
   tabAgentId?: string | null
   fontSize?: number
@@ -29,7 +30,7 @@ interface TerminalCache {
   unlistenClosed: (() => void) | null
 }
 
-// 全局缓存，切换项目时保留会话（key 可为 projectId 或 projectId+":side"）
+// 全局缓存，切换项目时保留会话（key 可为 projectId:tabId:paneId）
 export const terminalCache = new Map<string, TerminalCache>()
 
 // 拖拽结束 flag：下一次 ResizeObserver 触发时需要同时做 PTY resize
@@ -46,9 +47,13 @@ export const terminalWrapperRefs = new Map<string, HTMLDivElement>()
 // 不放在组件 state/ref 中，避免 unmount/remount 时丢失已执行标记
 export const executedAgentKeys = new Set<string>()
 
+export function terminalCacheKey(projectId: string, tabId?: string | null, paneId = 'p1') {
+  return tabId ? `${projectId}:${tabId}:${paneId}` : `${projectId}:${paneId}`
+}
+
 function log(msg: string) {
   const ts = new Date().toLocaleTimeString()
-  console.log(`[${ts}] [Terminal] ${msg}`)
+  console.debug(`[${ts}] [Terminal] ${msg}`)
 }
 
 export function destroyTerminalCache(cacheKey: string) {
@@ -60,6 +65,15 @@ export function destroyTerminalCache(cacheKey: string) {
   terminalCache.delete(cacheKey)
   executedAgentKeys.delete(cacheKey)
   log(`Cache destroyed for ${cacheKey}`)
+}
+
+export function destroyTerminalCachesByPrefix(prefix: string) {
+  const keys = Array.from(terminalCache.keys())
+  for (const key of keys) {
+    if (key === prefix || key.startsWith(prefix + ':')) {
+      destroyTerminalCache(key)
+    }
+  }
 }
 
 /** 手动刷新终端：关闭后端 PTY + 销毁前端缓存 + 触发重建 */
@@ -202,7 +216,7 @@ export async function switchAgentInTerminal(
 }
 
 export async function createTerminalForProject(
-  projectId: string, // cache key（可为 "uuid" 或 "uuid:side"）
+  projectId: string, // cache key（可为 "uuid:tabId:paneId"）
   _projectPath: string,
   projectName: string,
   _selectedAgentId: string | null, // 保留参数以兼容旧代码，但不再使用
@@ -423,6 +437,7 @@ export async function createTerminalForProject(
 
 function TerminalView({
   project,
+  paneId = 'p1',
   tabId,
   tabAgentId,
   fontSize = 14,
@@ -436,10 +451,10 @@ function TerminalView({
   const currentCacheKeyRef = useRef<string | null>(null)
   // 管道关闭时递增，触发 useEffect 重建终端
   const [rebuildCount, setRebuildCount] = useState(0)
+  const [ready, setReady] = useState(false)
   // executedAgentsRef 已移至模块级 executedAgentKeys，此处仅保留引用
 
-  // 计算 cacheKey：如果有 tabId，使用 `${project.id}:${tabId}`，否则使用 project.id
-  const cacheKey = tabId ? `${project.id}:${tabId}` : project.id
+  const cacheKey = terminalCacheKey(project.id, tabId, paneId)
 
   // fontSize / fontFamily 变化时更新已有终端实例
   useEffect(() => {
@@ -456,6 +471,7 @@ function TerminalView({
     if (!wrapper) return
 
     currentCacheKeyRef.current = cacheKey
+    setReady(false)
 
     // 注册重建回调：管道关闭时，backend 会清理 session 并发 terminal-closed 事件，
     // createTerminalForProject 监听到后调用此 callback 触发 rebuildCount 递增，
@@ -497,7 +513,9 @@ function TerminalView({
 
     if (terminalCache.has(cacheKey)) {
       log(`Reattaching existing terminal for ${project.name} (${cacheKey})`)
-      attach(terminalCache.get(cacheKey)!)
+      const cache = terminalCache.get(cacheKey)!
+      setReady(!!cache.sessionId)
+      attach(cache)
     } else {
       // 传入 wrapper，让函数内先挂载 element 再 fit，确保初始尺寸正确
       // 注意：创建时不传递 agentId，不自动执行命令
@@ -513,6 +531,7 @@ function TerminalView({
         project.id, // 后端查找项目用的真实 project ID
         undefined,
       ).then((cache) => {
+        setReady(!!cache.sessionId)
         if (currentCacheKeyRef.current !== cacheKey) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
         requestAnimationFrame(() => {
@@ -570,9 +589,9 @@ function TerminalView({
     }
     window.addEventListener('resize', handleResize)
 
-    // 监听容器尺寸变化：平时只做 fit（纯前端重排）
-    // 拖拽结束后第一次触发时额外做 PTY resize（pendingPtyResize flag）
     let resizeRafId: number | null = null;
+    let prevCols = 0;
+    let prevRows = 0;
     const ro = new ResizeObserver(() => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
@@ -581,8 +600,9 @@ function TerminalView({
         const c = terminalCache.get(cacheKey)
         if (!c) return
         c.fitAddon.fit()
-        if (pendingPtyResize && c.sessionId) {
-          setPendingPtyResize(false)
+        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
+          prevCols = c.term.cols;
+          prevRows = c.term.rows;
           invoke('resize_terminal', {
             sessionId: c.sessionId,
             cols: c.term.cols,
@@ -638,7 +658,12 @@ function TerminalView({
   }, [tabAgentId, cacheKey, agentCommandOverride]);
 
   return (
-    <div className='flex-1 flex flex-col overflow-hidden min-w-0'>
+    <div className='relative flex-1 flex flex-col overflow-hidden min-w-0'>
+      {!ready && (
+        <div className='absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]'>
+          Connecting...
+        </div>
+      )}
       <div className='terminal-wrapper flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0' ref={wrapperRef} />
     </div>
   )
@@ -646,6 +671,7 @@ function TerminalView({
 
 export default React.memo(TerminalView, (prev, next) =>
   prev.project.id === next.project.id &&
+  prev.paneId === next.paneId &&
   prev.tabId === next.tabId &&
   prev.tabAgentId === next.tabAgentId &&
   prev.fontSize === next.fontSize &&

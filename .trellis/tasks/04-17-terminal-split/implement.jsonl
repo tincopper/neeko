@@ -1,0 +1,11 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "新增 useSplitLayout hook，要求 useCallback 与稳定引用"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "拆分布局状态应保持在 hook 与 App 协调层"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "新增 PaneNode/SplitState 类型并保持 TS 严格类型"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "终端组件调用 tauri invoke/listen，拆分后保持 IPC 交互一致"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "清理 side_terminal_width 需同步 Rust SessionStore 结构"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "为 useSplitLayout 添加 hook 单测"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "拆分树逻辑抽取为复用 hook，避免在三类终端重复"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "SessionStore 字段清理涉及前后端边界同步"}

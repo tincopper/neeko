@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { destroyTerminalCache } from "../components/terminal";
+import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig } from "../types";
 
 export function useLocalProjects() {
@@ -100,7 +100,7 @@ export function useLocalProjects() {
         }
         return next;
       });
-      destroyTerminalCache(projectId);
+      destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
