@@ -1,3 +1,6 @@
+// Skill navigation views
+export type SkillView = "local" | "marketplace" | "project" | "tools";
+
 // App configuration (persisted)
 export type DiffMode = "unified" | "split";
 export type AppTheme = "dark" | "light" | "one-dark-pro" | "claude";

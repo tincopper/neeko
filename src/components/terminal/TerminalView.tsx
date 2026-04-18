@@ -243,8 +243,9 @@ export async function createTerminalForProject(
     theme: {
       background: cssVar('--bg-primary') || '#000000',
       foreground: cssVar('--text-primary') || '#ededed',
-      cursor: '#ffffff',
-      selectionBackground: '#333333',
+      cursor: cssVar('--accent-blue') || '#ffffff',
+      selectionBackground: cssVar('--terminal-selection') || '#333333',
+      selectionForeground: cssVar('--text-primary') || '#ededed',
       black: '#000000',
       red: '#e06c75',
       green: '#98c379',

@@ -1,9 +1,12 @@
 import React, { useEffect } from "react";
 import { useSidebar } from "../../context/sidebar-context";
+import { SkillProvider } from "../../context/skill-context";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
 import ProjectsPanel from "../panels/ProjectsPanel";
 import FilesPanel from "../panels/FilesPanel";
+import SkillsPanel from "../panels/SkillsPanel";
+import SkillContent from "../skills/SkillContent";
 import MainContent from "../MainContent";
 import type {
    Project,
@@ -127,6 +130,7 @@ function AppLayout(props: AppLayoutProps) {
    const { activePanel } = useSidebar();
 
    const activeProjectName = props.activeProject?.name ?? null;
+   const skillsActive = activePanel === "skills";
 
    // Load file tree when files panel is opened with an active local project
    useEffect(() => {
@@ -144,102 +148,115 @@ function AppLayout(props: AppLayoutProps) {
             onAddRemote={props.onAddRemote}
          />
 
-         <PanelArea>
-            {activePanel === "projects" && (
-               <ProjectsPanel
-                  projects={props.projects}
-                  activeProjectId={props.activeProjectId}
-                  wslEntries={props.wslEntries}
-                  remoteEntries={props.remoteEntries}
-                  activeWslKey={props.activeWslKey}
-                  activeRemoteKey={props.activeRemoteKey}
-                  wslOpenSessions={props.wslOpenSessions}
-                  remoteOpenSessions={props.remoteOpenSessions}
-                  onAddProject={props.onAddProject}
-                  onRemoveProject={props.onRemoveProject}
-                  onSelectProject={props.onSelectProject}
-                  onSelectFile={props.onSelectFile}
-                  onRefreshGit={props.onRefreshGit}
-                  onBackToMainTerminal={props.onBackToMainTerminal}
-                  onOpenIde={props.onOpenIde}
-                  onOpenWorktreeTerminal={props.onOpenWorktreeTerminal}
-                  onSelectWorktreeFile={props.onSelectWorktreeFile}
-                  onSelectWslProject={props.onSelectWslProject}
-                  onCloseWslProject={props.onCloseWslProject}
-                  onRemoveWslProject={props.onRemoveWslProject}
-                  onRemoveWslEntry={props.onRemoveWslEntry}
-                  onAddWslProject={props.onAddWslProject}
-                  onSelectRemoteProject={props.onSelectRemoteProject}
-                  onCloseRemoteProject={props.onCloseRemoteProject}
-                  onRemoveRemoteProject={props.onRemoveRemoteProject}
-                  onRemoveRemoteEntry={props.onRemoveRemoteEntry}
-                  onAddRemoteProject={props.onAddRemoteProject}
-                  onSelectWslFile={props.onSelectWslFile}
-                  onSelectRemoteFile={props.onSelectRemoteFile}
-                  onRefreshWslGit={props.onRefreshWslGit}
-                  onRefreshRemoteGit={props.onRefreshRemoteGit}
-                  onOpenWslIde={props.onOpenWslIde}
-                  onOpenRemoteIde={props.onOpenRemoteIde}
-                  onOpenWslWorktreeTerminal={props.onOpenWslWorktreeTerminal}
-                  onOpenRemoteWorktreeTerminal={props.onOpenRemoteWorktreeTerminal}
-                  invokeRemoteGit={props.invokeRemoteGit}
-                  onDragEnd={props.onDragEnd}
-                  onSaveProjectSettings={props.onSaveProjectSettings}
-               />
-            )}
-            {activePanel === "files" && (
-               <FilesPanel
-                  projectName={activeProjectName}
-                  fileTree={props.fileTree}
-                  isLoading={props.fileViewLoading}
-                  activeFilePath={props.activeFilePath}
-                  onSelectFile={props.onFileSelect}
-                  onRefresh={props.onFileRefresh}
-               />
-            )}
-         </PanelArea>
+         {skillsActive ? (
+            <SkillProvider activeProjectId={props.activeProjectId}>
+               <PanelArea>
+                  <SkillsPanel />
+               </PanelArea>
+               <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
+                  <SkillContent />
+               </div>
+            </SkillProvider>
+         ) : (
+            <>
+               <PanelArea>
+                  {activePanel === "projects" && (
+                     <ProjectsPanel
+                        projects={props.projects}
+                        activeProjectId={props.activeProjectId}
+                        wslEntries={props.wslEntries}
+                        remoteEntries={props.remoteEntries}
+                        activeWslKey={props.activeWslKey}
+                        activeRemoteKey={props.activeRemoteKey}
+                        wslOpenSessions={props.wslOpenSessions}
+                        remoteOpenSessions={props.remoteOpenSessions}
+                        onAddProject={props.onAddProject}
+                        onRemoveProject={props.onRemoveProject}
+                        onSelectProject={props.onSelectProject}
+                        onSelectFile={props.onSelectFile}
+                        onRefreshGit={props.onRefreshGit}
+                        onBackToMainTerminal={props.onBackToMainTerminal}
+                        onOpenIde={props.onOpenIde}
+                        onOpenWorktreeTerminal={props.onOpenWorktreeTerminal}
+                        onSelectWorktreeFile={props.onSelectWorktreeFile}
+                        onSelectWslProject={props.onSelectWslProject}
+                        onCloseWslProject={props.onCloseWslProject}
+                        onRemoveWslProject={props.onRemoveWslProject}
+                        onRemoveWslEntry={props.onRemoveWslEntry}
+                        onAddWslProject={props.onAddWslProject}
+                        onSelectRemoteProject={props.onSelectRemoteProject}
+                        onCloseRemoteProject={props.onCloseRemoteProject}
+                        onRemoveRemoteProject={props.onRemoveRemoteProject}
+                        onRemoveRemoteEntry={props.onRemoveRemoteEntry}
+                        onAddRemoteProject={props.onAddRemoteProject}
+                        onSelectWslFile={props.onSelectWslFile}
+                        onSelectRemoteFile={props.onSelectRemoteFile}
+                        onRefreshWslGit={props.onRefreshWslGit}
+                        onRefreshRemoteGit={props.onRefreshRemoteGit}
+                        onOpenWslIde={props.onOpenWslIde}
+                        onOpenRemoteIde={props.onOpenRemoteIde}
+                        onOpenWslWorktreeTerminal={props.onOpenWslWorktreeTerminal}
+                        onOpenRemoteWorktreeTerminal={props.onOpenRemoteWorktreeTerminal}
+                        invokeRemoteGit={props.invokeRemoteGit}
+                        onDragEnd={props.onDragEnd}
+                        onSaveProjectSettings={props.onSaveProjectSettings}
+                     />
+                  )}
+                  {activePanel === "files" && (
+                     <FilesPanel
+                        projectName={activeProjectName}
+                        fileTree={props.fileTree}
+                        isLoading={props.fileViewLoading}
+                        activeFilePath={props.activeFilePath}
+                        onSelectFile={props.onFileSelect}
+                        onRefresh={props.onFileRefresh}
+                     />
+                  )}
+               </PanelArea>
 
-         <MainContent
-            activeProject={props.activeProject}
-            activeWorktreePath={props.activeWorktreePath}
-            activeWorktreeBranch={props.activeWorktreeBranch}
-            handleSelectProject={props.handleSelectProject}
-            handleAddProject={props.handleAddProject}
-            suppressResizeRef={props.suppressResizeRef}
-            tabs={props.tabs}
-            activeTabId={props.activeTabId}
-            onActivateTab={props.onActivateTab}
-            onCloseTab={props.onCloseTab}
-            onAddTab={props.onAddTab}
-            onTabStatusChange={props.onTabStatusChange}
-            agents={props.agents}
-            compactMode={props.compactMode}
-            showAgentBar={props.showAgentBar}
-            hiddenAgentIds={props.hiddenAgentIds}
-            onToggleHiddenAgent={props.onToggleHiddenAgent}
-            onAgentClick={props.onAgentClick}
-            showToast={props.showToast}
-            activeWslProject={props.activeWslProject}
-            activeWslWorktreePath={props.activeWslWorktreePath}
-            setWslOpenSessions={props.setWslOpenSessions}
-            activeRemoteProject={props.activeRemoteProject}
-            activeRemoteWorktreePath={props.activeRemoteWorktreePath}
-            remoteAuthStore={props.remoteAuthStore}
-            setRemoteOpenSessions={props.setRemoteOpenSessions}
-            wslDiffState={props.wslDiffState}
-            remoteDiffState={props.remoteDiffState}
-            worktreeDiffState={props.worktreeDiffState}
-            onWslDiffBack={props.onWslDiffBack}
-            onRemoteDiffBack={props.onRemoteDiffBack}
-            onWorktreeDiffBack={props.onWorktreeDiffBack}
-            // File view props
-            fileTabs={props.fileTabs}
-            activeFileTabId={props.activeFileTabId}
-            onFileCloseTab={props.onFileCloseTab}
-            onFileActivateTab={props.onFileActivateTab}
-            onFileSave={props.onFileSave}
-            onFileContentChange={props.onFileContentChange}
-         />
+               <MainContent
+                  activeProject={props.activeProject}
+                  activeWorktreePath={props.activeWorktreePath}
+                  activeWorktreeBranch={props.activeWorktreeBranch}
+                  handleSelectProject={props.handleSelectProject}
+                  handleAddProject={props.handleAddProject}
+                  suppressResizeRef={props.suppressResizeRef}
+                  tabs={props.tabs}
+                  activeTabId={props.activeTabId}
+                  onActivateTab={props.onActivateTab}
+                  onCloseTab={props.onCloseTab}
+                  onAddTab={props.onAddTab}
+                  onTabStatusChange={props.onTabStatusChange}
+                  agents={props.agents}
+                  compactMode={props.compactMode}
+                  showAgentBar={props.showAgentBar}
+                  hiddenAgentIds={props.hiddenAgentIds}
+                  onToggleHiddenAgent={props.onToggleHiddenAgent}
+                  onAgentClick={props.onAgentClick}
+                  showToast={props.showToast}
+                  activeWslProject={props.activeWslProject}
+                  activeWslWorktreePath={props.activeWslWorktreePath}
+                  setWslOpenSessions={props.setWslOpenSessions}
+                  activeRemoteProject={props.activeRemoteProject}
+                  activeRemoteWorktreePath={props.activeRemoteWorktreePath}
+                  remoteAuthStore={props.remoteAuthStore}
+                  setRemoteOpenSessions={props.setRemoteOpenSessions}
+                  wslDiffState={props.wslDiffState}
+                  remoteDiffState={props.remoteDiffState}
+                  worktreeDiffState={props.worktreeDiffState}
+                  onWslDiffBack={props.onWslDiffBack}
+                  onRemoteDiffBack={props.onRemoteDiffBack}
+                  onWorktreeDiffBack={props.onWorktreeDiffBack}
+                  // File view props
+                  fileTabs={props.fileTabs}
+                  activeFileTabId={props.activeFileTabId}
+                  onFileCloseTab={props.onFileCloseTab}
+                  onFileActivateTab={props.onFileActivateTab}
+                  onFileSave={props.onFileSave}
+                  onFileContentChange={props.onFileContentChange}
+               />
+            </>
+         )}
       </div>
    );
 }
