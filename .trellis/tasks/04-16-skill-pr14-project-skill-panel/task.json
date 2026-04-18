@@ -1,0 +1,44 @@
+{
+  "id": "skill-pr14-project-skill-panel",
+  "name": "skill-pr14-project-skill-panel",
+  "title": "PR#14: Project Skill panel — tag binding, installed skills, install/uninstall",
+  "description": "实现'项目 Skill'Tab：展示项目关联的 Tag Group、当前安装的 Skill 列表，支持绑定/解绑 TagGroup、安装/卸载 Skill",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-16",
+  "completedAt": null,
+  "branch": "feature/skill-pr14-project-skill-panel",
+  "base_branch": "feature/skill-pr13-marketplace-ui",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src/components/panels/SkillsPanel.tsx",
+    "src/context/skill-context.tsx",
+    "src/hooks/useTagGroups.ts",
+    "src-tauri/src/skill/commands.rs",
+    "src-tauri/src/skill/sync_engine.rs"
+  ],
+  "notes": "这是用户需求中'Project skill'的核心实现，展示项目关联的 skill 分组和已安装 skill",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src/views/ProjectDetail.tsx",
+      "src-tauri/src/commands/projects.rs"
+    ]
+  }
+}

@@ -1,4 +1,11 @@
 pub mod central_repo;
+pub mod migrations;
 pub mod skill_metadata;
+pub mod skill_store;
 pub mod tool_adapters;
 pub mod types;
+pub mod commands;
+pub mod content_hash;
+pub mod installer;
+pub mod scanner;
+pub mod sync_engine;
