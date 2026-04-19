@@ -3,7 +3,7 @@
   "name": "skill-pr02-skill-store",
   "title": "PR#2: SkillStore SQLite 持久化与 CRUD Tauri 命令",
   "description": "基于 rusqlite 实现 SkillStore 的 SQLite 持久化、数据库迁移、核心 CRUD 操作和 Tauri IPC 命令",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "backend",
   "scope": "skill",
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-04-15",
-  "completedAt": null,
+  "completedAt": "2026-04-19",
   "branch": "feature/skill-pr02-skill-store",
   "base_branch": "feature/skill-pr01-data-model",
   "worktree_path": null,
@@ -30,7 +30,7 @@
       "action": "improve-ut"
     }
   ],
-  "commit": null,
+  "commit": "c293db4",
   "pr_url": null,
   "subtasks": [],
   "children": [],
