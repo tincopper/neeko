@@ -3,7 +3,7 @@
   "name": "skill-pr01-data-model",
   "title": "PR#1: Skill 数据模型与类型定义",
   "description": "定义 Skill 系统核心数据结构（Rust + TypeScript），包括 SkillRecord、TagGroup、ToolAdapter 等类型，添加 rusqlite 依赖",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "fullstack",
   "scope": "skill",
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-04-15",
-  "completedAt": null,
+  "completedAt": "2026-04-19",
   "branch": "feature/skill-pr01-data-model",
   "base_branch": "main",
   "worktree_path": null,
@@ -21,7 +21,7 @@
     { "phase": 2, "action": "check" },
     { "phase": 3, "action": "update-spec" }
   ],
-  "commit": null,
+  "commit": "7c7f200",
   "pr_url": null,
   "subtasks": [],
   "children": [
