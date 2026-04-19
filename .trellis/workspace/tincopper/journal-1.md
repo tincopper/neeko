@@ -474,3 +474,37 @@ Implemented worktree file diff preview feature. Added Tauri commands for getting
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: Terminal split pane styling fix + PR#01 complete
+
+**Date**: 2026-04-19
+**Task**: Terminal split pane styling fix + PR#01 complete
+**Branch**: `main`
+
+### Summary
+
+Fixed terminal split pane active border to use theme border-color. Completed and archived Skill PR#01 data model task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f57f563` | (see git log) |
+| `b524232` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

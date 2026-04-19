@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-04-15
+- **Total Sessions**: 13
+- **Last Active**: 2026-04-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~476 | Active |
+| `journal-1.md` | ~510 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -27,8 +27,9 @@
 ## Session History
 
 <!-- @@@auto:session-history -->
-| # | Date | Title | Commits |
-|---|------|-------|---------|
+| # | Date | Title | Commits | Branch |
+|---|------|-------|---------|--------|
+| 13 | 2026-04-19 | Terminal split pane styling fix + PR#01 complete | `f57f563`, `b524232` | `main` |
 | 12 | 2026-04-15 | 实现 MarkdownPreview 组件：GFM + Mermaid + PlantUML + SVG 支持 | `7d3f663` |
 | 11 | 2026-04-14 | Settings字体大小三分 + 全局字体变量修复 | `3f89314`, `6fcf489`, `04268d4`, `33d2b32`, `b18af72`, `38bbdfd`, `76087ae`, `a681f54`, `e604f70`, `aa0b61d`, `bf5e2b0` |
 | 10 | 2026-04-14 | feat: Files Panel - multi-tab editor with syntax highlighting | `37ab639` |
