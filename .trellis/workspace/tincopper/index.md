@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
+- **Total Sessions**: 15
 - **Last Active**: 2026-04-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~543 | Active |
+| `journal-1.md` | ~576 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-04-19 | Improve Agent Skill Path config UI | `73d42a4` | `main` |
 | 14 | 2026-04-19 | Complete Skill PR#02 skill store | `c293db4` | `main` |
 | 13 | 2026-04-19 | Terminal split pane styling fix + PR#01 complete | `f57f563`, `b524232` | `main` |
 | 12 | 2026-04-15 | 实现 MarkdownPreview 组件：GFM + Mermaid + PlantUML + SVG 支持 | `7d3f663` |
