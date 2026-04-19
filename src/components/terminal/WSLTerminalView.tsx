@@ -7,8 +7,6 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
-import { CloseRoundIcon } from "../icons";
-import { pendingPtyResize } from "./TerminalView";
 
 interface WslTerminalCache {
   term: Terminal;
@@ -25,8 +23,28 @@ export function wslCacheKey(distro: string, projectId: string) {
   return `wsl:${distro}:${projectId}`;
 }
 
+function resolveWslCacheKey(keyOrPrefix: string): string | null {
+  if (wslTerminalCache.has(keyOrPrefix)) return keyOrPrefix;
+  for (const key of wslTerminalCache.keys()) {
+    if (key.startsWith(keyOrPrefix + ":")) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function parseProjectIdFromWslKey(key: string): string | null {
+  const withWorktree = key.match(/^wsl:.+:([^:]+):wt:[^:]+:p\d+$/);
+  if (withWorktree) return withWorktree[1];
+  const normal = key.match(/^wsl:.+:([^:]+):p\d+$/);
+  if (normal) return normal[1];
+  return null;
+}
+
 export function destroyWslCache(key: string) {
-  const cache = wslTerminalCache.get(key);
+  const resolved = resolveWslCacheKey(key);
+  if (!resolved) return;
+  const cache = wslTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
   // 通知后端关闭 PTY session，释放子进程
@@ -34,21 +52,32 @@ export function destroyWslCache(key: string) {
     invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
   cache.term.dispose();
-  wslTerminalCache.delete(key);
+  wslTerminalCache.delete(resolved);
+}
+
+export function destroyWslCachesByPrefix(prefix: string) {
+  const keys = Array.from(wslTerminalCache.keys());
+  for (const key of keys) {
+    if (key === prefix || key.startsWith(prefix + ":")) {
+      destroyWslCache(key);
+    }
+  }
 }
 
 /** 手动刷新 WSL 终端：关闭 PTY + 销毁缓存 + 触发重建 */
 export function refreshWslTerminal(key: string) {
-  const cache = wslTerminalCache.get(key);
+  const resolved = resolveWslCacheKey(key);
+  if (!resolved) return;
+  const cache = wslTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
   if (cache.sessionId) {
     invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
   cache.term.dispose();
-  wslTerminalCache.delete(key);
+  wslTerminalCache.delete(resolved);
   // 通过 rebuildCallbackMap 触发重建（需要组件注册）
-  wslRebuildCallbacks.get(key)?.();
+  wslRebuildCallbacks.get(resolved)?.();
 }
 
 /** WSL 终端重建回调注册表 */
@@ -67,8 +96,8 @@ export function getWslOpenProjectIds(distro: string): Set<string> {
   const result = new Set<string>();
   for (const [key, cache] of wslTerminalCache.entries()) {
     if (key.startsWith(`wsl:${distro}:`) && cache.sessionId) {
-      const projectId = key.slice(`wsl:${distro}:`.length);
-      result.add(projectId);
+      const projectId = parseProjectIdFromWslKey(key);
+      if (projectId) result.add(projectId);
     }
   }
   return result;
@@ -76,7 +105,9 @@ export function getWslOpenProjectIds(distro: string): Set<string> {
 
 /** 向已有 WSL 终端会话发送 agent 命令（Ctrl+C 中断当前进程后重新启动） */
 export function launchAgentInWslTerminal(cacheKey: string, command: string, args: string[]) {
-  const cache = wslTerminalCache.get(cacheKey);
+  const resolved = resolveWslCacheKey(cacheKey);
+  if (!resolved) return;
+  const cache = wslTerminalCache.get(resolved);
   if (!cache?.sessionId) return;
   const sessionId = cache.sessionId;
   const ctrlC = Array.from(new TextEncoder().encode("\x03"));
@@ -102,7 +133,8 @@ export async function switchAgentInWslTerminal(
   _fontFamily: string,
   agentCommandOverrides?: Record<string, string>,
 ) {
-  const wrapper = wslWrapperRefs.get(cacheKey)
+  const resolved = resolveWslCacheKey(cacheKey) ?? cacheKey
+  const wrapper = wslWrapperRefs.get(resolved)
   if (!wrapper) {
     // 回退：wrapper 未就绪，用旧路径
     const agent = await invoke<{ id: string; command: string; args: string[] }>(
@@ -116,13 +148,13 @@ export async function switchAgentInWslTerminal(
   }
 
   // 1. 摘除旧缓存事件监听，防止 terminal-closed 触发意外重建
-  const oldCache = wslTerminalCache.get(cacheKey)
+  const oldCache = wslTerminalCache.get(resolved)
   if (oldCache) {
     oldCache.unlisten?.()
   }
 
   // 2. 删除旧条目（槽位空出，重建时填入新实例）
-  wslTerminalCache.delete(cacheKey)
+  wslTerminalCache.delete(resolved)
 
   // 3. 清空 wrapper DOM
   while (wrapper.firstChild) {
@@ -130,7 +162,7 @@ export async function switchAgentInWslTerminal(
   }
 
   // 4. 触发重建（selectedAgentId 已由 handleSelectWslAgent 更新到 props）
-  wslRebuildCallbacks.get(cacheKey)?.()
+  wslRebuildCallbacks.get(resolved)?.()
 
   // 5. 后台异步关闭旧 PTY
   if (oldCache?.sessionId) {
@@ -144,14 +176,8 @@ export function getAllWslOpenProjectIds(): Set<string> {
   const result = new Set<string>();
   for (const [key, cache] of wslTerminalCache.entries()) {
     if (key.startsWith("wsl:") && cache.sessionId) {
-      // key format: wsl:{distro}:{projectId}  — distro may contain colons
-      // We stored it as wslCacheKey(distro, projectId) = `wsl:${distro}:${projectId}`
-      // Find the last colon that separates projectId
-      const withoutPrefix = key.slice(4); // remove "wsl:"
-      const lastColon = withoutPrefix.lastIndexOf(":");
-      if (lastColon >= 0) {
-        result.add(withoutPrefix.slice(lastColon + 1));
-      }
+      const projectId = parseProjectIdFromWslKey(key);
+      if (projectId) result.add(projectId);
     }
   }
   return result;
@@ -168,12 +194,9 @@ interface WSLTerminalViewProps {
   onSessionReady?: (projectId: string) => void;
   /** 会话建立后自动启动的 Agent ID */
   selectedAgentId?: string | null;
-  /** cache key 后缀，side terminal 传 ":side" */
+  paneId?: string;
+  /** cache key 后缀，worktree 终端使用 */
   cacheKeySuffix?: string;
-  /** side terminal 模式：显示关闭按钮并固定宽度 */
-  sideMode?: boolean;
-  onClose?: () => void;
-  width?: number;
 }
 
 export default React.memo(function WSLTerminalView({
@@ -185,49 +208,31 @@ export default React.memo(function WSLTerminalView({
   fontFamily = "",
   onSessionReady,
   selectedAgentId,
+  paneId = "p1",
   cacheKeySuffix = "",
-  sideMode = false,
-  onClose,
-  width,
 }: WSLTerminalViewProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
+  const [ready, setReady] = useState(false);
 
   // 字体変化时同步到已有实例
   useEffect(() => {
-    const key = wslCacheKey(distro, projectId) + cacheKeySuffix;
+    const key = `${wslCacheKey(distro, projectId)}${cacheKeySuffix}:${paneId}`;
     const cache = wslTerminalCache.get(key);
     if (!cache) return;
     cache.term.options.fontSize = fontSize;
     cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, distro, projectId]);
-
-  // side terminal 宽度变化时重算 PTY 尺寸（rerender-split-combined-hooks）
-  useEffect(() => {
-    const key = wslCacheKey(distro, projectId) + cacheKeySuffix;
-    const cache = wslTerminalCache.get(key);
-    if (!cache) return;
-    const timer = setTimeout(() => {
-      cache.fitAddon.fit();
-      if (cache.sessionId) {
-        invoke("resize_terminal", {
-          sessionId: cache.sessionId,
-          cols: cache.term.cols,
-          rows: cache.term.rows,
-        }).catch(() => {});
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [width]);
+  }, [fontSize, fontFamily, distro, projectId, cacheKeySuffix, paneId]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const key = wslCacheKey(distro, projectId) + cacheKeySuffix;
+    const key = `${wslCacheKey(distro, projectId)}${cacheKeySuffix}:${paneId}`;
     currentKeyRef.current = key;
+    setReady(false);
 
     // 注册重建回调
     wslRebuildCallbacks.set(key, () => {
@@ -262,7 +267,9 @@ export default React.memo(function WSLTerminalView({
     detachAll();
 
     if (wslTerminalCache.has(key)) {
-      attach(wslTerminalCache.get(key)!);
+      const cache = wslTerminalCache.get(key)!;
+      setReady(!!cache.sessionId);
+      attach(cache);
     } else {
       // 新建终端
       const element = document.createElement("div");
@@ -318,6 +325,7 @@ export default React.memo(function WSLTerminalView({
 
           if (currentKeyRef.current !== key) return;
           cache.sessionId = session.id;
+          setReady(true);
           onSessionReady?.(projectId);
 
           // 自动启动 Agent（WSL shell 启动较慢，延迟 500ms 确保 shell 就绪）
@@ -361,6 +369,7 @@ export default React.memo(function WSLTerminalView({
           });
         } catch (err) {
           if (currentKeyRef.current !== key) return;
+          setReady(true);
           term.write(`\x1b[31m[WSL] Failed to connect: ${err}\x1b[0m\r\n`);
         }
       })();
@@ -379,8 +388,9 @@ export default React.memo(function WSLTerminalView({
       }
     };
     window.addEventListener("resize", handleResize);
-    // 监听容器尺寸变化：平时只做 fit，拖拽结束后第一次触发时额外做 PTY resize
     let resizeRafId: number | null = null;
+    let prevCols = 0;
+    let prevRows = 0;
     const ro = new ResizeObserver(() => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
@@ -388,7 +398,9 @@ export default React.memo(function WSLTerminalView({
         const c = wslTerminalCache.get(key);
         if (!c) return;
         c.fitAddon.fit();
-        if (pendingPtyResize && c.sessionId) {
+        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
+          prevCols = c.term.cols;
+          prevRows = c.term.rows;
           invoke("resize_terminal", {
             sessionId: c.sessionId,
             cols: c.term.cols,
@@ -407,28 +419,15 @@ export default React.memo(function WSLTerminalView({
       wslRebuildCallbacks.delete(key);
       wslWrapperRefs.delete(key);
     };
-  }, [distro, projectId, projectPath, cacheKeySuffix, rebuildCount]);
-
-  if (sideMode) {
-    return (
-      <div
-        className="shrink-0 flex flex-col overflow-hidden min-w-0 min-h-0 bg-bg-primary"
-        style={width ? { flex: "none", width } : undefined}
-      >
-        <div className="flex items-center gap-2 p-1 px-2.5 bg-bg-secondary border-b border-border shrink-0 h-7 box-border">
-          <span className="text-xs font-medium text-text-secondary">Terminal</span>
-          <span className="text-[0.72em] text-text-muted ml-1">Ctrl+W to close</span>
-          <button className="ml-auto bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors duration-150" onClick={onClose} title="Close (Ctrl+W)">
-            <CloseRoundIcon size={12} />
-          </button>
-        </div>
-        <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
-      </div>
-    );
-  }
+  }, [distro, projectId, projectPath, cacheKeySuffix, paneId, rebuildCount]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">
+      {!ready && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]">
+          Connecting...
+        </div>
+      )}
       <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
     </div>
   );

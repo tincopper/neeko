@@ -23,7 +23,6 @@ pub fn save_session(
     wsl_entries: Vec<WSLEntrySession>,
     remote_entries: Vec<RemoteEntrySession>,
     sidebar_width: Option<u32>,
-    side_terminal_width: Option<u32>,
     worktree_state: Option<std::collections::HashMap<String, String>>,
     state: State<AppStateWrapper>,
 ) -> Result<(), String> {
@@ -37,7 +36,6 @@ pub fn save_session(
         Some(&wsl_entries),
         Some(&remote_entries),
         sidebar_width,
-        side_terminal_width,
     );
     if let Some(wt) = worktree_state {
         session.worktree_state = wt;

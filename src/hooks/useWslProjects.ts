@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { wslCacheKey, destroyWslCache } from "../components/terminal";
+import { wslCacheKey, destroyWslCachesByPrefix } from "../components/terminal";
 import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../types";
 
 export type ActiveWslKey = { distro: string; projectId: string } | null;
@@ -37,7 +37,7 @@ export function useWslProjects(saveSession: SaveSessionFn) {
   const handleCloseWslProject = useCallback((entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
-      destroyWslCache(wslCacheKey(entry.distro, projectId));
+      destroyWslCachesByPrefix(wslCacheKey(entry.distro, projectId));
     }
     if (activeWslKey?.projectId === projectId) {
       setActiveWslKey(null);
@@ -49,7 +49,7 @@ export function useWslProjects(saveSession: SaveSessionFn) {
   const handleRemoveWslProject = useCallback(async (entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
-      destroyWslCache(wslCacheKey(entry.distro, projectId));
+      destroyWslCachesByPrefix(wslCacheKey(entry.distro, projectId));
     }
     if (activeWslKey?.projectId === projectId) {
       setActiveWslKey(null);
@@ -69,7 +69,7 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     if (entry) {
       entry.projects.forEach(p => {
         const key = wslCacheKey(entry.distro, p.id);
-        destroyWslCache(key);
+        destroyWslCachesByPrefix(key);
         setWslOpenSessions(prev => { const next = new Set(prev); next.delete(p.id); return next; });
       });
       if (activeWslKey && entry.projects.some(p => p.id === activeWslKey.projectId)) {

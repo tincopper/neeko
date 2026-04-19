@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
+import { SplitLayout, TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import FileViewer from "./panels/FileViewer";
@@ -196,6 +196,12 @@ function MainContent({
    );
 
    const isTerminalView = activeProject?.active_view === "Terminal";
+   const localLayoutId = activeProject
+      ? `local:${activeProject.id}:${activeTabId ?? "default"}`
+      : "local:none";
+   const wslLayoutId = activeWslProject
+      ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${activeWslWorktreePath ?? "main"}`
+      : "wsl:none";
    const diffFilePath =
       typeof activeProject?.active_view === "object"
          ? (activeProject.active_view as { Diff: { file_path: string } }).Diff?.file_path || null
@@ -301,18 +307,24 @@ function MainContent({
                   />
                ) : (
                   <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-                     <WSLTerminalView
-                        distro={activeWslProject.distro}
-                        projectId={activeWslProject.project.id}
-                        projectName={activeWslProject.project.name}
-                        projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
-                        fontSize={config.terminalFontSize}
-                        fontFamily={config.fontFamily}
-                        cacheKeySuffix={
-                           activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}` : ""
-                        }
-                        selectedAgentId={activeWslProject.project.selected_agent}
-                        onSessionReady={onWslSessionReady}
+                     <SplitLayout
+                        layoutId={wslLayoutId}
+                        renderPane={(paneId) => (
+                           <WSLTerminalView
+                              paneId={paneId}
+                              distro={activeWslProject.distro}
+                              projectId={activeWslProject.project.id}
+                              projectName={activeWslProject.project.name}
+                              projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
+                              fontSize={config.terminalFontSize}
+                              fontFamily={config.fontFamily}
+                              cacheKeySuffix={
+                                 activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}` : ""
+                              }
+                              selectedAgentId={activeWslProject.project.selected_agent}
+                              onSessionReady={onWslSessionReady}
+                           />
+                        )}
                      />
                   </div>
                )}
@@ -360,20 +372,26 @@ function MainContent({
                ) : isTerminalView || activeWorktreePath ? (
                   <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
                      {!activeWorktreePath && (
-                        <TerminalView
-                           project={activeProject}
-                           tabId={activeTabId}
-                           tabAgentId={activeTabAgentId}
-                           fontSize={config.terminalFontSize}
-                           shell={config.shell}
-                           fontFamily={config.fontFamily}
-                           suppressResizeRef={suppressResizeRef}
-                           agentCommandOverride={
-                              config.agentCommandOverrides?.[
-                              activeTabAgentId ?? activeProject.selected_agent ?? ""
-                              ]
-                           }
-                           onTabStatusChange={handleTerminalTabStatusChange}
+                        <SplitLayout
+                           layoutId={localLayoutId}
+                           renderPane={(paneId) => (
+                              <TerminalView
+                                 paneId={paneId}
+                                 project={activeProject}
+                                 tabId={activeTabId}
+                                 tabAgentId={activeTabAgentId}
+                                 fontSize={config.terminalFontSize}
+                                 shell={config.shell}
+                                 fontFamily={config.fontFamily}
+                                 suppressResizeRef={suppressResizeRef}
+                                 agentCommandOverride={
+                                    config.agentCommandOverrides?.[
+                                       activeTabAgentId ?? activeProject.selected_agent ?? ""
+                                    ]
+                                 }
+                                 onTabStatusChange={handleTerminalTabStatusChange}
+                              />
+                           )}
                         />
                      )}
 

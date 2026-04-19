@@ -89,7 +89,6 @@ fn session_store_defaults_for_missing_fields() {
     assert!(store.wsl_entries.is_empty());
     assert!(store.remote_entries.is_empty());
     assert!(store.sidebar_width.is_none());
-    assert!(store.side_terminal_width.is_none());
     assert!(store.worktree_state.is_empty());
 }
 
@@ -111,7 +110,6 @@ fn session_store_serde_roundtrip() {
         wsl_entries: vec![],
         remote_entries: vec![],
         sidebar_width: Some(300),
-        side_terminal_width: None,
         worktree_state: HashMap::new(),
     };
 
