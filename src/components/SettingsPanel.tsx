@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../utils/idePresets";
 import { getAgentIconSrc } from "../utils/agents";
 import type { AppConfig, DiffMode, AgentConfig } from "../types";
 import { useAppContext } from "../context/app-context";
 import { cn } from "../utils/cn";
-import { EditorIcon, TerminalIcon, CodeIcon, GridIcon, GitLogoIcon, CloseIcon, AppearanceIcon } from "./icons";
+import { EditorIcon, TerminalIcon, CodeIcon, GridIcon, GitLogoIcon, CloseIcon, AppearanceIcon, FolderIcon } from "./icons";
 import { Input, Button } from "./ui";
 
 // re-export for backward compatibility
@@ -78,12 +79,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
    const [newIdeName, setNewIdeName] = useState("");
    const [newIdeCommand, setNewIdeCommand] = useState("");
 
-   const [newAgentName, setNewAgentName] = useState("");
-   const [newAgentCommand, setNewAgentCommand] = useState("");
-   const [newAgentArgs, setNewAgentArgs] = useState("");
+const [newAgentName, setNewAgentName] = useState("");
+    const [newAgentCommand, setNewAgentCommand] = useState("");
+    const [newAgentArgs, setNewAgentArgs] = useState("");
+    const [newAgentSkillPath, setNewAgentSkillPath] = useState("");
 
    const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
    const [editingValue, setEditingValue] = useState("");
+   const [skillPathEditingAgentId, setSkillPathEditingAgentId] = useState<string | null>(null);
+   const [skillPathInputValue, setSkillPathInputValue] = useState("");
 
    useEffect(() => { setShellInput(config.shell); }, [config.shell]);
 
@@ -163,32 +167,36 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
       onConfigChange({ ...config, customIdes: next });
    };
 
-   const BUILTIN_AGENTS: AgentConfig[] = [
-      { id: "opencode", name: "opencode", command: "opencode", args: [], env: {}, icon: "opencode.png", enabled: true },
-      { id: "claude-code", name: "claude-code", command: "claude", args: [], env: {}, icon: "claude-code.png", enabled: true },
-      { id: "qwen", name: "qwen", command: "qwen", args: [], env: {}, icon: "qwen.png", enabled: true },
-      { id: "gemini", name: "gemini", command: "gemini", args: [], env: {}, icon: "gemini.png", enabled: true },
-      { id: "codex", name: "codex", command: "codex", args: [], env: {}, icon: "codex.png", enabled: true },
-      { id: "qoder", name: "qoder", command: "qoder", args: [], env: {}, icon: "qoder.svg", enabled: true },
-      { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], env: {}, icon: "codebuddy.svg", enabled: true },
+   const BUILTIN_AGENTS: (AgentConfig & { defaultSkillPath: string | null })[] = [
+      { id: "opencode", name: "opencode", command: "opencode", args: [], env: {}, icon: "opencode.png", enabled: true, defaultSkillPath: "~/.agents/skills" },
+      { id: "claude-code", name: "claude-code", command: "claude", args: [], env: {}, icon: "claude-code.png", enabled: true, defaultSkillPath: "~/.claude/skills" },
+      { id: "qwen", name: "qwen", command: "qwen", args: [], env: {}, icon: "qwen.png", enabled: true, defaultSkillPath: "~/.qwen/skills" },
+      { id: "gemini", name: "gemini", command: "gemini", args: [], env: {}, icon: "gemini.png", enabled: true, defaultSkillPath: "~/.gemini/skills" },
+      { id: "codex", name: "codex", command: "codex", args: [], env: {}, icon: "codex.png", enabled: true, defaultSkillPath: "~/.codex/skills" },
+      { id: "qoder", name: "qoder", command: "qoder", args: [], env: {}, icon: "qoder.svg", enabled: true, defaultSkillPath: "~/.qoder/skills" },
+      { id: "codebuddy", name: "codebuddy", command: "codebuddy", args: [], env: {}, icon: "codebuddy.svg", enabled: true, defaultSkillPath: "~/.codebuddy/skills" },
    ];
 
-   const addCustomAgent = async () => {
-      const name = newAgentName.trim();
-      const command = newAgentCommand.trim();
-      if (!name || !command) return;
-      const id = `custom:${name.toLowerCase().replace(/\s+/g, "-")}`;
-      const exists = (config.customAgents || []).some(a => a.id === id);
-      if (exists) return;
-      const args = newAgentArgs.trim() ? newAgentArgs.trim().split(",").map(s => s.trim()).filter(Boolean) : [];
-      const newAgent: AgentConfig = { id, name, command, args, env: {}, icon: "cli.svg", enabled: true };
-      const nextCustom = [...(config.customAgents || []), newAgent];
-      onConfigChange({ ...config, customAgents: nextCustom });
-      try { await invoke("add_agent", { agent: newAgent }); } catch (e) { console.error("[Settings] Failed to add agent:", e); }
-      setNewAgentName("");
-      setNewAgentCommand("");
-      setNewAgentArgs("");
-   };
+const addCustomAgent = async () => {
+       const name = newAgentName.trim();
+       const command = newAgentCommand.trim();
+       if (!name || !command) return;
+       const id = `custom:${name.toLowerCase().replace(/\s+/g, "-")}`;
+       const exists = (config.customAgents || []).some(a => a.id === id);
+       if (exists) return;
+       const args = newAgentArgs.trim() ? newAgentArgs.trim().split(",").map(s => s.trim()).filter(Boolean) : [];
+       const newAgent: AgentConfig = { id, name, command, args, env: {}, icon: "cli.svg", enabled: true };
+       const nextCustom = [...(config.customAgents || []), newAgent];
+       // Save skill path to overrides if provided
+       const nextOverrides = { ...(config.agentSkillPathOverrides || {}) };
+       if (newAgentSkillPath.trim()) { nextOverrides[id] = newAgentSkillPath.trim(); }
+       onConfigChange({ ...config, customAgents: nextCustom, agentSkillPathOverrides: nextOverrides });
+       try { await invoke("add_agent", { agent: newAgent }); } catch (e) { console.error("[Settings] Failed to add agent:", e); }
+       setNewAgentName("");
+       setNewAgentCommand("");
+       setNewAgentArgs("");
+       setNewAgentSkillPath("");
+    };
 
    const removeCustomAgent = async (idx: number) => {
       const agent = (config.customAgents || [])[idx];
@@ -215,10 +223,51 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
       setEditingPresetId(null);
    };
 
-   const getEffectiveAgentCommand = (agent: AgentConfig) =>
-      config.agentCommandOverrides?.[agent.id] ?? agent.command;
+const getEffectiveAgentCommand = (agent: AgentConfig) =>
+       config.agentCommandOverrides?.[agent.id] ?? agent.command;
 
-   const startEditPreset = (ide: import("../utils/idePresets").IdePreset) => {
+   const getEffectiveSkillPath = (agentId: string, fallback: string | null | undefined) =>
+       config.agentSkillPathOverrides?.[agentId] ?? fallback ?? "";
+
+const selectSkillPath = async (agentId: string, fallback: string | null | undefined) => {
+        try {
+           const selected = await open({ multiple: false, directory: true });
+           if (selected) {
+              const overrides = { ...(config.agentSkillPathOverrides || {}) };
+              if (selected && selected !== fallback) {
+                 overrides[agentId] = selected;
+              } else {
+                 delete overrides[agentId];
+              }
+              onConfigChange({ ...config, agentSkillPathOverrides: overrides });
+           }
+        } catch (e) {
+           console.error("[Settings] Failed to select skill path:", e);
+        }
+    };
+
+    const startEditSkillPath = (agentId: string, currentPath: string) => {
+        setSkillPathEditingAgentId(agentId);
+        setSkillPathInputValue(currentPath);
+    };
+
+    const saveSkillPath = (agentId: string, fallback: string | null | undefined) => {
+        const trimmed = skillPathInputValue.trim();
+        const overrides = { ...(config.agentSkillPathOverrides || {}) };
+        if (trimmed && trimmed !== fallback) {
+            overrides[agentId] = trimmed;
+        } else {
+            delete overrides[agentId];
+        }
+        onConfigChange({ ...config, agentSkillPathOverrides: overrides });
+        setSkillPathEditingAgentId(null);
+    };
+
+    const cancelSkillPathEdit = () => {
+        setSkillPathEditingAgentId(null);
+    };
+
+    const startEditPreset = (ide: import("../utils/idePresets").IdePreset) => {
       const current = config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
       setEditingPresetId(ide.id);
       setEditingValue(current);
@@ -432,66 +481,125 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(({ onConfigChange
                               <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Built-in Agents</div>
                               <div className="text-[0.79em] text-text-muted leading-relaxed">Pre-configured AI agent CLIs. Select one when adding a project or from the title bar.</div>
                            </div>
-                           <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
-                              {BUILTIN_AGENTS.map(agent => {
-                                 const iconSrc = getAgentIconSrc(agent.icon);
-                                 const isEditing = editingPresetId === agent.id;
-                                 const effectiveCmd = getEffectiveAgentCommand(agent);
-                                 const isOverridden = !!config.agentCommandOverrides?.[agent.id];
-                                 return (
-                                    <div key={agent.id} className="flex items-center gap-2.5 py-[7px] px-3 border-b border-white/[0.03] text-[0.86em] [&:last-child]:border-b-0">
-                                       {iconSrc ? (
-                                          <img src={iconSrc} className="text-[var(--font-size)] w-[18px] h-[18px] object-contain" alt="" />
-                                       ) : (
-                                          <span className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain">{""}</span>
-                                       )}
-                                       <span className="text-text-primary font-medium min-w-[100px] shrink-0">{agent.name}</span>
-                                       {isEditing ? (
-                                          <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={editingValue} autoFocus spellCheck={false}
-                                             onChange={e => setEditingValue(e.target.value)}
-                                             onBlur={() => saveAgentOverride(agent.id)}
-                                             onKeyDown={e => { if (e.key === "Enter") saveAgentOverride(agent.id); if (e.key === "Escape") cancelPresetEdit(); }} />
-                                       ) : (
-                                          <span className={cn("text-text-muted font-mono text-[0.82em] flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary", isOverridden && "!text-accent-blue")}
-                                             title="Double-click to edit" onDoubleClick={() => startEditAgent(agent)}>
-                                             {effectiveCmd}
-                                          </span>
-                                       )}
-                                       {isOverridden && !isEditing && (
-                                          <button className="bg-none border-none text-text-muted cursor-pointer text-[0.93em] py-0.5 px-1 rounded shrink-0 transition-colors duration-150 leading-none hover:text-accent-blue" title="Reset to default"
-                                             onClick={() => { const overrides = { ...(config.agentCommandOverrides || {}) }; delete overrides[agent.id]; onConfigChange({ ...config, agentCommandOverrides: overrides }); }}>&#x21BA;</button>
-                                       )}
-                                    </div>
-                                 );
-                              })}
-                           </div>
+<div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
+                               {BUILTIN_AGENTS.map(agent => {
+                                  const iconSrc = getAgentIconSrc(agent.icon);
+                                  const isEditing = editingPresetId === agent.id;
+                                  const effectiveCmd = getEffectiveAgentCommand(agent);
+                                  const isOverridden = !!config.agentCommandOverrides?.[agent.id];
+                                  const effectiveSkillPath = getEffectiveSkillPath(agent.id, agent.defaultSkillPath);
+                                  const hasSkillPath = !!effectiveSkillPath;
+                                  return (
+                                     <React.Fragment key={agent.id}>
+                                        {/* Agent 行 */}
+                                        <div className="flex items-center gap-2.5 py-[7px] px-3 border-b border-white/[0.03] text-[0.86em]">
+                                           {iconSrc ? (
+                                              <img src={iconSrc} className="text-[var(--font-size)] w-[18px] h-[18px] object-contain" alt="" />
+                                           ) : (
+                                              <span className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain">{""}</span>
+                                           )}
+                                           <span className="text-text-primary font-medium min-w-[100px] shrink-0">{agent.name}</span>
+                                           {isEditing ? (
+                                              <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={editingValue} autoFocus spellCheck={false}
+                                                 onChange={e => setEditingValue(e.target.value)}
+                                                 onBlur={() => saveAgentOverride(agent.id)}
+                                                 onKeyDown={e => { if (e.key === "Enter") saveAgentOverride(agent.id); if (e.key === "Escape") cancelPresetEdit(); }} />
+                                           ) : (
+                                              <span className={cn("text-text-muted font-mono text-[0.82em] flex-1 min-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary", isOverridden && "!text-accent-blue")}
+                                                 title="Double-click to edit" onDoubleClick={() => startEditAgent(agent)}>
+                                                 {effectiveCmd}
+                                              </span>
+                                           )}
+                                           {isOverridden && !isEditing && (
+                                              <button className="bg-none border-none text-text-muted cursor-pointer text-[0.93em] py-0.5 px-1 rounded shrink-0 transition-colors duration-150 leading-none hover:text-accent-blue" title="Reset to default"
+                                                 onClick={() => { const overrides = { ...(config.agentCommandOverrides || {}) }; delete overrides[agent.id]; onConfigChange({ ...config, agentCommandOverrides: overrides }); }}>&#x21BA;</button>
+                                           )}
+                                        </div>
+{/* Skill 路径行 */}
+                                         <div className="flex items-center gap-2.5 py-[5px] px-3 pb-2 border-b border-white/[0.03] text-[0.79em] [&:last-child]:border-b-0 bg-bg-secondary/30">
+                                            <span className="w-[18px] shrink-0" />
+                                            <span className="text-text-muted min-w-[100px] shrink-0">Skill Path:</span>
+                                            <button type="button" className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue" title="选择文件夹"
+                                               onClick={() => selectSkillPath(agent.id, agent.defaultSkillPath)}>
+                                               <FolderIcon size={14} />
+                                            </button>
+                                            {skillPathEditingAgentId === agent.id ? (
+                                               <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={skillPathInputValue} autoFocus spellCheck={false}
+                                                  onChange={e => setSkillPathInputValue(e.target.value)}
+                                                  onBlur={() => saveSkillPath(agent.id, agent.defaultSkillPath)}
+                                                  onKeyDown={e => { if (e.key === "Enter") saveSkillPath(agent.id, agent.defaultSkillPath); if (e.key === "Escape") cancelSkillPathEdit(); }} />
+                                            ) : (
+                                               <span className={cn("text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover", !hasSkillPath && "italic")}
+                                                  title="点击编辑" onClick={() => startEditSkillPath(agent.id, effectiveSkillPath || agent.defaultSkillPath || "")}>
+                                                  {hasSkillPath ? effectiveSkillPath : (agent.defaultSkillPath || "Not set")}
+                                               </span>
+                                            )}
+                                         </div>
+                                     </React.Fragment>
+                                  );
+                               })}
+                            </div>
                         </div>
                         <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0 mt-2">
                            <div className="flex-1 min-w-0">
                               <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Custom Agents</div>
                               <div className="text-[0.79em] text-text-muted leading-relaxed">Add custom AI agent CLIs by specifying a name, command, and optional arguments.</div>
                            </div>
-                           {(config.customAgents || []).length > 0 && (
-                              <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
-                                 {(config.customAgents || []).map((agent, idx) => {
-                                    const iconSrc = getAgentIconSrc(agent.icon);
-                                    return (
-                                       <div key={agent.id} className="flex items-center gap-2.5 py-[7px] px-3 border-b border-white/[0.03] text-[0.86em] [&:last-child]:border-b-0">
-                                          {iconSrc ? <img src={iconSrc} className="text-[var(--font-size)] w-[18px] h-[18px] object-contain" alt="" /> : <span className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0">{""}</span>}
-                                          <span className="text-text-primary font-medium min-w-[100px] shrink-0">{agent.name}</span>
-                                          <span className="text-text-muted font-mono text-[0.82em] flex-1">{agent.command}{agent.args.length > 0 ? " " + agent.args.join(" ") : ""}</span>
-                                          <button className="bg-none border-none text-text-muted cursor-pointer text-[0.79em] py-0.5 px-1 rounded ml-auto shrink-0 hover:text-text-primary hover:bg-bg-hover" onClick={() => removeCustomAgent(idx)} title="Remove">&times;</button>
-                                       </div>
-                                    );
-                                 })}
-                              </div>
-                           )}
-                           <div className="flex flex-col gap-1.5 w-full">
-                              <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Name, e.g. My Agent" value={newAgentName} onChange={e => setNewAgentName(e.target.value)} spellCheck={false} />
-                              <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Command, e.g. my-agent" value={newAgentCommand} onChange={e => setNewAgentCommand(e.target.value)} spellCheck={false} />
-                              <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Args (comma separated), e.g. --verbose, --model gpt-4" value={newAgentArgs} onChange={e => setNewAgentArgs(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }} spellCheck={false} />
-                              <Button variant="primary" size="sm" className="self-end" onClick={addCustomAgent} disabled={!newAgentName.trim() || !newAgentCommand.trim()}>Add Agent</Button>
-                           </div>
+{(config.customAgents || []).length > 0 && (
+                               <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
+                                  {(config.customAgents || []).map((agent, idx) => {
+                                     const iconSrc = getAgentIconSrc(agent.icon);
+                                     const effectiveSkillPath = getEffectiveSkillPath(agent.id, agent.skillPath);
+                                     const hasSkillPath = !!effectiveSkillPath;
+                                     return (
+                                        <React.Fragment key={agent.id}>
+                                           {/* Agent 行 */}
+                                           <div className="flex items-center gap-2.5 py-[7px] px-3 border-b border-white/[0.03] text-[0.86em]">
+                                              {iconSrc ? <img src={iconSrc} className="text-[var(--font-size)] w-[18px] h-[18px] object-contain" alt="" /> : <span className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0">{""}</span>}
+                                              <span className="text-text-primary font-medium min-w-[100px] shrink-0">{agent.name}</span>
+                                              <span className="text-text-muted font-mono text-[0.82em] flex-1">{agent.command}{agent.args.length > 0 ? " " + agent.args.join(" ") : ""}</span>
+                                              <button className="bg-none border-none text-text-muted cursor-pointer text-[0.79em] py-0.5 px-1 rounded ml-auto shrink-0 hover:text-text-primary hover:bg-bg-hover" onClick={() => removeCustomAgent(idx)} title="Remove">&times;</button>
+                                           </div>
+{/* Skill 路径行 */}
+                                            <div className="flex items-center gap-2.5 py-[5px] px-3 pb-2 border-b border-white/[0.03] text-[0.79em] [&:last-child]:border-b-0 bg-bg-secondary/30">
+                                               <span className="w-[18px] shrink-0" />
+                                               <span className="text-text-muted min-w-[100px] shrink-0">Skill Path:</span>
+                                               {skillPathEditingAgentId === agent.id ? (
+                                                  <>
+                                                     <Input className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]" value={skillPathInputValue} autoFocus spellCheck={false}
+                                                        onChange={e => setSkillPathInputValue(e.target.value)}
+                                                        onBlur={() => saveSkillPath(agent.id, agent.skillPath)}
+                                                        onKeyDown={e => { if (e.key === "Enter") saveSkillPath(agent.id, agent.skillPath); if (e.key === "Escape") cancelSkillPathEdit(); }} />
+                                                     <button type="button" className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-text-primary" title="选择文件夹"
+                                                        onClick={() => selectSkillPath(agent.id, agent.skillPath)}>
+                                                        <FolderIcon size={14} />
+                                                     </button>
+                                                  </>
+) : (
+                                               <>
+                                                  <button type="button" className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue" title="选择文件夹"
+                                                     onClick={() => selectSkillPath(agent.id, agent.skillPath)}>
+                                                     <FolderIcon size={14} />
+                                                  </button>
+                                                  <span className={cn("text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover", !hasSkillPath && "italic")}
+                                                     title="点击编辑" onClick={() => startEditSkillPath(agent.id, effectiveSkillPath || agent.skillPath || "")}>
+                                                     {hasSkillPath ? effectiveSkillPath : "Not set"}
+                                                  </span>
+                                               </>
+                                               )}
+                                           </div>
+                                        </React.Fragment>
+                                     );
+                                  })}
+                               </div>
+                            )}
+<div className="flex flex-col gap-1.5 w-full">
+                               <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Name, e.g. My Agent" value={newAgentName} onChange={e => setNewAgentName(e.target.value)} spellCheck={false} />
+                               <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Command, e.g. my-agent" value={newAgentCommand} onChange={e => setNewAgentCommand(e.target.value)} spellCheck={false} />
+                               <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Args (comma separated), e.g. --verbose, --model gpt-4" value={newAgentArgs} onChange={e => setNewAgentArgs(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }} spellCheck={false} />
+                               <Input className="py-[7px] px-2.5 text-[0.86em]" type="text" placeholder="Skill path (optional), e.g. ~/.myagent/skills" value={newAgentSkillPath} onChange={e => setNewAgentSkillPath(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomAgent(); }} spellCheck={false} />
+                               <Button variant="primary" size="sm" className="self-end" onClick={addCustomAgent} disabled={!newAgentName.trim() || !newAgentCommand.trim()}>Add Agent</Button>
+                            </div>
                         </div>
                      </>
                   )}

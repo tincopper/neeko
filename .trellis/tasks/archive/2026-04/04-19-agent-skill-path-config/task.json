@@ -1,0 +1,43 @@
+{
+  "id": "agent-skill-path-config",
+  "name": "agent-skill-path-config",
+  "title": "Agent Skill路径配置优化",
+  "description": "优化 SettingsPanel 中 Agent 的 Skill 路径配置 UI",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "ui",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-19",
+  "completedAt": "2026-04-19",
+  "branch": "feature/agent-skill-path-config",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish-work"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/components/SettingsPanel.tsx"
+  ],
+  "notes": "优化现有实现，当前方案问题：1. emoji按钮不直观 2. 无路径显示 3. 无清除功能",
+  "meta": {}
+}

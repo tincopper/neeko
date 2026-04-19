@@ -16,6 +16,7 @@ import {
   OctagonAlert,
   Search,
   FolderGit2,
+  Folder,
   Sun,
   type LucideProps,
 } from "lucide-react";
@@ -28,6 +29,7 @@ export const TrashIcon = Trash2;
 export const PlusIcon = Plus;
 export const FileIcon = FileCode2;
 export const FolderGitIcon = FolderGit2;
+export const FolderIcon = Folder;
 export const SettingsIcon = Settings;
 export const EditorIcon = AlignJustify;
 export const TerminalIcon = Terminal;

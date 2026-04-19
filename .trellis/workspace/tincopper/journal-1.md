@@ -541,3 +541,36 @@ Marked PR#02 SkillStore SQLite CRUD as completed and archived.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: Improve Agent Skill Path config UI
+
+**Date**: 2026-04-19
+**Task**: Improve Agent Skill Path config UI
+**Branch**: `main`
+
+### Summary
+
+Optimized Agent Skill Path config UI in SettingsPanel. Added dedicated row with label, path display, FolderGitIcon/TrashIcon buttons, clear functionality.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `73d42a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
