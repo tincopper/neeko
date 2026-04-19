@@ -1,4 +1,4 @@
-﻿use serde::Serialize;
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
@@ -295,6 +295,144 @@ pub async fn import_discovered_skill(
             central_path: result.central_path.to_string_lossy().to_string(),
             enabled: true, status: "ok".to_string(), update_status: "unknown".to_string(),
             tags: vec![], created_at: now, updated_at: now,
+        })
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct GitSkillPreviewDto {
+    pub id: String,
+    pub clone_url: String,
+    pub branch: Option<String>,
+    pub available_skills: Vec<super::installer::GitSkillInfo>,
+}
+
+#[tauri::command]
+pub async fn preview_git_install(
+    clone_url: String,
+    branch: Option<String>,
+    subpath: Option<String>,
+) -> Result<GitSkillPreviewDto, String> {
+    let preview_id = super::installer::preview_git_install(&clone_url, branch.as_deref(), subpath.as_deref())
+        .map_err(|e| e.to_string())?;
+    let preview = super::installer::get_preview(&preview_id)
+        .ok_or_else(|| "Preview not found".to_string())?;
+    Ok(GitSkillPreviewDto {
+        id: preview.id,
+        clone_url: preview.clone_url,
+        branch: preview.branch,
+        available_skills: preview.available_skills,
+    })
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ConfirmGitInstallInput {
+    pub preview_id: String,
+    pub selected_path: String,
+    pub name: Option<String>,
+}
+
+#[tauri::command]
+pub async fn confirm_git_install(
+    input: ConfirmGitInstallInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ManagedSkillDtoOut, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = super::installer::confirm_git_install(
+            &input.preview_id,
+            &input.selected_path,
+            input.name.as_deref(),
+        ).map_err(|e| e.to_string())?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let skill = super::types::SkillRecord {
+            id: id.clone(),
+            name: result.name.clone(),
+            description: result.description.clone(),
+            source_type: "git".to_string(),
+            source_ref: Some(input.selected_path),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: result.central_path.to_string_lossy().to_string(),
+            content_hash: Some(result.content_hash),
+            enabled: true, status: "ok".to_string(), update_status: "unknown".to_string(),
+            last_checked_at: None, last_check_error: None,
+            created_at: now, updated_at: now,
+        };
+        store.insert_skill(&skill).map_err(|e| e.to_string())?;
+        Ok(ManagedSkillDtoOut {
+            id, name: result.name, description: result.description,
+            source_type: "git".to_string(), source_ref: None,
+            central_path: result.central_path.to_string_lossy().to_string(),
+            enabled: true, status: "ok".to_string(), update_status: "unknown".to_string(),
+            tags: vec![], created_at: now, updated_at: now,
+        })
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn cancel_git_preview(
+    preview_id: String,
+) -> Result<(), String> {
+    super::installer::cancel_git_preview(&preview_id)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct CheckUpdateResult {
+    pub status: String,
+    pub remote_revision: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_skill_update(
+    skill_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<CheckUpdateResult, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let skill = store.get_skill_by_id(&skill_id).map_err(|e| e.to_string())?
+            .ok_or_else(|| "Skill not found".to_string())?;
+        let status = super::installer::check_skill_update(&skill)
+            .map_err(|e| e.to_string())?;
+        match &status {
+            super::types::UpdateStatus::UpToDate => {
+                Ok(CheckUpdateResult { status: "up_to_date".to_string(), remote_revision: None })
+            }
+            super::types::UpdateStatus::UpdateAvailable { remote_revision } => {
+                Ok(CheckUpdateResult { status: "update_available".to_string(), remote_revision: Some(remote_revision.clone()) })
+            }
+            super::types::UpdateStatus::Unsupported => {
+                Ok(CheckUpdateResult { status: "unsupported".to_string(), remote_revision: None })
+            }
+            super::types::UpdateStatus::Unknown => {
+                Ok(CheckUpdateResult { status: "unknown".to_string(), remote_revision: None })
+            }
+        }
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn update_skill(
+    skill_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ManagedSkillDtoOut, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let skill = store.get_skill_by_id(&skill_id).map_err(|e| e.to_string())?
+            .ok_or_else(|| "Skill not found".to_string())?;
+        let updated = super::installer::update_skill(&skill).map_err(|e| e.to_string())?;
+        store.update_skill(&updated).map_err(|e| e.to_string())?;
+        Ok(ManagedSkillDtoOut {
+            id: updated.id, name: updated.name, description: updated.description,
+            source_type: updated.source_type, source_ref: updated.source_ref,
+            central_path: updated.central_path, enabled: updated.enabled,
+            status: updated.status, update_status: updated.update_status,
+            tags: vec![], created_at: updated.created_at, updated_at: updated.updated_at,
         })
     }).await.map_err(|e| e.to_string())?
 }

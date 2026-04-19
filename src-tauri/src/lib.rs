@@ -16,10 +16,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-// 鈹€鈹€鈹€ Unix PATH 淇 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-
-/// macOS/Linux 浠?Dock/Finder/妗岄潰鍚姩鐨?GUI 搴旂敤鍙户鎵?launchd 鎻愪緵鐨勬渶灏?PATH锛?
-/// 閫氳繃鐢ㄦ埛鐨?login shell 鑾峰彇瀹屾暣 PATH 骞舵敞鍏ュ綋鍓嶈繘绋嬬幆澧冨彉閲忋€?
 #[cfg(unix)]
 fn resolve_user_path() -> Option<String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
@@ -32,8 +28,6 @@ fn resolve_user_path() -> Option<String> {
         .map(|s| s.trim().lines().last().unwrap_or("").trim().to_string())
         .filter(|s| !s.is_empty())
 }
-
-// 鈹€鈹€鈹€ 搴旂敤鐘舵€?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 pub struct AppStateWrapper {
     pub project_manager: Mutex<project::ProjectManager>,
@@ -240,7 +234,6 @@ pub fn run() {
             commands::save_config,
             commands::load_config,
             commands::get_system_fonts,
-            // 鈹€鈹€鈹€ 鏂囦欢鎿嶄綔鍛戒护 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
             commands::read_dir_tree,
             commands::read_file_content,
             commands::write_file_content,
@@ -255,6 +248,11 @@ pub fn run() {
             skill::commands::install_local_skill,
             skill::commands::scan_local_skills,
             skill::commands::import_discovered_skill,
+            skill::commands::preview_git_install,
+            skill::commands::confirm_git_install,
+            skill::commands::cancel_git_preview,
+            skill::commands::check_skill_update,
+            skill::commands::update_skill,
             skill::commands::update_tag_group_cmd,
             skill::commands::reorder_tag_groups_cmd,
             skill::commands::add_skill_to_tag_group_cmd,

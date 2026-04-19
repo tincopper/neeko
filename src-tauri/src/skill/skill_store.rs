@@ -57,6 +57,16 @@ impl SkillStore {
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
+    pub fn update_skill(&self, skill: &SkillRecord) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE skills SET name = ?1, description = ?2, source_type = ?3, source_ref = ?4, source_ref_resolved = ?5, source_subpath = ?6, source_branch = ?7, source_revision = ?8, remote_revision = ?9, central_path = ?10, content_hash = ?11, enabled = ?12, status = ?13, update_status = ?14, last_checked_at = ?15, last_check_error = ?16, updated_at = ?17 WHERE id = ?18",
+            params![skill.name, skill.description, skill.source_type, skill.source_ref, skill.source_ref_resolved, skill.source_subpath, skill.source_branch, skill.source_revision, skill.remote_revision, skill.central_path, skill.content_hash, skill.enabled, skill.status, skill.update_status, skill.last_checked_at, skill.last_check_error, now, skill.id],
+        )?;
+        Ok(())
+    }
+
     pub fn update_skill_after_install(&self, id: &str, name: &str, description: Option<&str>, source_revision: Option<&str>, remote_revision: Option<&str>, content_hash: Option<&str>, update_status: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp_millis();
