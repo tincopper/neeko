@@ -1,31 +1,22 @@
 use crate::state::agent::AgentConfig;
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+use std::env;
+use std::process::Command;
+use which::which_in;
 
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        Command::new("cmd")
-            .args(["/c", &format!("where {}", command)])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Command::new("sh")
-            .args(["-c", &format!("which {}", command)])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
+    // 获取交互式 shell 的 PATH
+    let output = Command::new("bash")
+        .args(["-i", "-c", "echo $PATH"])
+        .output()
+        .expect("failed to execute echo $PATH process");
+
+    let interactive_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
+    which_in(command, Some(interactive_path), env::current_dir().unwrap().as_path()).is_ok()
+    // which(command).is_ok()
 }
 
 pub struct AgentManager {
@@ -187,6 +178,7 @@ impl AgentManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
 
     #[test]
     fn should_initialize_with_seven_presets() {
@@ -265,8 +257,15 @@ mod tests {
         #[cfg(target_os = "windows")]
         let cmd = "cmd";
         #[cfg(not(target_os = "windows"))]
-        let cmd = "sh";
-        assert!(check_command_exists(cmd));
+        if let Ok(path) = env::var("PATH") {
+            for p in env::split_paths(&path) {
+                println!("{}", p.display());
+            }
+        }
+        let cmd = "opencode";
+        // assert!(check_command_exists(cmd));
+        let exists = check_command_exists(cmd);
+        println!("{:?}", exists);
     }
 
     #[test]

@@ -405,19 +405,18 @@ function App() {
 
    selectProjectRef.current = handleSelectProjectWithClear;
 
-   const handleAgentClick = useCallback(
-      (agent: AgentConfig) => {
-         if (!currentProjectId) return;
-         const activeTab = getActiveTab(currentProjectId);
-         const status = activeTab?.status ?? "Idle";
-         handleTabAgentClick(currentProjectId, agent, status);
+const handleAgentClick = useCallback(
+       (agent: AgentConfig) => {
+          if (!currentProjectId) return;
+          const newTab = handleTabAgentClick(currentProjectId, agent);
 
-         if (activeProject) {
-            invoke("set_project_agent", { projectId: activeProject.id, agentId: agent.id }).catch((err: unknown) => {
-               console.error("[TitleBar] Failed to set agent:", err);
-            });
-            callbacks.handleSelectLocalAgent(agent);
-         } else if (activeWslProject) {
+          if (activeProject) {
+             invoke("set_project_agent", { projectId: activeProject.id, agentId: agent.id }).catch((err: unknown) => {
+                console.error("[TitleBar] Failed to set agent:", err);
+             });
+             const cacheKey = newTab ? `${activeProject.id}:${newTab.id}` : `${activeProject.id}:1`;
+             callbacks.handleSelectLocalAgent(agent, cacheKey);
+          } else if (activeWslProject) {
             wslActions.handleSelectWslAgent(agent);
          } else if (activeRemoteProject) {
             remoteActions.handleSelectRemoteAgent(agent);

@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 use super::central_repo;
 use super::content_hash;

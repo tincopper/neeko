@@ -120,6 +120,15 @@
   .confirm-btn-danger { background: var(--accent-red) !important; }
   .confirm-btn-danger:hover { background: #be4f58 !important; }
 
+  /* Agent bar button */
+  .agent-bar-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: all 0.15s; }
+  .agent-bar-btn:hover:not(.not-installed) { background: var(--bg-hover); color: var(--text-primary); }
+  .agent-bar-btn.selected { background: var(--accent-blue); color: var(--text-primary); }
+  .agent-bar-btn.not-installed { opacity: 0.5; cursor: not-allowed; }
+  .agent-bar-btn.compact { padding: 6px 8px; }
+  .agent-bar-btn-name { font-size: 13px; font-weight: 500; }
+.agent-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+
   /* Diff split columns */
   .diff-table-split { table-layout: fixed; }
   .diff-table-split .col-linenum { width: 48px; }
