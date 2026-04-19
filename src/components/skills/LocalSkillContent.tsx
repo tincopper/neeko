@@ -4,9 +4,23 @@ import { Button, Input } from "../ui";
 import { useSkillContext } from "../../context/skill-context";
 import SkillListSection from "./SkillListSection";
 import CreateSkillDialog from "./CreateSkillDialog";
+import EditSkillDialog from "./EditSkillDialog";
+import ViewSkillDialog from "./ViewSkillDialog";
 
 const LocalSkillContent: React.FC = React.memo(() => {
-  const { installLocal, scanSkills, createSkill, searchQuery, setSearchQuery } = useSkillContext();
+  const {
+    installLocal,
+    scanSkills,
+    createSkill,
+    searchQuery,
+    setSearchQuery,
+    editSkillDialogOpen,
+    editSkillDialogData,
+    closeEditSkillDialog,
+    viewSkillDialogOpen,
+    viewSkillDialogData,
+    closeViewSkillDialog,
+  } = useSkillContext();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const handleCreate = useCallback(
@@ -14,6 +28,14 @@ const LocalSkillContent: React.FC = React.memo(() => {
       await createSkill(name, skillContent);
     },
     [createSkill]
+  );
+
+  const handleEdit = useCallback(
+    async (name: string, skillContent: string) => {
+      // TODO: 实现编辑保存逻辑
+      console.log("Edit skill:", name, skillContent);
+    },
+    []
   );
 
   return (
@@ -61,8 +83,25 @@ const LocalSkillContent: React.FC = React.memo(() => {
         onOpenChange={setCreateDialogOpen}
         onConfirm={handleCreate}
       />
+
+      {/* Edit dialog */}
+      <EditSkillDialog
+        open={editSkillDialogOpen}
+        skill={editSkillDialogData}
+        onClose={closeEditSkillDialog}
+        onConfirm={handleEdit}
+      />
+
+      {/* View dialog */}
+      <ViewSkillDialog
+        open={viewSkillDialogOpen}
+        skill={viewSkillDialogData}
+        onClose={closeViewSkillDialog}
+      />
     </div>
   );
 });
+
 LocalSkillContent.displayName = "LocalSkillContent";
+
 export default LocalSkillContent;

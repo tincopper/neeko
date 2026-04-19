@@ -33,7 +33,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "04-19-skill-card-display"
+  ],
   "parent": null,
   "relatedFiles": [
     "src/components/layout/AppLayout.tsx",
