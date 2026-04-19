@@ -17,15 +17,24 @@
   "worktree_path": null,
   "current_phase": 0,
   "next_action": [
-    { "phase": 1, "action": "implement" },
-    { "phase": 2, "action": "check" },
-    { "phase": 3, "action": "improve-ut" }
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "improve-ut"
+    }
   ],
   "commit": null,
   "pr_url": null,
   "subtasks": [],
   "children": [],
-  "parent": "skill-pr01-data-model",
+  "parent": null,
   "relatedFiles": [
     "src-tauri/src/lib.rs",
     "src-tauri/Cargo.toml"
