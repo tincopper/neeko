@@ -446,6 +446,7 @@ export async function createTerminalForProject(
 
 function TerminalView({
   project,
+  paneId,
   tabId,
   tabAgentId,
   fontSize = 14,
@@ -461,8 +462,8 @@ function TerminalView({
   const [rebuildCount, setRebuildCount] = useState(0)
   // executedAgentsRef 已移至模块级 executedAgentKeys，此处仅保留引用
 
-  // 计算 cacheKey：如果有 tabId，使用 `${project.id}:${tabId}`，否则使用 project.id
-  const cacheKey = tabId ? `${project.id}:${tabId}` : project.id
+  // 计算 cacheKey：使用 terminalCacheKey 函数，包含 paneId 以支持 split 后每个 pane 独立终端
+  const cacheKey = terminalCacheKey(project.id, tabId, paneId)
 
   // fontSize / fontFamily 变化时更新已有终端实例
   useEffect(() => {
