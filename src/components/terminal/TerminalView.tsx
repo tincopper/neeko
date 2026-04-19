@@ -59,10 +59,17 @@ function log(msg: string) {
 export function destroyTerminalCache(cacheKey: string) {
   const cache = terminalCache.get(cacheKey)
   if (!cache) return
+  // 关闭后端 PTY session
+  if (cache.sessionId) {
+    invoke('close_terminal_session', { sessionId: cache.sessionId }).catch(() => {})
+  }
+  // 清理前端缓存
   cache.unlistenOutput?.()
   cache.unlistenClosed?.()
   cache.term.dispose()
   terminalCache.delete(cacheKey)
+  terminalRebuildCallbacks.delete(cacheKey)
+  terminalWrapperRefs.delete(cacheKey)
   executedAgentKeys.delete(cacheKey)
   log(`Cache destroyed for ${cacheKey}`)
 }
@@ -135,20 +142,21 @@ export function launchAgentInTerminal(
  * 替代 launchAgentInTerminal，消除"等旧 Agent 退出"的等待。
  */
 export async function switchAgentInTerminal(
-  projectId: string,
+  cacheKey: string,
   projectPath: string,
   projectName: string,
   agentId: string,
   fontSize: number,
   shell: string,
   fontFamily: string,
+  backendProjectId: string,
   agentCommandOverrides?: Record<string, string>,
 ) {
-  // Resolve actual cache key: bare projectId or tab-scoped `${projectId}:*`
-  let resolvedKey = projectId
-  if (!terminalWrapperRefs.has(projectId)) {
+  // Resolve actual cache key: bare cacheKey or tab-scoped `${cacheKey}:*`
+  let resolvedKey = cacheKey
+  if (!terminalWrapperRefs.has(cacheKey)) {
     for (const key of terminalWrapperRefs.keys()) {
-      if (key.startsWith(projectId + ":")) { resolvedKey = key; break }
+      if (key.startsWith(cacheKey + ":")) { resolvedKey = key; break }
     }
   }
 
@@ -158,7 +166,7 @@ export async function switchAgentInTerminal(
     const agent = await invoke<AgentConfig>('get_agent', { agentId }).catch(() => null)
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command
-      launchAgentInTerminal(projectId, cmd, agent.args)
+      launchAgentInTerminal(backendProjectId, cmd, agent.args)
     }
     return
   }
@@ -189,7 +197,7 @@ export async function switchAgentInTerminal(
       wrapper,
       shell,
       fontFamily,
-      undefined,
+      backendProjectId,
       agentCommandOverrides,
     )
     requestAnimationFrame(() => {
@@ -211,21 +219,21 @@ export async function switchAgentInTerminal(
   } catch (err) {
     log(`switchAgentInTerminal: createTerminalForProject failed: ${err}`)
     // 创建失败时触发重建，避免用户看到空白终端
-    terminalRebuildCallbacks.get(projectId)?.()
+    terminalRebuildCallbacks.get(cacheKey)?.()
   }
 }
 
 export async function createTerminalForProject(
-  projectId: string, // cache key（可为 "uuid:tabId:paneId"）
+  cacheKey: string, // cache key（可为 "uuid" 或 "uuid:tab_xxx"）
   _projectPath: string,
   projectName: string,
-  _selectedAgentId: string | null, // 保留参数以兼容旧代码，但不再使用
+  _selectedAgentId: string | null,
   fontSize: number,
   wrapper: HTMLElement,
   shell: string,
   fontFamily: string,
-  backendProjectId?: string, // 后端查找项目用的真实 project ID，默认同 projectId
-  _agentCommandOverrides?: Record<string, string>, // 保留参数以兼容旧代码，但不再使用
+  backendProjectId: string, // 后端查找项目用的真实 project ID
+  _agentCommandOverrides?: Record<string, string>,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`)
 
@@ -293,14 +301,14 @@ export async function createTerminalForProject(
     unlistenClosed: null,
   }
 
-  terminalCache.set(projectId, cache)
+  terminalCache.set(cacheKey, cache)
   term.write('\x1b[33m[Terminal] Connecting...\x1b[0m\r\n')
 
   try {
     const session = await invoke<{ id: string; pid: number | null }>(
       'create_terminal_session',
       {
-        projectId: backendProjectId ?? projectId,
+        projectId: backendProjectId,
         cols: initCols,
         rows: initRows,
         shell: shell || null,
@@ -334,8 +342,8 @@ export async function createTerminalForProject(
       async () => {
         log(`Session ${sid} closed by backend`)
         unlistenClosed()
-        destroyTerminalCache(projectId)
-        terminalRebuildCallbacks.get(projectId)?.()
+        destroyTerminalCache(cacheKey)
+        terminalRebuildCallbacks.get(cacheKey)?.()
       },
     )
     cache.unlistenClosed = unlistenClosed
@@ -438,7 +446,6 @@ export async function createTerminalForProject(
 
 function TerminalView({
   project,
-  paneId = 'p1',
   tabId,
   tabAgentId,
   fontSize = 14,
@@ -452,10 +459,10 @@ function TerminalView({
   const currentCacheKeyRef = useRef<string | null>(null)
   // 管道关闭时递增，触发 useEffect 重建终端
   const [rebuildCount, setRebuildCount] = useState(0)
-  const [ready, setReady] = useState(false)
   // executedAgentsRef 已移至模块级 executedAgentKeys，此处仅保留引用
 
-  const cacheKey = terminalCacheKey(project.id, tabId, paneId)
+  // 计算 cacheKey：如果有 tabId，使用 `${project.id}:${tabId}`，否则使用 project.id
+  const cacheKey = tabId ? `${project.id}:${tabId}` : project.id
 
   // fontSize / fontFamily 变化时更新已有终端实例
   useEffect(() => {
@@ -472,7 +479,6 @@ function TerminalView({
     if (!wrapper) return
 
     currentCacheKeyRef.current = cacheKey
-    setReady(false)
 
     // 注册重建回调：管道关闭时，backend 会清理 session 并发 terminal-closed 事件，
     // createTerminalForProject 监听到后调用此 callback 触发 rebuildCount 递增，
@@ -514,9 +520,7 @@ function TerminalView({
 
     if (terminalCache.has(cacheKey)) {
       log(`Reattaching existing terminal for ${project.name} (${cacheKey})`)
-      const cache = terminalCache.get(cacheKey)!
-      setReady(!!cache.sessionId)
-      attach(cache)
+      attach(terminalCache.get(cacheKey)!)
     } else {
       // 传入 wrapper，让函数内先挂载 element 再 fit，确保初始尺寸正确
       // 注意：创建时不传递 agentId，不自动执行命令
@@ -532,7 +536,6 @@ function TerminalView({
         project.id, // 后端查找项目用的真实 project ID
         undefined,
       ).then((cache) => {
-        setReady(!!cache.sessionId)
         if (currentCacheKeyRef.current !== cacheKey) return
         // element 已在函数内挂载，只需 focus 并同步后端尺寸
         requestAnimationFrame(() => {
@@ -590,9 +593,9 @@ function TerminalView({
     }
     window.addEventListener('resize', handleResize)
 
+    // 监听容器尺寸变化：平时只做 fit（纯前端重排）
+    // 拖拽结束后第一次触发时额外做 PTY resize（pendingPtyResize flag）
     let resizeRafId: number | null = null;
-    let prevCols = 0;
-    let prevRows = 0;
     const ro = new ResizeObserver(() => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
@@ -601,9 +604,8 @@ function TerminalView({
         const c = terminalCache.get(cacheKey)
         if (!c) return
         c.fitAddon.fit()
-        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
-          prevCols = c.term.cols;
-          prevRows = c.term.rows;
+        if (pendingPtyResize && c.sessionId) {
+          setPendingPtyResize(false)
           invoke('resize_terminal', {
             sessionId: c.sessionId,
             cols: c.term.cols,
@@ -659,12 +661,7 @@ function TerminalView({
   }, [tabAgentId, cacheKey, agentCommandOverride]);
 
   return (
-    <div className='relative flex-1 flex flex-col overflow-hidden min-w-0'>
-      {!ready && (
-        <div className='absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]'>
-          Connecting...
-        </div>
-      )}
+    <div className='flex-1 flex flex-col overflow-hidden min-w-0'>
       <div className='terminal-wrapper flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0' ref={wrapperRef} />
     </div>
   )
@@ -672,7 +669,6 @@ function TerminalView({
 
 export default React.memo(TerminalView, (prev, next) =>
   prev.project.id === next.project.id &&
-  prev.paneId === next.paneId &&
   prev.tabId === next.tabId &&
   prev.tabAgentId === next.tabAgentId &&
   prev.fontSize === next.fontSize &&

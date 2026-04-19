@@ -2,9 +2,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { TerminalTab, AgentConfig } from "../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
 
-let tabIdCounter = 0;
 function generateTabId(): string {
-  return `tab_${Date.now()}_${++tabIdCounter}`;
+  return `tab_${crypto.randomUUID()}`;
 }
 
 const MAX_TABS = 10;
@@ -227,20 +226,11 @@ export function useTerminalTabs() {
     (
       projectId: string,
       agent: AgentConfig,
-      currentTabStatus: "Idle" | "Running" | "Failed"
     ): TerminalTab | null => {
-      if (currentTabStatus !== "Idle") {
-        return addTab(projectId, agent.id);
-      } else {
-        const activeTabId = tabState[projectId]?.activeTabId;
-        if (activeTabId) {
-          setTabAgent(projectId, activeTabId, agent.id, agent.name);
-          return null;
-        }
-        return null;
-      }
+      // 点击 Agent 时始终新建 tab
+      return addTab(projectId, agent.id);
     },
-    [addTab, setTabAgent, tabState]
+    [addTab]
   );
 
   const clearProjectTabs = useCallback(

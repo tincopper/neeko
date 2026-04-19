@@ -232,7 +232,7 @@ function MainContent({
                      {/* Gear button */}
                      <div className="relative shrink-0" ref={managerRef}>
                         <button
-                            className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-white/10 hover:text-white"
+                            className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                             style={{ fontSize: "var(--terminal-font-size)" }}
                            onClick={() => setManagerOpen((v) => !v)}
                            title="Manage Presets"
@@ -279,7 +279,7 @@ function MainContent({
                         return (
                            <button
                               key={agent.id}
-                               className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-white bg-white/10" : "text-text-secondary hover:bg-white/10 hover:text-white"} ${!installed ? "opacity-50" : ""}`}
+                               className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
                                style={{ fontSize: "var(--terminal-font-size)" }}
                               onClick={() => handleAgentClick(agent)}
                               disabled={!installed}
@@ -424,7 +424,7 @@ function MainContent({
                   <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
                   <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
                   <button
-                     className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-white text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:bg-[#005a9e]"
+                     className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
                      onClick={handleAddProject}
                   >
                      Add Project

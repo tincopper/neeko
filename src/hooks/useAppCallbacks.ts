@@ -58,7 +58,7 @@ export interface UseAppCallbacksParams {
 }
 
 export interface UseAppCallbacksResult {
-  handleSelectLocalAgent: (agent: AgentConfig | null) => void;
+  handleSelectLocalAgent: (agent: AgentConfig | null, cacheKey: string) => void;
   handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
   handleOpenIdeForSidebar: (projectId: string) => void;
   handleBackToMainTerminal: (projectId: string) => void;
@@ -99,7 +99,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
   } = params;
 
   // ── Agent / IDE ──
-  const handleSelectLocalAgent = useCallback((agent: AgentConfig | null) => {
+  const handleSelectLocalAgent = useCallback((agent: AgentConfig | null, cacheKey: string) => {
     if (activeProject) {
       const agentId = agent?.id ?? null;
       setProjects((prev) =>
@@ -112,13 +112,14 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
       );
       if (agent) {
         void switchAgentInTerminal(
-          activeProject.id,
+          cacheKey,
           activeProject.path,
           activeProject.name,
           agent.id,
           terminalFontSize,
           terminalShell,
           terminalFontFamily,
+          activeProject.id,
           agentCommandOverrides,
         );
       } else {
