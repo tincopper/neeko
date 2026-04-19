@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TerminalTab, AgentConfig } from "../types";
+import { destroyTerminalCachesByPrefix } from "../components/terminal";
 
 let tabIdCounter = 0;
 function generateTabId(): string {
@@ -129,6 +130,7 @@ export function useTerminalTabs() {
 
   const closeTab = useCallback(
     (projectId: string, tabId: string): void => {
+      destroyTerminalCachesByPrefix(`${projectId}:${tabId}`);
       setTabState((prev) => {
         const state = prev[projectId];
         if (!state) return prev;

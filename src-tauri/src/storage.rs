@@ -106,7 +106,6 @@ impl StorageManager {
         wsl_entries: Option<&[WSLEntrySession]>,
         remote_entries: Option<&[RemoteEntrySession]>,
         sidebar_width: Option<u32>,
-        side_terminal_width: Option<u32>,
     ) -> SessionStore {
         let project_sessions = projects
             .iter()
@@ -136,7 +135,6 @@ impl StorageManager {
                 .map(|v| v.to_vec())
                 .unwrap_or(existing.remote_entries),
             sidebar_width: sidebar_width.or(existing.sidebar_width),
-            side_terminal_width: side_terminal_width.or(existing.side_terminal_width),
             worktree_state: existing.worktree_state,
         }
     }

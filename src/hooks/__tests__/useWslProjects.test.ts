@@ -6,7 +6,7 @@ import type { WSLEntrySession } from '../../types';
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
   wslCacheKey: (distro: string, projectId: string) => `wsl:${distro}:${projectId}`,
-  destroyWslCache: vi.fn(),
+  destroyWslCachesByPrefix: vi.fn(),
 }));
 
 const makeWslProject = (overrides: {

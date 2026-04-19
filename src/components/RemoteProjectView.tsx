@@ -1,5 +1,5 @@
 import React from "react";
-import { RemoteTerminalView } from "./terminal";
+import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
 import type { RemoteEntrySession, RemoteProject, AuthMethod, AppConfig } from "../types";
 
@@ -24,6 +24,7 @@ function RemoteProjectView({
    activeRemoteWorktreePath,
    onRemoteSessionReady,
 }: RemoteProjectViewProps) {
+   const remoteLayoutId = `remote:${entry.id}:${project.id}:${activeRemoteWorktreePath ?? "main"}`;
    const auth = remoteAuthStore.get(entry.id);
    if (!auth) {
       return (
@@ -56,20 +57,26 @@ function RemoteProjectView({
             />
          ) : (
             <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-               <RemoteTerminalView
-                  entryId={entry.id}
-                  projectId={project.id}
-                  projectName={project.name}
-                  projectPath={activeRemoteWorktreePath ?? project.path}
-                  host={entry.host}
-                  port={entry.port}
-                  username={entry.username}
-                  auth={auth}
-                   fontSize={config.terminalFontSize}
-                   fontFamily={config.fontFamily}
-                  cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
-                  selectedAgentId={project.selected_agent}
-                  onSessionReady={onRemoteSessionReady}
+               <SplitLayout
+                  layoutId={remoteLayoutId}
+                  renderPane={(paneId) => (
+                     <RemoteTerminalView
+                        paneId={paneId}
+                        entryId={entry.id}
+                        projectId={project.id}
+                        projectName={project.name}
+                        projectPath={activeRemoteWorktreePath ?? project.path}
+                        host={entry.host}
+                        port={entry.port}
+                        username={entry.username}
+                        auth={auth}
+                        fontSize={config.terminalFontSize}
+                        fontFamily={config.fontFamily}
+                        cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
+                        selectedAgentId={project.selected_agent}
+                        onSessionReady={onRemoteSessionReady}
+                     />
+                  )}
                />
             </div>
          )}
