@@ -105,7 +105,7 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
             }}
             className={`relative min-w-[120px] min-h-[80px] flex-1 flex flex-col overflow-hidden border-2 transition-shadow duration-150 ${
               isActive
-                ? "border-accent-blue ring-2 ring-accent-blue/50 ring-inset"
+                ? "border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset"
                 : "border-transparent"
             }`}
             onMouseDown={() => setActivePaneId(node.paneId)}
