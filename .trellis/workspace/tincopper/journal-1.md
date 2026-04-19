@@ -574,3 +574,36 @@ Optimized Agent Skill Path config UI in SettingsPanel. Added dedicated row with 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Agent Skill Path UI
+
+**Date**: 2026-04-19
+**Task**: Agent Skill Path UI
+**Branch**: `main`
+
+### Summary
+
+Optimized SettingsPanel Agent Skill Path configuration UI - Added Skill Path row under built-in and custom agents, default skill paths for 7 built-in agents, new Skill Path input when creating custom agents
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3d2f538` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
