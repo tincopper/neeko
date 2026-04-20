@@ -308,6 +308,7 @@ export interface SkillToolToggle {
 /** Skill document content. */
 export interface SkillDocumentDto {
   content: string;
+}
 
 // Diff 类型
 export type DiffLine = { Context: string } | { Added: string } | { Removed: string };
