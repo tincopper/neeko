@@ -206,3 +206,45 @@ export interface FileTab {
   isDirty: boolean;
   order: number;
 }
+
+// Diff 类型
+export type DiffLine = { Context: string } | { Added: string } | { Removed: string };
+
+export interface DiffHunk {
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
+  lines: DiffLine[];
+}
+
+export interface DiffResult {
+  hunks: DiffHunk[];
+}
+
+// Git 提交信息
+export interface CommitInfo {
+  hash: string;
+  short_hash: string;
+  message: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  date: string;
+  parent_hashes: string[];
+}
+
+// Git 分支分组
+export interface BranchGroup {
+  local: string[];
+  remote: string[];
+  tags: string[];
+  current: string;
+}
+
+// 单个提交详情（含修改文件列表）
+export interface CommitDetail {
+  commit: CommitInfo;
+  files: FileChange[];
+  parent_hashes: string[];
+}

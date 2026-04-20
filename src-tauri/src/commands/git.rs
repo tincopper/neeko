@@ -205,3 +205,125 @@ pub fn get_worktree_file_diff(
         Err(format!("Project not found: {}", project_id))
     }
 }
+
+#[tauri::command]
+pub fn get_commit_log(
+    project_id: String,
+    offset: usize,
+    limit: usize,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<CommitInfo>, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_log(&project.path, offset, limit).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_detail(
+    project_id: String,
+    commit_hash: String,
+    state: State<AppStateWrapper>,
+) -> Result<CommitDetail, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_detail(&project.path, &commit_hash).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn get_all_branches(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<BranchGroup, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_all_branches(&project.path).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn create_commit(
+    project_id: String,
+    message: String,
+    amend: bool,
+    files: Vec<String>,
+    state: State<AppStateWrapper>,
+) -> Result<String, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::create_commit(&project.path, &message, amend, &files)
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn push_remote(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::push_remote(&project.path).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn get_unversioned_files(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<FileChange>, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_unversioned_files(&project.path).map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_file_diff(
+    project_id: String,
+    commit_hash: String,
+    file_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<DiffResult, String> {
+    let manager = state
+        .project_manager
+        .lock()
+        .map_err(|e| format!("Lock poisoned: {}", e))?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_file_diff(&project.path, &commit_hash, &file_path)
+            .map_err(|e| e.to_string())
+    } else {
+        Err(format!("Project not found: {}", project_id))
+    }
+}

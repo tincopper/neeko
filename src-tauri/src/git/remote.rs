@@ -3,7 +3,7 @@ use russh::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::state::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::state::{AuthMethod, BranchGroup, CommitDetail, CommitInfo, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 
 use super::local::parse_unified_diff;
 
@@ -306,6 +306,216 @@ fn parse_status_line(line: &str) -> Option<FileChange> {
     })
 }
 
+/// 解析 git log 输出为 CommitInfo 列表
+/// 格式: 每条提交 7 行: hash \n short_hash \n message \n author \n email \n timestamp \n parent_hashes
+pub fn parse_commit_log_output(output: &str) -> Vec<CommitInfo> {
+    let lines: Vec<&str> = output.lines().collect();
+    let mut commits = Vec::new();
+    let mut i = 0;
+
+    while i + 6 < lines.len() {
+        let hash = lines[i].trim().to_string();
+        let short_hash = lines[i + 1].trim().to_string();
+        let message = lines[i + 2].trim().to_string();
+        let author = lines[i + 3].trim().to_string();
+        let email = lines[i + 4].trim().to_string();
+        let timestamp = lines[i + 5].trim().parse::<i64>().unwrap_or(0);
+        let parent_hashes = lines[i + 6]
+            .trim()
+            .split_whitespace()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let date = {
+            chrono::DateTime::from_timestamp(timestamp, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_else(|| format!("{}", timestamp))
+        };
+
+        if !hash.is_empty() {
+            commits.push(CommitInfo {
+                hash,
+                short_hash,
+                message,
+                author,
+                email,
+                timestamp,
+                date,
+                parent_hashes,
+            });
+        }
+        i += 7; // 每条提交 7 行 (hash, short_hash, message, author, email, timestamp, parent_hashes)
+    }
+
+    commits
+}
+
+/// 通过 SSH 获取提交日志
+pub async fn get_remote_commit_log(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CommitInfo>> {
+    let sp = safe_path(project_path);
+    let cmd = format!(
+        "cd '{sp}' && git log --skip={offset} -{limit} --format='%H%n%h%n%s%n%an%n%ae%n%at%n%P' 2>/dev/null"
+    );
+    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    Ok(parse_commit_log_output(&output))
+}
+
+/// 通过 SSH 获取提交详情
+pub async fn get_remote_commit_detail(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<CommitDetail> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+
+    // 提交信息
+    let commit_cmd = format!(
+        "cd '{sp}' && git log -1 --format='%H%n%h%n%s%n%an%n%ae%n%at%n%P' '{ch}' 2>/dev/null"
+    );
+    let commit_output = ssh_exec_command(host, port, username, auth, &commit_cmd).await?;
+    let commits = parse_commit_log_output(&commit_output);
+    let commit = commits
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Commit not found"))?;
+
+    // 父提交
+    let parents_cmd = format!("cd '{sp}' && git rev-parse '{ch}^@' 2>/dev/null");
+    let parents_output = ssh_exec_command(host, port, username, auth, &parents_cmd).await?;
+    let parent_hashes: Vec<String> = parents_output
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.trim().to_string())
+        .collect();
+
+    // 修改文件 + 统计
+    let files_cmd = format!(
+        "cd '{sp}' && git diff-tree --no-commit-id -r --numstat '{ch}' 2>/dev/null"
+    );
+    let files_output = ssh_exec_command(host, port, username, auth, &files_cmd).await?;
+    let mut files = Vec::new();
+    for line in files_output.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 3 {
+            files.push(FileChange {
+                path: PathBuf::from(parts[2]),
+                status: FileStatus::Modified,
+                additions: parts[0].parse().unwrap_or(0),
+                deletions: parts[1].parse().unwrap_or(0),
+            });
+        }
+    }
+
+    // 文件状态
+    let status_cmd = format!(
+        "cd '{sp}' && git diff-tree --no-commit-id -r --name-status '{ch}' 2>/dev/null"
+    );
+    let status_output = ssh_exec_command(host, port, username, auth, &status_cmd).await?;
+    for (i, line) in status_output.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() { continue; }
+        let parts: Vec<&str> = trimmed.split('\t').collect();
+        if parts.len() >= 2 && i < files.len() {
+            files[i].status = match parts[0] {
+                "A" => FileStatus::Added,
+                "D" => FileStatus::Deleted,
+                "R" => FileStatus::Renamed,
+                _ => FileStatus::Modified,
+            };
+        }
+    }
+
+    Ok(CommitDetail {
+        commit,
+        files,
+        parent_hashes,
+    })
+}
+
+/// 通过 SSH 获取分支分组
+pub async fn get_remote_all_branches(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+) -> Result<BranchGroup> {
+    let sp = safe_path(project_path);
+    let cmd = format!(
+        "cd '{sp}' \
+          && printf '__CURRENT__\\n' \
+          && git branch --show-current 2>/dev/null \
+          && printf '\\n__LOCAL__\\n' \
+          && git branch 2>/dev/null \
+          && printf '\\n__REMOTE__\\n' \
+          && git branch -r 2>/dev/null \
+          && printf '\\n__TAGS__\\n' \
+          && git tag 2>/dev/null"
+    );
+    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    Ok(parse_branch_output(&output))
+}
+
+/// 解析分支输出（共享：remote + wsl 都用）
+pub fn parse_branch_output(output: &str) -> BranchGroup {
+    let mut current = String::new();
+    let mut local = Vec::new();
+    let mut remote = Vec::new();
+    let mut tags = Vec::new();
+    let mut section = "";
+
+    for line in output.lines() {
+        let trimmed = line.trim();
+        match trimmed {
+            "__CURRENT__" => { section = "current"; continue; }
+            "__LOCAL__" => { section = "local"; continue; }
+            "__REMOTE__" => { section = "remote"; continue; }
+            "__TAGS__" => { section = "tags"; continue; }
+            _ => {}
+        }
+
+        match section {
+            "current" => {
+                if !trimmed.is_empty() {
+                    current = trimmed.to_string();
+                }
+            }
+            "local" => {
+                let name = trimmed.trim_start_matches('*').trim();
+                if !name.is_empty() {
+                    local.push(name.to_string());
+                }
+            }
+            "remote" => {
+                if !trimmed.is_empty() && !trimmed.contains("->") {
+                    remote.push(trimmed.to_string());
+                }
+            }
+            "tags" => {
+                if !trimmed.is_empty() {
+                    tags.push(trimmed.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    BranchGroup { local, remote, tags, current }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +583,65 @@ __STATUS__";
         assert!(info.current_branch.is_empty());
         assert!(info.branches.is_empty());
         assert!(info.worktrees.is_empty());
+    }
+
+    #[test]
+    fn should_parse_commit_log_output() {
+        let output = "\
+abc1234567890
+abc1234
+Initial commit
+test user
+test@test.com
+1700000001
+
+def5678901234
+def5678
+Second commit
+test user
+test@test.com
+1700000002
+abc1234567890
+";
+        let commits = parse_commit_log_output(output);
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].hash, "abc1234567890");
+        assert_eq!(commits[0].short_hash, "abc1234");
+        assert_eq!(commits[0].message, "Initial commit");
+        assert_eq!(commits[0].author, "test user");
+        assert_eq!(commits[0].email, "test@test.com");
+        assert_eq!(commits[0].timestamp, 1700000001);
+        assert!(commits[0].parent_hashes.is_empty());
+        assert_eq!(commits[1].message, "Second commit");
+        assert_eq!(commits[1].parent_hashes, vec!["abc1234567890"]);
+    }
+
+    #[test]
+    fn should_parse_branch_output() {
+        let output = "\
+__CURRENT__
+main
+
+__LOCAL__
+main
+feature/test
+
+__REMOTE__
+origin/main
+origin/develop
+origin/HEAD -> origin/main
+
+__TAGS__
+v1.0.0
+v1.1.0
+";
+        let groups = parse_branch_output(output);
+        assert_eq!(groups.current, "main");
+        assert_eq!(groups.local.len(), 2);
+        assert_eq!(groups.remote.len(), 2); // HEAD -> 被过滤
+        assert_eq!(groups.tags.len(), 2);
+        assert!(groups.local.contains(&"main".to_string()));
+        assert!(groups.local.contains(&"feature/test".to_string()));
+        assert!(groups.tags.contains(&"v1.0.0".to_string()));
     }
 }

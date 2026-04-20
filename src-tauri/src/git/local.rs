@@ -1,6 +1,9 @@
-use crate::state::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::state::{
+    BranchGroup, CommitDetail, CommitInfo, DiffHunk, DiffLine, DiffResult, FileChange, FileStatus,
+    GitInfo, Worktree,
+};
 use anyhow::{Context, Result};
-use git2::{BranchType, Repository, Status, StatusOptions};
+use git2::{BranchType, Repository, Sort, Status, StatusOptions};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -477,6 +480,237 @@ pub fn is_git_repo(path: &Path) -> bool {
     Repository::open(path).is_ok()
 }
 
+/// 获取提交日志（按时间倒序，支持 offset + limit 分页）
+pub fn get_commit_log(repo_path: &Path, offset: usize, limit: usize) -> Result<Vec<CommitInfo>> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    let mut revwalk = repo.revwalk()?;
+    revwalk.set_sorting(Sort::TIME)?;
+    revwalk.push_head()?;
+
+    let mut commits = Vec::with_capacity(limit);
+    for (i, oid) in revwalk.enumerate() {
+        if i < offset {
+            continue;
+        }
+        if commits.len() >= limit {
+            break;
+        }
+        let oid = oid?;
+        let commit = repo.find_commit(oid)?;
+        commits.push(commit_to_info(&commit));
+    }
+    Ok(commits)
+}
+
+/// 获取单个提交的详情（含修改文件列表）
+pub fn get_commit_detail(repo_path: &Path, commit_hash: &str) -> Result<CommitDetail> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    let oid = git2::Oid::from_str(commit_hash)
+        .map_err(|e| anyhow::anyhow!("Invalid commit hash: {}", e))?;
+    let commit = repo.find_commit(oid)?;
+
+    // Parent hashes
+    let parent_hashes: Vec<String> = commit.parents().map(|p| p.id().to_string()).collect();
+
+    // 获取该提交修改的文件列表
+    let tree = commit.tree()?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let mut diff_opts = git2::DiffOptions::new();
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))?;
+
+    use std::cell::RefCell;
+    let files: RefCell<Vec<FileChange>> = RefCell::new(Vec::new());
+    diff.foreach(
+        &mut |delta, _| {
+            let path = delta
+                .new_file()
+                .path()
+                .or_else(|| delta.old_file().path())
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
+
+            let status = match delta.status() {
+                git2::Delta::Added => FileStatus::Added,
+                git2::Delta::Deleted => FileStatus::Deleted,
+                git2::Delta::Renamed => FileStatus::Renamed,
+                git2::Delta::Modified | git2::Delta::Typechange => FileStatus::Modified,
+                _ => FileStatus::Modified,
+            };
+
+            files.borrow_mut().push(FileChange {
+                path,
+                status,
+                additions: 0,
+                deletions: 0,
+            });
+            true
+        },
+        None,
+        None,
+        Some(&mut |_delta, _hunk, line| {
+            let origin = line.origin();
+            let mut files_ref = files.borrow_mut();
+            if let Some(last) = files_ref.last_mut() {
+                if origin == '+' {
+                    last.additions += 1;
+                } else if origin == '-' {
+                    last.deletions += 1;
+                }
+            }
+            true
+        }),
+    )?;
+
+    Ok(CommitDetail {
+        commit: commit_to_info(&commit),
+        files: files.into_inner(),
+        parent_hashes,
+    })
+}
+
+/// 获取所有分支分组（Local / Remote / Tags）
+pub fn get_all_branches(repo_path: &Path) -> Result<BranchGroup> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+
+    let head = repo.head()?;
+    let current = if head.is_branch() {
+        head.shorthand().unwrap_or("HEAD").to_string()
+    } else {
+        "HEAD (detached)".to_string()
+    };
+
+    let mut local = Vec::new();
+    if let Ok(branches) = repo.branches(Some(BranchType::Local)) {
+        for branch_result in branches.flatten() {
+            if let Ok(Some(name)) = branch_result.0.name() {
+                local.push(name.to_string());
+            }
+        }
+    }
+
+    let mut remote = Vec::new();
+    if let Ok(branches) = repo.branches(Some(BranchType::Remote)) {
+        for branch_result in branches.flatten() {
+            if let Ok(Some(name)) = branch_result.0.name() {
+                remote.push(name.to_string());
+            }
+        }
+    }
+
+    let mut tags = Vec::new();
+    if let Ok(tag_names) = repo.tag_names(None) {
+        for name in tag_names.iter().flatten() {
+            tags.push(name.to_string());
+        }
+    }
+
+    Ok(BranchGroup {
+        local,
+        remote,
+        tags,
+        current,
+    })
+}
+
+/// 获取提交的 diff（用于在右栏展示单个文件的 diff）
+pub fn get_commit_file_diff(
+    repo_path: &Path,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    let oid = git2::Oid::from_str(commit_hash)
+        .map_err(|e| anyhow::anyhow!("Invalid commit hash: {}", e))?;
+    let commit = repo.find_commit(oid)?;
+
+    let tree = commit.tree()?;
+    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts
+        .pathspec(file_path)
+        .context_lines(3)
+        .ignore_whitespace_eol(false);
+
+    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut diff_opts))?;
+
+    use std::cell::RefCell;
+    let hunks: RefCell<Vec<DiffHunk>> = RefCell::new(Vec::new());
+
+    diff.foreach(
+        &mut |_, _| true,
+        None,
+        Some(&mut |_delta, hunk| {
+            hunks.borrow_mut().push(DiffHunk {
+                old_start: hunk.old_start(),
+                old_lines: hunk.old_lines(),
+                new_start: hunk.new_start(),
+                new_lines: hunk.new_lines(),
+                lines: Vec::new(),
+            });
+            true
+        }),
+        Some(&mut |_delta, _hunk_opt, line| {
+            let content = std::str::from_utf8(line.content())
+                .unwrap_or("")
+                .trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string();
+
+            let diff_line = match line.origin() {
+                '+' => DiffLine::Added(content),
+                '-' => DiffLine::Removed(content),
+                ' ' => DiffLine::Context(content),
+                _ => return true,
+            };
+
+            if let Some(last) = hunks.borrow_mut().last_mut() {
+                last.lines.push(diff_line);
+            }
+            true
+        }),
+    )?;
+
+    Ok(DiffResult {
+        hunks: hunks.into_inner(),
+    })
+}
+
+/// 将 git2::Commit 转换为 CommitInfo
+fn commit_to_info(commit: &git2::Commit) -> CommitInfo {
+    let hash = commit.id().to_string();
+    let short_hash = hash[..7.min(hash.len())].to_string();
+    let message = commit
+        .message()
+        .unwrap_or("")
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let author = commit.author().name().unwrap_or("Unknown").to_string();
+    let email = commit.author().email().unwrap_or("").to_string();
+    let timestamp = commit.time().seconds();
+    let date = {
+        let dt = chrono::DateTime::from_timestamp(timestamp, 0);
+        match dt {
+            Some(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+            None => format!("{}", timestamp),
+        }
+    };
+
+    CommitInfo {
+        hash,
+        short_hash,
+        message,
+        author,
+        email,
+        timestamp,
+        date,
+        parent_hashes: commit.parent_ids().map(|id| id.to_string()).collect(),
+    }
+}
+
 /// 重命名本地分支（不能重命名当前 checkout 的分支以外的情况需特殊处理）
 pub fn rename_branch(repo_path: &Path, old_name: &str, new_name: &str) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -515,6 +749,92 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
     }
 
     Ok(wt_new_str.to_string())
+}
+
+/// 创建提交（git commit -m 或 git commit --amend -m）
+pub fn create_commit(repo_path: &Path, message: &str, amend: bool, files: &[String]) -> Result<String> {
+    // Stage specified files (or all if empty)
+    let mut add_cmd = no_window_cmd("git");
+    add_cmd.arg("add");
+    if files.is_empty() {
+        add_cmd.arg("-A");
+    } else {
+        for f in files {
+            add_cmd.arg(f);
+        }
+    }
+    add_cmd.current_dir(repo_path);
+    let add_output = add_cmd.output().context("Failed to run git add")?;
+    if !add_output.status.success() {
+        let stderr = String::from_utf8_lossy(&add_output.stderr);
+        anyhow::bail!("git add failed: {}", stderr.trim());
+    }
+
+    // Commit
+    let mut commit_cmd = no_window_cmd("git");
+    commit_cmd.arg("commit");
+    if amend {
+        commit_cmd.arg("--amend");
+    }
+    commit_cmd.args(["-m", message]);
+    commit_cmd.current_dir(repo_path);
+    let commit_output = commit_cmd.output().context("Failed to run git commit")?;
+    if !commit_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commit_output.stderr);
+        anyhow::bail!("git commit failed: {}", stderr.trim());
+    }
+
+    // Get the new commit hash
+    let hash_output = no_window_cmd("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get commit hash")?;
+    let hash = String::from_utf8_lossy(&hash_output.stdout).trim().to_string();
+    Ok(hash)
+}
+
+/// Push 到远程
+pub fn push_remote(repo_path: &Path) -> Result<()> {
+    let output = no_window_cmd("git")
+        .arg("push")
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git push")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git push failed: {}", stderr.trim());
+    }
+    Ok(())
+}
+
+/// 获取未跟踪文件列表
+pub fn get_unversioned_files(repo_path: &Path) -> Result<Vec<FileChange>> {
+    let output = no_window_cmd("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git ls-files")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+    for line in stdout.lines() {
+        let path = line.trim();
+        if path.is_empty() {
+            continue;
+        }
+        // Count lines in the file
+        let file_path = repo_path.join(path);
+        let line_count = std::fs::read_to_string(&file_path)
+            .map(|c| c.lines().count())
+            .unwrap_or(0);
+        files.push(FileChange {
+            path: PathBuf::from(path),
+            status: FileStatus::Untracked,
+            additions: line_count,
+            deletions: 0,
+        });
+    }
+    Ok(files)
 }
 
 /// 解析 git diff --unified=3 文本输出为 DiffResult
@@ -834,5 +1154,114 @@ mod tests {
             .find(|f| f.path.to_string_lossy().contains("new_file.txt"));
         assert!(new_file_entry.is_some(), "Should detect new file");
         assert_eq!(new_file_entry.unwrap().status, FileStatus::Added);
+    }
+
+    // ─── get_commit_log / get_commit_detail / get_all_branches 测试 ────
+
+    fn create_test_repo_with_commits() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // Create 3 commits with distinct timestamps to ensure stable ordering
+        for i in 1..=3 {
+            let file_path = repo_path.join(format!("file{}.txt", i));
+            std::fs::write(&file_path, format!("content {}\n", i)).unwrap();
+            let mut index = repo.index().unwrap();
+            index
+                .add_path(std::path::Path::new(&format!("file{}.txt", i)))
+                .unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            // Use distinct timestamps (1 second apart) to guarantee TIME sort order
+            let sig = git2::Signature::new(
+                "test",
+                "test@test.com",
+                &git2::Time::new(1700000000 + i as i64, 0),
+            )
+            .unwrap();
+            let parent_commit = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+            let parents: Vec<&git2::Commit> = if let Some(ref c) = parent_commit {
+                vec![c]
+            } else {
+                vec![]
+            };
+            repo.commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                &format!("commit {}", i),
+                &tree,
+                &parents,
+            )
+            .unwrap();
+        }
+
+        dir
+    }
+
+    #[test]
+    fn should_get_commit_log() {
+        let dir = create_test_repo_with_commits();
+        let commits = get_commit_log(dir.path(), 0, 50).unwrap();
+        assert_eq!(commits.len(), 3);
+        // 最新提交在前
+        assert_eq!(commits[0].message, "commit 3");
+        assert_eq!(commits[1].message, "commit 2");
+        assert_eq!(commits[2].message, "commit 1");
+        assert_eq!(commits[0].author, "test");
+        assert!(!commits[0].hash.is_empty());
+        assert!(!commits[0].short_hash.is_empty());
+    }
+
+    #[test]
+    fn should_get_commit_log_with_pagination() {
+        let dir = create_test_repo_with_commits();
+        let page1 = get_commit_log(dir.path(), 0, 2).unwrap();
+        assert_eq!(page1.len(), 2);
+        let page2 = get_commit_log(dir.path(), 2, 2).unwrap();
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2[0].message, "commit 1");
+    }
+
+    #[test]
+    fn should_get_commit_detail() {
+        let dir = create_test_repo_with_commits();
+        let commits = get_commit_log(dir.path(), 0, 1).unwrap();
+        let hash = &commits[0].hash;
+
+        let detail = get_commit_detail(dir.path(), hash).unwrap();
+        assert_eq!(detail.commit.message, "commit 3");
+        assert_eq!(detail.files.len(), 1);
+        assert_eq!(detail.files[0].status, FileStatus::Added);
+        assert_eq!(detail.parent_hashes.len(), 1);
+    }
+
+    #[test]
+    fn should_get_all_branches() {
+        let dir = create_test_repo_with_commits();
+        let repo_path = dir.path();
+
+        // Create a second branch
+        let repo = Repository::open(repo_path).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let current = repo
+            .head()
+            .unwrap()
+            .shorthand()
+            .unwrap_or("master")
+            .to_string();
+        repo.branch("feature/test", &head, false).unwrap();
+
+        let groups = get_all_branches(repo_path).unwrap();
+        assert!(groups.local.len() >= 2, "Should have at least 2 branches");
+        assert!(groups.local.contains(&current));
+        assert!(groups.local.contains(&"feature/test".to_string()));
+        assert_eq!(groups.current, current);
+        assert!(groups.tags.is_empty());
     }
 }

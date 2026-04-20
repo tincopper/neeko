@@ -214,6 +214,17 @@ function App() {
 
    const fileView = useFileView();
 
+   const [gitViewState, setGitViewState] = useState<"hidden" | "open" | "minimized">("hidden");
+   const handleToggleGitView = useCallback(() => {
+      setGitViewState((prev) => (prev === "hidden" ? "open" : "hidden"));
+   }, []);
+   const handleMinimizeGitView = useCallback(() => {
+      setGitViewState("minimized");
+   }, []);
+   const handleRestoreGitView = useCallback(() => {
+      setGitViewState("open");
+   }, []);
+
    const handleSelectProjectWithClear = useCallback(
       async (projectId: string) => {
          clearWorktreeForProject(projectId);
@@ -559,6 +570,10 @@ function App() {
                    onFileSave={fileView.saveFile}
                    onFileContentChange={fileView.updateTabContent}
                    onLoadFileTree={fileView.loadFileTree}
+                   gitViewState={gitViewState}
+                   onToggleGitView={handleToggleGitView}
+                   onMinimizeGitView={handleMinimizeGitView}
+                   onRestoreGitView={handleRestoreGitView}
                 />
 
                {pendingPath && (
