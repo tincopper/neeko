@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { GitBranch } from "lucide-react";
 import { Project, AgentConfig, AppConfig } from "../../types";
 import { DialogType, DialogState } from "./GitDialog";
 import FileTree, { buildTree } from "./FileTree";
@@ -43,6 +44,8 @@ interface ProjectItemProps {
   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
+  gitViewState?: "hidden" | "open" | "minimized";
+  onToggleGitView?: () => void;
 }
 
 const ProjectItem: React.FC<ProjectItemProps> = ({
@@ -65,6 +68,8 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   onSaveProjectSettings,
   onDragEnd,
   onShowToast,
+  gitViewState,
+  onToggleGitView,
 }) => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
@@ -304,6 +309,18 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
         <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
           <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">{project.name}</span>
         </div>
+        {/* Git 面板按钮 */}
+        {project.git_info && onToggleGitView && (
+          <button
+            className={`bg-transparent border-none cursor-pointer p-1 rounded flex items-center transition-all duration-150 shrink-0 ${
+              gitViewState && gitViewState !== "hidden" ? "text-accent-blue" : "text-text-muted hover:text-accent-blue"
+            }`}
+            title="Git Commit & Log"
+            onClick={(e) => { e.stopPropagation(); onToggleGitView(); }}
+          >
+            <GitBranch size={13} />
+          </button>
+        )}
         {/* IDE 按钮 */}
         {project.selected_ide && onOpenIde && (
           <button
@@ -323,7 +340,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
                 onClick={(e) => { e.stopPropagation(); setGitMenuOpen(v => !v); }}
                 title="Git actions"
               >
-                <GitLogoIcon size={12} />
+                <FolderGitIcon size={12} />
               </button>
               {gitMenuOpen && (
                 <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">

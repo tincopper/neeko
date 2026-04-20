@@ -78,6 +78,48 @@ pub async fn remote_rename_branch(
 }
 
 #[tauri::command]
+pub async fn remote_get_commit_log(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CommitInfo>, String> {
+    crate::git::remote::get_remote_commit_log(&host, port, &username, &auth, &project_path, offset, limit)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remote_get_commit_detail(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+) -> Result<CommitDetail, String> {
+    crate::git::remote::get_remote_commit_detail(&host, port, &username, &auth, &project_path, &commit_hash)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remote_get_all_branches(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+) -> Result<BranchGroup, String> {
+    crate::git::remote::get_remote_all_branches(&host, port, &username, &auth, &project_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn remote_create_worktree(
     host: String,
     port: u16,

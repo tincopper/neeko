@@ -124,6 +124,12 @@ interface AppLayoutProps {
    onFileSave: (content: string) => Promise<boolean>;
    onFileContentChange: (tabId: string, content: string) => void;
    onLoadFileTree: (projectId: string) => void;
+
+   // Git view
+   gitViewState: "hidden" | "open" | "minimized";
+   onToggleGitView: () => void;
+   onMinimizeGitView: () => void;
+   onRestoreGitView: () => void;
 }
 
 function AppLayout(props: AppLayoutProps) {
@@ -200,6 +206,8 @@ function AppLayout(props: AppLayoutProps) {
                         invokeRemoteGit={props.invokeRemoteGit}
                         onDragEnd={props.onDragEnd}
                         onSaveProjectSettings={props.onSaveProjectSettings}
+                        gitViewState={props.gitViewState}
+                        onToggleGitView={props.onToggleGitView}
                      />
                   )}
                   {activePanel === "files" && (
@@ -254,6 +262,10 @@ function AppLayout(props: AppLayoutProps) {
                   onFileActivateTab={props.onFileActivateTab}
                   onFileSave={props.onFileSave}
                   onFileContentChange={props.onFileContentChange}
+                  gitViewState={props.gitViewState}
+                  onToggleGitView={props.onToggleGitView}
+                  onMinimizeGitView={props.onMinimizeGitView}
+                  onRestoreGitView={props.onRestoreGitView}
                />
             </>
          )}

@@ -94,6 +94,59 @@ pub fn wsl_rename_branch(
 }
 
 #[tauri::command]
+pub fn wsl_get_commit_log(
+    distro: String,
+    project_path: String,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CommitInfo>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::get_wsl_commit_log(&distro, &project_path, offset, limit)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, project_path, offset, limit);
+        Err("WSL is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn wsl_get_commit_detail(
+    distro: String,
+    project_path: String,
+    commit_hash: String,
+) -> Result<CommitDetail, String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::get_wsl_commit_detail(&distro, &project_path, &commit_hash)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, project_path, commit_hash);
+        Err("WSL is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn wsl_get_all_branches(
+    distro: String,
+    project_path: String,
+) -> Result<BranchGroup, String> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::get_wsl_all_branches(&distro, &project_path).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, project_path);
+        Err("WSL is only supported on Windows".to_string())
+    }
+}
+
+#[tauri::command]
 pub fn wsl_create_worktree(
     distro: String,
     project_path: String,

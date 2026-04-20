@@ -45,6 +45,8 @@ interface ProjectsPanelProps {
    invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
    onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
    onDragEnd?: (draggedId: string, targetId: string) => void;
+   gitViewState: "hidden" | "open" | "minimized";
+   onToggleGitView: () => void;
 }
 
 const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
@@ -86,6 +88,8 @@ const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
    invokeRemoteGit,
    onSaveProjectSettings,
    onDragEnd,
+   gitViewState,
+   onToggleGitView,
 }) => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
    const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -130,6 +134,8 @@ const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                         onSaveProjectSettings={onSaveProjectSettings}
                         onDragEnd={onDragEnd}
                         onShowToast={showToast}
+                        gitViewState={gitViewState}
+                        onToggleGitView={onToggleGitView}
                      />
                   ))}
 

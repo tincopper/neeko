@@ -78,3 +78,33 @@ pub struct FileContent {
     pub size: u64,
     pub is_binary: bool,
 }
+
+/// Git 提交信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitInfo {
+    pub hash: String,
+    pub short_hash: String,
+    pub message: String,
+    pub author: String,
+    pub email: String,
+    pub timestamp: i64,
+    pub date: String,
+    pub parent_hashes: Vec<String>,
+}
+
+/// Git 分支分组
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchGroup {
+    pub local: Vec<String>,
+    pub remote: Vec<String>,
+    pub tags: Vec<String>,
+    pub current: String,
+}
+
+/// 单个提交的详情（含修改文件列表）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitDetail {
+    pub commit: CommitInfo,
+    pub files: Vec<FileChange>,
+    pub parent_hashes: Vec<String>,
+}
