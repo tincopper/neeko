@@ -532,3 +532,50 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: AppLayout Props 瘦身重构
+
+**Date**: 2026-04-20
+**Task**: AppLayout Props 瘦身重构
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更说明 |
+|------|----------|
+| 布局层 | `AppLayout` 从重度透传改为纯布局组件，仅保留 Add/Settings 入口动作 |
+| 状态分发 | 新增 `ProjectContext`、`ConnectionContext`、`EditorContext`，按领域分发数据与回调 |
+| 业务组件 | `ProjectsPanel` 与 `MainContent` 改为直接消费 Context，移除大规模 props 依赖 |
+| 应用装配 | `App.tsx` 注入新的 Provider 组合，并组装三类 context value |
+| 规范同步 | 更新 frontend state-management、directory-structure、hook/component/quality 指南 |
+
+**验证记录**
+- `pnpm tsc --noEmit` 通过
+- `pnpm test -- --run` 通过（20 files, 212 passed, 1 skipped）
+
+**归档任务**
+- `04-20-applayout-props-slim` 已归档到 `archive/2026-04/`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5527725` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

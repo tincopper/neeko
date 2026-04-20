@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-04-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~534 | Active |
+| `journal-1.md` | ~581 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-04-20 | AppLayout Props 瘦身重构 | `5527725` | `enhance/ui_clean_code` |
 | 13 | 2026-04-20 | 归档 terminal-split 任务 + gitignore 更新 | `020f3b6`, `692d70a` | `enhance/ui_clean_code` |
 | 12 | 2026-04-15 | 项目侧边栏分组结构改造 | `f06221e` |
 | 11 | 2026-04-14 | Fix gear button icon, dropdown clipping, and flatten bar styles | `823ca36` |
