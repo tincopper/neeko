@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback } from "react";
 import { wslCacheKey, destroyWslCachesByPrefix } from "../components/terminal";
 import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../types";
+import type { ActiveWslKey } from "../components/connections/types";
 
-export type ActiveWslKey = { distro: string; projectId: string } | null;
+export type { ActiveWslKey };
 export type SaveSessionFn = (wslEntries?: WSLEntrySession[], remoteEntries?: RemoteEntrySession[]) => Promise<void>;
 
 export function useWslProjects(saveSession: SaveSessionFn) {
