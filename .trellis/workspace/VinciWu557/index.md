@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-04-15
+- **Total Sessions**: 13
+- **Last Active**: 2026-04-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~500 | Active |
+| `journal-1.md` | ~534 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -27,8 +27,9 @@
 ## Session History
 
 <!-- @@@auto:session-history -->
-| # | Date | Title | Commits |
-|---|------|-------|---------|
+| # | Date | Title | Commits | Branch |
+|---|------|-------|---------|--------|
+| 13 | 2026-04-20 | 归档 terminal-split 任务 + gitignore 更新 | `020f3b6`, `692d70a` | `enhance/ui_clean_code` |
 | 12 | 2026-04-15 | 项目侧边栏分组结构改造 | `f06221e` |
 | 11 | 2026-04-14 | Fix gear button icon, dropdown clipping, and flatten bar styles | `823ca36` |
 | 10 | 2026-04-13 | Title Bar 简化与深色主题调整 | `dfec4c1` |
