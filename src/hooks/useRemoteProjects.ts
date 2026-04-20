@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { remoteCacheKey, destroyRemoteCachesByPrefix } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
+import type { ActiveRemoteKey } from "../components/connections/types";
 
-export type ActiveRemoteKey = { host: string; projectId: string } | null;
+export type { ActiveRemoteKey };
 
 export function useRemoteProjects(saveSession: SaveSessionFn) {
   const [remoteEntries, setRemoteEntries] = useState<RemoteEntrySession[]>([]);
