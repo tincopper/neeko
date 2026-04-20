@@ -498,3 +498,37 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 归档 terminal-split 任务 + gitignore 更新
+
+**Date**: 2026-04-20
+**Task**: 归档 terminal-split 任务 + gitignore 更新
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 .snow 添加到 .gitignore；归档 04-17-terminal-split 任务至 archive/2026-04/
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `020f3b6` | (see git log) |
+| `692d70a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
