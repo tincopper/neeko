@@ -39,7 +39,7 @@ export function useToast() {
 ### 关键模式
 
 1. **命名导出函数**（非默认导出）：`export function useXxx()`
-2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 下传
+2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 与 Context Provider value
 3. **用 `useRef` 管理可变状态**，适用于不需要触发重渲染的数据（计时器、缓存、当前值镜像）
 4. **返回对象**，包含状态值和操作回调
 
@@ -215,9 +215,9 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 
 ## 常见错误
 
-### 1. 作为 Props 传递的回调忘记用 `useCallback`
+### 1. 作为 Props 或 Context value 传递的回调忘记用 `useCallback`
 
-由于本项目使用 Props 下传 + `React.memo` 组件，没有 `useCallback` 的回调会破坏记忆化：
+由于本项目同时使用 Props 与 Context 分发，没有 `useCallback` 的回调会导致消费者无效重渲染：
 
 ```tsx
 // 错误 —— 每次渲染产生新的函数引用

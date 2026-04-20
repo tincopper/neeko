@@ -6,116 +6,57 @@ import RemoteProjectView from "./RemoteProjectView";
 import FileViewer from "./panels/FileViewer";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
-import type {
-   Project,
-   WSLProject,
-   RemoteProject,
-   RemoteEntrySession,
-   AuthMethod,
-   AgentConfig,
-   TerminalTab,
-   FileTab,
-} from "../types";
 import { useAppContext } from "../context/app-context";
+import { useProjectContext } from "../context/project-context";
+import { useConnectionContext } from "../context/connection-context";
+import { useEditorContext } from "../context/editor-context";
+import type { AgentConfig } from "../types";
 
-interface MainContentProps {
-   activeProject: Project | null;
-   activeWorktreePath: string | null;
-   activeWorktreeBranch: string;
-   handleSelectProject: (projectId: string) => void;
-   handleAddProject: () => void;
-   suppressResizeRef?: React.MutableRefObject<boolean>;
-
-   tabs: TerminalTab[];
-   activeTabId: string | null;
-   onActivateTab: (tabId: string) => void;
-   onCloseTab: (tabId: string) => void;
-   onAddTab: () => void;
-   onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
-
-   agents: AgentConfig[];
-   compactMode: boolean;
-   showAgentBar: boolean;
-   hiddenAgentIds: string[];
-   onToggleHiddenAgent: (agentId: string) => void;
-   onAgentClick: (agent: AgentConfig) => void;
-   showToast: (message: string, type?: "info" | "error") => void;
-
-   activeWslProject: { distro: string; project: WSLProject } | null;
-   activeWslWorktreePath: string | null;
-   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-
-   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
-   activeRemoteWorktreePath: string | null;
-   remoteAuthStore: Map<string, AuthMethod>;
-   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-
-   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
-   remoteDiffState: {
-      entryId: string;
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-      filePath: string;
-   } | null;
-   worktreeDiffState: { worktreePath: string; filePath: string } | null;
-
-   onWslDiffBack: () => void;
-   onRemoteDiffBack: () => void;
-   onWorktreeDiffBack: () => void;
-
-   // File view props
-   fileTabs: FileTab[];
-   activeFileTabId: string | null;
-   onFileCloseTab: (tabId: string) => void;
-   onFileActivateTab: (tabId: string) => void;
-   onFileSave: (content: string) => Promise<boolean>;
-   onFileContentChange: (tabId: string, content: string) => void;
-}
-
-function MainContent({
-   activeProject,
-   activeWorktreePath,
-   activeWorktreeBranch,
-   handleSelectProject,
-   handleAddProject,
-   suppressResizeRef,
-   tabs,
-   activeTabId,
-   onActivateTab,
-   onCloseTab,
-   onAddTab,
-   onTabStatusChange,
-   agents,
-   compactMode,
-   showAgentBar,
-   hiddenAgentIds,
-   onToggleHiddenAgent,
-   onAgentClick,
-   showToast,
-   activeWslProject,
-   activeWslWorktreePath,
-   setWslOpenSessions,
-   activeRemoteProject,
-   activeRemoteWorktreePath,
-   remoteAuthStore,
-   setRemoteOpenSessions,
-   wslDiffState,
-   remoteDiffState,
-   worktreeDiffState,
-   onWslDiffBack,
-   onRemoteDiffBack,
-   onWorktreeDiffBack,
-   fileTabs,
-   activeFileTabId,
-   onFileCloseTab,
-   onFileActivateTab,
-   onFileSave,
-   onFileContentChange,
-}: MainContentProps) {
-   const { config } = useAppContext();
+function MainContent() {
+   const { config, showToast } = useAppContext();
+   const {
+      activeProject,
+      activeWorktreePath,
+      activeWorktreeBranch,
+      handleSelectProject,
+      handleAddProject,
+      suppressResizeRef,
+      worktreeDiffState,
+      onWorktreeDiffBack,
+      fileTabs,
+      activeFileTabId,
+      onFileCloseTab,
+      onFileActivateTab,
+      onFileSave,
+      onFileContentChange,
+   } = useProjectContext();
+   const {
+      activeWslProject,
+      activeWslWorktreePath,
+      setWslOpenSessions,
+      activeRemoteProject,
+      activeRemoteWorktreePath,
+      remoteAuthStore,
+      setRemoteOpenSessions,
+      wslDiffState,
+      remoteDiffState,
+      onWslDiffBack,
+      onRemoteDiffBack,
+   } = useConnectionContext();
+   const {
+      tabs,
+      activeTabId,
+      onActivateTab,
+      onCloseTab,
+      onAddTab,
+      onTabStatusChange,
+      agents,
+      compactMode,
+      showAgentBar,
+      hiddenAgentIds,
+      onToggleHiddenAgent,
+      onAgentClick,
+   } = useEditorContext();
 
    // Manage Presets dropdown
    const [managerOpen, setManagerOpen] = useState(false);
@@ -232,8 +173,8 @@ function MainContent({
                      {/* Gear button */}
                      <div className="relative shrink-0" ref={managerRef}>
                         <button
-                            className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                            style={{ fontSize: "var(--terminal-font-size)" }}
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                           style={{ fontSize: "var(--terminal-font-size)" }}
                            onClick={() => setManagerOpen((v) => !v)}
                            title="Manage Presets"
                         >
@@ -252,8 +193,8 @@ function MainContent({
                                  return (
                                     <div
                                        key={agent.id}
-                                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
-                                        style={{ fontSize: "var(--terminal-font-size)" }}
+                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
+                                       style={{ fontSize: "var(--terminal-font-size)" }}
                                        onClick={() => onToggleHiddenAgent(agent.id)}
                                     >
                                        <AgentIcon icon={agent.icon} />
@@ -273,23 +214,23 @@ function MainContent({
                      </div>
                      {/* Agent buttons */}
                      <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
-                     {enabledAgents.map((agent) => {
-                        const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
-                        const selected = currentAgentId === agent.id;
-                        return (
-                           <button
-                              key={agent.id}
-                               className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
-                               style={{ fontSize: "var(--terminal-font-size)" }}
-                              onClick={() => handleAgentClick(agent)}
-                              disabled={!installed}
-                              title={agent.name}
-                           >
-                              <AgentIcon icon={agent.icon} />
-                              {!compactMode && <span>{agent.name}</span>}
-                           </button>
-                        );
-                     })}
+                        {enabledAgents.map((agent) => {
+                           const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+                           const selected = currentAgentId === agent.id;
+                           return (
+                              <button
+                                 key={agent.id}
+                                 className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
+                                 style={{ fontSize: "var(--terminal-font-size)" }}
+                                 onClick={() => handleAgentClick(agent)}
+                                 disabled={!installed}
+                                 title={agent.name}
+                              >
+                                 <AgentIcon icon={agent.icon} />
+                                 {!compactMode && <span>{agent.name}</span>}
+                              </button>
+                           );
+                        })}
                      </div>
                   </div>
                )}
@@ -344,21 +285,21 @@ function MainContent({
             />
          )}
 
-          {activeProject ? (
-             <div className="content-area flex-1 overflow-hidden flex flex-col">
-                {showFileViewer ? (
-                   <FileViewer
-                      tabs={fileTabs}
-                      activeTabId={activeFileTabId}
-                      theme={config.theme}
-                      fontFamily={config.fontFamily}
-                      editorFontSize={config.editorFontSize}
-                      onSave={onFileSave}
-                      onCloseTab={onFileCloseTab}
-                      onActivateTab={onFileActivateTab}
-                      onContentChange={onFileContentChange}
-                   />
-                ) : worktreeDiffState ? (
+         {activeProject ? (
+            <div className="content-area flex-1 overflow-hidden flex flex-col">
+               {showFileViewer ? (
+                  <FileViewer
+                     tabs={fileTabs}
+                     activeTabId={activeFileTabId}
+                     theme={config.theme}
+                     fontFamily={config.fontFamily}
+                     editorFontSize={config.editorFontSize}
+                     onSave={onFileSave}
+                     onCloseTab={onFileCloseTab}
+                     onActivateTab={onFileActivateTab}
+                     onContentChange={onFileContentChange}
+                  />
+               ) : worktreeDiffState ? (
                   <DiffView
                      diffSource={{
                         type: "worktree",
