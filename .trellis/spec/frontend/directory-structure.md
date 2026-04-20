@@ -68,6 +68,15 @@ src/
 │   ├── useWorktreeState.ts
 │   └── useWslProjects.ts
 │
+├── context/                 # React Context 分发层
+│   ├── app-context.tsx
+│   ├── sidebar-context.tsx
+│   ├── project-context.tsx
+│   ├── connection-context.tsx
+│   ├── editor-context.tsx
+│   ├── skill-context.tsx
+│   └── index.ts
+│
 ├── utils/                   # 纯工具函数（扁平目录）
 │   ├── agents.ts            # Agent 图标查找表
 │   ├── codemirror.ts        # CodeMirror 配置（语言加载、主题、字体样式扩展）
@@ -145,6 +154,7 @@ export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } fr
 | 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件 |
 | 独立组件 | `components/<Name>.tsx`（顶层） |
 | 自定义 Hook | `hooks/use<Name>.ts` |
+| 新的跨域状态分发 | `context/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
 | IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
 | 项目类型适配器 | `adapters/<Name>Adapter.ts` |

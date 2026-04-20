@@ -206,7 +206,7 @@ import { Project, AgentConfig } from "../../types";
 
 ### 2. 忘记使用 `React.memo`
 
-除 `App.tsx` 外的所有组件都应使用 `React.memo` 导出，以避免在 Props 下传架构中不必要的重渲染。
+除 `App.tsx` 外的所有组件都应使用 `React.memo` 导出，以避免在 Props 与 Context 混合分发架构中的不必要重渲染。
 
 ### 3. 在 JSX 中内联 SVG 图标
 

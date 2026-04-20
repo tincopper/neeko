@@ -29,6 +29,9 @@ import { useFileView } from "./hooks/useFileView";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppProvider } from "./context/app-context";
 import { SidebarProvider } from "./context/sidebar-context";
+import { ProjectProvider } from "./context/project-context";
+import { ConnectionProvider } from "./context/connection-context";
+import { EditorProvider } from "./context/editor-context";
 import type { AgentConfig } from "./types";
 
 export type { ActiveWslKey, ActiveRemoteKey };
@@ -446,6 +449,94 @@ const handleAgentClick = useCallback(
       [config, saveConfig]
    );
 
+   const projectContextValue = {
+      projects,
+      activeProjectId,
+      activeProject,
+      onRemoveProject: handleRemoveProject,
+      onSelectProject: handleSelectProjectWithClear,
+      onSelectFile: handleSelectFile,
+      onRefreshGit: handleRefreshGit,
+      onBackToMainTerminal: callbacks.handleBackToMainTerminal,
+      onOpenIde: callbacks.handleOpenIdeForSidebar,
+      onOpenWorktreeTerminal: callbacks.handleOpenWorktreeTerminal,
+      onSelectWorktreeFile: callbacks.handleSelectWorktreeFile,
+      onDragEnd: handleDragEnd,
+      onSaveProjectSettings: callbacks.handleSaveProjectSettings,
+      activeWorktreePath,
+      activeWorktreeBranch,
+      handleSelectProject: handleSelectProjectWithClear,
+      handleAddProject,
+      worktreeDiffState,
+      onWorktreeDiffBack: callbacks.handleWorktreeDiffBack,
+      fileTree: fileView.fileTree,
+      fileTabs: fileView.tabs,
+      activeFileTabId: fileView.activeTabId,
+      fileViewLoading: fileView.isLoading,
+      activeFilePath: fileView.activeFilePath,
+      onFileSelect: handleFileSelect,
+      onFileRefresh: handleFileRefresh,
+      onFileCloseTab: fileView.closeTab,
+      onFileActivateTab: fileView.activateTab,
+      onFileSave: fileView.saveFile,
+      onFileContentChange: fileView.updateTabContent,
+      onLoadFileTree: fileView.loadFileTree,
+   };
+
+   const connectionContextValue = {
+      wslEntries,
+      remoteEntries,
+      activeWslKey,
+      activeRemoteKey,
+      wslOpenSessions,
+      remoteOpenSessions,
+      onSelectWslProject: wslActions.handleSelectWslProject,
+      onCloseWslProject: handleCloseWslProject,
+      onRemoveWslProject: handleRemoveWslProject,
+      onRemoveWslEntry: handleRemoveWslEntry,
+      onAddWslProject: handleAddWslProject,
+      onSelectRemoteProject: remoteActions.handleSelectRemoteProject,
+      onCloseRemoteProject: handleCloseRemoteProject,
+      onRemoveRemoteProject: handleRemoveRemoteProject,
+      onRemoveRemoteEntry: handleRemoveRemoteEntry,
+      onAddRemoteProject: handleAddRemoteProject,
+      onSelectWslFile: wslActions.handleSelectWslFile,
+      onSelectRemoteFile: remoteActions.handleSelectRemoteFile,
+      onRefreshWslGit: wslActions.handleRefreshWslGit,
+      onRefreshRemoteGit: remoteActions.handleRefreshRemoteGit,
+      onOpenWslIde: wslActions.handleOpenWslIde,
+      onOpenRemoteIde: remoteActions.handleOpenRemoteIde,
+      onOpenWslWorktreeTerminal: wslActions.handleOpenWslWorktreeTerminal,
+      onOpenRemoteWorktreeTerminal: remoteActions.handleOpenRemoteWorktreeTerminal,
+      invokeRemoteGit: remoteActions.invokeRemoteGit,
+      activeWslProject,
+      activeWslWorktreePath: wslActions.activeWslWorktreePath,
+      setWslOpenSessions,
+      activeRemoteProject,
+      activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
+      remoteAuthStore,
+      setRemoteOpenSessions,
+      wslDiffState: wslActions.wslDiffState,
+      remoteDiffState: remoteActions.remoteDiffState,
+      onWslDiffBack: callbacks.handleWslDiffBack,
+      onRemoteDiffBack: callbacks.handleRemoteDiffBack,
+   };
+
+   const editorContextValue = {
+      tabs,
+      activeTabId,
+      onActivateTab: handleActivateTab,
+      onCloseTab: handleCloseTab,
+      onAddTab: handleAddTab,
+      onTabStatusChange: handleTabStatusChange,
+      agents: agents ?? [],
+      compactMode: config.agentSelectorCompactMode ?? false,
+      showAgentBar: config.agentSelectorShowPresetBar !== false,
+      hiddenAgentIds: config.hiddenAgentIds ?? [],
+      onToggleHiddenAgent: handleToggleHiddenAgent,
+      onAgentClick: handleAgentClick,
+   };
+
    if (initializing) {
       return <SplashScreen />;
    }
@@ -472,93 +563,18 @@ const handleAgentClick = useCallback(
             }}
          >
             <SidebarProvider initialPanelWidth={initialSidebarWidth} onPanelWidthPersist={session.saveSidebarWidth}>
-               <AppLayout
-                  projects={projects}
-                  activeProjectId={activeProjectId}
-                  wslEntries={wslEntries}
-                  remoteEntries={remoteEntries}
-                  activeWslKey={activeWslKey}
-                  activeRemoteKey={activeRemoteKey}
-                  wslOpenSessions={wslOpenSessions}
-                  remoteOpenSessions={remoteOpenSessions}
-                  onAddProject={handleAddProject}
-                  onAddWsl={callbacks.handleAddWslOrNoop}
-                  onAddRemote={callbacks.handleAddRemoteClick}
-                  onRemoveProject={handleRemoveProject}
-                  onOpenSettings={callbacks.handleToggleSettings}
-                  onSelectProject={handleSelectProjectWithClear}
-                  onSelectFile={handleSelectFile}
-                  onRefreshGit={handleRefreshGit}
-                  onBackToMainTerminal={callbacks.handleBackToMainTerminal}
-                  onOpenIde={callbacks.handleOpenIdeForSidebar}
-                  onOpenWorktreeTerminal={callbacks.handleOpenWorktreeTerminal}
-                  onSelectWorktreeFile={callbacks.handleSelectWorktreeFile}
-                  onSelectWslProject={wslActions.handleSelectWslProject}
-                  onCloseWslProject={handleCloseWslProject}
-                  onRemoveWslProject={handleRemoveWslProject}
-                  onRemoveWslEntry={handleRemoveWslEntry}
-                  onAddWslProject={handleAddWslProject}
-                  onSelectRemoteProject={remoteActions.handleSelectRemoteProject}
-                  onCloseRemoteProject={handleCloseRemoteProject}
-                  onRemoveRemoteProject={handleRemoveRemoteProject}
-                  onRemoveRemoteEntry={handleRemoveRemoteEntry}
-                  onAddRemoteProject={handleAddRemoteProject}
-                  onSelectWslFile={wslActions.handleSelectWslFile}
-                  onSelectRemoteFile={remoteActions.handleSelectRemoteFile}
-                  onRefreshWslGit={wslActions.handleRefreshWslGit}
-                  onRefreshRemoteGit={remoteActions.handleRefreshRemoteGit}
-                  onOpenWslIde={wslActions.handleOpenWslIde}
-                  onOpenRemoteIde={remoteActions.handleOpenRemoteIde}
-                  onOpenWslWorktreeTerminal={wslActions.handleOpenWslWorktreeTerminal}
-                  onOpenRemoteWorktreeTerminal={remoteActions.handleOpenRemoteWorktreeTerminal}
-                  invokeRemoteGit={remoteActions.invokeRemoteGit}
-                  onDragEnd={handleDragEnd}
-                  onSaveProjectSettings={callbacks.handleSaveProjectSettings}
-                  activeProject={activeProject}
-                  activeWorktreePath={activeWorktreePath}
-                  activeWorktreeBranch={activeWorktreeBranch}
-                  handleSelectProject={handleSelectProjectWithClear}
-                  handleAddProject={handleAddProject}
-                   tabs={tabs}
-                   activeTabId={activeTabId}
-                   onActivateTab={handleActivateTab}
-                   onCloseTab={handleCloseTab}
-                   onAddTab={handleAddTab}
-                   onTabStatusChange={handleTabStatusChange}
-                   agents={agents}
-                   compactMode={config.agentSelectorCompactMode ?? false}
-                   showAgentBar={config.agentSelectorShowPresetBar !== false}
-                   hiddenAgentIds={config.hiddenAgentIds ?? []}
-                   onToggleHiddenAgent={handleToggleHiddenAgent}
-                   onAgentClick={handleAgentClick}
-                   showToast={showToast}
-                  activeWslProject={activeWslProject}
-                  activeWslWorktreePath={wslActions.activeWslWorktreePath}
-                  setWslOpenSessions={setWslOpenSessions}
-                  activeRemoteProject={activeRemoteProject}
-                  activeRemoteWorktreePath={remoteActions.activeRemoteWorktreePath}
-                  remoteAuthStore={remoteAuthStore}
-                  setRemoteOpenSessions={setRemoteOpenSessions}
-                   wslDiffState={wslActions.wslDiffState}
-                   remoteDiffState={remoteActions.remoteDiffState}
-                   worktreeDiffState={worktreeDiffState}
-                   onWslDiffBack={callbacks.handleWslDiffBack}
-                   onRemoteDiffBack={callbacks.handleRemoteDiffBack}
-                   onWorktreeDiffBack={callbacks.handleWorktreeDiffBack}
-                   // File view props
-                   fileTree={fileView.fileTree}
-                   fileTabs={fileView.tabs}
-                   activeFileTabId={fileView.activeTabId}
-                   fileViewLoading={fileView.isLoading}
-                   activeFilePath={fileView.activeFilePath}
-                   onFileSelect={handleFileSelect}
-                   onFileRefresh={handleFileRefresh}
-                   onFileCloseTab={fileView.closeTab}
-                   onFileActivateTab={fileView.activateTab}
-                   onFileSave={fileView.saveFile}
-                   onFileContentChange={fileView.updateTabContent}
-                   onLoadFileTree={fileView.loadFileTree}
-                />
+               <ProjectProvider value={projectContextValue}>
+                  <ConnectionProvider value={connectionContextValue}>
+                     <EditorProvider value={editorContextValue}>
+                        <AppLayout
+                           onAddProject={handleAddProject}
+                           onAddWsl={callbacks.handleAddWslOrNoop}
+                           onAddRemote={callbacks.handleAddRemoteClick}
+                           onOpenSettings={callbacks.handleToggleSettings}
+                        />
+                     </EditorProvider>
+                  </ConnectionProvider>
+               </ProjectProvider>
 
                {pendingPath && (
                   <AddProjectModal

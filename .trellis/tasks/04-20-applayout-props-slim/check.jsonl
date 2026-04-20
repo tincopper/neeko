@@ -1,0 +1,9 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查阶段对齐同一规范"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查阶段对齐同一规范"}

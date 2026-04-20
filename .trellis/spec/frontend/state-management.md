@@ -6,64 +6,72 @@
 
 ## 概述
 
-本项目仅使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`。**没有外部状态管理库**（没有 Redux、Zustand、Jotai 等），也**没有使用 Context API**。
+本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。项目仍然**不引入外部状态管理库**，例如 Redux、Zustand、Jotai。
 
-`App.tsx` 作为**中央状态协调器**，持有所有状态并通过 Props 下传给子组件。
+`App.tsx` 仍是状态协调入口，负责调用各领域 Hook、处理跨领域回调，再通过多个 Provider 将状态分发给布局层与业务组件。
 
 ---
 
 ## 状态分类
 
-### 1. 应用级状态（由 `App.tsx` 持有）
+### 1. 应用级状态源 `App.tsx`
 
-所有跨组件状态通过领域特定的 Hooks 在 `App.tsx` 中管理：
+跨领域状态仍由 `App.tsx` 调用领域 Hook 持有：
 
 ```tsx
-// App.tsx —— 状态协调
 function App() {
-  const { config, saveConfig, settingsOpen, setSettingsOpen } = useAppConfig();
-  const { toast, showToast } = useToast();
-  const { projects, activeProjectId, ... } = useLocalProjects(...);
-  const { wslEntries, activeWslProjectId, ... } = useWslProjects();
-  const { remoteEntries, activeRemoteProjectId, ... } = useRemoteProjects();
-  const { activeWorktreeBranch, ... } = useWorktreeState(activeProjectIdRef);
+  const local = useLocalProjects();
+  const wsl = useWslProjects(saveSession);
+  const remote = useRemoteProjects(saveSession);
+  const worktree = useWorktreeState(activeProjectIdRef);
+  const fileView = useFileView();
 
-  // 跨领域协调通过回调实现
-  // Props 下传给子组件
+  // 组合跨域回调后注入 Provider
 }
 ```
 
-### 2. 组件本地状态
+### 2. Context 分发层
 
-仅与 UI 相关的状态放在组件内部：
+用于消除 prop drilling，按领域拆分为中粒度 Context：
+
+| Context | 作用范围 | 典型消费者 |
+|--------|---------|-----------|
+| `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`MainContent` |
+| `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
+| `ProjectContext` | 本地项目、worktree、本地文件视图 | `AppLayout`、`ProjectsPanel`、`MainContent` |
+| `ConnectionContext` | WSL/SSH 项目、会话、diff 状态 | `ProjectsPanel`、`MainContent` |
+| `EditorContext` | 终端 tabs 与 agent bar | `MainContent` |
+| `SkillContext` | skill 面板领域状态 | `SkillsPanel`、`SkillContent` |
+
+### 3. 组件本地状态
+
+仅与当前组件 UI 行为相关的状态保留在组件内部：
 
 ```tsx
-// 本地开关、输入状态、下拉菜单可见性
 const [showAddMenu, setShowAddMenu] = useState(false);
-const [editingName, setEditingName] = useState("");
+const [dialog, setDialog] = useState<DialogState | null>(null);
 ```
 
-### 3. 基于 Ref 的可变状态
+### 4. 基于 Ref 的可变状态
 
-用于不需要触发重渲染的状态——计时器、缓存、最新值镜像：
+用于不触发重渲染的数据镜像与计时器：
 
 ```tsx
 const activeProjectIdRef = useRef<string | null>(null);
 const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 ```
 
-### 4. 模块级缓存（React 外部）
+### 5. 模块级缓存
 
-终端实例（xterm.js）缓存在模块级 `Map` 对象中，以在组件重新挂载时保持存活：
+终端实例在模块作用域缓存，跨 unmount/remount 保持会话：
 
 ```tsx
-// 在 TerminalView.tsx 中（模块作用域，不在组件内部）
 export const terminalCache = new Map<string, Terminal>();
 ```
 
-### 5. 持久化状态（通过 Tauri 后端）
+### 6. 持久化状态
 
-应用配置和会话数据通过 Tauri IPC 保存到磁盘：
+通过 Tauri IPC 写入本地文件：
 
 ```tsx
 await invoke("save_config", { config });
@@ -74,22 +82,24 @@ await invoke("save_session", { session: { ... } });
 
 ## 何时使用全局状态
 
-在本项目中，"全局状态"指由 `App.tsx` 持有并通过 Props 下传的状态。
+本项目的全局状态是 `App.tsx` 中的状态源 + Context 分发层。
 
-**使用应用级状态的场景：**
-- 多个组件需要访问相同数据
-- 需要跨领域协调（例如：选择 WSL 项目时取消选择本地项目）
-- 状态需要持久化到后端
+适合放入应用级状态的场景：
 
-**保持状态本地化的场景：**
-- 只有一个组件使用（下拉菜单可见性、输入值、悬停状态）
-- 状态纯粹与 UI 相关且是临时的
+1. 多个区域需要读写同一份数据。
+2. 存在跨领域联动，例如切换 WSL 项目时清理本地激活态。
+3. 状态需要持久化到后端。
+
+适合放入组件本地状态的场景：
+
+1. 仅当前组件使用。
+2. 状态只影响局部交互，不参与跨领域协调。
 
 ---
 
 ## 服务端状态
 
-没有 HTTP API —— 所有"服务端状态"来自 **Tauri Rust 后端**，通过 IPC 传输。
+没有 HTTP API，所有后端状态通过 Tauri IPC 获取。
 
 ### 加载模式
 
@@ -106,7 +116,7 @@ useEffect(() => {
 }, []);
 ```
 
-### 保存模式（防抖）
+### 保存模式
 
 ```tsx
 const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,76 +129,54 @@ const debouncedSave = useCallback(() => {
 }, []);
 ```
 
-### 事件驱动更新
-
-后端推送事件触发状态更新：
-
-```tsx
-listen<string>("git-changed", (event) => {
-  // 刷新项目的 git 信息
-});
-```
-
 ---
 
 ## 架构图
 
 ```
-┌──────────────────────────────────────────────┐
-│ App.tsx（状态协调器）                          │
-│                                              │
-│  useAppConfig()    → 配置状态                │
-│  useLocalProjects() → 项目状态               │
-│  useWslProjects()  → WSL 状态                │
-│  useRemoteProjects() → SSH 状态              │
-│  useWorktreeState() → Worktree 状态          │
-│  useToast()        → 通知状态                │
-│                                              │
-│  跨领域协调回调                               │
-│                                              │
-│  ┌──────────┐ ┌───────────┐ ┌────────────┐  │
-│  │ TitleBar │ │ProjectSide│ │MainContent │  │
-│  │ (props)  │ │bar (props)│ │  (props)   │  │
-│  └──────────┘ └───────────┘ └────────────┘  │
-│                                              │
-└──────────────────────────────────────────────┘
-         ↕ Tauri IPC (invoke / listen)
-┌──────────────────────────────────────────────┐
-│ Rust 后端 (src-tauri/)                        │
-│  - 会话持久化（JSON 文件）                     │
-│  - 终端管理（PTY）                            │
-│  - Git 操作（git2）                           │
-│  - SSH 连接（russh）                          │
-└──────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│ App.tsx 状态协调器                              │
+│  useLocalProjects / useWslProjects / ...       │
+│  useWorktreeState / useFileView / useAppConfig │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ Providers                                       │
+│  AppProvider + SidebarProvider                  │
+│  ProjectProvider + ConnectionProvider           │
+│  EditorProvider + SkillProvider                 │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ Consumer Components                             │
+│  AppLayout / ProjectsPanel / MainContent        │
+│  ActivityBar / FilesPanel / SkillsPanel         │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ Tauri IPC (invoke / listen)                     │
+└────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 常见错误
 
-### 1. 添加状态管理库
+### 1. 继续把跨域数据通过多层 Props 透传
 
-本项目有意避免使用外部状态库。应用是单视图桌面工具——从 `App.tsx` 进行 Props 下传已经足够，且保持了数据流的显式性。
+当前架构已经提供领域 Context。新增跨域字段优先评估是否应加入对应 Context。
 
-### 2. 没有使用 ref 镜像模式
+### 2. 把无关字段塞进同一个 Context
 
-当 `useCallback` 的依赖为 `[]` 但需要读取当前状态时，使用 ref 镜像：
-
-```tsx
-// 设置镜像
-const valueRef = useRef(value);
-useEffect(() => { valueRef.current = value; }, [value]);
-
-// 在回调中从 ref 读取
-const stableCallback = useCallback(() => {
-  doSomething(valueRef.current);
-}, []);
-```
+Context 粒度过大将放大重渲染影响。新增字段时优先放入最贴近业务边界的 Context。
 
 ### 3. 忘记持久化状态变更
 
-修改了应该在应用重启后保留的状态后，调用相应的 `invoke("save_...")` 命令。防抖保存模式可防止过于频繁的磁盘写入。
+需要跨重启保留的数据必须经过对应 `save_*` 调用。
 
 ### 4. 模块级缓存泄漏
 
-终端缓存（`terminalCache` 等）在移除项目时必须显式清理。务必调用对应的 `destroyXxxCache()` 函数。
+终端缓存销毁时必须同步清理关联状态，避免 stale session。
