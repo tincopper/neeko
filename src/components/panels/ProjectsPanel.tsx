@@ -1,8 +1,12 @@
 import React, { useCallback, useState } from "react";
 import { IS_WINDOWS } from "../../utils/platform";
 import { useAppContext } from "../../context/app-context";
-import { useProjectContext } from "../../context/project-context";
-import { useConnectionContext } from "../../context/connection-context";
+import {
+  useProjectStateContext,
+  useProjectActionsContext,
+  useWslContext,
+  useRemoteContext,
+} from "../../contexts";
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
@@ -12,6 +16,8 @@ const ProjectsPanel: React.FC = () => {
    const {
       projects,
       activeProjectId,
+   } = useProjectStateContext();
+   const {
       onRemoveProject,
       onSelectProject,
       onSelectFile,
@@ -22,34 +28,36 @@ const ProjectsPanel: React.FC = () => {
       onSelectWorktreeFile,
       onSaveProjectSettings,
       onDragEnd,
-   } = useProjectContext();
+   } = useProjectActionsContext();
    const {
       wslEntries,
-      remoteEntries,
       activeWslKey,
-      activeRemoteKey,
       wslOpenSessions,
-      remoteOpenSessions,
       onSelectWslProject,
       onCloseWslProject,
       onRemoveWslProject,
       onRemoveWslEntry,
       onAddWslProject,
+      onSelectWslFile,
+      onRefreshWslGit,
+      onOpenWslIde,
+      onOpenWslWorktreeTerminal,
+   } = useWslContext();
+   const {
+      remoteEntries,
+      activeRemoteKey,
+      remoteOpenSessions,
       onSelectRemoteProject,
       onCloseRemoteProject,
       onRemoveRemoteProject,
       onRemoveRemoteEntry,
       onAddRemoteProject,
-      onSelectWslFile,
       onSelectRemoteFile,
-      onRefreshWslGit,
       onRefreshRemoteGit,
-      onOpenWslIde,
       onOpenRemoteIde,
-      onOpenWslWorktreeTerminal,
       onOpenRemoteWorktreeTerminal,
       invokeRemoteGit,
-   } = useConnectionContext();
+   } = useRemoteContext();
 
    const [dialog, setDialog] = useState<DialogState | null>(null);
 
@@ -77,22 +85,26 @@ const ProjectsPanel: React.FC = () => {
                         key={project.id}
                         project={project}
                         isActive={activeProjectId === project.id}
-                        onSelectProject={onSelectProject}
-                        onRemoveProject={onRemoveProject}
-                        onSelectFile={onSelectFile}
-                        onRefreshGit={onRefreshGit}
-                        onBackToMainTerminal={onBackToMainTerminal}
-                        onOpenDialog={setDialog}
-                        onOpenIde={onOpenIde}
-                        onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                        onSelectWorktreeFile={onSelectWorktreeFile}
-                        ideCommandOverrides={ideCommandOverrides}
-                        onRefresh={onRefreshGit}
-                        agents={agents}
-                        config={config}
-                        onSaveProjectSettings={onSaveProjectSettings}
-                        onDragEnd={onDragEnd}
-                        onShowToast={showToast}
+                        actions={{
+                           onSelectProject,
+                           onRemoveProject,
+                           onSelectFile,
+                           onRefreshGit,
+                           onBackToMainTerminal,
+                           onOpenDialog: setDialog,
+                           onOpenIde,
+                           onOpenWorktreeTerminal,
+                           onSelectWorktreeFile,
+                           onRefresh: onRefreshGit,
+                           onSaveProjectSettings,
+                           onDragEnd,
+                           onShowToast: showToast,
+                        }}
+                        viewConfig={{
+                           ideCommandOverrides,
+                           agents,
+                           config,
+                        }}
                      />
                   ))}
 

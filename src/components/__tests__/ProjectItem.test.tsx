@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import ProjectItem from "../project/ProjectItem";
 import type { Project } from "../../types";
+import type { ProjectItemActions } from "../project/projectItemTypes";
 
 function createProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -44,6 +45,20 @@ function createProject(overrides: Partial<Project> = {}): Project {
   };
 }
 
+function createActions(
+  overrides: Partial<ProjectItemActions> = {},
+): ProjectItemActions {
+  return {
+    onSelectProject: vi.fn(),
+    onRemoveProject: vi.fn(),
+    onSelectFile: vi.fn(),
+    onRefreshGit: vi.fn(),
+    onBackToMainTerminal: vi.fn(),
+    onOpenDialog: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe("ProjectItem", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
@@ -53,17 +68,13 @@ describe("ProjectItem", () => {
   it("点击组头只切换折叠状态，不触发项目选中", () => {
     const project = createProject({ collapsed: true });
     const onSelectProject = vi.fn();
+    const actions = createActions({ onSelectProject });
 
     render(
       <ProjectItem
         project={project}
         isActive={false}
-        onSelectProject={onSelectProject}
-        onRemoveProject={vi.fn()}
-        onSelectFile={vi.fn()}
-        onRefreshGit={vi.fn()}
-        onBackToMainTerminal={vi.fn()}
-        onOpenDialog={vi.fn()}
+        actions={actions}
       />,
     );
 
@@ -82,17 +93,13 @@ describe("ProjectItem", () => {
   it("点击 local 行触发主项目选中", () => {
     const project = createProject();
     const onSelectProject = vi.fn();
+    const actions = createActions({ onSelectProject });
 
     render(
       <ProjectItem
         project={project}
         isActive={false}
-        onSelectProject={onSelectProject}
-        onRemoveProject={vi.fn()}
-        onSelectFile={vi.fn()}
-        onRefreshGit={vi.fn()}
-        onBackToMainTerminal={vi.fn()}
-        onOpenDialog={vi.fn()}
+        actions={actions}
       />,
     );
 
@@ -104,18 +111,13 @@ describe("ProjectItem", () => {
   it("点击 worktree 行触发 worktree terminal 打开", () => {
     const project = createProject();
     const onOpenWorktreeTerminal = vi.fn();
+    const actions = createActions({ onOpenWorktreeTerminal });
 
     render(
       <ProjectItem
         project={project}
         isActive={false}
-        onSelectProject={vi.fn()}
-        onRemoveProject={vi.fn()}
-        onSelectFile={vi.fn()}
-        onRefreshGit={vi.fn()}
-        onBackToMainTerminal={vi.fn()}
-        onOpenDialog={vi.fn()}
-        onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+        actions={actions}
       />,
     );
 
@@ -130,17 +132,13 @@ describe("ProjectItem", () => {
 
   it("非 Git 项目仍显示 local 行且不显示分支徽标", () => {
     const project = createProject({ git_info: null });
+    const actions = createActions();
 
     render(
       <ProjectItem
         project={project}
         isActive={false}
-        onSelectProject={vi.fn()}
-        onRemoveProject={vi.fn()}
-        onSelectFile={vi.fn()}
-        onRefreshGit={vi.fn()}
-        onBackToMainTerminal={vi.fn()}
-        onOpenDialog={vi.fn()}
+        actions={actions}
       />,
     );
 

@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { switchAgentInWslTerminal, wslCacheKey, refreshWslTerminal } from "../components/terminal";
 import type { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../types";
-import type { DiffSetter, RemoteDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
 
 export function useWslActions(deps: {
@@ -17,10 +16,6 @@ export function useWslActions(deps: {
   wslEntries: WSLEntrySession[];
   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
   remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-  setRemoteDiffStateRef: DiffSetter<RemoteDiffState>;
-  remoteActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
-  remoteOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
-  remoteWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
@@ -48,13 +43,9 @@ export function useWslActions(deps: {
     deps.setActiveRemoteKey(null);
     deps.setActiveRemoteProject(null);
     setWslDiffState(null);
-    deps.setRemoteDiffStateRef.current?.(null);
     setActiveWslWorktreePath(null);
-    deps.remoteWorktreePathSetterRef.current?.(null);
     setWslActiveWtBranch("");
-    deps.remoteActiveWtBranchSetterRef.current?.("");
     setWslOpenedWt([]);
-    deps.remoteOpenedWtSetterRef.current?.([]);
 
     invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath: project.path })
       .then(gitInfo => {
@@ -104,7 +95,6 @@ export function useWslActions(deps: {
       return [...prev, { path: worktreePath, branch }];
     });
     setWslDiffState(null);
-    deps.setRemoteDiffStateRef.current?.(null);
   }, []);
 
   // ── Select WSL agent ──

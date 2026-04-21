@@ -75,7 +75,7 @@ export default React.memo(TitleBar);
 
 ### 根组件 App（例外）
 
-`App.tsx` 是唯一**不**用 `React.memo` 包裹的组件——它作为状态协调器存在。
+`App.tsx` 是唯一**不**用 `React.memo` 包裹的组件。当前职责是壳层编排，状态协调逻辑位于 `useAppContainer`。
 
 ---
 
@@ -88,6 +88,25 @@ export default React.memo(TitleBar);
 3. **回调 Props** 使用 `onXxx` 命名：`onSelectAgent`、`onToggleAddMenu`、`onAddProject`
 4. **可选 Props** 使用 `?`，通过解构赋默认值
 5. **领域模型类型** 从 `types.ts` 导入（`Project`、`AgentConfig` 等）
+
+### 大型组件 Props 分组约定
+
+当 Props 数量接近两位数时，优先按职责分组，避免继续扩张扁平接口：
+
+```tsx
+interface ProjectItemProps {
+  project: Project;
+  isActive: boolean;
+  actions: ProjectItemActions;
+  viewConfig?: ProjectItemViewConfig;
+}
+```
+
+分组建议：
+
+1. `actions`：事件回调与命令式操作
+2. `state`：仅当子组件需要外部状态快照时使用
+3. `viewConfig`：样式、图标、可选 UI 配置
 
 ### 示例
 
