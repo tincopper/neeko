@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-04-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~675 | Active |
+| `journal-1.md` | ~725 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-04-21 | 完成 Prop 穿透清理 | `1393265` | `enhance/ui_clean_code` |
 | 16 | 2026-04-21 | 重构跨域状态同步为 Zustand 快照 | `88f913a` | `enhance/ui_clean_code` |
 | 15 | 2026-04-21 | 完成巨型组件拆分优化 | `7cfea23`, `46ea632`, `e7eab3f`, `b73a11e` | `enhance/ui_clean_code` |
 | 14 | 2026-04-20 | AppLayout Props 瘦身重构 | `5527725` | `enhance/ui_clean_code` |
