@@ -8,22 +8,16 @@ import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import { useAppContext } from "../context/app-context";
 import {
-  useProjectStateContext,
   useProjectActionsContext,
   useWslContext,
   useRemoteContext,
   useEditorContext,
 } from "../contexts";
 import type { AgentConfig } from "../types";
+import { useAppStore } from "../store/appStore";
 
 function MainContent() {
    const { config, showToast } = useAppContext();
-   const {
-      activeProject,
-      activeWorktreePath,
-      worktreeDiffState,
-      fileTabs,
-   } = useProjectStateContext();
    const {
       handleSelectProject,
       handleAddProject,
@@ -49,6 +43,10 @@ function MainContent() {
       onToggleHiddenAgent,
       onAgentClick,
    } = useEditorContext();
+   const activeProject = useAppStore((state) => state.activeProject);
+   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const worktreeDiffState = useAppStore((state) => state.worktreeDiffState);
+   const fileTabs = useAppStore((state) => state.fileTabs);
 
    // Manage Presets dropdown
    const [managerOpen, setManagerOpen] = useState(false);

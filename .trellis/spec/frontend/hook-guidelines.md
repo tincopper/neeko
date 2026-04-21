@@ -78,7 +78,87 @@ useEffect(() => {
 }, []);
 ```
 
-该模式用于跨域读取场景。领域状态可以直接写入 `useAppStore`，`useSyncToStore` 主要负责把快捷键依赖的函数引用和 worktree 视图快照对齐到 store。
+该模式用于跨域读取场景。领域状态直接写入 `useAppStore`。`useSyncToStore` 仅负责连接快照和快捷键依赖动作引用的同步，不再镜像 project/file 字段。
+
+---
+
+## 场景：FileView Hook 单源状态契约 2026-04-21
+
+### 1. Scope / Trigger
+
+- Trigger：文件树和 Tab 状态由 `useState` 持有并跨层透传，消费端难以统一，易产生双源读取。
+- Scope：`useFileView`、`useAppContainer`、`FileActionsContext`、`AppLayout`、`FileViewer`。
+
+### 2. Signatures
+
+```ts
+// src/hooks/useFileView.ts
+export function useFileView(): {
+  fileTree: FileNode[];
+  tabs: FileTab[];
+  activeTabId: string | null;
+  activeTab: FileTab | null;
+  activeFilePath: string | null;
+  isLoading: boolean;
+  error: string | null;
+  loadFileTree(projectId: string): Promise<void>;
+  openFile(projectId: string, filePath: string): Promise<void>;
+  closeTab(tabId: string): void;
+  activateTab(tabId: string): void;
+  updateTabContent(tabId: string, content: string): void;
+  saveFile(content: string): Promise<boolean>;
+  clearFileView(): void;
+}
+```
+
+### 3. Contracts
+
+1. `useFileView` 不持有 `fileTree/fileTabs/activeFileTabId` 的本地 `useState`，统一使用 `useAppStore`。
+2. `openFile` 的 tab 唯一键为 `tabId = \`${projectId}:${filePath}\``。
+3. `activeFilePath` 由 `fileTabs + activeFileTabId` 派生并写回 store，禁止在组件层重复推导。
+4. `FileViewer` 与 `AppLayout` 只读 store 状态，动作通过 `FileActionsContext` 下发。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 | 错误处理 |
+|------|------|------|---------|
+| 打开重复文件 | 现有 `tabId` | 只切换激活 tab | 不触发 IPC |
+| 打开新文件 | 新 `tabId` | 创建 tab 并激活 | IPC 失败写 `error` |
+| 关闭活动 tab | `tabId` 命中活动项 | 激活相邻 tab 或置空 | 无 |
+| 保存文件 | 活动 tab 存在 | 返回 `true` 并清除脏标记 | IPC 失败返回 `false` |
+
+### 5. Good/Base/Bad Cases
+
+- Good：`openFile` 新建 tab，`activeFilePath` 同步为目标路径。
+- Base：连续切换 tab，`activeFilePath` 始终和 `activeFileTabId` 对齐。
+- Bad：`saveFile` 在无活动 tab 时直接返回 `false`，不触发写文件命令。
+
+### 6. Tests Required
+
+- Hook 断言  
+`openFile` 重复打开同一路径不增加 tab 数量。  
+`closeTab` 关闭最后一个 tab 后 `activeFileTabId` 为 `null`。  
+`updateTabContent` 后 `isDirty` 与原始内容比较一致。
+- 集成断言  
+`FileViewer` 调用 `onFileSave` 时根据返回值维持脏标记。  
+`AppLayout` 切到 files 面板时触发 `onLoadFileTree(activeProjectId)`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+const [tabs, setTabs] = useState<FileTab[]>([]);
+const [activeTabId, setActiveTabId] = useState<string | null>(null);
+```
+
+#### Correct
+
+```tsx
+const tabs = useAppStore((s) => s.fileTabs);
+const activeTabId = useAppStore((s) => s.activeFileTabId);
+useAppStore.setState({ fileTabs: nextTabs, activeFileTabId: nextId });
+```
 
 ---
 
@@ -195,6 +275,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useAppConfig` | 应用配置持久化 | `config`、`saveConfig`、`settingsOpen` |
 | `useToast` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
 | `useLocalProjects` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
+| `useFileView` | 文件树和编辑 Tab 状态动作 | `loadFileTree`、`openFile`、`saveFile` |
 | `useWslProjects` | WSL 发行版管理 | WSL 会话、CRUD 回调 |
 | `useRemoteProjects` | SSH 远程管理 + 认证 | 远程条目、CRUD 回调、认证状态 |
 | `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
@@ -206,7 +287,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
 | `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`worktreeState` |
-| `useSyncToStore` | 将快捷键读取需要的快照和动作引用同步到 app store | （仅副作用，无返回值） |
+| `useSyncToStore` | 同步连接快照与快捷键动作引用到 app store | （仅副作用，无返回值） |
 | `useAgentActions` | 本地 agent、IDE、项目设置保存 | Agent 与 IDE 回调 |
 | `useWorktreeActions` | 本地 worktree 导航与 diff 切换 | Worktree 回调 |
 | `useRemoteAuthActions` | SSH 认证取消与确认 | Remote auth 回调 |

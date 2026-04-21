@@ -2,7 +2,6 @@ import React, { useCallback, useState } from "react";
 import { IS_WINDOWS } from "../../utils/platform";
 import { useAppContext } from "../../context/app-context";
 import {
-  useProjectStateContext,
   useProjectActionsContext,
   useWslContext,
   useRemoteContext,
@@ -10,13 +9,12 @@ import {
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
+import { useAppStore } from "../../store/appStore";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
-   const {
-      projects,
-      activeProjectId,
-   } = useProjectStateContext();
+   const projects = useAppStore((state) => state.projects);
+   const activeProjectId = useAppStore((state) => state.activeProjectId);
    const {
       onRemoveProject,
       onSelectProject,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type AppProviders from "../AppProviders";
 import type AppModals from "../AppModals";
@@ -24,7 +24,7 @@ import { useFileView } from "./useFileView";
 import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, RemoteProject, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
-import { buildContextValues } from "./buildContextValues";
+import { useAppStore } from "../store/appStore";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -52,7 +52,6 @@ export function useAppContainer(): UseAppContainerResult {
   const remote = useRemoteProjects(session.saveSession);
 
   const {
-    projects,
     activeProjectId,
     activeProject,
     loading,
@@ -150,14 +149,16 @@ export function useAppContainer(): UseAppContainerResult {
     saveSession: session.saveSession,
   });
 
-  const [worktreeDiffState, setWorktreeDiffState] = useState<{
-    worktreePath: string;
-    filePath: string;
-  } | null>(null);
+  const setWorktreeDiffState = useCallback(
+    (next: { worktreePath: string; filePath: string } | null) => {
+      useAppStore.setState({ worktreeDiffState: next });
+    },
+    [],
+  );
 
   useEffect(() => {
     setWorktreeDiffState(null);
-  }, [activeProjectId]);
+  }, [activeProjectId, setWorktreeDiffState]);
 
   const agentActions = useAgentActions({
     terminal: {
@@ -362,9 +363,6 @@ export function useAppContainer(): UseAppContainerResult {
   const isTerminalView = activeProject?.active_view === "Terminal";
 
   useSyncToStore({
-    projects,
-    activeProjectId,
-    activeProject,
     isTerminalView: isTerminalView || activeWorktreePath !== null,
     wslEntries,
     activeWslKey,
@@ -375,6 +373,7 @@ export function useAppContainer(): UseAppContainerResult {
     remoteAuthStore,
     pendingAuthEntry,
     activeWorktreePath,
+    activeWorktreeBranch,
     openedWorktrees,
     wslOpenedWt: wslActions.wslOpenedWt,
     activeWslWorktreePath: wslActions.activeWslWorktreePath,
@@ -440,103 +439,88 @@ export function useAppContainer(): UseAppContainerResult {
     [config, saveConfig],
   );
 
-  const {
-    projectStateValue,
-    projectActionsValue,
-    wslValue,
-    remoteValue,
-    editorValue,
-  } = buildContextValues({
-    projectState: {
-      projects,
-      activeProjectId,
-      activeProject,
-      activeWorktreePath,
-      activeWorktreeBranch,
-      worktreeDiffState,
-      fileTree: fileView.fileTree,
-      fileTabs: fileView.tabs,
-      activeFileTabId: fileView.activeTabId,
-      fileViewLoading: fileView.isLoading,
-      activeFilePath: fileView.activeFilePath,
-    },
-    projectActions: {
-      onRemoveProject: handleRemoveProject,
-      onSelectProject: handleSelectProjectWithClear,
-      onSelectFile: handleSelectFile,
-      onRefreshGit: handleRefreshGit,
-      onBackToMainTerminal: worktreeActions.handleBackToMainTerminal,
-      onOpenIde: agentActions.handleOpenIdeForSidebar,
-      onOpenWorktreeTerminal: worktreeActions.handleOpenWorktreeTerminal,
-      onSelectWorktreeFile: worktreeActions.handleSelectWorktreeFile,
-      onDragEnd: handleDragEnd,
-      onSaveProjectSettings: agentActions.handleSaveProjectSettings,
-      handleSelectProject: handleSelectProjectWithClear,
-      handleAddProject,
-      onWorktreeDiffBack: worktreeActions.handleWorktreeDiffBack,
-      onFileSelect: handleFileSelect,
-      onFileRefresh: handleFileRefresh,
-      onFileCloseTab: fileView.closeTab,
-      onFileActivateTab: fileView.activateTab,
-      onFileSave: fileView.saveFile,
-      onFileContentChange: fileView.updateTabContent,
-      onLoadFileTree: fileView.loadFileTree,
-    },
-    wsl: {
-      wslEntries,
-      activeWslKey,
-      wslOpenSessions,
-      activeWslProject,
-      activeWslWorktreePath: wslActions.activeWslWorktreePath,
-      wslDiffState: wslActions.wslDiffState,
-      setWslOpenSessions,
-      onSelectWslProject: handleSelectWslProjectWithSync,
-      onCloseWslProject: handleCloseWslProject,
-      onRemoveWslProject: handleRemoveWslProject,
-      onRemoveWslEntry: handleRemoveWslEntry,
-      onAddWslProject: handleAddWslProject,
-      onSelectWslFile: wslActions.handleSelectWslFile,
-      onRefreshWslGit: wslActions.handleRefreshWslGit,
-      onOpenWslIde: wslActions.handleOpenWslIde,
-      onOpenWslWorktreeTerminal: handleOpenWslWorktreeTerminalWithSync,
-      onWslDiffBack: handleWslDiffBack,
-    },
-    remote: {
-      remoteEntries,
-      activeRemoteKey,
-      remoteOpenSessions,
-      activeRemoteProject,
-      activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
-      remoteAuthStore,
-      remoteDiffState: remoteActions.remoteDiffState,
-      setRemoteOpenSessions,
-      onSelectRemoteProject: handleSelectRemoteProjectWithSync,
-      onCloseRemoteProject: handleCloseRemoteProject,
-      onRemoveRemoteProject: handleRemoveRemoteProject,
-      onRemoveRemoteEntry: handleRemoveRemoteEntry,
-      onAddRemoteProject: handleAddRemoteProject,
-      onSelectRemoteFile: remoteActions.handleSelectRemoteFile,
-      onRefreshRemoteGit: remoteActions.handleRefreshRemoteGit,
-      onOpenRemoteIde: remoteActions.handleOpenRemoteIde,
-      onOpenRemoteWorktreeTerminal: handleOpenRemoteWorktreeTerminalWithSync,
-      invokeRemoteGit: remoteActions.invokeRemoteGit,
-      onRemoteDiffBack: handleRemoteDiffBack,
-    },
-    editor: {
-      tabs,
-      activeTabId,
-      onActivateTab: handleActivateTab,
-      onCloseTab: handleCloseTab,
-      onAddTab: handleAddTab,
-      onTabStatusChange: handleTabStatusChange,
-      agents: agents ?? [],
-      compactMode: config.agentSelectorCompactMode ?? false,
-      showAgentBar: config.agentSelectorShowPresetBar !== false,
-      hiddenAgentIds: config.hiddenAgentIds ?? [],
-      onToggleHiddenAgent: handleToggleHiddenAgent,
-      onAgentClick: handleAgentClick,
-    },
-  });
+  const projectActionsValue = {
+    onRemoveProject: handleRemoveProject,
+    onSelectProject: handleSelectProjectWithClear,
+    onSelectFile: handleSelectFile,
+    onRefreshGit: handleRefreshGit,
+    onBackToMainTerminal: worktreeActions.handleBackToMainTerminal,
+    onOpenIde: agentActions.handleOpenIdeForSidebar,
+    onOpenWorktreeTerminal: worktreeActions.handleOpenWorktreeTerminal,
+    onSelectWorktreeFile: worktreeActions.handleSelectWorktreeFile,
+    onDragEnd: handleDragEnd,
+    onSaveProjectSettings: agentActions.handleSaveProjectSettings,
+    handleSelectProject: handleSelectProjectWithClear,
+    handleAddProject,
+    onWorktreeDiffBack: worktreeActions.handleWorktreeDiffBack,
+  };
+
+  const fileActionsValue = {
+    onFileSelect: handleFileSelect,
+    onFileRefresh: handleFileRefresh,
+    onFileCloseTab: fileView.closeTab,
+    onFileActivateTab: fileView.activateTab,
+    onFileSave: fileView.saveFile,
+    onFileContentChange: fileView.updateTabContent,
+    onLoadFileTree: fileView.loadFileTree,
+  };
+
+  const wslValue = {
+    wslEntries,
+    activeWslKey,
+    wslOpenSessions,
+    activeWslProject,
+    activeWslWorktreePath: wslActions.activeWslWorktreePath,
+    wslDiffState: wslActions.wslDiffState,
+    setWslOpenSessions,
+    onSelectWslProject: handleSelectWslProjectWithSync,
+    onCloseWslProject: handleCloseWslProject,
+    onRemoveWslProject: handleRemoveWslProject,
+    onRemoveWslEntry: handleRemoveWslEntry,
+    onAddWslProject: handleAddWslProject,
+    onSelectWslFile: wslActions.handleSelectWslFile,
+    onRefreshWslGit: wslActions.handleRefreshWslGit,
+    onOpenWslIde: wslActions.handleOpenWslIde,
+    onOpenWslWorktreeTerminal: handleOpenWslWorktreeTerminalWithSync,
+    onWslDiffBack: handleWslDiffBack,
+  };
+
+  const remoteValue = {
+    remoteEntries,
+    activeRemoteKey,
+    remoteOpenSessions,
+    activeRemoteProject,
+    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
+    remoteAuthStore,
+    remoteDiffState: remoteActions.remoteDiffState,
+    setRemoteOpenSessions,
+    onSelectRemoteProject: handleSelectRemoteProjectWithSync,
+    onCloseRemoteProject: handleCloseRemoteProject,
+    onRemoveRemoteProject: handleRemoveRemoteProject,
+    onRemoveRemoteEntry: handleRemoveRemoteEntry,
+    onAddRemoteProject: handleAddRemoteProject,
+    onSelectRemoteFile: remoteActions.handleSelectRemoteFile,
+    onRefreshRemoteGit: remoteActions.handleRefreshRemoteGit,
+    onOpenRemoteIde: remoteActions.handleOpenRemoteIde,
+    onOpenRemoteWorktreeTerminal: handleOpenRemoteWorktreeTerminalWithSync,
+    invokeRemoteGit: remoteActions.invokeRemoteGit,
+    onRemoteDiffBack: handleRemoteDiffBack,
+  };
+
+  const editorValue = {
+    tabs,
+    activeTabId,
+    onActivateTab: handleActivateTab,
+    onCloseTab: handleCloseTab,
+    onAddTab: handleAddTab,
+    onTabStatusChange: handleTabStatusChange,
+    agents: agents ?? [],
+    compactMode: config.agentSelectorCompactMode ?? false,
+    showAgentBar: config.agentSelectorShowPresetBar !== false,
+    hiddenAgentIds: config.hiddenAgentIds ?? [],
+    onToggleHiddenAgent: handleToggleHiddenAgent,
+    onAgentClick: handleAgentClick,
+  };
 
   const titleBarProps: TitleBarProps = {
     activeProject,
@@ -558,8 +542,8 @@ export function useAppContainer(): UseAppContainerResult {
     },
     initialSidebarWidth,
     onSidebarWidthPersist: session.saveSidebarWidth,
-    projectStateValue,
     projectActionsValue,
+    fileActionsValue,
     wslValue,
     remoteValue,
     editorValue,

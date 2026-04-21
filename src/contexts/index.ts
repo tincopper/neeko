@@ -1,13 +1,13 @@
 export {
-  ProjectStateProvider,
-  useProjectStateContext,
-  type ProjectStateContextValue,
-} from "./project-state-context";
-export {
   ProjectActionsProvider,
   useProjectActionsContext,
   type ProjectActionsContextValue,
 } from "./project-actions-context";
+export {
+  FileActionsProvider,
+  useFileActionsContext,
+  type FileActionsContextValue,
+} from "./file-actions-context";
 export {
   WslProvider,
   useWslContext,

@@ -2,13 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { useAppContext } from "../../context/app-context";
-import {
-  useEditorContext,
-  useProjectActionsContext,
-  useProjectStateContext,
-} from "../../contexts";
+import { useEditorContext } from "../../contexts";
 import { buildFontFamily } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
+import { useAppStore } from "../../store/appStore";
 import {
   terminalCache,
   terminalRebuildCallbacks,
@@ -39,8 +36,7 @@ export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands
 
 function TerminalView({ paneId }: TerminalViewProps) {
   const { config } = useAppContext();
-  const { activeProject } = useProjectStateContext();
-  const { suppressResizeRef } = useProjectActionsContext();
+  const activeProject = useAppStore((state) => state.activeProject);
   const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -198,9 +194,6 @@ function TerminalView({ paneId }: TerminalViewProps) {
     }
 
     const handleResize = () => {
-      if (suppressResizeRef?.current) {
-        return;
-      }
       const cache = terminalCache.get(cacheKey);
       if (!cache) {
         return;
@@ -224,9 +217,6 @@ function TerminalView({ paneId }: TerminalViewProps) {
       }
       resizeRafId = requestAnimationFrame(() => {
         resizeRafId = null;
-        if (suppressResizeRef?.current) {
-          return;
-        }
         const c = terminalCache.get(cacheKey);
         if (!c) {
           return;
@@ -266,7 +256,6 @@ function TerminalView({ paneId }: TerminalViewProps) {
     agentCommandOverride,
     tabAgentId,
     handleTabStatusChange,
-    suppressResizeRef,
   ]);
 
   useEffect(() => {

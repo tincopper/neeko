@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { ActiveRemoteKey, ActiveWslKey } from "../components/connections/types";
 import type {
   AuthMethod,
-  Project,
   RemoteEntrySession,
   RemoteProject,
   WSLEntrySession,
@@ -17,9 +16,6 @@ interface IdeProject {
 }
 
 export interface UseSyncToStoreParams {
-  projects: Project[];
-  activeProjectId: string | null;
-  activeProject: Project | null;
   isTerminalView: boolean;
   wslEntries: WSLEntrySession[];
   activeWslKey: ActiveWslKey;
@@ -30,6 +26,7 @@ export interface UseSyncToStoreParams {
   remoteAuthStore: Map<string, AuthMethod>;
   pendingAuthEntry: RemoteEntrySession | null;
   activeWorktreePath: string | null;
+  activeWorktreeBranch: string;
   openedWorktrees: WorktreeItem[];
   wslOpenedWt: WorktreeItem[];
   activeWslWorktreePath: string | null;
@@ -44,9 +41,6 @@ export interface UseSyncToStoreParams {
 
 export function useSyncToStore(params: UseSyncToStoreParams): void {
   const {
-    projects,
-    activeProjectId,
-    activeProject,
     isTerminalView,
     wslEntries,
     activeWslKey,
@@ -57,6 +51,7 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     remoteAuthStore,
     pendingAuthEntry,
     activeWorktreePath,
+    activeWorktreeBranch,
     openedWorktrees,
     wslOpenedWt,
     activeWslWorktreePath,
@@ -71,9 +66,6 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
 
   useEffect(() => {
     useAppStore.setState({
-      projects,
-      activeProjectId,
-      activeProject,
       isTerminalView,
       wslEntries,
       activeWslKey,
@@ -84,6 +76,7 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
       remoteAuthStore,
       pendingAuthEntry,
       activeWorktreePath,
+      activeWorktreeBranch,
       openedWorktrees,
       wslOpenedWt,
       activeWslWorktreePath,
@@ -92,9 +85,6 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
       worktreeState,
     });
   }, [
-    projects,
-    activeProjectId,
-    activeProject,
     isTerminalView,
     wslEntries,
     activeWslKey,
@@ -105,6 +95,7 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     remoteAuthStore,
     pendingAuthEntry,
     activeWorktreePath,
+    activeWorktreeBranch,
     openedWorktrees,
     wslOpenedWt,
     activeWslWorktreePath,
