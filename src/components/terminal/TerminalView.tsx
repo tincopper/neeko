@@ -1,6 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { useAppContext } from "../../context/app-context";
+import {
+  useEditorContext,
+  useProjectActionsContext,
+  useProjectStateContext,
+} from "../../contexts";
 import { buildFontFamily } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
 import {
@@ -31,34 +37,57 @@ export {
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
 
-function TerminalView({
-  project,
-  paneId,
-  tabId,
-  tabAgentId,
-  fontSize = 14,
-  shell = "",
-  fontFamily = "",
-  suppressResizeRef,
-  agentCommandOverride,
-  onTabStatusChange,
-}: TerminalViewProps) {
+function TerminalView({ paneId }: TerminalViewProps) {
+  const { config } = useAppContext();
+  const { activeProject } = useProjectStateContext();
+  const { suppressResizeRef } = useProjectActionsContext();
+  const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentCacheKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
 
-  const cacheKey = terminalCacheKey(project.id, tabId, paneId);
+  const projectId = activeProject?.id ?? null;
+  const projectPath = activeProject?.path ?? null;
+  const projectName = activeProject?.name ?? null;
+  const projectSelectedAgent = activeProject?.selected_agent ?? null;
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const tabAgentId = activeTab?.agentId ?? null;
+  const agentCommandOverride = config.agentCommandOverrides?.[
+    tabAgentId ?? projectSelectedAgent ?? ""
+  ];
+
+  const handleTabStatusChange = useCallback(
+    (status: "Idle" | "Running" | "Failed") => {
+      if (activeTabId) {
+        onTabStatusChange?.(activeTabId, status);
+      }
+    },
+    [activeTabId, onTabStatusChange],
+  );
+
+  const cacheKey = projectId
+    ? terminalCacheKey(projectId, activeTabId, paneId)
+    : `local:none:${paneId}`;
 
   useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
     const cache = terminalCache.get(cacheKey);
     if (cache) {
-      cache.term.options.fontSize = fontSize;
-      cache.term.options.fontFamily = buildFontFamily(fontFamily);
+      cache.term.options.fontSize = config.terminalFontSize;
+      cache.term.options.fontFamily = buildFontFamily(config.fontFamily);
       cache.fitAddon.fit();
     }
-  }, [fontSize, fontFamily, cacheKey]);
+  }, [projectId, cacheKey, config.terminalFontSize, config.fontFamily]);
 
   useEffect(() => {
+    if (!projectId || !projectPath || !projectName) {
+      return;
+    }
+
     const wrapper = wrapperRef.current;
     if (!wrapper) {
       return;
@@ -103,20 +132,21 @@ function TerminalView({
 
     detachAll();
 
-    if (terminalCache.has(cacheKey)) {
-      log(`Reattaching existing terminal for ${project.name} (${cacheKey})`);
-      attach(terminalCache.get(cacheKey)!);
+    const existingCache = terminalCache.get(cacheKey);
+    if (existingCache) {
+      log(`Reattaching existing terminal for ${projectName} (${cacheKey})`);
+      attach(existingCache);
     } else {
       createTerminalForProject(
         cacheKey,
-        project.path,
-        project.name,
+        projectPath,
+        projectName,
         null,
-        fontSize,
+        config.terminalFontSize,
         wrapper,
-        shell,
-        fontFamily,
-        project.id,
+        config.shell,
+        config.fontFamily,
+        projectId,
         undefined,
       ).then((cache) => {
         if (currentCacheKeyRef.current !== cacheKey) {
@@ -158,7 +188,7 @@ function TerminalView({
 
               executedAgentKeys.add(cacheKey);
               log(`Executed agent after creation: ${cmd}`);
-              onTabStatusChange?.("Running");
+              handleTabStatusChange("Running");
             } catch (err) {
               log(`Failed to execute agent after creation: ${err}`);
             }
@@ -226,19 +256,24 @@ function TerminalView({
     };
   }, [
     cacheKey,
-    project.id,
-    project.path,
-    project.name,
+    projectId,
+    projectPath,
+    projectName,
     rebuildCount,
-    fontSize,
-    shell,
-    fontFamily,
+    config.terminalFontSize,
+    config.shell,
+    config.fontFamily,
     agentCommandOverride,
     tabAgentId,
-    onTabStatusChange,
+    handleTabStatusChange,
+    suppressResizeRef,
   ]);
 
   useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+
     if (!tabAgentId || executedAgentKeys.has(cacheKey)) {
       return;
     }
@@ -262,14 +297,18 @@ function TerminalView({
 
         executedAgentKeys.add(cacheKey);
         log(`Executed agent: ${cmd}`);
-        onTabStatusChange?.("Running");
+        handleTabStatusChange("Running");
       } catch (err) {
         log(`Failed to execute agent: ${err}`);
       }
     };
 
     void executeAgent();
-  }, [tabAgentId, cacheKey, agentCommandOverride]);
+  }, [projectId, tabAgentId, cacheKey, agentCommandOverride, handleTabStatusChange]);
+
+  if (!projectId) {
+    return null;
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -281,15 +320,4 @@ function TerminalView({
   );
 }
 
-export default React.memo(
-  TerminalView,
-  (prev, next) =>
-    prev.project.id === next.project.id &&
-    prev.tabId === next.tabId &&
-    prev.tabAgentId === next.tabAgentId &&
-    prev.fontSize === next.fontSize &&
-    prev.shell === next.shell &&
-    prev.fontFamily === next.fontFamily &&
-    prev.agentCommandOverride === next.agentCommandOverride &&
-    prev.onTabStatusChange === next.onTabStatusChange,
-);
+export default React.memo(TerminalView);

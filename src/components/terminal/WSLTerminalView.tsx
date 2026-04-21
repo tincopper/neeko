@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -7,6 +7,8 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
+import { useAppContext } from "../../context/app-context";
+import { useWslContext } from "../../contexts";
 
 interface WslTerminalCache {
   term: Terminal;
@@ -184,33 +186,32 @@ export function getAllWslOpenProjectIds(): Set<string> {
 }
 
 interface WSLTerminalViewProps {
-  distro: string;
-  projectId: string;
-  projectName: string;
-  projectPath: string;
-  fontSize?: number;
-  fontFamily?: string;
-  /** 终端 PTY 会话建立成功后的回调，参数为 projectId */
-  onSessionReady?: (projectId: string) => void;
-  /** 会话建立后自动启动的 Agent ID */
-  selectedAgentId?: string | null;
   paneId?: string;
-  /** cache key 后缀，worktree 终端使用 */
-  cacheKeySuffix?: string;
 }
 
 export default React.memo(function WSLTerminalView({
-  distro,
-  projectId,
-  projectName: _projectName,
-  projectPath,
-  fontSize = 14,
-  fontFamily = "",
-  onSessionReady,
-  selectedAgentId,
   paneId = "p1",
-  cacheKeySuffix = "",
 }: WSLTerminalViewProps) {
+  const { config } = useAppContext();
+  const { activeWslProject, activeWslWorktreePath, setWslOpenSessions } = useWslContext();
+
+  const distro = activeWslProject?.distro ?? null;
+  const projectId = activeWslProject?.project.id ?? null;
+  const projectPath = activeWslWorktreePath ?? activeWslProject?.project.path ?? "";
+  const fontSize = config.terminalFontSize;
+  const fontFamily = config.fontFamily;
+  const selectedAgentId = activeWslProject?.project.selected_agent ?? null;
+  const cacheKeySuffix = activeWslWorktreePath
+    ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}`
+    : "";
+
+  const onSessionReady = useCallback(
+    (pid: string) => {
+      setWslOpenSessions((prev) => new Set(prev).add(pid));
+    },
+    [setWslOpenSessions],
+  );
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
@@ -218,6 +219,7 @@ export default React.memo(function WSLTerminalView({
 
   // 字体変化时同步到已有实例
   useEffect(() => {
+    if (!distro || !projectId) return;
     const key = `${wslCacheKey(distro, projectId)}${cacheKeySuffix}:${paneId}`;
     const cache = wslTerminalCache.get(key);
     if (!cache) return;
@@ -227,6 +229,8 @@ export default React.memo(function WSLTerminalView({
   }, [fontSize, fontFamily, distro, projectId, cacheKeySuffix, paneId]);
 
   useEffect(() => {
+    if (!distro || !projectId) return;
+
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
@@ -266,8 +270,9 @@ export default React.memo(function WSLTerminalView({
 
     detachAll();
 
-    if (wslTerminalCache.has(key)) {
-      const cache = wslTerminalCache.get(key)!;
+    const existingCache = wslTerminalCache.get(key);
+    if (existingCache) {
+      const cache = existingCache;
       setReady(!!cache.sessionId);
       attach(cache);
     } else {
@@ -326,7 +331,7 @@ export default React.memo(function WSLTerminalView({
           if (currentKeyRef.current !== key) return;
           cache.sessionId = session.id;
           setReady(true);
-          onSessionReady?.(projectId);
+          onSessionReady(projectId);
 
           // 自动启动 Agent（WSL shell 启动较慢，延迟 500ms 确保 shell 就绪）
           if (selectedAgentId) {
@@ -420,6 +425,10 @@ export default React.memo(function WSLTerminalView({
       wslWrapperRefs.delete(key);
     };
   }, [distro, projectId, projectPath, cacheKeySuffix, paneId, rebuildCount]);
+
+  if (!activeWslProject) {
+    return null;
+  }
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">

@@ -1,19 +1,8 @@
-import type React from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type { Project } from "../../types";
 
 export interface TerminalViewProps {
-  project: Project;
-  paneId?: string;
-  tabId?: string | null;
-  tabAgentId?: string | null;
-  fontSize?: number;
-  shell?: string;
-  fontFamily?: string;
-  suppressResizeRef?: React.MutableRefObject<boolean>;
-  agentCommandOverride?: string;
-  onTabStatusChange?: (status: "Idle" | "Running" | "Failed") => void;
+  paneId: string;
 }
 
 export interface TerminalCache {

@@ -21,43 +21,27 @@ function MainContent() {
    const {
       activeProject,
       activeWorktreePath,
-      activeWorktreeBranch,
       worktreeDiffState,
       fileTabs,
-      activeFileTabId,
    } = useProjectStateContext();
    const {
       handleSelectProject,
       handleAddProject,
-      suppressResizeRef,
-      onFileCloseTab,
-      onFileActivateTab,
-      onFileSave,
-      onFileContentChange,
       onWorktreeDiffBack,
    } = useProjectActionsContext();
    const {
       activeWslProject,
       activeWslWorktreePath,
-      setWslOpenSessions,
       wslDiffState,
       onWslDiffBack,
    } = useWslContext();
-   const {
-      activeRemoteProject,
-      activeRemoteWorktreePath,
-      remoteAuthStore,
-      setRemoteOpenSessions,
-      remoteDiffState,
-      onRemoteDiffBack,
-   } = useRemoteContext();
+   const { activeRemoteProject } = useRemoteContext();
    const {
       tabs,
       activeTabId,
       onActivateTab,
       onCloseTab,
       onAddTab,
-      onTabStatusChange,
       agents,
       compactMode,
       showAgentBar,
@@ -84,7 +68,6 @@ function MainContent() {
    const allEnabledAgents = useMemo(() => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)), [agents]);
 
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-   const activeTabAgentId = activeTab?.agentId ?? null;
 
    // Agent installed status
    const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
@@ -120,29 +103,6 @@ function MainContent() {
    const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)), [agents, hiddenAgentIds]);
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
    const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
-
-   const handleTerminalTabStatusChange = useCallback(
-      (status: "Idle" | "Running" | "Failed") => {
-         if (activeTabId) {
-            onTabStatusChange?.(activeTabId, status);
-         }
-      },
-      [activeTabId, onTabStatusChange]
-   );
-
-   const onWslSessionReady = useCallback(
-      (pid: string) => {
-         setWslOpenSessions((prev) => new Set(prev).add(pid));
-      },
-      [setWslOpenSessions]
-   );
-
-   const onRemoteSessionReady = useCallback(
-      (pid: string) => {
-         setRemoteOpenSessions((prev) => new Set(prev).add(pid));
-      },
-      [setRemoteOpenSessions]
-   );
 
    const isTerminalView = activeProject?.active_view === "Terminal";
    const localLayoutId = activeProject
@@ -259,20 +219,7 @@ function MainContent() {
                      <SplitLayout
                         layoutId={wslLayoutId}
                         renderPane={(paneId) => (
-                           <WSLTerminalView
-                              paneId={paneId}
-                              distro={activeWslProject.distro}
-                              projectId={activeWslProject.project.id}
-                              projectName={activeWslProject.project.name}
-                              projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
-                              fontSize={config.terminalFontSize}
-                              fontFamily={config.fontFamily}
-                              cacheKeySuffix={
-                                 activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}` : ""
-                              }
-                              selectedAgentId={activeWslProject.project.selected_agent}
-                              onSessionReady={onWslSessionReady}
-                           />
+                           <WSLTerminalView paneId={paneId} />
                         )}
                      />
                   </div>
@@ -281,32 +228,13 @@ function MainContent() {
          )}
 
          {activeRemoteProject && !activeProject && !activeWslProject && (
-            <RemoteProjectView
-               entry={activeRemoteProject.entry}
-               project={activeRemoteProject.project}
-               remoteAuthStore={remoteAuthStore}
-               remoteDiffState={remoteDiffState}
-               config={config}
-               onRemoteDiffBack={onRemoteDiffBack}
-               activeRemoteWorktreePath={activeRemoteWorktreePath}
-               onRemoteSessionReady={onRemoteSessionReady}
-            />
+            <RemoteProjectView />
          )}
 
          {activeProject ? (
             <div className="content-area flex-1 overflow-hidden flex flex-col">
                {showFileViewer ? (
-                  <FileViewer
-                     tabs={fileTabs}
-                     activeTabId={activeFileTabId}
-                     theme={config.theme}
-                     fontFamily={config.fontFamily}
-                     editorFontSize={config.editorFontSize}
-                     onSave={onFileSave}
-                     onCloseTab={onFileCloseTab}
-                     onActivateTab={onFileActivateTab}
-                     onContentChange={onFileContentChange}
-                  />
+                  <FileViewer />
                ) : worktreeDiffState ? (
                   <DiffView
                      diffSource={{
@@ -323,38 +251,12 @@ function MainContent() {
                      {!activeWorktreePath && (
                         <SplitLayout
                            layoutId={localLayoutId}
-                           renderPane={(paneId) => (
-                              <TerminalView
-                                 paneId={paneId}
-                                 project={activeProject}
-                                 tabId={activeTabId}
-                                 tabAgentId={activeTabAgentId}
-                                 fontSize={config.terminalFontSize}
-                                 shell={config.shell}
-                                 fontFamily={config.fontFamily}
-                                 suppressResizeRef={suppressResizeRef}
-                                 agentCommandOverride={
-                                    config.agentCommandOverrides?.[
-                                       activeTabAgentId ?? activeProject.selected_agent ?? ""
-                                    ]
-                                 }
-                                 onTabStatusChange={handleTerminalTabStatusChange}
-                              />
-                           )}
+                           renderPane={(paneId) => <TerminalView paneId={paneId} />}
                         />
                      )}
 
                      {activeWorktreePath && (
-                        <WorktreeTerminalView
-                           projectId={activeProject.id}
-                           projectName={activeProject.name}
-                           worktreePath={activeWorktreePath}
-                           worktreeBranch={activeWorktreeBranch}
-                           selectedAgent={activeProject.selected_agent}
-                           fontSize={config.terminalFontSize}
-                           shell={config.shell}
-                           fontFamily={config.fontFamily}
-                        />
+                        <WorktreeTerminalView />
                      )}
                   </div>
                ) : diffFilePath ? (

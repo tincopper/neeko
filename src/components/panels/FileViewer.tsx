@@ -8,32 +8,25 @@ import { X, Eye, Save, FileCode } from "lucide-react";
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme } from "../../types";
+import { useAppContext } from "../../context/app-context";
+import { useProjectActionsContext, useProjectStateContext } from "../../contexts";
 
 type MarkdownMode = "preview" | "source";
 
-interface FileViewerProps {
-  tabs: FileTab[];
-  activeTabId: string | null;
-  theme: AppTheme;
-  fontFamily: string;
-  editorFontSize: number;
-  onSave: (content: string) => Promise<boolean>;
-  onCloseTab: (tabId: string) => void;
-  onActivateTab: (tabId: string) => void;
-  onContentChange: (tabId: string, content: string) => void;
-}
+function FileViewer() {
+  const { config } = useAppContext();
+  const { fileTabs: tabs, activeFileTabId: activeTabId } = useProjectStateContext();
+  const {
+    onFileSave: onSave,
+    onFileCloseTab: onCloseTab,
+    onFileActivateTab: onActivateTab,
+    onFileContentChange: onContentChange,
+  } = useProjectActionsContext();
 
-function FileViewer({
-  tabs,
-  activeTabId,
-  theme,
-  fontFamily,
-  editorFontSize: fontSize,
-  onSave,
-  onCloseTab,
-  onActivateTab,
-  onContentChange,
-}: FileViewerProps) {
+  const theme = config.theme;
+  const fontFamily = config.fontFamily;
+  const fontSize = config.editorFontSize;
+
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
   // Ctrl+W 关闭当前 Tab

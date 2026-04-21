@@ -1,5 +1,7 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useAppContext } from "../../context/app-context";
+import { useProjectStateContext } from "../../contexts";
 import {
   createTerminalForProject,
   terminalCache,
@@ -8,38 +10,31 @@ import {
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
 
-interface WorktreeTerminalViewProps {
-  projectId: string;
-  projectName: string;
-  worktreePath: string;
-  worktreeBranch: string;
-  selectedAgent: string | null;
-  fontSize?: number;
-  shell?: string;
-  fontFamily?: string;
-}
-
-// cache key 鏍煎紡锛歱rojectId + ":wt:" + worktreePath
+// cache key 格式：projectId + ":wt:" + worktreePath
 export function worktreeKey(projectId: string, worktreePath: string) {
   return `${projectId}:wt:${worktreePath}`;
 }
 
-function WorktreeTerminalView({
-  projectId,
-  projectName,
-  worktreePath,
-  worktreeBranch,
-  selectedAgent,
-  fontSize = 14,
-  shell = "",
-  fontFamily = "",
-}: WorktreeTerminalViewProps) {
+function WorktreeTerminalView() {
+  const { activeProject, activeWorktreePath, activeWorktreeBranch } = useProjectStateContext();
+  const { config } = useAppContext();
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
 
-  // fontSize / fontFamily 鍙樺寲鏃跺悓姝ュ埌宸叉湁瀹炰緥
+  const projectId = activeProject?.id ?? null;
+  const projectName = activeProject?.name ?? "";
+  const selectedAgent = activeProject?.selected_agent ?? null;
+  const worktreePath = activeWorktreePath;
+  const worktreeBranch = activeWorktreeBranch;
+  const fontSize = config.terminalFontSize;
+  const shell = config.shell;
+  const fontFamily = config.fontFamily;
+
+  // fontSize / fontFamily 变化时同步到已有实例
   useEffect(() => {
+    if (!projectId || !worktreePath) return;
     const key = worktreeKey(projectId, worktreePath);
     const cache = terminalCache.get(key);
     if (!cache) return;
@@ -49,13 +44,15 @@ function WorktreeTerminalView({
   }, [fontSize, fontFamily, projectId, worktreePath]);
 
   useEffect(() => {
+    if (!projectId || !worktreePath) return;
+
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
     const key = worktreeKey(projectId, worktreePath);
     currentKeyRef.current = key;
 
-    // 娉ㄥ唽閲嶅缓鍥炶皟
+    // 注册重建回调
     terminalRebuildCallbacks.set(key, () => {
       if (currentKeyRef.current === key) {
         setRebuildCount((c) => c + 1);
@@ -87,10 +84,11 @@ function WorktreeTerminalView({
 
     detachAll();
 
-    if (terminalCache.has(key)) {
-      attach(terminalCache.get(key)!);
+    const existingCache = terminalCache.get(key);
+    if (existingCache) {
+      attach(existingCache);
     } else {
-      // worktreePath 浣滀负缁堢宸ヤ綔鐩綍锛宻electedAgent 鑷姩鍚姩 Agent锛宐ackendProjectId 涓虹埗椤圭洰 ID
+      // worktreePath 作为终端工作目录，selectedAgent 自动启动 Agent，backendProjectId 为父项目 ID
       createTerminalForProject(
         key,
         worktreePath,
@@ -160,6 +158,10 @@ function WorktreeTerminalView({
       terminalRebuildCallbacks.delete(key);
     };
   }, [projectId, worktreePath, rebuildCount]);
+
+  if (!activeProject || !worktreePath) {
+    return null;
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-w-0">
