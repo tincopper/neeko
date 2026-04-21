@@ -2,79 +2,83 @@
 
 ---
 
-## 一、关键问题 (Critical)
+## ~~一、关键问题 (Critical)~~ 已完成
 
-### 1. 巨型组件 (God Components)
+### ~~1. 巨型组件 (God Components)~~ 已完成
 
-| 文件                | 行数  | 问题                                                   |
-| ------------------- | ----- | ------------------------------------------------------ |
-| `RemoteItems.tsx`   | 1,017 | 混合了列表渲染、右键菜单、分支/Worktree 管理、Git 操作 |
-| `SettingsPanel.tsx` | 768   | 6 个设置类别全在一个组件里，各自独立的表单状态         |
-| `App.tsx`           | 628   | 编排 25+ 个 hook，200+ 解构依赖，构造巨大 context 对象 |
-| `TerminalView.tsx`  | 680   | 组件逻辑和模块级缓存/工具函数混杂                      |
-| `DiffView.tsx`      | 550   | 语法高亮、diff 解析、分栏渲染全部耦合                  |
-| `ProjectItem.tsx`   | 507   | 接收 15+ props，含 8+ 回调处理器                       |
+> 所有巨型组件已拆分完毕（总行数 4,150 → 767）
 
-### 2. 跨域 Ref 反模式
+| 文件                | 原行数 | 当前行数 | 状态       |
+| ------------------- | ------ | -------- | ---------- |
+| `RemoteItems.tsx`   | 1,017  | 235      | 已拆分     |
+| `SettingsPanel.tsx` | 768    | 5        | 已拆分     |
+| `App.tsx`           | 628    | 41       | 已拆分     |
+| `TerminalView.tsx`  | 680    | 295      | 大幅缩减   |
+| `DiffView.tsx`      | 550    | 12       | 已拆分     |
+| `ProjectItem.tsx`   | 507    | 179      | 大幅缩减   |
 
-`useCrossDomainRefs.ts` 用 ref 做跨域状态传递（`setRemoteDiffStateRef.current = ...`），本质上是手工事件总线，说明状态架构需要重新设计。
+### ~~2. 跨域 Ref 反模式~~ 已完成
+
+> `useCrossDomainRefs.ts` 已移除，跨域状态传递已替换为 zustand snapshots。
 
 ---
 
 ## 二、高严重度 (High)
 
-### 3. Prop 穿透严重
+### ~~3. Prop 穿透严重~~ 已完成
 
-- `MainContent.tsx` 接收 30+ context 值再向下传递
-- `RemoteDialog.tsx` 多层嵌套透传 Agent/IDE 选择器的 props
-- 建议：拆分 Context 粒度，或引入 compound component 模式
+- ~~`MainContent.tsx` 接收 30+ context 值再向下传递~~
+- ~~`RemoteDialog.tsx` 多层嵌套透传 Agent/IDE 选择器的 props~~
+- ~~建议：拆分 Context 粒度，或引入 compound component 模式~~
 
-### 4. Hook 复杂度过高
+### ~~4. Hook 复杂度过高~~ 已完成
 
-- `useAppCallbacks.ts` (267 行)：单文件 28 个回调函数，应按域拆分
-- `useRemoteActions.ts` (190 行)：接收 30+ 依赖参数，依赖数组过长
-- `useWslActions.ts` 与 `useRemoteActions.ts` 结构高度重复，存在代码复用机会
+> 已完成按域拆分与共享逻辑提取：`useAppCallbacks.ts` 已移除，新增 `useAgentActions`、`useWorktreeActions`、`useRemoteAuthActions`，并抽取 `useConnectionWorktreeState` 与 `utils/entryUpdates.ts`。
 
-### 5. Context 膨胀
+### ~~5. Context 膨胀~~ 已完成
 
-- `ProjectContextValue`：20+ 属性，混合状态和回调
-- `ConnectionContextValue`：30+ 属性，WSL 和 Remote 混在一起
-- 应拆分：`ProjectState` / `ProjectCallbacks`、`WSLContext` / `RemoteContext`
+- ~~`ProjectContextValue`：20+ 属性，混合状态和回调~~
+- ~~`ConnectionContextValue`：30+ 属性，WSL 和 Remote 混在一起~~
+- ~~应拆分：`ProjectState` / `ProjectCallbacks`、`WSLContext` / `RemoteContext`~~
 
 ---
 
 ## 三、中等严重度 (Medium)
 
-### 6. 缺少 Barrel Export
+### ~~6. 缺少 Barrel Export 持续存在~~ 已完成
 
-以下目录没有 `index.ts`：
-- `hooks/` (32 个 hook 无集中导出)
+`2026-04-21` 19:40 核查：问题已修复。
+
+已补齐 `index.ts`：
+- `hooks/`
 - `utils/`
 - `adapters/`
 - `components/panels/`
 
-### 7. 类型组织
+### ~~7. 类型组织 持续存在~~ 已完成
 
-`types.ts` (311 行) 混合了 UI 类型、API 类型、适配器类型，应按域拆分为 `domain-types.ts`、`ui-types.ts`、`api-types.ts`。
+`2026-04-21` 19:40 核查：问题已修复。
 
-### 8. 类型重复定义
+已移除 `src/types.ts`，按域拆分为 `src/types/` 目录，并通过 `src/types/index.ts` 聚合导出。
 
-`ActiveWslKey` 在 `useWslProjects.ts` 和 `RemoteItems.tsx` 中重复定义。
+### ~~8. 类型重复定义~~ 已完成
 
-### 9. 目录组织不清晰
+`2026-04-21` 核查：`ActiveWslKey` 已集中定义在 `components/connections/types.ts`，`RemoteItems.tsx` 中无重复定义。
 
-- Skills 组件分散在 `components/skills/` 和 `components/panels/SkillsPanel.tsx`
-- Panel 组件没有统一目录
-- FileViewer 在 panels 目录，FileTree 在 project 目录
+### ~~9. 目录组织不清晰 持续存在~~ 已完成
 
----
+`2026-04-21` 20:05 核查：问题已收敛并完成。
 
-## 四、低严重度 (Low)
+- Skills 入口已统一到 `components/skills/`，`components/panels/` 不再承载 `SkillsPanel`
+- `FileViewer` 与 `FileTree` 已统一迁移到 `components/files/`
+- `components/panels/` 仅保留侧栏面板组件（`ProjectsPanel`、`FilesPanel`）
 
-### 10. 命名不一致
+### ~~10. 命名不一致 持续存在~~ 已完成
 
-- 回调前缀混用：`onSelectProject` vs `handleSelectProject` 在同一组件内共存
-- Hook 命名模式不统一：`useSessionBootstrap` vs `useKeyboardShortcuts`
+`2026-04-21` 19:40 核查：主要冲突已消除。
+
+- `ProjectActionsContextValue` 已统一对外回调为 `on*`，移除 `handleSelectProject`、`handleAddProject`
+- 容器与消费层已同步改名并通过类型检查
 
 ---
 

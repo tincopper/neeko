@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from "react";
-import FileTree, { buildTree } from "../project/FileTree";
+import { FileTree, buildTree } from "../files";
 import {
   BranchIcon,
   ChevronRightIcon,

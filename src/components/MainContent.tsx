@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { SplitLayout, TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
-import FileViewer from "./panels/FileViewer";
+import { FileViewer } from "./files";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import { useAppContext } from "../context/app-context";
@@ -19,8 +19,8 @@ import { useAppStore } from "../store/appStore";
 function MainContent() {
    const { config, showToast } = useAppContext();
    const {
-      handleSelectProject,
-      handleAddProject,
+      onSelectProject,
+      onAddProject,
       onWorktreeDiffBack,
    } = useProjectActionsContext();
    const {
@@ -262,7 +262,7 @@ function MainContent() {
                      projectId={activeProject.id}
                      filePath={diffFilePath}
                      initialMode={config.diffMode}
-                     onBack={() => handleSelectProject(activeProject.id)}
+                     onBack={() => onSelectProject(activeProject.id)}
                   />
                ) : null}
             </div>
@@ -274,7 +274,7 @@ function MainContent() {
                   <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
                   <button
                      className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
-                     onClick={handleAddProject}
+                     onClick={onAddProject}
                   >
                      Add Project
                   </button>

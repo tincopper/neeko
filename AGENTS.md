@@ -47,7 +47,18 @@ neeko/
 ├── src/                              # 前端 (React + TypeScript)
 │   ├── App.tsx                       # 组合层：hook 调用 + JSX 编排
 │   ├── main.tsx                      # 入口点
-│   ├── types.ts                      # 全局 TypeScript 类型定义（单一源）
+│   ├── types/                        # 全局 TypeScript 类型定义（按域拆分）
+│   │   ├── index.ts                  # 类型聚合导出
+│   │   ├── app.ts                    # 应用配置与主题类型
+│   │   ├── project.ts                # 本地项目与统一项目类型
+│   │   ├── connection.ts             # WSL/SSH 连接与项目类型
+│   │   ├── git.ts                    # Git 相关类型
+│   │   ├── file.ts                   # 文件树与编辑器标签类型
+│   │   ├── terminal.ts               # 终端标签类型
+│   │   ├── split.ts                  # 终端分屏布局类型
+│   │   ├── skill.ts                  # Skill 领域类型
+│   │   ├── session.ts                # 会话持久化类型
+│   │   └── agent.ts                  # Agent 类型
 │   ├── styles.css                    # 全局样式（One Dark Pro 主题 + CSS 变量）
 │   ├── vite-env.d.ts                 # Vite 模块声明（*.png, *.svg）
 │   ├── assets/                       # 静态资源
@@ -74,9 +85,12 @@ neeko/
 │   │   ├── project/                  # 本地项目管理
 │   │   │   ├── ProjectSidebar.tsx    # 左侧边栏（可拖拽宽度）
 │   │   │   ├── ProjectItem.tsx       # 单个本地项目卡片
-│   │   │   ├── FileTree.tsx          # 变更文件树（紧凑包压缩）
 │   │   │   ├── GitDialog.tsx         # 新建分支/Worktree 对话框
 │   │   │   └── AddProjectModal.tsx   # 添加项目确认（含 Agent/IDE 选择）
+│   │   ├── files/                    # 文件域组件
+│   │   │   ├── FileViewer.tsx        # 文件编辑器（CodeMirror，多 Tab）
+│   │   │   ├── FileTree.tsx          # 变更文件树（紧凑包压缩）
+│   │   │   └── index.ts              # barrel export
 │   │   ├── layout/                   # 窗口布局
 │   │   │   ├── TitleBar.tsx          # 自定义标题栏（无系统边框）
 │   │   │   ├── WindowControls.tsx    # 最小化/最大化/关闭按钮
@@ -133,7 +147,7 @@ neeko/
 ### 前端 (React + TypeScript)
 
 #### 类型管理
-- 所有共享接口定义在 `src/types.ts`（单一源）
+- 所有共享接口定义在 `src/types/`（按域拆分，`index.ts` 聚合导出）
 - 组件内不重复定义已有类型
 - 组件内部类型用 `interface` 但不导出
 
