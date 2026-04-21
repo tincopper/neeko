@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Settings 拆分遵循组件组织与 memo 约定"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新增 components/settings 目录与 barrel export"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "保持类型安全与导入规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "复用 AppConfig/AgentConfig 类型"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "常量与面板组件抽离避免重复"}
