@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "../utils/platform";
 import { switchAgentInTerminal, refreshTerminal } from "../components/terminal";
 import { AgentConfig } from "../types";
-import type { Project, WSLEntrySession, RemoteEntrySession, AuthMethod } from "../types";
+import type { Project, RemoteEntrySession, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
 
 const noop = () => {};
@@ -26,14 +26,12 @@ export interface UseAppCallbacksParams {
   setActiveWorktreePath: (path: string | null) => void;
   setActiveWorktreeBranch: (branch: string) => void;
   setOpenedWorktrees: React.Dispatch<React.SetStateAction<import("./useWorktreeState").WorktreeItem[]>>;
-  activeProjectIdRef: React.MutableRefObject<string | null>;
+  activeProjectId: string | null;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
   // Worktree diff
   setWorktreeDiffState: (s: { worktreePath: string; filePath: string } | null) => void;
   // Session
   saveSession: SaveSessionFn;
-  wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
   // WSL actions
   setWslDiffState: (s: null) => void;
   // Remote actions
@@ -47,7 +45,7 @@ export interface UseAppCallbacksParams {
   setRemoteAuthStore: React.Dispatch<React.SetStateAction<Map<string, AuthMethod>>>;
   setPendingAuthEntry: (entry: null) => void;
   setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
-  remoteEntriesRef: React.MutableRefObject<RemoteEntrySession[]>;
+  remoteEntries: RemoteEntrySession[];
   setActiveRemoteKey: (key: null) => void;
   setActiveRemoteProject: (project: null) => void;
   // UI
@@ -84,12 +82,12 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     setProjects, setActiveProject, setActiveProjectId,
     handleOpenIde, showToast,
     activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch,
-    setOpenedWorktrees, activeProjectIdRef, saveWorktreeState,
+    setOpenedWorktrees, activeProjectId, saveWorktreeState,
     setWorktreeDiffState,
-    saveSession, wslEntriesRefForSave, remoteEntriesRefForSave,
+    saveSession,
     setWslDiffState, setRemoteDiffState,
     pendingAuthEntry, setRemoteAuthStore, setPendingAuthEntry,
-    setRemoteEntries, remoteEntriesRef,
+    setRemoteEntries, remoteEntries,
     setActiveRemoteKey, setActiveRemoteProject,
     terminalFontSize = 14,
     terminalShell = '',
@@ -154,7 +152,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
 
   const handleOpenWorktreeTerminal = useCallback(async (projectId: string, worktreePath: string, branch: string) => {
     // 若目标项目未激活，先激活它，确保 MainContent 的 {activeProject ?} 分支能渲染
-    if (activeProjectIdRef.current !== projectId) {
+    if (activeProjectId !== projectId) {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
     }
@@ -167,7 +165,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     });
     saveWorktreeState(projectId, worktreePath);
     invoke("set_view_terminal", { projectId }).catch(() => {});
-  }, [setActiveProjectId, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState, activeProjectIdRef, setWorktreeDiffState]);
+  }, [setActiveProjectId, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees, saveWorktreeState, activeProjectId, setWorktreeDiffState]);
 
   // ── Worktree file diff ──
   const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {
@@ -197,14 +195,11 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
         : prev
     );
     try {
-      await invoke("save_session", {
-        wslEntries: wslEntriesRefForSave.current,
-        remoteEntries: remoteEntriesRefForSave.current,
-      });
+      await saveSession();
     } catch (e) {
       console.error("Failed to save session after project settings change:", e);
     }
-  }, [setProjects, setActiveProject, wslEntriesRefForSave, remoteEntriesRefForSave]);
+  }, [setProjects, setActiveProject, saveSession]);
 
   // ── Diff back ──
   const handleWslDiffBack = useCallback(() => {
@@ -227,7 +222,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
     setRemoteAuthStore(prev => new Map(prev).set(pendingAuthEntry.id, auth));
     setPendingAuthEntry(null);
     if (saved_auth) {
-      const entries = remoteEntriesRef.current;
+      const entries = remoteEntries;
       const idx = entries.findIndex(e => e.id === pendingAuthEntry.id);
       if (idx >= 0) {
         const updated = [...entries];
@@ -236,7 +231,7 @@ export function useAppCallbacks(params: UseAppCallbacksParams): UseAppCallbacksR
         saveSession(undefined, updated);
       }
     }
-  }, [pendingAuthEntry, setRemoteAuthStore, setPendingAuthEntry, setRemoteEntries, saveSession, remoteEntriesRef]);
+  }, [pendingAuthEntry, setRemoteAuthStore, setPendingAuthEntry, setRemoteEntries, saveSession, remoteEntries]);
 
   // ── UI toggles ──
   const handleToggleSettings = useCallback(() => setSettingsOpen((v) => !v), [setSettingsOpen]);

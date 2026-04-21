@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
@@ -12,13 +12,6 @@ export function useLocalProjects() {
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
 
-  const activeProjectIdRef = useRef<string | null>(null);
-  const selectProjectRef = useRef<(id: string) => void>(() => {});
-  const activeProjectRef = useRef<Project | null>(null);
-  const isTerminalViewRef = useRef(false);
-
-  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
-
   // 同步 activeProject
   useEffect(() => {
     if (activeProjectId) {
@@ -28,8 +21,6 @@ export function useLocalProjects() {
       setActiveProject(null);
     }
   }, [activeProjectId, projects]);
-
-  useEffect(() => { activeProjectRef.current = activeProject; }, [activeProject]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -112,16 +103,15 @@ export function useLocalProjects() {
     await invoke("set_view_terminal", { projectId });
     await loadProjects();
   }, [loadProjects]);
-  selectProjectRef.current = handleSelectProject;
 
   const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
-    if (activeProjectIdRef.current !== projectId) {
+    if (activeProjectId !== projectId) {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
     }
     await invoke("set_view_diff", { projectId, filePath });
     await loadProjects();
-  }, [loadProjects]);
+  }, [activeProjectId, loadProjects]);
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
     try {
@@ -135,14 +125,15 @@ export function useLocalProjects() {
   const handleOpenIde = useCallback(async (project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) return;
     try {
+      const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
       await invoke("open_ide", {
         ideCommand: project.selected_ide,
-        projectPath: (activeProjectRef.current as Project | null)?.path ?? "",
+        projectPath,
       });
     } catch (e: unknown) {
       console.error("[App] Failed to open IDE:", e);
     }
-  }, []);
+  }, [projects]);
 
   const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
@@ -171,7 +162,6 @@ export function useLocalProjects() {
     loading, setLoading,
     pendingPath, setPendingPath,
     agents,
-    activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
     handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,

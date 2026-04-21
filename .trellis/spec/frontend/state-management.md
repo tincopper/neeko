@@ -6,7 +6,7 @@
 
 ## 概述
 
-本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。项目仍然不引入外部状态管理库。
+本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。对于跨域读取最新状态的场景，使用 **Zustand** 维护只读快照层。
 
 状态协调已从 `App.tsx` 主文件下沉到 `useAppContainer`。`App.tsx` 仅保留壳层编排，避免巨型组件继续膨胀。
 
@@ -23,9 +23,10 @@ export function useAppContainer() {
   const local = useLocalProjects();
   const wsl = useWslProjects(saveSession);
   const remote = useRemoteProjects(saveSession);
-  const worktree = useWorktreeState(activeProjectIdRef);
+  const worktree = useWorktreeState(activeProjectId);
   const fileView = useFileView();
   const callbacks = useAppCallbacks(...);
+  useSyncToStore(...);
 
   return {
     appProvidersProps,
@@ -60,16 +61,24 @@ const [showAddMenu, setShowAddMenu] = useState(false);
 const [dialog, setDialog] = useState<DialogState | null>(null);
 ```
 
-### 4. 基于 Ref 的可变状态
+### 4. Zustand 快照状态
 
-用于不触发重渲染的数据镜像与计时器：
+用于全局事件回调读取最新跨域状态，不直接作为渲染源：
 
 ```tsx
-const activeProjectIdRef = useRef<string | null>(null);
+const snapshot = useAppStore.getState();
+snapshot.selectProject(projectId);
+```
+
+### 5. 基于 Ref 的可变状态
+
+用于计时器、DOM 句柄等无需触发重渲染的数据：
+
+```tsx
 const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 ```
 
-### 5. 模块级缓存
+### 6. 模块级缓存
 
 终端实例在模块作用域缓存，跨 unmount/remount 保持会话：
 
@@ -77,7 +86,7 @@ const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 export const terminalCache = new Map<string, Terminal>();
 ```
 
-### 6. 持久化状态
+### 7. 持久化状态
 
 通过 Tauri IPC 写入本地文件：
 
@@ -152,6 +161,13 @@ const debouncedSave = useCallback(() => {
 │ useAppContainer 状态协调器                      │
 │  useLocalProjects / useWslProjects / ...       │
 │  useWorktreeState / useFileView / useAppConfig │
+│  useSyncToStore                                │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ Zustand 快照层 useAppStore                     │
+│  供快捷键与持久化回调读取最新跨域状态           │
 └────────────────────────────────────────────────┘
                     │
                     ▼

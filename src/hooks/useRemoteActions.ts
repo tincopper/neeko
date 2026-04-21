@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { switchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
 import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
@@ -16,10 +16,7 @@ export function useRemoteActions(deps: {
   } | null>>;
   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
   remoteEntries: RemoteEntrySession[];
-  remoteEntriesRef: React.MutableRefObject<RemoteEntrySession[]>;
   remoteAuthStore: Map<string, AuthMethod>;
-  wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
@@ -34,15 +31,11 @@ export function useRemoteActions(deps: {
   const [activeRemoteWorktreePath, setActiveRemoteWorktreePath] = useState<string | null>(null);
   const [remoteActiveWtBranch, setRemoteActiveWtBranch] = useState("");
   const [remoteOpenedWt, setRemoteOpenedWt] = useState<WorktreeItem[]>([]);
-  const remoteOpenedWtRef = useRef<WorktreeItem[]>([]);
-  const activeRemoteWorktreePathRef = useRef<string | null>(null);
-  remoteOpenedWtRef.current = remoteOpenedWt;
-  activeRemoteWorktreePathRef.current = activeRemoteWorktreePath;
 
   // ── invokeRemoteGit helper ──
   const invokeRemoteGit = useCallback(
     async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
-      const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
+      const entry = deps.remoteEntries.find(e => e.id === entryId);
       const auth = deps.remoteAuthStore.get(entryId);
       if (!entry || !auth) throw new Error("No auth for entry");
       return invoke(command, {
@@ -50,7 +43,7 @@ export function useRemoteActions(deps: {
         auth, ...extra
       });
     },
-    [deps.remoteAuthStore]
+    [deps.remoteEntries, deps.remoteAuthStore]
   );
 
   // ── Select Remote project ──
@@ -64,7 +57,7 @@ export function useRemoteActions(deps: {
     setRemoteActiveWtBranch("");
     setRemoteOpenedWt([]);
 
-    const entry = deps.remoteEntriesRef.current.find(e => e.host === host);
+    const entry = deps.remoteEntries.find(e => e.host === host);
     if (entry) {
       deps.setActiveRemoteProject({ entry, project });
       setRemoteDiffState(null);
@@ -88,17 +81,17 @@ export function useRemoteActions(deps: {
         .catch(() => {});
       }
     }
-  }, [deps.remoteAuthStore, deps.setActiveProjectId, deps.setActiveProject, deps.setActiveWslKey,
+  }, [deps.remoteEntries, deps.remoteAuthStore, deps.setActiveProjectId, deps.setActiveProject, deps.setActiveWslKey,
       deps.setActiveWslProject, deps.setActiveRemoteKey, deps.setActiveRemoteProject, deps.setRemoteEntries]);
 
   // ── Select Remote file (diff) ──
   const handleSelectRemoteFile = useCallback((entryId: string, projectPath: string, filePath: string) => {
-    const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
+    const entry = deps.remoteEntries.find(e => e.id === entryId);
     const auth = deps.remoteAuthStore.get(entryId);
     if (entry && auth) {
       setRemoteDiffState({ entryId, host: entry.host, port: entry.port, username: entry.username, auth, projectPath, filePath });
     }
-  }, [deps.remoteAuthStore]);
+  }, [deps.remoteEntries, deps.remoteAuthStore]);
 
   // ── Refresh Remote git ──
   const handleRefreshRemoteGit = useCallback(async (entryId: string, projectId: string, projectPath: string) => {
@@ -117,11 +110,11 @@ export function useRemoteActions(deps: {
   // ── Open Remote IDE ──
   const handleOpenRemoteIde = useCallback((entryId: string, projectPath: string, ide: string) => {
     if (!ide) { deps.showToast("No IDE selected for this project", "error"); return; }
-    const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
+    const entry = deps.remoteEntries.find(e => e.id === entryId);
     if (!entry) return;
     invoke("open_remote_ide", { host: entry.host, port: entry.port, username: entry.username, projectPath, ide })
       .catch(e => deps.showToast(String(e), "error"));
-  }, [deps.showToast]);
+  }, [deps.remoteEntries, deps.showToast]);
 
   // ── Open Remote worktree terminal ──
   const handleOpenRemoteWorktreeTerminal = useCallback((_entryId: string, worktreePath: string, branch: string) => {
@@ -160,15 +153,14 @@ export function useRemoteActions(deps: {
     if (!agent) {
       setTimeout(() => refreshRemoteTerminal(key), 50);
     }
-    invoke("save_session", { wslEntries: deps.wslEntriesRefForSave.current, remoteEntries: newEntries }).catch(console.error);
-  }, [deps.activeRemoteProject, deps.remoteEntries, deps.setRemoteEntries, deps.setActiveRemoteProject, deps.config.agentCommandOverrides]);
+    deps.saveSession(undefined, newEntries).catch(console.error);
+  }, [deps.activeRemoteProject, deps.remoteEntries, deps.setRemoteEntries, deps.setActiveRemoteProject, deps.config.agentCommandOverrides, deps.saveSession]);
 
   return {
     remoteDiffState, setRemoteDiffState,
     activeRemoteWorktreePath, setActiveRemoteWorktreePath,
     remoteActiveWtBranch, setRemoteActiveWtBranch,
     remoteOpenedWt, setRemoteOpenedWt,
-    remoteOpenedWtRef, activeRemoteWorktreePathRef,
     invokeRemoteGit,
     handleSelectRemoteProject,
     handleSelectRemoteFile,

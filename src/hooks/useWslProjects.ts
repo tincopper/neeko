@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { wslCacheKey, destroyWslCachesByPrefix } from "../components/terminal";
 import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../types";
 import type { ActiveWslKey } from "../components/connections/types";
@@ -13,10 +13,6 @@ export function useWslProjects(saveSession: SaveSessionFn) {
   const [wslOpenSessions, setWslOpenSessions] = useState<Set<string>>(new Set());
   const [wslDialogOpen, setWslDialogOpen] = useState(false);
   const [wslAddToEntryId, setWslAddToEntryId] = useState<string | null>(null);
-
-  const wslEntriesRef = useRef<WSLEntrySession[]>([]);
-  const activeWslKeyRef = useRef<ActiveWslKey>(null);
-  const selectWslProjectRef = useRef<(distro: string, project: WSLProject) => void>(() => {});
 
   const handleWSLEntryAdd = useCallback(async (entry: WSLEntrySession) => {
     try {
@@ -100,7 +96,6 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     wslOpenSessions, setWslOpenSessions,
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,
-    wslEntriesRef, activeWslKeyRef, selectWslProjectRef,
     handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,

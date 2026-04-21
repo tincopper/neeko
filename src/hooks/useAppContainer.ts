@@ -15,11 +15,11 @@ import { useWslActions } from "./useWslActions";
 import { useRemoteActions } from "./useRemoteActions";
 import { useSessionBootstrap } from "./useSessionBootstrap";
 import { useSessionPersistence } from "./useSessionPersistence";
-import { useAppRefSync } from "./useAppRefSync";
 import { useAppCallbacks } from "./useAppCallbacks";
 import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { useFileView } from "./useFileView";
+import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, RemoteProject, WSLProject } from "../types";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
@@ -56,10 +56,6 @@ export function useAppContainer(): UseAppContainerResult {
     pendingPath,
     setPendingPath,
     agents,
-    activeProjectIdRef,
-    selectProjectRef,
-    activeProjectRef,
-    isTerminalViewRef,
     loadProjects,
     loadAgents,
     handleAddProject,
@@ -84,9 +80,6 @@ export function useAppContainer(): UseAppContainerResult {
     wslDialogOpen,
     setWslDialogOpen,
     wslAddToEntryId,
-    wslEntriesRef,
-    activeWslKeyRef,
-    selectWslProjectRef,
     handleWSLEntryAdd,
     handleCloseWslProject,
     handleRemoveWslProject,
@@ -111,9 +104,6 @@ export function useAppContainer(): UseAppContainerResult {
     setRemoteAuthStore,
     pendingAuthEntry,
     setPendingAuthEntry,
-    remoteEntriesRef,
-    activeRemoteKeyRef,
-    selectRemoteProjectRef,
     handleRemoteEntryAdd,
     handleCloseRemoteProject,
     handleRemoveRemoteProject,
@@ -127,14 +117,12 @@ export function useAppContainer(): UseAppContainerResult {
     activeWorktreePath,
     activeWorktreeBranch,
     openedWorktrees,
-    activeWorktreePathRef,
-    openedWorktreesRef,
     updateWtPath,
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
     clearWorktreeForProject,
-  } = useWorktreeState(activeProjectIdRef);
+  } = useWorktreeState(activeProjectId);
 
   useEffect(() => {
     if (!activeWorktreePath || !activeProject?.git_info) return;
@@ -163,10 +151,7 @@ export function useAppContainer(): UseAppContainerResult {
     setActiveRemoteProject,
     activeRemoteProject,
     remoteEntries,
-    remoteEntriesRef,
     remoteAuthStore,
-    wslEntriesRefForSave: session.wslEntriesRefForSave,
-    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
     config,
     showToast,
     saveSession: session.saveSession,
@@ -182,8 +167,6 @@ export function useAppContainer(): UseAppContainerResult {
     setActiveWslProject,
     activeWslProject,
     wslEntries,
-    wslEntriesRefForSave: session.wslEntriesRefForSave,
-    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
     config,
     showToast,
     saveSession: session.saveSession,
@@ -346,41 +329,13 @@ export function useAppContainer(): UseAppContainerResult {
     loadProjects,
     setWslEntries,
     setRemoteEntries,
-    worktreeStateRef: session.worktreeStateRef,
+    restoreWorktreeState: session.restoreWorktreeState,
     restoreAuthFromEntries,
   });
 
   useDelayedInit({ loadAgents });
 
   const isTerminalView = activeProject?.active_view === "Terminal";
-  useAppRefSync({
-    wslEntries,
-    activeWslKey,
-    remoteEntries,
-    activeRemoteKey,
-    activeWorktreePath,
-    openedWorktrees,
-    activeProject,
-    wslOpenedWt: wslActions.wslOpenedWt,
-    activeWslWorktreePath: wslActions.activeWslWorktreePath,
-    remoteOpenedWt: remoteActions.remoteOpenedWt,
-    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
-    wslEntriesRef,
-    activeWslKeyRef,
-    remoteEntriesRef,
-    activeRemoteKeyRef,
-    activeWorktreePathRef,
-    openedWorktreesRef,
-    activeProjectRef,
-    wslEntriesRefForSave: session.wslEntriesRefForSave,
-    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
-    wslOpenedWtRef: wslActions.wslOpenedWtRef,
-    activeWslWorktreePathRef: wslActions.activeWslWorktreePathRef,
-    remoteOpenedWtRef: remoteActions.remoteOpenedWtRef,
-    activeRemoteWorktreePathRef: remoteActions.activeRemoteWorktreePathRef,
-    isTerminalViewRef,
-    isTerminalView,
-  });
 
   const callbacks = useAppCallbacks({
     agentCommandOverrides: config.agentCommandOverrides,
@@ -398,19 +353,17 @@ export function useAppContainer(): UseAppContainerResult {
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
-    activeProjectIdRef,
+    activeProjectId,
     saveWorktreeState: session.saveWorktreeState,
     setWorktreeDiffState,
     saveSession: session.saveSession,
-    wslEntriesRefForSave: session.wslEntriesRefForSave,
-    remoteEntriesRefForSave: session.remoteEntriesRefForSave,
     setWslDiffState: wslActions.setWslDiffState,
     setRemoteDiffState: remoteActions.setRemoteDiffState,
     pendingAuthEntry,
     setRemoteAuthStore,
     setPendingAuthEntry,
     setRemoteEntries,
-    remoteEntriesRef,
+    remoteEntries,
     setActiveRemoteKey,
     setActiveRemoteProject,
     setSettingsOpen,
@@ -419,35 +372,35 @@ export function useAppContainer(): UseAppContainerResult {
     setRemoteDialogOpen,
   });
 
-  useKeyboardShortcuts({
+  useSyncToStore({
     projects,
     activeProjectId,
-    wslEntriesRef,
-    activeWslKeyRef,
-    selectWslProjectRef,
-    remoteEntriesRef,
-    activeRemoteKeyRef,
-    selectRemoteProjectRef,
-    selectProjectRef,
-    activeWorktreePathRef,
-    openedWorktreesRef,
-    updateWtPath,
-    wslOpenedWtRef: wslActions.wslOpenedWtRef,
-    activeWslWorktreePathRef: wslActions.activeWslWorktreePathRef,
-    setWslWorktreePath: wslActions.setActiveWslWorktreePath,
-    setWslWtBranch: wslActions.setWslActiveWtBranch,
-    remoteOpenedWtRef: remoteActions.remoteOpenedWtRef,
-    activeRemoteWorktreePathRef: remoteActions.activeRemoteWorktreePathRef,
-    setRemoteWorktreePath: remoteActions.setActiveRemoteWorktreePath,
-    setRemoteWtBranch: remoteActions.setRemoteActiveWtBranch,
-    isTerminalViewRef,
-    activeProjectRef,
-    handleOpenIde: callbacks.handleOpenIdeCallback,
+    activeProject,
+    isTerminalView: isTerminalView || activeWorktreePath !== null,
+    wslEntries,
+    activeWslKey,
+    remoteEntries,
+    activeRemoteKey,
+    activeWorktreePath,
+    openedWorktrees,
+    wslOpenedWt: wslActions.wslOpenedWt,
+    activeWslWorktreePath: wslActions.activeWslWorktreePath,
+    remoteOpenedWt: remoteActions.remoteOpenedWt,
+    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
+    worktreeState: session.worktreeState,
+    selectProject: handleSelectProjectWithClear,
+    selectWslProject: handleSelectWslProjectWithSync,
+    selectRemoteProject: handleSelectRemoteProjectWithSync,
+    openIde: callbacks.handleOpenIdeCallback,
   });
 
-  selectProjectRef.current = handleSelectProjectWithClear;
-  selectWslProjectRef.current = handleSelectWslProjectWithSync;
-  selectRemoteProjectRef.current = handleSelectRemoteProjectWithSync;
+  useKeyboardShortcuts({
+    updateWtPath,
+    setWslWorktreePath: wslActions.setActiveWslWorktreePath,
+    setWslWtBranch: wslActions.setWslActiveWtBranch,
+    setRemoteWorktreePath: remoteActions.setActiveRemoteWorktreePath,
+    setRemoteWtBranch: remoteActions.setRemoteActiveWtBranch,
+  });
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {
