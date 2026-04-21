@@ -6,40 +6,48 @@
 
 ## 概述
 
-本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。项目仍然**不引入外部状态管理库**，例如 Redux、Zustand、Jotai。
+本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。项目仍然不引入外部状态管理库。
 
-`App.tsx` 仍是状态协调入口，负责调用各领域 Hook、处理跨领域回调，再通过多个 Provider 将状态分发给布局层与业务组件。
+状态协调已从 `App.tsx` 主文件下沉到 `useAppContainer`。`App.tsx` 仅保留壳层编排，避免巨型组件继续膨胀。
 
 ---
 
 ## 状态分类
 
-### 1. 应用级状态源 `App.tsx`
+### 1. 应用级状态源 `useAppContainer`
 
-跨领域状态仍由 `App.tsx` 调用领域 Hook 持有：
+跨领域状态由 `useAppContainer` 调用领域 Hook 持有：
 
 ```tsx
-function App() {
+export function useAppContainer() {
   const local = useLocalProjects();
   const wsl = useWslProjects(saveSession);
   const remote = useRemoteProjects(saveSession);
   const worktree = useWorktreeState(activeProjectIdRef);
   const fileView = useFileView();
+  const callbacks = useAppCallbacks(...);
 
-  // 组合跨域回调后注入 Provider
+  return {
+    appProvidersProps,
+    appLayoutProps,
+    appModalsProps,
+    titleBarProps,
+  };
 }
 ```
 
 ### 2. Context 分发层
 
-用于消除 prop drilling，按领域拆分为中粒度 Context：
+用于消除 prop drilling，按职责拆分为细粒度 Context：
 
 | Context | 作用范围 | 典型消费者 |
 |--------|---------|-----------|
 | `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`MainContent` |
 | `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
-| `ProjectContext` | 本地项目、worktree、本地文件视图 | `AppLayout`、`ProjectsPanel`、`MainContent` |
-| `ConnectionContext` | WSL/SSH 项目、会话、diff 状态 | `ProjectsPanel`、`MainContent` |
+| `ProjectStateContext` | 本地项目状态与文件视图状态 | `AppLayout`、`ProjectsPanel`、`MainContent` |
+| `ProjectActionsContext` | 本地项目动作回调 | `AppLayout`、`ProjectsPanel`、`MainContent` |
+| `WslContext` | WSL 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
+| `RemoteContext` | SSH 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
 | `EditorContext` | 终端 tabs 与 agent bar | `MainContent` |
 | `SkillContext` | skill 面板领域状态 | `SkillsPanel`、`SkillContent` |
 
@@ -82,7 +90,7 @@ await invoke("save_session", { session: { ... } });
 
 ## 何时使用全局状态
 
-本项目的全局状态是 `App.tsx` 中的状态源 + Context 分发层。
+本项目的全局状态是 `useAppContainer` 中的状态源 + Context 分发层。
 
 适合放入应用级状态的场景：
 
@@ -135,7 +143,13 @@ const debouncedSave = useCallback(() => {
 
 ```
 ┌────────────────────────────────────────────────┐
-│ App.tsx 状态协调器                              │
+│ App.tsx 壳层                                    │
+│  TitleBar + AppProviders + AppLayout + AppModals│
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ useAppContainer 状态协调器                      │
 │  useLocalProjects / useWslProjects / ...       │
 │  useWorktreeState / useFileView / useAppConfig │
 └────────────────────────────────────────────────┘
@@ -143,9 +157,8 @@ const debouncedSave = useCallback(() => {
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Providers                                       │
-│  AppProvider + SidebarProvider                  │
-│  ProjectProvider + ConnectionProvider           │
-│  EditorProvider + SkillProvider                 │
+│  App + Sidebar + ProjectState + ProjectActions │
+│  Wsl + Remote + Editor + Skill                 │
 └────────────────────────────────────────────────┘
                     │
                     ▼
@@ -173,10 +186,14 @@ const debouncedSave = useCallback(() => {
 
 Context 粒度过大将放大重渲染影响。新增字段时优先放入最贴近业务边界的 Context。
 
-### 3. 忘记持久化状态变更
+### 3. 在 `App.tsx` 重新堆积业务逻辑
+
+根组件仅承担壳层编排。领域协调逻辑统一收敛到 `useAppContainer` 或领域 Hook。
+
+### 4. 忘记持久化状态变更
 
 需要跨重启保留的数据必须经过对应 `save_*` 调用。
 
-### 4. 模块级缓存泄漏
+### 5. 模块级缓存泄漏
 
 终端缓存销毁时必须同步清理关联状态，避免 stale session。

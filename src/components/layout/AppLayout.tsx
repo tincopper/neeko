@@ -1,6 +1,9 @@
 import React, { useEffect } from "react";
 import { useSidebar } from "../../context/sidebar-context";
-import { useProjectContext } from "../../context/project-context";
+import {
+  useProjectStateContext,
+  useProjectActionsContext,
+} from "../../contexts";
 import { SkillProvider } from "../../context/skill-context";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
@@ -25,10 +28,12 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
       fileTree,
       fileViewLoading,
       activeFilePath,
+   } = useProjectStateContext();
+   const {
       onFileSelect,
       onFileRefresh,
       onLoadFileTree,
-   } = useProjectContext();
+   } = useProjectActionsContext();
 
    const activeProjectName = activeProject?.name ?? null;
    const skillsActive = activePanel === "skills";

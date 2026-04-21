@@ -7,9 +7,13 @@ import FileViewer from "./panels/FileViewer";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import { useAppContext } from "../context/app-context";
-import { useProjectContext } from "../context/project-context";
-import { useConnectionContext } from "../context/connection-context";
-import { useEditorContext } from "../context/editor-context";
+import {
+  useProjectStateContext,
+  useProjectActionsContext,
+  useWslContext,
+  useRemoteContext,
+  useEditorContext,
+} from "../contexts";
 import type { AgentConfig } from "../types";
 
 function MainContent() {
@@ -18,31 +22,35 @@ function MainContent() {
       activeProject,
       activeWorktreePath,
       activeWorktreeBranch,
+      worktreeDiffState,
+      fileTabs,
+      activeFileTabId,
+   } = useProjectStateContext();
+   const {
       handleSelectProject,
       handleAddProject,
       suppressResizeRef,
-      worktreeDiffState,
-      onWorktreeDiffBack,
-      fileTabs,
-      activeFileTabId,
       onFileCloseTab,
       onFileActivateTab,
       onFileSave,
       onFileContentChange,
-   } = useProjectContext();
+      onWorktreeDiffBack,
+   } = useProjectActionsContext();
    const {
       activeWslProject,
       activeWslWorktreePath,
       setWslOpenSessions,
+      wslDiffState,
+      onWslDiffBack,
+   } = useWslContext();
+   const {
       activeRemoteProject,
       activeRemoteWorktreePath,
       remoteAuthStore,
       setRemoteOpenSessions,
-      wslDiffState,
       remoteDiffState,
-      onWslDiffBack,
       onRemoteDiffBack,
-   } = useConnectionContext();
+   } = useRemoteContext();
    const {
       tabs,
       activeTabId,

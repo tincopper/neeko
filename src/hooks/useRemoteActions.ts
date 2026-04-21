@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { switchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
 import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
-import type { DiffSetter, WslDiffState } from "./useCrossDomainRefs";
 import type { WorktreeItem } from "./useWorktreeState";
 
 export function useRemoteActions(deps: {
@@ -21,10 +20,6 @@ export function useRemoteActions(deps: {
   remoteAuthStore: Map<string, AuthMethod>;
   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
   remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-  setWslDiffStateRef: DiffSetter<WslDiffState>;
-  wslActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
-  wslOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
-  wslWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
@@ -65,17 +60,13 @@ export function useRemoteActions(deps: {
     deps.setActiveWslKey(null);
     deps.setActiveWslProject(null);
     deps.setActiveRemoteKey({ host, projectId: project.id });
-    deps.wslWorktreePathSetterRef.current?.(null);
     setActiveRemoteWorktreePath(null);
-    deps.wslActiveWtBranchSetterRef.current?.("");
     setRemoteActiveWtBranch("");
-    deps.wslOpenedWtSetterRef.current?.([]);
     setRemoteOpenedWt([]);
 
     const entry = deps.remoteEntriesRef.current.find(e => e.host === host);
     if (entry) {
       deps.setActiveRemoteProject({ entry, project });
-      deps.setWslDiffStateRef.current?.(null);
       setRemoteDiffState(null);
 
       const auth = deps.remoteAuthStore.get(entry.id);
@@ -140,7 +131,6 @@ export function useRemoteActions(deps: {
       if (prev.some(w => w.path === worktreePath)) return prev;
       return [...prev, { path: worktreePath, branch }];
     });
-    deps.setWslDiffStateRef.current?.(null);
     setRemoteDiffState(null);
   }, []);
 

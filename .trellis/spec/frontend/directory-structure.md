@@ -6,7 +6,7 @@
 
 ## 概述
 
-Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + TypeScript + Vite 7** 构建。它是一个单视图应用（没有路由）——视图切换通过 `App.tsx` 中的状态管理实现。包管理器为 **pnpm**。
+Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + TypeScript + Vite 7** 构建。它是一个单视图应用，视图切换通过状态管理实现。包管理器为 **pnpm**。
 
 ---
 
@@ -14,22 +14,36 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 
 ```
 src/
-├── App.tsx                  # 根组件 & 状态协调器
+├── App.tsx                  # 根组件壳层（TitleBar + AppProviders + AppLayout + AppModals）
+├── AppProviders.tsx         # Provider 组合层
+├── AppModals.tsx            # 模态框组合层
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
 ├── tailwind.css             # Tailwind CSS v4 入口 + @theme + @layer components
 ├── types.ts                 # 共享 TypeScript 接口
 ├── vite-env.d.ts            # 资源模块声明
 │
 ├── components/              # UI 组件（按领域组织）
-│   ├── DiffView.tsx         # 独立的顶层组件
+│   ├── DiffView.tsx         # 兼容入口，转发到 components/diff
 │   ├── MainContent.tsx
-│   ├── SettingsPanel.tsx
+│   ├── SettingsPanel.tsx    # 兼容入口，转发到 components/settings
 │   ├── connections/         # SSH/WSL 连接对话框
 │   │   ├── index.ts         # 桶文件导出
+│   │   ├── ProjectBody.tsx
+│   │   ├── ProjectItemCard.tsx
+│   │   ├── WSLProjectCard.tsx
+│   │   ├── RemoteProjectCard.tsx
 │   │   ├── RemoteAuthDialog.tsx
 │   │   ├── RemoteDialog.tsx
 │   │   ├── RemoteItems.tsx
 │   │   └── WSLDialog.tsx
+│   ├── diff/                # Diff 领域拆分
+│   │   ├── DiffView.tsx
+│   │   ├── UnifiedDiffTable.tsx
+│   │   ├── SplitDiffTable.tsx
+│   │   ├── useDiffData.ts
+│   │   ├── diffAlgorithm.ts
+│   │   ├── highlight.ts
+│   │   └── index.ts
 │   ├── layout/              # 窗口边框 & 导航
 │   │   ├── index.ts
 │   │   ├── ActivityBar.tsx  # 左侧活动栏（projects/files/skills 切换）
@@ -43,21 +57,38 @@ src/
 │   │   ├── FileViewer.tsx   # 文件编辑器（CodeMirror，多 Tab）
 │   │   └── ProjectsPanel.tsx
 │   ├── project/             # 项目侧边栏 & Git UI
-│   │   ├── index.tsx
+│   │   ├── index.ts
 │   │   ├── AddProjectModal.tsx
 │   │   ├── FileTree.tsx
 │   │   ├── GitDialog.tsx
 │   │   ├── ProjectItem.tsx
+│   │   ├── ProjectItemHeader.tsx
+│   │   ├── ProjectGitSection.tsx
+│   │   ├── useProjectItemDrag.ts
+│   │   ├── useProjectItemMenu.ts
 │   │   └── ProjectSidebar.tsx
+│   ├── settings/            # 设置面板拆分
+│   │   ├── SettingsPanel.tsx
+│   │   ├── AppearancePanel.tsx
+│   │   ├── EditorPanel.tsx
+│   │   ├── TerminalPanel.tsx
+│   │   ├── AgentsPanel.tsx
+│   │   ├── IdePanel.tsx
+│   │   ├── GitPanel.tsx
+│   │   └── index.ts
 │   └── terminal/            # 终端视图（xterm.js）
 │       ├── index.ts
 │       ├── TerminalView.tsx
-│       ├── SideTerminalView.tsx
+│       ├── terminalCache.ts
+│       ├── terminalFactory.ts
+│       ├── terminalCommands.ts
+│       ├── terminalTypes.ts
 │       ├── WorktreeTerminalView.tsx
 │       ├── WSLTerminalView.tsx
 │       └── RemoteTerminalView.tsx
 │
 ├── hooks/                   # 自定义 React Hooks（扁平目录）
+│   ├── useAppContainer.ts   # App 容器层，聚合各领域 Hook 与回调
 │   ├── useAppConfig.ts
 │   ├── useFileView.ts       # 文件面板：多 Tab 状态管理（openFile/closeTab/saveFile）
 │   ├── useKeyboardShortcuts.ts
@@ -68,13 +99,18 @@ src/
 │   ├── useWorktreeState.ts
 │   └── useWslProjects.ts
 │
-├── context/                 # React Context 分发层
+├── context/                 # 基础 Context（全局配置、侧栏、技能）
 │   ├── app-context.tsx
 │   ├── sidebar-context.tsx
-│   ├── project-context.tsx
-│   ├── connection-context.tsx
-│   ├── editor-context.tsx
 │   ├── skill-context.tsx
+│   └── index.ts
+│
+├── contexts/                # 领域 Context（project/wsl/remote/editor）
+│   ├── project-state-context.tsx
+│   ├── project-actions-context.tsx
+│   ├── wsl-context.tsx
+│   ├── remote-context.tsx
+│   ├── editor-context.tsx
 │   └── index.ts
 │
 ├── utils/                   # 纯工具函数（扁平目录）
@@ -124,9 +160,11 @@ src-tauri/
 |------|------|---------|
 | `components/layout/` | 窗口边框 | 标题栏、窗口控制、Activity Bar、全局布局 |
 | `components/panels/` | 侧栏面板 | FilesPanel（文件树）、FileViewer（多 Tab 编辑器）、ProjectsPanel |
-| `components/project/` | 项目管理 | 侧边栏、文件树、Git 对话框 |
-| `components/terminal/` | 终端视图 | 所有 xterm.js 终端变体 |
+| `components/project/` | 项目管理 | 项目卡片壳层 + 头部 + Git 区段 + 拖拽/菜单 Hook |
+| `components/terminal/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
 | `components/connections/` | 远程连接 | SSH/WSL 对话框 |
+| `components/diff/` | Diff | 算法、语言高亮、数据加载与渲染分层 |
+| `components/settings/` | 设置 | 按面板拆分的设置 UI |
 
 ### 桶文件导出
 
@@ -144,7 +182,10 @@ Terminal 桶文件还会导出工具函数和缓存：
 
 ```tsx
 // components/terminal/index.ts
-export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } from "./TerminalView";
+export { default as TerminalView } from "./TerminalView";
+export { terminalCache, terminalCacheKey } from "./terminalCache";
+export { createTerminalForProject } from "./terminalFactory";
+export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
 ```
 
 ### 新代码应该放在哪里
@@ -154,7 +195,8 @@ export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } fr
 | 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件 |
 | 独立组件 | `components/<Name>.tsx`（顶层） |
 | 自定义 Hook | `hooks/use<Name>.ts` |
-| 新的跨域状态分发 | `context/<domain>-context.tsx` |
+| 新的全局基础状态分发 | `context/<domain>-context.tsx` |
+| 新的领域状态分发 | `contexts/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
 | IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
 | 项目类型适配器 | `adapters/<Name>Adapter.ts` |

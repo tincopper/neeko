@@ -6,7 +6,7 @@
 
 ## 概述
 
-项目当前的质量门禁是 **TypeScript 类型检查**（`tsc --noEmit`）。目前没有配置 ESLint、Prettier 或测试框架。CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。
+项目当前的主要质量门禁是 **TypeScript 类型检查**（`tsc --noEmit`）与 **Vitest** 回归测试。项目目前没有配置 ESLint、Prettier。CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。
 
 ---
 
