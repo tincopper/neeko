@@ -15,7 +15,7 @@
   "branch": null,
   "base_branch": "enhance/ui_clean_code",
   "worktree_path": null,
-  "current_phase": 4,
+  "current_phase": 6,
   "next_action": [
     {
       "phase": 1,
@@ -48,6 +48,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "Phase 3-6 已完成代码改造并进入 check 阶段；2026-04-21 已通过 tsc 与 vitest 回归。",
+  "notes": "Phase 1-6 已全部完成并归档；2026-04-21 通过 tsc 与 vitest 回归，session 已记录。",
   "meta": {}
 }
