@@ -629,3 +629,47 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: 重构跨域状态同步为 Zustand 快照
+
+**Date**: 2026-04-21
+**Task**: 重构跨域状态同步为 Zustand 快照
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| 状态同步 | 删除 `useAppRefSync`，新增 `useSyncToStore` 将领域状态单向同步到 `useAppStore` |
+| 快捷键 | `useKeyboardShortcuts` 改为 `useAppStore.getState()` 快照读取，参数压缩为 5 个 |
+| 会话持久化 | `useSessionPersistence` 改为从 store 读取 `wslEntries/remoteEntries`，并用 state 管理 `worktreeState` |
+| Hook 清理 | `useLocalProjects/useWslProjects/useRemoteProjects/useWorktreeState` 清理跨域 `MutableRef` 导出 |
+| 测试与规范 | 更新相关 Hook 测试并同步 `.trellis/spec/frontend` 文档 |
+
+**验证**:
+- `npx tsc --noEmit` 通过
+- `pnpm test` 通过（20 文件，212 通过，1 跳过）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `88f913a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
