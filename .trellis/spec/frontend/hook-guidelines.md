@@ -6,11 +6,11 @@
 
 ## 概述
 
-所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域只读快照层。项目没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
+所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** `invoke` 进行。
 
 Hook 分两类：
 - **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
-- **编排 Hook**：从 App.tsx 提取的横切逻辑（保存、回调、store 同步）
+- **编排 Hook**：从 `useAppContainer` 提取的横切逻辑（保存、Context 组装、快捷键同步）
 
 ---
 
@@ -45,27 +45,22 @@ export function useToast() {
 
 ### 编排 Hook 模式
 
-当 App.tsx 的某个职责区域变得臃肿时，提取为编排 Hook：
+当容器层职责区域变得臃肿时，按领域拆分为小型编排 Hook：
 
 ```tsx
-// 编排 Hook 接受大量参数（状态 + refs + setters），返回操作回调
-export interface UseAppCallbacksParams {
-  activeProject: Project | null;
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
-  // ... 更多参数
-}
-
-export interface UseAppCallbacksResult {
-  handleSelectLocalAgent: (agent: AgentConfig | null) => void;
-  handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
-  // ... 更多回调
+export function useAgentActions(params: {
+  terminal: { fontSize: number; shell: string; fontFamily: string };
+  handleOpenIde: (project: { id: string; selected_ide: string | null }) => Promise<void>;
+  showToast: (message: string, type?: "info" | "error") => void;
+}) {
+  // 单领域职责：本地 Agent + IDE + 项目配置保存
 }
 ```
 
 **规则**：
-- 编排 Hook 的文件名以 `useApp` 或 `use*ToStore` 开头（如 `useAppCallbacks`、`useSyncToStore`）
-- 编排 Hook 接受状态/setter/store 同步依赖作为参数，不自行创建领域状态
-- 编排 Hook 内部使用 `useCallback` 保证返回的回调引用稳定
+- 编排 Hook 按领域命名，避免“全局回调大杂烩”
+- 优先从 `useAppStore` 读取跨域状态，减少参数数量
+- 仅暴露本领域回调，使用 `useCallback` 保持引用稳定
 
 ### Store 快照模式
 
@@ -83,7 +78,7 @@ useEffect(() => {
 }, []);
 ```
 
-该模式用于跨域读取场景。领域状态所有权仍在各领域 Hook 内，通过 `useSyncToStore` 单向同步到 store。
+该模式用于跨域读取场景。领域状态可以直接写入 `useAppStore`，`useSyncToStore` 主要负责把快捷键依赖的函数引用和 worktree 视图快照对齐到 store。
 
 ---
 
@@ -184,7 +179,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | 约定 | 示例 |
 |------|------|
 | 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
-| 文件名（编排）：`useApp<Purpose>.ts` / `use*ToStore.ts` | `useAppCallbacks.ts`、`useSyncToStore.ts` |
+| 文件名（编排）：`use<Domain>Actions.ts` / `use*ToStore.ts` | `useAgentActions.ts`、`useWorktreeActions.ts`、`useSyncToStore.ts` |
 | 导出：命名函数 | `export function useAppConfig()` |
 | 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
 | 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
@@ -211,9 +206,10 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
 | `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`worktreeState` |
-| `useSyncToStore` | 将领域状态单向同步到 app store 快照 | （仅副作用，无返回值） |
-| `useSideTerminalState` | 本地/WSL/远程 side terminal 统一管理 | `sideTerminalOpenSet`、`setSideTerminalOpen`、open handlers、focus 状态 |
-| `useAppCallbacks` | IDE、agent、worktree、auth、UI 回调 | 所有 `handle*` 回调 |
+| `useSyncToStore` | 将快捷键读取需要的快照和动作引用同步到 app store | （仅副作用，无返回值） |
+| `useAgentActions` | 本地 agent、IDE、项目设置保存 | Agent 与 IDE 回调 |
+| `useWorktreeActions` | 本地 worktree 导航与 diff 切换 | Worktree 回调 |
+| `useRemoteAuthActions` | SSH 认证取消与确认 | Remote auth 回调 |
 
 ---
 

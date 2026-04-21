@@ -1,26 +1,48 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig } from "../types";
+import { useAppStore } from "../store/appStore";
+import { applyStateAction } from "../utils/entryUpdates";
 
 export function useLocalProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const activeProject = useAppStore((state) => state.activeProject);
+
+  const setProjects: Dispatch<SetStateAction<Project[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => {
+      const nextProjects = applyStateAction(state.projects, updater);
+      const nextActiveProject = state.activeProjectId
+        ? nextProjects.find((project) => project.id === state.activeProjectId) ?? null
+        : null;
+      return {
+        projects: nextProjects,
+        activeProject: nextActiveProject,
+      };
+    });
+  }, []);
+
+  const setActiveProjectId = useCallback((projectId: string | null) => {
+    useAppStore.setState((state) => ({
+      activeProjectId: projectId,
+      activeProject: projectId
+        ? state.projects.find((project) => project.id === projectId) ?? null
+        : null,
+    }));
+  }, []);
+
+  const setActiveProject: Dispatch<SetStateAction<Project | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeProject: applyStateAction(state.activeProject, updater),
+    }));
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-
-  // 同步 activeProject
-  useEffect(() => {
-    if (activeProjectId) {
-      const project = projects.find((p) => p.id === activeProjectId);
-      setActiveProject(project || null);
-    } else {
-      setActiveProject(null);
-    }
-  }, [activeProjectId, projects]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -84,18 +106,25 @@ export function useLocalProjects() {
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
       await invoke("remove_project", { projectId });
-      setProjects(prev => {
-        const next = prev.filter((p) => p.id !== projectId);
-        if (activeProjectId === projectId) {
-          setActiveProjectId(next.length > 0 ? next[0].id : null);
-        }
-        return next;
+      useAppStore.setState((state) => {
+        const nextProjects = state.projects.filter((project) => project.id !== projectId);
+        const nextActiveProjectId = state.activeProjectId === projectId
+          ? (nextProjects[0]?.id ?? null)
+          : state.activeProjectId;
+        const nextActiveProject = nextActiveProjectId
+          ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
+          : null;
+        return {
+          projects: nextProjects,
+          activeProjectId: nextActiveProjectId,
+          activeProject: nextActiveProject,
+        };
       });
       destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
-  }, [activeProjectId]);
+  }, []);
 
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
