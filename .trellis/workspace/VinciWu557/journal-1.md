@@ -579,3 +579,53 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 完成巨型组件拆分优化
+
+**Date**: 2026-04-21
+**Task**: 完成巨型组件拆分优化
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成 Settings/RemoteItems/Diff/Terminal/ProjectItem/App Context 全链路拆分与规范同步。
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| SettingsPanel | 拆分为 settings 子目录多面板结构 |
+| RemoteItems | 抽离 ProjectBody、ProjectItemCard、WSLProjectCard、RemoteProjectCard |
+| DiffView | 分离算法、高亮、数据加载与渲染层 |
+| TerminalView | 分离 terminalCache、terminalFactory、terminalCommands |
+| ProjectItem | 拆分 Header/GitSection 与 Drag/Menu hooks，压缩 props |
+| App/Context | 引入 useAppContainer + AppProviders + AppModals，拆分 ProjectState/Actions、Wsl、Remote、Editor Context |
+| Spec | 同步 frontend 的 directory/state/component/quality 文档 |
+
+**验证结果**
+
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7cfea23` | (see git log) |
+| `46ea632` | (see git log) |
+| `e7eab3f` | (see git log) |
+| `b73a11e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
