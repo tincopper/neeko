@@ -723,3 +723,50 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: Hook 复杂度治理重构收尾
+
+**Date**: 2026-04-21
+**Task**: Hook 复杂度治理重构收尾
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| Hook 拆分 | 删除 `useAppCallbacks`，新增 `useAgentActions`、`useWorktreeActions`、`useRemoteAuthActions` |
+| 共享抽象 | 新增 `useConnectionWorktreeState` 与 `utils/entryUpdates.ts`，复用 WSL/Remote 共性逻辑 |
+| 状态治理 | 扩展 `appStore`，将 local/wsl/remote 关键状态收敛为统一状态源 |
+| 编排层 | `useAppContainer` 接入新域 Hook，增加 `buildContextValues` 组织 Context 值 |
+| 测试 | 移除 `useAppCallbacks` 测试，新增 `useWorktreeActions` 测试并修复 remote test 的 store 隔离 |
+
+**验证**:
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 全部通过
+
+**任务状态**:
+- 归档 `04-21-hook-complexity`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b64866b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
