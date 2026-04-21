@@ -850,3 +850,36 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 合并 context 目录到 contexts
+
+**Date**: 2026-04-21
+**Task**: 合并 context 目录到 contexts
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 src/context/ (app-context, sidebar-context, skill-context) 合并到 src/contexts/，删除旧目录，更新 22 个文件的 import 路径为 barrel 导入，双 import 合并为单一导入。TypeScript 类型检查和 212 个测试均通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c0de49` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
