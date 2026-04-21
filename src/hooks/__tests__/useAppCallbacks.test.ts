@@ -14,7 +14,6 @@ const mockInvoke = vi.mocked(invoke);
 
 /** 构造最小化的 useAppCallbacks 入参 */
 function makeParams(overrides: Partial<Parameters<typeof useAppCallbacks>[0]> = {}) {
-  const activeProjectIdRef = { current: null as string | null };
   const showToast = vi.fn();
   const setActiveProject = vi.fn();
   const setProjects = vi.fn();
@@ -29,20 +28,18 @@ function makeParams(overrides: Partial<Parameters<typeof useAppCallbacks>[0]> = 
   const setRemoteAuthStore = vi.fn();
   const setPendingAuthEntry = vi.fn();
   const setRemoteEntries = vi.fn();
-  const remoteEntriesRef = { current: [] as never[] };
   const setActiveRemoteKey = vi.fn();
   const setActiveRemoteProject = vi.fn();
   const setSettingsOpen = vi.fn();
   const handleAddProject = vi.fn();
   const setWslDialogOpen = vi.fn();
   const setRemoteDialogOpen = vi.fn();
-  const setActiveProjectId = vi.fn((id: string | null) => {
-    activeProjectIdRef.current = id;
-  });
+  const setActiveProjectId = vi.fn();
 
   return {
     agentCommandOverrides: undefined,
     activeProject: null,
+    activeProjectId: null,
     projects: [],
     setProjects,
     setActiveProject,
@@ -52,19 +49,16 @@ function makeParams(overrides: Partial<Parameters<typeof useAppCallbacks>[0]> = 
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
-    activeProjectIdRef,
     saveWorktreeState,
     setWorktreeDiffState,
     saveSession,
-    wslEntriesRefForSave: { current: [] as never[] },
-    remoteEntriesRefForSave: { current: [] as never[] },
     setWslDiffState,
     setRemoteDiffState,
     pendingAuthEntry: null,
     setRemoteAuthStore,
     setPendingAuthEntry,
     setRemoteEntries,
-    remoteEntriesRef,
+    remoteEntries: [],
     setActiveRemoteKey,
     setActiveRemoteProject,
     setSettingsOpen,
@@ -86,7 +80,7 @@ describe('useAppCallbacks', () => {
     it('项目未激活时先激活项目再设置 worktree 路径', async () => {
       const params = makeParams();
       // activeProjectId 为 null，表示项目未激活
-      params.activeProjectIdRef.current = null;
+      params.activeProjectId = null;
 
       const { result } = renderHook(() => useAppCallbacks(params));
 
@@ -110,7 +104,7 @@ describe('useAppCallbacks', () => {
 
     it('项目已激活时直接设置 worktree 路径，不重复激活', async () => {
       const params = makeParams();
-      params.activeProjectIdRef.current = 'p-wt';
+      params.activeProjectId = 'p-wt';
 
       const { result } = renderHook(() => useAppCallbacks(params));
 

@@ -6,11 +6,11 @@
 
 ## 概述
 
-所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目仅使用 **React 内置 Hooks** —— 没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
+所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域只读快照层。项目没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
 
 Hook 分两类：
 - **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
-- **编排 Hook**：从 App.tsx 提取的横切逻辑（保存、回调、ref 同步）
+- **编排 Hook**：从 App.tsx 提取的横切逻辑（保存、回调、store 同步）
 
 ---
 
@@ -63,24 +63,27 @@ export interface UseAppCallbacksResult {
 ```
 
 **规则**：
-- 编排 Hook 的文件名以 `useApp` 开头（如 `useAppCallbacks`、`useAppRefSync`）
-- 编排 Hook 接受状态/setter/ref 作为参数，不自行创建领域状态
+- 编排 Hook 的文件名以 `useApp` 或 `use*ToStore` 开头（如 `useAppCallbacks`、`useSyncToStore`）
+- 编排 Hook 接受状态/setter/store 同步依赖作为参数，不自行创建领域状态
 - 编排 Hook 内部使用 `useCallback` 保证返回的回调引用稳定
 
-### Ref 镜像模式
+### Store 快照模式
 
-本代码库的特色模式：将状态值镜像到 ref，使回调能读取最新值而不产生过期闭包：
+全局事件处理器通过 `useAppStore.getState()` 读取最新快照，避免 stale closure 和大量 Ref 同步：
 
 ```tsx
-// src/App.tsx —— 常见模式
-const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-const activeProjectIdRef = useRef<string | null>(null);
-useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
-
-// 现在回调可以读取 activeProjectIdRef.current 而不依赖 activeProjectId
+// src/hooks/useKeyboardShortcuts.ts
+useEffect(() => {
+  const handleKeyDown = () => {
+    const snapshot = useAppStore.getState();
+    // 读取 snapshot.activeProjectId / snapshot.wslEntries / snapshot.selectProject
+  };
+  window.addEventListener("keydown", handleKeyDown, true);
+  return () => window.removeEventListener("keydown", handleKeyDown, true);
+}, []);
 ```
 
-该模式在 `App.tsx` 和 `useWorktreeState` 等 Hook 中广泛使用。
+该模式用于跨域读取场景。领域状态所有权仍在各领域 Hook 内，通过 `useSyncToStore` 单向同步到 store。
 
 ---
 
@@ -163,13 +166,14 @@ export function useAppConfig() {
 ```tsx
 // useSessionPersistence.ts
 const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
-  // 更新 ref
-  worktreeStateRef.current[projectId] = wtPath;
-  // 防抖保存（500ms）
-  if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
-  wtSaveTimerRef.current = setTimeout(() => {
-    invoke("save_session", { worktreeState: worktreeStateRef.current }).catch(() => {});
-  }, 500);
+  // 更新本地 state，并把 next 传给防抖持久化
+  setWorktreeState((prev) => {
+    const next = { ...prev };
+    if (wtPath) next[projectId] = wtPath;
+    else delete next[projectId];
+    persistWorktreeState(next);
+    return next;
+  });
 }, []);
 ```
 
@@ -180,7 +184,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | 约定 | 示例 |
 |------|------|
 | 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
-| 文件名（编排）：`useApp<Purpose>.ts` | `useAppCallbacks.ts`、`useAppRefSync.ts` |
+| 文件名（编排）：`useApp<Purpose>.ts` / `use*ToStore.ts` | `useAppCallbacks.ts`、`useSyncToStore.ts` |
 | 导出：命名函数 | `export function useAppConfig()` |
 | 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
 | 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
@@ -206,8 +210,8 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
-| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`saveSideTerminalWidth`、相关 refs |
-| `useAppRefSync` | 批量同步状态到 refs | （仅副作用，无返回值） |
+| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`worktreeState` |
+| `useSyncToStore` | 将领域状态单向同步到 app store 快照 | （仅副作用，无返回值） |
 | `useSideTerminalState` | 本地/WSL/远程 side terminal 统一管理 | `sideTerminalOpenSet`、`setSideTerminalOpen`、open handlers、focus 状态 |
 | `useAppCallbacks` | IDE、agent、worktree、auth、UI 回调 | 所有 `handle*` 回调 |
 
@@ -229,7 +233,7 @@ const handleSelect = useCallback((id: string) => { ... }, [deps]);
 
 ### 2. 在事件处理器中读取过期状态
 
-当回调需要最新状态值时，使用 ref 镜像模式：
+当回调需要最新跨域状态值时，优先使用 store 快照模式：
 
 ```tsx
 // 错误 —— 闭包捕获了初始值
@@ -237,9 +241,9 @@ const handler = useCallback(() => {
   console.log(activeProjectId); // 过期了！
 }, []); // 空依赖以保持引用稳定
 
-// 正确 —— 从 ref 读取
+// 正确 —— 从 store 快照读取
 const handler = useCallback(() => {
-  console.log(activeProjectIdRef.current); // 始终是最新的
+  console.log(useAppStore.getState().activeProjectId); // 始终是最新的
 }, []);
 ```
 

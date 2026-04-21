@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { switchAgentInWslTerminal, wslCacheKey, refreshWslTerminal } from "../components/terminal";
 import type { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../types";
@@ -14,8 +14,6 @@ export function useWslActions(deps: {
   setActiveWslProject: React.Dispatch<React.SetStateAction<{ distro: string; project: WSLProject } | null>>;
   activeWslProject: { distro: string; project: WSLProject } | null;
   wslEntries: WSLEntrySession[];
-  wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
@@ -29,10 +27,6 @@ export function useWslActions(deps: {
   const [activeWslWorktreePath, setActiveWslWorktreePath] = useState<string | null>(null);
   const [wslActiveWtBranch, setWslActiveWtBranch] = useState("");
   const [wslOpenedWt, setWslOpenedWt] = useState<WorktreeItem[]>([]);
-  const wslOpenedWtRef = useRef<WorktreeItem[]>([]);
-  const activeWslWorktreePathRef = useRef<string | null>(null);
-  wslOpenedWtRef.current = wslOpenedWt;
-  activeWslWorktreePathRef.current = activeWslWorktreePath;
 
   // ── Select WSL project ──
   const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
@@ -128,15 +122,14 @@ export function useWslActions(deps: {
     if (!agent) {
       setTimeout(() => refreshWslTerminal(key), 50);
     }
-    invoke("save_session", { wslEntries: newEntries, remoteEntries: deps.remoteEntriesRefForSave.current }).catch(console.error);
-  }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config]);
+    deps.saveSession(newEntries).catch(console.error);
+  }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config, deps.saveSession]);
 
   return {
     wslDiffState, setWslDiffState,
     activeWslWorktreePath, setActiveWslWorktreePath,
     wslActiveWtBranch, setWslActiveWtBranch,
     wslOpenedWt, setWslOpenedWt,
-    wslOpenedWtRef, activeWslWorktreePathRef,
     handleSelectWslProject,
     handleSelectWslFile,
     handleRefreshWslGit,

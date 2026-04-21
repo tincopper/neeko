@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { remoteCacheKey, destroyRemoteCachesByPrefix } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
@@ -18,10 +18,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
   const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
   const [remoteAuthStore, setRemoteAuthStore] = useState<Map<string, AuthMethod>>(new Map());
   const [pendingAuthEntry, setPendingAuthEntry] = useState<RemoteEntrySession | null>(null);
-
-  const remoteEntriesRef = useRef<RemoteEntrySession[]>([]);
-  const activeRemoteKeyRef = useRef<ActiveRemoteKey>(null);
-  const selectRemoteProjectRef = useRef<(host: string, project: RemoteProject) => void>(() => {});
 
   // Trigger SSH auth dialog via effect
   useEffect(() => {
@@ -141,7 +137,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     remoteAddToEntryId,
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
-    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
