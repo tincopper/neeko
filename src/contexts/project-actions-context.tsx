@@ -3,6 +3,7 @@ import React, { createContext, useContext } from "react";
 export interface ProjectActionsContextValue {
   onRemoveProject: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
+  onAddProject: () => void;
   onSelectFile: (projectId: string, filePath: string) => void;
   onRefreshGit: (projectId: string) => void;
   onBackToMainTerminal: (projectId: string) => void;
@@ -15,8 +16,6 @@ export interface ProjectActionsContextValue {
     agentId: string | null,
     ideCommand: string | null,
   ) => void;
-  handleSelectProject: (projectId: string) => void;
-  handleAddProject: () => void;
   onWorktreeDiffBack: () => void;
 }
 

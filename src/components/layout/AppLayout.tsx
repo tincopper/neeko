@@ -4,10 +4,8 @@ import { useFileActionsContext } from "../../contexts";
 import { SkillProvider } from "../../context/skill-context";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
-import ProjectsPanel from "../panels/ProjectsPanel";
-import FilesPanel from "../panels/FilesPanel";
-import SkillsPanel from "../panels/SkillsPanel";
-import SkillContent from "../skills/SkillContent";
+import { ProjectsPanel, FilesPanel } from "../panels";
+import { SkillsPanel, SkillContent } from "../skills";
 import MainContent from "../MainContent";
 import { useAppStore } from "../../store/appStore";
 

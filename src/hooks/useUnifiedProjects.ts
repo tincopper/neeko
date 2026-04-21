@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useRef, useEffect } from 'react';
 import type { UnifiedProject, ActiveProjectAdapter, AppConfig, Project, WSLEntrySession, RemoteEntrySession, WSLProject, RemoteProject, AuthMethod, AgentConfig } from '../types';
-import { LocalProjectAdapter } from '../adapters/LocalProjectAdapter';
-import { WslProjectAdapter } from '../adapters/WslProjectAdapter';
-import { RemoteProjectAdapter } from '../adapters/RemoteProjectAdapter';
-import type { ProjectAdapter } from '../adapters/ProjectAdapter';
+import {
+  LocalProjectAdapter,
+  WslProjectAdapter,
+  RemoteProjectAdapter,
+  type ProjectAdapter,
+} from '../adapters';
 
 export interface UseUnifiedProjectsResult {
   projects: UnifiedProject[];

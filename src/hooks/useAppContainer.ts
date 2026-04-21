@@ -442,6 +442,7 @@ export function useAppContainer(): UseAppContainerResult {
   const projectActionsValue = {
     onRemoveProject: handleRemoveProject,
     onSelectProject: handleSelectProjectWithClear,
+    onAddProject: handleAddProject,
     onSelectFile: handleSelectFile,
     onRefreshGit: handleRefreshGit,
     onBackToMainTerminal: worktreeActions.handleBackToMainTerminal,
@@ -450,8 +451,6 @@ export function useAppContainer(): UseAppContainerResult {
     onSelectWorktreeFile: worktreeActions.handleSelectWorktreeFile,
     onDragEnd: handleDragEnd,
     onSaveProjectSettings: agentActions.handleSaveProjectSettings,
-    handleSelectProject: handleSelectProjectWithClear,
-    handleAddProject,
     onWorktreeDiffBack: worktreeActions.handleWorktreeDiffBack,
   };
 

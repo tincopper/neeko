@@ -47,12 +47,10 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Panel header */}
       <div className="flex items-center px-3 py-2 border-b border-border">
         <span className="text-sm font-semibold text-text-primary">Skills</span>
       </div>
 
-      {/* Navigation menu */}
       <div className="flex-1 overflow-y-auto">
         <nav className="py-1">
           {navItems.map((item) => {
@@ -79,7 +77,6 @@ const SkillsPanel: React.FC = React.memo(() => {
           })}
         </nav>
 
-        {/* Tag Groups section */}
         <div className="border-t border-border">
           <button
             className="flex items-center gap-1 px-3 py-1.5 w-full text-left text-[11px] font-medium text-text-muted uppercase tracking-wider hover:bg-bg-hover"
@@ -135,5 +132,7 @@ const SkillsPanel: React.FC = React.memo(() => {
     </div>
   );
 });
+
 SkillsPanel.displayName = "SkillsPanel";
+
 export default SkillsPanel;

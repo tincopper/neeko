@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Project } from "../../types";
 import type { DialogType } from "./GitDialog";
-import FileTree, { buildTree } from "./FileTree";
+import { FileTree, buildTree } from "../files";
 import WorktreeList from "./WorktreeList";
 import { BranchIcon, ChevronRightIcon, PlusIcon, SearchIcon, TerminalIcon } from "../icons";
 
