@@ -673,3 +673,53 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: 完成 Prop 穿透清理
+
+**Date**: 2026-04-21
+**Task**: 完成 Prop 穿透清理
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 MainContent 子组件改为 Context 直连，移除大量中转 props 并通过类型与测试验证。
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| MainContent | 删除中转解构与中转回调，子组件调用改为最小参数形式 |
+| RemoteProjectView | 改为无 props，内部消费 Remote/App Context |
+| FileViewer | 改为无 props，内部消费 ProjectState/ProjectActions/App Context |
+| TerminalView | props 缩减为 `paneId`，内部计算 active tab 与 agent 覆盖 |
+| WorktreeTerminalView | 改为无 props，内部消费 ProjectState/App Context |
+| WSLTerminalView | props 缩减为 `paneId`，内部处理会话就绪与缓存后缀 |
+| terminalTypes | `TerminalViewProps` 收敛为 `paneId` |
+
+**验证**：
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+**说明**：
+- DiffView 参数化调用保持不变
+- 修补三处非空断言为安全读取
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1393265` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

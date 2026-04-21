@@ -1,0 +1,13 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件 props 与 memo 约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Context 分层与消除 prop drilling 约定"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "类型检查和回调稳定性要求"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "避免 any 和断言绕过"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "批量修改后防遗漏检查"}
+{"file": "src/components/MainContent.tsx", "reason": "主编排组件，当前 props 穿透入口"}
+{"file": "src/components/RemoteProjectView.tsx", "reason": "Remote 子视图改为 Context 消费"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "FileViewer 改为 Context 消费"}
+{"file": "src/components/terminal/TerminalView.tsx", "reason": "TerminalView props 缩减"}
+{"file": "src/components/terminal/WorktreeTerminalView.tsx", "reason": "Worktree terminal 改为 Context 消费"}
+{"file": "src/components/terminal/WSLTerminalView.tsx", "reason": "WSL terminal props 缩减"}
