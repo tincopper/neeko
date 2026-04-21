@@ -770,3 +770,36 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: Phase1 Context 单源迁移与规范同步
+
+**Date**: 2026-04-21
+**Task**: Phase1 Context 单源迁移与规范同步
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成 Project/File 状态单源迁移，新增 FileActionsContext，移除 ProjectStateContext 与 buildContextValues，同步三份 frontend spec。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c0b0b0e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
