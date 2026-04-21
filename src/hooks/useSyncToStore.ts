@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { ActiveRemoteKey, ActiveWslKey } from "../components/connections/types";
 import type {
+  AuthMethod,
   Project,
   RemoteEntrySession,
   RemoteProject,
@@ -22,8 +23,12 @@ export interface UseSyncToStoreParams {
   isTerminalView: boolean;
   wslEntries: WSLEntrySession[];
   activeWslKey: ActiveWslKey;
+  activeWslProject: { distro: string; project: WSLProject } | null;
   remoteEntries: RemoteEntrySession[];
   activeRemoteKey: ActiveRemoteKey;
+  activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
+  remoteAuthStore: Map<string, AuthMethod>;
+  pendingAuthEntry: RemoteEntrySession | null;
   activeWorktreePath: string | null;
   openedWorktrees: WorktreeItem[];
   wslOpenedWt: WorktreeItem[];
@@ -45,8 +50,12 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     isTerminalView,
     wslEntries,
     activeWslKey,
+    activeWslProject,
     remoteEntries,
     activeRemoteKey,
+    activeRemoteProject,
+    remoteAuthStore,
+    pendingAuthEntry,
     activeWorktreePath,
     openedWorktrees,
     wslOpenedWt,
@@ -68,8 +77,12 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
       isTerminalView,
       wslEntries,
       activeWslKey,
+      activeWslProject,
       remoteEntries,
       activeRemoteKey,
+      activeRemoteProject,
+      remoteAuthStore,
+      pendingAuthEntry,
       activeWorktreePath,
       openedWorktrees,
       wslOpenedWt,
@@ -85,8 +98,12 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     isTerminalView,
     wslEntries,
     activeWslKey,
+    activeWslProject,
     remoteEntries,
     activeRemoteKey,
+    activeRemoteProject,
+    remoteAuthStore,
+    pendingAuthEntry,
     activeWorktreePath,
     openedWorktrees,
     wslOpenedWt,

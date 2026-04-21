@@ -6,7 +6,7 @@
 
 ## 概述
 
-本项目使用 **React 内置状态** —— `useState`、`useRef`、`useCallback`、`useEffect`，并使用 **Context API** 作为跨组件分发层。对于跨域读取最新状态的场景，使用 **Zustand** 维护只读快照层。
+本项目使用 **React 内置状态** 与 **Context API**。跨领域共享状态放在 **Zustand**，作为项目列表、激活项目、WSL/Remote 条目、认证状态的统一状态源。
 
 状态协调已从 `App.tsx` 主文件下沉到 `useAppContainer`。`App.tsx` 仅保留壳层编排，避免巨型组件继续膨胀。
 
@@ -16,7 +16,7 @@
 
 ### 1. 应用级状态源 `useAppContainer`
 
-跨领域状态由 `useAppContainer` 调用领域 Hook 持有：
+跨领域状态由 `useAppContainer` 调用领域 Hook 编排，并统一同步到 `useAppStore`：
 
 ```tsx
 export function useAppContainer() {
@@ -25,7 +25,9 @@ export function useAppContainer() {
   const remote = useRemoteProjects(saveSession);
   const worktree = useWorktreeState(activeProjectId);
   const fileView = useFileView();
-  const callbacks = useAppCallbacks(...);
+  const agentActions = useAgentActions(...);
+  const worktreeActions = useWorktreeActions(...);
+  const remoteAuthActions = useRemoteAuthActions(...);
   useSyncToStore(...);
 
   return {
@@ -61,9 +63,9 @@ const [showAddMenu, setShowAddMenu] = useState(false);
 const [dialog, setDialog] = useState<DialogState | null>(null);
 ```
 
-### 4. Zustand 快照状态
+### 4. Zustand 全局状态
 
-用于全局事件回调读取最新跨域状态，不直接作为渲染源：
+用于跨域状态读写和全局事件回调读取最新状态：
 
 ```tsx
 const snapshot = useAppStore.getState();
@@ -99,7 +101,7 @@ await invoke("save_session", { session: { ... } });
 
 ## 何时使用全局状态
 
-本项目的全局状态是 `useAppContainer` 中的状态源 + Context 分发层。
+本项目的全局状态是 `useAppStore` + Context 分发层。
 
 适合放入应用级状态的场景：
 
@@ -160,14 +162,14 @@ const debouncedSave = useCallback(() => {
 ┌────────────────────────────────────────────────┐
 │ useAppContainer 状态协调器                      │
 │  useLocalProjects / useWslProjects / ...       │
-│  useWorktreeState / useFileView / useAppConfig │
+│  useAgentActions / useWorktreeActions / ...    │
 │  useSyncToStore                                │
 └────────────────────────────────────────────────┘
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
-│ Zustand 快照层 useAppStore                     │
-│  供快捷键与持久化回调读取最新跨域状态           │
+│ Zustand 全局状态层 useAppStore                 │
+│  领域 Hook 写入 + 快捷键/持久化读取            │
 └────────────────────────────────────────────────┘
                     │
                     ▼
