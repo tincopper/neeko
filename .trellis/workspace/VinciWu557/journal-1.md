@@ -803,3 +803,50 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: TODO未完成项优化方案收尾
+
+**Date**: 2026-04-21
+**Task**: TODO未完成项优化方案收尾
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成PR2尾项收敛，迁移FileViewer与FileTree到files域，补齐barrel与类型拆分并通过tsc/test回归
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| 文件域边界 | 新增 `src/components/files/`，迁移 `FileViewer`、`FileTree`，`panels` 收敛为侧栏面板 |
+| 类型组织 | 删除 `src/types.ts`，新增 `src/types/*` 按域拆分并由 `src/types/index.ts` 聚合导出 |
+| 命名规范 | `ProjectActionsContextValue` 去除 `handle*` 对外字段，统一为 `on*` |
+| barrel export | 新增 `src/hooks/index.ts`、`src/utils/index.ts`、`src/adapters/index.ts`、`src/components/panels/index.ts` |
+| 文档同步 | 更新 `AGENTS.md`、`TODO.md`、任务 `prd.md` 与任务上下文文件 |
+
+**验证结果**
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+**任务状态**
+- `04-21-todo-unresolved-optimization` 已归档到 `.trellis/tasks/archive/2026-04/`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4a36f1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
