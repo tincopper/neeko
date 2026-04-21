@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppContext } from "../../context/app-context";
-import { useProjectStateContext } from "../../contexts";
 import {
   createTerminalForProject,
   terminalCache,
@@ -9,6 +8,7 @@ import {
   pendingPtyResize,
 } from "./TerminalView";
 import { buildFontFamily } from "../../utils/terminal";
+import { useAppStore } from "../../store/appStore";
 
 // cache key 格式：projectId + ":wt:" + worktreePath
 export function worktreeKey(projectId: string, worktreePath: string) {
@@ -16,7 +16,9 @@ export function worktreeKey(projectId: string, worktreePath: string) {
 }
 
 function WorktreeTerminalView() {
-  const { activeProject, activeWorktreePath, activeWorktreeBranch } = useProjectStateContext();
+  const activeProject = useAppStore((state) => state.activeProject);
+  const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+  const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
   const { config } = useAppContext();
 
   const wrapperRef = useRef<HTMLDivElement>(null);

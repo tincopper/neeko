@@ -6,9 +6,9 @@
 
 ## 概述
 
-本项目使用 **React 内置状态** 与 **Context API**。跨领域共享状态放在 **Zustand**，作为项目列表、激活项目、WSL/Remote 条目、认证状态的统一状态源。
+本项目使用 **React 内置状态** 与 **Context API**。跨领域共享状态放在 **Zustand**，作为项目列表、激活项目、文件视图、worktree、WSL/Remote 条目、认证状态的统一状态源。
 
-状态协调已从 `App.tsx` 主文件下沉到 `useAppContainer`。`App.tsx` 仅保留壳层编排，避免巨型组件继续膨胀。
+状态协调已从 `App.tsx` 主文件下沉到 `useAppContainer`。`App.tsx` 仅保留壳层编排。`useAppContainer` 负责组装 Action Context、连接领域 Hook，并通过 `useSyncToStore` 同步快捷键所需的连接快照。
 
 ---
 
@@ -47,8 +47,8 @@ export function useAppContainer() {
 |--------|---------|-----------|
 | `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`MainContent` |
 | `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
-| `ProjectStateContext` | 本地项目状态与文件视图状态 | `AppLayout`、`ProjectsPanel`、`MainContent` |
-| `ProjectActionsContext` | 本地项目动作回调 | `AppLayout`、`ProjectsPanel`、`MainContent` |
+| `ProjectActionsContext` | 本地项目与 worktree 副作用动作 | `ProjectsPanel`、`MainContent` |
+| `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作 | `AppLayout`、`FileViewer` |
 | `WslContext` | WSL 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
 | `RemoteContext` | SSH 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
 | `EditorContext` | 终端 tabs 与 agent bar | `MainContent` |
@@ -163,19 +163,19 @@ const debouncedSave = useCallback(() => {
 │ useAppContainer 状态协调器                      │
 │  useLocalProjects / useWslProjects / ...       │
 │  useAgentActions / useWorktreeActions / ...    │
-│  useSyncToStore                                │
+│  useFileView / useSyncToStore                  │
 └────────────────────────────────────────────────┘
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Zustand 全局状态层 useAppStore                 │
-│  领域 Hook 写入 + 快捷键/持久化读取            │
+│  Project/File/Worktree 状态单源 + 快照读取     │
 └────────────────────────────────────────────────┘
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Providers                                       │
-│  App + Sidebar + ProjectState + ProjectActions │
+│  App + Sidebar + ProjectActions + FileActions  │
 │  Wsl + Remote + Editor + Skill                 │
 └────────────────────────────────────────────────┘
                     │
@@ -190,6 +190,105 @@ const debouncedSave = useCallback(() => {
 ┌────────────────────────────────────────────────┐
 │ Tauri IPC (invoke / listen)                     │
 └────────────────────────────────────────────────┘
+```
+
+---
+
+## 场景：Project/File 状态单源化迁移 2026-04-21
+
+### 1. Scope / Trigger
+
+- Trigger：`ProjectStateContext` 与 `useSyncToStore` 同步 project/file 字段导致双数据源，组件同时消费 Context 和 Store。
+- Scope：`src/store/appStore.ts`、`src/hooks/useFileView.ts`、`src/hooks/useAppContainer.ts`、`src/hooks/useSyncToStore.ts`、`src/AppProviders.tsx`、`src/contexts/*`、消费端组件。
+
+### 2. Signatures
+
+```ts
+// src/store/appStore.ts
+interface AppStoreState {
+  projects: Project[];
+  activeProjectId: string | null;
+  activeProject: Project | null;
+  activeWorktreePath: string | null;
+  activeWorktreeBranch: string;
+  worktreeDiffState: { worktreePath: string; filePath: string } | null;
+  fileTree: FileNode[];
+  fileTabs: FileTab[];
+  activeFileTabId: string | null;
+  fileViewLoading: boolean;
+  activeFilePath: string | null;
+}
+
+// src/contexts/file-actions-context.tsx
+interface FileActionsContextValue {
+  onFileSelect(filePath: string): void;
+  onFileRefresh(): void;
+  onFileCloseTab(tabId: string): void;
+  onFileActivateTab(tabId: string): void;
+  onFileSave(content: string): Promise<boolean>;
+  onFileContentChange(tabId: string, content: string): void;
+  onLoadFileTree(projectId: string): void;
+}
+```
+
+### 3. Contracts
+
+1. 状态归属契约  
+`projects`、`activeProject*`、`activeWorktree*`、`worktreeDiffState`、`file*` 字段由 `useAppStore` 持有，组件通过 selector 读取。
+
+2. Context 职责契约  
+`ProjectActionsContext` 只承载项目与 worktree 的副作用动作。  
+`FileActionsContext` 承载文件读取、保存、标签页操作动作。  
+`ProjectStateContext` 不再作为共享状态入口。
+
+3. 同步层契约  
+`useSyncToStore` 不再接受 `projects`、`activeProjectId`、`activeProject` 参数，避免镜像写回。仅同步连接快照与快捷键依赖的回调引用。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 | 错误处理 |
+|------|------|------|---------|
+| `loadFileTree` 成功 | `projectId` 有效 | `fileTree` 更新，`fileViewLoading=false` | 无 |
+| `loadFileTree` 失败 | IPC 抛错 | `fileTree=[]`，`fileViewLoading=false`，`error` 记录 | 组件显示空树 |
+| `openFile` 命中已打开 tab | 相同 `projectId+filePath` | 仅切换 `activeFileTabId` | 无 |
+| `openFile` 读取失败 | `read_file_content` 抛错 | 不新增 tab，`error` 记录 | 保持原有 tab |
+| `saveFile` 失败 | `write_file_content` 抛错 | 返回 `false`，`isDirty` 保留 | `FileViewer` 保持编辑状态 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：打开未打开文件，新增 tab 并激活，`activeFilePath` 与 tab 对齐。
+- Base：关闭当前 tab，激活相邻 tab；关闭最后一个 tab 后 `activeFileTabId=null`。
+- Bad：无 `activeTabId` 时执行保存，函数返回 `false`，store 不写入脏数据。
+
+### 6. Tests Required
+
+- `useFileView` 单测断言  
+`openFile` 命中已存在 tab 时不追加 `fileTabs.length`。  
+`closeTab` 关闭当前 tab 时 `activeFileTabId` 回退正确。  
+`saveFile` 成功后 `isDirty=false`，失败后保持 `isDirty=true`。
+- 组件集成断言  
+`AppLayout` 使用 `useAppStore` 的 `fileTree`、`activeFilePath` 渲染。  
+`FileViewer` 通过 `FileActionsContext` 调用保存与切换动作。
+- 回归断言  
+`npx tsc --noEmit` 必须通过。  
+`pnpm test:run` 必须通过。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+// 状态在 hook 内 useState 持有，再镜像到 store
+const [fileTree, setFileTree] = useState<FileNode[]>([]);
+useSyncToStore({ projects, activeProject, fileTree, ... });
+```
+
+#### Correct
+
+```tsx
+// 状态直接进 store，hook 只负责动作和错误处理
+const fileTree = useAppStore((s) => s.fileTree);
+useAppStore.setState({ fileTree: tree, fileViewLoading: false });
 ```
 
 ---

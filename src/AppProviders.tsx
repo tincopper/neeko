@@ -2,16 +2,16 @@ import React from "react";
 import { AppProvider } from "./context/app-context";
 import { SidebarProvider } from "./context/sidebar-context";
 import {
-  ProjectStateProvider,
   ProjectActionsProvider,
+  FileActionsProvider,
   WslProvider,
   RemoteProvider,
   EditorProvider,
 } from "./contexts";
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>["value"];
-type ProjectStateProviderValue = React.ComponentProps<typeof ProjectStateProvider>["value"];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>["value"];
+type FileActionsProviderValue = React.ComponentProps<typeof FileActionsProvider>["value"];
 type WslProviderValue = React.ComponentProps<typeof WslProvider>["value"];
 type RemoteProviderValue = React.ComponentProps<typeof RemoteProvider>["value"];
 type EditorProviderValue = React.ComponentProps<typeof EditorProvider>["value"];
@@ -20,8 +20,8 @@ interface AppProvidersProps {
   appValue: AppProviderValue;
   initialSidebarWidth: number;
   onSidebarWidthPersist: (w: number) => void;
-  projectStateValue: ProjectStateProviderValue;
   projectActionsValue: ProjectActionsProviderValue;
+  fileActionsValue: FileActionsProviderValue;
   wslValue: WslProviderValue;
   remoteValue: RemoteProviderValue;
   editorValue: EditorProviderValue;
@@ -32,8 +32,8 @@ function AppProviders({
   appValue,
   initialSidebarWidth,
   onSidebarWidthPersist,
-  projectStateValue,
   projectActionsValue,
+  fileActionsValue,
   wslValue,
   remoteValue,
   editorValue,
@@ -45,15 +45,15 @@ function AppProviders({
         initialPanelWidth={initialSidebarWidth}
         onPanelWidthPersist={onSidebarWidthPersist}
       >
-        <ProjectStateProvider value={projectStateValue}>
-          <ProjectActionsProvider value={projectActionsValue}>
+        <ProjectActionsProvider value={projectActionsValue}>
+          <FileActionsProvider value={fileActionsValue}>
             <WslProvider value={wslValue}>
               <RemoteProvider value={remoteValue}>
                 <EditorProvider value={editorValue}>{children}</EditorProvider>
               </RemoteProvider>
             </WslProvider>
-          </ProjectActionsProvider>
-        </ProjectStateProvider>
+          </FileActionsProvider>
+        </ProjectActionsProvider>
       </SidebarProvider>
     </AppProvider>
   );

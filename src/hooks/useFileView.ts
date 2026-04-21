@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, FileTab } from "../types";
+import { useAppStore } from "../store/appStore";
 
 /**
  * Generate a unique tab ID from project ID and file path
@@ -16,11 +17,19 @@ function getFileName(filePath: string): string {
   return filePath.replace(/\\/g, "/").split("/").pop() || filePath;
 }
 
+function getActiveFilePath(tabs: FileTab[], activeTabId: string | null): string | null {
+  if (!activeTabId) {
+    return null;
+  }
+  return tabs.find((tab) => tab.id === activeTabId)?.filePath ?? null;
+}
+
 export function useFileView() {
-  const [fileTree, setFileTree] = useState<FileNode[]>([]);
-  const [tabs, setTabs] = useState<FileTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [fileTreeLoading, setFileTreeLoading] = useState(false);
+  const fileTree = useAppStore((state) => state.fileTree);
+  const tabs = useAppStore((state) => state.fileTabs);
+  const activeTabId = useAppStore((state) => state.activeFileTabId);
+  const fileTreeLoading = useAppStore((state) => state.fileViewLoading);
+  const activeFilePath = useAppStore((state) => state.activeFilePath);
   const [error, setError] = useState<string | null>(null);
 
   // Refs for avoiding stale closures
@@ -39,7 +48,7 @@ export function useFileView() {
    * Load the directory tree for a project
    */
   const loadFileTree = useCallback(async (projectId: string) => {
-    setFileTreeLoading(true);
+    useAppStore.setState({ fileViewLoading: true });
     setError(null);
     try {
       const tree = await invoke<FileNode[]>("read_dir_tree", {
@@ -47,12 +56,16 @@ export function useFileView() {
         subPath: null,
         maxDepth: 4,
       });
-      setFileTree(tree);
+      useAppStore.setState({
+        fileTree: tree,
+        fileViewLoading: false,
+      });
     } catch (e) {
       setError(String(e));
-      setFileTree([]);
-    } finally {
-      setFileTreeLoading(false);
+      useAppStore.setState({
+        fileTree: [],
+        fileViewLoading: false,
+      });
     }
   }, []);
 
@@ -65,7 +78,10 @@ export function useFileView() {
     // Check if tab already exists — just activate, no loading
     const existingTab = tabsRef.current.find((t) => t.id === tabId);
     if (existingTab) {
-      setActiveTabId(tabId);
+      useAppStore.setState({
+        activeFileTabId: tabId,
+        activeFilePath: existingTab.filePath,
+      });
       return;
     }
 
@@ -87,8 +103,14 @@ export function useFileView() {
         order: tabsRef.current.length,
       };
 
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabId(tabId);
+      useAppStore.setState((state) => {
+        const nextTabs = [...state.fileTabs, newTab];
+        return {
+          fileTabs: nextTabs,
+          activeFileTabId: tabId,
+          activeFilePath: getActiveFilePath(nextTabs, tabId),
+        };
+      });
     } catch (e) {
       setError(String(e));
     }
@@ -98,24 +120,31 @@ export function useFileView() {
    * Close a tab
    */
   const closeTab = useCallback((tabId: string) => {
-    setTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === tabId);
-      if (idx === -1) return prev;
+    useAppStore.setState((state) => {
+      const idx = state.fileTabs.findIndex((t) => t.id === tabId);
+      if (idx === -1) {
+        return {};
+      }
 
-      const newTabs = prev.filter((t) => t.id !== tabId);
+      const newTabs = state.fileTabs.filter((t) => t.id !== tabId);
+      let nextActiveTabId = state.activeFileTabId;
 
       // Update active tab if we're closing the active one
       if (activeTabIdRef.current === tabId) {
         if (newTabs.length === 0) {
-          setActiveTabId(null);
+          nextActiveTabId = null;
         } else {
           // Activate the next tab, or the previous one if closing the last
           const nextIdx = Math.min(idx, newTabs.length - 1);
-          setActiveTabId(newTabs[nextIdx].id);
+          nextActiveTabId = newTabs[nextIdx].id;
         }
       }
 
-      return newTabs;
+      return {
+        fileTabs: newTabs,
+        activeFileTabId: nextActiveTabId,
+        activeFilePath: getActiveFilePath(newTabs, nextActiveTabId),
+      };
     });
   }, []);
 
@@ -123,23 +152,30 @@ export function useFileView() {
    * Activate a tab
    */
   const activateTab = useCallback((tabId: string) => {
-    setActiveTabId(tabId);
+    useAppStore.setState((state) => ({
+      activeFileTabId: tabId,
+      activeFilePath: getActiveFilePath(state.fileTabs, tabId),
+    }));
   }, []);
 
   /**
    * Update tab content (for dirty tracking)
    */
   const updateTabContent = useCallback((tabId: string, content: string) => {
-    setTabs((prev) =>
-      prev.map((t) => {
+    useAppStore.setState((state) => {
+      const nextTabs = state.fileTabs.map((t) => {
         if (t.id !== tabId) return t;
         return {
           ...t,
           content: { ...t.content, content },
           isDirty: content !== t.content.content,
         };
-      })
-    );
+      });
+      return {
+        fileTabs: nextTabs,
+        activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
+      };
+    });
   }, []);
 
   /**
@@ -160,16 +196,20 @@ export function useFileView() {
       });
 
       // Update tab: mark as not dirty, update original content
-      setTabs((prev) =>
-        prev.map((t) => {
+      useAppStore.setState((state) => {
+        const nextTabs = state.fileTabs.map((t) => {
           if (t.id !== tabId) return t;
           return {
             ...t,
             content: { ...t.content, content },
             isDirty: false,
           };
-        })
-      );
+        });
+        return {
+          fileTabs: nextTabs,
+          activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
+        };
+      });
       return true;
     } catch (e) {
       setError(String(e));
@@ -181,24 +221,32 @@ export function useFileView() {
    * Mark tab as dirty
    */
   const setTabDirty = useCallback((tabId: string, isDirty: boolean) => {
-    setTabs((prev) =>
-      prev.map((t) => (t.id === tabId ? { ...t, isDirty } : t))
-    );
+    useAppStore.setState((state) => {
+      const nextTabs = state.fileTabs.map((t) => (
+        t.id === tabId ? { ...t, isDirty } : t
+      ));
+      return {
+        fileTabs: nextTabs,
+        activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
+      };
+    });
   }, []);
 
   /**
    * Clear file view (e.g., when switching projects)
    */
   const clearFileView = useCallback(() => {
-    setActiveTabId(null);
-    setTabs([]);
-    setFileTree([]);
+    useAppStore.setState({
+      activeFileTabId: null,
+      fileTabs: [],
+      fileTree: [],
+      activeFilePath: null,
+    });
     setError(null);
   }, []);
 
   // Derived state
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
-  const activeFilePath = activeTab?.filePath || null;
 
   return {
     fileTree,

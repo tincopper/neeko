@@ -17,15 +17,7 @@ export interface ProjectActionsContextValue {
   ) => void;
   handleSelectProject: (projectId: string) => void;
   handleAddProject: () => void;
-  suppressResizeRef?: React.MutableRefObject<boolean>;
   onWorktreeDiffBack: () => void;
-  onFileSelect: (filePath: string) => void;
-  onFileRefresh: () => void;
-  onFileCloseTab: (tabId: string) => void;
-  onFileActivateTab: (tabId: string) => void;
-  onFileSave: (content: string) => Promise<boolean>;
-  onFileContentChange: (tabId: string, content: string) => void;
-  onLoadFileTree: (projectId: string) => void;
 }
 
 const ProjectActionsContext = createContext<ProjectActionsContextValue | null>(null);

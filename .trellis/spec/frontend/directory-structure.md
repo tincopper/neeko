@@ -105,9 +105,9 @@ src/
 │   ├── skill-context.tsx
 │   └── index.ts
 │
-├── contexts/                # 领域 Context（project/wsl/remote/editor）
-│   ├── project-state-context.tsx
+├── contexts/                # 领域动作 Context（project/file/wsl/remote/editor）
 │   ├── project-actions-context.tsx
+│   ├── file-actions-context.tsx
 │   ├── wsl-context.tsx
 │   ├── remote-context.tsx
 │   ├── editor-context.tsx
@@ -153,6 +153,17 @@ src-tauri/
 ---
 
 ## 模块组织
+
+### 目录变更 2026-04-21
+
+`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。目录职责调整如下：
+
+| 文件 | 角色 |
+|------|------|
+| `contexts/project-actions-context.tsx` | 项目与 worktree 侧副作用动作 |
+| `contexts/file-actions-context.tsx` | 文件树加载、文件保存、Tab 动作 |
+| `hooks/useFileView.ts` | 文件域动作与错误处理，状态写入 store |
+| `store/appStore.ts` | `project/file/worktree` 状态单源 |
 
 ### 组件子目录按领域/功能组织
 
@@ -203,6 +214,73 @@ export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands
 | 共享类型 | `types.ts` |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>/` |
+
+---
+
+## 场景：Context 与 Store 文件布局契约
+
+### 1. Scope / Trigger
+
+- Trigger：跨组件共享状态字段过多时，Context 容易膨胀并引入重复读取路径。
+- Scope：`src/context/`、`src/contexts/`、`src/store/`、`src/hooks/`。
+
+### 2. Signatures
+
+```text
+src/context/         基础 UI 上下文（App / Sidebar / Skill）
+src/contexts/        领域动作上下文（ProjectActions / FileActions / Wsl / Remote / Editor）
+src/store/           共享状态单源（useAppStore）
+src/hooks/           动作封装、IPC 调用、状态写入协调
+```
+
+### 3. Contracts
+
+1. `context/` 只放稳定基础上下文，避免混入领域状态快照。  
+2. `contexts/` 放领域动作上下文，字段应以副作用函数为主。  
+3. 共享状态字段新增时优先进入 `store/appStore.ts`，消费者通过 selector 读取。  
+4. `AppProviders.tsx` 只负责 Provider 组装，禁止承担业务计算。
+
+### 4. Validation & Error Matrix
+
+| 检查项 | 规则 | 失败信号 |
+|--------|------|---------|
+| 新增共享字段位置 | 优先写 `store/` | 在 Context 中出现同名状态快照 |
+| 新增 Context 文件位置 | 放 `contexts/` 或 `context/` 对应层 | 混放导致 import 路径混乱 |
+| Provider 组合深度 | 新增前评估是否可复用现有 Provider | `AppProviders.tsx` 持续膨胀 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：新增文件域动作时创建 `file-actions-context.tsx`，状态仍放 store。
+- Base：新增只在单页使用的 UI 状态，保持组件本地 `useState`。
+- Bad：在 `contexts/*` 新增大块状态字段并与 store 并存。
+
+### 6. Tests Required
+
+- 静态检查：`rg "useProjectStateContext|project-state-context"` 结果应为空。  
+- 类型检查：`npx tsc --noEmit`。  
+- 回归测试：`pnpm test:run`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+// contexts 中继续承载状态快照
+interface ProjectStateContextValue {
+  fileTabs: FileTab[];
+  activeFileTabId: string | null;
+}
+```
+
+#### Correct
+
+```tsx
+// contexts 只承载动作；状态由 store 读取
+interface FileActionsContextValue {
+  onFileSave(content: string): Promise<boolean>;
+}
+const tabs = useAppStore((s) => s.fileTabs);
+```
 
 ---
 

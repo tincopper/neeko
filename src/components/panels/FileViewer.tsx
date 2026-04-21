@@ -9,19 +9,21 @@ import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme } from "../../types";
 import { useAppContext } from "../../context/app-context";
-import { useProjectActionsContext, useProjectStateContext } from "../../contexts";
+import { useFileActionsContext } from "../../contexts";
+import { useAppStore } from "../../store/appStore";
 
 type MarkdownMode = "preview" | "source";
 
 function FileViewer() {
   const { config } = useAppContext();
-  const { fileTabs: tabs, activeFileTabId: activeTabId } = useProjectStateContext();
+  const tabs = useAppStore((state) => state.fileTabs);
+  const activeTabId = useAppStore((state) => state.activeFileTabId);
   const {
     onFileSave: onSave,
     onFileCloseTab: onCloseTab,
     onFileActivateTab: onActivateTab,
     onFileContentChange: onContentChange,
-  } = useProjectActionsContext();
+  } = useFileActionsContext();
 
   const theme = config.theme;
   const fontFamily = config.fontFamily;

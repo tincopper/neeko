@@ -1,9 +1,6 @@
 import React, { useEffect } from "react";
 import { useSidebar } from "../../context/sidebar-context";
-import {
-  useProjectStateContext,
-  useProjectActionsContext,
-} from "../../contexts";
+import { useFileActionsContext } from "../../contexts";
 import { SkillProvider } from "../../context/skill-context";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
@@ -12,6 +9,7 @@ import FilesPanel from "../panels/FilesPanel";
 import SkillsPanel from "../panels/SkillsPanel";
 import SkillContent from "../skills/SkillContent";
 import MainContent from "../MainContent";
+import { useAppStore } from "../../store/appStore";
 
 interface AppLayoutProps {
    onAddProject: () => void;
@@ -23,17 +21,15 @@ interface AppLayoutProps {
 function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppLayoutProps) {
    const { activePanel } = useSidebar();
    const {
-      activeProject,
-      activeProjectId,
-      fileTree,
-      fileViewLoading,
-      activeFilePath,
-   } = useProjectStateContext();
-   const {
       onFileSelect,
       onFileRefresh,
       onLoadFileTree,
-   } = useProjectActionsContext();
+   } = useFileActionsContext();
+   const activeProject = useAppStore((state) => state.activeProject);
+   const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const fileTree = useAppStore((state) => state.fileTree);
+   const fileViewLoading = useAppStore((state) => state.fileViewLoading);
+   const activeFilePath = useAppStore((state) => state.activeFilePath);
 
    const activeProjectName = activeProject?.name ?? null;
    const skillsActive = activePanel === "skills";
