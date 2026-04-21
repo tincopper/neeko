@@ -1,0 +1,12 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "phase1 context-splitting"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "phase1 context-splitting"}
