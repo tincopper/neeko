@@ -1,8 +1,7 @@
 import React, { useCallback } from "react";
 import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
-import { useAppContext } from "../context/app-context";
-import { useRemoteContext } from "../contexts";
+import { useAppContext, useRemoteContext } from "../contexts";
 
 function RemoteProjectView() {
    const { config } = useAppContext();

@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from "react";
 import { IS_WINDOWS } from "../../utils/platform";
-import { useAppContext } from "../../context/app-context";
 import {
-  useProjectActionsContext,
-  useWslContext,
-  useRemoteContext,
+   useAppContext,
+   useProjectActionsContext,
+   useWslContext,
+   useRemoteContext,
 } from "../../contexts";
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";

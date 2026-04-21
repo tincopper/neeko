@@ -6,12 +6,12 @@ import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
-import { useAppContext } from "../context/app-context";
 import {
-  useProjectActionsContext,
-  useWslContext,
-  useRemoteContext,
-  useEditorContext,
+   useAppContext,
+   useProjectActionsContext,
+   useWslContext,
+   useRemoteContext,
+   useEditorContext,
 } from "../contexts";
 import type { AgentConfig } from "../types";
 import { useAppStore } from "../store/appStore";
