@@ -1,312 +1,311 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
-import { useAppContext } from "../../context/app-context";
-import { useEditorContext } from "../../contexts";
+import { useAppContext, useEditorContext } from "../../contexts";
 import { buildFontFamily } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
 import { useAppStore } from "../../store/appStore";
 import {
-  terminalCache,
-  terminalRebuildCallbacks,
-  terminalWrapperRefs,
-  executedAgentKeys,
-  pendingPtyResize,
-  setPendingPtyResize,
-  terminalCacheKey,
-  log,
+   terminalCache,
+   terminalRebuildCallbacks,
+   terminalWrapperRefs,
+   executedAgentKeys,
+   pendingPtyResize,
+   setPendingPtyResize,
+   terminalCacheKey,
+   log,
 } from "./terminalCache";
 import { createTerminalForProject } from "./terminalFactory";
 import type { TerminalCache, TerminalViewProps } from "./terminalTypes";
 
 export {
-  terminalCache,
-  terminalRebuildCallbacks,
-  terminalWrapperRefs,
-  executedAgentKeys,
-  pendingPtyResize,
-  setPendingPtyResize,
-  terminalCacheKey,
-  destroyTerminalCache,
-  destroyTerminalCachesByPrefix,
-  refreshTerminal,
+   terminalCache,
+   terminalRebuildCallbacks,
+   terminalWrapperRefs,
+   executedAgentKeys,
+   pendingPtyResize,
+   setPendingPtyResize,
+   terminalCacheKey,
+   destroyTerminalCache,
+   destroyTerminalCachesByPrefix,
+   refreshTerminal,
 } from "./terminalCache";
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
 
 function TerminalView({ paneId }: TerminalViewProps) {
-  const { config } = useAppContext();
-  const activeProject = useAppStore((state) => state.activeProject);
-  const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
+   const { config } = useAppContext();
+   const activeProject = useAppStore((state) => state.activeProject);
+   const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
 
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const currentCacheKeyRef = useRef<string | null>(null);
-  const [rebuildCount, setRebuildCount] = useState(0);
+   const wrapperRef = useRef<HTMLDivElement>(null);
+   const currentCacheKeyRef = useRef<string | null>(null);
+   const [rebuildCount, setRebuildCount] = useState(0);
 
-  const projectId = activeProject?.id ?? null;
-  const projectPath = activeProject?.path ?? null;
-  const projectName = activeProject?.name ?? null;
-  const projectSelectedAgent = activeProject?.selected_agent ?? null;
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-  const tabAgentId = activeTab?.agentId ?? null;
-  const agentCommandOverride = config.agentCommandOverrides?.[
-    tabAgentId ?? projectSelectedAgent ?? ""
-  ];
+   const projectId = activeProject?.id ?? null;
+   const projectPath = activeProject?.path ?? null;
+   const projectName = activeProject?.name ?? null;
+   const projectSelectedAgent = activeProject?.selected_agent ?? null;
+   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+   const tabAgentId = activeTab?.agentId ?? null;
+   const agentCommandOverride = config.agentCommandOverrides?.[
+      tabAgentId ?? projectSelectedAgent ?? ""
+   ];
 
-  const handleTabStatusChange = useCallback(
-    (status: "Idle" | "Running" | "Failed") => {
-      if (activeTabId) {
-        onTabStatusChange?.(activeTabId, status);
+   const handleTabStatusChange = useCallback(
+      (status: "Idle" | "Running" | "Failed") => {
+         if (activeTabId) {
+            onTabStatusChange?.(activeTabId, status);
+         }
+      },
+      [activeTabId, onTabStatusChange],
+   );
+
+   const cacheKey = projectId
+      ? terminalCacheKey(projectId, activeTabId, paneId)
+      : `local:none:${paneId}`;
+
+   useEffect(() => {
+      if (!projectId) {
+         return;
       }
-    },
-    [activeTabId, onTabStatusChange],
-  );
 
-  const cacheKey = projectId
-    ? terminalCacheKey(projectId, activeTabId, paneId)
-    : `local:none:${paneId}`;
-
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
-
-    const cache = terminalCache.get(cacheKey);
-    if (cache) {
-      cache.term.options.fontSize = config.terminalFontSize;
-      cache.term.options.fontFamily = buildFontFamily(config.fontFamily);
-      cache.fitAddon.fit();
-    }
-  }, [projectId, cacheKey, config.terminalFontSize, config.fontFamily]);
-
-  useEffect(() => {
-    if (!projectId || !projectPath || !projectName) {
-      return;
-    }
-
-    const wrapper = wrapperRef.current;
-    if (!wrapper) {
-      return;
-    }
-
-    currentCacheKeyRef.current = cacheKey;
-
-    terminalRebuildCallbacks.set(cacheKey, () => {
-      if (currentCacheKeyRef.current === cacheKey) {
-        log(`Rebuild triggered for ${cacheKey}`);
-        setRebuildCount((c) => c + 1);
-      }
-    });
-
-    terminalWrapperRefs.set(cacheKey, wrapper);
-
-    const attach = (cache: TerminalCache) => {
-      if (!wrapper.contains(cache.element)) {
-        wrapper.appendChild(cache.element);
-      }
-      requestAnimationFrame(() => {
-        if (currentCacheKeyRef.current !== cacheKey) {
-          return;
-        }
-        cache.fitAddon.fit();
-        if (cache.sessionId) {
-          invoke("resize_terminal", {
-            sessionId: cache.sessionId,
-            cols: cache.term.cols,
-            rows: cache.term.rows,
-          }).catch(() => {});
-        }
-        cache.term.focus();
-      });
-    };
-
-    const detachAll = () => {
-      while (wrapper.firstChild) {
-        wrapper.removeChild(wrapper.firstChild);
-      }
-    };
-
-    detachAll();
-
-    const existingCache = terminalCache.get(cacheKey);
-    if (existingCache) {
-      log(`Reattaching existing terminal for ${projectName} (${cacheKey})`);
-      attach(existingCache);
-    } else {
-      createTerminalForProject(
-        cacheKey,
-        projectPath,
-        projectName,
-        null,
-        config.terminalFontSize,
-        wrapper,
-        config.shell,
-        config.fontFamily,
-        projectId,
-        undefined,
-      ).then((cache) => {
-        if (currentCacheKeyRef.current !== cacheKey) {
-          return;
-        }
-
-        requestAnimationFrame(() => {
-          if (currentCacheKeyRef.current !== cacheKey) {
-            return;
-          }
-          cache.fitAddon.fit();
-          if (cache.sessionId) {
-            invoke("resize_terminal", {
-              sessionId: cache.sessionId,
-              cols: cache.term.cols,
-              rows: cache.term.rows,
-            }).catch(() => {});
-          }
-          cache.term.focus();
-        });
-
-        if (tabAgentId && !executedAgentKeys.has(cacheKey) && cache.sessionId) {
-          log(`Executing agent after terminal creation: ${tabAgentId}`);
-          (async () => {
-            try {
-              const agent = await invoke<AgentConfig>("get_agent", {
-                agentId: tabAgentId,
-              });
-              const cmd = agentCommandOverride ?? agent.command;
-              const cmdStr =
-                cmd +
-                (agent.args.length ? ` ${agent.args.join(" ")}` : "") +
-                "\r";
-
-              const bytes = Array.from(new TextEncoder().encode(cmdStr));
-              emit(`terminal-input-${cache.sessionId}`, bytes).catch((err) => {
-                log(`Execute agent error: ${err}`);
-              });
-
-              executedAgentKeys.add(cacheKey);
-              log(`Executed agent after creation: ${cmd}`);
-              handleTabStatusChange("Running");
-            } catch (err) {
-              log(`Failed to execute agent after creation: ${err}`);
-            }
-          })();
-        }
-      });
-    }
-
-    const handleResize = () => {
       const cache = terminalCache.get(cacheKey);
-      if (!cache) {
-        return;
+      if (cache) {
+         cache.term.options.fontSize = config.terminalFontSize;
+         cache.term.options.fontFamily = buildFontFamily(config.fontFamily);
+         cache.fitAddon.fit();
       }
-      cache.fitAddon.fit();
-      if (cache.sessionId) {
-        invoke("resize_terminal", {
-          sessionId: cache.sessionId,
-          cols: cache.term.cols,
-          rows: cache.term.rows,
-        }).catch(() => {});
-      }
-    };
+   }, [projectId, cacheKey, config.terminalFontSize, config.fontFamily]);
 
-    window.addEventListener("resize", handleResize);
-
-    let resizeRafId: number | null = null;
-    const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) {
-        cancelAnimationFrame(resizeRafId);
+   useEffect(() => {
+      if (!projectId || !projectPath || !projectName) {
+         return;
       }
-      resizeRafId = requestAnimationFrame(() => {
-        resizeRafId = null;
-        const c = terminalCache.get(cacheKey);
-        if (!c) {
-          return;
-        }
-        c.fitAddon.fit();
-        if (pendingPtyResize && c.sessionId) {
-          setPendingPtyResize(false);
-          invoke("resize_terminal", {
-            sessionId: c.sessionId,
-            cols: c.term.cols,
-            rows: c.term.rows,
-          }).catch(() => {});
-        }
+
+      const wrapper = wrapperRef.current;
+      if (!wrapper) {
+         return;
+      }
+
+      currentCacheKeyRef.current = cacheKey;
+
+      terminalRebuildCallbacks.set(cacheKey, () => {
+         if (currentCacheKeyRef.current === cacheKey) {
+            log(`Rebuild triggered for ${cacheKey}`);
+            setRebuildCount((c) => c + 1);
+         }
       });
-    });
-    ro.observe(wrapper);
 
-    return () => {
-      if (resizeRafId !== null) {
-        cancelAnimationFrame(resizeRafId);
-      }
-      ro.disconnect();
-      window.removeEventListener("resize", handleResize);
+      terminalWrapperRefs.set(cacheKey, wrapper);
+
+      const attach = (cache: TerminalCache) => {
+         if (!wrapper.contains(cache.element)) {
+            wrapper.appendChild(cache.element);
+         }
+         requestAnimationFrame(() => {
+            if (currentCacheKeyRef.current !== cacheKey) {
+               return;
+            }
+            cache.fitAddon.fit();
+            if (cache.sessionId) {
+               invoke("resize_terminal", {
+                  sessionId: cache.sessionId,
+                  cols: cache.term.cols,
+                  rows: cache.term.rows,
+               }).catch(() => { });
+            }
+            cache.term.focus();
+         });
+      };
+
+      const detachAll = () => {
+         while (wrapper.firstChild) {
+            wrapper.removeChild(wrapper.firstChild);
+         }
+      };
+
       detachAll();
-      terminalRebuildCallbacks.delete(cacheKey);
-      terminalWrapperRefs.delete(cacheKey);
-    };
-  }, [
-    cacheKey,
-    projectId,
-    projectPath,
-    projectName,
-    rebuildCount,
-    config.terminalFontSize,
-    config.shell,
-    config.fontFamily,
-    agentCommandOverride,
-    tabAgentId,
-    handleTabStatusChange,
-  ]);
 
-  useEffect(() => {
-    if (!projectId) {
-      return;
-    }
+      const existingCache = terminalCache.get(cacheKey);
+      if (existingCache) {
+         log(`Reattaching existing terminal for ${projectName} (${cacheKey})`);
+         attach(existingCache);
+      } else {
+         createTerminalForProject(
+            cacheKey,
+            projectPath,
+            projectName,
+            null,
+            config.terminalFontSize,
+            wrapper,
+            config.shell,
+            config.fontFamily,
+            projectId,
+            undefined,
+         ).then((cache) => {
+            if (currentCacheKeyRef.current !== cacheKey) {
+               return;
+            }
 
-    if (!tabAgentId || executedAgentKeys.has(cacheKey)) {
-      return;
-    }
+            requestAnimationFrame(() => {
+               if (currentCacheKeyRef.current !== cacheKey) {
+                  return;
+               }
+               cache.fitAddon.fit();
+               if (cache.sessionId) {
+                  invoke("resize_terminal", {
+                     sessionId: cache.sessionId,
+                     cols: cache.term.cols,
+                     rows: cache.term.rows,
+                  }).catch(() => { });
+               }
+               cache.term.focus();
+            });
 
-    const cache = terminalCache.get(cacheKey);
-    if (!cache?.sessionId) {
-      return;
-    }
+            if (tabAgentId && !executedAgentKeys.has(cacheKey) && cache.sessionId) {
+               log(`Executing agent after terminal creation: ${tabAgentId}`);
+               (async () => {
+                  try {
+                     const agent = await invoke<AgentConfig>("get_agent", {
+                        agentId: tabAgentId,
+                     });
+                     const cmd = agentCommandOverride ?? agent.command;
+                     const cmdStr =
+                        cmd +
+                        (agent.args.length ? ` ${agent.args.join(" ")}` : "") +
+                        "\r";
 
-    const executeAgent = async () => {
-      try {
-        const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
-        const cmd = agentCommandOverride ?? agent.command;
-        const cmdStr =
-          cmd + (agent.args.length ? ` ${agent.args.join(" ")}` : "") + "\r";
+                     const bytes = Array.from(new TextEncoder().encode(cmdStr));
+                     emit(`terminal-input-${cache.sessionId}`, bytes).catch((err) => {
+                        log(`Execute agent error: ${err}`);
+                     });
 
-        const bytes = Array.from(new TextEncoder().encode(cmdStr));
-        emit(`terminal-input-${cache.sessionId}`, bytes).catch((err) => {
-          log(`Execute agent error: ${err}`);
-        });
-
-        executedAgentKeys.add(cacheKey);
-        log(`Executed agent: ${cmd}`);
-        handleTabStatusChange("Running");
-      } catch (err) {
-        log(`Failed to execute agent: ${err}`);
+                     executedAgentKeys.add(cacheKey);
+                     log(`Executed agent after creation: ${cmd}`);
+                     handleTabStatusChange("Running");
+                  } catch (err) {
+                     log(`Failed to execute agent after creation: ${err}`);
+                  }
+               })();
+            }
+         });
       }
-    };
 
-    void executeAgent();
-  }, [projectId, tabAgentId, cacheKey, agentCommandOverride, handleTabStatusChange]);
+      const handleResize = () => {
+         const cache = terminalCache.get(cacheKey);
+         if (!cache) {
+            return;
+         }
+         cache.fitAddon.fit();
+         if (cache.sessionId) {
+            invoke("resize_terminal", {
+               sessionId: cache.sessionId,
+               cols: cache.term.cols,
+               rows: cache.term.rows,
+            }).catch(() => { });
+         }
+      };
 
-  if (!projectId) {
-    return null;
-  }
+      window.addEventListener("resize", handleResize);
 
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-      <div
-        className="terminal-wrapper flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0"
-        ref={wrapperRef}
-      />
-    </div>
-  );
+      let resizeRafId: number | null = null;
+      const ro = new ResizeObserver(() => {
+         if (resizeRafId !== null) {
+            cancelAnimationFrame(resizeRafId);
+         }
+         resizeRafId = requestAnimationFrame(() => {
+            resizeRafId = null;
+            const c = terminalCache.get(cacheKey);
+            if (!c) {
+               return;
+            }
+            c.fitAddon.fit();
+            if (pendingPtyResize && c.sessionId) {
+               setPendingPtyResize(false);
+               invoke("resize_terminal", {
+                  sessionId: c.sessionId,
+                  cols: c.term.cols,
+                  rows: c.term.rows,
+               }).catch(() => { });
+            }
+         });
+      });
+      ro.observe(wrapper);
+
+      return () => {
+         if (resizeRafId !== null) {
+            cancelAnimationFrame(resizeRafId);
+         }
+         ro.disconnect();
+         window.removeEventListener("resize", handleResize);
+         detachAll();
+         terminalRebuildCallbacks.delete(cacheKey);
+         terminalWrapperRefs.delete(cacheKey);
+      };
+   }, [
+      cacheKey,
+      projectId,
+      projectPath,
+      projectName,
+      rebuildCount,
+      config.terminalFontSize,
+      config.shell,
+      config.fontFamily,
+      agentCommandOverride,
+      tabAgentId,
+      handleTabStatusChange,
+   ]);
+
+   useEffect(() => {
+      if (!projectId) {
+         return;
+      }
+
+      if (!tabAgentId || executedAgentKeys.has(cacheKey)) {
+         return;
+      }
+
+      const cache = terminalCache.get(cacheKey);
+      if (!cache?.sessionId) {
+         return;
+      }
+
+      const executeAgent = async () => {
+         try {
+            const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
+            const cmd = agentCommandOverride ?? agent.command;
+            const cmdStr =
+               cmd + (agent.args.length ? ` ${agent.args.join(" ")}` : "") + "\r";
+
+            const bytes = Array.from(new TextEncoder().encode(cmdStr));
+            emit(`terminal-input-${cache.sessionId}`, bytes).catch((err) => {
+               log(`Execute agent error: ${err}`);
+            });
+
+            executedAgentKeys.add(cacheKey);
+            log(`Executed agent: ${cmd}`);
+            handleTabStatusChange("Running");
+         } catch (err) {
+            log(`Failed to execute agent: ${err}`);
+         }
+      };
+
+      void executeAgent();
+   }, [projectId, tabAgentId, cacheKey, agentCommandOverride, handleTabStatusChange]);
+
+   if (!projectId) {
+      return null;
+   }
+
+   return (
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+         <div
+            className="terminal-wrapper flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0"
+            ref={wrapperRef}
+         />
+      </div>
+   );
 }
 
 export default React.memo(TerminalView);

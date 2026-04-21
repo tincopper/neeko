@@ -1,7 +1,5 @@
 import React, { useEffect } from "react";
-import { useSidebar } from "../../context/sidebar-context";
-import { useFileActionsContext } from "../../contexts";
-import { SkillProvider } from "../../context/skill-context";
+import { useSidebar, useFileActionsContext, SkillProvider } from "../../contexts";
 import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
 import { ProjectsPanel, FilesPanel } from "../panels";
