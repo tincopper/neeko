@@ -7,7 +7,8 @@ use super::skill_metadata;
 
 /// Preview cache for git installations
 use std::sync::LazyLock;
-pub static GIT_PREVIEWS: LazyLock<std::sync::Mutex<GitPreviewCache>> = LazyLock::new(|| std::sync::Mutex::new(GitPreviewCache::new()));
+pub static GIT_PREVIEWS: LazyLock<std::sync::Mutex<GitPreviewCache>> =
+    LazyLock::new(|| std::sync::Mutex::new(GitPreviewCache::new()));
 
 pub struct GitPreviewCache {
     previews: Vec<GitPreview>,
@@ -15,12 +16,17 @@ pub struct GitPreviewCache {
 
 impl GitPreviewCache {
     pub fn new() -> Self {
-        Self { previews: Vec::new() }
+        Self {
+            previews: Vec::new(),
+        }
     }
 
     pub fn insert(&mut self, preview: GitPreview) -> String {
         let id = uuid::Uuid::new_v4().to_string();
-        let preview = GitPreview { id: id.clone(), ..preview };
+        let preview = GitPreview {
+            id: id.clone(),
+            ..preview
+        };
         self.previews.push(preview);
         id
     }
@@ -30,7 +36,10 @@ impl GitPreviewCache {
     }
 
     pub fn remove(&mut self, id: &str) -> Option<GitPreview> {
-        self.previews.iter().position(|p| p.id == id).map(|i| self.previews.remove(i))
+        self.previews
+            .iter()
+            .position(|p| p.id == id)
+            .map(|i| self.previews.remove(i))
     }
 }
 
@@ -66,18 +75,21 @@ pub fn install_from_local(source: &Path, name: Option<&str>) -> Result<InstallRe
     };
 
     let sanitized_name = match name {
-        Some(n) if !n.is_empty() => {
-            skill_metadata::sanitize_skill_name(n).ok_or_else(|| anyhow::anyhow!("Invalid skill name: '{}'", n))?
-        }
+        Some(n) if !n.is_empty() => skill_metadata::sanitize_skill_name(n)
+            .ok_or_else(|| anyhow::anyhow!("Invalid skill name: '{}'", n))?,
         _ => skill_metadata::infer_skill_name(&skill_dir),
     };
 
     let source_meta_name = skill_metadata::parse_skill_md(&skill_dir)
-        .name.unwrap_or_else(|| sanitized_name.clone());
+        .name
+        .unwrap_or_else(|| sanitized_name.clone());
 
     let skills_dir = central_repo::skills_dir();
     let dest = unique_skill_dest(&skills_dir, &sanitized_name, &source_meta_name);
-    let final_name = dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| sanitized_name.clone());
+    let final_name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| sanitized_name.clone());
 
     copy_skill_dir(&skill_dir, &dest)?;
     let hash = content_hash::hash_directory(&dest)?;
@@ -91,7 +103,10 @@ pub fn install_from_local(source: &Path, name: Option<&str>) -> Result<InstallRe
 }
 
 fn extract_archive(source: &Path) -> Result<PathBuf> {
-    let ext = source.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = source
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
     if ext != "zip" && ext != "skill" {
         anyhow::bail!("Unsupported archive format: {}", ext);
     }
@@ -153,8 +168,12 @@ fn copy_skill_dir(src: &Path, dst: &Path) -> Result<()> {
         let ft = entry.file_type()?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str == ".git" || name_str == ".DS_Store" { continue; }
-        if ft.is_symlink() { continue; }
+        if name_str == ".git" || name_str == ".DS_Store" {
+            continue;
+        }
+        if ft.is_symlink() {
+            continue;
+        }
         let dest_path = dst.join(&name);
         if ft.is_dir() {
             copy_skill_dir(&entry.path(), &dest_path)?;
@@ -203,7 +222,11 @@ mod tests {
 }
 
 /// Clone a git repository to a temp directory and list available skills
-pub fn preview_git_install(clone_url: &str, branch: Option<&str>, subpath: Option<&str>) -> Result<String> {
+pub fn preview_git_install(
+    clone_url: &str,
+    branch: Option<&str>,
+    subpath: Option<&str>,
+) -> Result<String> {
     use git2::Repository;
     use std::process::Command;
 
@@ -213,7 +236,15 @@ pub fn preview_git_install(clone_url: &str, branch: Option<&str>, subpath: Optio
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
     let git_clone_result = Command::new("git")
-        .args(["clone", "--depth", "1", "-b", branch_name, clone_url, clone_path.to_str().unwrap_or(".")])
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "-b",
+            branch_name,
+            clone_url,
+            clone_path.to_str().unwrap_or("."),
+        ])
         .output();
 
     let repo = match git_clone_result {
@@ -221,7 +252,15 @@ pub fn preview_git_install(clone_url: &str, branch: Option<&str>, subpath: Optio
         _ => {
             // Try 'master' branch if 'main' fails
             Command::new("git")
-                .args(["clone", "--depth", "1", "-b", "master", clone_url, clone_path.to_str().unwrap_or(".")])
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "-b",
+                    "master",
+                    clone_url,
+                    clone_path.to_str().unwrap_or("."),
+                ])
                 .output()?;
             Repository::open(&clone_path)?
         }
@@ -241,9 +280,12 @@ pub fn preview_git_install(clone_url: &str, branch: Option<&str>, subpath: Optio
             let meta = skill_metadata::parse_skill_md(&skill_base);
             available_skills.push(GitSkillInfo {
                 path: skill_base.to_string_lossy().to_string(),
-                name: meta.name.unwrap_or_else(|| skill_base.file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default()),
+                name: meta.name.unwrap_or_else(|| {
+                    skill_base
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default()
+                }),
                 description: meta.description,
             });
         } else {
@@ -255,9 +297,11 @@ pub fn preview_git_install(clone_url: &str, branch: Option<&str>, subpath: Optio
                         let meta = skill_metadata::parse_skill_md(&path);
                         available_skills.push(GitSkillInfo {
                             path: path.to_string_lossy().to_string(),
-                            name: meta.name.unwrap_or_else(|| path.file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_default()),
+                            name: meta.name.unwrap_or_else(|| {
+                                path.file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_default()
+                            }),
                             description: meta.description,
                         });
                     }
@@ -294,10 +338,16 @@ pub fn get_preview(preview_id: &str) -> Option<GitPreview> {
 }
 
 /// Confirm git install - copy selected skill to central repo
-pub fn confirm_git_install(preview_id: &str, selected_path: &str, name: Option<&str>) -> Result<InstallResult> {
+pub fn confirm_git_install(
+    preview_id: &str,
+    selected_path: &str,
+    name: Option<&str>,
+) -> Result<InstallResult> {
     let _preview = {
         let mut cache = GIT_PREVIEWS.lock().unwrap();
-        cache.remove(preview_id).ok_or_else(|| anyhow::anyhow!("Preview not found"))?
+        cache
+            .remove(preview_id)
+            .ok_or_else(|| anyhow::anyhow!("Preview not found"))?
     };
 
     // Find selected skill path
@@ -316,7 +366,9 @@ pub fn confirm_git_install(preview_id: &str, selected_path: &str, name: Option<&
 pub fn cancel_git_preview(preview_id: &str) -> Result<()> {
     let preview = {
         let mut cache = GIT_PREVIEWS.lock().unwrap();
-        cache.remove(preview_id).ok_or_else(|| anyhow::anyhow!("Preview not found"))?
+        cache
+            .remove(preview_id)
+            .ok_or_else(|| anyhow::anyhow!("Preview not found"))?
     };
 
     // Clean up clone directory
@@ -328,7 +380,12 @@ pub fn cancel_git_preview(preview_id: &str) -> Result<()> {
 }
 
 /// Install directly from git URL (for atomic operations)
-pub fn install_from_git(clone_url: &str, branch: Option<&str>, subpath: Option<&str>, name: Option<&str>) -> Result<InstallResult> {
+pub fn install_from_git(
+    clone_url: &str,
+    branch: Option<&str>,
+    subpath: Option<&str>,
+    name: Option<&str>,
+) -> Result<InstallResult> {
     use git2::Repository;
     use std::process::Command;
 
@@ -338,14 +395,30 @@ pub fn install_from_git(clone_url: &str, branch: Option<&str>, subpath: Option<&
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
     let git_clone_result = Command::new("git")
-        .args(["clone", "--depth", "1", "-b", branch_name, clone_url, clone_path.to_str().unwrap_or(".")])
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "-b",
+            branch_name,
+            clone_url,
+            clone_path.to_str().unwrap_or("."),
+        ])
         .output();
 
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             Command::new("git")
-                .args(["clone", "--depth", "1", "-b", "master", clone_url, clone_path.to_str().unwrap_or(".")])
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "-b",
+                    "master",
+                    clone_url,
+                    clone_path.to_str().unwrap_or("."),
+                ])
                 .output()?;
             Repository::open(&clone_path)?
         }
@@ -368,11 +441,12 @@ pub fn install_from_git(clone_url: &str, branch: Option<&str>, subpath: Option<&
 }
 
 /// Check if a skill has updates available
-pub fn check_skill_update(
-    skill: &super::types::SkillRecord,
-) -> Result<super::types::UpdateStatus> {
+pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::types::UpdateStatus> {
     let source_type = &skill.source_type;
-    let source_ref = skill.source_ref.as_deref().ok_or_else(|| anyhow::anyhow!("No source reference"))?;
+    let source_ref = skill
+        .source_ref
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("No source reference"))?;
 
     // Only supports git source for now
     if source_type != "git" {
@@ -391,14 +465,30 @@ pub fn check_skill_update(
 
     let branch_name = branch.unwrap_or("main");
     let git_clone_result = Command::new("git")
-        .args(["clone", "--depth", "1", "-b", branch_name, source_ref, clone_path.to_str().unwrap_or(".")])
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "-b",
+            branch_name,
+            source_ref,
+            clone_path.to_str().unwrap_or("."),
+        ])
         .output();
 
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             Command::new("git")
-                .args(["clone", "--depth", "1", "-b", "master", source_ref, clone_path.to_str().unwrap_or(".")])
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "-b",
+                    "master",
+                    source_ref,
+                    clone_path.to_str().unwrap_or("."),
+                ])
                 .output()?;
             Repository::open(&clone_path)?
         }
@@ -425,11 +515,12 @@ pub fn check_skill_update(
 }
 
 /// Apply update to a skill
-pub fn update_skill(
-    skill: &super::types::SkillRecord,
-) -> Result<super::types::SkillRecord> {
+pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::SkillRecord> {
     // Re-install from source
-    let source_ref = skill.source_ref.as_deref().ok_or_else(|| anyhow::anyhow!("No source reference"))?;
+    let source_ref = skill
+        .source_ref
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("No source reference"))?;
     let branch = skill.source_branch.as_deref();
     let subpath = skill.source_subpath.as_deref();
     let current_name = &skill.name;
@@ -445,14 +536,30 @@ pub fn update_skill(
 
     let branch_name = branch.unwrap_or("main");
     let git_clone_result = Command::new("git")
-        .args(["clone", "--depth", "1", "-b", branch_name, source_ref, clone_path.to_str().unwrap_or(".")])
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            "-b",
+            branch_name,
+            source_ref,
+            clone_path.to_str().unwrap_or("."),
+        ])
         .output();
 
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             Command::new("git")
-                .args(["clone", "--depth", "1", "-b", "master", source_ref, clone_path.to_str().unwrap_or(".")])
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "-b",
+                    "master",
+                    source_ref,
+                    clone_path.to_str().unwrap_or("."),
+                ])
                 .output()?;
             Repository::open(&clone_path)?
         }

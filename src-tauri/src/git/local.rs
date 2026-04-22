@@ -1,4 +1,4 @@
-use crate::state::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
