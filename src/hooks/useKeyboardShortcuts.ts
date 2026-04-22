@@ -9,6 +9,8 @@ interface UseKeyboardShortcutsParams {
   setWslWtBranch: (branch: string) => void;
   setRemoteWorktreePath: (path: string | null) => void;
   setRemoteWtBranch: (branch: string) => void;
+  activeTabId: string | null;
+  onCloseTab: (tabId: string) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -17,6 +19,8 @@ export function useKeyboardShortcuts({
   setWslWtBranch,
   setRemoteWorktreePath,
   setRemoteWtBranch,
+  activeTabId,
+  onCloseTab,
 }: UseKeyboardShortcutsParams) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -101,6 +105,14 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      if (e.ctrlKey && !e.altKey && e.code === "KeyW") {
+        e.preventDefault();
+        if (activeTabId) {
+          onCloseTab(activeTabId);
+        }
+        return;
+      }
+
       if (!e.ctrlKey || e.altKey) return;
 
       const allItems = [
@@ -147,5 +159,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch]);
+  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, activeTabId, onCloseTab]);
 }
