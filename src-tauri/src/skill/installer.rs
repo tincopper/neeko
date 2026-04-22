@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use super::central_repo;
@@ -406,7 +406,7 @@ pub fn install_from_git(
         ])
         .output();
 
-    let repo = match git_clone_result {
+    let _repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             Command::new("git")
@@ -454,7 +454,6 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     }
 
     let branch = skill.source_branch.as_deref();
-    let subpath = skill.source_subpath.as_deref();
 
     // Clone to temp and compare
     use git2::Repository;
