@@ -3,6 +3,25 @@ use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+#[macro_export]
+macro_rules! wsl_commands {
+    () => {
+        $crate::commands::get_wsl_distros,
+        $crate::commands::get_wsl_directories,
+        $crate::commands::get_wsl_home_dir,
+        $crate::commands::create_wsl_terminal_session,
+        $crate::commands::refresh_wsl_git_info,
+        $crate::commands::get_wsl_file_diff_command,
+        $crate::commands::wsl_checkout_branch,
+        $crate::commands::wsl_create_branch,
+        $crate::commands::wsl_rename_branch,
+        $crate::commands::wsl_create_worktree,
+        $crate::commands::wsl_remove_worktree,
+        $crate::commands::wsl_rename_worktree,
+        $crate::commands::open_wsl_ide,
+    };
+}
+
 fn wsl_command(program: &str) -> std::process::Command {
     #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);

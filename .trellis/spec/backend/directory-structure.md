@@ -167,7 +167,7 @@ pub struct AppStateWrapper {
 
 | 新代码类型 | 位置 |
 |-----------|------|
-| 新 Tauri 命令 | `commands/<domain>.rs`，在 `commands/mod.rs` 中导出，在 `app.rs` 的 `generate_handler!` 中注册 |
+| 新 Tauri 命令 | `commands/<domain>.rs` 中实现并导出，再加入对应注册宏；`app.rs` 仅保留 `generate_handler!` 的宏聚合调用 |
 | 新数据模型 | `models/<domain>.rs`，在 `models/mod.rs` 中导出 |
 | 新 Manager | 新建 `src/<name>.rs`，在 `lib.rs` 中用 `mod` 声明，添加到 `AppStateWrapper` |
 | Git 操作 | `git/local.rs`、`git/wsl.rs` 或 `git/remote.rs` |

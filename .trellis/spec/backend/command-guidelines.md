@@ -6,7 +6,7 @@
 
 ## 概述
 
-所有 `#[tauri::command]` 函数按领域拆分到 `commands/` 目录下的独立模块中。约 50 多个命令注册在 `app.rs` 的一个 `generate_handler!` 宏调用中。命令通过域注释进行分组。
+所有 `#[tauri::command]` 函数按领域拆分到模块中。`app.rs` 通过 `crate::neeko_invoke_handler!()` 统一注册命令，完整清单维护在 `commands/mod.rs` 的 `neeko_invoke_handler!` 宏内。
 
 ---
 
@@ -50,7 +50,7 @@ pub async fn create_remote_terminal_session(
 
 ### 关键规则
 
-1. **所有命令放在 `commands/` 下的独立模块**中，在 `commands/mod.rs` 中聚合导出
+1. **命令实现按领域放在 `commands/` 子模块**，由 `commands/mod.rs` 聚合导出，并在 `neeko_invoke_handler!` 宏中集中注册
 2. **返回类型始终为 `Result<T, AppError>`** —— 不使用裸类型，不使用 `String`
 3. **状态访问** 通过 `state: State<AppStateWrapper>` 参数
 4. **Mutex 锁** 使用 `.lock().unwrap()` —— 锁中毒视为致命错误
@@ -163,25 +163,32 @@ const project = await invoke<Project>("add_project", {
 
 ## 注册新命令
 
-1. 在 `commands/<domain>.rs` 中定义命令函数
-2. 在 `commands/mod.rs` 中导出
-3. 在 `app.rs` 的 `generate_handler!` 宏中添加函数名：
+1. 在对应域模块中定义命令函数
+
+2. 在聚合导出处导出函数
+
+3. 将命令路径加入 `neeko_invoke_handler!` 命令清单
 
 ```rust
-// src-tauri/src/app.rs
-.invoke_handler(tauri::generate_handler![
-    commands::add_project,
-    commands::remove_project,
-    // ... 所有命令列在此处
-    commands::your_new_command,  // <-- 在此添加
-])
+// src-tauri/src/commands/mod.rs
+#[macro_export]
+macro_rules! neeko_invoke_handler {
+    () => {
+        tauri::generate_handler![
+            // ... existing commands ...
+            $crate::commands::your_new_command,
+        ]
+    };
+}
 ```
+
+`app.rs` 保持 `.invoke_handler(crate::neeko_invoke_handler!())` 固定调用。
 
 ---
 
 ## 常见错误
 
-### 1. 忘记将命令添加到 `generate_handler!`
+### 1. 忘记将命令加入 `neeko_invoke_handler!` 清单
 
 命令会编译通过，但前端无法调用。
 

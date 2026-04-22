@@ -3,6 +3,26 @@ use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+#[macro_export]
+macro_rules! remote_commands {
+    () => {
+        $crate::commands::create_remote_terminal_session,
+        $crate::commands::close_remote_terminal_session,
+        $crate::commands::resize_remote_terminal,
+        $crate::commands::test_remote_connection,
+        $crate::commands::list_remote_directories,
+        $crate::commands::refresh_remote_git_info,
+        $crate::commands::get_remote_file_diff_command,
+        $crate::commands::remote_checkout_branch,
+        $crate::commands::remote_create_branch,
+        $crate::commands::remote_rename_branch,
+        $crate::commands::remote_create_worktree,
+        $crate::commands::remote_remove_worktree,
+        $crate::commands::remote_rename_worktree,
+        $crate::commands::open_remote_ide,
+    };
+}
+
 #[tauri::command]
 pub async fn create_remote_terminal_session(
     host: String,

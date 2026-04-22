@@ -8,6 +8,42 @@ use super::tool_adapters;
 use super::types::*;
 use crate::AppError;
 
+#[macro_export]
+macro_rules! skill_commands {
+    () => {
+        $crate::skill::commands::get_managed_skills,
+        $crate::skill::commands::get_skill_document,
+        $crate::skill::commands::delete_managed_skill,
+        $crate::skill::commands::get_tool_status,
+        $crate::skill::commands::get_tag_groups,
+        $crate::skill::commands::create_tag_group,
+        $crate::skill::commands::delete_tag_group_cmd,
+        $crate::skill::commands::install_local_skill,
+        $crate::skill::commands::scan_local_skills,
+        $crate::skill::commands::import_discovered_skill,
+        $crate::skill::commands::preview_git_install,
+        $crate::skill::commands::confirm_git_install,
+        $crate::skill::commands::cancel_git_preview,
+        $crate::skill::commands::check_skill_update,
+        $crate::skill::commands::update_skill,
+        $crate::skill::commands::update_tag_group_cmd,
+        $crate::skill::commands::reorder_tag_groups_cmd,
+        $crate::skill::commands::add_skill_to_tag_group_cmd,
+        $crate::skill::commands::remove_skill_from_tag_group_cmd,
+        $crate::skill::commands::get_skills_for_tag_group_cmd,
+        $crate::skill::commands::get_all_tags_cmd,
+        $crate::skill::commands::set_skill_tags_cmd,
+        $crate::skill::commands::set_skill_tool_toggle_cmd,
+        $crate::skill::commands::sync_tag_group_cmd,
+        $crate::skill::commands::unsync_tag_group_cmd,
+        $crate::skill::commands::get_project_tag_groups_cmd,
+        $crate::skill::commands::set_project_tag_groups_cmd,
+        $crate::skill::commands::add_project_tag_group_cmd,
+        $crate::skill::commands::remove_project_tag_group_cmd,
+        $crate::skill::commands::create_skill,
+    };
+}
+
 #[derive(Debug, Serialize)]
 pub struct ManagedSkillDtoOut {
     pub id: String,
