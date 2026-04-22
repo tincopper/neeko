@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
+- **Total Sessions**: 23
 - **Last Active**: 2026-04-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~919 | Active |
+| `journal-1.md` | ~952 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-04-22 | Refactor Tauri command registration and refresh repo guidelines | `8f5057b` | `enhance/ui_clean_code` |
 | 22 | 2026-04-22 | Backend 目录重构与收尾修复 | `deab0f6`, `fc99987` | `enhance/ui_clean_code` |
 | 21 | 2026-04-21 | 合并 context 目录到 contexts | `7c0de49` | `enhance/ui_clean_code` |
 | 20 | 2026-04-21 | TODO未完成项优化方案收尾 | `d4a36f1` | `enhance/ui_clean_code` |

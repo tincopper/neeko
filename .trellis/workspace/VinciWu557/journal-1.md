@@ -917,3 +917,36 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: Refactor Tauri command registration and refresh repo guidelines
+
+**Date**: 2026-04-22
+**Task**: Refactor Tauri command registration and refresh repo guidelines
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+Refactored Tauri command registration into centralized macro handler, updated backend specs and AGENTS.md, and verified lint/type-check/test plus cargo check/test.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f5057b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
