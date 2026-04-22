@@ -1,9 +1,9 @@
-{
+﻿{
   "id": "skill-pr12-marketplace-backend",
   "name": "skill-pr12-marketplace-backend",
   "title": "PR#12: Marketplace backend — Skills.sh API, git fetcher, cache",
   "description": "实现 Skill 市场后端：Skills.sh API 集成（leaderboard + search）、Git 仓库克隆、market skill 安装、缓存机制",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "backend",
   "scope": "skill",
   "package": null,
@@ -11,16 +11,12 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-04-16",
-  "completedAt": null,
+  "completedAt": "2026-04-22",
   "branch": "feature/skill-pr12-marketplace-backend",
   "base_branch": "feature/skill-pr11-tag-group-management-ui",
   "worktree_path": null,
-  "current_phase": 0,
-  "next_action": [
-    { "phase": 1, "action": "implement" },
-    { "phase": 2, "action": "check" },
-    { "phase": 3, "action": "improve-ut" }
-  ],
+  "current_phase": 3,
+  "next_action": [],
   "commit": null,
   "pr_url": null,
   "subtasks": [],

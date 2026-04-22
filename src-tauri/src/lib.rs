@@ -5,7 +5,7 @@ mod logger;
 pub mod project;
 mod remote;
 pub mod state;
-pub mod storage;
+mod storage;
 mod terminal;
 mod utils;
 mod watcher;
@@ -73,7 +73,7 @@ pub fn run() {
         log::warn!("Failed to ensure skill central repo: {e}");
     }
 
-    // Unix: 浠庣敤鎴?login shell 鑾峰彇瀹屾暣 PATH锛屼慨澶?GUI 搴旂敤 Agent 妫€娴嬮棶棰?
+    // Unix: get full PATH from user login shell
     #[cfg(unix)]
     {
         match resolve_user_path() {
@@ -268,6 +268,10 @@ pub fn run() {
             skill::commands::add_project_tag_group_cmd,
             skill::commands::remove_project_tag_group_cmd,
             skill::commands::create_skill,
+            // --- MARKETPLACE COMMANDS ---
+            skill::commands::fetch_leaderboard,
+            skill::commands::search_skillssh,
+            skill::commands::install_from_skillssh,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

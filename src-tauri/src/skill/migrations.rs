@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 2;
+const LATEST_VERSION: u32 = 3;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -43,6 +43,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
     match from_version {
         0 => migrate_v0_to_v1(conn),
         1 => migrate_v1_to_v2(conn),
+        2 => migrate_v2_to_v3(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -145,6 +146,20 @@ fn migrate_v1_to_v2(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v2 -> v3: Add skillssh_cache table for marketplace caching.
+fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS skillssh_cache (
+            cache_key TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            fetched_at INTEGER NOT NULL
+        );
+        ",
+    )?;
+    Ok(())
+}
+
 // --- Helpers ---
 
 fn add_column_if_missing(
@@ -211,6 +226,7 @@ mod tests {
         assert!(tables.contains(&"tag_group_skills".to_string()));
         assert!(tables.contains(&"tag_group_skill_tools".to_string()));
         assert!(tables.contains(&"settings".to_string()));
+        assert!(tables.contains(&"skillssh_cache".to_string()));
     }
 
     #[test]
