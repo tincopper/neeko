@@ -1,152 +1,182 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { switchAgentInWslTerminal, wslCacheKey, refreshWslTerminal } from "../components/terminal";
-import type { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject, GitInfo, AgentConfig, AppConfig } from "../types";
-import type { DiffSetter, RemoteDiffState } from "./useCrossDomainRefs";
-import type { WorktreeItem } from "./useWorktreeState";
+import {
+  refreshWslTerminal,
+  switchAgentInWslTerminal,
+  wslCacheKey,
+} from "../components/terminal";
+import { useAppStore } from "../store/appStore";
+import type {
+  AgentConfig,
+  AppConfig,
+  GitInfo,
+  WSLProject,
+  WSLEntrySession,
+} from "../types";
+import { buildRefreshGitHandler, updateProjectInEntries } from "../utils/entryUpdates";
+import { useConnectionWorktreeState } from "./useConnectionWorktreeState";
+import type { SaveSessionFn } from "./useWslProjects";
 
-export function useWslActions(deps: {
-  setActiveProjectId: (id: string | null) => void;
-  setActiveProject: (p: Project | null) => void;
-  setActiveRemoteKey: (k: { host: string; projectId: string } | null) => void;
-  setActiveRemoteProject: (p: { entry: RemoteEntrySession; project: RemoteProject } | null) => void;
-  setWslEntries: React.Dispatch<React.SetStateAction<WSLEntrySession[]>>;
-  setActiveWslKey: React.Dispatch<React.SetStateAction<{ distro: string; projectId: string } | null>>;
-  setActiveWslProject: React.Dispatch<React.SetStateAction<{ distro: string; project: WSLProject } | null>>;
-  activeWslProject: { distro: string; project: WSLProject } | null;
-  wslEntries: WSLEntrySession[];
-  wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-  setRemoteDiffStateRef: DiffSetter<RemoteDiffState>;
-  remoteActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
-  remoteOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
-  remoteWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
+interface UseWslActionsParams {
   config: AppConfig;
-  showToast: (msg: string, type?: "info" | "error") => void;
-  saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
-}) {
-  // ── Diff state ──
-  const [wslDiffState, setWslDiffState] = useState<{
-    distro: string; projectPath: string; filePath: string;
-  } | null>(null);
+  showToast: (message: string, type?: "info" | "error") => void;
+  saveSession: SaveSessionFn;
+}
 
-  // ── Worktree state ──
-  const [activeWslWorktreePath, setActiveWslWorktreePath] = useState<string | null>(null);
-  const [wslActiveWtBranch, setWslActiveWtBranch] = useState("");
-  const [wslOpenedWt, setWslOpenedWt] = useState<WorktreeItem[]>([]);
-  const wslOpenedWtRef = useRef<WorktreeItem[]>([]);
-  const activeWslWorktreePathRef = useRef<string | null>(null);
-  wslOpenedWtRef.current = wslOpenedWt;
-  activeWslWorktreePathRef.current = activeWslWorktreePath;
+type WslDiffState = {
+  distro: string;
+  projectPath: string;
+  filePath: string;
+};
 
-  // ── Select WSL project ──
+export function useWslActions({
+  config,
+  showToast,
+  saveSession,
+}: UseWslActionsParams) {
+  const wslEntries = useAppStore((state) => state.wslEntries);
+  const activeWslProject = useAppStore((state) => state.activeWslProject);
+
+  const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      wslEntries: typeof updater === "function" ? updater(state.wslEntries) : updater,
+    }));
+  }, []);
+
+  const setActiveWslProject: Dispatch<SetStateAction<{ distro: string; project: WSLProject } | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeWslProject: typeof updater === "function" ? updater(state.activeWslProject) : updater,
+    }));
+  }, []);
+
+  const worktreeState = useConnectionWorktreeState<WslDiffState>();
+  const {
+    diffState: wslDiffState,
+    setDiffState: setWslDiffState,
+    activeWorktreePath: activeWslWorktreePath,
+    setActiveWorktreePath: setActiveWslWorktreePath,
+    activeWorktreeBranch: wslActiveWtBranch,
+    setActiveWorktreeBranch: setWslActiveWtBranch,
+    openedWorktrees: wslOpenedWt,
+    setOpenedWorktrees: setWslOpenedWt,
+    openWorktreeTerminal,
+    resetConnectionState,
+  } = worktreeState;
+
+  const refreshWslGit = useMemo(() => buildRefreshGitHandler<
+    WSLProject,
+    WSLEntrySession,
+    { distro: string; project: WSLProject },
+    string
+  >({
+    refreshGitInfo: async (projectPath, distro) => (
+      invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath }).catch(() => null)
+    ),
+    setEntries: setWslEntries,
+    setActiveProject: setActiveWslProject,
+    isActiveProject: (activeProject, projectId) => activeProject.project.id === projectId,
+    updateActiveProject: (activeProject, gitInfo) => ({
+      ...activeProject,
+      project: {
+        ...activeProject.project,
+        git_info: gitInfo,
+      },
+    }),
+  }), [setWslEntries, setActiveWslProject]);
+
   const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
-    deps.setActiveProjectId(null);
-    deps.setActiveProject(null);
-    deps.setActiveWslKey({ distro, projectId: project.id });
-    deps.setActiveWslProject({ distro, project });
-    deps.setActiveRemoteKey(null);
-    deps.setActiveRemoteProject(null);
-    setWslDiffState(null);
-    deps.setRemoteDiffStateRef.current?.(null);
-    setActiveWslWorktreePath(null);
-    deps.remoteWorktreePathSetterRef.current?.(null);
-    setWslActiveWtBranch("");
-    deps.remoteActiveWtBranchSetterRef.current?.("");
-    setWslOpenedWt([]);
-    deps.remoteOpenedWtSetterRef.current?.([]);
+    useAppStore.setState({
+      activeProjectId: null,
+      activeProject: null,
+      activeWslKey: { distro, projectId: project.id },
+      activeWslProject: { distro, project },
+      activeRemoteKey: null,
+      activeRemoteProject: null,
+    });
+    resetConnectionState();
+    void refreshWslGit(distro, project.id, project.path);
+  }, [resetConnectionState, refreshWslGit]);
 
-    invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath: project.path })
-      .then(gitInfo => {
-        deps.setActiveWslProject(prev => prev?.project.id === project.id
-          ? { ...prev, project: { ...prev.project, git_info: gitInfo } }
-          : prev
-        );
-        deps.setWslEntries(prev => prev.map(e => ({
-          ...e,
-          projects: e.projects.map(p => p.id === project.id ? { ...p, git_info: gitInfo } : p)
-        })));
-      })
-      .catch(() => {});
-  }, [deps.setActiveProjectId, deps.setActiveProject, deps.setActiveWslKey, deps.setActiveWslProject,
-      deps.setActiveRemoteKey, deps.setActiveRemoteProject, deps.setWslEntries]);
-
-  // ── Select WSL file (diff) ──
   const handleSelectWslFile = useCallback((distro: string, projectPath: string, filePath: string) => {
     setWslDiffState({ distro, projectPath, filePath });
-  }, []);
+  }, [setWslDiffState]);
 
-  // ── Refresh WSL git ──
-  const handleRefreshWslGit = useCallback(async (distro: string, projectId: string, projectPath: string) => {
-    const gitInfo = await invoke<GitInfo>("refresh_wsl_git_info", { distro, projectPath }).catch(() => null);
-    if (!gitInfo) return;
-    deps.setWslEntries(prev => prev.map(e => ({
-      ...e,
-      projects: e.projects.map(p => p.id === projectId ? { ...p, git_info: gitInfo } : p)
-    })));
-    deps.setActiveWslProject(prev =>
-      prev?.project.id === projectId ? { ...prev, project: { ...prev.project, git_info: gitInfo } } : prev
-    );
-  }, [deps.setWslEntries, deps.setActiveWslProject]);
+  const handleRefreshWslGit = useCallback(async (
+    distro: string,
+    projectId: string,
+    projectPath: string,
+  ) => {
+    await refreshWslGit(distro, projectId, projectPath);
+  }, [refreshWslGit]);
 
-  // ── Open WSL IDE ──
   const handleOpenWslIde = useCallback((distro: string, projectPath: string, ide: string) => {
-    if (!ide) { deps.showToast("No IDE selected for this project", "error"); return; }
-    invoke("open_wsl_ide", { distro, projectPath, ide }).catch(e => deps.showToast(String(e), "error"));
-  }, [deps.showToast]);
-
-  // ── Open WSL worktree terminal ──
-  const handleOpenWslWorktreeTerminal = useCallback((_distro: string, worktreePath: string, branch: string) => {
-    setActiveWslWorktreePath(worktreePath);
-    setWslActiveWtBranch(branch);
-    setWslOpenedWt(prev => {
-      if (prev.some(w => w.path === worktreePath)) return prev;
-      return [...prev, { path: worktreePath, branch }];
+    if (!ide) {
+      showToast("No IDE selected for this project", "error");
+      return;
+    }
+    invoke("open_wsl_ide", { distro, projectPath, ide }).catch((error) => {
+      showToast(String(error), "error");
     });
-    setWslDiffState(null);
-    deps.setRemoteDiffStateRef.current?.(null);
-  }, []);
+  }, [showToast]);
 
-  // ── Select WSL agent ──
+  const handleOpenWslWorktreeTerminal = useCallback((
+    _distro: string,
+    worktreePath: string,
+    branch: string,
+  ) => {
+    openWorktreeTerminal(worktreePath, branch);
+  }, [openWorktreeTerminal]);
+
   const handleSelectWslAgent = useCallback((agent: AgentConfig | null) => {
-    const proj = deps.activeWslProject;
-    if (!proj) return;
-    const key = wslCacheKey(proj.distro, proj.project.id);
+    if (!activeWslProject) {
+      return;
+    }
+
+    const cacheKey = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
     if (agent) {
       void switchAgentInWslTerminal(
-        key,
-        proj.distro,
-        proj.project.path,
-        proj.project.name,
+        cacheKey,
+        activeWslProject.distro,
+        activeWslProject.project.path,
+        activeWslProject.project.name,
         agent.id,
-        deps.config.terminalFontSize ?? 14,
-        deps.config.fontFamily ?? '',
-        deps.config.agentCommandOverrides,
+        config.terminalFontSize ?? 14,
+        config.fontFamily ?? "",
+        config.agentCommandOverrides,
       );
     }
+
     const agentId = agent?.id ?? null;
-    const newEntries = deps.wslEntries.map(e => ({
-      ...e,
-      projects: e.projects.map(p =>
-        p.id === proj.project.id ? { ...p, selected_agent: agentId } : p
-      ),
-    }));
-    deps.setWslEntries(newEntries);
-    deps.setActiveWslProject(prev =>
-      prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+    const nextEntries = updateProjectInEntries(
+      wslEntries,
+      activeWslProject.project.id,
+      (project) => ({ ...project, selected_agent: agentId }),
     );
+    setWslEntries(nextEntries);
+    setActiveWslProject((prev) => (
+      prev ? {
+        ...prev,
+        project: { ...prev.project, selected_agent: agentId },
+      } : prev
+    ));
+
     if (!agent) {
-      setTimeout(() => refreshWslTerminal(key), 50);
+      setTimeout(() => refreshWslTerminal(cacheKey), 50);
     }
-    invoke("save_session", { wslEntries: newEntries, remoteEntries: deps.remoteEntriesRefForSave.current }).catch(console.error);
-  }, [deps.activeWslProject, deps.wslEntries, deps.setWslEntries, deps.setActiveWslProject, deps.config]);
+
+    saveSession(nextEntries, undefined).catch(console.error);
+  }, [activeWslProject, config, saveSession, setActiveWslProject, setWslEntries, wslEntries]);
 
   return {
-    wslDiffState, setWslDiffState,
-    activeWslWorktreePath, setActiveWslWorktreePath,
-    wslActiveWtBranch, setWslActiveWtBranch,
-    wslOpenedWt, setWslOpenedWt,
-    wslOpenedWtRef, activeWslWorktreePathRef,
+    wslDiffState,
+    setWslDiffState,
+    activeWslWorktreePath,
+    setActiveWslWorktreePath,
+    wslActiveWtBranch,
+    setWslActiveWtBranch,
+    wslOpenedWt,
+    setWslOpenedWt,
     handleSelectWslProject,
     handleSelectWslFile,
     handleRefreshWslGit,

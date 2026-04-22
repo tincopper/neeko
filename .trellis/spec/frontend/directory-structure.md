@@ -6,7 +6,7 @@
 
 ## 概述
 
-Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + TypeScript + Vite 7** 构建。它是一个单视图应用（没有路由）——视图切换通过 `App.tsx` 中的状态管理实现。包管理器为 **pnpm**。
+Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + TypeScript + Vite 7** 构建。它是一个单视图应用，视图切换通过状态管理实现。包管理器为 **pnpm**。
 
 ---
 
@@ -14,22 +14,36 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 
 ```
 src/
-├── App.tsx                  # 根组件 & 状态协调器
+├── App.tsx                  # 根组件壳层（TitleBar + AppProviders + AppLayout + AppModals）
+├── AppProviders.tsx         # Provider 组合层
+├── AppModals.tsx            # 模态框组合层
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
 ├── tailwind.css             # Tailwind CSS v4 入口 + @theme + @layer components
 ├── types.ts                 # 共享 TypeScript 接口
 ├── vite-env.d.ts            # 资源模块声明
 │
 ├── components/              # UI 组件（按领域组织）
-│   ├── DiffView.tsx         # 独立的顶层组件
+│   ├── DiffView.tsx         # 兼容入口，转发到 components/diff
 │   ├── MainContent.tsx
-│   ├── SettingsPanel.tsx
+│   ├── SettingsPanel.tsx    # 兼容入口，转发到 components/settings
 │   ├── connections/         # SSH/WSL 连接对话框
 │   │   ├── index.ts         # 桶文件导出
+│   │   ├── ProjectBody.tsx
+│   │   ├── ProjectItemCard.tsx
+│   │   ├── WSLProjectCard.tsx
+│   │   ├── RemoteProjectCard.tsx
 │   │   ├── RemoteAuthDialog.tsx
 │   │   ├── RemoteDialog.tsx
 │   │   ├── RemoteItems.tsx
 │   │   └── WSLDialog.tsx
+│   ├── diff/                # Diff 领域拆分
+│   │   ├── DiffView.tsx
+│   │   ├── UnifiedDiffTable.tsx
+│   │   ├── SplitDiffTable.tsx
+│   │   ├── useDiffData.ts
+│   │   ├── diffAlgorithm.ts
+│   │   ├── highlight.ts
+│   │   └── index.ts
 │   ├── layout/              # 窗口边框 & 导航
 │   │   ├── index.ts
 │   │   ├── ActivityBar.tsx  # 左侧活动栏（projects/files/skills 切换）
@@ -43,21 +57,38 @@ src/
 │   │   ├── FileViewer.tsx   # 文件编辑器（CodeMirror，多 Tab）
 │   │   └── ProjectsPanel.tsx
 │   ├── project/             # 项目侧边栏 & Git UI
-│   │   ├── index.tsx
+│   │   ├── index.ts
 │   │   ├── AddProjectModal.tsx
 │   │   ├── FileTree.tsx
 │   │   ├── GitDialog.tsx
 │   │   ├── ProjectItem.tsx
+│   │   ├── ProjectItemHeader.tsx
+│   │   ├── ProjectGitSection.tsx
+│   │   ├── useProjectItemDrag.ts
+│   │   ├── useProjectItemMenu.ts
 │   │   └── ProjectSidebar.tsx
+│   ├── settings/            # 设置面板拆分
+│   │   ├── SettingsPanel.tsx
+│   │   ├── AppearancePanel.tsx
+│   │   ├── EditorPanel.tsx
+│   │   ├── TerminalPanel.tsx
+│   │   ├── AgentsPanel.tsx
+│   │   ├── IdePanel.tsx
+│   │   ├── GitPanel.tsx
+│   │   └── index.ts
 │   └── terminal/            # 终端视图（xterm.js）
 │       ├── index.ts
 │       ├── TerminalView.tsx
-│       ├── SideTerminalView.tsx
+│       ├── terminalCache.ts
+│       ├── terminalFactory.ts
+│       ├── terminalCommands.ts
+│       ├── terminalTypes.ts
 │       ├── WorktreeTerminalView.tsx
 │       ├── WSLTerminalView.tsx
 │       └── RemoteTerminalView.tsx
 │
 ├── hooks/                   # 自定义 React Hooks（扁平目录）
+│   ├── useAppContainer.ts   # App 容器层，聚合各领域 Hook 与回调
 │   ├── useAppConfig.ts
 │   ├── useFileView.ts       # 文件面板：多 Tab 状态管理（openFile/closeTab/saveFile）
 │   ├── useKeyboardShortcuts.ts
@@ -67,6 +98,20 @@ src/
 │   ├── useToast.ts
 │   ├── useWorktreeState.ts
 │   └── useWslProjects.ts
+│
+├── context/                 # 基础 Context（全局配置、侧栏、技能）
+│   ├── app-context.tsx
+│   ├── sidebar-context.tsx
+│   ├── skill-context.tsx
+│   └── index.ts
+│
+├── contexts/                # 领域动作 Context（project/file/wsl/remote/editor）
+│   ├── project-actions-context.tsx
+│   ├── file-actions-context.tsx
+│   ├── wsl-context.tsx
+│   ├── remote-context.tsx
+│   ├── editor-context.tsx
+│   └── index.ts
 │
 ├── utils/                   # 纯工具函数（扁平目录）
 │   ├── agents.ts            # Agent 图标查找表
@@ -109,15 +154,28 @@ src-tauri/
 
 ## 模块组织
 
+### 目录变更 2026-04-21
+
+`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。目录职责调整如下：
+
+| 文件 | 角色 |
+|------|------|
+| `contexts/project-actions-context.tsx` | 项目与 worktree 侧副作用动作 |
+| `contexts/file-actions-context.tsx` | 文件树加载、文件保存、Tab 动作 |
+| `hooks/useFileView.ts` | 文件域动作与错误处理，状态写入 store |
+| `store/appStore.ts` | `project/file/worktree` 状态单源 |
+
 ### 组件子目录按领域/功能组织
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
 | `components/layout/` | 窗口边框 | 标题栏、窗口控制、Activity Bar、全局布局 |
 | `components/panels/` | 侧栏面板 | FilesPanel（文件树）、FileViewer（多 Tab 编辑器）、ProjectsPanel |
-| `components/project/` | 项目管理 | 侧边栏、文件树、Git 对话框 |
-| `components/terminal/` | 终端视图 | 所有 xterm.js 终端变体 |
+| `components/project/` | 项目管理 | 项目卡片壳层 + 头部 + Git 区段 + 拖拽/菜单 Hook |
+| `components/terminal/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
 | `components/connections/` | 远程连接 | SSH/WSL 对话框 |
+| `components/diff/` | Diff | 算法、语言高亮、数据加载与渲染分层 |
+| `components/settings/` | 设置 | 按面板拆分的设置 UI |
 
 ### 桶文件导出
 
@@ -135,7 +193,10 @@ Terminal 桶文件还会导出工具函数和缓存：
 
 ```tsx
 // components/terminal/index.ts
-export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } from "./TerminalView";
+export { default as TerminalView } from "./TerminalView";
+export { terminalCache, terminalCacheKey } from "./terminalCache";
+export { createTerminalForProject } from "./terminalFactory";
+export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
 ```
 
 ### 新代码应该放在哪里
@@ -145,12 +206,81 @@ export { default as TerminalView, terminalCache, launchAgentInTerminal, ... } fr
 | 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件 |
 | 独立组件 | `components/<Name>.tsx`（顶层） |
 | 自定义 Hook | `hooks/use<Name>.ts` |
+| 新的全局基础状态分发 | `context/<domain>-context.tsx` |
+| 新的领域状态分发 | `contexts/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
 | IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
 | 项目类型适配器 | `adapters/<Name>Adapter.ts` |
 | 共享类型 | `types.ts` |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>/` |
+
+---
+
+## 场景：Context 与 Store 文件布局契约
+
+### 1. Scope / Trigger
+
+- Trigger：跨组件共享状态字段过多时，Context 容易膨胀并引入重复读取路径。
+- Scope：`src/context/`、`src/contexts/`、`src/store/`、`src/hooks/`。
+
+### 2. Signatures
+
+```text
+src/context/         基础 UI 上下文（App / Sidebar / Skill）
+src/contexts/        领域动作上下文（ProjectActions / FileActions / Wsl / Remote / Editor）
+src/store/           共享状态单源（useAppStore）
+src/hooks/           动作封装、IPC 调用、状态写入协调
+```
+
+### 3. Contracts
+
+1. `context/` 只放稳定基础上下文，避免混入领域状态快照。  
+2. `contexts/` 放领域动作上下文，字段应以副作用函数为主。  
+3. 共享状态字段新增时优先进入 `store/appStore.ts`，消费者通过 selector 读取。  
+4. `AppProviders.tsx` 只负责 Provider 组装，禁止承担业务计算。
+
+### 4. Validation & Error Matrix
+
+| 检查项 | 规则 | 失败信号 |
+|--------|------|---------|
+| 新增共享字段位置 | 优先写 `store/` | 在 Context 中出现同名状态快照 |
+| 新增 Context 文件位置 | 放 `contexts/` 或 `context/` 对应层 | 混放导致 import 路径混乱 |
+| Provider 组合深度 | 新增前评估是否可复用现有 Provider | `AppProviders.tsx` 持续膨胀 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：新增文件域动作时创建 `file-actions-context.tsx`，状态仍放 store。
+- Base：新增只在单页使用的 UI 状态，保持组件本地 `useState`。
+- Bad：在 `contexts/*` 新增大块状态字段并与 store 并存。
+
+### 6. Tests Required
+
+- 静态检查：`rg "useProjectStateContext|project-state-context"` 结果应为空。  
+- 类型检查：`npx tsc --noEmit`。  
+- 回归测试：`pnpm test:run`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+// contexts 中继续承载状态快照
+interface ProjectStateContextValue {
+  fileTabs: FileTab[];
+  activeFileTabId: string | null;
+}
+```
+
+#### Correct
+
+```tsx
+// contexts 只承载动作；状态由 store 读取
+interface FileActionsContextValue {
+  onFileSave(content: string): Promise<boolean>;
+}
+const tabs = useAppStore((s) => s.fileTabs);
+```
 
 ---
 

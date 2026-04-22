@@ -1,3 +1,5 @@
+export { default as AppLayout } from "./AppLayout";
+export { default as ActivityBar } from "./ActivityBar";
 export { default as TitleBar } from "./TitleBar";
 export { default as WindowControls } from "./WindowControls";
 export { default as AgentSelector } from "./AgentSelector";
@@ -5,3 +7,4 @@ export { default as AgentBar } from "./AgentBar";
 export { default as AgentIcon } from "./AgentIcon";
 export { default as TerminalTabBar } from "./TerminalTabBar";
 export { default as TerminalTab } from "./TerminalTab";
+export { default as PanelArea } from "./PanelArea";

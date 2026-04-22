@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '../../hooks/useRemoteProjects';
 import type { AuthMethod, RemoteEntrySession, RemoteProject } from '../../types';
+import { useAppStore } from '../../store/appStore';
 
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
@@ -42,9 +43,38 @@ const makeRemoteEntry = (overrides: {
 describe('useRemoteProjects', () => {
   const mockSaveSession = vi.fn();
 
+  const resetStore = () => {
+    useAppStore.setState({
+      projects: [],
+      activeProjectId: null,
+      activeProject: null,
+      isTerminalView: false,
+      wslEntries: [],
+      activeWslKey: null,
+      activeWslProject: null,
+      remoteEntries: [],
+      activeRemoteKey: null,
+      activeRemoteProject: null,
+      remoteAuthStore: new Map(),
+      pendingAuthEntry: null,
+      activeWorktreePath: null,
+      openedWorktrees: [],
+      wslOpenedWt: [],
+      activeWslWorktreePath: null,
+      remoteOpenedWt: [],
+      activeRemoteWorktreePath: null,
+      worktreeState: {},
+      selectProject: vi.fn(),
+      selectWslProject: vi.fn(),
+      selectRemoteProject: vi.fn(),
+      openIde: vi.fn(),
+    });
+  };
+
   beforeEach(() => {
     mockSaveSession.mockReset();
     mockSaveSession.mockResolvedValue(undefined);
+    resetStore();
   });
 
   it('初始状态为空', () => {

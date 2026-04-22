@@ -498,3 +498,388 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 归档 terminal-split 任务 + gitignore 更新
+
+**Date**: 2026-04-20
+**Task**: 归档 terminal-split 任务 + gitignore 更新
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 .snow 添加到 .gitignore；归档 04-17-terminal-split 任务至 archive/2026-04/
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `020f3b6` | (see git log) |
+| `692d70a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 14: AppLayout Props 瘦身重构
+
+**Date**: 2026-04-20
+**Task**: AppLayout Props 瘦身重构
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更说明 |
+|------|----------|
+| 布局层 | `AppLayout` 从重度透传改为纯布局组件，仅保留 Add/Settings 入口动作 |
+| 状态分发 | 新增 `ProjectContext`、`ConnectionContext`、`EditorContext`，按领域分发数据与回调 |
+| 业务组件 | `ProjectsPanel` 与 `MainContent` 改为直接消费 Context，移除大规模 props 依赖 |
+| 应用装配 | `App.tsx` 注入新的 Provider 组合，并组装三类 context value |
+| 规范同步 | 更新 frontend state-management、directory-structure、hook/component/quality 指南 |
+
+**验证记录**
+- `pnpm tsc --noEmit` 通过
+- `pnpm test -- --run` 通过（20 files, 212 passed, 1 skipped）
+
+**归档任务**
+- `04-20-applayout-props-slim` 已归档到 `archive/2026-04/`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5527725` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 15: 完成巨型组件拆分优化
+
+**Date**: 2026-04-21
+**Task**: 完成巨型组件拆分优化
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成 Settings/RemoteItems/Diff/Terminal/ProjectItem/App Context 全链路拆分与规范同步。
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| SettingsPanel | 拆分为 settings 子目录多面板结构 |
+| RemoteItems | 抽离 ProjectBody、ProjectItemCard、WSLProjectCard、RemoteProjectCard |
+| DiffView | 分离算法、高亮、数据加载与渲染层 |
+| TerminalView | 分离 terminalCache、terminalFactory、terminalCommands |
+| ProjectItem | 拆分 Header/GitSection 与 Drag/Menu hooks，压缩 props |
+| App/Context | 引入 useAppContainer + AppProviders + AppModals，拆分 ProjectState/Actions、Wsl、Remote、Editor Context |
+| Spec | 同步 frontend 的 directory/state/component/quality 文档 |
+
+**验证结果**
+
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7cfea23` | (see git log) |
+| `46ea632` | (see git log) |
+| `e7eab3f` | (see git log) |
+| `b73a11e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 16: 重构跨域状态同步为 Zustand 快照
+
+**Date**: 2026-04-21
+**Task**: 重构跨域状态同步为 Zustand 快照
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| 状态同步 | 删除 `useAppRefSync`，新增 `useSyncToStore` 将领域状态单向同步到 `useAppStore` |
+| 快捷键 | `useKeyboardShortcuts` 改为 `useAppStore.getState()` 快照读取，参数压缩为 5 个 |
+| 会话持久化 | `useSessionPersistence` 改为从 store 读取 `wslEntries/remoteEntries`，并用 state 管理 `worktreeState` |
+| Hook 清理 | `useLocalProjects/useWslProjects/useRemoteProjects/useWorktreeState` 清理跨域 `MutableRef` 导出 |
+| 测试与规范 | 更新相关 Hook 测试并同步 `.trellis/spec/frontend` 文档 |
+
+**验证**:
+- `npx tsc --noEmit` 通过
+- `pnpm test` 通过（20 文件，212 通过，1 跳过）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `88f913a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 17: 完成 Prop 穿透清理
+
+**Date**: 2026-04-21
+**Task**: 完成 Prop 穿透清理
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 MainContent 子组件改为 Context 直连，移除大量中转 props 并通过类型与测试验证。
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| MainContent | 删除中转解构与中转回调，子组件调用改为最小参数形式 |
+| RemoteProjectView | 改为无 props，内部消费 Remote/App Context |
+| FileViewer | 改为无 props，内部消费 ProjectState/ProjectActions/App Context |
+| TerminalView | props 缩减为 `paneId`，内部计算 active tab 与 agent 覆盖 |
+| WorktreeTerminalView | 改为无 props，内部消费 ProjectState/App Context |
+| WSLTerminalView | props 缩减为 `paneId`，内部处理会话就绪与缓存后缀 |
+| terminalTypes | `TerminalViewProps` 收敛为 `paneId` |
+
+**验证**：
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+**说明**：
+- DiffView 参数化调用保持不变
+- 修补三处非空断言为安全读取
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1393265` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 18: Hook 复杂度治理重构收尾
+
+**Date**: 2026-04-21
+**Task**: Hook 复杂度治理重构收尾
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| Hook 拆分 | 删除 `useAppCallbacks`，新增 `useAgentActions`、`useWorktreeActions`、`useRemoteAuthActions` |
+| 共享抽象 | 新增 `useConnectionWorktreeState` 与 `utils/entryUpdates.ts`，复用 WSL/Remote 共性逻辑 |
+| 状态治理 | 扩展 `appStore`，将 local/wsl/remote 关键状态收敛为统一状态源 |
+| 编排层 | `useAppContainer` 接入新域 Hook，增加 `buildContextValues` 组织 Context 值 |
+| 测试 | 移除 `useAppCallbacks` 测试，新增 `useWorktreeActions` 测试并修复 remote test 的 store 隔离 |
+
+**验证**:
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 全部通过
+
+**任务状态**:
+- 归档 `04-21-hook-complexity`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b64866b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 19: Phase1 Context 单源迁移与规范同步
+
+**Date**: 2026-04-21
+**Task**: Phase1 Context 单源迁移与规范同步
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成 Project/File 状态单源迁移，新增 FileActionsContext，移除 ProjectStateContext 与 buildContextValues，同步三份 frontend spec。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c0b0b0e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 20: TODO未完成项优化方案收尾
+
+**Date**: 2026-04-21
+**Task**: TODO未完成项优化方案收尾
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成PR2尾项收敛，迁移FileViewer与FileTree到files域，补齐barrel与类型拆分并通过tsc/test回归
+
+### Main Changes
+
+| 模块 | 变更 |
+|------|------|
+| 文件域边界 | 新增 `src/components/files/`，迁移 `FileViewer`、`FileTree`，`panels` 收敛为侧栏面板 |
+| 类型组织 | 删除 `src/types.ts`，新增 `src/types/*` 按域拆分并由 `src/types/index.ts` 聚合导出 |
+| 命名规范 | `ProjectActionsContextValue` 去除 `handle*` 对外字段，统一为 `on*` |
+| barrel export | 新增 `src/hooks/index.ts`、`src/utils/index.ts`、`src/adapters/index.ts`、`src/components/panels/index.ts` |
+| 文档同步 | 更新 `AGENTS.md`、`TODO.md`、任务 `prd.md` 与任务上下文文件 |
+
+**验证结果**
+- `npx tsc --noEmit` 通过
+- `pnpm test:run` 通过（20 files, 212 passed, 1 skipped）
+
+**任务状态**
+- `04-21-todo-unresolved-optimization` 已归档到 `.trellis/tasks/archive/2026-04/`
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4a36f1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 21: 合并 context 目录到 contexts
+
+**Date**: 2026-04-21
+**Task**: 合并 context 目录到 contexts
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+将 src/context/ (app-context, sidebar-context, skill-context) 合并到 src/contexts/，删除旧目录，更新 22 个文件的 import 路径为 barrel 导入，双 import 合并为单一导入。TypeScript 类型检查和 212 个测试均通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7c0de49` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

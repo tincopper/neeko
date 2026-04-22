@@ -1,1 +1,1 @@
-export { default } from "../panels/ProjectsPanel";
+export { ProjectsPanel as default } from "../panels";

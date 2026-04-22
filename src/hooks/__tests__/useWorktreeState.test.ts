@@ -3,14 +3,14 @@ import { renderHook, act } from '@testing-library/react';
 import { useWorktreeState } from '../../hooks/useWorktreeState';
 
 describe('useWorktreeState', () => {
-  let activeProjectIdRef: { current: string | null };
+  let activeProjectId: string | null;
 
   beforeEach(() => {
-    activeProjectIdRef = { current: 'project-1' };
+    activeProjectId = 'project-1';
   });
 
   it('初始状态为空', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     expect(result.current.activeWorktreePath).toBeNull();
     expect(result.current.activeWorktreeBranch).toBe('');
@@ -18,8 +18,7 @@ describe('useWorktreeState', () => {
   });
 
   it('null 项目 ID 时不更新状态', () => {
-    activeProjectIdRef.current = null;
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(null));
 
     act(() => {
       result.current.updateWtPath('/some/path', 'main');
@@ -29,7 +28,7 @@ describe('useWorktreeState', () => {
   });
 
   it('updateWtPath 同时更新路径和分支', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     act(() => {
       result.current.updateWtPath('/projects/wt1', 'feature-a');
@@ -40,7 +39,7 @@ describe('useWorktreeState', () => {
   });
 
   it('setActiveWorktreePath 只更新路径', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     act(() => {
       result.current.setActiveWorktreePath('/projects/wt1');
@@ -51,7 +50,7 @@ describe('useWorktreeState', () => {
   });
 
   it('setActiveWorktreeBranch 只更新分支', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     act(() => {
       result.current.setActiveWorktreeBranch('develop');
@@ -62,7 +61,7 @@ describe('useWorktreeState', () => {
   });
 
   it('setOpenedWorktrees 直接设置列表', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     const items = [
       { path: '/projects/wt1', branch: 'main' },
@@ -77,7 +76,7 @@ describe('useWorktreeState', () => {
   });
 
   it('setOpenedWorktrees 支持函数式更新', () => {
-    const { result } = renderHook(() => useWorktreeState(activeProjectIdRef as React.RefObject<string | null>));
+    const { result } = renderHook(() => useWorktreeState(activeProjectId));
 
     const items = [{ path: '/projects/wt1', branch: 'main' }];
     act(() => {
@@ -99,19 +98,20 @@ describe('useWorktreeState', () => {
   });
 
   it('不同项目间的状态隔离', () => {
-    const ref1 = { current: 'project-1' } as React.RefObject<string | null>;
-    const ref2 = { current: 'project-2' } as React.RefObject<string | null>;
-
-    const { result: r1 } = renderHook(() => useWorktreeState(ref1));
-    const { result: r2 } = renderHook(() => useWorktreeState(ref2));
+    const { result, rerender } = renderHook(
+      ({ projectId }) => useWorktreeState(projectId),
+      { initialProps: { projectId: 'project-1' as string | null } },
+    );
 
     act(() => {
-      r1.current.updateWtPath('/project-1/wt', 'main');
+      result.current.updateWtPath('/project-1/wt', 'main');
     });
 
-    expect(r2.current.activeWorktreePath).toBeNull();
-    expect(r2.current.activeWorktreeBranch).toBe('');
+    rerender({ projectId: 'project-2' });
+    expect(result.current.activeWorktreePath).toBeNull();
+    expect(result.current.activeWorktreeBranch).toBe('');
 
-    expect(r1.current.activeWorktreePath).toBe('/project-1/wt');
+    rerender({ projectId: 'project-1' });
+    expect(result.current.activeWorktreePath).toBe('/project-1/wt');
   });
 });

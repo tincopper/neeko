@@ -1,0 +1,53 @@
+{
+  "id": "04-20-god-component-refactor",
+  "name": "04-20-god-component-refactor",
+  "title": "brainstorm: 巨型组件拆分优化",
+  "description": "",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "VinciWu557",
+  "assignee": "VinciWu557",
+  "createdAt": "2026-04-20",
+  "completedAt": "2026-04-21",
+  "branch": null,
+  "base_branch": "enhance/ui_clean_code",
+  "worktree_path": null,
+  "current_phase": 6,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Phase 1-6 已全部完成并归档；2026-04-21 通过 tsc 与 vitest 回归，session 已记录。",
+  "meta": {}
+}

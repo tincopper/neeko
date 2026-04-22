@@ -1,184 +1,250 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { switchAgentInRemoteTerminal, remoteCacheKey, refreshRemoteTerminal } from "../components/terminal";
-import type { Project, RemoteEntrySession, RemoteProject, WSLProject, GitInfo, AgentConfig, AuthMethod, AppConfig, WSLEntrySession } from "../types";
-import type { DiffSetter, WslDiffState } from "./useCrossDomainRefs";
-import type { WorktreeItem } from "./useWorktreeState";
+import {
+  refreshRemoteTerminal,
+  remoteCacheKey,
+  switchAgentInRemoteTerminal,
+} from "../components/terminal";
+import { useAppStore } from "../store/appStore";
+import type {
+  AgentConfig,
+  AppConfig,
+  AuthMethod,
+  GitInfo,
+  RemoteEntrySession,
+  RemoteProject,
+} from "../types";
+import { buildRefreshGitHandler, updateProjectInEntries } from "../utils/entryUpdates";
+import { useConnectionWorktreeState } from "./useConnectionWorktreeState";
+import type { SaveSessionFn } from "./useWslProjects";
 
-export function useRemoteActions(deps: {
-  setActiveProjectId: (id: string | null) => void;
-  setActiveProject: (p: Project | null) => void;
-  setActiveWslKey: (k: { distro: string; projectId: string } | null) => void;
-  setActiveWslProject: (p: { distro: string; project: WSLProject } | null) => void;
-  setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
-  setActiveRemoteKey: React.Dispatch<React.SetStateAction<{ host: string; projectId: string } | null>>;
-  setActiveRemoteProject: React.Dispatch<React.SetStateAction<{
-    entry: RemoteEntrySession; project: RemoteProject;
-  } | null>>;
-  activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
-  remoteEntries: RemoteEntrySession[];
-  remoteEntriesRef: React.MutableRefObject<RemoteEntrySession[]>;
-  remoteAuthStore: Map<string, AuthMethod>;
-  wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-  remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-  setWslDiffStateRef: DiffSetter<WslDiffState>;
-  wslActiveWtBranchSetterRef: React.MutableRefObject<((b: string) => void) | null>;
-  wslOpenedWtSetterRef: React.MutableRefObject<((u: WorktreeItem[] | ((p: WorktreeItem[]) => WorktreeItem[])) => void) | null>;
-  wslWorktreePathSetterRef: React.MutableRefObject<((p: string | null) => void) | null>;
+interface UseRemoteActionsParams {
   config: AppConfig;
-  showToast: (msg: string, type?: "info" | "error") => void;
-  saveSession: (wsl?: WSLEntrySession[], remote?: RemoteEntrySession[]) => Promise<void>;
-}) {
-  // ── Diff state ──
-  const [remoteDiffState, setRemoteDiffState] = useState<{
-    entryId: string; host: string; port: number; username: string; auth: AuthMethod;
-    projectPath: string; filePath: string;
-  } | null>(null);
+  showToast: (message: string, type?: "info" | "error") => void;
+  saveSession: SaveSessionFn;
+}
 
-  // ── Worktree state ──
-  const [activeRemoteWorktreePath, setActiveRemoteWorktreePath] = useState<string | null>(null);
-  const [remoteActiveWtBranch, setRemoteActiveWtBranch] = useState("");
-  const [remoteOpenedWt, setRemoteOpenedWt] = useState<WorktreeItem[]>([]);
-  const remoteOpenedWtRef = useRef<WorktreeItem[]>([]);
-  const activeRemoteWorktreePathRef = useRef<string | null>(null);
-  remoteOpenedWtRef.current = remoteOpenedWt;
-  activeRemoteWorktreePathRef.current = activeRemoteWorktreePath;
+type RemoteDiffState = {
+  entryId: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: AuthMethod;
+  projectPath: string;
+  filePath: string;
+};
 
-  // ── invokeRemoteGit helper ──
-  const invokeRemoteGit = useCallback(
-    async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
-      const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
-      const auth = deps.remoteAuthStore.get(entryId);
-      if (!entry || !auth) throw new Error("No auth for entry");
-      return invoke(command, {
-        host: entry.host, port: entry.port, username: entry.username,
-        auth, ...extra
-      });
-    },
-    [deps.remoteAuthStore]
-  );
+export function useRemoteActions({
+  config,
+  showToast,
+  saveSession,
+}: UseRemoteActionsParams) {
+  const remoteEntries = useAppStore((state) => state.remoteEntries);
+  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
+  const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
 
-  // ── Select Remote project ──
-  const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
-    deps.setActiveProjectId(null);
-    deps.setActiveProject(null);
-    deps.setActiveWslKey(null);
-    deps.setActiveWslProject(null);
-    deps.setActiveRemoteKey({ host, projectId: project.id });
-    deps.wslWorktreePathSetterRef.current?.(null);
-    setActiveRemoteWorktreePath(null);
-    deps.wslActiveWtBranchSetterRef.current?.("");
-    setRemoteActiveWtBranch("");
-    deps.wslOpenedWtSetterRef.current?.([]);
-    setRemoteOpenedWt([]);
-
-    const entry = deps.remoteEntriesRef.current.find(e => e.host === host);
-    if (entry) {
-      deps.setActiveRemoteProject({ entry, project });
-      deps.setWslDiffStateRef.current?.(null);
-      setRemoteDiffState(null);
-
-      const auth = deps.remoteAuthStore.get(entry.id);
-      if (auth) {
-        invoke<GitInfo>("refresh_remote_git_info", {
-          host: entry.host, port: entry.port, username: entry.username,
-          auth, projectPath: project.path,
-        })
-        .then(gitInfo => {
-          deps.setActiveRemoteProject(prev => prev?.project.id === project.id
-            ? { ...prev, project: { ...prev.project, git_info: gitInfo } }
-            : prev
-          );
-          deps.setRemoteEntries(prev => prev.map(e => ({
-            ...e,
-            projects: e.projects.map(p => p.id === project.id ? { ...p, git_info: gitInfo } : p)
-          })));
-        })
-        .catch(() => {});
-      }
-    }
-  }, [deps.remoteAuthStore, deps.setActiveProjectId, deps.setActiveProject, deps.setActiveWslKey,
-      deps.setActiveWslProject, deps.setActiveRemoteKey, deps.setActiveRemoteProject, deps.setRemoteEntries]);
-
-  // ── Select Remote file (diff) ──
-  const handleSelectRemoteFile = useCallback((entryId: string, projectPath: string, filePath: string) => {
-    const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
-    const auth = deps.remoteAuthStore.get(entryId);
-    if (entry && auth) {
-      setRemoteDiffState({ entryId, host: entry.host, port: entry.port, username: entry.username, auth, projectPath, filePath });
-    }
-  }, [deps.remoteAuthStore]);
-
-  // ── Refresh Remote git ──
-  const handleRefreshRemoteGit = useCallback(async (entryId: string, projectId: string, projectPath: string) => {
-    const result = await invokeRemoteGit("refresh_remote_git_info", entryId, { projectPath }).catch(() => null);
-    if (!result) return;
-    const gitInfo = result as GitInfo;
-    deps.setRemoteEntries(prev => prev.map(e => ({
-      ...e,
-      projects: e.projects.map(p => p.id === projectId ? { ...p, git_info: gitInfo } as RemoteProject : p)
-    })));
-    deps.setActiveRemoteProject(prev =>
-      prev?.project.id === projectId ? { ...prev, project: { ...prev.project, git_info: gitInfo } } : prev
-    );
-  }, [invokeRemoteGit, deps.setRemoteEntries, deps.setActiveRemoteProject]);
-
-  // ── Open Remote IDE ──
-  const handleOpenRemoteIde = useCallback((entryId: string, projectPath: string, ide: string) => {
-    if (!ide) { deps.showToast("No IDE selected for this project", "error"); return; }
-    const entry = deps.remoteEntriesRef.current.find(e => e.id === entryId);
-    if (!entry) return;
-    invoke("open_remote_ide", { host: entry.host, port: entry.port, username: entry.username, projectPath, ide })
-      .catch(e => deps.showToast(String(e), "error"));
-  }, [deps.showToast]);
-
-  // ── Open Remote worktree terminal ──
-  const handleOpenRemoteWorktreeTerminal = useCallback((_entryId: string, worktreePath: string, branch: string) => {
-    setActiveRemoteWorktreePath(worktreePath);
-    setRemoteActiveWtBranch(branch);
-    setRemoteOpenedWt(prev => {
-      if (prev.some(w => w.path === worktreePath)) return prev;
-      return [...prev, { path: worktreePath, branch }];
-    });
-    deps.setWslDiffStateRef.current?.(null);
-    setRemoteDiffState(null);
+  const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      remoteEntries: typeof updater === "function" ? updater(state.remoteEntries) : updater,
+    }));
   }, []);
 
-  // ── Select Remote agent ──
+  const setActiveRemoteProject: Dispatch<SetStateAction<{
+    entry: RemoteEntrySession;
+    project: RemoteProject;
+  } | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeRemoteProject: typeof updater === "function" ? updater(state.activeRemoteProject) : updater,
+    }));
+  }, []);
+
+  const worktreeState = useConnectionWorktreeState<RemoteDiffState>();
+  const {
+    diffState: remoteDiffState,
+    setDiffState: setRemoteDiffState,
+    activeWorktreePath: activeRemoteWorktreePath,
+    setActiveWorktreePath: setActiveRemoteWorktreePath,
+    activeWorktreeBranch: remoteActiveWtBranch,
+    setActiveWorktreeBranch: setRemoteActiveWtBranch,
+    openedWorktrees: remoteOpenedWt,
+    setOpenedWorktrees: setRemoteOpenedWt,
+    openWorktreeTerminal,
+    resetConnectionState,
+  } = worktreeState;
+
+  const invokeRemoteGit = useCallback(
+    async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
+      const entry = remoteEntries.find((item) => item.id === entryId);
+      const auth = remoteAuthStore.get(entryId);
+      if (!entry || !auth) {
+        throw new Error("No auth for entry");
+      }
+      return invoke(command, {
+        host: entry.host,
+        port: entry.port,
+        username: entry.username,
+        auth,
+        ...extra,
+      });
+    },
+    [remoteEntries, remoteAuthStore],
+  );
+
+  const refreshRemoteGit = useMemo(() => buildRefreshGitHandler<
+    RemoteProject,
+    RemoteEntrySession,
+    { entry: RemoteEntrySession; project: RemoteProject },
+    string
+  >({
+    refreshGitInfo: async (projectPath, entryId) => {
+      const result = await invokeRemoteGit(
+        "refresh_remote_git_info",
+        entryId,
+        { projectPath },
+      ).catch(() => null);
+      return result as GitInfo | null;
+    },
+    setEntries: setRemoteEntries,
+    setActiveProject: setActiveRemoteProject,
+    isActiveProject: (activeProject, projectId) => activeProject.project.id === projectId,
+    updateActiveProject: (activeProject, gitInfo) => ({
+      ...activeProject,
+      project: {
+        ...activeProject.project,
+        git_info: gitInfo,
+      },
+    }),
+  }), [invokeRemoteGit, setRemoteEntries, setActiveRemoteProject]);
+
+  const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
+    useAppStore.setState({
+      activeProjectId: null,
+      activeProject: null,
+      activeWslKey: null,
+      activeWslProject: null,
+      activeRemoteKey: { host, projectId: project.id },
+    });
+    resetConnectionState();
+
+    const entry = remoteEntries.find((item) => item.host === host);
+    if (!entry) {
+      setActiveRemoteProject(null);
+      return;
+    }
+
+    setActiveRemoteProject({ entry, project });
+    if (remoteAuthStore.has(entry.id)) {
+      void refreshRemoteGit(entry.id, project.id, project.path);
+    }
+  }, [remoteEntries, remoteAuthStore, resetConnectionState, setActiveRemoteProject, refreshRemoteGit]);
+
+  const handleSelectRemoteFile = useCallback((
+    entryId: string,
+    projectPath: string,
+    filePath: string,
+  ) => {
+    const entry = remoteEntries.find((item) => item.id === entryId);
+    const auth = remoteAuthStore.get(entryId);
+    if (!entry || !auth) {
+      return;
+    }
+    setRemoteDiffState({
+      entryId,
+      host: entry.host,
+      port: entry.port,
+      username: entry.username,
+      auth,
+      projectPath,
+      filePath,
+    });
+  }, [remoteEntries, remoteAuthStore, setRemoteDiffState]);
+
+  const handleRefreshRemoteGit = useCallback(async (
+    entryId: string,
+    projectId: string,
+    projectPath: string,
+  ) => {
+    await refreshRemoteGit(entryId, projectId, projectPath);
+  }, [refreshRemoteGit]);
+
+  const handleOpenRemoteIde = useCallback((entryId: string, projectPath: string, ide: string) => {
+    if (!ide) {
+      showToast("No IDE selected for this project", "error");
+      return;
+    }
+
+    const entry = remoteEntries.find((item) => item.id === entryId);
+    if (!entry) {
+      return;
+    }
+
+    invoke("open_remote_ide", {
+      host: entry.host,
+      port: entry.port,
+      username: entry.username,
+      projectPath,
+      ide,
+    }).catch((error) => {
+      showToast(String(error), "error");
+    });
+  }, [remoteEntries, showToast]);
+
+  const handleOpenRemoteWorktreeTerminal = useCallback((
+    _entryId: string,
+    worktreePath: string,
+    branch: string,
+  ) => {
+    openWorktreeTerminal(worktreePath, branch);
+  }, [openWorktreeTerminal]);
+
   const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
-    const proj = deps.activeRemoteProject;
-    if (!proj) return;
-    const key = remoteCacheKey(proj.entry.id, proj.project.id);
+    if (!activeRemoteProject) {
+      return;
+    }
+
+    const cacheKey = remoteCacheKey(
+      activeRemoteProject.entry.id,
+      activeRemoteProject.project.id,
+    );
     if (agent) {
       void switchAgentInRemoteTerminal(
-        key,
+        cacheKey,
         agent.id,
-        deps.config.agentCommandOverrides,
+        config.agentCommandOverrides,
       );
     }
+
     const agentId = agent?.id ?? null;
-    const newEntries = deps.remoteEntries.map(e => ({
-      ...e,
-      projects: e.projects.map(p =>
-        p.id === proj.project.id ? { ...p, selected_agent: agentId } : p
-      ),
-    }));
-    deps.setRemoteEntries(newEntries);
-    deps.setActiveRemoteProject(prev =>
-      prev ? { ...prev, project: { ...prev.project, selected_agent: agentId } } : prev
+    const nextEntries = updateProjectInEntries(
+      remoteEntries,
+      activeRemoteProject.project.id,
+      (project) => ({ ...project, selected_agent: agentId }),
     );
+    setRemoteEntries(nextEntries);
+    setActiveRemoteProject((prev) => (
+      prev ? {
+        ...prev,
+        project: { ...prev.project, selected_agent: agentId },
+      } : prev
+    ));
+
     if (!agent) {
-      setTimeout(() => refreshRemoteTerminal(key), 50);
+      setTimeout(() => refreshRemoteTerminal(cacheKey), 50);
     }
-    invoke("save_session", { wslEntries: deps.wslEntriesRefForSave.current, remoteEntries: newEntries }).catch(console.error);
-  }, [deps.activeRemoteProject, deps.remoteEntries, deps.setRemoteEntries, deps.setActiveRemoteProject, deps.config.agentCommandOverrides]);
+
+    saveSession(undefined, nextEntries).catch(console.error);
+  }, [activeRemoteProject, config.agentCommandOverrides, remoteEntries, saveSession, setActiveRemoteProject, setRemoteEntries]);
 
   return {
-    remoteDiffState, setRemoteDiffState,
-    activeRemoteWorktreePath, setActiveRemoteWorktreePath,
-    remoteActiveWtBranch, setRemoteActiveWtBranch,
-    remoteOpenedWt, setRemoteOpenedWt,
-    remoteOpenedWtRef, activeRemoteWorktreePathRef,
+    remoteDiffState,
+    setRemoteDiffState,
+    activeRemoteWorktreePath,
+    setActiveRemoteWorktreePath,
+    remoteActiveWtBranch,
+    setRemoteActiveWtBranch,
+    remoteOpenedWt,
+    setRemoteOpenedWt,
     invokeRemoteGit,
     handleSelectRemoteProject,
     handleSelectRemoteFile,

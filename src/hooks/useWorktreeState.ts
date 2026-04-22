@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 export interface WorktreeItem {
   path: string;
@@ -15,60 +15,57 @@ type WorktreeStateMap = Record<string, WorktreeState>;
 
 const EMPTY_STATE: WorktreeState = { activePath: null, activeBranch: "", opened: [] };
 
-export function useWorktreeState(activeProjectIdRef: React.RefObject<string | null>) {
+export function useWorktreeState(activeProjectId: string | null) {
   const [worktreeStateMap, setWorktreeStateMap] = useState<WorktreeStateMap>({});
-  const activeWorktreePathRef = useRef<string | null>(null);
-  const openedWorktreesRef = useRef<WorktreeItem[]>([]);
 
   const getCurrentState = (pid: string | null): WorktreeState => {
     if (!pid) return EMPTY_STATE;
     return worktreeStateMap[pid] ?? EMPTY_STATE;
   };
 
-  const currentPid = activeProjectIdRef.current;
-  const currentWtState = getCurrentState(currentPid);
+  const currentWtState = getCurrentState(activeProjectId);
   const activeWorktreePath = currentWtState.activePath;
   const activeWorktreeBranch = currentWtState.activeBranch;
   const openedWorktrees = currentWtState.opened;
 
   const updateWtPath = useCallback((path: string | null, branch: string) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
+    if (!activeProjectId) return;
     setWorktreeStateMap(prev => ({
       ...prev,
-      [pid]: { ...(prev[pid] ?? EMPTY_STATE), activePath: path, activeBranch: branch },
+      [activeProjectId]: {
+        ...(prev[activeProjectId] ?? EMPTY_STATE),
+        activePath: path,
+        activeBranch: branch,
+      },
     }));
-  }, []);
+  }, [activeProjectId]);
 
   const setActiveWorktreePath = useCallback((path: string | null) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
+    if (!activeProjectId) return;
     setWorktreeStateMap(prev => ({
       ...prev,
-      [pid]: { ...(prev[pid] ?? EMPTY_STATE), activePath: path },
+      [activeProjectId]: { ...(prev[activeProjectId] ?? EMPTY_STATE), activePath: path },
     }));
-  }, []);
+  }, [activeProjectId]);
 
   const setActiveWorktreeBranch = useCallback((branch: string) => {
-    const pid = activeProjectIdRef.current;
-    if (!pid) return;
+    if (!activeProjectId) return;
     setWorktreeStateMap(prev => ({
       ...prev,
-      [pid]: { ...(prev[pid] ?? EMPTY_STATE), activeBranch: branch },
+      [activeProjectId]: { ...(prev[activeProjectId] ?? EMPTY_STATE), activeBranch: branch },
     }));
-  }, []);
+  }, [activeProjectId]);
 
   const setOpenedWorktrees = useCallback(
     (updater: WorktreeItem[] | ((prev: WorktreeItem[]) => WorktreeItem[])) => {
-      const pid = activeProjectIdRef.current;
-      if (!pid) return;
+      if (!activeProjectId) return;
       setWorktreeStateMap(prev => {
-        const cur = prev[pid] ?? EMPTY_STATE;
+        const cur = prev[activeProjectId] ?? EMPTY_STATE;
         const newOpened = typeof updater === "function" ? updater(cur.opened) : updater;
-        return { ...prev, [pid]: { ...cur, opened: newOpened } };
+        return { ...prev, [activeProjectId]: { ...cur, opened: newOpened } };
       });
     },
-    [],
+    [activeProjectId],
   );
 
   // Clear worktree active path for a specific project (e.g. when switching projects)
@@ -84,8 +81,6 @@ export function useWorktreeState(activeProjectIdRef: React.RefObject<string | nu
     activeWorktreePath,
     activeWorktreeBranch,
     openedWorktrees,
-    activeWorktreePathRef,
-    openedWorktreesRef,
     updateWtPath,
     setActiveWorktreePath,
     setActiveWorktreeBranch,

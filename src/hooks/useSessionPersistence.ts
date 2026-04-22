@@ -1,50 +1,59 @@
-import { useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { WSLEntrySession, RemoteEntrySession } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
+import { useAppStore } from "../store/appStore";
 
 export interface UseSessionPersistenceResult {
-   // Refs (for external sync)
-   wslEntriesRefForSave: React.MutableRefObject<WSLEntrySession[]>;
-   remoteEntriesRefForSave: React.MutableRefObject<RemoteEntrySession[]>;
-   worktreeStateRef: React.MutableRefObject<Record<string, string>>;
-   // Session save
+   worktreeState: Record<string, string>;
+   restoreWorktreeState: (next: Record<string, string>) => void;
    saveSession: SaveSessionFn;
    saveWorktreeState: (projectId: string, wtPath: string | null) => void;
-   // Width persistence
    saveSidebarWidth: (width: number) => void;
 }
 
 export function useSessionPersistence(): UseSessionPersistenceResult {
-   const wslEntriesRefForSave = useRef<WSLEntrySession[]>([]);
-   const remoteEntriesRefForSave = useRef<RemoteEntrySession[]>([]);
-   const worktreeStateRef = useRef<Record<string, string>>({});
+   const [worktreeState, setWorktreeState] = useState<Record<string, string>>({});
    const wtSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-   const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
-      if (wtPath) {
-         worktreeStateRef.current[projectId] = wtPath;
-      } else {
-         delete worktreeStateRef.current[projectId];
-      }
+   const persistWorktreeState = useCallback((next: Record<string, string>) => {
       if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
       wtSaveTimerRef.current = setTimeout(() => {
-         invoke("save_session", { worktreeState: worktreeStateRef.current }).catch(() => { });
+         invoke("save_session", { worktreeState: next }).catch(() => { });
       }, 500);
    }, []);
 
+   const restoreWorktreeState = useCallback((next: Record<string, string>) => {
+      setWorktreeState(next);
+   }, []);
+
+   const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
+      setWorktreeState((prev) => {
+         const next = { ...prev };
+         if (wtPath) {
+            next[projectId] = wtPath;
+         } else {
+            delete next[projectId];
+         }
+         persistWorktreeState(next);
+         return next;
+      });
+   }, [persistWorktreeState]);
+
    const saveSession: SaveSessionFn = useCallback(async (wslEntriesParam?: WSLEntrySession[], remoteEntriesParam?: RemoteEntrySession[]) => {
-      const wsl = wslEntriesParam ?? wslEntriesRefForSave.current;
-      const remote = remoteEntriesParam ?? remoteEntriesRefForSave.current;
+      const snapshot = useAppStore.getState();
+      const wsl = wslEntriesParam ?? snapshot.wslEntries;
+      const remote = remoteEntriesParam ?? snapshot.remoteEntries;
       await invoke("save_session", { wslEntries: wsl, remoteEntries: remote });
    }, []);
 
    const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
    const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
+      const snapshot = useAppStore.getState();
       invoke("save_session", {
-         wslEntries: wslEntriesRefForSave.current,
-         remoteEntries: remoteEntriesRefForSave.current,
+         wslEntries: snapshot.wslEntries,
+         remoteEntries: snapshot.remoteEntries,
          sidebarWidth: opts.sidebarWidth ?? null,
       }).catch(console.error);
    }, []);
@@ -58,9 +67,8 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
 
 
    return {
-      wslEntriesRefForSave,
-      remoteEntriesRefForSave,
-      worktreeStateRef,
+      worktreeState,
+      restoreWorktreeState,
       saveSession,
       saveWorktreeState,
       saveSidebarWidth,

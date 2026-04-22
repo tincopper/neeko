@@ -1,75 +1,33 @@
-import { useEffect, RefObject } from "react";
-import { WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../types";
+import { useEffect } from "react";
 import { IS_WINDOWS } from "../utils/platform";
 import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal } from "../components/terminal";
-
-type ActiveWslKey = { distro: string; projectId: string } | null;
-type ActiveRemoteKey = { host: string; projectId: string } | null;
-
-type SwitchItem =
-  | { type: "local"; id: string }
-  | { type: "wsl"; distro: string; project: WSLProject }
-  | { type: "remote"; host: string; project: RemoteProject };
+import { useAppStore } from "../store/appStore";
 
 interface UseKeyboardShortcutsParams {
-  projects: { id: string }[];
-  activeProjectId: string | null;
-  wslEntriesRef: RefObject<WSLEntrySession[]>;
-  activeWslKeyRef: RefObject<ActiveWslKey>;
-  selectWslProjectRef: RefObject<(distro: string, project: WSLProject) => void>;
-  remoteEntriesRef: RefObject<RemoteEntrySession[]>;
-  activeRemoteKeyRef: RefObject<ActiveRemoteKey>;
-  selectRemoteProjectRef: RefObject<(host: string, project: RemoteProject) => void>;
-  selectProjectRef: RefObject<(id: string) => void>;
-  activeWorktreePathRef: RefObject<string | null>;
-  openedWorktreesRef: RefObject<{ path: string; branch: string }[]>;
   updateWtPath: (path: string | null, branch: string) => void;
-  wslOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
-  activeWslWorktreePathRef: RefObject<string | null>;
   setWslWorktreePath: (path: string | null) => void;
   setWslWtBranch: (branch: string) => void;
-  remoteOpenedWtRef: RefObject<{ path: string; branch: string }[]>;
-  activeRemoteWorktreePathRef: RefObject<string | null>;
   setRemoteWorktreePath: (path: string | null) => void;
   setRemoteWtBranch: (branch: string) => void;
-  isTerminalViewRef: RefObject<boolean>;
-  activeProjectRef: RefObject<{ id: string; selected_ide: string | null } | null>;
-  handleOpenIde: (project: { id: string; selected_ide: string | null }) => void;
 }
 
 export function useKeyboardShortcuts({
-  projects,
-  activeProjectId,
-  wslEntriesRef,
-  activeWslKeyRef,
-  selectWslProjectRef,
-  remoteEntriesRef,
-  activeRemoteKeyRef,
-  selectRemoteProjectRef,
-  selectProjectRef,
-  activeWorktreePathRef,
-  openedWorktreesRef,
   updateWtPath,
-  wslOpenedWtRef,
-  activeWslWorktreePathRef,
   setWslWorktreePath,
   setWslWtBranch,
-  remoteOpenedWtRef,
-  activeRemoteWorktreePathRef,
   setRemoteWorktreePath,
   setRemoteWtBranch,
-  isTerminalViewRef,
-  activeProjectRef,
-  handleOpenIde,
 }: UseKeyboardShortcutsParams) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const snapshot = useAppStore.getState();
+
       if (e.ctrlKey && !e.altKey && e.code === "KeyN") {
         e.preventDefault();
-        if (isTerminalViewRef.current) {
-          const opened = openedWorktreesRef.current ?? [];
+        if (snapshot.isTerminalView) {
+          const opened = snapshot.openedWorktrees ?? [];
           if (opened.length === 0) return;
-          const cur = activeWorktreePathRef.current;
+          const cur = snapshot.activeWorktreePath;
           if (cur === null) {
             updateWtPath(opened[0].path, opened[0].branch);
           } else {
@@ -81,10 +39,10 @@ export function useKeyboardShortcuts({
             }
           }
         }
-        else if (activeWslKeyRef.current) {
-          const opened = wslOpenedWtRef.current ?? [];
+        else if (snapshot.activeWslKey) {
+          const opened = snapshot.wslOpenedWt ?? [];
           if (opened.length === 0) return;
-          const cur = activeWslWorktreePathRef.current;
+          const cur = snapshot.activeWslWorktreePath;
           if (cur === null) {
             setWslWorktreePath(opened[0].path);
             setWslWtBranch(opened[0].branch);
@@ -99,10 +57,10 @@ export function useKeyboardShortcuts({
             }
           }
         }
-        else if (activeRemoteKeyRef.current) {
-          const opened = remoteOpenedWtRef.current ?? [];
+        else if (snapshot.activeRemoteKey) {
+          const opened = snapshot.remoteOpenedWt ?? [];
           if (opened.length === 0) return;
-          const cur = activeRemoteWorktreePathRef.current;
+          const cur = snapshot.activeRemoteWorktreePath;
           if (cur === null) {
             setRemoteWorktreePath(opened[0].path);
             setRemoteWtBranch(opened[0].branch);
@@ -121,23 +79,23 @@ export function useKeyboardShortcuts({
       }
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyO") {
-        const p = activeProjectRef.current;
+        const p = snapshot.activeProject;
         if (p) {
           e.preventDefault();
-          handleOpenIde(p);
+          snapshot.openIde({ id: p.id, selected_ide: p.selected_ide });
         }
         return;
       }
 
       if (e.ctrlKey && !e.altKey && e.code === "KeyR") {
         e.preventDefault();
-        if (activeProjectId && isTerminalViewRef.current) {
-          refreshTerminal(activeProjectId);
-        } else if (IS_WINDOWS && activeWslKeyRef.current) {
-          const k = `wsl:${activeWslKeyRef.current.distro}:${activeWslKeyRef.current.projectId}`;
+        if (snapshot.activeProjectId && snapshot.isTerminalView) {
+          refreshTerminal(snapshot.activeProjectId);
+        } else if (IS_WINDOWS && snapshot.activeWslKey) {
+          const k = `wsl:${snapshot.activeWslKey.distro}:${snapshot.activeWslKey.projectId}`;
           refreshWslTerminal(k);
-        } else if (activeRemoteKeyRef.current) {
-          const k = `remote:${activeRemoteKeyRef.current.host}:${activeRemoteKeyRef.current.projectId}`;
+        } else if (snapshot.activeRemoteKey) {
+          const k = `remote:${snapshot.activeRemoteKey.host}:${snapshot.activeRemoteKey.projectId}`;
           refreshRemoteTerminal(k);
         }
         return;
@@ -145,33 +103,33 @@ export function useKeyboardShortcuts({
 
       if (!e.ctrlKey || e.altKey) return;
 
-      const allItems: SwitchItem[] = [
-        ...projects.map((p) => ({ type: "local" as const, id: p.id })),
-        ...(IS_WINDOWS ? (wslEntriesRef.current ?? []).flatMap((entry) =>
+      const allItems = [
+        ...snapshot.projects.map((p) => ({ type: "local" as const, id: p.id })),
+        ...(IS_WINDOWS ? (snapshot.wslEntries ?? []).flatMap((entry) =>
           entry.projects.map((proj) => ({ type: "wsl" as const, distro: entry.distro, project: proj }))
         ) : []),
-        ...(remoteEntriesRef.current ?? []).flatMap((entry) =>
+        ...(snapshot.remoteEntries ?? []).flatMap((entry) =>
           entry.projects.map((proj) => ({ type: "remote" as const, host: entry.host, project: proj }))
         ),
       ];
 
-      const switchTo = (item: SwitchItem) => {
+      const switchTo = (item: (typeof allItems)[number]) => {
         if (item.type === "local") {
-          selectProjectRef.current?.(item.id);
+          snapshot.selectProject(item.id);
         } else if (item.type === "wsl") {
-          selectWslProjectRef.current?.(item.distro, item.project);
+          snapshot.selectWslProject(item.distro, item.project);
         } else {
-          selectRemoteProjectRef.current?.(item.host, item.project);
+          snapshot.selectRemoteProject(item.host, item.project);
         }
       };
 
       if (e.code === "KeyQ") {
         e.preventDefault();
         if (allItems.length === 0) return;
-        const curWslKey = activeWslKeyRef.current;
-        const curRemoteKey = activeRemoteKeyRef.current;
+        const curWslKey = snapshot.activeWslKey;
+        const curRemoteKey = snapshot.activeRemoteKey;
         const currentIndex = allItems.findIndex((item) => {
-          if (item.type === "local") return item.id === activeProjectId;
+          if (item.type === "local") return item.id === snapshot.activeProjectId;
           if (item.type === "wsl") return item.distro === curWslKey?.distro && item.project.id === curWslKey?.projectId;
           return item.host === curRemoteKey?.host && item.project.id === curRemoteKey?.projectId;
         });
@@ -189,5 +147,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [projects, activeProjectId]);
+  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch]);
 }
