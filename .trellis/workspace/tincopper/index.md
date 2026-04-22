@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
-- **Last Active**: 2026-04-19
+- **Total Sessions**: 17
+- **Last Active**: 2026-04-22
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~609 | Active |
+| `journal-1.md` | ~644 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-04-22 | Fix Skill Scan Issue + Refactor Dialogs | `a0f130d`, `7b40a5d`, `4133826` | `feature/git-commit-panel` |
 | 16 | 2026-04-19 | Agent Skill Path UI | `3d2f538` | `main` |
 | 15 | 2026-04-19 | Improve Agent Skill Path config UI | `73d42a4` | `main` |
 | 14 | 2026-04-19 | Complete Skill PR#02 skill store | `c293db4` | `main` |

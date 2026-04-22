@@ -607,3 +607,38 @@ Optimized SettingsPanel Agent Skill Path configuration UI - Added Skill Path row
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Fix Skill Scan Issue + Refactor Dialogs
+
+**Date**: 2026-04-22
+**Task**: Fix Skill Scan Issue + Refactor Dialogs
+**Branch**: `feature/git-commit-panel`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a0f130d` | (see git log) |
+| `7b40a5d` | (see git log) |
+| `4133826` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
