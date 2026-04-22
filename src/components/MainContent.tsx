@@ -107,7 +107,7 @@ function MainContent() {
       ? `local:${activeProject.id}:${activeTabId ?? "default"}`
       : "local:none";
    const wslLayoutId = activeWslProject
-      ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${activeWslWorktreePath ?? "main"}`
+      ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${activeTabId ?? "default"}:${activeWslWorktreePath ?? "main"}`
       : "wsl:none";
    const diffFilePath =
       typeof activeProject?.active_view === "object"
