@@ -1,5 +1,5 @@
+use neeko_lib::models::{TerminalStatus, ViewMode};
 use neeko_lib::project::ProjectManager;
-use neeko_lib::state::{TerminalStatus, ViewMode};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -14,7 +14,9 @@ fn add_project_from_valid_path() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
 
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     assert_eq!(pm.list_projects().len(), 1);
     assert_eq!(project.path, tmp.path());
@@ -33,11 +35,13 @@ fn add_project_with_agent_and_ide() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
 
-    let project = pm.add_project(
-        tmp.path().to_path_buf(),
-        Some("claude-code".into()),
-        Some("code".into()),
-    ).unwrap();
+    let project = pm
+        .add_project(
+            tmp.path().to_path_buf(),
+            Some("claude-code".into()),
+            Some("code".into()),
+        )
+        .unwrap();
 
     assert_eq!(project.selected_agent, Some("claude-code".into()));
     assert_eq!(project.selected_ide, Some("code".into()));
@@ -48,7 +52,9 @@ fn add_project_default_state() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
 
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     assert!(project.collapsed);
     assert!(project.git_info.is_none());
@@ -67,10 +73,13 @@ fn add_project_from_git_repo() {
     index.write().unwrap();
     let tree_id = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "Init", &tree, &[]).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "Init", &tree, &[])
+        .unwrap();
 
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
     assert!(project.git_info.is_some());
 }
 
@@ -78,7 +87,9 @@ fn add_project_from_git_repo() {
 fn get_project_by_id() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     assert!(pm.get_project(&project.id).is_some());
     assert!(pm.get_project("nonexistent").is_none());
@@ -88,7 +99,9 @@ fn get_project_by_id() {
 fn remove_project() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     pm.remove_project(&project.id);
     assert!(pm.list_projects().is_empty());
@@ -105,30 +118,46 @@ fn remove_nonexistent_project_is_noop() {
 fn set_selected_agent() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     pm.set_selected_agent(&project.id, Some("qwen".into()));
-    assert_eq!(pm.get_project(&project.id).unwrap().selected_agent, Some("qwen".into()));
+    assert_eq!(
+        pm.get_project(&project.id).unwrap().selected_agent,
+        Some("qwen".into())
+    );
 
     pm.set_selected_agent(&project.id, None);
-    assert!(pm.get_project(&project.id).unwrap().selected_agent.is_none());
+    assert!(pm
+        .get_project(&project.id)
+        .unwrap()
+        .selected_agent
+        .is_none());
 }
 
 #[test]
 fn set_selected_ide() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     pm.set_selected_ide(&project.id, Some("code".into()));
-    assert_eq!(pm.get_project(&project.id).unwrap().selected_ide, Some("code".into()));
+    assert_eq!(
+        pm.get_project(&project.id).unwrap().selected_ide,
+        Some("code".into())
+    );
 }
 
 #[test]
 fn set_collapsed() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     assert!(project.collapsed);
     pm.set_collapsed(&project.id, false);
@@ -139,7 +168,9 @@ fn set_collapsed() {
 fn set_view_diff() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     pm.set_view_diff(&project.id, PathBuf::from("src/main.rs"));
     match &pm.get_project(&project.id).unwrap().active_view {
@@ -152,7 +183,9 @@ fn set_view_diff() {
 fn set_view_terminal() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     pm.set_view_diff(&project.id, PathBuf::from("file.rs"));
     pm.set_view_terminal(&project.id);
@@ -167,13 +200,15 @@ fn add_project_from_session() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
 
-    let project = pm.add_project_from_session(
-        "custom-id".into(),
-        tmp.path().to_path_buf(),
-        Some("gemini".into()),
-        Some("vim".into()),
-        false,
-    ).unwrap();
+    let project = pm
+        .add_project_from_session(
+            "custom-id".into(),
+            tmp.path().to_path_buf(),
+            Some("gemini".into()),
+            Some("vim".into()),
+            false,
+        )
+        .unwrap();
 
     assert_eq!(project.id, "custom-id");
     assert_eq!(project.selected_agent, Some("gemini".into()));
@@ -183,12 +218,6 @@ fn add_project_from_session() {
 #[test]
 fn add_project_from_session_nonexistent_path_fails() {
     let mut pm = ProjectManager::new();
-    let result = pm.add_project_from_session(
-        "id".into(),
-        "/nonexistent".into(),
-        None,
-        None,
-        true,
-    );
+    let result = pm.add_project_from_session("id".into(), "/nonexistent".into(), None, None, true);
     assert!(result.is_err());
 }

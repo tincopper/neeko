@@ -15,14 +15,18 @@ impl SkillStore {
         let conn = Connection::open(db_path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         super::migrations::run_migrations(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
         super::migrations::run_migrations(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     // Skills CRUD
@@ -67,14 +71,29 @@ impl SkillStore {
         Ok(())
     }
 
-    pub fn update_skill_after_install(&self, id: &str, name: &str, description: Option<&str>, source_revision: Option<&str>, remote_revision: Option<&str>, content_hash: Option<&str>, update_status: &str) -> Result<()> {
+    pub fn update_skill_after_install(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+        source_revision: Option<&str>,
+        remote_revision: Option<&str>,
+        content_hash: Option<&str>,
+        update_status: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE skills SET name = ?1, description = ?2, source_revision = ?3, remote_revision = ?4, content_hash = ?5, updated_at = ?6, update_status = ?7, last_checked_at = ?6, last_check_error = NULL WHERE id = ?8", params![name, description, source_revision, remote_revision, content_hash, now, update_status, id])?;
         Ok(())
     }
 
-    pub fn update_skill_check_state(&self, id: &str, remote_revision: Option<&str>, update_status: &str, last_check_error: Option<&str>) -> Result<()> {
+    pub fn update_skill_check_state(
+        &self,
+        id: &str,
+        remote_revision: Option<&str>,
+        update_status: &str,
+        last_check_error: Option<&str>,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE skills SET remote_revision = ?1, update_status = ?2, last_checked_at = ?3, last_check_error = ?4 WHERE id = ?5", params![remote_revision, update_status, now, last_check_error, id])?;
@@ -111,7 +130,10 @@ impl SkillStore {
 
     pub fn delete_target(&self, skill_id: &str, tool: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM skill_targets WHERE skill_id = ?1 AND tool = ?2", params![skill_id, tool])?;
+        conn.execute(
+            "DELETE FROM skill_targets WHERE skill_id = ?1 AND tool = ?2",
+            params![skill_id, tool],
+        )?;
         Ok(())
     }
 
@@ -126,11 +148,17 @@ impl SkillStore {
 
     pub fn set_tags_for_skill(&self, skill_id: &str, tags: &[String]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM skill_tags WHERE skill_id = ?1", params![skill_id])?;
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_id = ?1",
+            params![skill_id],
+        )?;
         for tag in tags {
             let trimmed = tag.trim();
             if !trimmed.is_empty() {
-                conn.execute("INSERT OR IGNORE INTO skill_tags (skill_id, tag) VALUES (?1, ?2)", params![skill_id, trimmed])?;
+                conn.execute(
+                    "INSERT OR IGNORE INTO skill_tags (skill_id, tag) VALUES (?1, ?2)",
+                    params![skill_id, trimmed],
+                )?;
             }
         }
         Ok(())
@@ -139,9 +167,13 @@ impl SkillStore {
     pub fn get_tags_map(&self) -> Result<HashMap<String, Vec<String>>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT skill_id, tag FROM skill_tags ORDER BY tag")?;
-        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
         let mut map: HashMap<String, Vec<String>> = HashMap::new();
-        for row in rows.filter_map(|r| r.ok()) { map.entry(row.0).or_default().push(row.1); }
+        for row in rows.filter_map(|r| r.ok()) {
+            map.entry(row.0).or_default().push(row.1);
+        }
         Ok(map)
     }
 
@@ -160,7 +192,13 @@ impl SkillStore {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn update_tag_group(&self, id: &str, name: &str, description: Option<&str>, icon: Option<&str>) -> Result<()> {
+    pub fn update_tag_group(
+        &self,
+        id: &str,
+        name: &str,
+        description: Option<&str>,
+        icon: Option<&str>,
+    ) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE tag_groups SET name = ?1, description = ?2, icon = ?3, updated_at = ?4 WHERE id = ?5", params![name, description, icon, now, id])?;
@@ -177,7 +215,10 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
         for (i, id) in ids.iter().enumerate() {
-            tx.execute("UPDATE tag_groups SET sort_order = ?1 WHERE id = ?2", params![i as i32, id])?;
+            tx.execute(
+                "UPDATE tag_groups SET sort_order = ?1 WHERE id = ?2",
+                params![i as i32, id],
+            )?;
         }
         tx.commit()?;
         Ok(())
@@ -194,7 +235,10 @@ impl SkillStore {
 
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM tag_group_skills WHERE tag_group_id = ?1 AND skill_id = ?2", params![tag_group_id, skill_id])?;
+        conn.execute(
+            "DELETE FROM tag_group_skills WHERE tag_group_id = ?1 AND skill_id = ?2",
+            params![tag_group_id, skill_id],
+        )?;
         Ok(())
     }
 
@@ -207,7 +251,11 @@ impl SkillStore {
 
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM tag_group_skills WHERE tag_group_id = ?1", params![tag_group_id], |row| row.get(0))?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM tag_group_skills WHERE tag_group_id = ?1",
+            params![tag_group_id],
+            |row| row.get(0),
+        )?;
         Ok(count)
     }
 
@@ -220,7 +268,6 @@ impl SkillStore {
         tx.commit()?;
         Ok(())
     }
-
 
     pub fn set_tag_group_skill_tool_enabled(
         &self,
@@ -274,24 +321,29 @@ impl SkillStore {
             "SELECT tool FROM tag_group_skill_tools
              WHERE tag_group_id = ?1 AND skill_id = ?2 AND enabled = 1",
         )?;
-        let rows = stmt.query_map(params![tag_group_id, skill_id], |row| row.get::<_, String>(0))?;
+        let rows = stmt.query_map(params![tag_group_id, skill_id], |row| {
+            row.get::<_, String>(0)
+        })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
     pub fn get_tag_groups_for_skill(&self, skill_id: &str) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT tag_group_id FROM tag_group_skills WHERE skill_id = ?1")?;
+        let mut stmt =
+            conn.prepare("SELECT tag_group_id FROM tag_group_skills WHERE skill_id = ?1")?;
         let rows = stmt.query_map(params![skill_id], |row| row.get::<_, String>(0))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
-
 
     // Project-TagGroup binding
 
     pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM project_tag_groups WHERE project_id = ?1", params![project_id])?;
+        tx.execute(
+            "DELETE FROM project_tag_groups WHERE project_id = ?1",
+            params![project_id],
+        )?;
         let now = chrono::Utc::now().timestamp_millis();
         for tg_id in tag_group_ids {
             tx.execute(
@@ -342,7 +394,10 @@ impl SkillStore {
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", params![key, value])?;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
         Ok(())
     }
 }
@@ -350,15 +405,52 @@ impl SkillStore {
 // Row Mappers
 
 fn map_skill_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SkillRecord> {
-    Ok(SkillRecord { id: row.get(0)?, name: row.get(1)?, description: row.get(2)?, source_type: row.get(3)?, source_ref: row.get(4)?, source_ref_resolved: row.get(5)?, source_subpath: row.get(6)?, source_branch: row.get(7)?, source_revision: row.get(8)?, remote_revision: row.get(9)?, central_path: row.get(10)?, content_hash: row.get(11)?, enabled: row.get::<_, i32>(12)? != 0, status: row.get(13)?, update_status: row.get(14)?, last_checked_at: row.get(15)?, last_check_error: row.get(16)?, created_at: row.get(17)?, updated_at: row.get(18)?, })
+    Ok(SkillRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        source_type: row.get(3)?,
+        source_ref: row.get(4)?,
+        source_ref_resolved: row.get(5)?,
+        source_subpath: row.get(6)?,
+        source_branch: row.get(7)?,
+        source_revision: row.get(8)?,
+        remote_revision: row.get(9)?,
+        central_path: row.get(10)?,
+        content_hash: row.get(11)?,
+        enabled: row.get::<_, i32>(12)? != 0,
+        status: row.get(13)?,
+        update_status: row.get(14)?,
+        last_checked_at: row.get(15)?,
+        last_check_error: row.get(16)?,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
+    })
 }
 
 fn map_target_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SkillTargetRecord> {
-    Ok(SkillTargetRecord { id: row.get(0)?, skill_id: row.get(1)?, tool: row.get(2)?, target_path: row.get(3)?, mode: row.get(4)?, status: row.get(5)?, synced_at: row.get(6)?, last_error: row.get(7)?, })
+    Ok(SkillTargetRecord {
+        id: row.get(0)?,
+        skill_id: row.get(1)?,
+        tool: row.get(2)?,
+        target_path: row.get(3)?,
+        mode: row.get(4)?,
+        status: row.get(5)?,
+        synced_at: row.get(6)?,
+        last_error: row.get(7)?,
+    })
 }
 
 fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord> {
-    Ok(TagGroupRecord { id: row.get(0)?, name: row.get(1)?, description: row.get(2)?, icon: row.get(3)?, sort_order: row.get(4)?, created_at: row.get(5)?, updated_at: row.get(6)?, })
+    Ok(TagGroupRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        icon: row.get(3)?,
+        sort_order: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
 }
 
 #[cfg(test)]
@@ -439,16 +531,18 @@ mod tests {
         let id = s.id.clone();
         store.insert_skill(&s).unwrap();
         let now = chrono::Utc::now().timestamp_millis();
-        store.insert_target(&SkillTargetRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            skill_id: id.clone(),
-            tool: "cursor".to_string(),
-            target_path: "/tmp/target".to_string(),
-            mode: "copy".to_string(),
-            status: "ok".to_string(),
-            synced_at: Some(now),
-            last_error: None,
-        }).unwrap();
+        store
+            .insert_target(&SkillTargetRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                skill_id: id.clone(),
+                tool: "cursor".to_string(),
+                target_path: "/tmp/target".to_string(),
+                mode: "copy".to_string(),
+                status: "ok".to_string(),
+                synced_at: Some(now),
+                last_error: None,
+            })
+            .unwrap();
         store.set_tags_for_skill(&id, &["tag1".into()]).unwrap();
         store.delete_skill(&id).unwrap();
         assert!(store.get_skill_by_id(&id).unwrap().is_none());
@@ -461,7 +555,17 @@ mod tests {
         let s = sample_skill("update-test");
         let id = s.id.clone();
         store.insert_skill(&s).unwrap();
-        store.update_skill_after_install(&id, "new-name", Some("new-desc"), Some("abc"), Some("def"), Some("hash123"), "up_to_date").unwrap();
+        store
+            .update_skill_after_install(
+                &id,
+                "new-name",
+                Some("new-desc"),
+                Some("abc"),
+                Some("def"),
+                Some("hash123"),
+                "up_to_date",
+            )
+            .unwrap();
         let updated = store.get_skill_by_id(&id).unwrap().unwrap();
         assert_eq!(updated.name, "new-name");
         assert_eq!(updated.content_hash.as_deref(), Some("hash123"));
@@ -475,16 +579,18 @@ mod tests {
         let skill_id = s.id.clone();
         store.insert_skill(&s).unwrap();
         let now = chrono::Utc::now().timestamp_millis();
-        store.insert_target(&SkillTargetRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            skill_id: skill_id.clone(),
-            tool: "cursor".to_string(),
-            target_path: "/tmp/cursor-skills/test".to_string(),
-            mode: "copy".to_string(),
-            status: "ok".to_string(),
-            synced_at: Some(now),
-            last_error: None,
-        }).unwrap();
+        store
+            .insert_target(&SkillTargetRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                skill_id: skill_id.clone(),
+                tool: "cursor".to_string(),
+                target_path: "/tmp/cursor-skills/test".to_string(),
+                mode: "copy".to_string(),
+                status: "ok".to_string(),
+                synced_at: Some(now),
+                last_error: None,
+            })
+            .unwrap();
         let targets = store.get_targets_for_skill(&skill_id).unwrap();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].tool, "cursor");
@@ -497,7 +603,9 @@ mod tests {
         let s = sample_skill("tag-test");
         let id = s.id.clone();
         store.insert_skill(&s).unwrap();
-        store.set_tags_for_skill(&id, &["react".into(), "ui".into()]).unwrap();
+        store
+            .set_tags_for_skill(&id, &["react".into(), "ui".into()])
+            .unwrap();
         let map = store.get_tags_map().unwrap();
         assert_eq!(map[&id].len(), 2);
         let all_tags = store.get_all_tags().unwrap();
@@ -508,11 +616,24 @@ mod tests {
     fn tag_group_crud() {
         let store = test_store();
         let now = chrono::Utc::now().timestamp_millis();
-        let tg = TagGroupRecord { id: "tg1".into(), name: "Designer".into(), description: None, icon: None, sort_order: 0, created_at: now, updated_at: now };
+        let tg = TagGroupRecord {
+            id: "tg1".into(),
+            name: "Designer".into(),
+            description: None,
+            icon: None,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+        };
         store.insert_tag_group(&tg).unwrap();
         assert_eq!(store.get_all_tag_groups().unwrap().len(), 1);
-        store.update_tag_group("tg1", "Designer Updated", None, None).unwrap();
-        assert_eq!(store.get_all_tag_groups().unwrap()[0].name, "Designer Updated");
+        store
+            .update_tag_group("tg1", "Designer Updated", None, None)
+            .unwrap();
+        assert_eq!(
+            store.get_all_tag_groups().unwrap()[0].name,
+            "Designer Updated"
+        );
         store.delete_tag_group("tg1").unwrap();
         assert!(store.get_all_tag_groups().unwrap().is_empty());
     }
@@ -521,7 +642,15 @@ mod tests {
     fn tag_group_skill_mapping() {
         let store = test_store();
         let now = chrono::Utc::now().timestamp_millis();
-        let tg = TagGroupRecord { id: "tg1".into(), name: "Backend".into(), description: None, icon: None, sort_order: 0, created_at: now, updated_at: now };
+        let tg = TagGroupRecord {
+            id: "tg1".into(),
+            name: "Backend".into(),
+            description: None,
+            icon: None,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+        };
         store.insert_tag_group(&tg).unwrap();
         let s1 = sample_skill("s1");
         let s2 = sample_skill("s2");
@@ -539,9 +668,15 @@ mod tests {
     fn settings_round_trip() {
         let store = test_store();
         store.set_setting("sync_mode", "copy").unwrap();
-        assert_eq!(store.get_setting("sync_mode").unwrap().as_deref(), Some("copy"));
+        assert_eq!(
+            store.get_setting("sync_mode").unwrap().as_deref(),
+            Some("copy")
+        );
         store.set_setting("sync_mode", "symlink").unwrap();
-        assert_eq!(store.get_setting("sync_mode").unwrap().as_deref(), Some("symlink"));
+        assert_eq!(
+            store.get_setting("sync_mode").unwrap().as_deref(),
+            Some("symlink")
+        );
         assert!(store.get_setting("nonexistent").unwrap().is_none());
     }
 }

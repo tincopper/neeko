@@ -6,7 +6,7 @@
 
 ## 概述
 
-Rust 后端位于 `src-tauri/` 目录中，采用**扁平模块布局** —— 所有模块都是 `src/` 下的单个文件，在 `lib.rs` 中声明。`src/` 下没有子目录。
+Rust 后端位于 `src-tauri/` 目录中，采用**按职责分层**的模块布局。模块按领域拆分，命令、模型、Manager、工具函数各有其位。
 
 ---
 
@@ -25,17 +25,54 @@ src-tauri/
 │   └── default.json          # Tauri v2 权限配置
 ├── icons/                    # 应用图标
 ├── gen/                      # Tauri 生成的代码
+├── tests/                    # 集成测试与单元测试
+│   └── unit/
 └── src/
     ├── main.rs               # 二进制入口（极简，调用 lib::run）
-    ├── lib.rs                # 中枢：AppStateWrapper、所有 #[tauri::command] 函数、run()
-    ├── state.rs              # 所有数据模型结构体和枚举
+    ├── lib.rs                # 模块导出入口（仅声明和 re-export）
+    ├── app.rs                # 应用启动逻辑：Tauri Builder、setup、事件监听、命令注册
+    ├── app_state.rs          # AppStateWrapper —— 运行时状态组装
+    ├── error.rs              # AppError —— 统一可序列化错误类型
+    ├── models/               # 数据模型结构体和枚举（原 state/）
+    │   ├── mod.rs
+    │   ├── agent.rs
+    │   ├── auth.rs
+    │   ├── diff.rs
+    │   ├── project.rs
+    │   ├── session.rs
+    │   └── terminal.rs
+    ├── commands/             # Tauri IPC 命令（按域拆分）
+    │   ├── mod.rs
+    │   ├── agent.rs
+    │   ├── config.rs
+    │   ├── file.rs
+    │   ├── git.rs
+    │   ├── ide.rs
+    │   ├── project.rs
+    │   ├── remote.rs
+    │   ├── remote_git.rs
+    │   ├── terminal.rs
+    │   ├── wsl.rs
+    │   └── wsl_git.rs
+    ├── git/                  # Git 领域逻辑（git2-rs + CLI 回退）
+    │   ├── local.rs
+    │   ├── remote.rs
+    │   └── wsl.rs
+    ├── skill/                # Skill 系统（自包含子系统）
+    │   ├── commands.rs
+    │   ├── content_hash.rs
+    │   ├── installer.rs
+    │   ├── skill_store.rs
+    │   ├── types.rs
+    │   └── ...
+    ├── utils/                # 工具函数
+    │   └── fonts.rs
     ├── project.rs            # ProjectManager —— 项目 CRUD
     ├── terminal.rs           # TerminalManager —— 本地 PTY 生命周期
-    ├── remote.rs             # RemoteTerminalManager —— SSH 终端、WSL git、远程 IDE
-    ├── git.rs                # Git 操作（git2 + CLI 回退）
+    ├── remote.rs             # RemoteTerminalManager —— SSH 终端
     ├── agent.rs              # AgentManager —— AI Agent 预设/自定义管理
-    ├── storage.rs            # StorageManager —— JSON 文件持久化（~/.neeko/）
-    ├── watcher.rs            # WatcherManager —— 文件系统变更检测（notify）
+    ├── storage.rs            # StorageManager —— JSON 文件持久化
+    ├── watcher.rs            # WatcherManager —— 文件系统监听
     └── logger.rs             # 自定义文件日志
 ```
 
@@ -43,59 +80,99 @@ src-tauri/
 
 ## 模块组织
 
-### `lib.rs` 中的模块声明
+### `lib.rs` 的职责
 
-所有模块都声明为**私有**：
+`lib.rs` **仅保留模块导出入口**的单一职责，不存放业务逻辑：
 
 ```rust
-mod agent;
-mod git;
+pub mod agent;
+pub mod commands;
+pub mod error;
+pub mod git;
+pub mod models;
+pub mod project;
+pub mod remote;
+pub mod skill;
+pub mod storage;
+pub mod terminal;
+pub mod utils;
+pub mod watcher;
+
+mod app;
+mod app_state;
 mod logger;
-mod project;
-mod remote;
-mod state;
-mod storage;
-mod terminal;
-mod watcher;
+
+pub use app::run;
+pub use app_state::AppStateWrapper;
+pub use error::AppError;
 ```
 
-除 `state` 使用 glob 导入外，其他模块使用显式导入：
+### `app.rs` 的职责
+
+`app.rs` 承担应用启动的中枢职责：
+
+- `run()` 函数
+- Tauri Builder 配置
+- `.setup()` 闭包（会话恢复、配置加载、Watcher 启动）
+- `.on_window_event()`（窗口销毁时的清理）
+- `invoke_handler`（命令注册表）
+
+### `app_state.rs` 的职责
+
+`app_state.rs` 定义 `AppStateWrapper`，集中组装所有 Manager：
 
 ```rust
-use agent::AgentManager;
-use git::get_file_diff;
-use project::ProjectManager;
-use remote::RemoteTerminalManager;
-use state::*;     // 仅 state 使用 glob 导入
-use storage::StorageManager;
-use terminal::TerminalManager;
-use watcher::WatcherManager;
+pub struct AppStateWrapper {
+    pub project_manager: Mutex<project::ProjectManager>,
+    pub terminal_manager: terminal::TerminalManager,
+    pub remote_terminal_manager: remote::RemoteTerminalManager,
+    pub agent_manager: Mutex<agent::AgentManager>,
+    pub storage_manager: storage::StorageManager,
+    pub active_project_id: Mutex<Option<String>>,
+    pub watcher_manager: watcher::WatcherManager,
+    pub skill_store: Arc<skill::skill_store::SkillStore>,
+}
 ```
 
-### 模块职责
+### `models/` 的职责
 
-| 模块 | 结构体 | 职责 |
-|------|--------|------|
-| `lib.rs` | `AppStateWrapper` | 中枢：所有 Tauri 命令、应用初始化、状态组装 |
-| `state.rs` | （仅类型） | 所有跨模块共享的数据模型结构体/枚举 |
-| `project.rs` | `ProjectManager` | 内存中的项目 CRUD |
-| `terminal.rs` | `TerminalManager` | 本地 PTY 创建/关闭/调整大小，reader/watcher 线程 |
-| `remote.rs` | `RemoteTerminalManager` | SSH 终端会话、WSL 命令、远程 IDE 打开 |
-| `git.rs` | （自由函数） | 通过 git2 的 Git 操作 + worktree 的 CLI 回退 |
-| `agent.rs` | `AgentManager` | 内置 + 自定义 Agent 配置管理 |
-| `storage.rs` | `StorageManager` | JSON 文件持久化到 `~/.neeko/` |
-| `watcher.rs` | `WatcherManager` | 使用 notify 的文件系统监听 + 防抖 |
-| `logger.rs` | （自由函数） | 文件日志记录到 `~/.neeko/neeko.log` |
+`models/`（原 `state/`）存放**纯数据模型**——结构体、枚举、serde 序列化定义。这些是前后端共享的契约层：
+
+| 文件 | 内容 |
+|------|------|
+| `agent.rs` | `AgentConfig` |
+| `auth.rs` | `AuthMethod` |
+| `diff.rs` | `DiffResult`、`DiffHunk`、`DiffLine` |
+| `project.rs` | `Project`、`GitInfo`、`Worktree`、`FileChange`、`FileStatus`、`ViewMode`、`FileNode`、`FileContent` |
+| `session.rs` | `SessionStore`、`ProjectSession`、`WSLEntrySession`、`RemoteEntrySession` |
+| `terminal.rs` | `TerminalSession`、`TerminalStatus` |
+
+### `commands/` 的职责
+
+所有 `#[tauri::command]` 函数按领域拆分到 `commands/` 下的独立模块：
+
+| 模块 | 领域 |
+|------|------|
+| `project.rs` | 本地项目 CRUD |
+| `git.rs` | 本地 Git 操作 |
+| `terminal.rs` | 本地终端会话 |
+| `wsl.rs` / `wsl_git.rs` | WSL 终端和 Git |
+| `remote.rs` / `remote_git.rs` | SSH 远程终端和 Git |
+| `agent.rs` | Agent 管理 |
+| `ide.rs` | IDE 启动 |
+| `config.rs` | 配置和会话持久化 |
+| `file.rs` | 文件树和文件内容 |
 
 ### 新代码应该放在哪里
 
 | 新代码类型 | 位置 |
 |-----------|------|
-| 新 Tauri 命令 | `lib.rs` 中的自由函数，添加到 `generate_handler!` |
-| 新数据模型 | `state.rs` |
+| 新 Tauri 命令 | `commands/<domain>.rs`，在 `commands/mod.rs` 中导出，在 `app.rs` 的 `generate_handler!` 中注册 |
+| 新数据模型 | `models/<domain>.rs`，在 `models/mod.rs` 中导出 |
 | 新 Manager | 新建 `src/<name>.rs`，在 `lib.rs` 中用 `mod` 声明，添加到 `AppStateWrapper` |
-| Git 操作 | `git.rs` |
-| 工具函数 | 放在最相关模块中的私有函数 |
+| Git 操作 | `git/local.rs`、`git/wsl.rs` 或 `git/remote.rs` |
+| 工具函数 | `utils/<name>.rs` |
+| 错误类型扩展 | `error.rs` |
 
 ---
 
@@ -115,6 +192,8 @@ use watcher::WatcherManager;
 
 ## 示例
 
-- Manager 模式：`src-tauri/src/terminal.rs` —— 使用 `Arc<Mutex<HashMap>>` 的 `TerminalManager`，实现并发会话访问
-- 类型定义：`src-tauri/src/state.rs` —— 所有共享类型集中在一个文件中
-- 中枢模式：`src-tauri/src/lib.rs` —— 所有命令 + 状态组装
+- Manager 模式：`src-tauri/src/terminal.rs` —— 使用 `Arc<Mutex<HashMap>>` 的 `TerminalManager`
+- 类型定义：`src-tauri/src/models/project.rs` —— 共享数据模型
+- 命令拆分：`src-tauri/src/commands/project.rs` —— 领域命令独立模块
+- 中枢模式：`src-tauri/src/app.rs` —— Tauri Builder + 命令注册表
+- 状态组装：`src-tauri/src/app_state.rs` —— `AppStateWrapper` 定义

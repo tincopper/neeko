@@ -175,10 +175,12 @@ pub fn custom_tool_paths(custom_tool_paths_json: &str) -> HashMap<String, String
 }
 
 /// Build all adapters: built-in + custom.
-pub fn all_tool_adapters(custom_tool_paths_json: &str, custom_tools_json: &str) -> Vec<ToolAdapter> {
+pub fn all_tool_adapters(
+    custom_tool_paths_json: &str,
+    custom_tools_json: &str,
+) -> Vec<ToolAdapter> {
     let overrides: HashMap<String, String> = custom_tool_paths(custom_tool_paths_json);
-    let customs: Vec<CustomToolDef> =
-        serde_json::from_str(custom_tools_json).unwrap_or_default();
+    let customs: Vec<CustomToolDef> = serde_json::from_str(custom_tools_json).unwrap_or_default();
 
     let mut adapters: Vec<ToolAdapter> = default_tool_adapters()
         .into_iter()

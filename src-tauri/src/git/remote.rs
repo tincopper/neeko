@@ -3,7 +3,7 @@ use russh::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::state::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::models::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 
 use super::local::parse_unified_diff;
 

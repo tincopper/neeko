@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::process::Command;
 
-use crate::state::{DiffResult, GitInfo};
+use crate::models::{DiffResult, GitInfo};
 
 use super::local::parse_unified_diff;
 use super::remote::parse_git_info_output;

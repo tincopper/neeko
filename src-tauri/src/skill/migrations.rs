@@ -129,7 +129,6 @@ fn migrate_v0_to_v1(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-
 /// v1 -> v2: Add project_tag_groups table for project-level tag binding.
 fn migrate_v1_to_v2(conn: &Connection) -> Result<()> {
     conn.execute_batch(

@@ -31,9 +31,8 @@ const LocalSkillContent: React.FC = React.memo(() => {
    );
 
    const handleEdit = useCallback(
-      async (name: string, skillContent: string) => {
+      async (_name: string, _skillContent: string) => {
          // TODO: 实现编辑保存逻辑
-         console.log("Edit skill:", name, skillContent);
       },
       []
    );
