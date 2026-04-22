@@ -392,6 +392,8 @@ export function useAppContainer(): UseAppContainerResult {
     setWslWtBranch: wslActions.setWslActiveWtBranch,
     setRemoteWorktreePath: remoteActions.setActiveRemoteWorktreePath,
     setRemoteWtBranch: remoteActions.setRemoteActiveWtBranch,
+    activeTabId,
+    onCloseTab: handleCloseTab,
   });
 
   const handleAgentClick = useCallback(
