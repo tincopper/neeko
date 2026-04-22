@@ -27,3 +27,5 @@ export { useWslProjects } from "./useWslProjects";
 
 export type { ActiveRemoteKey } from "./useRemoteProjects";
 export type { ActiveWslKey, SaveSessionFn } from "./useWslProjects";
+export { useMarketplace } from './useMarketplace';
+export type { LeaderboardType } from './useMarketplace';

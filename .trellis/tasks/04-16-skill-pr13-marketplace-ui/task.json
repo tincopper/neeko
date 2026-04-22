@@ -1,9 +1,9 @@
-{
+﻿{
   "id": "skill-pr13-marketplace-ui",
   "name": "skill-pr13-marketplace-ui",
   "title": "PR#13: Marketplace UI — browse, search, install from market",
   "description": "实现 Skill 市场前端 UI：Leaderboard 浏览、搜索、一键安装、安装进度展示",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "frontend",
   "scope": "skill",
   "package": null,
@@ -11,16 +11,12 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-04-16",
-  "completedAt": null,
+  "completedAt": "2026-04-22",
   "branch": "feature/skill-pr13-marketplace-ui",
   "base_branch": "feature/skill-pr12-marketplace-backend",
   "worktree_path": null,
-  "current_phase": 0,
-  "next_action": [
-    { "phase": 1, "action": "implement" },
-    { "phase": 2, "action": "check" },
-    { "phase": 3, "action": "improve-ut" }
-  ],
+  "current_phase": 3,
+  "next_action": [],
   "commit": null,
   "pr_url": null,
   "subtasks": [],
