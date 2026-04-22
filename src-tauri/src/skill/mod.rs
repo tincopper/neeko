@@ -9,3 +9,5 @@ pub mod content_hash;
 pub mod installer;
 pub mod scanner;
 pub mod sync_engine;
+pub mod skillssh_api;
+pub mod git_fetcher;

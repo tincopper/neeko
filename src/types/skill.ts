@@ -73,3 +73,18 @@ export interface DiscoveredSkillDto {
   found_path: string;
   name_guess: string | null;
 }
+
+// Marketplace types
+export interface SkillsShSkill {
+  id: string;
+  skill_id: string;
+  name: string;
+  source: string;
+  installs: number;
+}
+
+export interface InstallProgress {
+  skill_id: string;
+  phase: "cloning" | "installing" | "done" | "error";
+  error?: string;
+}
