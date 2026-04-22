@@ -66,3 +66,10 @@ export interface SkillToolToggle {
 export interface SkillDocumentDto {
   content: string;
 }
+
+export interface DiscoveredSkillDto {
+  id: string;
+  tool: string;
+  found_path: string;
+  name_guess: string | null;
+}

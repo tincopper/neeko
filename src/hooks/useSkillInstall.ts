@@ -1,9 +1,11 @@
-﻿import { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { DiscoveredSkillDto, ManagedSkillDto } from "../types";
 
 export function useSkillInstall(onInstalled: () => void) {
   const [installing, setInstalling] = useState(false);
+  const [discoveredSkills, setDiscoveredSkills] = useState<DiscoveredSkillDto[]>([]);
 
   const installLocal = useCallback(async () => {
     try {
@@ -27,14 +29,36 @@ export function useSkillInstall(onInstalled: () => void) {
   const scanSkills = useCallback(async () => {
     try {
       setInstalling(true);
-      await invoke("scan_local_skills");
-      onInstalled();
+      const result = await invoke<DiscoveredSkillDto[]>("scan_local_skills");
+      setDiscoveredSkills(result);
+      console.log(`[scan] Found ${result.length} discovered skills`);
     } catch (e) {
       console.error("Failed to scan skills:", e);
     } finally {
       setInstalling(false);
     }
+  }, []);
+
+  const importDiscoveredSkill = useCallback(async (discoveredPath: string, name?: string) => {
+    try {
+      setInstalling(true);
+      await invoke<ManagedSkillDto>("import_discovered_skill", { 
+        discoveredPath, 
+        name: name || null 
+      });
+      setDiscoveredSkills(prev => prev.filter(s => s.found_path !== discoveredPath));
+      onInstalled();
+    } catch (e) {
+      console.error("Failed to import skill:", e);
+      throw e;
+    } finally {
+      setInstalling(false);
+    }
   }, [onInstalled]);
+
+  const clearDiscovered = useCallback(() => {
+    setDiscoveredSkills([]);
+  }, []);
 
   const createSkill = useCallback(async (name: string, skillContent: string) => {
     try {
@@ -49,5 +73,14 @@ export function useSkillInstall(onInstalled: () => void) {
     }
   }, [onInstalled]);
 
-  return { installing, installLocal, installGit, scanSkills, createSkill };
+  return { 
+    installing, 
+    installLocal, 
+    installGit, 
+    scanSkills, 
+    createSkill,
+    discoveredSkills,
+    importDiscoveredSkill,
+    clearDiscovered
+  };
 }
