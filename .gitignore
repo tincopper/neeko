@@ -16,6 +16,7 @@ build/
 .gemini
 *.swp
 *.swo
+.snow
 
 # OS
 .DS_Store

@@ -6,11 +6,11 @@
 
 ## 概述
 
-所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目仅使用 **React 内置 Hooks** —— 没有外部数据获取库（没有 React Query、SWR 等）。所有后端通信通过 **Tauri IPC**（`invoke`）进行。
+所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** `invoke` 进行。
 
 Hook 分两类：
 - **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
-- **编排 Hook**：从 App.tsx 提取的横切逻辑（保存、回调、ref 同步）
+- **编排 Hook**：从 `useAppContainer` 提取的横切逻辑（保存、Context 组装、快捷键同步）
 
 ---
 
@@ -39,48 +39,126 @@ export function useToast() {
 ### 关键模式
 
 1. **命名导出函数**（非默认导出）：`export function useXxx()`
-2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 下传
+2. **用 `useCallback` 包裹回调**，保持引用稳定以配合 Props 与 Context Provider value
 3. **用 `useRef` 管理可变状态**，适用于不需要触发重渲染的数据（计时器、缓存、当前值镜像）
 4. **返回对象**，包含状态值和操作回调
 
 ### 编排 Hook 模式
 
-当 App.tsx 的某个职责区域变得臃肿时，提取为编排 Hook：
+当容器层职责区域变得臃肿时，按领域拆分为小型编排 Hook：
 
 ```tsx
-// 编排 Hook 接受大量参数（状态 + refs + setters），返回操作回调
-export interface UseAppCallbacksParams {
-  activeProject: Project | null;
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
-  // ... 更多参数
-}
-
-export interface UseAppCallbacksResult {
-  handleSelectLocalAgent: (agent: AgentConfig | null) => void;
-  handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
-  // ... 更多回调
+export function useAgentActions(params: {
+  terminal: { fontSize: number; shell: string; fontFamily: string };
+  handleOpenIde: (project: { id: string; selected_ide: string | null }) => Promise<void>;
+  showToast: (message: string, type?: "info" | "error") => void;
+}) {
+  // 单领域职责：本地 Agent + IDE + 项目配置保存
 }
 ```
 
 **规则**：
-- 编排 Hook 的文件名以 `useApp` 开头（如 `useAppCallbacks`、`useAppRefSync`）
-- 编排 Hook 接受状态/setter/ref 作为参数，不自行创建领域状态
-- 编排 Hook 内部使用 `useCallback` 保证返回的回调引用稳定
+- 编排 Hook 按领域命名，避免“全局回调大杂烩”
+- 优先从 `useAppStore` 读取跨域状态，减少参数数量
+- 仅暴露本领域回调，使用 `useCallback` 保持引用稳定
 
-### Ref 镜像模式
+### Store 快照模式
 
-本代码库的特色模式：将状态值镜像到 ref，使回调能读取最新值而不产生过期闭包：
+全局事件处理器通过 `useAppStore.getState()` 读取最新快照，避免 stale closure 和大量 Ref 同步：
 
 ```tsx
-// src/App.tsx —— 常见模式
-const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-const activeProjectIdRef = useRef<string | null>(null);
-useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
-
-// 现在回调可以读取 activeProjectIdRef.current 而不依赖 activeProjectId
+// src/hooks/useKeyboardShortcuts.ts
+useEffect(() => {
+  const handleKeyDown = () => {
+    const snapshot = useAppStore.getState();
+    // 读取 snapshot.activeProjectId / snapshot.wslEntries / snapshot.selectProject
+  };
+  window.addEventListener("keydown", handleKeyDown, true);
+  return () => window.removeEventListener("keydown", handleKeyDown, true);
+}, []);
 ```
 
-该模式在 `App.tsx` 和 `useWorktreeState` 等 Hook 中广泛使用。
+该模式用于跨域读取场景。领域状态直接写入 `useAppStore`。`useSyncToStore` 仅负责连接快照和快捷键依赖动作引用的同步，不再镜像 project/file 字段。
+
+---
+
+## 场景：FileView Hook 单源状态契约 2026-04-21
+
+### 1. Scope / Trigger
+
+- Trigger：文件树和 Tab 状态由 `useState` 持有并跨层透传，消费端难以统一，易产生双源读取。
+- Scope：`useFileView`、`useAppContainer`、`FileActionsContext`、`AppLayout`、`FileViewer`。
+
+### 2. Signatures
+
+```ts
+// src/hooks/useFileView.ts
+export function useFileView(): {
+  fileTree: FileNode[];
+  tabs: FileTab[];
+  activeTabId: string | null;
+  activeTab: FileTab | null;
+  activeFilePath: string | null;
+  isLoading: boolean;
+  error: string | null;
+  loadFileTree(projectId: string): Promise<void>;
+  openFile(projectId: string, filePath: string): Promise<void>;
+  closeTab(tabId: string): void;
+  activateTab(tabId: string): void;
+  updateTabContent(tabId: string, content: string): void;
+  saveFile(content: string): Promise<boolean>;
+  clearFileView(): void;
+}
+```
+
+### 3. Contracts
+
+1. `useFileView` 不持有 `fileTree/fileTabs/activeFileTabId` 的本地 `useState`，统一使用 `useAppStore`。
+2. `openFile` 的 tab 唯一键为 `tabId = \`${projectId}:${filePath}\``。
+3. `activeFilePath` 由 `fileTabs + activeFileTabId` 派生并写回 store，禁止在组件层重复推导。
+4. `FileViewer` 与 `AppLayout` 只读 store 状态，动作通过 `FileActionsContext` 下发。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 | 错误处理 |
+|------|------|------|---------|
+| 打开重复文件 | 现有 `tabId` | 只切换激活 tab | 不触发 IPC |
+| 打开新文件 | 新 `tabId` | 创建 tab 并激活 | IPC 失败写 `error` |
+| 关闭活动 tab | `tabId` 命中活动项 | 激活相邻 tab 或置空 | 无 |
+| 保存文件 | 活动 tab 存在 | 返回 `true` 并清除脏标记 | IPC 失败返回 `false` |
+
+### 5. Good/Base/Bad Cases
+
+- Good：`openFile` 新建 tab，`activeFilePath` 同步为目标路径。
+- Base：连续切换 tab，`activeFilePath` 始终和 `activeFileTabId` 对齐。
+- Bad：`saveFile` 在无活动 tab 时直接返回 `false`，不触发写文件命令。
+
+### 6. Tests Required
+
+- Hook 断言  
+`openFile` 重复打开同一路径不增加 tab 数量。  
+`closeTab` 关闭最后一个 tab 后 `activeFileTabId` 为 `null`。  
+`updateTabContent` 后 `isDirty` 与原始内容比较一致。
+- 集成断言  
+`FileViewer` 调用 `onFileSave` 时根据返回值维持脏标记。  
+`AppLayout` 切到 files 面板时触发 `onLoadFileTree(activeProjectId)`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+const [tabs, setTabs] = useState<FileTab[]>([]);
+const [activeTabId, setActiveTabId] = useState<string | null>(null);
+```
+
+#### Correct
+
+```tsx
+const tabs = useAppStore((s) => s.fileTabs);
+const activeTabId = useAppStore((s) => s.activeFileTabId);
+useAppStore.setState({ fileTabs: nextTabs, activeFileTabId: nextId });
+```
 
 ---
 
@@ -163,13 +241,14 @@ export function useAppConfig() {
 ```tsx
 // useSessionPersistence.ts
 const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
-  // 更新 ref
-  worktreeStateRef.current[projectId] = wtPath;
-  // 防抖保存（500ms）
-  if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
-  wtSaveTimerRef.current = setTimeout(() => {
-    invoke("save_session", { worktreeState: worktreeStateRef.current }).catch(() => {});
-  }, 500);
+  // 更新本地 state，并把 next 传给防抖持久化
+  setWorktreeState((prev) => {
+    const next = { ...prev };
+    if (wtPath) next[projectId] = wtPath;
+    else delete next[projectId];
+    persistWorktreeState(next);
+    return next;
+  });
 }, []);
 ```
 
@@ -180,7 +259,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | 约定 | 示例 |
 |------|------|
 | 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
-| 文件名（编排）：`useApp<Purpose>.ts` | `useAppCallbacks.ts`、`useAppRefSync.ts` |
+| 文件名（编排）：`use<Domain>Actions.ts` / `use*ToStore.ts` | `useAgentActions.ts`、`useWorktreeActions.ts`、`useSyncToStore.ts` |
 | 导出：命名函数 | `export function useAppConfig()` |
 | 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
 | 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
@@ -196,6 +275,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useAppConfig` | 应用配置持久化 | `config`、`saveConfig`、`settingsOpen` |
 | `useToast` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
 | `useLocalProjects` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
+| `useFileView` | 文件树和编辑 Tab 状态动作 | `loadFileTree`、`openFile`、`saveFile` |
 | `useWslProjects` | WSL 发行版管理 | WSL 会话、CRUD 回调 |
 | `useRemoteProjects` | SSH 远程管理 + 认证 | 远程条目、CRUD 回调、认证状态 |
 | `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
@@ -206,18 +286,19 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
-| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`saveSideTerminalWidth`、相关 refs |
-| `useAppRefSync` | 批量同步状态到 refs | （仅副作用，无返回值） |
-| `useSideTerminalState` | 本地/WSL/远程 side terminal 统一管理 | `sideTerminalOpenSet`、`setSideTerminalOpen`、open handlers、focus 状态 |
-| `useAppCallbacks` | IDE、agent、worktree、auth、UI 回调 | 所有 `handle*` 回调 |
+| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`worktreeState` |
+| `useSyncToStore` | 同步连接快照与快捷键动作引用到 app store | （仅副作用，无返回值） |
+| `useAgentActions` | 本地 agent、IDE、项目设置保存 | Agent 与 IDE 回调 |
+| `useWorktreeActions` | 本地 worktree 导航与 diff 切换 | Worktree 回调 |
+| `useRemoteAuthActions` | SSH 认证取消与确认 | Remote auth 回调 |
 
 ---
 
 ## 常见错误
 
-### 1. 作为 Props 传递的回调忘记用 `useCallback`
+### 1. 作为 Props 或 Context value 传递的回调忘记用 `useCallback`
 
-由于本项目使用 Props 下传 + `React.memo` 组件，没有 `useCallback` 的回调会破坏记忆化：
+由于本项目同时使用 Props 与 Context 分发，没有 `useCallback` 的回调会导致消费者无效重渲染：
 
 ```tsx
 // 错误 —— 每次渲染产生新的函数引用
@@ -229,7 +310,7 @@ const handleSelect = useCallback((id: string) => { ... }, [deps]);
 
 ### 2. 在事件处理器中读取过期状态
 
-当回调需要最新状态值时，使用 ref 镜像模式：
+当回调需要最新跨域状态值时，优先使用 store 快照模式：
 
 ```tsx
 // 错误 —— 闭包捕获了初始值
@@ -237,9 +318,9 @@ const handler = useCallback(() => {
   console.log(activeProjectId); // 过期了！
 }, []); // 空依赖以保持引用稳定
 
-// 正确 —— 从 ref 读取
+// 正确 —— 从 store 快照读取
 const handler = useCallback(() => {
-  console.log(activeProjectIdRef.current); // 始终是最新的
+  console.log(useAppStore.getState().activeProjectId); // 始终是最新的
 }, []);
 ```
 

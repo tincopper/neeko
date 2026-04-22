@@ -1,31 +1,34 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
-import type { RemoteEntrySession, RemoteProject, AuthMethod, AppConfig } from "../types";
+import { useAppContext, useRemoteContext } from "../contexts";
 
-interface RemoteProjectViewProps {
-   entry: RemoteEntrySession;
-   project: RemoteProject;
-   remoteAuthStore: Map<string, AuthMethod>;
-   remoteDiffState: { entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string; filePath: string } | null;
-   config: AppConfig;
-   onRemoteDiffBack: () => void;
-   activeRemoteWorktreePath: string | null;
-   onRemoteSessionReady: (pid: string) => void;
-}
+function RemoteProjectView() {
+   const { config } = useAppContext();
+   const {
+      activeRemoteProject,
+      remoteAuthStore,
+      remoteDiffState,
+      onRemoteDiffBack,
+      activeRemoteWorktreePath,
+      setRemoteOpenSessions,
+   } = useRemoteContext();
 
-function RemoteProjectView({
-   entry,
-   project,
-   remoteAuthStore,
-   remoteDiffState,
-   config,
-   onRemoteDiffBack,
-   activeRemoteWorktreePath,
-   onRemoteSessionReady,
-}: RemoteProjectViewProps) {
+   if (!activeRemoteProject) {
+      return null;
+   }
+
+   const { entry, project } = activeRemoteProject;
    const remoteLayoutId = `remote:${entry.id}:${project.id}:${activeRemoteWorktreePath ?? "main"}`;
    const auth = remoteAuthStore.get(entry.id);
+
+   const onRemoteSessionReady = useCallback(
+      (pid: string) => {
+         setRemoteOpenSessions((prev) => new Set(prev).add(pid));
+      },
+      [setRemoteOpenSessions]
+   );
+
    if (!auth) {
       return (
          <div className="empty-state flex-1 flex flex-col text-text-secondary">

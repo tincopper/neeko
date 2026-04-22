@@ -1,0 +1,17 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "目录与barrel约束"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件命名与导入约定"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "hook命名和回调稳定性"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "context/store职责边界"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型迁移与IPC字段保持"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "类型检查和导入规则"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke契约稳定"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试策略"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "tauri mock边界"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "避免重复逻辑"}
+{"file": "src/contexts/project-actions-context.tsx", "reason": "命名统一入口"}
+{"file": "src/hooks/useAppContainer.ts", "reason": "action value装配"}
+{"file": "src/components/layout/AppLayout.tsx", "reason": "panels导入现状"}
+{"file": "src/components/MainContent.tsx", "reason": "project action消费"}
+{"file": "src/types.ts", "reason": "类型拆分源文件"}

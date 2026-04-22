@@ -1,93 +1,62 @@
 import React, { useCallback, useState } from "react";
-import { Project, WSLEntrySession, WSLProject, RemoteEntrySession, RemoteProject } from "../../types";
 import { IS_WINDOWS } from "../../utils/platform";
-import { useAppContext } from "../../context/app-context";
+import {
+   useAppContext,
+   useProjectActionsContext,
+   useWslContext,
+   useRemoteContext,
+} from "../../contexts";
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
-import { WSLItem, RemoteItem, ActiveWslKey, ActiveRemoteKey } from "../connections/RemoteItems";
+import { WSLItem, RemoteItem } from "../connections/RemoteItems";
+import { useAppStore } from "../../store/appStore";
 
-interface ProjectsPanelProps {
-   projects: Project[];
-   activeProjectId: string | null;
-   wslEntries: WSLEntrySession[];
-   remoteEntries: RemoteEntrySession[];
-   activeWslKey: ActiveWslKey;
-   activeRemoteKey: ActiveRemoteKey;
-   wslOpenSessions: Set<string>;
-   remoteOpenSessions: Set<string>;
-   onAddProject: () => void;
-   onRemoveProject: (projectId: string) => void;
-   onSelectProject: (projectId: string) => void;
-   onSelectFile: (projectId: string, filePath: string) => void;
-   onRefreshGit: (projectId: string) => void;
-   onBackToMainTerminal: (projectId: string) => void;
-   onOpenIde?: (projectId: string) => void;
-   onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
-   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
-   onSelectWslProject: (distro: string, project: WSLProject) => void;
-   onCloseWslProject: (entryId: string, projectId: string) => void;
-   onRemoveWslProject: (entryId: string, projectId: string) => void;
-   onRemoveWslEntry: (entryId: string) => void;
-   onAddWslProject: (entryId: string) => void;
-   onSelectRemoteProject: (host: string, project: RemoteProject) => void;
-   onCloseRemoteProject: (entryId: string, projectId: string) => void;
-   onRemoveRemoteProject: (entryId: string, projectId: string) => void;
-   onRemoveRemoteEntry: (entryId: string) => void;
-   onAddRemoteProject: (entryId: string) => void;
-   onSelectWslFile?: (distro: string, projectPath: string, filePath: string) => void;
-   onSelectRemoteFile?: (entryId: string, projectPath: string, filePath: string) => void;
-   onRefreshWslGit?: (distro: string, projectId: string, projectPath: string) => void;
-   onRefreshRemoteGit?: (entryId: string, projectId: string, projectPath: string) => void;
-   onOpenWslIde?: (distro: string, projectPath: string, ide: string) => void;
-   onOpenRemoteIde?: (entryId: string, projectPath: string, ide: string) => void;
-   onOpenWslWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
-   onOpenRemoteWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
-   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
-   onSaveProjectSettings?: (projectId: string, agentId: string | null, ideCommand: string | null) => void;
-   onDragEnd?: (draggedId: string, targetId: string) => void;
-}
-
-const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
-   projects,
-   activeProjectId,
-   wslEntries,
-   remoteEntries,
-   activeWslKey,
-   activeRemoteKey,
-   wslOpenSessions,
-   remoteOpenSessions,
-   onAddProject: _onAddProject,
-   onRemoveProject,
-   onSelectProject,
-   onSelectFile,
-   onRefreshGit,
-   onBackToMainTerminal,
-   onOpenIde,
-   onOpenWorktreeTerminal,
-   onSelectWorktreeFile,
-   onSelectWslProject,
-   onCloseWslProject,
-   onRemoveWslProject,
-   onRemoveWslEntry,
-   onAddWslProject,
-   onSelectRemoteProject,
-   onCloseRemoteProject,
-   onRemoveRemoteProject,
-   onRemoveRemoteEntry,
-   onAddRemoteProject,
-   onSelectWslFile,
-   onSelectRemoteFile,
-   onRefreshWslGit,
-   onRefreshRemoteGit,
-   onOpenWslIde,
-   onOpenRemoteIde,
-   onOpenWslWorktreeTerminal,
-   onOpenRemoteWorktreeTerminal,
-   invokeRemoteGit,
-   onSaveProjectSettings,
-   onDragEnd,
-}) => {
+const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
+   const projects = useAppStore((state) => state.projects);
+   const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const {
+      onRemoveProject,
+      onSelectProject,
+      onSelectFile,
+      onRefreshGit,
+      onBackToMainTerminal,
+      onOpenIde,
+      onOpenWorktreeTerminal,
+      onSelectWorktreeFile,
+      onSaveProjectSettings,
+      onDragEnd,
+   } = useProjectActionsContext();
+   const {
+      wslEntries,
+      activeWslKey,
+      wslOpenSessions,
+      onSelectWslProject,
+      onCloseWslProject,
+      onRemoveWslProject,
+      onRemoveWslEntry,
+      onAddWslProject,
+      onSelectWslFile,
+      onRefreshWslGit,
+      onOpenWslIde,
+      onOpenWslWorktreeTerminal,
+   } = useWslContext();
+   const {
+      remoteEntries,
+      activeRemoteKey,
+      remoteOpenSessions,
+      onSelectRemoteProject,
+      onCloseRemoteProject,
+      onRemoveRemoteProject,
+      onRemoveRemoteEntry,
+      onAddRemoteProject,
+      onSelectRemoteFile,
+      onRefreshRemoteGit,
+      onOpenRemoteIde,
+      onOpenRemoteWorktreeTerminal,
+      invokeRemoteGit,
+   } = useRemoteContext();
+
    const [dialog, setDialog] = useState<DialogState | null>(null);
 
    const handleOpenDialog = useCallback(
@@ -114,22 +83,26 @@ const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                         key={project.id}
                         project={project}
                         isActive={activeProjectId === project.id}
-                        onSelectProject={onSelectProject}
-                        onRemoveProject={onRemoveProject}
-                        onSelectFile={onSelectFile}
-                        onRefreshGit={onRefreshGit}
-                        onBackToMainTerminal={onBackToMainTerminal}
-                        onOpenDialog={setDialog}
-                        onOpenIde={onOpenIde}
-                        onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                        onSelectWorktreeFile={onSelectWorktreeFile}
-                        ideCommandOverrides={ideCommandOverrides}
-                        onRefresh={onRefreshGit}
-                        agents={agents}
-                        config={config}
-                        onSaveProjectSettings={onSaveProjectSettings}
-                        onDragEnd={onDragEnd}
-                        onShowToast={showToast}
+                        actions={{
+                           onSelectProject,
+                           onRemoveProject,
+                           onSelectFile,
+                           onRefreshGit,
+                           onBackToMainTerminal,
+                           onOpenDialog: setDialog,
+                           onOpenIde,
+                           onOpenWorktreeTerminal,
+                           onSelectWorktreeFile,
+                           onRefresh: onRefreshGit,
+                           onSaveProjectSettings,
+                           onDragEnd,
+                           onShowToast: showToast,
+                        }}
+                        viewConfig={{
+                           ideCommandOverrides,
+                           agents,
+                           config,
+                        }}
                      />
                   ))}
 
@@ -226,7 +199,8 @@ const ProjectsPanel: React.FC<ProjectsPanelProps> = ({
                onRefreshAfterWslSsh={
                   dialog.source
                      ? (() => {
-                        const src = dialog.source!;
+                        const src = dialog.source;
+                        if (!src) return;
                         if (src.type === "wsl" && src.distro && onRefreshWslGit) {
                            const entry = wslEntries.find((e) => e.distro === src.distro);
                            const project = entry?.projects.find((p) => p.path === src.projectPath);

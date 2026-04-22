@@ -1,0 +1,9 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "目录与barrel验收"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "类型检查和导入规范验收"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型与字段命名验收"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试变更验收"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "mock规范验收"}
+{"file": "src/contexts/project-actions-context.tsx", "reason": "命名一致性复核"}
+{"file": "src/hooks/useAppContainer.ts", "reason": "上下文值一致性复核"}

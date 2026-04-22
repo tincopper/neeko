@@ -6,7 +6,7 @@
 
 ## 概述
 
-项目当前的质量门禁是 **TypeScript 类型检查**（`tsc --noEmit`）。目前没有配置 ESLint、Prettier 或测试框架。CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。
+项目当前的主要质量门禁是 **TypeScript 类型检查**（`tsc --noEmit`）与 **Vitest** 回归测试。项目目前没有配置 ESLint、Prettier。CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。
 
 ---
 
@@ -67,7 +67,7 @@ import { TitleBar } from "../components/layout";
 
 ### 2. 所有非根组件使用 `React.memo`
 
-在 Props 下传架构中，用 `React.memo` 包裹组件导出以防止不必要的重渲染：
+在 Props 与 Context 混合分发架构中，用 `React.memo` 包裹组件导出以防止不必要的重渲染：
 
 ```tsx
 export default React.memo(MyComponent);

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-04-15
+- **Total Sessions**: 21
+- **Last Active**: 2026-04-21
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~500 | Active |
+| `journal-1.md` | ~885 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -27,8 +27,17 @@
 ## Session History
 
 <!-- @@@auto:session-history -->
-| # | Date | Title | Commits |
-|---|------|-------|---------|
+| # | Date | Title | Commits | Branch |
+|---|------|-------|---------|--------|
+| 21 | 2026-04-21 | 合并 context 目录到 contexts | `7c0de49` | `enhance/ui_clean_code` |
+| 20 | 2026-04-21 | TODO未完成项优化方案收尾 | `d4a36f1` | `enhance/ui_clean_code` |
+| 19 | 2026-04-21 | Phase1 Context 单源迁移与规范同步 | `c0b0b0e` | `enhance/ui_clean_code` |
+| 18 | 2026-04-21 | Hook 复杂度治理重构收尾 | `b64866b` | `enhance/ui_clean_code` |
+| 17 | 2026-04-21 | 完成 Prop 穿透清理 | `1393265` | `enhance/ui_clean_code` |
+| 16 | 2026-04-21 | 重构跨域状态同步为 Zustand 快照 | `88f913a` | `enhance/ui_clean_code` |
+| 15 | 2026-04-21 | 完成巨型组件拆分优化 | `7cfea23`, `46ea632`, `e7eab3f`, `b73a11e` | `enhance/ui_clean_code` |
+| 14 | 2026-04-20 | AppLayout Props 瘦身重构 | `5527725` | `enhance/ui_clean_code` |
+| 13 | 2026-04-20 | 归档 terminal-split 任务 + gitignore 更新 | `020f3b6`, `692d70a` | `enhance/ui_clean_code` |
 | 12 | 2026-04-15 | 项目侧边栏分组结构改造 | `f06221e` |
 | 11 | 2026-04-14 | Fix gear button icon, dropdown clipping, and flatten bar styles | `823ca36` |
 | 10 | 2026-04-13 | Title Bar 简化与深色主题调整 | `dfec4c1` |

@@ -1,0 +1,14 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 设计约束与编排 Hook 约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "跨域状态分层与容器职责"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "新增 store 与 hook 参数类型一致性"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "类型检查与回调稳定性"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 调用约束和错误处理"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "Hook 测试更新策略"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Tauri 边界 mock 策略"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "迁移时避免重复状态机制"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "键盘事件与会话持久化边界校验"}
+{"file": "src/hooks/useAppContainer.ts", "reason": "跨域状态编排主入口"}
+{"file": "src/hooks/useKeyboardShortcuts.ts", "reason": "快捷键行为基线"}
+{"file": "src/hooks/useSessionPersistence.ts", "reason": "会话保存行为基线"}

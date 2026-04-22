@@ -3,119 +3,50 @@ import { invoke } from "@tauri-apps/api/core";
 import { SplitLayout, TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
-import FileViewer from "./panels/FileViewer";
+import { FileViewer } from "./files";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
-import type {
-   Project,
-   WSLProject,
-   RemoteProject,
-   RemoteEntrySession,
-   AuthMethod,
-   AgentConfig,
-   TerminalTab,
-   FileTab,
-} from "../types";
-import { useAppContext } from "../context/app-context";
+import {
+   useAppContext,
+   useProjectActionsContext,
+   useWslContext,
+   useRemoteContext,
+   useEditorContext,
+} from "../contexts";
+import type { AgentConfig } from "../types";
+import { useAppStore } from "../store/appStore";
 
-interface MainContentProps {
-   activeProject: Project | null;
-   activeWorktreePath: string | null;
-   activeWorktreeBranch: string;
-   handleSelectProject: (projectId: string) => void;
-   handleAddProject: () => void;
-   suppressResizeRef?: React.MutableRefObject<boolean>;
-
-   tabs: TerminalTab[];
-   activeTabId: string | null;
-   onActivateTab: (tabId: string) => void;
-   onCloseTab: (tabId: string) => void;
-   onAddTab: () => void;
-   onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
-
-   agents: AgentConfig[];
-   compactMode: boolean;
-   showAgentBar: boolean;
-   hiddenAgentIds: string[];
-   onToggleHiddenAgent: (agentId: string) => void;
-   onAgentClick: (agent: AgentConfig) => void;
-   showToast: (message: string, type?: "info" | "error") => void;
-
-   activeWslProject: { distro: string; project: WSLProject } | null;
-   activeWslWorktreePath: string | null;
-   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-
-   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
-   activeRemoteWorktreePath: string | null;
-   remoteAuthStore: Map<string, AuthMethod>;
-   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-
-   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
-   remoteDiffState: {
-      entryId: string;
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-      filePath: string;
-   } | null;
-   worktreeDiffState: { worktreePath: string; filePath: string } | null;
-
-   onWslDiffBack: () => void;
-   onRemoteDiffBack: () => void;
-   onWorktreeDiffBack: () => void;
-
-   // File view props
-   fileTabs: FileTab[];
-   activeFileTabId: string | null;
-   onFileCloseTab: (tabId: string) => void;
-   onFileActivateTab: (tabId: string) => void;
-   onFileSave: (content: string) => Promise<boolean>;
-   onFileContentChange: (tabId: string, content: string) => void;
-}
-
-function MainContent({
-   activeProject,
-   activeWorktreePath,
-   activeWorktreeBranch,
-   handleSelectProject,
-   handleAddProject,
-   suppressResizeRef,
-   tabs,
-   activeTabId,
-   onActivateTab,
-   onCloseTab,
-   onAddTab,
-   onTabStatusChange,
-   agents,
-   compactMode,
-   showAgentBar,
-   hiddenAgentIds,
-   onToggleHiddenAgent,
-   onAgentClick,
-   showToast,
-   activeWslProject,
-   activeWslWorktreePath,
-   setWslOpenSessions,
-   activeRemoteProject,
-   activeRemoteWorktreePath,
-   remoteAuthStore,
-   setRemoteOpenSessions,
-   wslDiffState,
-   remoteDiffState,
-   worktreeDiffState,
-   onWslDiffBack,
-   onRemoteDiffBack,
-   onWorktreeDiffBack,
-   fileTabs,
-   activeFileTabId,
-   onFileCloseTab,
-   onFileActivateTab,
-   onFileSave,
-   onFileContentChange,
-}: MainContentProps) {
-   const { config } = useAppContext();
+function MainContent() {
+   const { config, showToast } = useAppContext();
+   const {
+      onSelectProject,
+      onAddProject,
+      onWorktreeDiffBack,
+   } = useProjectActionsContext();
+   const {
+      activeWslProject,
+      activeWslWorktreePath,
+      wslDiffState,
+      onWslDiffBack,
+   } = useWslContext();
+   const { activeRemoteProject } = useRemoteContext();
+   const {
+      tabs,
+      activeTabId,
+      onActivateTab,
+      onCloseTab,
+      onAddTab,
+      agents,
+      compactMode,
+      showAgentBar,
+      hiddenAgentIds,
+      onToggleHiddenAgent,
+      onAgentClick,
+   } = useEditorContext();
+   const activeProject = useAppStore((state) => state.activeProject);
+   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const worktreeDiffState = useAppStore((state) => state.worktreeDiffState);
+   const fileTabs = useAppStore((state) => state.fileTabs);
 
    // Manage Presets dropdown
    const [managerOpen, setManagerOpen] = useState(false);
@@ -135,7 +66,6 @@ function MainContent({
    const allEnabledAgents = useMemo(() => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)), [agents]);
 
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
-   const activeTabAgentId = activeTab?.agentId ?? null;
 
    // Agent installed status
    const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
@@ -171,29 +101,6 @@ function MainContent({
    const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)), [agents, hiddenAgentIds]);
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
    const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
-
-   const handleTerminalTabStatusChange = useCallback(
-      (status: "Idle" | "Running" | "Failed") => {
-         if (activeTabId) {
-            onTabStatusChange?.(activeTabId, status);
-         }
-      },
-      [activeTabId, onTabStatusChange]
-   );
-
-   const onWslSessionReady = useCallback(
-      (pid: string) => {
-         setWslOpenSessions((prev) => new Set(prev).add(pid));
-      },
-      [setWslOpenSessions]
-   );
-
-   const onRemoteSessionReady = useCallback(
-      (pid: string) => {
-         setRemoteOpenSessions((prev) => new Set(prev).add(pid));
-      },
-      [setRemoteOpenSessions]
-   );
 
    const isTerminalView = activeProject?.active_view === "Terminal";
    const localLayoutId = activeProject
@@ -232,8 +139,8 @@ function MainContent({
                      {/* Gear button */}
                      <div className="relative shrink-0" ref={managerRef}>
                         <button
-                            className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                            style={{ fontSize: "var(--terminal-font-size)" }}
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                           style={{ fontSize: "var(--terminal-font-size)" }}
                            onClick={() => setManagerOpen((v) => !v)}
                            title="Manage Presets"
                         >
@@ -252,8 +159,8 @@ function MainContent({
                                  return (
                                     <div
                                        key={agent.id}
-                                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
-                                        style={{ fontSize: "var(--terminal-font-size)" }}
+                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
+                                       style={{ fontSize: "var(--terminal-font-size)" }}
                                        onClick={() => onToggleHiddenAgent(agent.id)}
                                     >
                                        <AgentIcon icon={agent.icon} />
@@ -273,23 +180,23 @@ function MainContent({
                      </div>
                      {/* Agent buttons */}
                      <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
-                     {enabledAgents.map((agent) => {
-                        const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
-                        const selected = currentAgentId === agent.id;
-                        return (
-                           <button
-                              key={agent.id}
-                               className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
-                               style={{ fontSize: "var(--terminal-font-size)" }}
-                              onClick={() => handleAgentClick(agent)}
-                              disabled={!installed}
-                              title={agent.name}
-                           >
-                              <AgentIcon icon={agent.icon} />
-                              {!compactMode && <span>{agent.name}</span>}
-                           </button>
-                        );
-                     })}
+                        {enabledAgents.map((agent) => {
+                           const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+                           const selected = currentAgentId === agent.id;
+                           return (
+                              <button
+                                 key={agent.id}
+                                 className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
+                                 style={{ fontSize: "var(--terminal-font-size)" }}
+                                 onClick={() => handleAgentClick(agent)}
+                                 disabled={!installed}
+                                 title={agent.name}
+                              >
+                                 <AgentIcon icon={agent.icon} />
+                                 {!compactMode && <span>{agent.name}</span>}
+                              </button>
+                           );
+                        })}
                      </div>
                   </div>
                )}
@@ -310,20 +217,7 @@ function MainContent({
                      <SplitLayout
                         layoutId={wslLayoutId}
                         renderPane={(paneId) => (
-                           <WSLTerminalView
-                              paneId={paneId}
-                              distro={activeWslProject.distro}
-                              projectId={activeWslProject.project.id}
-                              projectName={activeWslProject.project.name}
-                              projectPath={activeWslWorktreePath ?? activeWslProject.project.path}
-                              fontSize={config.terminalFontSize}
-                              fontFamily={config.fontFamily}
-                              cacheKeySuffix={
-                                 activeWslWorktreePath ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}` : ""
-                              }
-                              selectedAgentId={activeWslProject.project.selected_agent}
-                              onSessionReady={onWslSessionReady}
-                           />
+                           <WSLTerminalView paneId={paneId} />
                         )}
                      />
                   </div>
@@ -332,33 +226,14 @@ function MainContent({
          )}
 
          {activeRemoteProject && !activeProject && !activeWslProject && (
-            <RemoteProjectView
-               entry={activeRemoteProject.entry}
-               project={activeRemoteProject.project}
-               remoteAuthStore={remoteAuthStore}
-               remoteDiffState={remoteDiffState}
-               config={config}
-               onRemoteDiffBack={onRemoteDiffBack}
-               activeRemoteWorktreePath={activeRemoteWorktreePath}
-               onRemoteSessionReady={onRemoteSessionReady}
-            />
+            <RemoteProjectView />
          )}
 
-          {activeProject ? (
-             <div className="content-area flex-1 overflow-hidden flex flex-col">
-                {showFileViewer ? (
-                   <FileViewer
-                      tabs={fileTabs}
-                      activeTabId={activeFileTabId}
-                      theme={config.theme}
-                      fontFamily={config.fontFamily}
-                      editorFontSize={config.editorFontSize}
-                      onSave={onFileSave}
-                      onCloseTab={onFileCloseTab}
-                      onActivateTab={onFileActivateTab}
-                      onContentChange={onFileContentChange}
-                   />
-                ) : worktreeDiffState ? (
+         {activeProject ? (
+            <div className="content-area flex-1 overflow-hidden flex flex-col">
+               {showFileViewer ? (
+                  <FileViewer />
+               ) : worktreeDiffState ? (
                   <DiffView
                      diffSource={{
                         type: "worktree",
@@ -374,38 +249,12 @@ function MainContent({
                      {!activeWorktreePath && (
                         <SplitLayout
                            layoutId={localLayoutId}
-                           renderPane={(paneId) => (
-                              <TerminalView
-                                 paneId={paneId}
-                                 project={activeProject}
-                                 tabId={activeTabId}
-                                 tabAgentId={activeTabAgentId}
-                                 fontSize={config.terminalFontSize}
-                                 shell={config.shell}
-                                 fontFamily={config.fontFamily}
-                                 suppressResizeRef={suppressResizeRef}
-                                 agentCommandOverride={
-                                    config.agentCommandOverrides?.[
-                                       activeTabAgentId ?? activeProject.selected_agent ?? ""
-                                    ]
-                                 }
-                                 onTabStatusChange={handleTerminalTabStatusChange}
-                              />
-                           )}
+                           renderPane={(paneId) => <TerminalView paneId={paneId} />}
                         />
                      )}
 
                      {activeWorktreePath && (
-                        <WorktreeTerminalView
-                           projectId={activeProject.id}
-                           projectName={activeProject.name}
-                           worktreePath={activeWorktreePath}
-                           worktreeBranch={activeWorktreeBranch}
-                           selectedAgent={activeProject.selected_agent}
-                           fontSize={config.terminalFontSize}
-                           shell={config.shell}
-                           fontFamily={config.fontFamily}
-                        />
+                        <WorktreeTerminalView />
                      )}
                   </div>
                ) : diffFilePath ? (
@@ -413,7 +262,7 @@ function MainContent({
                      projectId={activeProject.id}
                      filePath={diffFilePath}
                      initialMode={config.diffMode}
-                     onBack={() => handleSelectProject(activeProject.id)}
+                     onBack={() => onSelectProject(activeProject.id)}
                   />
                ) : null}
             </div>
@@ -425,7 +274,7 @@ function MainContent({
                   <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
                   <button
                      className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
-                     onClick={handleAddProject}
+                     onClick={onAddProject}
                   >
                      Add Project
                   </button>
