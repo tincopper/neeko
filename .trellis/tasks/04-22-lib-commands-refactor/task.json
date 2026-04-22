@@ -1,0 +1,53 @@
+{
+  "id": "lib-commands-refactor",
+  "name": "lib-commands-refactor",
+  "title": "lib.rs 命令注册重构",
+  "description": "",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "VinciWu557",
+  "assignee": "VinciWu557",
+  "createdAt": "2026-04-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "enhance/ui_clean_code",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
