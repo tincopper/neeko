@@ -883,3 +883,37 @@ macOS 从 Dock/Finder 启动的 GUI 应用只继承 launchd 提供的最小 PATH
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Backend 目录重构与收尾修复
+
+**Date**: 2026-04-22
+**Task**: Backend 目录重构与收尾修复
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+完成 src-tauri 后端目录重构与命令注册拆分，补齐 finish-work 检查项并清理 skill 模块无用代码告警。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `deab0f6` | (see git log) |
+| `fc99987` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
