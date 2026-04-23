@@ -57,7 +57,11 @@ pub fn fetch_leaderboard(
     proxy_url: Option<&str>,
 ) -> Result<Vec<SkillsShSkill>> {
     let client = build_http_client(proxy_url, 30)?;
-    let url = format!("https://skills.sh/leaderboard/{}", board.as_str());
+    let url = match board {
+        LeaderboardType::AllTime => "https://skills.sh/".to_string(),
+        LeaderboardType::Hot => "https://skills.sh/hot".to_string(),
+        LeaderboardType::Trending => "https://skills.sh/trending".to_string(),
+    };
 
     let html = client
         .get(&url)
@@ -66,20 +70,17 @@ pub fn fetch_leaderboard(
         .text()
         .context("Failed to read response body")?;
 
-    parse_leaderboard_html(&html)
+    parse_skills_from_html(&html)
 }
 
 pub fn search_skills(
     query: &str,
-    limit: usize,
+    _limit: usize,
     proxy_url: Option<&str>,
 ) -> Result<Vec<SkillsShSkill>> {
     let client = build_http_client(proxy_url, 30)?;
     let encoded_query = urlencoding::encode(query);
-    let url = format!(
-        "https://skills.sh/search?q={}&limit={}",
-        encoded_query, limit
-    );
+    let url = format!("https://skills.sh/?q={}", encoded_query);
 
     let html = client
         .get(&url)
@@ -88,100 +89,83 @@ pub fn search_skills(
         .text()
         .context("Failed to read response body")?;
 
-    parse_search_html(&html)
+    parse_skills_from_html(&html)
 }
 
-fn parse_leaderboard_html(html: &str) -> Result<Vec<SkillsShSkill>> {
-    // Try parsing __NEXT_DATA__ JSON first
-    if let Ok(skills) = parse_next_data(html) {
-        return Ok(skills);
+fn parse_skills_from_html(html: &str) -> Result<Vec<SkillsShSkill>> {
+    // Try parsing RSC initialSkills payload first (skills.sh uses RSC format)
+    if let Ok(skills) = parse_rsc_initial_skills(html) {
+        if !skills.is_empty() {
+            return Ok(skills);
+        }
     }
 
-    // Fallback to regex parsing
+    // Fallback to regex-based RSC parsing
     parse_rsc_payload(html)
 }
 
-fn parse_search_html(html: &str) -> Result<Vec<SkillsShSkill>> {
-    // Try parsing __NEXT_DATA__ JSON first
-    if let Ok(skills) = parse_next_data(html) {
-        return Ok(skills);
-    }
-
-    // Fallback to regex parsing
-    parse_rsc_payload(html)
+/// Intermediate struct for deserializing skills.sh RSC JSON entries.
+/// The RSC payload uses `skillId` (camelCase) while our public struct uses `skill_id`.
+#[derive(Deserialize)]
+struct RscSkillEntry {
+    source: String,
+    #[serde(alias = "skillId", alias = "skill_id", alias = "id")]
+    skill_id: String,
+    name: String,
+    installs: u64,
 }
 
-fn parse_next_data(html: &str) -> Result<Vec<SkillsShSkill>> {
-    let re = Regex::new(r#"__NEXT_DATA__[^>]*>(.*?)</script>"#)?;
-    let caps = re.captures(html).context("No __NEXT_DATA__ found")?;
-    let json_str = caps.get(1).context("No JSON content")?.as_str();
+/// Parse skills from the RSC flight data format used by skills.sh (Next.js 15).
+///
+/// The HTML contains inline `<script>` tags with `self.__next_f.push([1,"..."])` calls.
+/// The skill data lives in an `initialSkills` JSON array embedded in these push blocks.
+fn parse_rsc_initial_skills(html: &str) -> Result<Vec<SkillsShSkill>> {
+    // The RSC payload uses escaped quotes: \" inside JavaScript string literals.
+    // Pattern: initialSkills":[  or  initialSkills\":[  (escaped quote)
+    let re = Regex::new(r#"initialSkills\\?":\[(.*?)\]"#)?;
+    let caps = re.captures(html).context("No initialSkills found in RSC payload")?;
+    let raw_array = caps.get(1).context("No skills array content")?.as_str();
 
-    let data: serde_json::Value = serde_json::from_str(json_str)?;
+    // Parse individual skill objects from the JSON array.
+    // The content has escaped quotes like {\"source\":\"owner/repo\",...}
+    // serde_json handles \" -> " natively.
+    // Hot page entries have extra fields: "installsYesterday":N,"change":N
+    let skill_re = Regex::new(
+        r#"\{\\?"source\\?":\\?"[^"]+\\?",\\?"skillId\\?":\\?"[^"]+\\?",\\?"name\\?":\\?"[^"]+\\?",\\?"installs\\?":\d+(?:,\\?"installsYesterday\\?":\d+,\\?"change\\?":\d+)?\}"#
+    )?;
 
     let mut skills = Vec::new();
-
-    if let Some(items) = data
-        .pointer("/props/pageProps/skills")
-        .and_then(|v| v.as_array())
-    {
-        for item in items {
-            if let Some(skill) = parse_skill_from_json(item) {
-                skills.push(skill);
-            }
-        }
-    } else if let Some(items) = data
-        .pointer("/props/pageProps/results")
-        .and_then(|v| v.as_array())
-    {
-        for item in items {
-            if let Some(skill) = parse_skill_from_json(item) {
-                skills.push(skill);
-            }
+    for cap in skill_re.captures_iter(raw_array) {
+        let json_str = cap.get(0).unwrap().as_str();
+        // Unescape \" -> " for JSON parsing
+        let unescaped = json_str.replace("\\\"", "\"");
+        if let Ok(entry) = serde_json::from_str::<RscSkillEntry>(&unescaped) {
+            skills.push(SkillsShSkill {
+                id: format!("{}/{}", entry.source, entry.skill_id),
+                skill_id: entry.skill_id,
+                name: entry.name,
+                source: entry.source,
+                installs: entry.installs,
+            });
         }
     }
 
     Ok(skills)
 }
 
-fn parse_skill_from_json(item: &serde_json::Value) -> Option<SkillsShSkill> {
-    let source = item.get("source").and_then(|v| v.as_str())?.to_string();
-    let skill_id = item
-        .get("id")
-        .or_else(|| item.get("skill_id"))?
-        .as_str()?
-        .to_string();
-    let name = item
-        .get("name")
-        .or_else(|| item.get("title"))?
-        .as_str()?
-        .to_string();
-    let installs = item
-        .get("installs")
-        .or_else(|| item.get("downloads"))?
-        .as_u64()
-        .unwrap_or(0);
-
-    Some(SkillsShSkill {
-        id: format!("{}/{}", source, skill_id),
-        skill_id,
-        name,
-        source,
-        installs,
-    })
-}
-
+/// Fallback regex-based parser for RSC payload skill data.
 fn parse_rsc_payload(html: &str) -> Result<Vec<SkillsShSkill>> {
     let mut skills = Vec::new();
 
-    // Regex patterns for parsing RSC payload
-    let re_source = Regex::new(r#""source":"([^"]+)""#)?;
-    let re_id = Regex::new(r#""(?:skill_)?id":"([^"]+)""#)?;
-    let re_name = Regex::new(r#""(?:name|title)":"([^"]+)""#)?;
-    let re_installs = Regex::new(r#""(?:installs|downloads)":(\d+)"#)?;
+    // Regex patterns for parsing RSC payload (handles both escaped and unescaped quotes)
+    let re_source = Regex::new(r#"\\?"source\\?":\\?"([^"]+)\\?""#)?;
+    let re_skill_id = Regex::new(r#"\\?"skillId\\?":\\?"([^"]+)\\?""#)?;
+    let re_name = Regex::new(r#"\\?"name\\?":\\?"([^"]+)\\?""#)?;
+    let re_installs = Regex::new(r#"\\?"installs\\?":(\d+)"#)?;
 
-    // Find all skill blocks
+    // Find all skill blocks with new format
     let re_block = Regex::new(
-        r#"\{"source":"[^"]+","(?:skill_)?id":"[^"]+","(?:name|title)":"[^"]+"[^}]*\}"#,
+        r#"\{\\?"source\\?":\\?"[^"]+\\?",\\?"skillId\\?":\\?"[^"]+\\?",\\?"name\\?":\\?"[^"]+\\?",\\?"installs\\?":\d+[^}]*\}"#,
     )?;
 
     for cap in re_block.captures_iter(html) {
@@ -193,7 +177,7 @@ fn parse_rsc_payload(html: &str) -> Result<Vec<SkillsShSkill>> {
             .map(|m| m.as_str().to_string())
             .unwrap_or_default();
 
-        let skill_id = re_id
+        let skill_id = re_skill_id
             .captures(block)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
@@ -230,21 +214,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_next_data_test() {
+    fn parse_rsc_initial_skills_test() {
+        // Simulated RSC flight data with initialSkills array (standard format)
         let html = r#"
-        <script id="__NEXT_DATA__" type="application/json">
-        {"props":{"pageProps":{"skills":[
-            {"source":"antfu/skills","id":"vite","name":"Vite","installs":12345},
-            {"source":"anthropics/skills","id":"claude","name":"Claude","installs":6789}
-        ]}}}
-        </script>
+        <script>self.__next_f.push([1,"16:[\"$\",\"$L1e\",null,{\"initialSkills\":[{\"source\":\"vercel-labs/skills\",\"skillId\":\"find-skills\",\"name\":\"find-skills\",\"installs\":1164942},{\"source\":\"anthropics/skills\",\"skillId\":\"pdf\",\"name\":\"pdf\",\"installs\":82400}]}"])</script>
         "#;
 
-        let skills = parse_next_data(html).unwrap();
+        let skills = parse_rsc_initial_skills(html).unwrap();
         assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].source, "antfu/skills");
-        assert_eq!(skills[0].skill_id, "vite");
-        assert_eq!(skills[0].installs, 12345);
+        assert_eq!(skills[0].source, "vercel-labs/skills");
+        assert_eq!(skills[0].skill_id, "find-skills");
+        assert_eq!(skills[0].id, "vercel-labs/skills/find-skills");
+        assert_eq!(skills[0].installs, 1164942);
+        assert_eq!(skills[1].source, "anthropics/skills");
+        assert_eq!(skills[1].skill_id, "pdf");
+        assert_eq!(skills[1].installs, 82400);
+    }
+
+    #[test]
+    fn parse_rsc_hot_format_test() {
+        // Hot page has extra installsYesterday and change fields
+        let html = r#"
+        <script>self.__next_f.push([1,"18:[\"$\",\"$L20\",null,{\"initialSkills\":[{\"source\":\"sentry/dev\",\"skillId\":\"sentry-cli\",\"name\":\"sentry-cli\",\"installs\":88,\"installsYesterday\":29,\"change\":59},{\"source\":\"intellectronica/agent-skills\",\"skillId\":\"notion-api\",\"name\":\"notion-api\",\"installs\":61,\"installsYesterday\":11,\"change\":50}]}"])</script>
+        "#;
+
+        let skills = parse_rsc_initial_skills(html).unwrap();
+        assert_eq!(skills.len(), 2);
+        assert_eq!(skills[0].source, "sentry/dev");
+        assert_eq!(skills[0].skill_id, "sentry-cli");
+        assert_eq!(skills[0].installs, 88);
+        assert_eq!(skills[1].source, "intellectronica/agent-skills");
+        assert_eq!(skills[1].skill_id, "notion-api");
+        assert_eq!(skills[1].installs, 61);
+    }
+
+    #[test]
+    fn parse_skills_from_html_integration_test() {
+        // Test the full pipeline with RSC format
+        let html = r#"<!DOCTYPE html><html><body>
+        <script>(self.__next_f=self.__next_f||[]).push([0])</script>
+        <script>self.__next_f.push([1,"0:\"$Sreact.fragment\""])</script>
+        <script>self.__next_f.push([1,"16:[\"$\",\"$L1e\",null,{\"initialSkills\":[{\"source\":\"vercel-labs/skills\",\"skillId\":\"find-skills\",\"name\":\"find-skills\",\"installs\":1164942}]}"])</script>
+        </body></html>"#;
+
+        let skills = parse_skills_from_html(html).unwrap();
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].id, "vercel-labs/skills/find-skills");
+        assert_eq!(skills[0].name, "find-skills");
+    }
+
+    #[test]
+    fn parse_empty_html_returns_empty() {
+        let html = "<html><body>No skills here</body></html>";
+        let skills = parse_skills_from_html(html).unwrap();
+        assert_eq!(skills.len(), 0);
     }
 
     #[test]
