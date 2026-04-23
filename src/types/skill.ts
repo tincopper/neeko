@@ -29,14 +29,6 @@ export interface ManagedSkillDto {
   updated_at: number;
 }
 
-export interface ToolInfo {
-  key: string;
-  display_name: string;
-  installed: boolean;
-  has_override: boolean;
-  is_custom: boolean;
-}
-
 export interface TagGroup {
   id: string;
   name: string;
@@ -54,13 +46,6 @@ export interface SkillTargetRecord {
   mode: "symlink" | "copy";
   status: string;
   synced_at: number | null;
-}
-
-export interface SkillToolToggle {
-  tool: string;
-  display_name: string;
-  enabled: boolean;
-  installed: boolean;
 }
 
 export interface SkillDocumentDto {
