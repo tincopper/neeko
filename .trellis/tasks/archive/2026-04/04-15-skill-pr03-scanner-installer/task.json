@@ -1,9 +1,9 @@
-{
+﻿{
   "id": "skill-pr03-scanner-installer",
   "name": "skill-pr03-scanner-installer",
   "title": "PR#3: Skill 扫描发现与安装引擎",
   "description": "实现从本地目录/Git/ZIP 安装 Skill、扫描已有 Skill、以及更新检测",
-  "status": "planning",
+  "status": "completed",
   "dev_type": "backend",
   "scope": "skill",
   "package": null,
@@ -11,25 +11,12 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-04-15",
-  "completedAt": null,
+  "completedAt": "2026-04-22",
   "branch": "feature/skill-pr03-scanner-installer",
   "base_branch": "feature/skill-pr02-skill-store",
   "worktree_path": null,
-  "current_phase": 0,
-  "next_action": [
-    {
-      "phase": 1,
-      "action": "implement"
-    },
-    {
-      "phase": 2,
-      "action": "check"
-    },
-    {
-      "phase": 3,
-      "action": "improve-ut"
-    }
-  ],
+  "current_phase": 3,
+  "next_action": [],
   "commit": null,
   "pr_url": null,
   "subtasks": [],

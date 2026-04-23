@@ -1,10 +1,11 @@
 import React, { useCallback } from "react";
 import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
-import { useAppContext, useRemoteContext } from "../contexts";
+import { useAppContext, useEditorContext, useRemoteContext } from "../contexts";
 
 function RemoteProjectView() {
    const { config } = useAppContext();
+   const { activeTabId } = useEditorContext();
    const {
       activeRemoteProject,
       remoteAuthStore,
@@ -19,7 +20,7 @@ function RemoteProjectView() {
    }
 
    const { entry, project } = activeRemoteProject;
-   const remoteLayoutId = `remote:${entry.id}:${project.id}:${activeRemoteWorktreePath ?? "main"}`;
+   const remoteLayoutId = `remote:${entry.id}:${project.id}:${activeTabId ?? "default"}:${activeRemoteWorktreePath ?? "main"}`;
    const auth = remoteAuthStore.get(entry.id);
 
    const onRemoteSessionReady = useCallback(

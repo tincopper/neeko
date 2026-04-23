@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::Emitter;
 use tauri::State;
 
 use super::skill_store::SkillStore;
@@ -973,4 +974,281 @@ pub async fn create_skill(
     })
     .await
     .map_err(AppError::from)?
+}
+
+// --- Marketplace Commands ---
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SkillsShSkillDto {
+    pub id: String,
+    pub skill_id: String,
+    pub name: String,
+    pub source: String,
+    pub installs: u64,
+}
+
+#[tauri::command]
+pub async fn fetch_leaderboard(
+    board: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<SkillsShSkillDto>, String> {
+    let store = store.inner().clone();
+    let cache_key = format!("leaderboard_{}", board);
+
+    // Try cache first (5 minute TTL)
+    if let Ok(Some(cached)) = store.get_cache(&cache_key, 300) {
+        if let Ok(skills) = serde_json::from_str::<Vec<SkillsShSkillDto>>(&cached) {
+            return Ok(skills);
+        }
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let board_type = super::skillssh_api::LeaderboardType::from_str(&board);
+        let proxy_url = store.get_setting("proxy_url").ok().flatten();
+        let skills = super::skillssh_api::fetch_leaderboard(board_type, proxy_url.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        let dtos: Vec<SkillsShSkillDto> = skills
+            .into_iter()
+            .map(|s| SkillsShSkillDto {
+                id: s.id,
+                skill_id: s.skill_id,
+                name: s.name,
+                source: s.source,
+                installs: s.installs,
+            })
+            .collect();
+
+        // Cache the result
+        if let Ok(json) = serde_json::to_string(&dtos) {
+            let _ = store.set_cache(&cache_key, &json);
+        }
+
+        Ok(dtos)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn search_skillssh(
+    query: String,
+    limit: Option<usize>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<SkillsShSkillDto>, String> {
+    let store = store.inner().clone();
+    let cache_key = format!("search_{}_{}", query, limit.unwrap_or(20));
+
+    // Try cache first (5 minute TTL)
+    if let Ok(Some(cached)) = store.get_cache(&cache_key, 300) {
+        if let Ok(skills) = serde_json::from_str::<Vec<SkillsShSkillDto>>(&cached) {
+            return Ok(skills);
+        }
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let proxy_url = store.get_setting("proxy_url").ok().flatten();
+        let skills =
+            super::skillssh_api::search_skills(&query, limit.unwrap_or(20), proxy_url.as_deref())
+                .map_err(|e| e.to_string())?;
+
+        let dtos: Vec<SkillsShSkillDto> = skills
+            .into_iter()
+            .map(|s| SkillsShSkillDto {
+                id: s.id,
+                skill_id: s.skill_id,
+                name: s.name,
+                source: s.source,
+                installs: s.installs,
+            })
+            .collect();
+
+        // Cache the result
+        if let Ok(json) = serde_json::to_string(&dtos) {
+            let _ = store.set_cache(&cache_key, &json);
+        }
+
+        Ok(dtos)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn install_from_skillssh(
+    source: String,
+    skill_id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    app_handle: tauri::AppHandle,
+) -> Result<ManagedSkillDtoOut, String> {
+    let store = store.inner().clone();
+    let app_handle = app_handle.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        // Emit progress: cloning
+        let _ = app_handle.emit(
+            "install-progress",
+            serde_json::json!({
+                "skill_id": skill_id,
+                "phase": "cloning"
+            }),
+        );
+
+        // Construct GitHub URL
+        let git_url = super::git_fetcher::construct_github_url(&source);
+
+        // Clone the repository
+        let proxy_url = store.get_setting("proxy_url").ok().flatten();
+        let repo_path =
+            super::git_fetcher::clone_repo_ref(&git_url, None, None, proxy_url.as_deref())
+                .map_err(|e| e.to_string())?;
+
+        // Emit progress: installing
+        let _ = app_handle.emit(
+            "install-progress",
+            serde_json::json!({
+                "skill_id": skill_id,
+                "phase": "installing"
+            }),
+        );
+
+        // Find the skill directory
+        let skill_dir = repo_path.join(&skill_id);
+        if !skill_dir.exists() {
+            // Try looking in common subdirectories
+            let common_paths = ["skills", "packages"];
+            let mut found = false;
+            for prefix in common_paths {
+                let alt_path = repo_path.join(prefix).join(&skill_id);
+                if alt_path.exists() {
+                    // Install from alternative path
+                    let result = super::installer::install_from_local(&alt_path, Some(&skill_id))
+                        .map_err(|e| e.to_string())?;
+                    found = true;
+
+                    // Get revision
+                    let revision = super::git_fetcher::get_head_revision(&repo_path).ok();
+
+                    // Insert skill record
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let skill = super::types::SkillRecord {
+                        id: id.clone(),
+                        name: result.name.clone(),
+                        description: result.description.clone(),
+                        source_type: "skillssh".to_string(),
+                        source_ref: Some(git_url.clone()),
+                        source_ref_resolved: None,
+                        source_subpath: Some(format!("{}/{}", prefix, skill_id)),
+                        source_branch: None,
+                        source_revision: revision,
+                        remote_revision: None,
+                        central_path: result.central_path.to_string_lossy().to_string(),
+                        content_hash: Some(result.content_hash),
+                        enabled: true,
+                        status: "ok".to_string(),
+                        update_status: "up_to_date".to_string(),
+                        last_checked_at: Some(now),
+                        last_check_error: None,
+                        created_at: now,
+                        updated_at: now,
+                    };
+                    store.insert_skill(&skill).map_err(|e| e.to_string())?;
+
+                    // Cleanup
+                    super::git_fetcher::cleanup_temp(&repo_path);
+
+                    // Emit progress: done
+                    let _ = app_handle.emit(
+                        "install-progress",
+                        serde_json::json!({
+                            "skill_id": skill_id,
+                            "phase": "done"
+                        }),
+                    );
+
+                    return Ok(ManagedSkillDtoOut {
+                        id,
+                        name: result.name,
+                        description: result.description,
+                        source_type: "skillssh".to_string(),
+                        source_ref: Some(git_url),
+                        central_path: result.central_path.to_string_lossy().to_string(),
+                        enabled: true,
+                        status: "ok".to_string(),
+                        update_status: "up_to_date".to_string(),
+                        tags: vec![],
+                        created_at: now,
+                        updated_at: now,
+                    });
+                }
+            }
+            if !found {
+                super::git_fetcher::cleanup_temp(&repo_path);
+                return Err(format!("Skill '{}' not found in repository", skill_id));
+            }
+        }
+
+        // Install from direct path
+        let result = super::installer::install_from_local(&skill_dir, Some(&skill_id))
+            .map_err(|e| e.to_string())?;
+
+        // Get revision
+        let revision = super::git_fetcher::get_head_revision(&repo_path).ok();
+
+        // Insert skill record
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let skill = super::types::SkillRecord {
+            id: id.clone(),
+            name: result.name.clone(),
+            description: result.description.clone(),
+            source_type: "skillssh".to_string(),
+            source_ref: Some(git_url.clone()),
+            source_ref_resolved: None,
+            source_subpath: Some(skill_id.clone()),
+            source_branch: None,
+            source_revision: revision,
+            remote_revision: None,
+            central_path: result.central_path.to_string_lossy().to_string(),
+            content_hash: Some(result.content_hash),
+            enabled: true,
+            status: "ok".to_string(),
+            update_status: "up_to_date".to_string(),
+            last_checked_at: Some(now),
+            last_check_error: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.insert_skill(&skill).map_err(|e| e.to_string())?;
+
+        // Cleanup
+        super::git_fetcher::cleanup_temp(&repo_path);
+
+        // Emit progress: done
+        let _ = app_handle.emit(
+            "install-progress",
+            serde_json::json!({
+                "skill_id": skill_id,
+                "phase": "done"
+            }),
+        );
+
+        Ok(ManagedSkillDtoOut {
+            id,
+            name: result.name,
+            description: result.description,
+            source_type: "skillssh".to_string(),
+            source_ref: Some(git_url),
+            central_path: result.central_path.to_string_lossy().to_string(),
+            enabled: true,
+            status: "ok".to_string(),
+            update_status: "up_to_date".to_string(),
+            tags: vec![],
+            created_at: now,
+            updated_at: now,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

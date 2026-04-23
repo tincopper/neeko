@@ -18,13 +18,13 @@ pub fn check_command_exists(command: &str) -> bool {
 
         let interactive_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
-    which_in(
-        command,
-        Some(interactive_path),
-        env::current_dir().unwrap().as_path(),
-    )
-    .is_ok()
+        // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
+        which_in(
+            command,
+            Some(interactive_path),
+            env::current_dir().unwrap().as_path(),
+        )
+        .is_ok()
     }
 }
 

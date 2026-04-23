@@ -18,6 +18,8 @@ function createDefaultParams() {
     setWslWtBranch: vi.fn(),
     setRemoteWorktreePath: vi.fn(),
     setRemoteWtBranch: vi.fn(),
+    activeTabId: null as string | null,
+    onCloseTab: vi.fn(),
   };
 }
 
@@ -211,5 +213,24 @@ describe('useKeyboardShortcuts', () => {
     dispatchKey('KeyT');
 
     expect(storeState.selectProject).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+W 关闭当前活跃 tab', () => {
+    params.activeTabId = 't1';
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('KeyW', { ctrlKey: true });
+
+    expect(params.onCloseTab).toHaveBeenCalledWith('t1');
+  });
+
+  it('Ctrl+W 无活跃 tab 时不崩溃', () => {
+    params.activeTabId = null;
+    renderHook(() => useKeyboardShortcuts(params));
+
+    expect(() => {
+      dispatchKey('KeyW', { ctrlKey: true });
+    }).not.toThrow();
+    expect(params.onCloseTab).not.toHaveBeenCalled();
   });
 });
