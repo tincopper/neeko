@@ -110,16 +110,6 @@ export const BUILTIN_AGENTS: Array<
     defaultSkillPath: "~/.claude/skills",
   },
   {
-    id: "qwen",
-    name: "qwen",
-    command: "qwen",
-    args: [],
-    env: {},
-    icon: "qwen.png",
-    enabled: true,
-    defaultSkillPath: "~/.qwen/skills",
-  },
-  {
     id: "gemini",
     name: "gemini",
     command: "gemini",

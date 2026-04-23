@@ -6,7 +6,7 @@
 
 **项目定位**：基于 Rust + Tauri 2.0 的跨平台桌面应用，统一管理多个 AI CLI Agent 工具。支持三种项目类型：本地项目、WSL 项目（Windows）、SSH 远程项目。每种项目绑定独立的 PTY 终端会话，支持 Git 分支管理、Worktree 管理、文件 Diff 查看、副终端面板和 IDE 一键启动。
 
-**目标用户**：使用 AI CLI Agent（如 opencode、claude-code、qwen）进行开发的程序员。
+**目标用户**：使用 AI CLI Agent（如 opencode、claude-code、gemini）进行开发的程序员。
 
 ---
 
@@ -106,7 +106,6 @@
 |----|------|------|------|
 | `opencode` | opencode | `opencode` | `opencode.svg` |
 | `claude-code` | claude-code | `claude` | `claude-code.svg` |
-| `qwen` | qwen | `qwen` | `qwen.svg` |
 | `gemini` | gemini | `gemini` | `gemini.svg` |
 | `codex` | codex | `codex` | `codex.svg` |
 | `qoder` | qoder | `qoder` | `qoder.svg` |

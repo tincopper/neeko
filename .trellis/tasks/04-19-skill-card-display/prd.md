@@ -68,7 +68,6 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 从 `skill_tool_toggles` 表查询该 Skill 被安装到的 agents，显示对应图标：
 - opencode
 - claude-code
-- qwen
 - gemini
 
 ### 4. 现有数据结构复用

@@ -64,17 +64,6 @@ impl AgentManager {
             enabled: true,
         });
 
-        // qwen
-        self.agents.push(AgentConfig {
-            id: "qwen".to_string(),
-            name: "qwen".to_string(),
-            command: "qwen".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-            icon: Some("qwen.png".to_string()),
-            enabled: true,
-        });
-
         // gemini
         self.agents.push(AgentConfig {
             id: "gemini".to_string(),
@@ -186,9 +175,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_seven_presets() {
+    fn should_initialize_with_six_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 6);
     }
 
     #[test]
@@ -218,7 +207,7 @@ mod tests {
             enabled: true,
         };
         manager.add_agent(custom);
-        assert_eq!(manager.get_agents().len(), 8);
+        assert_eq!(manager.get_agents().len(), 7);
         assert!(manager.get_agent("custom").is_some());
     }
 
@@ -226,7 +215,7 @@ mod tests {
     fn should_remove_agent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), 6);
+        assert_eq!(manager.get_agents().len(), 5);
         assert!(manager.get_agent("opencode").is_none());
     }
 
@@ -234,7 +223,7 @@ mod tests {
     fn should_not_panic_when_removing_nonexistent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("nonexistent");
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 6);
     }
 
     #[test]
@@ -244,7 +233,6 @@ mod tests {
         let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
         assert!(ids.contains(&"opencode"));
         assert!(ids.contains(&"claude-code"));
-        assert!(ids.contains(&"qwen"));
         assert!(ids.contains(&"gemini"));
         assert!(ids.contains(&"codex"));
         assert!(ids.contains(&"qoder"));
