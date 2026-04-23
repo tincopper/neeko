@@ -135,7 +135,6 @@ export function useTerminalTabs() {
         if (!state) return prev;
 
         const tabs = state.tabs.filter((t) => t.id !== tabId);
-        if (tabs.length === 0) return prev;
 
         let activeTabId = state.activeTabId;
         if (activeTabId === tabId) {
