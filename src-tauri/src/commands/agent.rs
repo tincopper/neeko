@@ -1,4 +1,5 @@
-use crate::state::*;
+use crate::models::*;
+use crate::AppError;
 use crate::AppStateWrapper;
 use std::collections::HashMap;
 use tauri::State;
@@ -13,22 +14,22 @@ pub fn list_agents(state: State<AppStateWrapper>) -> Vec<AgentConfig> {
 }
 
 #[tauri::command]
-pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<AgentConfig, String> {
+pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<AgentConfig, AppError> {
     state
         .agent_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .get_agent(&agent_id)
         .cloned()
-        .ok_or_else(|| format!("Agent not found: {}", agent_id))
+        .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))
 }
 
 #[tauri::command]
-pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), String> {
+pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
         .agent_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .add_agent(agent.clone());
     let mut config = state.storage_manager.load_config().unwrap_or_default();
     let custom_agents = config
@@ -38,25 +39,25 @@ pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<()
                 .or_insert(serde_json::json!([]))
                 .as_array_mut()
         })
-        .ok_or_else(|| "Failed to access config".to_string())?;
+        .ok_or_else(|| AppError::Storage("Failed to access config".to_string()))?;
     if !custom_agents
         .iter()
         .any(|a| a.get("id").and_then(|v| v.as_str()) == Some(&agent.id))
     {
-        custom_agents.push(serde_json::to_value(&agent).map_err(|e| e.to_string())?);
+        custom_agents.push(serde_json::to_value(&agent).map_err(AppError::from)?);
     }
     state
         .storage_manager
         .save_config(&config)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), String> {
+pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
         .agent_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .remove_agent(&agent_id);
     let mut config = state.storage_manager.load_config().unwrap_or_default();
     if let Some(custom_agents) = config
@@ -69,7 +70,7 @@ pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(
     state
         .storage_manager
         .save_config(&config)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -87,7 +88,7 @@ pub fn set_project_agent(
 pub async fn check_agents_installed(
     agent_ids: Option<Vec<String>>,
     state: State<'_, AppStateWrapper>,
-) -> Result<HashMap<String, bool>, String> {
+) -> Result<HashMap<String, bool>, AppError> {
     let ids = agent_ids.unwrap_or_else(|| {
         state
             .agent_manager
@@ -99,12 +100,15 @@ pub async fn check_agents_installed(
     let agents = state
         .agent_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .get_agents();
     // Perform async check without holding lock
     let mut result = HashMap::new();
     for id in &ids {
-        let command = agents.iter().find(|a| a.id == *id).map(|a| a.command.clone());
+        let command = agents
+            .iter()
+            .find(|a| a.id == *id)
+            .map(|a| a.command.clone());
         let installed = match command {
             Some(cmd) => {
                 tokio::task::spawn_blocking(move || crate::agent::check_command_exists(&cmd))

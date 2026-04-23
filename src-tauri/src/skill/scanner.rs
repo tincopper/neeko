@@ -18,20 +18,32 @@ pub fn scan_local_skills(managed_paths: &[String]) -> Result<Vec<DiscoveredSkill
     let mut discovered = Vec::new();
 
     for adapter in &adapters {
-        if !adapter.is_installed() { continue; }
+        if !adapter.is_installed() {
+            continue;
+        }
         for scan_dir in adapter.all_scan_dirs() {
-            if !scan_dir.exists() { continue; }
+            if !scan_dir.exists() {
+                continue;
+            }
             let entries = match std::fs::read_dir(&scan_dir) {
                 Ok(e) => e,
                 Err(_) => continue,
             };
             for entry in entries.flatten() {
                 let path = entry.path();
-                if !path.is_dir() { continue; }
-                if is_symlink_to_central(&path) { continue; }
+                if !path.is_dir() {
+                    continue;
+                }
+                if is_symlink_to_central(&path) {
+                    continue;
+                }
                 let path_str = path.to_string_lossy().to_string();
-                if managed_paths.contains(&path_str) { continue; }
-                if !skill_metadata::is_valid_skill_dir(&path) { continue; }
+                if managed_paths.contains(&path_str) {
+                    continue;
+                }
+                if !skill_metadata::is_valid_skill_dir(&path) {
+                    continue;
+                }
 
                 let name = skill_metadata::infer_skill_name(&path);
                 let fingerprint = content_hash::hash_directory(&path).ok();

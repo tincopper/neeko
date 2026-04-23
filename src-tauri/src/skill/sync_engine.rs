@@ -76,7 +76,9 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         let dest_path = dst.join(entry.file_name());
         if ft.is_dir() {
             let name = entry.file_name();
-            if name == ".git" { continue; }
+            if name == ".git" {
+                continue;
+            }
             copy_dir_recursive(&entry.path(), &dest_path)?;
         } else {
             std::fs::copy(entry.path(), &dest_path)?;
@@ -93,7 +95,10 @@ mod tests {
 
     #[test]
     fn sync_mode_defaults_to_symlink() {
-        assert!(matches!(sync_mode_for_tool("claude-code", None), SyncMode::Symlink));
+        assert!(matches!(
+            sync_mode_for_tool("claude-code", None),
+            SyncMode::Symlink
+        ));
     }
 
     #[test]
@@ -103,8 +108,14 @@ mod tests {
 
     #[test]
     fn sync_mode_explicit_overrides() {
-        assert!(matches!(sync_mode_for_tool("claude-code", Some("copy")), SyncMode::Copy));
-        assert!(matches!(sync_mode_for_tool("cursor", Some("symlink")), SyncMode::Symlink));
+        assert!(matches!(
+            sync_mode_for_tool("claude-code", Some("copy")),
+            SyncMode::Copy
+        ));
+        assert!(matches!(
+            sync_mode_for_tool("cursor", Some("symlink")),
+            SyncMode::Symlink
+        ));
     }
 
     #[test]

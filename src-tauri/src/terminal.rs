@@ -1,4 +1,4 @@
-use crate::state::{TerminalSession, TerminalStatus};
+use crate::models::{TerminalSession, TerminalStatus};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;

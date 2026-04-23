@@ -20,7 +20,11 @@ pub fn hash_directory(dir: &Path) -> Result<String> {
     entries.sort_by(|a, b| a.path().cmp(b.path()));
 
     for entry in entries {
-        let rel = entry.path().strip_prefix(dir).unwrap_or(entry.path()).to_string_lossy();
+        let rel = entry
+            .path()
+            .strip_prefix(dir)
+            .unwrap_or(entry.path())
+            .to_string_lossy();
         hasher.update(rel.as_bytes());
         if let Ok(content) = std::fs::read(entry.path()) {
             hasher.update(&content);
@@ -44,7 +48,10 @@ mod tests {
         let tmp2 = tempdir().unwrap();
         fs::write(tmp2.path().join("a.txt"), "hello").unwrap();
         fs::write(tmp2.path().join("b.txt"), "world").unwrap();
-        assert_eq!(hash_directory(tmp1.path()).unwrap(), hash_directory(tmp2.path()).unwrap());
+        assert_eq!(
+            hash_directory(tmp1.path()).unwrap(),
+            hash_directory(tmp2.path()).unwrap()
+        );
     }
 
     #[test]
@@ -61,6 +68,9 @@ mod tests {
     fn hash_empty_directory() {
         let tmp = tempdir().unwrap();
         let h = hash_directory(tmp.path()).unwrap();
-        assert_eq!(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            h,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 }

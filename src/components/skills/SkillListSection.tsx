@@ -13,7 +13,6 @@ const SkillListSection: React.FC = React.memo(() => {
       openViewSkillDialog,
    } = useSkillContext();
 
-   console.log("[SkillListSection] rendered, openEditSkillDialog:", typeof openEditSkillDialog, "openViewSkillDialog:", typeof openViewSkillDialog);
 
    const filtered = useMemo(() => {
       if (!searchQuery.trim()) return skills;
@@ -27,12 +26,9 @@ const SkillListSection: React.FC = React.memo(() => {
    }, [skills, searchQuery]);
 
    const handleAction = (action: "detail" | "delete" | "edit", skill: typeof skills[0]) => {
-      console.log("[SkillListSection] handleAction:", action, "skill:", skill.name);
       if (action === "edit") {
-         console.log("[SkillListSection] calling openEditSkillDialog");
          openEditSkillDialog(skill);
       } else if (action === "detail") {
-         console.log("[SkillListSection] calling openViewSkillDialog");
          openViewSkillDialog(skill);
       } else if (action === "delete") {
          deleteSkill(skill.id);

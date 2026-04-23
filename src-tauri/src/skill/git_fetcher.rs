@@ -21,7 +21,7 @@ pub fn parse_git_source(url: &str) -> ParsedGitSource {
     if let Some(hash_pos) = url.find('#') {
         clone_url = url[..hash_pos].to_string();
         let rest = &url[hash_pos + 1..];
-        
+
         if let Some(colon_pos) = rest.find(':') {
             branch = Some(rest[..colon_pos].to_string());
             subpath = Some(rest[colon_pos + 1..].to_string());
@@ -68,7 +68,7 @@ pub fn clone_repo_ref(
 
     let mut cmd = Command::new("git");
     cmd.args(["clone", "--depth", "1"]);
-    
+
     if let Some(b) = branch {
         cmd.args(["-b", b]);
     }
@@ -105,7 +105,7 @@ pub fn clone_repo_ref(
 
     // Leak tempdir so path remains valid
     std::mem::forget(temp_dir);
-    
+
     Ok(temp_path)
 }
 
@@ -131,7 +131,8 @@ pub fn cleanup_temp(path: &Path) {
 }
 
 pub fn construct_github_url(source: &str) -> String {
-    if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@") {
+    if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@")
+    {
         source.to_string()
     } else {
         format!("https://github.com/{}.git", source)
@@ -182,7 +183,10 @@ mod tests {
 
     #[test]
     fn test_construct_github_url() {
-        assert_eq!(construct_github_url("antfu/skills"), "https://github.com/antfu/skills.git");
+        assert_eq!(
+            construct_github_url("antfu/skills"),
+            "https://github.com/antfu/skills.git"
+        );
         assert_eq!(
             construct_github_url("https://github.com/user/repo.git"),
             "https://github.com/user/repo.git"

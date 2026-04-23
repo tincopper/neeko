@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
-- **Last Active**: 2026-04-21
+- **Total Sessions**: 24
+- **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~885 | Active |
+| `journal-1.md` | ~998 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-04-23 | merge: resolve conflicts between enhance/ui_clean_code and main | `f3d2db3`, `ebc4bf0` | `enhance/ui_clean_code` |
+| 23 | 2026-04-22 | Refactor Tauri command registration and refresh repo guidelines | `8f5057b` | `enhance/ui_clean_code` |
+| 22 | 2026-04-22 | Backend 目录重构与收尾修复 | `deab0f6`, `fc99987` | `enhance/ui_clean_code` |
 | 21 | 2026-04-21 | 合并 context 目录到 contexts | `7c0de49` | `enhance/ui_clean_code` |
 | 20 | 2026-04-21 | TODO未完成项优化方案收尾 | `d4a36f1` | `enhance/ui_clean_code` |
 | 19 | 2026-04-21 | Phase1 Context 单源迁移与规范同步 | `c0b0b0e` | `enhance/ui_clean_code` |
