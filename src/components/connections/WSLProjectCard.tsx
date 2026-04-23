@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from "react";
 import ProjectItemCard from "./ProjectItemCard";
 import type { WSLProjectCardProps } from "./types";
+import type { FileChange } from "../../types";
 
 const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
   ({
@@ -22,6 +23,7 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
     agents,
     config,
     onSaveProjectSettings,
+    onShowToast,
   }) => {
     const handleSelectFile = useCallback(
       (fp: string) => {
@@ -32,12 +34,12 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
 
     const handleCheckout = useCallback(
       (branch: string) => {
-        import("@tauri-apps/api/core").then(({ invoke }) =>
+        return import("@tauri-apps/api/core").then(({ invoke }) =>
           invoke("wsl_checkout_branch", {
             distro,
             projectPath: project.path,
             branchName: branch,
-          }).then(() => onRefreshGit?.(distro, project.id, project.path)),
+          }).then(() => onRefreshGit?.(distro, project.id, project.path) ?? Promise.resolve()),
         );
       },
       [distro, project.path, project.id, onRefreshGit],
@@ -124,6 +126,26 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
       [onOpenDialog, distro, project.path],
     );
 
+    const handleRefreshGit = useCallback(() => {
+      onRefreshGit?.(distro, project.id, project.path);
+    }, [onRefreshGit, distro, project.id, project.path]);
+
+    const handleGetWorktreeChangedFiles = useCallback(
+      (worktreePath: string) =>
+        import("@tauri-apps/api/core").then(({ invoke }) =>
+          invoke<FileChange[]>("wsl_get_worktree_changed_files", { distro, worktreePath })
+        ),
+      [distro],
+    );
+
+    const handleIsWorktreeDirty = useCallback(
+      (worktreePath: string) =>
+        import("@tauri-apps/api/core").then(({ invoke }) =>
+          invoke<boolean>("wsl_is_worktree_dirty", { distro, worktreePath })
+        ),
+      [distro],
+    );
+
     return (
       <ProjectItemCard
         project={project}
@@ -146,6 +168,10 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
         agents={agents}
         config={config}
         onSaveProjectSettings={onSaveProjectSettings}
+        onRefreshGit={handleRefreshGit}
+        onShowToast={onShowToast}
+        onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
+        onIsWorktreeDirty={handleIsWorktreeDirty}
       />
     );
   },

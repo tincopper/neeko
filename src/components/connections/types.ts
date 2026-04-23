@@ -2,12 +2,14 @@ import type React from "react";
 import type {
   AgentConfig,
   AppConfig,
+  FileChange,
   GitInfo,
   RemoteEntrySession,
   RemoteProject,
   WSLEntrySession,
   WSLProject,
 } from "../../types";
+import type { DiffResult } from "../diff/types";
 
 export interface WtConfirmState {
   path: string;
@@ -35,7 +37,7 @@ export interface ProjectBodyProps {
   renamingWorktree: string | null;
   renameWorktreeValue: string;
   onToggleSection: (section: string, e: React.MouseEvent) => void;
-  onCheckoutBranch: (branch: string) => void;
+  onCheckoutBranch: (branch: string) => Promise<void>;
   onStartRenameBranch: (branch: string, currentBranch: string) => void;
   onRenameBranchChange: (val: string) => void;
   onCommitRenameBranch: () => void;
@@ -50,6 +52,14 @@ export interface ProjectBodyProps {
   renameInputRef: React.RefObject<HTMLInputElement>;
   renameWtInputRef: React.RefObject<HTMLInputElement>;
   currentBranch: string;
+  onSelectProject: () => void;
+  isActive: boolean;
+  onRefreshGit?: () => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onOpenDialog?: (type: string, branches: string[]) => void;
+  onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
+  onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
+  onGetWorktreeFileDiff?: (worktreePath: string, filePath: string) => Promise<DiffResult>;
 }
 
 export interface ProjectItemCardProps {
@@ -58,7 +68,7 @@ export interface ProjectItemCardProps {
   hasSession: boolean;
   onSelectProject: () => void;
   onSelectFile: (filePath: string) => void;
-  onCheckoutBranch: (branch: string) => void;
+  onCheckoutBranch: (branch: string) => Promise<void>;
   onCommitRenameBranch: (oldName: string, newName: string) => void;
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
@@ -73,6 +83,11 @@ export interface ProjectItemCardProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onRefreshGit?: () => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
+  onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
+  onGetWorktreeFileDiff?: (worktreePath: string, filePath: string) => Promise<DiffResult>;
 }
 
 export interface WSLProjectCardProps {
@@ -98,6 +113,7 @@ export interface WSLProjectCardProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
 }
 
 export interface WSLItemProps {
@@ -124,6 +140,7 @@ export interface WSLItemProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
 }
 
 export interface RemoteProjectCardProps {
@@ -150,6 +167,7 @@ export interface RemoteProjectCardProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
 }
 
 export interface RemoteItemProps {
@@ -177,4 +195,5 @@ export interface RemoteItemProps {
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: "info" | "error") => void;
 }

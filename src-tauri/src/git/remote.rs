@@ -272,7 +272,7 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
     }
 }
 
-fn parse_status_line(line: &str) -> Option<FileChange> {
+pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return None;
@@ -304,6 +304,88 @@ fn parse_status_line(line: &str) -> Option<FileChange> {
         additions: 0,
         deletions: 0,
     })
+}
+
+/// 通过 SSH 获取 worktree 的变更文件列表
+pub async fn get_remote_worktree_changed_files(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    worktree_path: &str,
+) -> Result<Vec<FileChange>> {
+    let sp = safe_path(worktree_path);
+    let cmd = format!("cd '{}' && git status --porcelain 2>/dev/null", sp);
+    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+
+    let files: Vec<FileChange> = output
+        .lines()
+        .filter_map(|line| parse_status_line(line))
+        .collect();
+
+    Ok(files)
+}
+
+/// 通过 SSH 检查 worktree 是否有未提交的更改
+pub async fn remote_is_worktree_dirty(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    worktree_path: &str,
+) -> Result<bool> {
+    let sp = safe_path(worktree_path);
+
+    // 检查已跟踪文件的修改
+    let cmd = format!(
+        "cd '{}' && git diff --quiet -- 2>/dev/null; echo EXIT_CODE:$?",
+        sp
+    );
+    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+        if !output.trim().ends_with("EXIT_CODE:0") {
+            return Ok(true);
+        }
+    }
+
+    // 检查暂存区
+    let cmd = format!(
+        "cd '{}' && git diff --cached --quiet -- 2>/dev/null; echo EXIT_CODE:$?",
+        sp
+    );
+    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+        if !output.trim().ends_with("EXIT_CODE:0") {
+            return Ok(true);
+        }
+    }
+
+    // 检查未跟踪文件
+    let cmd = format!(
+        "cd '{}' && git ls-files --others --exclude-standard 2>/dev/null",
+        sp
+    );
+    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+        if !output.trim().is_empty() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// 通过 SSH 获取 worktree 中某文件的 diff
+pub async fn get_remote_worktree_file_diff(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    worktree_path: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let sp = safe_path(worktree_path);
+    let fp = safe_path(file_path);
+    let cmd = format!("cd '{}' && git diff --unified=3 -- '{}' 2>/dev/null", sp, fp);
+    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    Ok(parse_unified_diff(&output))
 }
 
 #[cfg(test)]

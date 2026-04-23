@@ -135,19 +135,20 @@ const ProjectsPanel: React.FC = () => {
                            }
                            agents={agents}
                            config={config}
-                           onSaveProjectSettings={
-                              onSaveProjectSettings
-                                 ? (agentId, ideCmd) => {
-                                    const e = wslEntries.find((en) => en.distro === activeWslKey?.distro);
-                                    const p = e?.projects.find((pr) => pr.id === activeWslKey?.projectId);
-                                    if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                                 }
-                                 : undefined
-                           }
-                        />
-                     ))}
+                            onSaveProjectSettings={
+                               onSaveProjectSettings
+                                  ? (agentId, ideCmd) => {
+                                     const e = wslEntries.find((en) => en.distro === activeWslKey?.distro);
+                                     const p = e?.projects.find((pr) => pr.id === activeWslKey?.projectId);
+                                     if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                                  }
+                                  : undefined
+                            }
+                            onShowToast={showToast}
+                         />
+                      ))}
 
-                  {remoteEntries.map((entry) => (
+                   {remoteEntries.map((entry) => (
                      <RemoteItem
                         key={entry.id}
                         entry={entry}
@@ -176,17 +177,18 @@ const ProjectsPanel: React.FC = () => {
                         }
                         agents={agents}
                         config={config}
-                        onSaveProjectSettings={
-                           onSaveProjectSettings
-                              ? (agentId, ideCmd) => {
-                                 const e = remoteEntries.find((en) => en.id === activeRemoteKey?.host);
-                                 const p = e?.projects.find((pr) => pr.id === activeRemoteKey?.projectId);
-                                 if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                              }
-                              : undefined
-                        }
-                     />
-                  ))}
+                         onSaveProjectSettings={
+                            onSaveProjectSettings
+                               ? (agentId, ideCmd) => {
+                                  const e = remoteEntries.find((en) => en.id === activeRemoteKey?.host);
+                                  const p = e?.projects.find((pr) => pr.id === activeRemoteKey?.projectId);
+                                  if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                               }
+                               : undefined
+                         }
+                         onShowToast={showToast}
+                      />
+                   ))}
                </>
             )}
          </div>

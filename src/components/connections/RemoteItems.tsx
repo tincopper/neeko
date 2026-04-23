@@ -27,6 +27,7 @@ export const WSLItem = React.memo<WSLItemProps>(
     agents,
     config,
     onSaveProjectSettings,
+    onShowToast,
   }) => {
     void onCloseProject;
     const [collapsed, setCollapsed] = useState(false);
@@ -108,6 +109,7 @@ export const WSLItem = React.memo<WSLItemProps>(
                     agents={agents}
                     config={config}
                     onSaveProjectSettings={onSaveProjectSettings}
+                    onShowToast={onShowToast}
                   />
                 );
               })
@@ -141,6 +143,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     agents,
     config,
     onSaveProjectSettings,
+    onShowToast,
   }) => {
     void onCloseProject;
     const [collapsed, setCollapsed] = useState(false);
@@ -223,6 +226,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(
                     agents={agents}
                     config={config}
                     onSaveProjectSettings={onSaveProjectSettings}
+                    onShowToast={onShowToast}
                   />
                 );
               })

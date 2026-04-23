@@ -181,3 +181,60 @@ pub fn wsl_rename_worktree(
         ))
     }
 }
+
+#[tauri::command]
+pub fn wsl_get_worktree_changed_files(
+    distro: String,
+    worktree_path: String,
+) -> Result<Vec<FileChange>, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::get_wsl_worktree_changed_files(&distro, &worktree_path)
+            .map_err(AppError::from)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, worktree_path);
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn wsl_is_worktree_dirty(
+    distro: String,
+    worktree_path: String,
+) -> Result<bool, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::wsl_is_worktree_dirty(&distro, &worktree_path).map_err(AppError::from)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, worktree_path);
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn wsl_get_worktree_file_diff(
+    distro: String,
+    worktree_path: String,
+    file_path: String,
+) -> Result<DiffResult, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        crate::git::get_wsl_worktree_file_diff(&distro, &worktree_path, &file_path)
+            .map_err(AppError::from)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, worktree_path, file_path);
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}

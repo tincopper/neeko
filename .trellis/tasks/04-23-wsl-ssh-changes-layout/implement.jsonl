@@ -1,0 +1,19 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "src/components/connections/types.ts", "reason": "更新ProjectBodyProps类型定义，新增回调props"}
+{"file": "src/components/connections/ProjectItemCard.tsx", "reason": "移除header静态分支badge，传递新props给ProjectBody"}
+{"file": "src/components/connections/RemoteProjectCard.tsx", "reason": "新增worktree changed files和is dirty回调"}
+{"file": "src-tauri/src/commands/remote_git.rs", "reason": "新增remote_get_worktree_changed_files和remote_is_worktree_dirty命令"}
+{"file": "src-tauri/src/error.rs", "reason": "AppError类型定义，新命令需遵循"}
+{"file": "src/components/connections/ProjectBody.tsx", "reason": "核心改动：重写布局从Branches列表改为local+Changes模式"}
+{"file": "src/components/connections/WSLProjectCard.tsx", "reason": "新增worktree changed files和is dirty回调"}
+{"file": "src-tauri/src/commands/mod.rs", "reason": "在neeko_invoke_handler宏中注册新命令"}
+{"file": "src-tauri/src/git/local.rs", "reason": "参考：get_changed_files_for_path和is_worktree_dirty实现"}
+{"file": "src-tauri/src/git/wsl.rs", "reason": "新增get_wsl_worktree_changed_files和wsl_is_worktree_dirty函数"}
+{"file": "src-tauri/src/commands/wsl_git.rs", "reason": "新增wsl_get_worktree_changed_files和wsl_is_worktree_dirty命令"}
+{"file": "src/components/project/ProjectGitSection.tsx", "reason": "参考实现：local项目的local行+Changes布局模式"}
+{"file": "src-tauri/src/git/remote.rs", "reason": "新增get_remote_worktree_changed_files和remote_is_worktree_dirty函数，复用parse_status_line"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React组件编写规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Rust命令编写规范"}

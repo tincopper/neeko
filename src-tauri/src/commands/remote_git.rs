@@ -151,3 +151,49 @@ pub async fn remote_rename_worktree(
         .map(|_| new_path)
         .map_err(AppError::from)
 }
+
+#[tauri::command]
+pub async fn remote_get_worktree_changed_files(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    worktree_path: String,
+) -> Result<Vec<FileChange>, AppError> {
+    crate::git::remote::get_remote_worktree_changed_files(
+        &host, port, &username, &auth, &worktree_path,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_is_worktree_dirty(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    worktree_path: String,
+) -> Result<bool, AppError> {
+    crate::git::remote::remote_is_worktree_dirty(
+        &host, port, &username, &auth, &worktree_path,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_worktree_file_diff(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    worktree_path: String,
+    file_path: String,
+) -> Result<DiffResult, AppError> {
+    crate::git::remote::get_remote_worktree_file_diff(
+        &host, port, &username, &auth, &worktree_path, &file_path,
+    )
+    .await
+    .map_err(AppError::from)
+}
