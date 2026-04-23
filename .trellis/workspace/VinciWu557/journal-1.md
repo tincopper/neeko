@@ -950,3 +950,49 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: merge: resolve conflicts between enhance/ui_clean_code and main
+
+**Date**: 2026-04-23
+**Task**: merge: resolve conflicts between enhance/ui_clean_code and main
+**Branch**: `enhance/ui_clean_code`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 冲突文件 | 解决策略 |
+|---------|---------|
+| `src-tauri/src/lib.rs` | 保留 HEAD 的模块化结构（278行->20行） |
+| `src-tauri/src/skill/mod.rs` | 合并双方模块声明，按字母序排列 |
+| `src-tauri/src/skill/migrations.rs` | 保留 main 的 v3 migration + 辅助函数 |
+| `src/hooks/useSkillInstall.ts` | 采用 main 版本（完整 discoveredSkills 功能） |
+| `src/contexts/skill-context.tsx` | 采用 main 的 2 空格缩进 |
+| `src/components/skills/LocalSkillContent.tsx` | 采用 main 版本 |
+
+额外处理：`cargo fmt` 格式化 agent.rs、commands.rs、skillssh_api.rs、skill_store.rs、git_fetcher.rs。
+
+**验证**：`cargo check` 通过，`pnpm lint` 通过，`npx tsc --noEmit` 通过，0 残留冲突标记。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f3d2db3` | (see git log) |
+| `ebc4bf0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
