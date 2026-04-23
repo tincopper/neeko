@@ -73,7 +73,7 @@ const MarketplaceContent: React.FC = React.memo(() => {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-2">
         {loading && displayList.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted gap-3">
             <Loader2 className="h-8 w-8 animate-spin opacity-50" />
@@ -87,7 +87,7 @@ const MarketplaceContent: React.FC = React.memo(() => {
             </span>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-4 gap-2">
             {displayList.map((skill) => {
               const fullId = getFullId(skill.source, skill.skill_id);
               const isSkillInstalled = isInstalled(skill.skill_id);
