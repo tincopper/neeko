@@ -996,3 +996,36 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: fix: project guide page replaces auto-start agent
+
+**Date**: 2026-04-23
+**Task**: fix: project guide page replaces auto-start agent
+**Branch**: `fix/last_tab_hanging`
+
+### Summary
+
+点击本地项目时不再自动创建 Tab 并启动 Agent，改为显示极简引导页（Open Terminal / Open Agent / Open in IDE）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6ab4a5f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
