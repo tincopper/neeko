@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { Package, Store, FolderOpen, Wrench, ChevronDown, ChevronRight } from "lucide-react";
+import { Package, Store, FolderOpen, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { useSkillContext } from "../../contexts";
 import type { SkillView, TagGroup } from "../../types";
 import { cn } from "../../utils/cn";
@@ -27,9 +27,8 @@ const SkillsPanel: React.FC = React.memo(() => {
    const navItems: NavItem[] = [
       { key: "local", label: "Local Skills", icon: Package, count: skills.length },
       { key: "marketplace", label: "Marketplace", icon: Store },
-      { key: "project", label: "Project Skills", icon: FolderOpen },
-      { key: "tools", label: "Tool Status", icon: Wrench },
-   ];
+       { key: "project", label: "Project Skills", icon: FolderOpen },
+    ];
 
    const handleTagGroupAction = useCallback(
       (tg: TagGroup, action: string) => {
@@ -116,7 +115,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                               }}
                               className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-red-400 p-0.5"
                            >
-                              <Wrench className="h-3 w-3" />
+                               <Trash2 className="h-3 w-3" />
                            </button>
                         </div>
                      ))}

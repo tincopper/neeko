@@ -5,7 +5,6 @@ use tauri::Emitter;
 use tauri::State;
 
 use super::skill_store::SkillStore;
-use super::tool_adapters;
 use super::types::*;
 use crate::AppError;
 
@@ -15,7 +14,6 @@ macro_rules! skill_commands {
         $crate::skill::commands::get_managed_skills,
         $crate::skill::commands::get_skill_document,
         $crate::skill::commands::delete_managed_skill,
-        $crate::skill::commands::get_tool_status,
         $crate::skill::commands::get_tag_groups,
         $crate::skill::commands::create_tag_group,
         $crate::skill::commands::delete_tag_group_cmd,
@@ -71,15 +69,6 @@ pub struct TagGroupDtoOut {
     pub skill_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ToolStatusDtoOut {
-    pub key: String,
-    pub display_name: String,
-    pub installed: bool,
-    pub has_override: bool,
-    pub is_custom: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -167,38 +156,6 @@ pub async fn delete_managed_skill(
             std::fs::remove_dir_all(&central).ok();
         }
         store.delete_skill(&skill_id).map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
-}
-
-#[tauri::command]
-pub async fn get_tool_status(
-    store: State<'_, Arc<SkillStore>>,
-) -> Result<Vec<ToolStatusDtoOut>, AppError> {
-    let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let custom_tool_paths = store
-            .get_setting("custom_tool_paths")
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let custom_tools = store
-            .get_setting("custom_tools")
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let adapters = tool_adapters::all_tool_adapters(&custom_tool_paths, &custom_tools);
-        Ok(adapters
-            .into_iter()
-            .map(|a| ToolStatusDtoOut {
-                installed: a.is_installed(),
-                has_override: a.has_path_override(),
-                is_custom: a.is_custom,
-                key: a.key,
-                display_name: a.display_name,
-            })
-            .collect())
     })
     .await
     .map_err(AppError::from)?

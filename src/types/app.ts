@@ -1,6 +1,6 @@
 import type { AgentConfig } from "./agent";
 
-export type SkillView = "local" | "marketplace" | "project" | "tools";
+export type SkillView = "local" | "marketplace" | "project";
 export type DiffMode = "unified" | "split";
 export type AppTheme = "dark" | "light" | "one-dark-pro" | "claude";
 

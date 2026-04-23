@@ -3,7 +3,6 @@ import { useSkillContext } from "../../contexts";
 import LocalSkillContent from "./LocalSkillContent";
 import MarketplaceContent from "./MarketplaceContent";
 import ProjectSkillContent from "./ProjectSkillContent";
-import ToolStatusContent from "./ToolStatusContent";
 
 const SkillContent: React.FC = React.memo(() => {
    const { activeSkillView } = useSkillContext();
@@ -15,8 +14,6 @@ const SkillContent: React.FC = React.memo(() => {
          return <MarketplaceContent />;
       case "project":
          return <ProjectSkillContent />;
-      case "tools":
-         return <ToolStatusContent />;
       default:
          return <LocalSkillContent />;
    }

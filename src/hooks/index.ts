@@ -18,7 +18,6 @@ export { useSyncToStore } from "./useSyncToStore";
 export { useTagGroups } from "./useTagGroups";
 export { useTerminalTabs } from "./useTerminalTabs";
 export { useToast } from "./useToast";
-export { useToolStatus } from "./useToolStatus";
 export { useUnifiedProjects } from "./useUnifiedProjects";
 export { useWorktreeActions } from "./useWorktreeActions";
 export { useWorktreeState } from "./useWorktreeState";

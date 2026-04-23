@@ -1,14 +1,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
-import type { ManagedSkillDto, TagGroup, ToolInfo, SkillView, DiscoveredSkillDto } from "../types";
+import type { ManagedSkillDto, TagGroup, SkillView, DiscoveredSkillDto } from "../types";
 import { useSkillData } from "../hooks/useSkillData";
 import { useTagGroups } from "../hooks/useTagGroups";
 import { useSkillInstall } from "../hooks/useSkillInstall";
-import { useToolStatus } from "../hooks/useToolStatus";
 
 interface SkillContextValue {
   skills: ManagedSkillDto[];
   tagGroups: TagGroup[];
-  tools: ToolInfo[];
   loading: boolean;
   activeSkillView: SkillView;
   activeTagGroupId: string | null;
@@ -51,7 +49,6 @@ const SkillContext = createContext<SkillContextValue | null>(null);
 export function SkillProvider({ activeProjectId, children }: { activeProjectId: string | null; children: ReactNode }) {
   const { skills, loading: skillsLoading, refreshSkills, deleteSkill } = useSkillData();
   const { tagGroups, loading: tagLoading, refreshTagGroups, createTagGroup, deleteTagGroup } = useTagGroups();
-  const { tools, refreshTools } = useToolStatus();
   const { 
     installLocal, 
     scanSkills, 
@@ -75,8 +72,7 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
   useEffect(() => {
     refreshSkills();
     refreshTagGroups();
-    refreshTools();
-  }, [refreshSkills, refreshTagGroups, refreshTools]);
+  }, [refreshSkills, refreshTagGroups]);
 
   const viewSkillDetail = useCallback((id: string | null) => {
     setSelectedSkillId(id);
@@ -107,7 +103,7 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
   }, []);
 
   const value = useMemo<SkillContextValue>(() => ({
-    skills, tagGroups, tools,
+    skills, tagGroups,
     loading: skillsLoading || tagLoading,
     activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId,
     editSkillDialogOpen, editSkillDialogData, viewSkillDialogOpen, viewSkillDialogData,
@@ -117,7 +113,7 @@ export function SkillProvider({ activeProjectId, children }: { activeProjectId: 
     installLocal, scanSkills, createSkill, setSearchQuery,
     discoveredSkills, importDiscoveredSkill, clearDiscovered,
   }), [
-    skills, tagGroups, tools, skillsLoading, tagLoading, 
+    skills, tagGroups, skillsLoading, tagLoading, 
     activeSkillView, activeTagGroupId, searchQuery, selectedSkillId, activeProjectId, 
     refreshSkills, deleteSkill, viewSkillDetail, refreshTagGroups, createTagGroup, deleteTagGroup, 
     installLocal, scanSkills, createSkill, 

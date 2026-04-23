@@ -107,25 +107,6 @@ pub struct TagGroupDto {
     pub updated_at: i64,
 }
 
-/// Tool status DTO sent to the frontend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolStatusDto {
-    pub key: String,
-    pub display_name: String,
-    pub installed: bool,
-    pub has_override: bool,
-    pub is_custom: bool,
-}
-
-/// Skill tool toggle DTO sent to the frontend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillToolToggleDto {
-    pub tool: String,
-    pub display_name: String,
-    pub enabled: bool,
-    pub installed: bool,
-}
-
 /// Document content of a SKILL.md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillDocumentDto {
