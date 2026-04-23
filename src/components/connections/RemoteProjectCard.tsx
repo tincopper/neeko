@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from "react";
 import ProjectItemCard from "./ProjectItemCard";
 import type { RemoteProjectCardProps } from "./types";
+import type { FileChange } from "../../types";
 
 const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
   ({
@@ -23,6 +24,7 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
     agents,
     config,
     onSaveProjectSettings,
+    onShowToast,
   }) => {
     const handleSelectFile = useCallback(
       (fp: string) => {
@@ -32,13 +34,14 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
     );
 
     const handleCheckout = useCallback(
-      (branch: string) => {
+      (branch: string): Promise<void> => {
         if (invokeRemoteGit) {
-          invokeRemoteGit("remote_checkout_branch", entryId, {
+          return invokeRemoteGit("remote_checkout_branch", entryId, {
             projectPath: project.path,
             branchName: branch,
-          }).then(() => onRefreshGit?.(entryId, project.id, project.path));
+          }).then(() => onRefreshGit?.(entryId, project.id, project.path) ?? Promise.resolve());
         }
+        return Promise.resolve();
       },
       [invokeRemoteGit, entryId, project.path, project.id, onRefreshGit],
     );
@@ -121,6 +124,26 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
       [onOpenDialog, entryId, project.path],
     );
 
+    const handleRefreshGit = useCallback(() => {
+      onRefreshGit?.(entryId, project.id, project.path);
+    }, [onRefreshGit, entryId, project.id, project.path]);
+
+    const handleGetWorktreeChangedFiles = useCallback(
+      (worktreePath: string) =>
+        invokeRemoteGit
+          ? invokeRemoteGit("remote_get_worktree_changed_files", entryId, { worktreePath }).then(r => r as FileChange[])
+          : Promise.resolve([] as FileChange[]),
+      [invokeRemoteGit, entryId],
+    );
+
+    const handleIsWorktreeDirty = useCallback(
+      (worktreePath: string) =>
+        invokeRemoteGit
+          ? invokeRemoteGit("remote_is_worktree_dirty", entryId, { worktreePath }).then(r => r as boolean)
+          : Promise.resolve(false),
+      [invokeRemoteGit, entryId],
+    );
+
     return (
       <ProjectItemCard
         project={project}
@@ -143,6 +166,10 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
         agents={agents}
         config={config}
         onSaveProjectSettings={onSaveProjectSettings}
+        onRefreshGit={handleRefreshGit}
+        onShowToast={onShowToast}
+        onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
+        onIsWorktreeDirty={handleIsWorktreeDirty}
       />
     );
   },

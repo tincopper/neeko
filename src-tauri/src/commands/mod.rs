@@ -86,6 +86,9 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::wsl_create_worktree,
             $crate::commands::wsl_remove_worktree,
             $crate::commands::wsl_rename_worktree,
+            $crate::commands::wsl_get_worktree_changed_files,
+            $crate::commands::wsl_is_worktree_dirty,
+            $crate::commands::wsl_get_worktree_file_diff,
             $crate::commands::open_wsl_ide,
             // --- Remote ---
             $crate::commands::create_remote_terminal_session,
@@ -101,6 +104,9 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::remote_create_worktree,
             $crate::commands::remote_remove_worktree,
             $crate::commands::remote_rename_worktree,
+            $crate::commands::remote_get_worktree_changed_files,
+            $crate::commands::remote_is_worktree_dirty,
+            $crate::commands::remote_get_worktree_file_diff,
             $crate::commands::open_remote_ide,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,

@@ -102,7 +102,10 @@ export function useRemoteActions({
         "refresh_remote_git_info",
         entryId,
         { projectPath },
-      ).catch(() => null);
+      ).catch((e) => {
+        console.error("[SSH] Failed to refresh git info:", e);
+        return null;
+      });
       return result as GitInfo | null;
     },
     setEntries: setRemoteEntries,

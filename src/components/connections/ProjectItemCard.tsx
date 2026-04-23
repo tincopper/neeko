@@ -3,7 +3,6 @@ import { getIdeIconByCommand } from "../../utils/idePresets";
 import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import {
-   BranchIcon,
    CloseTerminalIcon,
    FolderGitIcon,
    GitLogoIcon,
@@ -34,6 +33,11 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
       agents,
       config,
       onSaveProjectSettings,
+      onRefreshGit,
+      onShowToast,
+      onGetWorktreeChangedFiles,
+      onIsWorktreeDirty,
+      onGetWorktreeFileDiff,
    }) => {
       const [collapsed, setCollapsed] = useState(true);
       const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -271,16 +275,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                      ×
                   </button>
                </div>
-
-               {gitInfo && (
-                  <span
-                     className="gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate"
-                     title={gitInfo.current_branch}
-                  >
-                     <BranchIcon size={11} style={{ opacity: 0.6 }} />
-                     {gitInfo.current_branch}
-                  </span>
-               )}
             </div>
 
             {!collapsed && gitInfo && (
@@ -308,6 +302,14 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                   renameInputRef={renameInputRef as React.RefObject<HTMLInputElement>}
                   renameWtInputRef={renameWtInputRef as React.RefObject<HTMLInputElement>}
                   currentBranch={currentBranch}
+                  onSelectProject={() => onSelectProject()}
+                  isActive={isActive}
+                  onRefreshGit={onRefreshGit}
+                  onShowToast={onShowToast}
+                  onOpenDialog={onOpenDialog}
+                  onGetWorktreeChangedFiles={onGetWorktreeChangedFiles}
+                  onIsWorktreeDirty={onIsWorktreeDirty}
+                  onGetWorktreeFileDiff={onGetWorktreeFileDiff}
                />
             )}
 
