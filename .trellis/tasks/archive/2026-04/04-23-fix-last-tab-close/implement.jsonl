@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "closeTab 需遵循 useCallback、stale closure 等 Hook 规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量标准"}
