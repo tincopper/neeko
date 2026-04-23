@@ -4,18 +4,18 @@ import { useSkillContext } from "../../contexts";
 import { useMarketplace } from "../../hooks/useMarketplace";
 import MarketplaceSearchBar from "./MarketplaceSearchBar";
 import LeaderboardToggle from "./LeaderboardToggle";
+import SourceFilter from "./SourceFilter";
+import Pagination from "./Pagination";
 import MarketSkillCard from "./MarketSkillCard";
 
 const MarketplaceContent: React.FC = React.memo(() => {
   const { skills, refreshSkills } = useSkillContext();
 
-  // Get list of installed skill names
-  const installedSkillNames = useMemo(() => 
-    skills.map(s => s.name),
+  const installedSkillNames = useMemo(
+    () => skills.map(s => s.name),
     [skills]
   );
 
-  // Use marketplace hook
   const {
     displayList,
     board,
@@ -27,6 +27,15 @@ const MarketplaceContent: React.FC = React.memo(() => {
     installProgress,
     installFromMarket,
     isInstalled,
+    availableSources,
+    sourceFilter,
+    setSourceFilter,
+    page,
+    setPage,
+    perPage,
+    setPerPage,
+    totalItems,
+    totalPages,
   } = useMarketplace({
     installedSkills: installedSkillNames,
     onSkillInstalled: refreshSkills,
@@ -43,8 +52,9 @@ const MarketplaceContent: React.FC = React.memo(() => {
     [installFromMarket]
   );
 
-  // Get the full ID for a skill (source/skill_id)
   const getFullId = (source: string, skillId: string) => `${source}/${skillId}`;
+
+  const showFilters = !searchQuery && availableSources.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -59,6 +69,16 @@ const MarketplaceContent: React.FC = React.memo(() => {
         <LeaderboardToggle
           value={board}
           onChange={setBoard}
+          disabled={loading}
+        />
+      )}
+
+      {/* Source filter (hidden when searching) */}
+      {showFilters && (
+        <SourceFilter
+          sources={availableSources}
+          value={sourceFilter}
+          onChange={setSourceFilter}
           disabled={loading}
         />
       )}
@@ -108,6 +128,19 @@ const MarketplaceContent: React.FC = React.memo(() => {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalItems > 0 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          perPage={perPage}
+          onPageChange={setPage}
+          onPerPageChange={setPerPage}
+          disabled={loading}
+        />
+      )}
     </div>
   );
 });
