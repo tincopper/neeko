@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
+import { useEditorContext } from "../../contexts";
 
 interface RemoteTerminalCache {
   term: Terminal;
@@ -170,30 +171,33 @@ export default React.memo(function RemoteTerminalView({
   fontSize = 14,
   fontFamily = "",
   onSessionReady,
-  selectedAgentId,
+  selectedAgentId: _selectedAgentId,
   paneId = "p1",
   cacheKeySuffix = "",
 }: RemoteTerminalViewProps) {
+  const { activeTabId, tabs } = useEditorContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const tabAgentId = activeTab?.agentId ?? null;
 
   // 字体变化时同步到已有实例
   useEffect(() => {
-    const key = `${remoteCacheKey(entryId, projectId)}${cacheKeySuffix}:${paneId}`;
+    const key = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
     const cache = remoteTerminalCache.get(key);
     if (!cache) return;
     cache.term.options.fontSize = fontSize;
     cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, entryId, projectId, cacheKeySuffix, paneId]);
+  }, [fontSize, fontFamily, entryId, projectId, cacheKeySuffix, paneId, activeTabId]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const key = `${remoteCacheKey(entryId, projectId)}${cacheKeySuffix}:${paneId}`;
+    const key = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
     currentKeyRef.current = key;
     setReady(false);
 
@@ -295,11 +299,11 @@ export default React.memo(function RemoteTerminalView({
           onSessionReady?.(projectId);
 
           // 自动启动 Agent（SSH shell 初始化较慢，延迟 800ms 确保 shell 就绪）
-          if (selectedAgentId) {
+          if (tabAgentId) {
             setTimeout(async () => {
               if (!cache.sessionId) return;
               try {
-                const agent = await invoke<AgentConfig>("get_agent", { agentId: selectedAgentId });
+                const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
                 const cmdStr = [agent.command, ...agent.args].join(" ") + "\r";
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
                 emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
@@ -385,7 +389,7 @@ export default React.memo(function RemoteTerminalView({
       remoteRebuildCallbacks.delete(key);
       remoteWrapperRefs.delete(key);
     };
-  }, [entryId, projectId, projectPath, cacheKeySuffix, paneId, rebuildCount]);
+  }, [entryId, projectId, projectPath, cacheKeySuffix, paneId, activeTabId, rebuildCount]);
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">

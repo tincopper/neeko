@@ -400,6 +400,46 @@ impl SkillStore {
         )?;
         Ok(())
     }
+
+    // Cache methods
+
+    pub fn get_cache(&self, key: &str, ttl_secs: i64) -> Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        let cutoff = now - (ttl_secs * 1000);
+
+        let mut stmt = conn
+            .prepare("SELECT data FROM skillssh_cache WHERE cache_key = ?1 AND fetched_at > ?2")?;
+        let mut rows = stmt.query_map(params![key, cutoff], |row: &rusqlite::Row| {
+            row.get::<_, String>(0)
+        })?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    pub fn set_cache(&self, key: &str, data: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT OR REPLACE INTO skillssh_cache (cache_key, data, fetched_at) VALUES (?1, ?2, ?3)",
+            params![key, data, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_cache(&self, key: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM skillssh_cache WHERE cache_key = ?1",
+            params![key],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_all_cache(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM skillssh_cache", [])?;
+        Ok(())
+    }
 }
 
 // Row Mappers
@@ -678,5 +718,18 @@ mod tests {
             Some("symlink")
         );
         assert!(store.get_setting("nonexistent").unwrap().is_none());
+    }
+
+    #[test]
+    fn cache_round_trip() {
+        let store = test_store();
+        store.set_cache("test_key", "test_data").unwrap();
+        let cached = store.get_cache("test_key", 300).unwrap();
+        assert_eq!(cached.as_deref(), Some("test_data"));
+
+        // Clear cache
+        store.clear_cache("test_key").unwrap();
+        let cleared = store.get_cache("test_key", 300).unwrap();
+        assert!(cleared.is_none());
     }
 }

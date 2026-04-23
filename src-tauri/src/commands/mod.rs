@@ -133,6 +133,10 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::add_project_tag_group_cmd,
             $crate::skill::commands::remove_project_tag_group_cmd,
             $crate::skill::commands::create_skill,
+            // --- MARKETPLACE COMMANDS ---
+            $crate::skill::commands::fetch_leaderboard,
+            $crate::skill::commands::search_skillssh,
+            $crate::skill::commands::install_from_skillssh,
         ]
     };
 }

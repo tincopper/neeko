@@ -66,3 +66,25 @@ export interface SkillToolToggle {
 export interface SkillDocumentDto {
   content: string;
 }
+
+export interface DiscoveredSkillDto {
+  id: string;
+  tool: string;
+  found_path: string;
+  name_guess: string | null;
+}
+
+// Marketplace types
+export interface SkillsShSkill {
+  id: string;
+  skill_id: string;
+  name: string;
+  source: string;
+  installs: number;
+}
+
+export interface InstallProgress {
+  skill_id: string;
+  phase: "cloning" | "installing" | "done" | "error";
+  error?: string;
+}

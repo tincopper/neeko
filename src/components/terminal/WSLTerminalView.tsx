@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
-import { useAppContext, useWslContext } from "../../contexts";
+import { useAppContext, useEditorContext, useWslContext } from "../../contexts";
 
 interface WslTerminalCache {
    term: Terminal;
@@ -192,6 +192,7 @@ export default React.memo(function WSLTerminalView({
    paneId = "p1",
 }: WSLTerminalViewProps) {
    const { config } = useAppContext();
+   const { activeTabId, tabs } = useEditorContext();
    const { activeWslProject, activeWslWorktreePath, setWslOpenSessions } = useWslContext();
 
    const distro = activeWslProject?.distro ?? null;
@@ -199,7 +200,8 @@ export default React.memo(function WSLTerminalView({
    const projectPath = activeWslWorktreePath ?? activeWslProject?.project.path ?? "";
    const fontSize = config.terminalFontSize;
    const fontFamily = config.fontFamily;
-   const selectedAgentId = activeWslProject?.project.selected_agent ?? null;
+   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+   const tabAgentId = activeTab?.agentId ?? null;
    const cacheKeySuffix = activeWslWorktreePath
       ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, "")}`
       : "";
@@ -219,13 +221,13 @@ export default React.memo(function WSLTerminalView({
    // 字体変化时同步到已有实例
    useEffect(() => {
       if (!distro || !projectId) return;
-      const key = `${wslCacheKey(distro, projectId)}${cacheKeySuffix}:${paneId}`;
+      const key = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
       const cache = wslTerminalCache.get(key);
       if (!cache) return;
       cache.term.options.fontSize = fontSize;
       cache.term.options.fontFamily = buildFontFamily(fontFamily);
       cache.fitAddon.fit();
-   }, [fontSize, fontFamily, distro, projectId, cacheKeySuffix, paneId]);
+   }, [fontSize, fontFamily, distro, projectId, cacheKeySuffix, paneId, activeTabId]);
 
    useEffect(() => {
       if (!distro || !projectId) return;
@@ -233,7 +235,7 @@ export default React.memo(function WSLTerminalView({
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
 
-      const key = `${wslCacheKey(distro, projectId)}${cacheKeySuffix}:${paneId}`;
+      const key = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
       currentKeyRef.current = key;
       setReady(false);
 
@@ -333,11 +335,11 @@ export default React.memo(function WSLTerminalView({
                onSessionReady(projectId);
 
                // 自动启动 Agent（WSL shell 启动较慢，延迟 500ms 确保 shell 就绪）
-               if (selectedAgentId) {
+               if (tabAgentId) {
                   setTimeout(async () => {
                      if (!cache.sessionId) return;
                      try {
-                        const agent = await invoke<AgentConfig>("get_agent", { agentId: selectedAgentId });
+                        const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
                         const cmdStr = [agent.command, ...agent.args].join(" ") + "\r";
                         const bytes = Array.from(new TextEncoder().encode(cmdStr));
                         emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => { });
@@ -423,7 +425,7 @@ export default React.memo(function WSLTerminalView({
          wslRebuildCallbacks.delete(key);
          wslWrapperRefs.delete(key);
       };
-   }, [distro, projectId, projectPath, cacheKeySuffix, paneId, rebuildCount]);
+   }, [distro, projectId, projectPath, cacheKeySuffix, paneId, activeTabId, rebuildCount]);
 
    if (!activeWslProject) {
       return null;
