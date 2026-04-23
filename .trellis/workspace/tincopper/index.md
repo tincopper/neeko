@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
-- **Last Active**: 2026-04-22
+- **Total Sessions**: 20
+- **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~710 | Active |
+| `journal-1.md` | ~744 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-04-23 | WSL/SSH worktree support and branch switching fix | `011303f`, `256d899` | `main` |
 | 19 | 2026-04-22 | Implement Marketplace UI | `42c9e93` | `feature/git-commit-panel` |
 | 18 | 2026-04-22 | Implement Marketplace Backend for Skills.sh | `a3f360b` | `feature/git-commit-panel` |
 | 17 | 2026-04-22 | Fix Skill Scan Issue + Refactor Dialogs | `a0f130d`, `7b40a5d`, `4133826` | `feature/git-commit-panel` |

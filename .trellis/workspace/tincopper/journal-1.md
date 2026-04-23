@@ -708,3 +708,37 @@ Optimized SettingsPanel Agent Skill Path configuration UI - Added Skill Path row
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: WSL/SSH worktree support and branch switching fix
+
+**Date**: 2026-04-23
+**Task**: WSL/SSH worktree support and branch switching fix
+**Branch**: `main`
+
+### Summary
+
+Fixed branch switching for WSL/SSH projects and added worktree support
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `011303f` | (see git log) |
+| `256d899` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
