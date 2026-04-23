@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "lib.rs 模块化重构需要遵循后端目录结构规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "error.rs 模块的错误处理规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useSkillInstall.ts 冲突涉及 hook 设计规范"}
