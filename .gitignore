@@ -10,10 +10,12 @@ build/
 .vscode/
 .idea/
 .opencode/
-# .claude/
-# .agents/
+.claude/
+.agents/
+.codex
 .superset
 .gemini
+.cursor
 *.swp
 *.swo
 .snow
