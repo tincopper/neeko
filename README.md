@@ -35,7 +35,7 @@ Neeko consolidates all project Agent terminals into a single desktop application
 - **WSL Terminals** — Browse WSL distributions, select paths, and launch full PTY terminals with Agent auto-launch (Windows only)
 - **SSH Remote Terminals** — Connect to remote servers via password or key-file auth, manage paths, and run Agents remotely with session caching; optionally save credentials for seamless reconnection
 - **Worktree Terminals** — Each Git worktree gets its own independent terminal session with the correct working directory; click any worktree in the sidebar to open or resume its session
-- **One-Click Agent Launch** — Built-in support for opencode, claude-code, qwen, gemini, codex, qoder, codebuddy — select and launch; worktree terminals automatically start the project's configured Agent
+- **One-Click Agent Launch** — Built-in support for opencode, claude-code, gemini, codex, qoder, codebuddy — select and launch; worktree terminals automatically start the project's configured Agent
 - **Side Terminal Panel** — `Ctrl+Alt+T` opens an independent side terminal next to the Agent terminal, with draggable width; when a worktree terminal is active, the side panel also opens in the worktree directory
 - **One-Click IDE Launch** — Bind an IDE to each project, `Ctrl+O` or click the icon to open in VSCode / Cursor / GoLand, etc.; IDE icons displayed from built-in SVG/PNG assets
 - **Git Sidebar** — View changed files as a hierarchical tree, switch branches, manage Worktrees without leaving the app; file list auto-refreshes when files change on disk
@@ -113,7 +113,7 @@ pnpm tauri build
 
 ## Preset Agents
 
-opencode, claude-code, qwen, gemini, codex, qoder, codebuddy
+opencode, claude-code, gemini, codex, qoder, codebuddy
 
 Custom Agents can be added and built-in Agent commands can be overridden in the Settings panel.
 

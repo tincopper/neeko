@@ -24,7 +24,6 @@ fn new_manager_contains_all_defaults() {
     let expected_ids = [
         "opencode",
         "claude-code",
-        "qwen",
         "gemini",
         "codex",
         "qoder",

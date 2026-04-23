@@ -42,7 +42,7 @@ src/
 ├── utils/                 ← 工具函数（terminal.ts, agents.ts, distros.ts, platform.ts, fileIcons.ts, idePresets.ts）
 ├── types.ts               ← 全局类型定义（单一源）
 ├── assets/
-│   ├── agents/            ← Agent logo（PNG/SVG：claude-code, opencode, qwen, gemini, codex, qoder, codebuddy）
+│   ├── agents/            ← Agent logo（PNG/SVG：claude-code, opencode, gemini, codex, qoder, codebuddy）
 │   ├── distros/           ← WSL 发行版 logo（SVG：ubuntu, debian, fedora, opensuse, archlinux, ...）
 │   ├── linux.svg          ← WSL 通用图标
 │   ├── server.svg         ← SSH 图标
@@ -301,7 +301,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 ### Session 5 — Agent Icons & SVG Icon System
 
 28. **Agent icons** (`794b61d`):
-    - Downloaded 7 agent logos (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy
+    - Downloaded 6 agent logos (4 PNG + 2 SVG): claude-code, opencode, gemini, codex, qoder, codebuddy
     - Created `AgentIcon` component (`layout/AgentIcon.tsx`) — resolves `AgentConfig.icon` filename → Vite-imported URL
     - Created `src/utils/agents.ts` mapping; `AgentConfig.icon` changed from emoji to filename string
     - Removed aider agent, added qoder and codebuddy
@@ -421,7 +421,7 @@ State is distributed across domain hooks, App.tsx only holds cross-domain coordi
 | `src/utils/idePresets.ts` | `getIdeIconSrc(ideId)`, `getIdeIconByCommand(cmd, overrides)` — IDE icon resolution; `default.svg` fallback |
 | `src/vite-env.d.ts` | Module declarations for `*.png` and `*.svg` imports |
 | **assets/** | |
-| `src/assets/agents/` | 7 agent logo files (5 PNG + 2 SVG): claude-code, opencode, qwen, gemini, codex, qoder, codebuddy |
+| `src/assets/agents/` | 6 agent logo files (4 PNG + 2 SVG): claude-code, opencode, gemini, codex, qoder, codebuddy |
 | `src/assets/distros/` | 9 WSL distro SVGs: ubuntu, debian, fedora, opensuse, archlinux, kalilinux, alpine, centos, oracle |
 | `src/assets/linux.svg` | Generic WSL icon (penguin, Simple Icons) |
 | `src/assets/server.svg` | SSH icon (Charm Icons) |

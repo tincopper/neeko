@@ -16,7 +16,6 @@ interface SkillCardProps {
 const AGENT_LIST = [
    { key: "opencode", label: "OpenCode", icon: "opencode.png" },
    { key: "claude-code", label: "Claude Code", icon: "claude-code.png" },
-   { key: "qwen", label: "Qwen", icon: "qwen.png" },
    { key: "gemini", label: "Gemini", icon: "gemini.png" },
    { key: "codex", label: "Codex", icon: "codex.png" },
    { key: "qoder", label: "Qoder", icon: "qoder.svg" },

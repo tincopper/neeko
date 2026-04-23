@@ -122,10 +122,10 @@ fn set_selected_agent() {
         .add_project(tmp.path().to_path_buf(), None, None)
         .unwrap();
 
-    pm.set_selected_agent(&project.id, Some("qwen".into()));
+    pm.set_selected_agent(&project.id, Some("opencode".into()));
     assert_eq!(
         pm.get_project(&project.id).unwrap().selected_agent,
-        Some("qwen".into())
+        Some("opencode".into())
     );
 
     pm.set_selected_agent(&project.id, None);
