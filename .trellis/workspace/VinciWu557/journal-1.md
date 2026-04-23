@@ -1029,3 +1029,36 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: fix: 最后一个 Terminal Tab 无法关闭
+
+**Date**: 2026-04-23
+**Task**: fix: 最后一个 Terminal Tab 无法关闭
+**Branch**: `fix/last_tab_hanging`
+
+### Summary
+
+移除 useTerminalTabs closeTab 中阻止关闭最后一个 tab 的守卫逻辑，UI 层 ProjectGuidePage 已支持零 tab 状态。新增 useTerminalTabs 回归测试（3 个用例）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f150765` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
