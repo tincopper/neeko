@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SkillsShSkill, InstallProgress } from "../types";
@@ -6,26 +6,37 @@ import type { SkillsShSkill, InstallProgress } from "../types";
 export type LeaderboardType = "hot" | "trending" | "alltime";
 
 interface UseMarketplaceOptions {
-  installedSkills: string[]; // List of installed skill names
-  onSkillInstalled?: () => void; // Callback when a skill is installed
+  installedSkills: string[];
+  onSkillInstalled?: () => void;
 }
 
+export const PAGE_SIZE_OPTIONS = [20, 40, 80] as const;
+export const DEFAULT_PAGE_SIZE = 40;
+
 export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketplaceOptions) {
-  // State
+  // Core data
   const [leaderboard, setLeaderboard] = useState<SkillsShSkill[]>([]);
   const [searchResults, setSearchResults] = useState<SkillsShSkill[]>([]);
   const [board, setBoard] = useState<LeaderboardType>("hot");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Install state
   const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
   const [installProgress, setInstallProgress] = useState<Map<string, InstallProgress["phase"]>>(new Map());
 
-  // Cache for leaderboard results
+  // Source filter
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(DEFAULT_PAGE_SIZE);
+
+  // Cache
   const leaderboardCache = useRef<Map<string, SkillsShSkill[]>>(new Map());
 
   // Fetch leaderboard
   const fetchLeaderboard = useCallback(async (boardType: LeaderboardType) => {
-    // Check cache first
     const cached = leaderboardCache.current.get(boardType);
     if (cached) {
       setLeaderboard(cached);
@@ -54,9 +65,9 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
 
     setLoading(true);
     try {
-      const result = await invoke<SkillsShSkill[]>("search_skillssh", { 
-        query: query.trim(), 
-        limit: 20 
+      const result = await invoke<SkillsShSkill[]>("search_skillssh", {
+        query: query.trim(),
+        limit: 100
       });
       setSearchResults(result);
     } catch (e) {
@@ -70,7 +81,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   // Install from marketplace
   const installFromMarket = useCallback(async (source: string, skillId: string) => {
     const fullId = `${source}/${skillId}`;
-    
+
     if (installingIds.has(fullId)) return;
 
     setInstallingIds(prev => new Set(prev).add(fullId));
@@ -98,16 +109,15 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   useEffect(() => {
     const unlisten = listen<InstallProgress>("install-progress", (event) => {
       const { skill_id, phase } = event.payload;
-      
+
       setInstallProgress(prev => new Map(prev).set(skill_id, phase));
-      
+
       if (phase === "done") {
         setInstallingIds(prev => {
           const next = new Set(prev);
           next.delete(skill_id);
           return next;
         });
-        // Clear progress after a delay
         setTimeout(() => {
           setInstallProgress(prev => {
             const next = new Map(prev);
@@ -151,20 +161,68 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     return () => clearTimeout(timer);
   }, [searchQuery, searchMarketplace]);
 
-  // Check if a skill is installed
+  // Derived: full unfiltered list
+  const rawList = searchQuery ? searchResults : leaderboard;
+
+  // Derived: unique owner list (extract org from "owner/repo")
+  const availableSources = useMemo(() => {
+    const ownerSet = new Set<string>();
+    for (const skill of rawList) {
+      const owner = skill.source.split("/")[0];
+      if (owner) ownerSet.add(owner);
+    }
+    return Array.from(ownerSet).sort();
+  }, [rawList]);
+
+  // Derived: filtered list by source owner
+  const filteredList = useMemo(() => {
+    if (!sourceFilter) return rawList;
+    return rawList.filter(s => s.source.startsWith(sourceFilter + "/"));
+  }, [rawList, sourceFilter]);
+
+  // Derived: pagination
+  const totalItems = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const safePage = Math.min(page, totalPages);
+
+  const paginatedList = useMemo(() => {
+    const start = (safePage - 1) * perPage;
+    return filteredList.slice(start, start + perPage);
+  }, [filteredList, safePage, perPage]);
+
+  // Reset page when filter or source changes
+  useEffect(() => {
+    setPage(1);
+  }, [sourceFilter, searchQuery, board]);
+
+  // Reset source filter when switching boards or searching
+  useEffect(() => {
+    setSourceFilter(null);
+  }, [board]);
+
   const isInstalled = useCallback((skillName: string) => {
     return installedSkills.includes(skillName);
   }, [installedSkills]);
 
-  // Get display list (search results or leaderboard)
-  const displayList = searchQuery ? searchResults : leaderboard;
-
   return {
     // Data
-    displayList,
+    displayList: paginatedList,
     leaderboard,
     searchResults,
-    
+
+    // Source filter
+    availableSources,
+    sourceFilter,
+    setSourceFilter,
+
+    // Pagination
+    page: safePage,
+    setPage,
+    perPage,
+    setPerPage,
+    totalItems,
+    totalPages,
+
     // State
     board,
     setBoard,
@@ -173,7 +231,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     loading,
     installingIds,
     installProgress,
-    
+
     // Actions
     fetchLeaderboard,
     searchMarketplace,
