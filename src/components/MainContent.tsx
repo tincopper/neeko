@@ -4,6 +4,7 @@ import { SplitLayout, TerminalView, WorktreeTerminalView, WSLTerminalView } from
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
+import { ProjectGuidePage } from "./project";
 import TerminalTabBar from "./layout/TerminalTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import {
@@ -22,6 +23,7 @@ function MainContent() {
       onSelectProject,
       onAddProject,
       onWorktreeDiffBack,
+      onOpenIde,
    } = useProjectActionsContext();
    const {
       activeWslProject,
@@ -103,6 +105,27 @@ function MainContent() {
    const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    const isTerminalView = activeProject?.active_view === "Terminal";
+   const showGuidePage = isTerminalView && tabs.length === 0 && !activeWorktreePath;
+
+   const selectedAgent = useMemo(() => {
+      const agentId = activeProject?.selected_agent;
+      if (!agentId) return null;
+      return agents.find((a) => a.id === agentId) ?? null;
+   }, [activeProject?.selected_agent, agents]);
+
+   const handleGuideOpenTerminal = useCallback(() => {
+      onAddTab();
+   }, [onAddTab]);
+
+   const handleGuideOpenAgent = useCallback(() => {
+      if (!selectedAgent) return;
+      handleAgentClick(selectedAgent);
+   }, [selectedAgent, handleAgentClick]);
+
+   const handleGuideOpenIde = useCallback(() => {
+      if (!activeProject || !onOpenIde) return;
+      onOpenIde(activeProject.id);
+   }, [activeProject, onOpenIde]);
    const localLayoutId = activeProject
       ? `local:${activeProject.id}:${activeTabId ?? "default"}`
       : "local:none";
@@ -119,8 +142,8 @@ function MainContent() {
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden bg-bg-primary">
-         {/* 终端头部：只在非 FileViewer 模式下显示 */}
-         {hasActiveProject && !showFileViewer && (
+         {/* 终端头部：引导页和 FileViewer 模式下不显示 */}
+         {hasActiveProject && !showFileViewer && !showGuidePage && (
             <div className="shrink-0 bg-bg-secondary border-b border-border">
                <div className="h-8 flex items-center px-2 gap-1">
                   <div className="flex-1 min-w-0">
@@ -243,6 +266,14 @@ function MainContent() {
                      filePath={worktreeDiffState.filePath}
                      initialMode={config.diffMode}
                      onBack={onWorktreeDiffBack}
+                  />
+               ) : showGuidePage ? (
+                  <ProjectGuidePage
+                     selectedAgent={selectedAgent}
+                     selectedIde={activeProject.selected_ide}
+                     onOpenTerminal={handleGuideOpenTerminal}
+                     onOpenAgent={handleGuideOpenAgent}
+                     onOpenIde={handleGuideOpenIde}
                   />
                ) : isTerminalView || activeWorktreePath ? (
                   <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">

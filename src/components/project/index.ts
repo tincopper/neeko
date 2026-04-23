@@ -5,6 +5,7 @@ export { default as ProjectSettingsDialog } from "./ProjectSettingsDialog";
 export { default as ProjectItem } from "./ProjectItem";
 export { default as ProjectItemHeader } from "./ProjectItemHeader";
 export { default as ProjectGitSection } from "./ProjectGitSection";
+export { default as ProjectGuidePage } from "./ProjectGuidePage";
 export { useProjectItemDrag } from "./useProjectItemDrag";
 export { useProjectItemMenu } from "./useProjectItemMenu";
 export type {
