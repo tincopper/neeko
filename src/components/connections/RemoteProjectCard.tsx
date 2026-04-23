@@ -150,6 +150,7 @@ const RemoteProjectCard: React.FC<RemoteProjectCardProps> = React.memo(
         isActive={isActive}
         hasSession={hasSession}
         onSelectProject={() => onSelectProject(host, project)}
+        onToggleCollapsed={() => {}}
         onSelectFile={handleSelectFile}
         onCheckoutBranch={handleCheckout}
         onCommitRenameBranch={handleRenameBranch}

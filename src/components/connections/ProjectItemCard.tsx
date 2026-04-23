@@ -17,6 +17,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
       isActive,
       hasSession,
       onSelectProject,
+      onToggleCollapsed,
       onSelectFile,
       onCheckoutBranch,
       onCommitRenameBranch,
@@ -170,7 +171,10 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
             <div
                className={`gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover ${isActive ? "bg-bg-tertiary" : ""
                   }`}
-               onClick={() => onSelectProject()}
+               onClick={() => {
+                  setCollapsed((v) => !v);
+                  onToggleCollapsed?.();
+               }}
                onContextMenu={handleContextMenu}
             >
                <span
@@ -277,9 +281,9 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                </div>
             </div>
 
-            {!collapsed && gitInfo && (
+            {!collapsed && (
                <ProjectBody
-                  gitInfo={gitInfo}
+                  gitInfo={gitInfo ?? null}
                   projectId={project.id}
                   expandedSections={expandedSections}
                   renamingBranch={renamingBranch}

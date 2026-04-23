@@ -152,6 +152,7 @@ const WSLProjectCard: React.FC<WSLProjectCardProps> = React.memo(
         isActive={isActive}
         hasSession={hasSession}
         onSelectProject={() => onSelectProject(distro, project)}
+        onToggleCollapsed={() => {}}
         onSelectFile={handleSelectFile}
         onCheckoutBranch={handleCheckout}
         onCommitRenameBranch={handleRenameBranch}
