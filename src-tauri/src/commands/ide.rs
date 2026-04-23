@@ -1,3 +1,4 @@
+use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
 use tauri::State;
@@ -12,7 +13,7 @@ pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<App
 }
 
 #[tauri::command]
-pub fn open_ide(ide_command: String, project_path: String) -> Result<(), String> {
+pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppError> {
     use std::process::Command;
 
     let trimmed = ide_command.trim();
@@ -100,9 +101,8 @@ pub fn open_remote_ide(
     username: String,
     project_path: String,
     ide: String,
-) -> Result<(), String> {
-    open_remote_ide_impl(&host, port, &username, &project_path, &ide)
-        .map_err(|e| e.to_string())
+) -> Result<(), AppError> {
+    open_remote_ide_impl(&host, port, &username, &project_path, &ide).map_err(AppError::from)
 }
 
 fn open_remote_ide_impl(
@@ -183,14 +183,16 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), String> {
+pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::open_wsl_ide(&distro, &project_path, &ide).map_err(|e| e.to_string())
+        crate::git::open_wsl_ide(&distro, &project_path, &ide).map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, ide);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }

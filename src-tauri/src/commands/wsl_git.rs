@@ -1,15 +1,18 @@
-use crate::state::*;
+use crate::models::*;
+use crate::AppError;
 
 #[tauri::command]
-pub fn refresh_wsl_git_info(distro: String, project_path: String) -> Result<GitInfo, String> {
+pub fn refresh_wsl_git_info(distro: String, project_path: String) -> Result<GitInfo, AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::get_wsl_git_info(&distro, &project_path).map_err(|e| e.to_string())
+        crate::git::get_wsl_git_info(&distro, &project_path).map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -18,16 +21,17 @@ pub fn get_wsl_file_diff_command(
     distro: String,
     project_path: String,
     file_path: String,
-) -> Result<DiffResult, String> {
+) -> Result<DiffResult, AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::get_wsl_file_diff(&distro, &project_path, &file_path)
-            .map_err(|e| e.to_string())
+        crate::git::get_wsl_file_diff(&distro, &project_path, &file_path).map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, file_path);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -36,17 +40,19 @@ pub fn wsl_checkout_branch(
     distro: String,
     project_path: String,
     branch_name: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::run_wsl_git(&distro, &project_path, &["checkout", &branch_name])
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, branch_name);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -55,17 +61,19 @@ pub fn wsl_create_branch(
     distro: String,
     project_path: String,
     branch_name: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::run_wsl_git(&distro, &project_path, &["branch", &branch_name])
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, branch_name);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -75,7 +83,7 @@ pub fn wsl_rename_branch(
     project_path: String,
     old_name: String,
     new_name: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::run_wsl_git(
@@ -84,12 +92,14 @@ pub fn wsl_rename_branch(
             &["branch", "-m", &old_name, &new_name],
         )
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, old_name, new_name);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -100,7 +110,7 @@ pub fn wsl_create_worktree(
     worktree_path: String,
     branch_name: String,
     new_branch: bool,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         let args: Vec<&str> = if new_branch {
@@ -110,12 +120,14 @@ pub fn wsl_create_worktree(
         };
         crate::git::run_wsl_git(&distro, &project_path, &args)
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, worktree_path, branch_name, new_branch);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -124,7 +136,7 @@ pub fn wsl_remove_worktree(
     distro: String,
     project_path: String,
     worktree_path: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::run_wsl_git(
@@ -133,12 +145,14 @@ pub fn wsl_remove_worktree(
             &["worktree", "remove", "--force", &worktree_path],
         )
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, worktree_path);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }
 
@@ -148,7 +162,7 @@ pub fn wsl_rename_worktree(
     project_path: String,
     worktree_path: String,
     new_name: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::run_wsl_git(
@@ -156,12 +170,14 @@ pub fn wsl_rename_worktree(
             &project_path,
             &["worktree", "move", &worktree_path, &new_name],
         )
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
         .map(|_| new_name)
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, worktree_path, new_name);
-        Err("WSL is only supported on Windows".to_string())
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
     }
 }

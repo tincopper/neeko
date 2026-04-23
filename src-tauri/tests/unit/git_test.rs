@@ -1,7 +1,7 @@
-use neeko_lib::git;
-use neeko_lib::state::DiffLine;
-use std::path::PathBuf;
 use git2::{Repository, Signature};
+use neeko_lib::git;
+use neeko_lib::models::DiffLine;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 fn create_test_repo() -> (TempDir, Repository) {
@@ -76,7 +76,11 @@ fn parse_unified_diff_removed_lines() {
 "#;
     let result = git::parse_unified_diff(diff);
     assert_eq!(result.hunks.len(), 1);
-    let removed: Vec<_> = result.hunks[0].lines.iter().filter(|l| matches!(l, DiffLine::Removed(_))).collect();
+    let removed: Vec<_> = result.hunks[0]
+        .lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Removed(_)))
+        .collect();
     assert_eq!(removed.len(), 1);
 }
 
@@ -125,7 +129,10 @@ fn get_git_info_detects_modified_file() {
 
     let info = git::get_git_info(tmp.path()).unwrap();
     assert!(!info.is_clean);
-    assert!(info.changed_files.iter().any(|f| f.path == PathBuf::from("README.md")));
+    assert!(info
+        .changed_files
+        .iter()
+        .any(|f| f.path == PathBuf::from("README.md")));
 }
 
 #[test]
@@ -135,7 +142,10 @@ fn get_git_info_detects_added_file() {
 
     let info = git::get_git_info(tmp.path()).unwrap();
     assert!(!info.is_clean);
-    assert!(info.changed_files.iter().any(|f| f.path == PathBuf::from("new_file.txt")));
+    assert!(info
+        .changed_files
+        .iter()
+        .any(|f| f.path == PathBuf::from("new_file.txt")));
 }
 
 // --- create_branch / checkout_branch ---
@@ -163,7 +173,8 @@ fn create_branch_from_start_point() {
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
         let parent = repo.head().unwrap().peel_to_commit().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "Second", &tree, &[&parent]).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Second", &tree, &[&parent])
+            .unwrap();
     }
 
     git::create_branch(tmp.path(), "from-first", Some("HEAD~1")).unwrap();
@@ -194,7 +205,10 @@ fn get_file_diff_on_new_file() {
 
     let diff = git::get_file_diff(tmp.path(), "brand_new.txt").unwrap();
     assert!(!diff.hunks.is_empty());
-    let all_added = diff.hunks[0].lines.iter().all(|l| matches!(l, DiffLine::Added(_)));
+    let all_added = diff.hunks[0]
+        .lines
+        .iter()
+        .all(|l| matches!(l, DiffLine::Added(_)));
     assert!(all_added);
 }
 

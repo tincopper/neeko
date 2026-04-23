@@ -22,25 +22,40 @@ pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
             }
         }
     }
-    SkillMetadata { name: None, description: None }
+    SkillMetadata {
+        name: None,
+        description: None,
+    }
 }
 
 /// Parse YAML frontmatter from markdown content.
 fn parse_frontmatter(content: &str) -> SkillMetadata {
     let trimmed = content.trim();
     if !trimmed.starts_with("---") {
-        return SkillMetadata { name: None, description: None };
+        return SkillMetadata {
+            name: None,
+            description: None,
+        };
     }
     let rest = &trimmed[3..];
     if let Some(end) = rest.find("---") {
         let yaml_str = &rest[..end];
         if let Ok(yaml) = serde_yaml::from_str::<serde_yaml::Value>(yaml_str) {
-            let name = yaml.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let description = yaml.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let name = yaml
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let description = yaml
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             return SkillMetadata { name, description };
         }
     }
-    SkillMetadata { name: None, description: None }
+    SkillMetadata {
+        name: None,
+        description: None,
+    }
 }
 
 /// Check whether a directory looks like a valid skill directory.
@@ -55,26 +70,43 @@ const WINDOWS_RESERVED: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'
 
 /// Reserved Windows device names.
 const WINDOWS_RESERVED_BASENAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-    "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// Sanitize a skill name for safe use as a directory component on all platforms.
 pub fn sanitize_skill_name(name: &str) -> Option<String> {
-    let last = std::path::Path::new(name).file_name().map(|n| n.to_string_lossy().to_string())?;
-    if last == ".." || last == "." { return None; }
-    let clean: String = last.chars().map(|c| {
-        if c.is_control() || WINDOWS_RESERVED.contains(&c) { '_' } else { c }
-    }).collect();
+    let last = std::path::Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())?;
+    if last == ".." || last == "." {
+        return None;
+    }
+    let clean: String = last
+        .chars()
+        .map(|c| {
+            if c.is_control() || WINDOWS_RESERVED.contains(&c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
     let trimmed = clean.trim().trim_end_matches('.');
     if trimmed.is_empty() {
         None
     } else {
-        let reserved = trimmed.split('.').next()
+        let reserved = trimmed
+            .split('.')
+            .next()
             .map(|base| base.to_ascii_uppercase())
             .map(|upper| WINDOWS_RESERVED_BASENAMES.contains(&upper.as_str()))
             .unwrap_or(false);
-        if reserved { Some(format!("_{}", trimmed)) } else { Some(trimmed.to_string()) }
+        if reserved {
+            Some(format!("_{}", trimmed))
+        } else {
+            Some(trimmed.to_string())
+        }
     }
 }
 
@@ -82,9 +114,13 @@ pub fn sanitize_skill_name(name: &str) -> Option<String> {
 pub fn infer_skill_name(dir: &Path) -> String {
     let meta = parse_skill_md(dir);
     if let Some(name) = meta.name {
-        if let Some(sanitized) = sanitize_skill_name(&name) { return sanitized; }
+        if let Some(sanitized) = sanitize_skill_name(&name) {
+            return sanitized;
+        }
     }
-    dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "unknown-skill".to_string())
+    dir.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown-skill".to_string())
 }
 
 #[cfg(test)]
@@ -143,7 +179,10 @@ mod tests {
 
     #[test]
     fn sanitize_strips_path_traversal() {
-        assert_eq!(sanitize_skill_name("../../../../.bashrc"), Some(".bashrc".into()));
+        assert_eq!(
+            sanitize_skill_name("../../../../.bashrc"),
+            Some(".bashrc".into())
+        );
     }
 
     #[test]
@@ -159,7 +198,10 @@ mod tests {
 
     #[test]
     fn sanitize_replaces_windows_reserved_chars() {
-        assert_eq!(sanitize_skill_name("foo:bar*baz"), Some("foo_bar_baz".into()));
+        assert_eq!(
+            sanitize_skill_name("foo:bar*baz"),
+            Some("foo_bar_baz".into())
+        );
         assert_eq!(sanitize_skill_name("a<b>c"), Some("a_b_c".into()));
     }
 
@@ -194,7 +236,11 @@ mod tests {
         let tmp = tempdir().unwrap();
         let skill_dir = tmp.path().join("directory-name");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "---\nname: metadata-name\n---\n").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: metadata-name\n---\n",
+        )
+        .unwrap();
         assert_eq!(infer_skill_name(&skill_dir), "metadata-name");
     }
 }

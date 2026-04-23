@@ -1,322 +1,216 @@
-# Neeko — AGENTS.md
+# Repository Guidelines
 
-> AI 编程助手项目上下文与开发规范
+## Project Overview
 
-## 项目概览
+Neeko 是一个基于 Tauri 2 与 React 18 的桌面应用，用于统一管理多项目 AI Agent 会话。应用支持三类项目源。
 
-**Neeko** 是一个基于 Rust + Tauri 2.0 的跨平台桌面应用，统一管理多个 AI CLI Agent 工具。支持三种项目类型：本地、WSL（Windows）、SSH 远程。每个项目绑定独立 PTY 终端会话，支持 Git 分支管理、Worktree 管理、文件 Diff 查看、副终端面板和 IDE 一键启动。
+1. 本地项目
+2. WSL 项目
+3. SSH 远程项目
 
-- **版本**: 1.0.3
-- **标识符**: `com.neeko.app`
-- **许可证**: Apache 2.0
-- **前端**: React 18 + TypeScript + Vite
-- **后端**: Rust + Tauri 2.0 + tokio
+核心目标是将终端会话、Git 操作、文件变更、IDE 启动与 Skill 管理聚合到同一窗口，并保持会话可恢复。
 
-## 常用命令
+## Architecture and Data Flow
+
+### Backend 主链路
+
+`src-tauri/src/main.rs` 调用 `neeko_lib::run`。
+
+`src-tauri/src/app.rs` 负责 Tauri Builder 组装。
+
+1. 初始化日志与 PATH
+2. 注入 `SkillStore` 与 `AppStateWrapper`
+3. 在 setup 阶段恢复 session、启动 watcher、加载自定义 agent
+4. 注册命令处理器
+
+命令注册入口当前为。
+
+```rust
+.invoke_handler(crate::neeko_invoke_handler!())
+```
+
+`src-tauri/src/commands/mod.rs` 中 `neeko_invoke_handler!` 维护完整命令清单。该宏当前是命令注册单一事实源。
+
+### Frontend 主链路
+
+`src/main.tsx` 挂载应用。
+
+`src/App.tsx` 仅负责页面拼装。
+
+1. 调用 `useAppContainer`
+2. 初始化阶段显示 `SplashScreen`
+3. 正常阶段挂载 `TitleBar`、`AppLayout`、`AppModals`、`AppToast`
+
+状态协同由 hooks 与 store 完成。
+
+1. 组合入口 `src/hooks/useAppContainer.ts`
+2. 全局状态 `src/store/appStore.ts`
+3. 类型定义 `src/types/`
+
+### 关键数据流
+
+1. UI 交互触发 hooks
+2. hooks 通过 `@tauri-apps/api/core` 的 `invoke` 调用 Rust 命令
+3. 命令通过 `State<AppStateWrapper>` 访问 manager
+4. manager 完成 Git、PTY、SSH、存储、watcher 操作
+5. 结果回传前端并更新 store
+
+## Key Directories
+
+| 路径 | 用途 |
+| --- | --- |
+| `src/` | React 前端代码，含组件、hooks、store、types、utils |
+| `src/testing/` | 前端测试 setup 与工厂 |
+| `src-tauri/src/` | Rust 后端源码，含 app、commands、models、manager |
+| `src-tauri/tests/` | Rust 测试入口与单元测试模块 |
+| `.trellis/` | AI 任务流系统，含 workflow、spec、task 脚本 |
+| `docs/` | 产品文档与截图资产 |
+
+## Development Commands
+
+### 常用开发命令
 
 ```bash
-# 安装依赖
 pnpm install
-
-# 开发模式
 pnpm tauri dev
-
-# 构建发布版本
 pnpm tauri build
+```
 
-# 前端类型检查
-npx tsc --noEmit
+### 质量与类型检查
 
-# Rust 编译检查
+```bash
+pnpm lint
+pnpm type-check
 cargo check --manifest-path src-tauri/Cargo.toml
+```
 
-# 前端测试
+### 测试命令
+
+```bash
 pnpm test
-
-# 前端测试（watch 模式）
-pnpm test:watch
-
-# Rust 测试
+pnpm test:run
+pnpm test:coverage
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-## 目录结构
+## Code Conventions and Common Patterns
 
-```
-neeko/
-├── src/                              # 前端 (React + TypeScript)
-│   ├── App.tsx                       # 组合层：hook 调用 + JSX 编排
-│   ├── main.tsx                      # 入口点
-│   ├── types/                        # 全局 TypeScript 类型定义（按域拆分）
-│   │   ├── index.ts                  # 类型聚合导出
-│   │   ├── app.ts                    # 应用配置与主题类型
-│   │   ├── project.ts                # 本地项目与统一项目类型
-│   │   ├── connection.ts             # WSL/SSH 连接与项目类型
-│   │   ├── git.ts                    # Git 相关类型
-│   │   ├── file.ts                   # 文件树与编辑器标签类型
-│   │   ├── terminal.ts               # 终端标签类型
-│   │   ├── split.ts                  # 终端分屏布局类型
-│   │   ├── skill.ts                  # Skill 领域类型
-│   │   ├── session.ts                # 会话持久化类型
-│   │   └── agent.ts                  # Agent 类型
-│   ├── styles.css                    # 全局样式（One Dark Pro 主题 + CSS 变量）
-│   ├── vite-env.d.ts                 # Vite 模块声明（*.png, *.svg）
-│   ├── assets/                       # 静态资源
-│   │   ├── agents/                   # Agent logo（PNG/SVG）
-│   │   ├── distros/                  # WSL 发行版 logo（SVG）
-│   │   ├── ides/                     # IDE logo（SVG/PNG）
-│   │   ├── linux.svg                 # WSL 通用图标
-│   │   ├── server.svg                # SSH 图标
-│   │   ├── folder.svg                # 文件夹图标
-│   │   └── cli.svg                   # 自定义 Agent 图标
-│   ├── components/
-│   │   ├── terminal/                 # 终端组件
-│   │   │   ├── TerminalView.tsx      # 本地终端（xterm.js + PTY 缓存）
-│   │   │   ├── SideTerminalView.tsx  # 副终端
-│   │   │   ├── WorktreeTerminalView.tsx  # Worktree 终端
-│   │   │   ├── WSLTerminalView.tsx   # WSL 终端
-│   │   │   ├── RemoteTerminalView.tsx    # SSH 远程终端
-│   │   │   └── index.ts              # barrel export
-│   │   ├── connections/              # WSL + SSH 连接管理
-│   │   │   ├── WSLDialog.tsx         # WSL 发行版/路径选择
-│   │   │   ├── RemoteDialog.tsx      # SSH 服务器配置/路径选择
-│   │   │   ├── RemoteAuthDialog.tsx  # SSH 重新认证对话框
-│   │   │   └── RemoteItems.tsx       # WSLItem/RemoteItem 侧边栏组件
-│   │   ├── project/                  # 本地项目管理
-│   │   │   ├── ProjectSidebar.tsx    # 左侧边栏（可拖拽宽度）
-│   │   │   ├── ProjectItem.tsx       # 单个本地项目卡片
-│   │   │   ├── GitDialog.tsx         # 新建分支/Worktree 对话框
-│   │   │   └── AddProjectModal.tsx   # 添加项目确认（含 Agent/IDE 选择）
-│   │   ├── files/                    # 文件域组件
-│   │   │   ├── FileViewer.tsx        # 文件编辑器（CodeMirror，多 Tab）
-│   │   │   ├── FileTree.tsx          # 变更文件树（紧凑包压缩）
-│   │   │   └── index.ts              # barrel export
-│   │   ├── layout/                   # 窗口布局
-│   │   │   ├── TitleBar.tsx          # 自定义标题栏（无系统边框）
-│   │   │   ├── WindowControls.tsx    # 最小化/最大化/关闭按钮
-│   │   │   ├── AgentSelector.tsx     # Agent 下拉选择器
-│   │   │   └── AgentIcon.tsx         # Agent logo 渲染器
-│   │   ├── MainContent.tsx           # 跨域编排组件
-│   │   ├── DiffView.tsx              # Git diff 视图（统一/并排模式）
-│   │   └── SettingsPanel.tsx         # 设置面板（Editor/Terminal/Agents/IDE/Git）
-│   ├── hooks/                        # 自定义 React hooks
-│   │   ├── useAppConfig.ts           # 应用配置（加载/保存/同步 CSS 变量）
-│   │   ├── useLocalProjects.ts       # 本地项目状态管理
-│   │   ├── useWslProjects.ts         # WSL 项目状态管理
-│   │   ├── useRemoteProjects.ts      # SSH 项目状态管理 + 认证
-│   │   ├── useWslActions.ts          # WSL 操作（diff/branch/worktree/IDE）
-│   │   ├── useRemoteActions.ts       # SSH 操作（diff/branch/worktree/IDE）
-│   │   ├── useWorktreeState.ts       # Worktree 状态管理
-│   │   ├── useSideTerminalResize.ts  # 副终端拖拽调整大小
-│   │   ├── useToast.ts               # Toast 通知
-│   │   ├── useKeyboardShortcuts.ts   # 键盘快捷键
-│   │   ├── useCrossDomainRefs.ts     # 跨域 setter refs
-│   │   └── useSessionBootstrap.ts    # 应用启动引导
-│   └── utils/
-│       ├── terminal.ts               # 终端工具（默认字体、字体栈构建）
-│       ├── agents.ts                 # Agent icon 解析
-│       ├── distros.ts                # WSL 发行版 icon 解析（模糊匹配）
-│       ├── idePresets.ts             # IDE 预设 + icon 解析
-│       ├── platform.ts               # 平台检测（IS_WINDOWS）
-│       └── fileIcons.ts              # 文件类型图标
-├── src-tauri/                        # 后端 (Rust)
-│   ├── src/
-│   │   ├── main.rs                   # Tauri 应用入口
-│   │   ├── lib.rs                    # Tauri 命令注册 + AppStateWrapper
-│   │   ├── state.rs                  # 核心数据结构
-│   │   ├── project.rs                # 项目管理（ProjectManager）
-│   │   ├── terminal.rs               # 本地/WSL 终端管理
-│   │   ├── remote.rs                 # SSH 远程终端管理（russh）
-│   │   ├── agent.rs                  # Agent 管理（7 个预置 Agent）
-│   │   ├── git.rs                    # Git 操作（git2-rs）
-│   │   ├── storage.rs                # 持久化管理
-│   │   ├── watcher.rs                # 文件监听
-│   │   └── logger.rs                 # 文件日志
-│   ├── capabilities/default.json     # Tauri 权限配置
-│   ├── tauri.conf.json               # Tauri 主配置
-│   ├── tauri.{windows,macos,linux}.conf.json  # 平台配置
-│   └── Cargo.toml                    # Rust 依赖
-├── docs/                             # 设计文档
-├── REQUIREMENTS.md                   # 完整需求文档
-├── README.md / README_CN.md          # 项目 README
-└── AGENTS.md                         # 本文件
+### Rust 命令层约定
+
+1. 命令函数使用 `#[tauri::command]`。
+2. 返回类型统一为 `Result<T, AppError>`。
+3. 状态注入使用 `State<AppStateWrapper>`。
+4. 异步命令优先使用 `State<'_, AppStateWrapper>`。
+5. 错误边界统一使用 `map_err(AppError::from)`。
+
+### 命令注册约定
+
+当前有效模式为 `neeko_invoke_handler!` 平坦清单注册。
+
+1. 在域模块新增命令实现，例如 `commands/project.rs`
+2. 通过 `commands/mod.rs` 聚合导出
+3. 将命令路径加入 `neeko_invoke_handler!` 清单
+
+说明。
+
+`commands/wsl.rs`、`commands/remote.rs`、`skill/commands.rs` 内存在 `wsl_commands!`、`remote_commands!`、`skill_commands!` 宏定义，但当前 `app.rs` 注册入口使用 `neeko_invoke_handler!`。
+
+### React 组织约定
+
+1. 页面容器逻辑下沉到 hooks。
+2. `App.tsx` 维持组合层职责。
+3. 跨域状态通过 store 与容器 hook 协调。
+4. 共享类型集中在 `src/types/`。
+
+### 错误与并发
+
+1. manager 中共享状态使用 Mutex 或内部并发容器。
+2. 避免跨 await 持有锁。
+3. 平台特定逻辑通过 `cfg` 分支处理。
+
+## Important Files
+
+| 文件 | 作用 |
+| --- | --- |
+| `src-tauri/src/app.rs` | Tauri 启动与命令注册入口 |
+| `src-tauri/src/commands/mod.rs` | 命令模块聚合与 `neeko_invoke_handler!` |
+| `src-tauri/src/app_state.rs` | `AppStateWrapper` 组装中心 |
+| `src-tauri/src/error.rs` | `AppError` 定义与错误转换 |
+| `src/App.tsx` | 前端组合根组件 |
+| `src/hooks/useAppContainer.ts` | 前端主协调 hook |
+| `package.json` | 前端脚本与工具链入口 |
+| `src-tauri/Cargo.toml` | Rust 依赖与目标配置 |
+| `src-tauri/tauri.conf.json` | Tauri 构建与窗口配置 |
+| `.trellis/workflow.md` | AI 开发流程规范 |
+
+## Runtime and Tooling Preferences
+
+1. 包管理器使用 pnpm，版本锁定为 `9.12.2`。
+2. Node 版本建议 `18+`。
+3. Rust edition 为 `2021`。
+4. 前端开发端口固定 `1420`，与 `tauri.conf.json` 中 `devUrl` 对齐。
+5. 默认使用 `pnpm` 命令，不混用 npm 与 yarn。
+
+## Testing and QA
+
+### 前端测试
+
+1. 测试框架为 Vitest。
+2. 环境为 jsdom。
+3. setup 文件为 `src/testing/setup.ts`。
+4. 测试匹配规则见 `vitest.config.ts` 的 `include`。
+
+### 后端测试
+
+1. 入口文件 `src-tauri/tests/unit.rs`。
+2. 子模块位于 `src-tauri/tests/unit/`。
+3. 代码内 `#[cfg(test)]` 测试也会随 `cargo test` 执行。
+
+### 最小回归集
+
+```bash
+pnpm lint
+pnpm type-check
+pnpm test:run
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-## 开发规范
+## AI Assistant Workflow Notes
 
-### 前端 (React + TypeScript)
+开发前执行以下流程。
 
-#### 类型管理
-- 所有共享接口定义在 `src/types/`（按域拆分，`index.ts` 聚合导出）
-- 组件内不重复定义已有类型
-- 组件内部类型用 `interface` 但不导出
+1. `python3 ./.trellis/scripts/get_context.py`
+2. 阅读相关 spec index
+3. 创建或选择任务目录
+4. `task.py init-context` 与 `task.py add-context`
+5. `task.py start` 激活任务上下文
 
-#### Hook 设计原则
-1. **按领域划分**：`useLocalProjects`、`useWslProjects`、`useRemoteProjects`
-2. **返回稳定引用**：所有返回函数用 `useCallback` 包装
-3. **跨域协调在 App.tsx**：hook 管理自己的状态，跨域逻辑在 App 层组合
-4. **Ref 同步集中**：所有 refs 在 App.tsx 的单个 `useEffect` 中同步
+收尾流程。
 
-#### React 性能优化
-| 模式 | 规则 |
-|------|------|
-| `React.memo` | 列表项组件、大型布局组件、复用组件 |
-| `useMemo` | 昂贵计算（`buildTree`、字体列表、分支过滤） |
-| `useCallback` | 跨组件回调、hooks 返回的函数 |
-| 内联对象 | 避免 JSX 中 `style={{...}}` 常量对象，提取到模块级 |
-| 条件渲染 | 用三元而非 `&&`（避免 falsy 值渲染） |
-| Ref 模式 | 频繁变化的值用 ref 跟踪，在 effect 中同步 |
+1. 运行质量命令并确认通过
+2. 同步必要 spec 文档
+3. 执行会话记录脚本
 
-#### Barrel Export
-每个子目录有 `index.ts` barrel export：
-```typescript
-import { TerminalView } from "./components/terminal";
-import { TitleBar, AgentIcon } from "./components/layout";
+```bash
+python3 ./.trellis/scripts/add_session.py --title "<title>" --commit "<hash>"
 ```
 
-#### 共享工具
-- `utils/terminal.ts`：`DEFAULT_FONT_FAMILY`、`buildFontFamily()`
-- `utils/agents.ts`：`getAgentIconSrc(icon)`
-- `utils/distros.ts`：`getDistroIcon(name)`（模糊匹配）
-- `utils/platform.ts`：`IS_WINDOWS`
-- **不在多个文件中重复常量定义**
+## Quick Change Playbooks
 
-### 后端 (Rust)
+### 新增 Tauri 命令
 
-#### 模块职责
-| 模块 | 职责 |
-|------|------|
-| `lib.rs` | Tauri 命令注册、AppStateWrapper 初始化 |
-| `state.rs` | 核心数据结构（Project, GitInfo, TerminalSession, AuthMethod 等） |
-| `project.rs` | ProjectManager：项目 CRUD、Git 信息刷新 |
-| `terminal.rs` | TerminalManager：本地/WSL PTY 终端生命周期 |
-| `remote.rs` | RemoteTerminalManager：SSH 远程终端（russh） |
-| `agent.rs` | AgentManager：7 个预置 Agent + 自定义 Agent |
-| `git.rs` | Git 操作封装（git2-rs） |
-| `storage.rs` | 持久化：sessions.json + config.json，旧格式迁移 |
-| `watcher.rs` | 文件监听（notify + 800ms 防抖 + 10s 轮询） |
-| `logger.rs` | 自定义 `log::Log`，写入 `~/.neeko/neeko.log` |
+1. 在对应域文件添加命令函数。
+2. 保持返回类型 `Result<T, AppError>`。
+3. 将命令加入 `neeko_invoke_handler!`。
+4. 补充必要测试并执行回归命令。
 
-#### 错误处理
-- 使用 `anyhow::Result` 作为 Tauri 命令返回类型
-- 错误消息通过 `Result<T, String>` 传递给前端
+### 修改前端容器逻辑
 
-#### 平台门控
-- WSL 命令使用 `cfg!(target_os = "windows")` 门控
-- Windows 使用 `CREATE_NO_WINDOW` (0x08000000) 避免控制台闪烁
+1. 优先修改 `useAppContainer` 或相关 domain hook。
+2. 避免把业务逻辑回填到 `App.tsx`。
+3. 更新类型定义并跑 `pnpm type-check`。
 
-### 测试 (TDD)
+### 变更构建或权限配置
 
-**本项目采用 TDD 驱动开发。所有新增需求或改动必须先写测试再写实现。**
-
-#### 测试框架
-- **前端**：Vitest + @testing-library/react + jsdom
-- **后端**：Rust 内置 `#[test]` + `tempfile`（临时目录）
-
-#### 测试目录结构
-```
-src/
-├── testing/                      # 全局测试配置
-│   ├── setup.ts                  # vitest 全局 setup
-│   └── factories.ts              # 测试工厂函数
-├── components/
-│   └── __tests__/                # 组件测试
-│       ├── DiffView.test.tsx
-│       ├── FileTree.test.tsx
-│       └── SettingsPanel.test.tsx
-├── hooks/
-│   └── __tests__/               # Hook 测试
-│       ├── useAppConfig.test.ts
-│       ├── useLocalProjects.test.ts
-│       └── useWorktreeState.test.ts
-└── utils/
-    └── __tests__/               # 工具函数测试
-        ├── terminalInput.test.ts
-        ├── fileIcons.test.ts
-        ├── distros.test.ts
-        ├── agents.test.ts
-        ├── terminal.test.ts
-        ├── idePresets.test.ts
-        └── platform.test.ts
-src-tauri/src/
-├── git.rs    (#[cfg(test)] 模块)
-├── agent.rs  (#[cfg(test)] 模块)
-└── ...
-```
-
-#### 测试优先级
-| Tier | 目标 | 方法 |
-|------|------|------|
-| 1 | 纯函数（`getFileIcon`、`buildTree`、`parse_unified_diff`） | 直接调用，断言返回值 |
-| 2 | Hooks（`useWorktreeState`） | `renderHook` + `act` |
-| 3 | Rust 管理器（`AgentManager`、`ProjectManager`） | `#[test]` 函数 |
-| 4 | 组件（需要 mock `invoke`） | `@testing-library/react` |
-
-#### TDD 流程
-1. **先写测试**：定义输入/输出，编写失败的测试用例
-2. **红灯**：运行 `pnpm test` / `cargo test`，确认测试失败
-3. **绿灯**：编写最小实现使测试通过
-4. **重构**：优化代码，保持测试通过
-5. **提交**：测试 + 实现一起提交
-
-#### 测试规范
-- 纯函数测试不 mock 任何依赖
-- Hook 测试使用 `renderHook`，不渲染组件
-- Rust 测试使用 `#[cfg(test)]` 模块，避免污染生产代码
-- 测试命名：`should_<行为>_when_<条件>`
-- 每个测试用例独立，不依赖执行顺序
-
-## 架构要点
-
-### 终端缓存
-全局 Map 缓存，key 格式：
-- 本地：`{projectId}` / `{projectId}:side` / `{projectId}:wt:{worktreePath}`
-- WSL：`wsl:{distro}:{projectId}` / `wsl:{distro}:{projectId}:side`
-- SSH：`remote:{entryId}:{projectId}` / `remote:{entryId}:{projectId}:side`
-
-PTY 会话在组件卸载时保持存活（DOM detach/reattach）。
-
-### SSH IO 架构
-`channel.make_writer()` 分离读写，`tokio::select!` 三路并发：
-1. Input: `input_rx` → `channel.make_writer()`
-2. Resize: `resize_rx` → `channel.window_change()`
-3. Output: `channel.wait()` → `emit terminal-output-{id}`
-
-### Agent 自动启动延迟
-- 本地：即时 | WSL：500ms | SSH：800ms
-
-### 持久化
-- `~/.neeko/sessions.json`：项目、WSL、SSH、宽度、Worktree 状态
-- `~/.neeko/config.json`：字体、Diff 模式、Shell、IDE/Agent 覆盖
-
-## 键盘快捷键
-
-| 快捷键 | 功能 |
-|--------|------|
-| `Ctrl+1` ~ `Ctrl+9` | 跳转到第 N 个项目 |
-| `Ctrl+Q` | 循环切换项目 |
-| `Ctrl+Alt+T` / `Ctrl+W` | 打开/关闭副终端 |
-| `Ctrl+O` | 在 IDE 中打开项目 |
-| `Ctrl+N` | 循环切换 Worktree 终端 |
-| `Ctrl+R` | 手动刷新终端 |
-| `Escape` | 关闭设置面板 |
-
-## 预置 Agent
-
-opencode, claude-code, qwen, gemini, codex, qoder, codebuddy
-
-## 预置 IDE
-
-VS Code, Cursor, Zed, IntelliJ IDEA, GoLand, RustRover, PyCharm
-
-## 已知问题
-
-- SSH 凭据重连自动填充可能有边界情况
-- SSH 路径自动补全下拉可能有 z-index 问题
-- 自定义 IDE 的 icon 解析不支持
-
-## 相关文档
-
-- `docs/REQUIREMENTS.md` — 完整需求文档
-- `docs/SESSION_CONTEXT.md` — 开发历史与架构发现
-- `docs/skill-management-design.md` — Skill 系统设计（未实现）
+1. 同步检查 `package.json`、`vite.config.ts`、`tauri.conf.json`、`capabilities/default.json`。
+2. 验证 `pnpm tauri dev` 与 `pnpm tauri build`。

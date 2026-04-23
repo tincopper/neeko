@@ -1,4 +1,4 @@
-use neeko_lib::state::*;
+use neeko_lib::models::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -41,7 +41,9 @@ fn view_mode_terminal_serializes_as_string() {
 
 #[test]
 fn view_mode_diff_serializes_as_object() {
-    let mode = ViewMode::Diff { file_path: PathBuf::from("src/main.rs") };
+    let mode = ViewMode::Diff {
+        file_path: PathBuf::from("src/main.rs"),
+    };
     let json = serde_json::to_string(&mode).unwrap();
     assert!(json.contains("Diff"));
     assert!(json.contains("src/main.rs"));

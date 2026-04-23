@@ -1,4 +1,4 @@
-use neeko_lib::state::*;
+use neeko_lib::models::*;
 use neeko_lib::storage::StorageManager;
 use std::path::PathBuf;
 use tempfile::TempDir;

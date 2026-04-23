@@ -1,4 +1,5 @@
-use crate::state::*;
+use crate::models::*;
+use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
@@ -11,19 +12,19 @@ pub fn create_terminal_session(
     working_dir: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
-) -> Result<TerminalSession, String> {
-    let manager = state
-        .project_manager
-        .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?;
+) -> Result<TerminalSession, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
         let path = project.path.to_string_lossy().to_string();
         state
             .terminal_manager
             .create_session(&path, cols, rows, shell, working_dir, app_handle)
-            .map_err(|e| e.to_string())
+            .map_err(AppError::from)
     } else {
-        Err(format!("Project not found: {}", project_id))
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
     }
 }
 
@@ -38,9 +39,9 @@ pub fn resize_terminal(
     cols: u16,
     rows: u16,
     state: State<AppStateWrapper>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     state
         .terminal_manager
         .resize_session(&session_id, cols, rows)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }

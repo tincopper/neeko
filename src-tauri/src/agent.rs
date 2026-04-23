@@ -1,4 +1,4 @@
-use crate::state::agent::AgentConfig;
+use crate::models::agent::AgentConfig;
 use std::collections::HashMap;
 use std::env;
 use std::process::Command;
@@ -18,7 +18,13 @@ pub fn check_command_exists(command: &str) -> bool {
 
         let interactive_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-        which_in(command, Some(interactive_path), env::current_dir().unwrap().as_path()).is_ok()
+        // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
+        which_in(
+            command,
+            Some(interactive_path),
+            env::current_dir().unwrap().as_path(),
+        )
+        .is_ok()
     }
 }
 
@@ -171,10 +177,7 @@ impl AgentManager {
             .collect();
 
         let results = join_all(tasks).await;
-        results
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .collect()
+        results.into_iter().filter_map(|r| r.ok()).collect()
     }
 }
 
