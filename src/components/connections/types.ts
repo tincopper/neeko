@@ -29,7 +29,7 @@ export interface ProjectCardModel {
 }
 
 export interface ProjectBodyProps {
-  gitInfo: GitInfo;
+  gitInfo: GitInfo | null;
   projectId: string;
   expandedSections: Record<string, boolean>;
   renamingBranch: string | null;
@@ -67,6 +67,7 @@ export interface ProjectItemCardProps {
   isActive: boolean;
   hasSession: boolean;
   onSelectProject: () => void;
+  onToggleCollapsed?: () => void;
   onSelectFile: (filePath: string) => void;
   onCheckoutBranch: (branch: string) => Promise<void>;
   onCommitRenameBranch: (oldName: string, newName: string) => void;

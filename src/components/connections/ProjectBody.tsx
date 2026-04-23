@@ -72,7 +72,7 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(
     }, [branchDropdownOpen]);
 
     // Changed files & tree (same as ProjectGitSection)
-    const changedFiles = gitInfo.changed_files;
+    const changedFiles = gitInfo?.changed_files ?? [];
     const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
     const { totalAdditions, totalDeletions } = useMemo(() => {
       let additions = 0;
@@ -85,8 +85,8 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(
     }, [changedFiles]);
 
     // Branches & worktrees
-    const branches = gitInfo.branches;
-    const worktrees = gitInfo.worktrees;
+    const branches = gitInfo?.branches ?? [];
+    const worktrees = gitInfo?.worktrees ?? [];
     const localExpanded = expandedSections.__local__ !== false;
     const localChangesExpanded = expandedSections.__local_changes__ !== false;
 
@@ -183,82 +183,84 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(
           <span className="flex-1 text-[var(--font-size)] font-semibold truncate min-w-0">
             local
           </span>
-          {/* Interactive branch badge dropdown */}
-          <div className="relative min-w-0" ref={branchDropdownRef} onClick={(e) => e.stopPropagation()}>
-            <span
-              className={cn(
-                "gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40",
-                branchDropdownOpen && "bg-accent-blue/20 border-accent-blue/40"
-              )}
-              title={currentBranch}
-              onClick={() => setBranchDropdownOpen((v) => !v)}
-            >
-              <BranchIcon size={11} />
-              {currentBranch}
-            </span>
-            {branchDropdownOpen && (
-              <div
-                className="absolute top-[calc(100%+4px)] right-0 bg-bg-secondary border border-border rounded-lg min-w-[220px] max-w-[320px] z-[1000] shadow-xl overflow-hidden flex flex-col"
-                onClick={(e) => e.stopPropagation()}
+          {/* Interactive branch badge dropdown -- only when gitInfo is loaded */}
+          {gitInfo && (
+            <div className="relative min-w-0" ref={branchDropdownRef} onClick={(e) => e.stopPropagation()}>
+              <span
+                className={cn(
+                  "gh-branch-inline flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40",
+                  branchDropdownOpen && "bg-accent-blue/20 border-accent-blue/40"
+                )}
+                title={currentBranch}
+                onClick={() => setBranchDropdownOpen((v) => !v)}
               >
-                <div className="flex items-center gap-1.5 p-2 px-2.5 border-b border-border">
-                  <SearchIcon size={12} className="text-text-muted shrink-0" />
-                  <input
-                    ref={branchSearchInputRef}
-                    className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
-                    placeholder="Search branches..."
-                    value={branchSearchQuery}
-                    onChange={(e) => setBranchSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
+                <BranchIcon size={11} />
+                {currentBranch}
+              </span>
+              {branchDropdownOpen && (
+                <div
+                  className="absolute top-[calc(100%+4px)] right-0 bg-bg-secondary border border-border rounded-lg min-w-[220px] max-w-[320px] z-[1000] shadow-xl overflow-hidden flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1.5 p-2 px-2.5 border-b border-border">
+                    <SearchIcon size={12} className="text-text-muted shrink-0" />
+                    <input
+                      ref={branchSearchInputRef}
+                      className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
+                      placeholder="Search branches..."
+                      value={branchSearchQuery}
+                      onChange={(e) => setBranchSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setBranchDropdownOpen(false);
+                          setBranchSearchQuery("");
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="max-h-[240px] overflow-y-auto py-1">
+                    {dropdownBranches.map((branch) => {
+                      const isCurrent = branch === currentBranch;
+                      return (
+                        <div
+                          key={branch}
+                          className={cn(
+                            "flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary",
+                            isCurrent && "!text-accent-blue cursor-default"
+                          )}
+                          onClick={() => handleCheckoutFromDropdown(branch)}
+                          title={isCurrent ? "Current branch" : "Click to checkout"}
+                        >
+                          <BranchIcon size={11} />
+                          <span className="flex-1 truncate">{branch}</span>
+                          {isCurrent && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] shrink-0" title="current" />
+                          )}
+                        </div>
+                      );
+                    })}
+                    {dropdownBranches.length === 0 && (
+                      <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
+                    )}
+                  </div>
+                  <div className="border-t border-border py-1">
+                    <div
+                      className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setBranchDropdownOpen(false);
                         setBranchSearchQuery("");
-                      }
-                    }}
-                  />
-                </div>
-                <div className="max-h-[240px] overflow-y-auto py-1">
-                  {dropdownBranches.map((branch) => {
-                    const isCurrent = branch === currentBranch;
-                    return (
-                      <div
-                        key={branch}
-                        className={cn(
-                          "flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary",
-                          isCurrent && "!text-accent-blue cursor-default"
-                        )}
-                        onClick={() => handleCheckoutFromDropdown(branch)}
-                        title={isCurrent ? "Current branch" : "Click to checkout"}
-                      >
-                        <BranchIcon size={11} />
-                        <span className="flex-1 truncate">{branch}</span>
-                        {isCurrent && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] shrink-0" title="current" />
-                        )}
-                      </div>
-                    );
-                  })}
-                  {dropdownBranches.length === 0 && (
-                    <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
-                  )}
-                </div>
-                <div className="border-t border-border py-1">
-                  <div
-                    className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setBranchDropdownOpen(false);
-                      setBranchSearchQuery("");
-                      onOpenDialog?.("new-branch", branches);
-                    }}
-                  >
-                    <PlusIcon size={11} />
-                    New Branch
+                        onOpenDialog?.("new-branch", branches);
+                      }}
+                    >
+                      <PlusIcon size={11} />
+                      New Branch
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* "Changes (N) +X -Y" collapsible section */}

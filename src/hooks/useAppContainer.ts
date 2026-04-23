@@ -22,7 +22,7 @@ import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { useFileView } from "./useFileView";
 import { useSyncToStore } from "./useSyncToStore";
-import type { AgentConfig, RemoteProject, WSLProject } from "../types";
+import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
 import { useAppStore } from "../store/appStore";
 
@@ -358,6 +358,32 @@ export function useAppContainer(): UseAppContainerResult {
     restoreAuthFromEntries,
   });
 
+  // Refresh git info for WSL/Remote projects on startup (similar to local projects in useSessionBootstrap)
+  const initialWslRemoteRefreshDone = React.useRef(false);
+  useEffect(() => {
+    if (initializing || initialWslRemoteRefreshDone.current) return;
+    initialWslRemoteRefreshDone.current = true;
+
+    // Refresh WSL git info for projects without it
+    for (const entry of wslEntries) {
+      for (const project of entry.projects) {
+        if (!project.git_info) {
+          void wslActions.handleRefreshWslGit(entry.distro, project.id, project.path);
+        }
+      }
+    }
+
+    // Refresh Remote git info for projects without it (requires auth)
+    for (const entry of remoteEntries) {
+      if (!remoteAuthStore.has(entry.id)) continue;
+      for (const project of entry.projects) {
+        if (!project.git_info) {
+          void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
+        }
+      }
+    }
+  }, [initializing, wslEntries, remoteEntries, remoteAuthStore, wslActions, remoteActions]);
+
   useDelayedInit({ loadAgents });
 
   const isTerminalView = activeProject?.active_view === "Terminal";
@@ -572,14 +598,33 @@ export function useAppContainer(): UseAppContainerResult {
     wsl: {
       open: wslDialogOpen,
       onClose: handleWslDialogClose,
-      onAddWslEntry: handleWSLEntryAdd,
+      onAddWslEntry: async (entry: WSLEntrySession) => {
+        await handleWSLEntryAdd(entry);
+        // Refresh git info for newly added projects that lack it
+        for (const project of entry.projects) {
+          if (!project.git_info) {
+            void wslActions.handleRefreshWslGit(entry.distro, project.id, project.path);
+          }
+        }
+      },
       entries: wslEntries,
       addToEntryId: wslAddToEntryId,
     },
     remote: {
       open: remoteDialogOpen,
       onClose: handleRemoteDialogClose,
-      onAddRemoteEntry: handleRemoteEntryAdd,
+      onAddRemoteEntry: async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
+        await handleRemoteEntryAdd(entry, auth, saved_auth);
+        // Refresh git info for newly added projects that lack it (requires auth)
+        const hasAuth = remoteAuthStore.has(entry.id) || !!auth;
+        if (hasAuth) {
+          for (const project of entry.projects) {
+            if (!project.git_info) {
+              void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
+            }
+          }
+        }
+      },
       entries: remoteEntries,
       addToEntryId: remoteAddToEntryId,
       authStore: remoteAuthStore,
