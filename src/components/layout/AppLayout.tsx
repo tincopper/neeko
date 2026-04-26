@@ -4,17 +4,22 @@ import ActivityBar from "./ActivityBar";
 import PanelArea from "./PanelArea";
 import { ProjectsPanel, FilesPanel } from "../panels";
 import { SkillsPanel, SkillContent } from "../skills";
+import SettingsPanel from "../SettingsPanel";
 import MainContent from "../MainContent";
 import { useAppStore } from "../../store/appStore";
+import type { AppConfig } from "../../types";
 
 interface AppLayoutProps {
    onAddProject: () => void;
    onAddWsl: () => void;
    onAddRemote: () => void;
    onOpenSettings: () => void;
+   settingsOpen: boolean;
+   onCloseSettings: () => void;
+   onConfigChange: (next: AppConfig) => void;
 }
 
-function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppLayoutProps) {
+function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings, settingsOpen, onCloseSettings, onConfigChange }: AppLayoutProps) {
    const { activePanel } = useSidebar();
    const {
       onFileSelect,
@@ -43,9 +48,18 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
             onAddProject={onAddProject}
             onAddWsl={onAddWsl}
             onAddRemote={onAddRemote}
+            isSettingsOpen={settingsOpen}
          />
 
-         {skillsActive ? (
+         {settingsOpen ? (
+            <div className="flex-1 flex min-w-0 transition-opacity duration-200 motion-safe:transition-opacity">
+               <SettingsPanel
+                  fullPage
+                  onConfigChange={onConfigChange}
+                  onClose={onCloseSettings}
+               />
+            </div>
+         ) : skillsActive ? (
             <SkillProvider activeProjectId={activeProjectId}>
                <PanelArea>
                   <SkillsPanel />

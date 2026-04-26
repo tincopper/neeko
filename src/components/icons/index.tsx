@@ -2,6 +2,7 @@ import React from "react";
 import {
   GitBranch,
   ChevronRight,
+  ChevronLeft,
   X,
   Trash2,
   Plus,
@@ -53,4 +54,8 @@ export const CloseRoundIcon: React.FC<LucideProps> = (props) => (
 
 export const CloseTerminalIcon: React.FC<LucideProps> = (props) => (
   <Square size={10} fill="currentColor" stroke="none" {...props} />
+);
+
+export const ArrowLeftIcon: React.FC<LucideProps> = (props) => (
+  <ChevronLeft strokeWidth={1.8} {...props} />
 );
