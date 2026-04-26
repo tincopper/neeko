@@ -4,7 +4,6 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { buildFontFamily } from "../../utils/terminal";
-import { IS_MACOS } from "../../utils/platform";
 import type { AgentConfig } from "../../types";
 import {
   terminalCache,
@@ -13,6 +12,7 @@ import {
   log,
 } from "./terminalCache";
 import type { TerminalCache } from "./terminalTypes";
+import { setupTerminalInput } from "./terminalInput";
 
 export async function createTerminalForProject(
   cacheKey: string,
@@ -88,6 +88,7 @@ export async function createTerminalForProject(
     sessionId: null,
     unlistenOutput: null,
     unlistenClosed: null,
+    inputController: null,
   };
 
   terminalCache.set(cacheKey, cache);
@@ -132,9 +133,6 @@ export async function createTerminalForProject(
     });
     cache.unlistenClosed = unlistenClosed;
 
-    let isComposing = false;
-    let compositionPendingText = "";
-
     const sendInput = (text: string) => {
       const bytes = Array.from(new TextEncoder().encode(text));
       emit(`terminal-input-${sid}`, bytes).catch((err) => {
@@ -142,62 +140,7 @@ export async function createTerminalForProject(
       });
     };
 
-    const textarea = term.textarea;
-    if (textarea) {
-      const syncTextareaToCursor = () => {
-        const cursorEl = element.querySelector(".xterm-cursor");
-        if (!cursorEl) {
-          return;
-        }
-        const cursorRect = cursorEl.getBoundingClientRect();
-        const containerRect = element.getBoundingClientRect();
-        const top = cursorRect.top - containerRect.top;
-        const left = cursorRect.left - containerRect.left;
-        textarea.style.top = `${top}px`;
-        textarea.style.left = `${left}px`;
-      };
-
-      textarea.addEventListener("keydown", (e: KeyboardEvent) => {
-        if ((e.isComposing || e.keyCode === 229) && !isComposing) {
-          isComposing = true;
-          compositionPendingText = "";
-          syncTextareaToCursor();
-        }
-      });
-
-      textarea.addEventListener("compositionstart", () => {
-        isComposing = true;
-        compositionPendingText = "";
-        syncTextareaToCursor();
-      });
-
-      textarea.addEventListener("compositionend", (e: CompositionEvent) => {
-        const committed = e.data || "";
-        if (committed) {
-          compositionPendingText = committed;
-          sendInput(committed);
-          const resetDelay = IS_MACOS ? 150 : 50;
-          setTimeout(() => {
-            isComposing = false;
-            compositionPendingText = "";
-          }, resetDelay);
-        } else {
-          isComposing = false;
-          compositionPendingText = "";
-        }
-      });
-    }
-
-    term.onData((data) => {
-      if (isComposing) {
-        return;
-      }
-      if (compositionPendingText && data === compositionPendingText) {
-        compositionPendingText = "";
-        return;
-      }
-      sendInput(data);
-    });
+    cache.inputController = setupTerminalInput({ term, sendInput });
   } catch (err) {
     log(`ERROR: ${err}`);
     term.write(`\x1b[31m[Terminal] Connection failed: ${err}\x1b[0m\r\n`);

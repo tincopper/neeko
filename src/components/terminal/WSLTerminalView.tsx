@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
+import { setupTerminalInput, type TerminalInputController } from "./terminalInput";
 import { useAppContext, useEditorContext, useWslContext } from "../../contexts";
 
 interface WslTerminalCache {
@@ -15,6 +16,7 @@ interface WslTerminalCache {
    element: HTMLElement;
    sessionId: string | null;
    unlisten: (() => void) | null;
+   inputController: TerminalInputController | null;
 }
 
 // 全局缓存：key = "wsl:{distro}:{projectId}"
@@ -48,6 +50,7 @@ export function destroyWslCache(key: string) {
    const cache = wslTerminalCache.get(resolved);
    if (!cache) return;
    cache.unlisten?.();
+   cache.inputController?.dispose();
    // 通知后端关闭 PTY session，释放子进程
    if (cache.sessionId) {
       invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => { });
@@ -72,6 +75,7 @@ export function refreshWslTerminal(key: string) {
    const cache = wslTerminalCache.get(resolved);
    if (!cache) return;
    cache.unlisten?.();
+   cache.inputController?.dispose();
    if (cache.sessionId) {
       invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => { });
    }
@@ -152,6 +156,7 @@ export async function switchAgentInWslTerminal(
    const oldCache = wslTerminalCache.get(resolved)
    if (oldCache) {
       oldCache.unlisten?.()
+      oldCache.inputController?.dispose()
    }
 
    // 2. 删除旧条目（槽位空出，重建时填入新实例）
@@ -315,7 +320,14 @@ export default React.memo(function WSLTerminalView({
          term.open(element);
          fitAddon.fit();
 
-         const cache: WslTerminalCache = { term, fitAddon, element, sessionId: null, unlisten: null };
+         const cache: WslTerminalCache = {
+            term,
+            fitAddon,
+            element,
+            sessionId: null,
+            unlisten: null,
+            inputController: null,
+         };
          wslTerminalCache.set(key, cache);
 
          term.write(`\x1b[33m[WSL] Connecting to ${distro}:${projectPath}...\x1b[0m\r\n`);
@@ -356,12 +368,15 @@ export default React.memo(function WSLTerminalView({
                });
                cache.unlisten = unlisten;
 
-               // 输入 → 后端
-               term.onData((data) => {
-                  if (!cache.sessionId) return;
-                  const bytes = Array.from(new TextEncoder().encode(data));
-                  emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => { });
-               });
+                // 输入 → 后端
+                cache.inputController = setupTerminalInput({
+                   term,
+                   sendInput: (text: string) => {
+                      if (!cache.sessionId) return;
+                      const bytes = Array.from(new TextEncoder().encode(text));
+                      emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => { });
+                   },
+                });
 
                requestAnimationFrame(() => {
                   if (currentKeyRef.current !== key) return;
