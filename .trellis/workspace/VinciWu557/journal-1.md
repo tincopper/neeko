@@ -1095,3 +1095,36 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 设置页从弹窗改为全页视图
+
+**Date**: 2026-04-26
+**Task**: 设置页从弹窗改为全页视图
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bc4d131` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

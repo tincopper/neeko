@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
+- **Total Sessions**: 28
 - **Last Active**: 2026-04-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1097 | Active |
+| `journal-1.md` | ~1130 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-04-26 | 设置页从弹窗改为全页视图 | `bc4d131` | `enhance/setting_panel` |
 | 27 | 2026-04-26 | 修复 macOS 微信输入法终端输入竞态 | `beb730a` | `enhance/setting_panel` |
 | 26 | 2026-04-23 | fix: 最后一个 Terminal Tab 无法关闭 | `f150765` | `fix/last_tab_hanging` |
 | 25 | 2026-04-23 | fix: project guide page replaces auto-start agent | `6ab4a5f` | `fix/last_tab_hanging` |
