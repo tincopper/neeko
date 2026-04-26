@@ -40,9 +40,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 }) => {
   return (
     <>
-      <div className="text-[1em] font-semibold text-text-primary mb-5 pb-2.5 border-b border-border">
-        Terminal
-      </div>
+      <h3 className="text-base font-semibold text-text-primary mb-4">Terminal</h3>
 
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
         <div className="flex-1 min-w-0">
@@ -55,7 +53,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
+            className="size-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
             onClick={() => onTerminalFontSizeChange(terminalFontSize - 1)}
             disabled={terminalFontSize <= 10}
           >
@@ -65,7 +63,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             {terminalFontSize}px
           </span>
           <button
-            className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
+            className="size-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
             onClick={() => onTerminalFontSizeChange(terminalFontSize + 1)}
             disabled={terminalFontSize >= 24}
           >

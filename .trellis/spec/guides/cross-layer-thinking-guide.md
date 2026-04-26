@@ -141,3 +141,48 @@ export function destroyTerminalCache(cacheKey: string) {
   executedAgentKeys.delete(cacheKey); // ← 同步清理
 }
 ```
+
+---
+
+### Bug 3：IME 事件重复建模导致重复输入与延迟
+
+**场景**：macOS 使用微信输入法时，先输入中文再切换英文，会出现卡顿、重复提交（如 `啊啊啊啊啊 a啊啊啊啊啊 a`）等不稳定现象。
+
+**问题链路**：
+```
+应用层自己实现 composition 状态机（isComposing/compositionPendingText）
+与 xterm.js 内部 CompositionHelper 并行存在
+→ 两套状态机在异步 setTimeout(0) 链路上不同步
+→ 一端提前清理去重标记，另一端仍在发送组合文本
+→ 出现重复输入、输入延迟、偶发卡住
+```
+
+**根因**：
+1. **跨层契约冲突**：应用层重写了本应由 xterm.js 统一处理的 IME 生命周期（`compositionstart/update/end`）。
+2. **异步时序竞争**：xterm.js 在 `compositionend` 后通过 `setTimeout(0)` 读取 textarea 并发射数据；应用层同步清理标记会破坏去重逻辑。
+3. **错误修复方向**：通过更多超时、fake event、额外状态变量补丁式修复，放大了 race condition，而非消除重复职责。
+
+**最终修复原则**：
+1. **单一事实源**：IME 组合输入只由 xterm.js 处理。
+2. **应用层最小化职责**：仅监听 `term.onData` 并转发到 PTY，不再自行维护 composition 状态。
+3. **避免伪造事件**：不再派发 fake `compositionend` 干预 xterm.js 内部状态。
+
+**落地方式**（`src/components/terminal/terminalInput.ts`）：
+```typescript
+export function setupTerminalInput({ term, sendInput }: { term: Terminal; sendInput: (text: string) => void }) {
+  const disposable = term.onData((data) => {
+    sendInput(data);
+  });
+
+  return {
+    dispose: () => {
+      disposable.dispose();
+    },
+  };
+}
+```
+
+**教训**：
+1. 对第三方输入组件（xterm、编辑器、WebView）要先确认“谁拥有输入状态机”，避免重复建模。
+2. 遇到 IME bug 时优先减少自定义干预层，而不是叠加更多事件补丁。
+3. 涉及 `composition*` + `setTimeout(0)` 的路径应默认按“异步竞争”问题看待。

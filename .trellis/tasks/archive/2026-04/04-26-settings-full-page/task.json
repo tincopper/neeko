@@ -1,0 +1,53 @@
+{
+  "id": "settings-full-page",
+  "name": "settings-full-page",
+  "title": "brainstorm: 设置页从弹窗改为全页视图",
+  "description": "",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "VinciWu557",
+  "assignee": "VinciWu557",
+  "createdAt": "2026-04-26",
+  "completedAt": "2026-04-26",
+  "branch": null,
+  "base_branch": "enhance/setting_panel",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -18,7 +18,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
   return (
     <div className="flex flex-col">
       <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
-      <div className="flex items-center justify-between py-3 mb-4 border-b border-white/[0.04] gap-6">
+      <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6">
         <div className="flex-1 min-w-0">
           <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
             Font Size
@@ -29,7 +29,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
+            className="size-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
             onClick={() => onAppearanceFontSizeChange(appearanceFontSize - 1)}
             disabled={appearanceFontSize <= 10}
           >
@@ -39,7 +39,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
             {appearanceFontSize}px
           </span>
           <button
-            className="w-7 h-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
+            className="size-7 bg-bg-tertiary border border-border rounded text-text-primary text-[1.07em] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-bg-hover disabled:opacity-35 disabled:cursor-not-allowed"
             onClick={() => onAppearanceFontSizeChange(appearanceFontSize + 1)}
             disabled={appearanceFontSize >= 24}
           >
