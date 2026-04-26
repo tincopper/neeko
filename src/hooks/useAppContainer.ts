@@ -266,20 +266,14 @@ export function useAppContainer(): UseAppContainerResult {
   const currentProjectId =
     activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
 
-  const selectedAgentId =
-    activeProject?.selected_agent ??
-    activeWslProject?.project.selected_agent ??
-    activeRemoteProject?.project.selected_agent ??
-    null;
-
   useEffect(() => {
     if (currentProjectId) {
-      const agentName = selectedAgentId
-        ? (agents ?? []).find((a) => a.id === selectedAgentId)?.name ?? undefined
-        : undefined;
-      ensureDefaultTab(currentProjectId, selectedAgentId, agentName);
+      const existing = getTabs(currentProjectId);
+      if (existing.length > 0) {
+        ensureDefaultTab(currentProjectId);
+      }
     }
-  }, [currentProjectId, selectedAgentId, agents, ensureDefaultTab]);
+  }, [currentProjectId, getTabs, ensureDefaultTab]);
 
   const tabs = currentProjectId ? getTabs(currentProjectId) : [];
   const activeTabId = currentProjectId ? getActiveTabId(currentProjectId) : null;

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 24
+- **Total Sessions**: 26
 - **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~998 | Active |
+| `journal-1.md` | ~1064 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-04-23 | fix: 最后一个 Terminal Tab 无法关闭 | `f150765` | `fix/last_tab_hanging` |
+| 25 | 2026-04-23 | fix: project guide page replaces auto-start agent | `6ab4a5f` | `fix/last_tab_hanging` |
 | 24 | 2026-04-23 | merge: resolve conflicts between enhance/ui_clean_code and main | `f3d2db3`, `ebc4bf0` | `enhance/ui_clean_code` |
 | 23 | 2026-04-22 | Refactor Tauri command registration and refresh repo guidelines | `8f5057b` | `enhance/ui_clean_code` |
 | 22 | 2026-04-22 | Backend 目录重构与收尾修复 | `deab0f6`, `fc99987` | `enhance/ui_clean_code` |
