@@ -575,6 +575,9 @@ export function useAppContainer(): UseAppContainerResult {
     onAddWsl: handleAddWslOrNoop,
     onAddRemote: handleAddRemoteClick,
     onOpenSettings: handleToggleSettings,
+    settingsOpen,
+    onCloseSettings: () => setSettingsOpen(false),
+    onConfigChange: saveConfig,
   };
 
   const appModalsProps: AppModalsProps = {
@@ -583,11 +586,6 @@ export function useAppContainer(): UseAppContainerResult {
       onConfirm: handleConfirmAddProject,
       onCancel: () => setPendingPath(null),
       loading,
-    },
-    settings: {
-      open: settingsOpen,
-      onConfigChange: saveConfig,
-      onClose: () => setSettingsOpen(false),
     },
     wsl: {
       open: wslDialogOpen,

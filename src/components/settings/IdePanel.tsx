@@ -42,9 +42,7 @@ const IdePanel: React.FC<IdePanelProps> = ({
 }) => {
   return (
     <>
-      <div className="text-[1em] font-semibold text-text-primary mb-5 pb-2.5 border-b border-border">
-        IDE
-      </div>
+      <h3 className="text-base font-semibold text-text-primary mb-4">IDE</h3>
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
         <div className="flex-1 min-w-0">
@@ -71,7 +69,7 @@ const IdePanel: React.FC<IdePanelProps> = ({
               >
                 <img
                   src={iconSrc}
-                  className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain"
+                  className="text-[0.93em] size-[18px] text-center shrink-0 object-contain"
                   alt=""
                 />
                 <span className="text-text-primary font-medium min-w-[100px] shrink-0">
@@ -146,7 +144,7 @@ const IdePanel: React.FC<IdePanelProps> = ({
               >
                 <img
                   src={getIdeIconSrc(null)}
-                  className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain"
+                  className="text-[0.93em] size-[18px] text-center shrink-0 object-contain"
                   alt=""
                 />
                 <span className="text-text-primary font-medium min-w-[100px] shrink-0">

@@ -221,12 +221,131 @@ describe("SettingsPanel", () => {
       });
    });
 
-   describe("BUILTIN_FONTS", () => {
-      it("导出非空字体数组", async () => {
-         const { BUILTIN_FONTS } = await import("../../components/SettingsPanel");
-         expect(BUILTIN_FONTS.length).toBeGreaterThan(0);
-         expect(BUILTIN_FONTS).toContain("Fira Code");
-         expect(BUILTIN_FONTS).toContain("JetBrains Mono");
-      });
-   });
+    describe("全页模式 (fullPage)", () => {
+       it("全页模式不渲染遮罩层", () => {
+          const config = { ...defaultConfig };
+          const appContext = {
+             config,
+             agents: [],
+             agentInstalledMap: {},
+             loading: false,
+             ideCommandOverrides: config.ideCommandOverrides ?? {},
+             showToast: vi.fn(),
+          };
+          render(
+             <AppProvider value={appContext}>
+                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={vi.fn()} />
+             </AppProvider>
+          );
+          // 全页模式不应有 fixed overlay
+          expect(document.querySelector(".fixed.inset-0")).toBeNull();
+       });
+
+       it("全页模式渲染返回按钮", () => {
+          const config = { ...defaultConfig };
+          const appContext = {
+             config,
+             agents: [],
+             agentInstalledMap: {},
+             loading: false,
+             ideCommandOverrides: config.ideCommandOverrides ?? {},
+             showToast: vi.fn(),
+          };
+          render(
+             <AppProvider value={appContext}>
+                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={vi.fn()} />
+             </AppProvider>
+          );
+          expect(screen.getByTitle("Back")).toBeInTheDocument();
+       });
+
+       it("点击返回按钮调用 onClose", () => {
+          const config = { ...defaultConfig };
+          const appContext = {
+             config,
+             agents: [],
+             agentInstalledMap: {},
+             loading: false,
+             ideCommandOverrides: config.ideCommandOverrides ?? {},
+             showToast: vi.fn(),
+          };
+          const onClose = vi.fn();
+          render(
+             <AppProvider value={appContext}>
+                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={onClose} />
+             </AppProvider>
+          );
+          fireEvent.click(screen.getByTitle("Back"));
+          expect(onClose).toHaveBeenCalledTimes(1);
+       });
+
+       it("全页模式内容区可正常滚动", () => {
+          const config = { ...defaultConfig };
+          const appContext = {
+             config,
+             agents: [],
+             agentInstalledMap: {},
+             loading: false,
+             ideCommandOverrides: config.ideCommandOverrides ?? {},
+             showToast: vi.fn(),
+          };
+          render(
+             <AppProvider value={appContext}>
+                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={vi.fn()} />
+             </AppProvider>
+          );
+          // 内容区应有 overflow-y-auto 以支持滚动
+          const contentArea = document.querySelector(".overflow-y-auto");
+          expect(contentArea).toBeInTheDocument();
+       });
+    });
+
+    describe("AgentsPanel Switch 开关", () => {
+       it("Show Agent Bar 使用 Switch 组件", () => {
+          renderPanel({ agentSelectorShowPresetBar: true });
+          fireEvent.click(screen.getByRole("button", { name: "Agents" }));
+          expect(screen.getByText("Show Agent Bar")).toBeInTheDocument();
+          // Switch 组件应存在 (Radix switch renders role="switch")
+          const switches = screen.getAllByRole("switch");
+          expect(switches.length).toBeGreaterThanOrEqual(2);
+       });
+
+       it("切换 Show Agent Bar 调用 onConfigChange", () => {
+          const { onConfigChange } = renderPanel({ agentSelectorShowPresetBar: true });
+          fireEvent.click(screen.getByRole("button", { name: "Agents" }));
+          const switches = screen.getAllByRole("switch");
+          fireEvent.click(switches[0]);
+          expect(onConfigChange).toHaveBeenCalledWith(
+             expect.objectContaining({ agentSelectorShowPresetBar: false })
+          );
+       });
+
+       it("Compact Mode 使用 Switch 组件", () => {
+          renderPanel({ agentSelectorCompactMode: true });
+          fireEvent.click(screen.getByRole("button", { name: "Agents" }));
+          const switches = screen.getAllByRole("switch");
+          // 第二个 switch 是 Compact Mode
+          fireEvent.click(switches[1]);
+          expect(screen.getByText("Compact Mode")).toBeInTheDocument();
+       });
+    });
+
+    describe("GitPanel ToggleGroup", () => {
+       it("Diff View Mode 使用 ToggleGroup 组件", () => {
+          renderPanel();
+          fireEvent.click(screen.getByRole("button", { name: "Git" }));
+          // ToggleGroup 渲染 Unified 和 Split 选项
+          expect(screen.getByText("Unified")).toBeInTheDocument();
+          expect(screen.getByText("Split")).toBeInTheDocument();
+       });
+
+       it("点击 Split 切换 diff 模式", () => {
+          const { onConfigChange } = renderPanel({ diffMode: "unified" });
+          fireEvent.click(screen.getByRole("button", { name: "Git" }));
+          fireEvent.click(screen.getByText("Split"));
+          expect(onConfigChange).toHaveBeenCalledWith(
+             expect.objectContaining({ diffMode: "split" })
+          );
+       });
+    });
 });

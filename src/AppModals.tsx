@@ -1,25 +1,18 @@
 import React from "react";
 import { IS_WINDOWS } from "./utils/platform";
 import { AddProjectModal } from "./components/project";
-import SettingsPanel from "./components/SettingsPanel";
 import {
   WSLDialog,
   RemoteDialog,
   RemoteAuthDialog,
 } from "./components/connections";
-import type { AppConfig, AuthMethod, RemoteEntrySession, WSLEntrySession } from "./types";
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "./types";
 
 interface AddProjectModalProps {
   pendingPath: string | null;
   onConfirm: React.ComponentProps<typeof AddProjectModal>["onConfirm"];
   onCancel: () => void;
   loading: boolean;
-}
-
-interface SettingsModalProps {
-  open: boolean;
-  onConfigChange: (next: AppConfig) => void;
-  onClose: () => void;
 }
 
 interface WslModalProps {
@@ -51,7 +44,6 @@ interface RemoteAuthModalProps {
 
 interface AppModalsProps {
   addProject: AddProjectModalProps;
-  settings: SettingsModalProps;
   wsl: WslModalProps;
   remote: RemoteModalProps;
   remoteAuth: RemoteAuthModalProps;
@@ -59,7 +51,6 @@ interface AppModalsProps {
 
 function AppModals({
   addProject,
-  settings,
   wsl,
   remote,
   remoteAuth,
@@ -72,13 +63,6 @@ function AppModals({
           onConfirm={addProject.onConfirm}
           onCancel={addProject.onCancel}
           loading={addProject.loading}
-        />
-      )}
-
-      {settings.open && (
-        <SettingsPanel
-          onConfigChange={settings.onConfigChange}
-          onClose={settings.onClose}
         />
       )}
 

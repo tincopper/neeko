@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAppContext } from "../../contexts";
 import { cn } from "../../utils/cn";
 import type { AppConfig, DiffMode } from "../../types";
-import { CloseIcon } from "../icons";
+import { CloseIcon, ArrowLeftIcon } from "../icons";
 import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from "./constants";
 import { useSettingsPanelState } from "./useSettingsPanelState";
 import AppearancePanel from "./AppearancePanel";
@@ -18,10 +18,11 @@ export { BUILTIN_FONTS, PRESET_SHELLS };
 interface SettingsPanelProps {
    onConfigChange: (next: AppConfig) => void;
    onClose: () => void;
+   fullPage?: boolean;
 }
 
 const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
-   ({ onConfigChange, onClose }) => {
+   ({ onConfigChange, onClose, fullPage = false }) => {
       const { config } = useAppContext();
       const [activeNav, setActiveNav] = useState<NavCategory>("editor");
 
@@ -146,6 +147,52 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
          }
       };
 
+      if (fullPage) {
+         return (
+            <div className="flex flex-col flex-1 min-h-0 bg-bg-primary tab-content">
+               <div className="flex items-center gap-2 p-3.5 px-5 border-b border-border shrink-0">
+                  <button
+                     className="bg-none border-none text-text-muted cursor-pointer p-1 rounded flex items-center justify-center transition-[background-color,color] duration-150 hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue"
+                     onClick={onClose}
+                     title="Back"
+                  >
+                     <ArrowLeftIcon size={18} />
+                  </button>
+                  <span className="text-[0.93em] font-semibold text-text-primary tracking-[0.2px]">
+                     Settings
+                  </span>
+               </div>
+
+               <div className="flex flex-1 overflow-hidden">
+                  <nav className="w-[168px] shrink-0 bg-bg-primary border-r border-border p-2.5 px-1.5 flex flex-col gap-0.5 overflow-y-auto">
+                     {NAV_ITEMS.map((item) => (
+                        <button
+                           key={item.id}
+                           className={cn(
+                              "flex items-center gap-2.5 py-2 px-3 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1",
+                              activeNav === item.id && "!bg-accent-blue !text-white",
+                           )}
+                           onClick={() => setActiveNav(item.id)}
+                        >
+                           <span
+                              className={cn(
+                                 "text-text-muted shrink-0 flex items-center",
+                                 activeNav === item.id && "!text-white",
+                              )}
+                           >
+                              {item.icon}
+                           </span>
+                           <span className="font-medium">{item.label}</span>
+                        </button>
+                     ))}
+                  </nav>
+
+                  <div className="flex-1 p-6 px-7 overflow-y-auto">{renderPanel()}</div>
+               </div>
+            </div>
+         );
+      }
+
       return (
          <div
             className="fixed inset-0 bg-black/55 flex items-center justify-center z-[2000]"
@@ -160,7 +207,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                      Settings
                   </span>
                   <button
-                     className="bg-none border-none text-text-muted cursor-pointer p-1 rounded flex items-center justify-center transition-[background-color,color] duration-150 hover:bg-bg-hover hover:text-text-primary"
+                     className="bg-none border-none text-text-muted cursor-pointer p-1 rounded flex items-center justify-center transition-[background-color,color] duration-150 hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue"
                      onClick={onClose}
                   >
                      <CloseIcon />
@@ -173,7 +220,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                         <button
                            key={item.id}
                            className={cn(
-                              "flex items-center gap-2.5 py-2 px-3 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary",
+                              "flex items-center gap-2.5 py-2 px-3 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1",
                               activeNav === item.id && "!bg-accent-blue !text-white",
                            )}
                            onClick={() => setActiveNav(item.id)}

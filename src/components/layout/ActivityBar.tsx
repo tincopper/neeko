@@ -23,9 +23,10 @@ interface ActivityBarProps {
    onAddProject: () => void;
    onAddWsl: () => void;
    onAddRemote: () => void;
+   isSettingsOpen?: boolean;
 }
 
-function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote }: ActivityBarProps) {
+function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote, isSettingsOpen = false }: ActivityBarProps) {
    const { activePanel, togglePanel } = useSidebar();
    const [showAddMenu, setShowAddMenu] = useState(false);
    const addMenuRef = useRef<HTMLDivElement>(null);
@@ -105,8 +106,9 @@ function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote }: Ac
                   </div>
                </SidebarMenuItem>
                <SidebarMenuItem>
-                  <SidebarMenuButton tooltip="Settings" onClick={onOpenSettings}>
+                  <SidebarMenuButton tooltip="Settings" onClick={onOpenSettings} isActive={isSettingsOpen}>
                      <Settings size={22} strokeWidth={1.8} />
+
                   </SidebarMenuButton>
                </SidebarMenuItem>
             </SidebarMenu>
