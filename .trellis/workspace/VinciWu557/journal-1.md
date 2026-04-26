@@ -1062,3 +1062,36 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: 修复 macOS 微信输入法终端输入竞态
+
+**Date**: 2026-04-26
+**Task**: 修复 macOS 微信输入法终端输入竞态
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+终端输入链路改为由 xterm.js 独占 IME 状态机，移除应用层重复 composition 处理，统一 local/WSL/remote 输入转发并补充显式 dispose 清理；同步更新前端 API 契约与跨层思维指南。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `beb730a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
