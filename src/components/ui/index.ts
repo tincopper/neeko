@@ -18,4 +18,7 @@ export { Badge, badgeVariants } from "./badge";
 export { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "./sidebar";
 export { MarkdownPreview } from "./MarkdownPreview";
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, cardVariants } from "./card";
+export { Separator } from "./separator";
+export { Switch } from "./switch";
+export { ToggleGroup, ToggleGroupItem } from "./toggle-group";
 export { ResizablePanel, useResizableWidth } from './resizable-panel';

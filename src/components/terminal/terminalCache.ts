@@ -45,6 +45,7 @@ export function destroyTerminalCache(cacheKey: string) {
 
   cache.unlistenOutput?.();
   cache.unlistenClosed?.();
+  cache.inputController?.dispose();
   cache.term.dispose();
 
   terminalCache.delete(cacheKey);
@@ -80,9 +81,10 @@ export function refreshTerminal(projectId: string) {
     return;
   }
 
-  const { sessionId, unlistenOutput, unlistenClosed } = cache;
+  const { sessionId, unlistenOutput, unlistenClosed, inputController } = cache;
   unlistenOutput?.();
   unlistenClosed?.();
+  inputController?.dispose();
 
   if (sessionId) {
     invoke("close_terminal_session", { sessionId }).catch(() => {});

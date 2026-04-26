@@ -9,7 +9,7 @@ function Input({ className, ...props }: React.ComponentProps<"input">) {
         "w-full px-3 py-2.5 bg-bg-primary border border-border rounded-md",
         "text-text-primary text-[var(--font-size)] font-mono",
         "outline-none transition-colors duration-200",
-        "focus:border-accent-blue",
+        "focus:border-accent-blue focus:ring-2 focus:ring-accent-blue",
         "placeholder:text-text-muted",
         // Hide number spinners
         "[&[type=number]]:[-moz-appearance:textfield]",
@@ -30,7 +30,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
         "w-full px-3 py-2.5 bg-bg-primary border border-border rounded-md",
         "text-text-primary text-[var(--font-size)] font-mono",
         "outline-none transition-colors duration-200",
-        "focus:border-accent-blue",
+        "focus:border-accent-blue focus:ring-2 focus:ring-accent-blue",
         "placeholder:text-text-muted",
         "resize-y min-h-[80px]",
         className

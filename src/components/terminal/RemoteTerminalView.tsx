@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
+import { setupTerminalInput, type TerminalInputController } from "./terminalInput";
 import { useEditorContext } from "../../contexts";
 
 interface RemoteTerminalCache {
@@ -15,6 +16,7 @@ interface RemoteTerminalCache {
   element: HTMLElement;
   sessionId: string | null;
   unlisten: (() => void) | null;
+  inputController: TerminalInputController | null;
 }
 
 // 全局缓存：key = "remote:{entryId}:{projectId}"
@@ -76,6 +78,7 @@ export async function switchAgentInRemoteTerminal(
   const oldCache = remoteTerminalCache.get(resolved)
   if (oldCache) {
     oldCache.unlisten?.()
+    oldCache.inputController?.dispose()
   }
 
   // 2. 删除旧条目
@@ -102,6 +105,7 @@ export function destroyRemoteCache(key: string) {
   const cache = remoteTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
+  cache.inputController?.dispose();
   if (cache.sessionId) {
     invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
@@ -125,6 +129,7 @@ export function refreshRemoteTerminal(key: string) {
   const cache = remoteTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
+  cache.inputController?.dispose();
   if (cache.sessionId) {
     invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
@@ -276,7 +281,14 @@ export default React.memo(function RemoteTerminalView({
       term.open(element);
       fitAddon.fit();
 
-      const cache: RemoteTerminalCache = { term, fitAddon, element, sessionId: null, unlisten: null };
+      const cache: RemoteTerminalCache = {
+        term,
+        fitAddon,
+        element,
+        sessionId: null,
+        unlisten: null,
+        inputController: null,
+      };
       remoteTerminalCache.set(key, cache);
 
       term.write(`\x1b[33m[SSH] Connecting to ${username}@${host}:${port}${projectPath}...\x1b[0m\r\n`);
@@ -320,12 +332,15 @@ export default React.memo(function RemoteTerminalView({
           });
           cache.unlisten = unlisten;
 
-          // 输入 → 后端
-          term.onData((data) => {
-            if (!cache.sessionId) return;
-            const bytes = Array.from(new TextEncoder().encode(data));
-            emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
-          });
+           // 输入 → 后端
+           cache.inputController = setupTerminalInput({
+              term,
+              sendInput: (text: string) => {
+                 if (!cache.sessionId) return;
+                 const bytes = Array.from(new TextEncoder().encode(text));
+                 emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
+              },
+           });
 
           requestAnimationFrame(() => {
             if (currentKeyRef.current !== key) return;

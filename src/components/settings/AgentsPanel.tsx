@@ -1,6 +1,6 @@
 import React from "react";
 import type { AgentConfig, AppConfig } from "../../types";
-import { Button } from "../ui";
+import { Switch } from "../ui";
 import BuiltInAgentsSection from "./BuiltInAgentsSection";
 import CustomAgentsSection from "./CustomAgentsSection";
 
@@ -71,9 +71,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
 }) => {
   return (
     <>
-      <div className="text-[1em] font-semibold text-text-primary mb-5 pb-2.5 border-b border-border">
-        Agents
-      </div>
+      <h3 className="text-base font-semibold text-text-primary mb-4">Agents</h3>
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04]">
         <div className="flex-1 min-w-0">
@@ -84,18 +82,15 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
             Display agent buttons in the title bar for quick selection.
           </div>
         </div>
-        <Button
-          variant={config.agentSelectorShowPresetBar !== false ? "primary" : "ghost"}
-          size="sm"
-          onClick={() =>
+        <Switch
+          checked={config.agentSelectorShowPresetBar !== false}
+          onCheckedChange={(checked) =>
             onConfigChange({
               ...config,
-              agentSelectorShowPresetBar: config.agentSelectorShowPresetBar === false,
+              agentSelectorShowPresetBar: checked,
             })
           }
-        >
-          {config.agentSelectorShowPresetBar !== false ? "On" : "Off"}
-        </Button>
+        />
       </div>
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04]">
@@ -107,18 +102,15 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
             Show only icons in the agent bar.
           </div>
         </div>
-        <Button
-          variant={config.agentSelectorCompactMode ? "primary" : "ghost"}
-          size="sm"
-          onClick={() =>
+        <Switch
+          checked={config.agentSelectorCompactMode}
+          onCheckedChange={(checked) =>
             onConfigChange({
               ...config,
-              agentSelectorCompactMode: !config.agentSelectorCompactMode,
+              agentSelectorCompactMode: checked,
             })
           }
-        >
-          {config.agentSelectorCompactMode ? "On" : "Off"}
-        </Button>
+        />
       </div>
 
       <BuiltInAgentsSection

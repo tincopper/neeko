@@ -81,11 +81,11 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                 {iconSrc ? (
                   <img
                     src={iconSrc}
-                    className="text-[var(--font-size)] w-[18px] h-[18px] object-contain"
+                    className="text-[var(--font-size)] size-[18px] object-contain"
                     alt=""
                   />
                 ) : (
-                  <span className="text-[0.93em] w-[18px] h-[18px] text-center shrink-0 object-contain">
+                  <span className="text-[0.93em] size-[18px] text-center shrink-0 object-contain">
                     {""}
                   </span>
                 )}
