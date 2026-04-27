@@ -9,6 +9,7 @@ import {
   terminalCache,
   destroyTerminalCache,
   terminalRebuildCallbacks,
+  executedAgentKeys,
   log,
 } from "./terminalCache";
 import type { TerminalCache } from "./terminalTypes";
@@ -103,7 +104,11 @@ export async function createTerminalForProject(
     const unlistenClosed = await listen<null>(`terminal-closed-${sid}`, async () => {
       log(`Session ${sid} closed by backend`);
       unlistenClosed();
+      const wasExecuted = executedAgentKeys.has(cacheKey);
       destroyTerminalCache(cacheKey);
+      if (wasExecuted) {
+        executedAgentKeys.add(cacheKey);
+      }
       terminalRebuildCallbacks.get(cacheKey)?.();
     });
     cache.unlistenClosed = unlistenClosed;

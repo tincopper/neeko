@@ -428,10 +428,10 @@ export function useAppContainer(): UseAppContainerResult {
         }).catch((err: unknown) => {
           console.error("[TitleBar] Failed to set agent:", err);
         });
-        const cacheKey = newTab
-          ? `${activeProject.id}:${newTab.id}`
-          : `${activeProject.id}:1`;
-        agentActions.handleSelectLocalAgent(agent, cacheKey);
+        if (!newTab) {
+          const cacheKey = `${activeProject.id}:1`;
+          agentActions.handleSelectLocalAgent(agent, cacheKey);
+        }
       } else if (activeWslProject) {
         wslActions.handleSelectWslAgent(agent);
       } else if (activeRemoteProject) {
