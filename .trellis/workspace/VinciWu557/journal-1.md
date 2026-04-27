@@ -1128,3 +1128,42 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 修复终端中文输入法 Shift 符号输入
+
+**Date**: 2026-04-27
+**Task**: 修复终端中文输入法 Shift 符号输入
+**Branch**: `main`
+
+### Summary
+
+定位并修复 xterm 在中文输入法下 Shift 组合符号首次输入丢失的问题。实现终端输入层 beforeinput fallback，覆盖 Shift+/、Shift+数字等符号输入，并补充 terminalInput 单元测试；用户已验证问题修复。
+
+### Main Changes
+
+- Confirmed the root cause with DevTools event tracing: Chinese IME emits `beforeinput/input` for Shift symbols before the `keydown 229` event that xterm expects.
+- Added a narrow `beforeinput` fallback in `src/components/terminal/terminalInput.ts` for Shift-generated symbol text so the input still flows through xterm's own `onData` path.
+- Expanded coverage from `Shift+/` to Shift number and punctuation symbols while avoiding letters, numbers, whitespace, and normal Chinese text to prevent duplicate input.
+- Added `src/components/terminal/__tests__/terminalInput.test.ts` with regression coverage for xterm `onData` forwarding, dispose behavior, IME Shift symbols, and ordinary `Shift+/` non-duplication.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e583a73` | (see git log) |
+
+### Testing
+
+- [OK] `pnpm test:run src/components/terminal/__tests__/terminalInput.test.ts`
+- [OK] `pnpm type-check`
+- [OK] `pnpm test:run`
+- [WARN] `pnpm lint` remains blocked by pre-existing Rust `cargo fmt --check` diffs unrelated to this frontend change.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
