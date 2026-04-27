@@ -6,7 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AgentConfig } from "../../types";
-import { buildFontFamily } from "../../utils/terminal";
+import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
 import { setupTerminalInput, type TerminalInputController } from "./terminalInput";
 import { useAppContext, useEditorContext, useWslContext } from "../../contexts";
 
@@ -287,25 +287,11 @@ export default React.memo(function WSLTerminalView({
          element.style.width = "100%";
          element.style.height = "100%";
 
-         const cssVar = (name: string) =>
-            getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-
          const term = new Terminal({
             cursorBlink: true,
             fontSize,
             fontFamily: buildFontFamily(fontFamily),
-            theme: {
-               background: cssVar("--bg-primary") || "#000000",
-               foreground: cssVar("--text-primary") || "#ededed",
-               cursor: cssVar("--accent-blue") || "#ffffff",
-               selectionBackground: cssVar("--terminal-selection") || "#333333",
-               selectionForeground: cssVar("--text-primary") || "#ededed",
-               black: "#000000", red: "#e06c75", green: "#98c379", yellow: "#e5c07b",
-               blue: "#61afef", magenta: "#c678dd", cyan: "#56b6c2", white: "#abb2bf",
-               brightBlack: "#5c6370", brightRed: "#e06c75", brightGreen: "#98c379",
-               brightYellow: "#e5c07b", brightBlue: "#61afef", brightMagenta: "#c678dd",
-               brightCyan: "#56b6c2", brightWhite: "#ffffff",
-            },
+            theme: buildTerminalTheme(),
             scrollback: 10000,
             allowProposedApi: true,
          });
