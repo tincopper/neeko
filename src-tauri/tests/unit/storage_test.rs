@@ -1,4 +1,4 @@
-use neeko_lib::state::*;
+use neeko_lib::models::*;
 use neeko_lib::storage::StorageManager;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -40,7 +40,6 @@ fn save_and_load_session_with_projects() {
         wsl_entries: vec![],
         remote_entries: vec![],
         sidebar_width: Some(250),
-        side_terminal_width: None,
         worktree_state: Default::default(),
     };
 
@@ -107,7 +106,7 @@ fn create_session_from_projects() {
         collapsed: false,
     }];
 
-    let store = manager.create_session_from_projects(&projects, None, None, Some(300), None);
+    let store = manager.create_session_from_projects(&projects, None, None, Some(300));
     assert_eq!(store.projects.len(), 1);
     assert_eq!(store.projects[0].id, "p1");
     assert!(!store.projects[0].collapsed);

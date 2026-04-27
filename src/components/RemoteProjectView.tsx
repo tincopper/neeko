@@ -1,30 +1,35 @@
-import React from "react";
-import { RemoteTerminalView } from "./terminal";
+import React, { useCallback } from "react";
+import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
-import type { RemoteEntrySession, RemoteProject, AuthMethod, AppConfig } from "../types";
+import { useAppContext, useEditorContext, useRemoteContext } from "../contexts";
 
-interface RemoteProjectViewProps {
-   entry: RemoteEntrySession;
-   project: RemoteProject;
-   remoteAuthStore: Map<string, AuthMethod>;
-   remoteDiffState: { entryId: string; host: string; port: number; username: string; auth: AuthMethod; projectPath: string; filePath: string } | null;
-   config: AppConfig;
-   onRemoteDiffBack: () => void;
-   activeRemoteWorktreePath: string | null;
-   onRemoteSessionReady: (pid: string) => void;
-}
+function RemoteProjectView() {
+   const { config } = useAppContext();
+   const { activeTabId } = useEditorContext();
+   const {
+      activeRemoteProject,
+      remoteAuthStore,
+      remoteDiffState,
+      onRemoteDiffBack,
+      activeRemoteWorktreePath,
+      setRemoteOpenSessions,
+   } = useRemoteContext();
 
-function RemoteProjectView({
-   entry,
-   project,
-   remoteAuthStore,
-   remoteDiffState,
-   config,
-   onRemoteDiffBack,
-   activeRemoteWorktreePath,
-   onRemoteSessionReady,
-}: RemoteProjectViewProps) {
+   if (!activeRemoteProject) {
+      return null;
+   }
+
+   const { entry, project } = activeRemoteProject;
+   const remoteLayoutId = `remote:${entry.id}:${project.id}:${activeTabId ?? "default"}:${activeRemoteWorktreePath ?? "main"}`;
    const auth = remoteAuthStore.get(entry.id);
+
+   const onRemoteSessionReady = useCallback(
+      (pid: string) => {
+         setRemoteOpenSessions((prev) => new Set(prev).add(pid));
+      },
+      [setRemoteOpenSessions]
+   );
+
    if (!auth) {
       return (
          <div className="empty-state flex-1 flex flex-col text-text-secondary">
@@ -56,20 +61,26 @@ function RemoteProjectView({
             />
          ) : (
             <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-               <RemoteTerminalView
-                  entryId={entry.id}
-                  projectId={project.id}
-                  projectName={project.name}
-                  projectPath={activeRemoteWorktreePath ?? project.path}
-                  host={entry.host}
-                  port={entry.port}
-                  username={entry.username}
-                  auth={auth}
-                   fontSize={config.terminalFontSize}
-                   fontFamily={config.fontFamily}
-                  cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
-                  selectedAgentId={project.selected_agent}
-                  onSessionReady={onRemoteSessionReady}
+               <SplitLayout
+                  layoutId={remoteLayoutId}
+                  renderPane={(paneId) => (
+                     <RemoteTerminalView
+                        paneId={paneId}
+                        entryId={entry.id}
+                        projectId={project.id}
+                        projectName={project.name}
+                        projectPath={activeRemoteWorktreePath ?? project.path}
+                        host={entry.host}
+                        port={entry.port}
+                        username={entry.username}
+                        auth={auth}
+                        fontSize={config.terminalFontSize}
+                        fontFamily={config.fontFamily}
+                        cacheKeySuffix={activeRemoteWorktreePath ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}` : ""}
+                        selectedAgentId={project.selected_agent}
+                        onSessionReady={onRemoteSessionReady}
+                     />
+                  )}
                />
             </div>
          )}

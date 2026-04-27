@@ -1,4 +1,4 @@
-use neeko_lib::state::*;
+use neeko_lib::models::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -41,7 +41,9 @@ fn view_mode_terminal_serializes_as_string() {
 
 #[test]
 fn view_mode_diff_serializes_as_object() {
-    let mode = ViewMode::Diff { file_path: PathBuf::from("src/main.rs") };
+    let mode = ViewMode::Diff {
+        file_path: PathBuf::from("src/main.rs"),
+    };
     let json = serde_json::to_string(&mode).unwrap();
     assert!(json.contains("Diff"));
     assert!(json.contains("src/main.rs"));
@@ -89,7 +91,6 @@ fn session_store_defaults_for_missing_fields() {
     assert!(store.wsl_entries.is_empty());
     assert!(store.remote_entries.is_empty());
     assert!(store.sidebar_width.is_none());
-    assert!(store.side_terminal_width.is_none());
     assert!(store.worktree_state.is_empty());
 }
 
@@ -111,7 +112,6 @@ fn session_store_serde_roundtrip() {
         wsl_entries: vec![],
         remote_entries: vec![],
         sidebar_width: Some(300),
-        side_terminal_width: None,
         worktree_state: HashMap::new(),
     };
 

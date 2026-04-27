@@ -1,0 +1,13 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查组件 props 收敛是否符合规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查 Context 消费边界"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门禁"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全检查"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "回归搜索与遗漏扫描"}
+{"file": "src/components/MainContent.tsx", "reason": "检查 props 透传是否清理"}
+{"file": "src/components/RemoteProjectView.tsx", "reason": "检查 remote 回归"}
+{"file": "src/components/panels/FileViewer.tsx", "reason": "检查 file tab 交互"}
+{"file": "src/components/terminal/TerminalView.tsx", "reason": "检查 tab 状态与 agent 启动"}
+{"file": "src/components/terminal/WorktreeTerminalView.tsx", "reason": "检查 worktree terminal 会话"}
+{"file": "src/components/terminal/WSLTerminalView.tsx", "reason": "检查 WSL 会话与缓存 key"}

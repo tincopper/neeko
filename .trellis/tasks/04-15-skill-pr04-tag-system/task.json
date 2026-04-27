@@ -1,0 +1,49 @@
+{
+  "id": "skill-pr04-tag-system",
+  "name": "skill-pr04-tag-system",
+  "title": "PR#4: 标签组合系统（Skill Tag Group）",
+  "description": "实现 Skill 标签组合管理，支持创建角色标签（如设计师、后端架构师），将 Skill 组合到不同标签下",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": "feature/skill-pr04-tag-system",
+  "base_branch": "feature/skill-pr02-skill-store",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "improve-ut"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "依赖 PR#1 和 PR#2。对应 skills-manager 的 Scenario 概念但做了定制化改造",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/commands/scenarios.rs",
+      "src-tauri/src/core/skill_store.rs",
+      "src/components/CreateScenarioDialog.tsx",
+      "src/lib/scenarioIcons.tsx"
+    ]
+  }
+}

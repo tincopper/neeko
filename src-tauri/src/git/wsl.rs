@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::process::Command;
 
-use crate::state::{BranchGroup, CommitDetail, CommitInfo, DiffResult, FileChange, FileStatus, GitInfo};
+use crate::models::{
+    BranchGroup, CommitDetail, CommitInfo, DiffResult, FileChange, FileStatus, GitInfo,
+};
 
 use super::local::parse_unified_diff;
 use super::remote::{parse_branch_output, parse_commit_log_output, parse_git_info_output};
@@ -45,7 +47,7 @@ fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// 通过 WSL 获取完整 GitInfo（1 次 wsl.exe 调用）
+/// 通过 WSL 获取完整 GitInfo（通过 wsl.exe 调用）
 pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
     let sp = safe_path(project_path);
     let output = run_wsl_bash(
@@ -106,7 +108,12 @@ pub fn open_wsl_ide(distro: &str, project_path: &str, ide: &str) -> Result<()> {
 }
 
 /// 通过 WSL 获取提交日志
-pub fn get_wsl_commit_log(distro: &str, project_path: &str, offset: usize, limit: usize) -> Result<Vec<CommitInfo>> {
+pub fn get_wsl_commit_log(
+    distro: &str,
+    project_path: &str,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<CommitInfo>> {
     let sp = safe_path(project_path);
     let output = run_wsl_bash(
         distro,
@@ -118,7 +125,11 @@ pub fn get_wsl_commit_log(distro: &str, project_path: &str, offset: usize, limit
 }
 
 /// 通过 WSL 获取提交详情
-pub fn get_wsl_commit_detail(distro: &str, project_path: &str, commit_hash: &str) -> Result<CommitDetail> {
+pub fn get_wsl_commit_detail(
+    distro: &str,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<CommitDetail> {
     let sp = safe_path(project_path);
     let ch = safe_path(commit_hash);
 
@@ -158,7 +169,6 @@ pub fn get_wsl_commit_detail(distro: &str, project_path: &str, commit_hash: &str
             let additions: usize = parts[0].parse().unwrap_or(0);
             let deletions: usize = parts[1].parse().unwrap_or(0);
             let path = parts[2].to_string();
-            // 简化状态判断：通过 diff-tree --diff-filter 获取
             files.push(FileChange {
                 path: std::path::PathBuf::from(path),
                 status: FileStatus::Modified,
@@ -171,7 +181,9 @@ pub fn get_wsl_commit_detail(distro: &str, project_path: &str, commit_hash: &str
     // 获取文件状态（M/A/D/R）
     let status_output = run_wsl_bash(
         distro,
-        &format!("cd '{sp}' && git diff-tree --no-commit-id -r --name-status '{ch}' 2>/dev/null"),
+        &format!(
+            "cd '{sp}' && git diff-tree --no-commit-id -r --name-status '{ch}' 2>/dev/null"
+        ),
     )?;
     for (i, line) in status_output.lines().enumerate() {
         let trimmed = line.trim();
@@ -214,4 +226,78 @@ pub fn get_wsl_all_branches(distro: &str, project_path: &str) -> Result<BranchGr
         ),
     )?;
     Ok(parse_branch_output(&output))
+}
+
+/// 通过 WSL 获取 worktree 的变更文件列表
+pub fn get_wsl_worktree_changed_files(
+    distro: &str,
+    worktree_path: &str,
+) -> Result<Vec<FileChange>> {
+    let sp = safe_path(worktree_path);
+    let output = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git status --porcelain 2>/dev/null"),
+    )?;
+
+    let files: Vec<FileChange> = output
+        .lines()
+        .filter_map(|line| super::remote::parse_status_line(line))
+        .collect();
+
+    Ok(files)
+}
+
+/// 通过 WSL 检查 worktree 是否有未提交的更改
+pub fn wsl_is_worktree_dirty(distro: &str, worktree_path: &str) -> Result<bool> {
+    let sp = safe_path(worktree_path);
+
+    // 检查已跟踪文件的修改
+    let diff_result = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git diff --quiet -- 2>/dev/null; echo EXIT_CODE:$?"),
+    );
+    if let Ok(output) = &diff_result {
+        if !output.trim().ends_with("EXIT_CODE:0") {
+            return Ok(true);
+        }
+    }
+
+    // 检查暂存区
+    let cached_result = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git diff --cached --quiet -- 2>/dev/null; echo EXIT_CODE:$?"),
+    );
+    if let Ok(output) = &cached_result {
+        if !output.trim().ends_with("EXIT_CODE:0") {
+            return Ok(true);
+        }
+    }
+
+    // 检查未跟踪文件
+    let untracked_result = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git ls-files --others --exclude-standard 2>/dev/null"),
+    );
+    if let Ok(output) = &untracked_result {
+        if !output.trim().is_empty() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// 通过 WSL 获取 worktree 中某文件的 diff
+pub fn get_wsl_worktree_file_diff(
+    distro: &str,
+    worktree_path: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let sp = safe_path(worktree_path);
+    let fp = safe_path(file_path);
+    let output = run_wsl_bash(
+        distro,
+        &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
+    )?;
+    Ok(parse_unified_diff(&output))
 }

@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "AppLayout props瘦身重构需要遵循该规范"}

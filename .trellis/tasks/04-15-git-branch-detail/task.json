@@ -1,0 +1,53 @@
+{
+  "id": "git-branch-detail",
+  "name": "git-branch-detail",
+  "title": "Git Branch Detail Panel (IDEA-style 3-column)",
+  "description": "",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "hehaishui",
+  "assignee": "hehaishui",
+  "createdAt": "2026-04-15",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "version_control",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

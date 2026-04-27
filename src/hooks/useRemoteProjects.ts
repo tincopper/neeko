@@ -1,26 +1,57 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { remoteCacheKey, destroyRemoteCache } from "../components/terminal";
+import { useState, useCallback, useEffect } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { remoteCacheKey, destroyRemoteCachesByPrefix } from "../components/terminal";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
+import type { ActiveRemoteKey } from "../components/connections/types";
+import { useAppStore } from "../store/appStore";
+import { applyStateAction, upsertEntryById } from "../utils/entryUpdates";
 
-export type ActiveRemoteKey = { host: string; projectId: string } | null;
+export type { ActiveRemoteKey };
 
 export function useRemoteProjects(saveSession: SaveSessionFn) {
-  const [remoteEntries, setRemoteEntries] = useState<RemoteEntrySession[]>([]);
-  const [activeRemoteKey, setActiveRemoteKey] = useState<ActiveRemoteKey>(null);
-  const [activeRemoteProject, setActiveRemoteProject] = useState<{
+  const remoteEntries = useAppStore((state) => state.remoteEntries);
+  const activeRemoteKey = useAppStore((state) => state.activeRemoteKey);
+  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
+  const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
+  const pendingAuthEntry = useAppStore((state) => state.pendingAuthEntry);
+
+  const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      remoteEntries: applyStateAction(state.remoteEntries, updater),
+    }));
+  }, []);
+
+  const setActiveRemoteKey: Dispatch<SetStateAction<ActiveRemoteKey>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeRemoteKey: applyStateAction(state.activeRemoteKey, updater),
+    }));
+  }, []);
+
+  const setActiveRemoteProject: Dispatch<SetStateAction<{
     entry: RemoteEntrySession;
     project: RemoteProject;
-  } | null>(null);
+  } | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeRemoteProject: applyStateAction(state.activeRemoteProject, updater),
+    }));
+  }, []);
+
+  const setRemoteAuthStore: Dispatch<SetStateAction<Map<string, AuthMethod>>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      remoteAuthStore: applyStateAction(state.remoteAuthStore, updater),
+    }));
+  }, []);
+
+  const setPendingAuthEntry: Dispatch<SetStateAction<RemoteEntrySession | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      pendingAuthEntry: applyStateAction(state.pendingAuthEntry, updater),
+    }));
+  }, []);
+
   const [remoteOpenSessions, setRemoteOpenSessions] = useState<Set<string>>(new Set());
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
-  const [remoteAuthStore, setRemoteAuthStore] = useState<Map<string, AuthMethod>>(new Map());
-  const [pendingAuthEntry, setPendingAuthEntry] = useState<RemoteEntrySession | null>(null);
-
-  const remoteEntriesRef = useRef<RemoteEntrySession[]>([]);
-  const activeRemoteKeyRef = useRef<ActiveRemoteKey>(null);
-  const selectRemoteProjectRef = useRef<(host: string, project: RemoteProject) => void>(() => {});
 
   // Trigger SSH auth dialog via effect
   useEffect(() => {
@@ -34,20 +65,13 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     } else {
       setPendingAuthEntry(null);
     }
-  }, [activeRemoteProject, remoteAuthStore]);
+  }, [activeRemoteProject, remoteAuthStore, setPendingAuthEntry]);
 
   const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
     try {
       // 如果有 saved_auth，写入 entry 用于持久化
       const persistEntry = saved_auth ? { ...entry, saved_auth } : entry;
-      const existingIndex = remoteEntries.findIndex(e => e.id === entry.id);
-      let newEntries: RemoteEntrySession[];
-      if (existingIndex >= 0) {
-        newEntries = [...remoteEntries];
-        newEntries[existingIndex] = persistEntry;
-      } else {
-        newEntries = [...remoteEntries, persistEntry];
-      }
+      const newEntries = upsertEntryById(remoteEntries, persistEntry);
       setRemoteEntries(newEntries);
       await saveSession(undefined, newEntries);
       if (auth) {
@@ -56,19 +80,19 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     } catch (error) {
       console.error("[App] Failed to save remote entry:", error);
     }
-  }, [remoteEntries, saveSession]);
+  }, [remoteEntries, setRemoteEntries, saveSession, setRemoteAuthStore]);
 
   const handleCloseRemoteProject = useCallback((entryId: string, projectId: string) => {
-    destroyRemoteCache(remoteCacheKey(entryId, projectId));
+    destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
     }
     setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-  }, [activeRemoteKey]);
+  }, [activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject]);
 
   const handleRemoveRemoteProject = useCallback(async (entryId: string, projectId: string) => {
-    destroyRemoteCache(remoteCacheKey(entryId, projectId));
+    destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
     if (activeRemoteKey?.projectId === projectId) {
       setActiveRemoteKey(null);
       setActiveRemoteProject(null);
@@ -80,14 +104,13 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     });
     setRemoteEntries(newEntries);
     await saveSession(undefined, newEntries).catch(console.error);
-  }, [remoteEntries, activeRemoteKey, saveSession]);
+  }, [remoteEntries, activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject, setRemoteEntries, saveSession]);
 
   const handleRemoveRemoteEntry = useCallback(async (entryId: string) => {
     const entry = remoteEntries.find(e => e.id === entryId);
     if (entry) {
       entry.projects.forEach(p => {
-        destroyRemoteCache(remoteCacheKey(entryId, p.id));
-        destroyRemoteCache(remoteCacheKey(entryId, p.id) + ":side");
+        destroyRemoteCachesByPrefix(remoteCacheKey(entryId, p.id));
       });
       if (activeRemoteKey && entry.projects.some(p => p.id === activeRemoteKey.projectId)) {
         setActiveRemoteKey(null);
@@ -98,7 +121,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     const newEntries = remoteEntries.filter(e => e.id !== entryId);
     setRemoteEntries(newEntries);
     await saveSession(undefined, newEntries).catch(console.error);
-  }, [remoteEntries, activeRemoteKey, saveSession]);
+  }, [remoteEntries, activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject, setRemoteEntries, setRemoteAuthStore, saveSession]);
 
   const handleAddRemoteProject = useCallback((entryId: string) => {
     setRemoteAddToEntryId(entryId);
@@ -108,7 +131,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
   const handleRemoteDialogClose = useCallback(() => {
     setRemoteDialogOpen(false);
     setRemoteAddToEntryId(null);
-  }, []);
+  }, [setRemoteAuthStore]);
 
   /** 从持久化的 saved_auth 恢复 remoteAuthStore */
   const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
@@ -141,7 +164,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
     remoteAddToEntryId,
     remoteAuthStore, setRemoteAuthStore,
     pendingAuthEntry, setPendingAuthEntry,
-    remoteEntriesRef, activeRemoteKeyRef, selectRemoteProjectRef,
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,

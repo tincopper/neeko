@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git Commit View — IDEA-style Two-Panel Prototype</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    background: #1e1e1e;
+    color: #abb2bf;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  :root {
+    --bg-primary: #282c34;
+    --bg-secondary: #21252b;
+    --bg-tertiary: #2c313c;
+    --bg-hover: #3e4451;
+    --text-primary: #abb2bf;
+    --text-secondary: #828997;
+    --text-muted: #5c6370;
+    --border: #181a1f;
+    --accent-blue: #61afef;
+    --accent-green: #98c379;
+    --accent-yellow: #e5c07b;
+    --accent-red: #e06c75;
+    --accent-purple: #c678dd;
+    --badge-m: #e5c07b;
+    --badge-a: #98c379;
+    --badge-d: #e06c75;
+    --badge-r: #c678dd;
+    --badge-u: #5c6370;
+    --diff-added-bg: rgba(63, 185, 80, 0.10);
+    --diff-removed-bg: rgba(248, 81, 73, 0.10);
+    --radius: 4px;
+  }
+
+  /* ===== Theme Bar ===== */
+  .theme-bar {
+    position: fixed; top: 12px; right: 12px;
+    display: flex; gap: 4px;
+    background: var(--bg-tertiary); padding: 4px;
+    border-radius: var(--radius); border: 1px solid var(--border); z-index: 100;
+  }
+  .theme-btn {
+    padding: 3px 8px; border: 1px solid transparent; border-radius: 3px;
+    background: transparent; color: var(--text-muted); font-size: 10px; cursor: pointer;
+  }
+  .theme-btn.active { color: var(--accent-blue); border-color: var(--accent-blue); }
+  .theme-btn:hover { color: var(--text-primary); }
+
+  /* ===== Tab Bar ===== */
+  .tab-bar {
+    display: flex; gap: 0;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 0 8px;
+  }
+  .tab-item {
+    padding: 6px 14px; border: none; border-bottom: 2px solid transparent;
+    background: transparent; color: var(--text-muted); font-size: 11px;
+    cursor: pointer; font-weight: 500; transition: all 0.15s;
+  }
+  .tab-item:hover { color: var(--text-secondary); }
+  .tab-item.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+  /* ===== Main Container ===== */
+  .commit-window {
+    width: 1060px; height: 680px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  /* ===== Toolbar ===== */
+  .toolbar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .toolbar-tabs { display: flex; gap: 2px; margin-right: 12px; }
+  .toolbar-tab {
+    padding: 3px 10px; border: 1px solid transparent; border-radius: var(--radius);
+    background: transparent; color: var(--text-muted); font-size: 11px;
+    cursor: pointer; font-weight: 500; transition: all 0.15s;
+  }
+  .toolbar-tab:hover { color: var(--text-secondary); }
+  .toolbar-tab.active { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(97,175,239,0.08); }
+
+  .search-box {
+    flex: 1; max-width: 280px;
+    padding: 4px 8px 4px 24px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-primary); color: var(--text-primary);
+    font-size: 11px; outline: none; transition: border-color 0.15s;
+  }
+  .search-box:focus { border-color: var(--accent-blue); }
+  .search-box::placeholder { color: var(--text-muted); }
+  .search-wrap { position: relative; flex: 1; max-width: 280px; }
+  .search-icon {
+    position: absolute; left: 7px; top: 50%; transform: translateY(-50%);
+    color: var(--text-muted); font-size: 12px; pointer-events: none;
+  }
+
+  /* ===== Two Column Layout ===== */
+  .columns { display: flex; flex: 1; min-height: 0; }
+
+  /* ===== Left: Changes + Commit ===== */
+  .col-left {
+    width: 420px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    background: var(--bg-secondary);
+  }
+
+  /* --- Branch Info --- */
+  .branch-info {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .branch-name {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 6px;
+  }
+  .branch-icon { color: var(--accent-green); font-size: 14px; }
+  .branch-label {
+    font-weight: 600; font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .branch-actions {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    font-size: 11px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent-blue); }
+  .btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+  /* --- Changes Section --- */
+  .changes-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .changes-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .changes-header-left { display: flex; align-items: center; gap: 8px; }
+  .changes-count {
+    background: var(--bg-tertiary); color: var(--text-muted);
+    padding: 0 6px; border-radius: 10px; font-size: 10px;
+  }
+
+  .changes-toolbar {
+    display: flex; align-items: center; gap: 2px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-btn {
+    padding: 2px 6px; border: 1px solid transparent; border-radius: var(--radius);
+    background: transparent; color: var(--text-muted); font-size: 10px;
+    cursor: pointer; transition: all 0.15s; font-weight: 500;
+  }
+  .filter-btn:hover { color: var(--text-secondary); background: var(--bg-tertiary); }
+  .filter-btn.active { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(97,175,239,0.1); }
+
+  .changes-list {
+    flex: 1; overflow-y: auto; padding: 2px 0;
+  }
+
+  .dir-group-header {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 10px; color: var(--text-muted); font-size: 11px;
+    cursor: pointer; user-select: none;
+  }
+  .dir-group-header:hover { background: var(--bg-tertiary); }
+  .dir-chevron { font-size: 8px; transition: transform 0.15s; display: inline-block; }
+  .dir-group-header.collapsed .dir-chevron { transform: rotate(-90deg); }
+
+  .file-item {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 10px 3px 20px;
+    cursor: pointer; transition: background 0.1s;
+    font-size: 12px;
+  }
+  .file-item:hover { background: var(--bg-hover); }
+  .file-item.selected { background: rgba(97,175,239,0.12); }
+
+  .file-checkbox {
+    width: 14px; height: 14px;
+    border: 1px solid var(--text-muted); border-radius: 3px;
+    background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s;
+  }
+  .file-checkbox.checked { background: var(--accent-blue); border-color: var(--accent-blue); }
+  .file-checkbox.checked::after { content: "✓"; color: #fff; font-size: 10px; font-weight: 700; }
+  .file-checkbox.indeterminate { border-color: var(--accent-blue); }
+  .file-checkbox.indeterminate::after { content: "−"; color: var(--accent-blue); font-size: 12px; font-weight: 700; }
+
+  .file-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
+  .file-name {
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-primary);
+  }
+
+  .status-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 16px; border-radius: 3px;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+  }
+  .status-M { color: var(--badge-m); background: rgba(229,192,123,0.15); }
+  .status-A { color: var(--badge-a); background: rgba(152,195,121,0.15); }
+  .status-D { color: var(--badge-d); background: rgba(224,108,117,0.15); }
+  .status-R { color: var(--badge-r); background: rgba(198,120,221,0.15); }
+  .status-U { color: var(--badge-u); background: rgba(92,99,112,0.15); }
+
+  .file-stats { display: flex; gap: 4px; font-size: 10px; flex-shrink: 0; }
+  .stat-add { color: var(--accent-green); }
+  .stat-del { color: var(--accent-red); }
+
+  /* --- Unversioned Section --- */
+  .unversioned-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px;
+    font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .unversioned-header:hover { background: var(--bg-tertiary); }
+  .unversioned-count {
+    background: var(--bg-tertiary); color: var(--text-muted);
+    padding: 0 6px; border-radius: 10px; font-size: 10px;
+  }
+
+  /* --- Commit Form --- */
+  .commit-form {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .commit-options {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .commit-option {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-muted); cursor: pointer;
+  }
+  .commit-option input[type="checkbox"] {
+    accent-color: var(--accent-blue);
+  }
+  .commit-textarea {
+    width: 100%; min-height: 54px; max-height: 100px;
+    padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-primary); color: var(--text-primary);
+    font-family: inherit; font-size: 12px;
+    resize: vertical; outline: none; transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+  .commit-textarea::placeholder { color: var(--text-muted); }
+  .commit-textarea:focus { border-color: var(--accent-blue); }
+
+  .commit-actions {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 8px;
+  }
+  .btn-commit {
+    flex: 1; padding: 5px 12px;
+    border: none; border-radius: var(--radius);
+    background: var(--accent-blue); color: #fff;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .btn-commit:hover { background: #4d9ee0; }
+  .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-commit-push {
+    flex: 1; padding: 5px 12px;
+    border: 1px solid var(--accent-blue); border-radius: var(--radius);
+    background: transparent; color: var(--accent-blue);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .btn-commit-push:hover { background: rgba(97,175,239,0.1); }
+
+  /* ===== Right: Diff Viewer ===== */
+  .col-right {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    background: var(--bg-primary);
+  }
+  .diff-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 10px; background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  .diff-file-name { color: var(--text-primary); font-weight: 500; }
+  .diff-view-toggle { display: flex; gap: 2px; }
+  .diff-toggle-btn {
+    padding: 2px 6px; border: 1px solid transparent; border-radius: 3px;
+    background: transparent; color: var(--text-muted); font-size: 10px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .diff-toggle-btn:hover { color: var(--text-secondary); }
+  .diff-toggle-btn.active { color: var(--accent-blue); border-color: var(--accent-blue); }
+
+  .diff-options {
+    display: flex; align-items: center; gap: 12px;
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px; color: var(--text-muted);
+  }
+  .diff-option {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+  }
+  .diff-option input[type="checkbox"] { accent-color: var(--accent-blue); }
+
+  .diff-content {
+    flex: 1; overflow: auto;
+    font-family: "SF Mono","Fira Code",monospace; font-size: 11px;
+  }
+  .diff-line { display: flex; }
+  .diff-line-num {
+    width: 40px; text-align: right; color: var(--text-muted);
+    padding: 0 6px; flex-shrink: 0; user-select: none;
+  }
+  .diff-line-text { flex: 1; padding: 0 8px; white-space: pre-wrap; }
+  .diff-line.added { background: rgba(63,185,80,0.10); }
+  .diff-line.removed { background: rgba(248,81,73,0.10); }
+  .diff-line.hunk-header { background: var(--bg-tertiary); color: var(--accent-blue); font-weight: 500; }
+  .diff-sign { width: 14px; flex-shrink: 0; text-align: center; }
+
+  /* Split view */
+  .diff-split-container { display: flex; flex: 1; overflow: auto; }
+  .diff-split-pane { flex: 1; overflow-x: auto; }
+  .diff-split-pane + .diff-split-pane { border-left: 1px solid var(--border); }
+
+  /* Empty state */
+  .diff-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 12px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+
+  /* Context Menu */
+  .context-menu {
+    position: fixed; background: var(--bg-secondary);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    padding: 4px 0; z-index: 200; min-width: 160px;
+    display: none;
+  }
+  .context-menu.show { display: block; }
+  .context-menu-item {
+    padding: 5px 12px; cursor: pointer; font-size: 11px;
+    color: var(--text-primary); transition: background 0.1s;
+  }
+  .context-menu-item:hover { background: var(--bg-hover); }
+  .context-menu-item.danger { color: var(--accent-red); }
+  .context-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="theme-bar">
+  <button class="theme-btn active" onclick="setTheme('one-dark-pro')">One Dark</button>
+  <button class="theme-btn" onclick="setTheme('dark')">Dark</button>
+  <button class="theme-btn" onclick="setTheme('light')">Light</button>
+  <button class="theme-btn" onclick="setTheme('claude')">Claude</button>
+</div>
+
+<div class="commit-window">
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-item active" onclick="switchTab(this)">Commit</button>
+    <button class="tab-item" onclick="switchTab(this)">Log</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="search-box" placeholder="Filter files..." id="searchInput" oninput="filterFiles()">
+    </div>
+  </div>
+
+  <div class="columns">
+    <!-- Left: Changes + Commit -->
+    <div class="col-left">
+      <!-- Branch Info -->
+      <div class="branch-info">
+        <div class="branch-name">
+          <span class="branch-icon">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.5 2.5 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM3.5 3a.75.75 0 100 1.5.75.75 0 000-1.5zM4 13.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"/></svg>
+          </span>
+          <span class="branch-label">feature/git-commit-panel</span>
+        </div>
+        <div class="branch-actions">
+          <button class="btn" title="Commit">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M11.93 8.5a4.002 4.002 0 01-7.86 0H.75a.75.75 0 010-1.5h3.32a4.002 4.002 0 017.86 0h3.32a.75.75 0 010 1.5h-3.32zm-4.43-2.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/></svg>
+            Commit
+          </button>
+          <button class="btn" title="Push">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A2.5 2.5 0 013.5 0h8.75a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0V1.5h-8A1 1 0 002.5 2.5v4.75a.75.75 0 01-1.5 0V2.5z"/></svg>
+            Push
+          </button>
+          <button class="btn" title="Pull">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.75 1.75V5H11a.75.75 0 010 1.5H8.75v3.25a.75.75 0 01-1.5 0V6.5H4a.75.75 0 010-1.5h3.25V1.75a.75.75 0 011.5 0z"/></svg>
+            Pull
+          </button>
+          <button class="btn" title="New Branch" onclick="alert('New Branch')">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 110 1.5H8.5v4.25a.75.75 0 11-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/></svg>
+            Branch
+          </button>
+          <button class="btn" title="Refresh" onclick="refreshAll()">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.643 3.143.427 1.927A.25.25 0 000 2.104V5.75c0 .138.112.25.25.25h3.646a.25.25 0 00.177-.427L2.715 4.215a6.5 6.5 0 11-1.18 4.458.75.75 0 10-1.493.154 8.001 8.001 0 101.6-5.684zM7.75 4a.75.75 0 01.75.75v2.992l2.028.812a.75.75 0 01-.557 1.392l-2.5-1A.75.75 0 017 8.25v-3.5A.75.75 0 017.75 4z"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Changes -->
+      <div class="changes-section">
+        <div class="changes-header">
+          <div class="changes-header-left">
+            <span>Changes</span>
+            <span class="changes-count" id="changesCount">8</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">
+            <div class="file-checkbox" id="selectAllCheckbox" onclick="toggleSelectAll()"></div>
+            All
+          </label>
+        </div>
+        <div class="changes-toolbar">
+          <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
+          <button class="filter-btn" data-filter="M" onclick="setFilter('M',this)">Modified</button>
+          <button class="filter-btn" data-filter="A" onclick="setFilter('A',this)">Added</button>
+          <button class="filter-btn" data-filter="D" onclick="setFilter('D',this)">Deleted</button>
+          <button class="filter-btn" data-filter="R" onclick="setFilter('R',this)">Renamed</button>
+          <button class="filter-btn" data-filter="U" onclick="setFilter('U',this)">Untracked</button>
+        </div>
+        <div class="changes-list" id="changesList"></div>
+
+        <!-- Unversioned Files -->
+        <div class="unversioned-header" onclick="toggleUnversioned()">
+          <span>Unversioned Files <span class="unversioned-count" id="unversionedCount">2</span></span>
+          <span class="dir-chevron" id="unversionedChevron">▼</span>
+        </div>
+        <div class="changes-list" id="unversionedList"></div>
+      </div>
+
+      <!-- Commit Form -->
+      <div class="commit-form">
+        <div class="commit-options">
+          <label class="commit-option"><input type="checkbox" id="amendCheck"> Amend</label>
+        </div>
+        <textarea class="commit-textarea" id="commitMessage" placeholder="Commit message..."></textarea>
+        <div class="commit-actions">
+          <button class="btn-commit" id="commitBtn">Commit</button>
+          <button class="btn-commit-push" id="commitPushBtn">Commit & Push...</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Diff Viewer -->
+    <div class="col-right" id="diffPanel">
+      <div class="diff-toolbar">
+        <span class="diff-file-name" id="diffFileName">Select a file to view diff</span>
+        <div class="diff-view-toggle">
+          <button class="diff-toggle-btn active" onclick="setDiffView('unified',this)">Unified</button>
+          <button class="diff-toggle-btn" onclick="setDiffView('split',this)">Side-by-side</button>
+        </div>
+      </div>
+      <div class="diff-options">
+        <label class="diff-option"><input type="checkbox"> Do not ignore</label>
+        <label class="diff-option"><input type="checkbox" checked> Highlight split changes</label>
+      </div>
+      <div class="diff-content" id="diffContent">
+        <div class="diff-empty">Select a file to view changes</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu">
+  <div class="context-menu-item" onclick="closeCtx()">Show History</div>
+  <div class="context-menu-item" onclick="closeCtx()">Compare with...</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="closeCtx()">Add to .gitignore</div>
+  <div class="context-menu-item" onclick="closeCtx()">Delete</div>
+</div>
+
+<script>
+// ===== Mock Data =====
+const FILES = [
+  { path: "src/components/project/GitCommitPanel.tsx", status: "A", additions: 142, deletions: 0 },
+  { path: "src/components/project/BranchInfo.tsx", status: "A", additions: 68, deletions: 0 },
+  { path: "src/components/project/ChangesList.tsx", status: "A", additions: 185, deletions: 0 },
+  { path: "src/components/project/CommitForm.tsx", status: "A", additions: 72, deletions: 0 },
+  { path: "src/components/project/CommitHistory.tsx", status: "A", additions: 93, deletions: 0 },
+  { path: "src/types.ts", status: "M", additions: 18, deletions: 2 },
+  { path: "src-tauri/src/git/local.rs", status: "M", additions: 56, deletions: 3 },
+  { path: "src-tauri/src/commands/git.rs", status: "M", additions: 34, deletions: 0 },
+];
+
+const UNVERSIONED = [
+  { path: "src/components/project/GitCommitPanel.test.tsx", status: "U", additions: 45, deletions: 0 },
+  { path: "docs/commit-panel-design.md", status: "U", additions: 120, deletions: 0 },
+];
+
+const DIFFS = {
+  "src/types.ts": [
+    { type: "hunk", text: "@@ -14,6 +14,24 @@ export interface FileChange {" },
+    { type: "context", num1: 14, num2: 14, text: "  deletions: number;" },
+    { type: "context", num1: 15, num2: 15, text: "}" },
+    { type: "context", num1: 16, num2: 16, text: "" },
+    { type: "added", num2: 17, text: "+export interface CommitInfo {" },
+    { type: "added", num2: 18, text: "+  hash: string;" },
+    { type: "added", num2: 19, text: "+  short_hash: string;" },
+    { type: "added", num2: 20, text: "+  message: string;" },
+    { type: "added", num2: 21, text: "+  author: string;" },
+    { type: "added", num2: 22, text: "+  email: string;" },
+    { type: "added", num2: 23, text: "+  timestamp: number;" },
+    { type: "added", num2: 24, text: "+  date: string;" },
+    { type: "added", num2: 25, text: "+}" },
+    { type: "added", num2: 26, text: "+" },
+    { type: "context", num1: 17, num2: 27, text: "export interface Worktree {" },
+    { type: "context", num1: 18, num2: 28, text: "  path: string;" },
+    { type: "context", num1: 19, num2: 29, text: "  branch: string;" },
+    { type: "context", num1: 20, num2: 30, text: "  head: string;" },
+    { type: "context", num1: 21, num2: 31, text: "}" },
+  ],
+  "src-tauri/src/git/local.rs": [
+    { type: "hunk", text: "@@ -142,6 +142,28 @@ pub fn get_commit_log(" },
+    { type: "context", num1: 142, num2: 142, text: "    let repo = Repository::open(repo_path)?;" },
+    { type: "context", num1: 143, num2: 143, text: "    let mut revwalk = repo.revwalk()?;" },
+    { type: "removed", num1: 144, text: "-    revwalk.set_sorting(Sort::TIME)?;" },
+    { type: "added", num2: 144, text: "+    revwalk.set_sorting(git2::Sort::TIME | git2::Sort::TOPOLOGICAL)?;" },
+    { type: "context", num1: 145, num2: 145, text: "    revwalk.push_head()?;" },
+    { type: "context", num1: 146, num2: 146, text: "" },
+    { type: "added", num2: 147, text: "+    // Apply offset for pagination" },
+    { type: "added", num2: 148, text: "+    for _ in 0..offset {" },
+    { type: "added", num2: 149, text: "+        revwalk.next();" },
+    { type: "added", num2: 150, text: "+    }" },
+    { type: "added", num2: 151, text: "+" },
+    { type: "context", num1: 147, num2: 152, text: "    let mut commits = Vec::new();" },
+    { type: "context", num1: 148, num2: 153, text: "    for oid in revwalk.take(limit as usize) {" },
+    { type: "context", num1: 149, num2: 154, text: "        let oid = oid?;" },
+    { type: "context", num1: 150, num2: 155, text: "        let commit = repo.find_commit(oid)?;" },
+    { type: "context", num1: 151, num2: 156, text: "        commits.push(commit_to_info(&commit));" },
+    { type: "context", num1: 152, num2: 157, text: "    }" },
+    { type: "context", num1: 153, num2: 158, text: "    Ok(commits)" },
+    { type: "context", num1: 154, num2: 159, text: "}" },
+  ],
+  "src-tauri/src/commands/git.rs": [
+    { type: "hunk", text: "@@ -89,0 +90,34 @@ pub fn get_commit_log(" },
+    { type: "added", num2: 90, text: "+#[tauri::command]" },
+    { type: "added", num2: 91, text: "+pub fn get_commit_log(" },
+    { type: "added", num2: 92, text: "+    state: State<AppStateWrapper>," },
+    { type: "added", num2: 93, text: "+    project_id: String," },
+    { type: "added", num2: 94, text: "+    offset: u32," },
+    { type: "added", num2: 95, text: "+    limit: u32," },
+    { type: "added", num2: 96, text: "+) -> Result<Vec<CommitInfo>, String> {" },
+    { type: "added", num2: 97, text: "+    let app = state.0.lock().unwrap();" },
+    { type: "added", num2: 98, text: "+    let project = app" },
+    { type: "added", num2: 99, text: "+        .projects" },
+    { type: "added", num2: 100, text: "+        .iter()" },
+    { type: "added", num2: 101, text: "+        .find(|p| p.id == project_id)" },
+    { type: "added", num2: 102, text: "+        .ok_or(\"Project not found\")?;" },
+    { type: "added", num2: 103, text: "+" },
+    { type: "added", num2: 104, text: "+    local::get_commit_log(&project.path, offset, limit)" },
+    { type: "added", num2: 105, text: "+        .map_err(|e| e.to_string())" },
+    { type: "added", num2: 106, text: "+}" },
+  ],
+};
+
+// Default diff for new files
+const DEFAULT_DIFF = [
+  { type: "hunk", text: "@@ -0,0 +1,12 @@ New file" },
+  { type: "added", num2: 1, text: "+// This is a new file" },
+  { type: "added", num2: 2, text: "+" },
+  { type: "added", num2: 3, text: "+import React from 'react';" },
+  { type: "added", num2: 4, text: "+" },
+  { type: "added", num2: 5, text: "+export default function Component() {" },
+  { type: "added", num2: 6, text: "+  return (" },
+  { type: "added", num2: 7, text: "+    <div>" },
+  { type: "added", num2: 8, text: "+      <h1>Hello</h1>" },
+  { type: "added", num2: 9, text: "+    </div>" },
+  { type: "added", num2: 10, text: "+  );" },
+  { type: "added", num2: 11, text: "+}" },
+  { type: "added", num2: 12, text: "+" },
+];
+
+// ===== State =====
+let selectedFiles = new Set();
+let selectedFilePath = null;
+let activeFilter = "all";
+let collapsedDirs = new Set();
+let unversionedCollapsed = false;
+let diffMode = "unified"; // unified | split
+
+// ===== File Tree Rendering =====
+function getDir(filePath) {
+  const parts = filePath.split("/");
+  return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+}
+function getFileName(filePath) {
+  return filePath.split("/").pop();
+}
+function groupByDir(files) {
+  const groups = {};
+  for (const f of files) {
+    const dir = getDir(f.path);
+    if (!groups[dir]) groups[dir] = [];
+    groups[dir].push(f);
+  }
+  return groups;
+}
+function getFileIcon(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  const colors = {
+    ts: "#3178c6", tsx: "#3178c6", js: "#f7df1e", jsx: "#61dafb",
+    rs: "#dea584", css: "#563d7c", json: "#cbcb41", md: "#083fa1",
+    html: "#e34c26",
+  };
+  const color = colors[ext] || "#828997";
+  return `<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="1" width="12" height="14" rx="2" fill="${color}" opacity="0.15"/><rect x="2" y="1" width="12" height="14" rx="2" stroke="${color}" stroke-width="1" fill="none"/><text x="8" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="${color}">${ext.toUpperCase().slice(0,3)}</text></svg>`;
+}
+function statusLabel(s) {
+  return { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", U: "Untracked" }[s] || s;
+}
+
+function renderFileList(files, containerId, showCheckbox) {
+  const list = document.getElementById(containerId);
+  const query = document.getElementById("searchInput").value.toLowerCase();
+  let filtered = files.filter(f => activeFilter === "all" || f.status === activeFilter);
+  if (query) filtered = filtered.filter(f => f.path.toLowerCase().includes(query));
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:11px">No changes</div>`;
+    return;
+  }
+
+  const groups = groupByDir(filtered);
+  const dirs = Object.keys(groups).sort();
+  let html = "";
+
+  for (const dir of dirs) {
+    const dirFiles = groups[dir];
+    const isCollapsed = collapsedDirs.has(dir);
+    if (dir) {
+      html += `<div class="dir-group-header ${isCollapsed ? "collapsed" : ""}" onclick="toggleDir('${dir}')">
+        <span class="dir-chevron">▼</span>
+        <span style="color:var(--text-secondary)">${dir}/</span>
+        <span style="color:var(--text-muted);font-size:10px">(${dirFiles.length})</span>
+      </div>`;
+    }
+    if (!isCollapsed) {
+      for (const f of dirFiles) {
+        const checked = selectedFiles.has(f.path);
+        const fname = getFileName(f.path);
+        const isSelected = f.path === selectedFilePath;
+        html += `<div class="file-item ${isSelected ? "selected" : ""}" onclick="selectFile('${f.path}')">`;
+        if (showCheckbox) {
+          html += `<div class="file-checkbox ${checked ? "checked" : ""}" onclick="event.stopPropagation();toggleFile('${f.path}')"></div>`;
+        }
+        html += `<span class="file-icon">${getFileIcon(fname)}</span>
+          <span class="file-name">${fname}</span>
+          <span class="status-badge status-${f.status}" title="${statusLabel(f.status)}">${f.status}</span>
+          <span class="file-stats">
+            ${f.additions ? `<span class="stat-add">+${f.additions}</span>` : ""}
+            ${f.deletions ? `<span class="stat-del">-${f.deletions}</span>` : ""}
+          </span>
+        </div>`;
+      }
+    }
+  }
+  list.innerHTML = html;
+}
+
+function renderChangesList() {
+  renderFileList(FILES, "changesList", true);
+  document.getElementById("changesCount").textContent = FILES.filter(f => activeFilter === "all" || f.status === activeFilter).length;
+  updateSelectAllState();
+}
+
+function renderUnversionedList() {
+  renderFileList(UNVERSIONED, "unversionedList", false);
+  document.getElementById("unversionedCount").textContent = UNVERSIONED.length;
+}
+
+function selectFile(path) {
+  selectedFilePath = path;
+  renderChangesList();
+  renderUnversionedList();
+  renderDiff(path);
+}
+
+function toggleFile(path) {
+  if (selectedFiles.has(path)) selectedFiles.delete(path);
+  else selectedFiles.add(path);
+  renderChangesList();
+}
+
+function toggleSelectAll() {
+  const filtered = FILES.filter(f => activeFilter === "all" || f.status === activeFilter);
+  const allSelected = filtered.every(f => selectedFiles.has(f.path));
+  if (allSelected) filtered.forEach(f => selectedFiles.delete(f.path));
+  else filtered.forEach(f => selectedFiles.add(f.path));
+  renderChangesList();
+}
+
+function updateSelectAllState() {
+  const filtered = FILES.filter(f => activeFilter === "all" || f.status === activeFilter);
+  const cb = document.getElementById("selectAllCheckbox");
+  if (filtered.length === 0) { cb.className = "file-checkbox"; return; }
+  const allSelected = filtered.every(f => selectedFiles.has(f.path));
+  const someSelected = filtered.some(f => selectedFiles.has(f.path));
+  cb.className = "file-checkbox" + (allSelected ? " checked" : someSelected ? " indeterminate" : "");
+}
+
+function setFilter(filter, btn) {
+  activeFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderChangesList();
+}
+
+function toggleDir(dir) {
+  if (collapsedDirs.has(dir)) collapsedDirs.delete(dir);
+  else collapsedDirs.add(dir);
+  renderChangesList();
+  renderUnversionedList();
+}
+
+function toggleUnversioned() {
+  unversionedCollapsed = !unversionedCollapsed;
+  const el = document.getElementById("unversionedList");
+  const chevron = document.getElementById("unversionedChevron");
+  el.style.display = unversionedCollapsed ? "none" : "";
+  chevron.style.transform = unversionedCollapsed ? "rotate(-90deg)" : "";
+}
+
+function filterFiles() {
+  renderChangesList();
+  renderUnversionedList();
+}
+
+// ===== Diff Rendering =====
+function renderDiff(filePath) {
+  document.getElementById("diffFileName").textContent = filePath;
+  const content = document.getElementById("diffContent");
+  const diff = DIFFS[filePath] || DEFAULT_DIFF;
+
+  if (diffMode === "unified") {
+    content.className = "diff-content";
+    content.innerHTML = diff.map(line => {
+      if (line.type === "hunk") {
+        return `<div class="diff-line hunk-header"><span class="diff-line-num"></span><span class="diff-line-num"></span><span class="diff-sign"></span><span class="diff-line-text">${line.text}</span></div>`;
+      }
+      const cls = line.type === "added" ? "added" : line.type === "removed" ? "removed" : "";
+      const sign = line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
+      const content = line.text.startsWith("+") || line.text.startsWith("-") ? line.text.slice(1) : line.text;
+      return `<div class="diff-line ${cls}">
+        <span class="diff-line-num">${line.type !== "added" ? (line.num1 ?? "") : ""}</span>
+        <span class="diff-line-num">${line.type !== "removed" ? (line.num2 ?? "") : ""}</span>
+        <span class="diff-sign">${sign}</span>
+        <span class="diff-line-text">${content}</span>
+      </div>`;
+    }).join("");
+  } else {
+    // Split view
+    content.className = "diff-content";
+    let leftHtml = "";
+    let rightHtml = "";
+    for (const line of diff) {
+      if (line.type === "hunk") {
+        leftHtml += `<div class="diff-line hunk-header"><span class="diff-line-num"></span><span class="diff-line-text">${line.text}</span></div>`;
+        rightHtml += `<div class="diff-line hunk-header"><span class="diff-line-num"></span><span class="diff-line-text">${line.text}</span></div>`;
+      } else if (line.type === "removed") {
+        const t = line.text.startsWith("-") ? line.text.slice(1) : line.text;
+        leftHtml += `<div class="diff-line removed"><span class="diff-line-num">${line.num1 ?? ""}</span><span class="diff-sign">-</span><span class="diff-line-text">${t}</span></div>`;
+      } else if (line.type === "added") {
+        const t = line.text.startsWith("+") ? line.text.slice(1) : line.text;
+        rightHtml += `<div class="diff-line added"><span class="diff-line-num">${line.num2 ?? ""}</span><span class="diff-sign">+</span><span class="diff-line-text">${t}</span></div>`;
+      } else {
+        leftHtml += `<div class="diff-line"><span class="diff-line-num">${line.num1 ?? ""}</span><span class="diff-sign"> </span><span class="diff-line-text">${line.text}</span></div>`;
+        rightHtml += `<div class="diff-line"><span class="diff-line-num">${line.num2 ?? ""}</span><span class="diff-sign"> </span><span class="diff-line-text">${line.text}</span></div>`;
+      }
+    }
+    content.innerHTML = `<div class="diff-split-container"><div class="diff-split-pane">${leftHtml}</div><div class="diff-split-pane">${rightHtml}</div></div>`;
+  }
+}
+
+function setDiffView(mode, btn) {
+  diffMode = mode;
+  document.querySelectorAll(".diff-toggle-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  if (selectedFilePath) renderDiff(selectedFilePath);
+}
+
+// ===== Toolbar =====
+function switchTab(btn) {
+  document.querySelectorAll(".tab-item").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+}
+
+function refreshAll() {
+  selectedFilePath = null;
+  document.getElementById("diffFileName").textContent = "Select a file to view diff";
+  document.getElementById("diffContent").innerHTML = '<div class="diff-empty">Select a file to view changes</div>';
+  renderChangesList();
+  renderUnversionedList();
+}
+
+// ===== Context Menu =====
+document.addEventListener("contextmenu", (e) => {
+  const fileItem = e.target.closest(".file-item");
+  if (fileItem) {
+    e.preventDefault();
+    const menu = document.getElementById("contextMenu");
+    menu.style.left = e.clientX + "px";
+    menu.style.top = e.clientY + "px";
+    menu.classList.add("show");
+  }
+});
+function closeCtx() { document.getElementById("contextMenu").classList.remove("show"); }
+document.addEventListener("click", closeCtx);
+
+// ===== Theme =====
+function setTheme(name) {
+  document.querySelectorAll(".theme-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  const r = document.documentElement.style;
+  const themes = {
+    "one-dark-pro": { bg1:"#282c34",bg2:"#21252b",bg3:"#2c313c",hover:"#3e4451",t1:"#abb2bf",t2:"#828997",tm:"#5c6370",border:"#181a1f",blue:"#61afef",green:"#98c379",yellow:"#e5c07b",red:"#e06c75",purple:"#c678dd" },
+    dark: { bg1:"#000000",bg2:"#0a0a0a",bg3:"#141414",hover:"#222222",t1:"#ededed",t2:"#888888",tm:"#666666",border:"#333333",blue:"#61afef",green:"#98c379",yellow:"#e5c07b",red:"#e06c75",purple:"#c678dd" },
+    light: { bg1:"#ffffff",bg2:"#f5f5f5",bg3:"#e8e8e8",hover:"#e0e0e0",t1:"#1e1e1e",t2:"#6e6e6e",tm:"#a0a0a0",border:"#d4d4d4",blue:"#2f7cd3",green:"#4a9e3f",yellow:"#c49000",red:"#d32f2f",purple:"#8e24aa" },
+    claude: { bg1:"#f5f0e8",bg2:"#ede8df",bg3:"#e4ddd3",hover:"#d8d0c4",t1:"#3d3225",t2:"#7a6e5d",tm:"#a09585",border:"#ccc3b5",blue:"#c96442",green:"#5a8a5e",yellow:"#b8860b",red:"#c0392b",purple:"#8e24aa" },
+  };
+  const t = themes[name]; if (!t) return;
+  r.setProperty("--bg-primary",t.bg1); r.setProperty("--bg-secondary",t.bg2);
+  r.setProperty("--bg-tertiary",t.bg3); r.setProperty("--bg-hover",t.hover);
+  r.setProperty("--text-primary",t.t1); r.setProperty("--text-secondary",t.t2);
+  r.setProperty("--text-muted",t.tm); r.setProperty("--border",t.border);
+  r.setProperty("--accent-blue",t.blue); r.setProperty("--accent-green",t.green);
+  r.setProperty("--accent-yellow",t.yellow); r.setProperty("--accent-red",t.red);
+  r.setProperty("--accent-purple",t.purple);
+  r.setProperty("--badge-m",t.yellow); r.setProperty("--badge-a",t.green);
+  r.setProperty("--badge-d",t.red); r.setProperty("--badge-r",t.purple);
+  r.setProperty("--badge-u",t.tm);
+  document.body.style.background = name === "light" || name === "claude" ? "#e0ddd6" : "#1e1e1e";
+}
+
+// ===== Init =====
+FILES.forEach(f => selectedFiles.add(f.path));
+renderChangesList();
+renderUnversionedList();
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import React from "react";
 import {
   GitBranch,
   ChevronRight,
+  ChevronLeft,
   X,
   Trash2,
   Plus,
@@ -16,6 +17,7 @@ import {
   OctagonAlert,
   Search,
   FolderGit2,
+  Folder,
   Sun,
   type LucideProps,
 } from "lucide-react";
@@ -28,6 +30,7 @@ export const TrashIcon = Trash2;
 export const PlusIcon = Plus;
 export const FileIcon = FileCode2;
 export const FolderGitIcon = FolderGit2;
+export const FolderIcon = Folder;
 export const SettingsIcon = Settings;
 export const EditorIcon = AlignJustify;
 export const TerminalIcon = Terminal;
@@ -51,4 +54,8 @@ export const CloseRoundIcon: React.FC<LucideProps> = (props) => (
 
 export const CloseTerminalIcon: React.FC<LucideProps> = (props) => (
   <Square size={10} fill="currentColor" stroke="none" {...props} />
+);
+
+export const ArrowLeftIcon: React.FC<LucideProps> = (props) => (
+  <ChevronLeft strokeWidth={1.8} {...props} />
 );

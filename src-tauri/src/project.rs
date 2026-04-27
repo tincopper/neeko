@@ -1,5 +1,5 @@
 use crate::git;
-use crate::state::{Project, TerminalSession, TerminalStatus, ViewMode};
+use crate::models::{Project, TerminalSession, TerminalStatus, ViewMode};
 use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;

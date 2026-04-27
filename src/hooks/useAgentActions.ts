@@ -1,0 +1,139 @@
+import { useCallback } from "react";
+import { refreshTerminal, switchAgentInTerminal } from "../components/terminal";
+import { useAppStore } from "../store/appStore";
+import type { AgentConfig } from "../types";
+import type { SaveSessionFn } from "./useWslProjects";
+
+interface TerminalSettings {
+  fontSize: number;
+  shell: string;
+  fontFamily: string;
+}
+
+interface UseAgentActionsParams {
+  terminal: TerminalSettings;
+  agentCommandOverrides?: Record<string, string>;
+  handleOpenIde: (project: { id: string; selected_ide: string | null }) => Promise<void>;
+  showToast: (message: string, type?: "info" | "error") => void;
+  saveSession: SaveSessionFn;
+}
+
+interface UseAgentActionsResult {
+  handleSelectLocalAgent: (agent: AgentConfig | null, cacheKey: string) => void;
+  handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
+  handleOpenIdeForSidebar: (projectId: string) => void;
+  handleSaveProjectSettings: (
+    projectId: string,
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => Promise<void>;
+}
+
+export function useAgentActions({
+  terminal,
+  agentCommandOverrides,
+  handleOpenIde,
+  showToast,
+  saveSession,
+}: UseAgentActionsParams): UseAgentActionsResult {
+  const projects = useAppStore((state) => state.projects);
+
+  const handleSelectLocalAgent = useCallback((agent: AgentConfig | null, cacheKey: string) => {
+    const snapshot = useAppStore.getState();
+    const currentActiveProject = snapshot.activeProject;
+    if (!currentActiveProject) {
+      return;
+    }
+
+    const agentId = agent?.id ?? null;
+    useAppStore.setState((state) => {
+      const nextProjects = state.projects.map((project) => (
+        project.id === currentActiveProject.id
+          ? { ...project, selected_agent: agentId }
+          : project
+      ));
+
+      const nextActiveProject = state.activeProject && state.activeProject.id === currentActiveProject.id
+        ? { ...state.activeProject, selected_agent: agentId }
+        : state.activeProject;
+
+      return {
+        projects: nextProjects,
+        activeProject: nextActiveProject,
+      };
+    });
+
+    if (agent) {
+      void switchAgentInTerminal(
+        cacheKey,
+        currentActiveProject.path,
+        currentActiveProject.name,
+        agent.id,
+        terminal.fontSize,
+        terminal.shell,
+        terminal.fontFamily,
+        currentActiveProject.id,
+        agentCommandOverrides,
+      );
+      return;
+    }
+
+    setTimeout(() => refreshTerminal(currentActiveProject.id), 50);
+  }, [agentCommandOverrides, terminal.fontFamily, terminal.fontSize, terminal.shell]);
+
+  const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
+    if (!project.selected_ide) {
+      showToast("No IDE configured for this project", "error");
+      return;
+    }
+
+    showToast(`Opening ${project.selected_ide}...`, "info");
+    handleOpenIde(project).catch((error: unknown) => {
+      showToast(String(error), "error");
+    });
+  }, [handleOpenIde, showToast]);
+
+  const handleOpenIdeForSidebar = useCallback((projectId: string) => {
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      return;
+    }
+    handleOpenIdeCallback(project);
+  }, [projects, handleOpenIdeCallback]);
+
+  const handleSaveProjectSettings = useCallback(async (
+    projectId: string,
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => {
+    useAppStore.setState((state) => {
+      const nextProjects = state.projects.map((project) => (
+        project.id === projectId
+          ? { ...project, selected_agent: agentId, selected_ide: ideCommand }
+          : project
+      ));
+
+      const nextActiveProject = state.activeProject && state.activeProject.id === projectId
+        ? { ...state.activeProject, selected_agent: agentId, selected_ide: ideCommand }
+        : state.activeProject;
+
+      return {
+        projects: nextProjects,
+        activeProject: nextActiveProject,
+      };
+    });
+
+    try {
+      await saveSession();
+    } catch (error) {
+      console.error("Failed to save session after project settings change:", error);
+    }
+  }, [saveSession]);
+
+  return {
+    handleSelectLocalAgent,
+    handleOpenIdeCallback,
+    handleOpenIdeForSidebar,
+    handleSaveProjectSettings,
+  };
+}

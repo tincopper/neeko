@@ -1,4 +1,5 @@
-use crate::state::{FileContent, FileNode};
+use crate::models::{FileContent, FileNode};
+use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::Path;
 use tauri::State;
@@ -26,7 +27,7 @@ pub fn read_dir_tree(
     sub_path: Option<String>,
     max_depth: Option<u32>,
     state: State<AppStateWrapper>,
-) -> Result<Vec<FileNode>, String> {
+) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(4);
 
     // Get project path
@@ -34,10 +35,10 @@ pub fn read_dir_tree(
         let pm = state
             .project_manager
             .lock()
-            .map_err(|e| format!("Lock poisoned: {}", e))?;
+            .map_err(|e| AppError::File(e.to_string()))?;
         pm.get_project(&project_id)
             .map(|p| p.path.clone())
-            .ok_or_else(|| format!("Project not found: {}", project_id))?
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
     };
 
     let target_path = match sub_path {
@@ -48,13 +49,13 @@ pub fn read_dir_tree(
     // Validate the target path is within the project root
     let canonical_target = target_path
         .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+        .map_err(|e| AppError::File(format!("Invalid path: {}", e)))?;
     let canonical_root = project_path
         .canonicalize()
-        .map_err(|e| format!("Invalid project path: {}", e))?;
+        .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
 
     if !canonical_target.starts_with(&canonical_root) {
-        return Err("Path is outside project root".into());
+        return Err(AppError::File("Path is outside project root".to_string()));
     }
 
     let nodes = read_dir_recursive(&target_path, &project_path, depth)?;
@@ -65,14 +66,15 @@ fn read_dir_recursive(
     dir: &Path,
     project_root: &Path,
     depth: u32,
-) -> Result<Vec<FileNode>, String> {
+) -> Result<Vec<FileNode>, AppError> {
     if depth == 0 {
         return Ok(vec![]);
     }
 
     let mut nodes = Vec::new();
 
-    let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| AppError::File(format!("Failed to read directory: {}", e)))?;
 
     for entry in entries.flatten() {
         let file_name = entry.file_name();
@@ -83,13 +85,15 @@ fn read_dir_recursive(
             continue;
         }
 
-        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| AppError::File(e.to_string()))?;
         let full_path = entry.path();
 
         // Calculate relative path from project root
         let relative_path = full_path
             .strip_prefix(project_root)
-            .map_err(|e| e.to_string())?
+            .map_err(|e| AppError::File(e.to_string()))?
             .to_string_lossy()
             .to_string();
 
@@ -133,16 +137,16 @@ pub fn read_file_content(
     project_id: String,
     file_path: String,
     state: State<AppStateWrapper>,
-) -> Result<FileContent, String> {
+) -> Result<FileContent, AppError> {
     // Get project path
     let project_path = {
         let pm = state
             .project_manager
             .lock()
-            .map_err(|e| format!("Lock poisoned: {}", e))?;
+            .map_err(|e| AppError::File(e.to_string()))?;
         pm.get_project(&project_id)
             .map(|p| p.path.clone())
-            .ok_or_else(|| format!("Project not found: {}", project_id))?
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
     };
 
     let full_path = project_path.join(&file_path);
@@ -153,7 +157,7 @@ pub fn read_file_content(
         .map_err(|e| format!("File not found: {}", e))?;
     let canonical_root = project_path
         .canonicalize()
-        .map_err(|e| format!("Invalid project path: {}", e))?;
+        .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
 
     if !canonical_file.starts_with(&canonical_root) {
         return Err("File path is outside project root".into());
@@ -207,16 +211,16 @@ pub fn write_file_content(
     file_path: String,
     content: String,
     state: State<AppStateWrapper>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     // Get project path
     let project_path = {
         let pm = state
             .project_manager
             .lock()
-            .map_err(|e| format!("Lock poisoned: {}", e))?;
+            .map_err(|e| AppError::File(e.to_string()))?;
         pm.get_project(&project_id)
             .map(|p| p.path.clone())
-            .ok_or_else(|| format!("Project not found: {}", project_id))?
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
     };
 
     let full_path = project_path.join(&file_path);
@@ -224,7 +228,7 @@ pub fn write_file_content(
     // Validate: prevent path traversal
     let canonical_root = project_path
         .canonicalize()
-        .map_err(|e| format!("Invalid project path: {}", e))?;
+        .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
 
     // For write, we need to check parent if file doesn't exist yet
     if let Some(parent) = full_path.parent() {
@@ -246,12 +250,14 @@ pub fn write_file_content(
 }
 
 /// Check if a file is binary by reading the first 8KB
-fn is_binary_file(path: &Path) -> Result<bool, String> {
+fn is_binary_file(path: &Path) -> Result<bool, AppError> {
     use std::io::Read;
 
     let mut file = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mut buffer = vec![0u8; 8192];
-    let bytes_read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+    let bytes_read = file
+        .read(&mut buffer)
+        .map_err(|e| AppError::File(e.to_string()))?;
 
     // Check for null bytes in the first 8KB
     Ok(buffer[..bytes_read].contains(&0))

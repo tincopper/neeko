@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '../../hooks/useRemoteProjects';
-import type { RemoteEntrySession, RemoteProject } from '../../types';
+import type { AuthMethod, RemoteEntrySession, RemoteProject } from '../../types';
+import { useAppStore } from '../../store/appStore';
 
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
   remoteCacheKey: (entryId: string, projectId: string) => `remote:${entryId}:${projectId}`,
-  destroyRemoteCache: vi.fn(),
+  destroyRemoteCachesByPrefix: vi.fn(),
 }));
 
 const makeRemoteProject = (overrides: {
@@ -42,9 +43,38 @@ const makeRemoteEntry = (overrides: {
 describe('useRemoteProjects', () => {
   const mockSaveSession = vi.fn();
 
+  const resetStore = () => {
+    useAppStore.setState({
+      projects: [],
+      activeProjectId: null,
+      activeProject: null,
+      isTerminalView: false,
+      wslEntries: [],
+      activeWslKey: null,
+      activeWslProject: null,
+      remoteEntries: [],
+      activeRemoteKey: null,
+      activeRemoteProject: null,
+      remoteAuthStore: new Map(),
+      pendingAuthEntry: null,
+      activeWorktreePath: null,
+      openedWorktrees: [],
+      wslOpenedWt: [],
+      activeWslWorktreePath: null,
+      remoteOpenedWt: [],
+      activeRemoteWorktreePath: null,
+      worktreeState: {},
+      selectProject: vi.fn(),
+      selectWslProject: vi.fn(),
+      selectRemoteProject: vi.fn(),
+      openIde: vi.fn(),
+    });
+  };
+
   beforeEach(() => {
     mockSaveSession.mockReset();
     mockSaveSession.mockResolvedValue(undefined);
+    resetStore();
   });
 
   it('初始状态为空', () => {
@@ -109,10 +139,10 @@ describe('useRemoteProjects', () => {
 
     const entry = makeRemoteEntry({ id: 'remote-1' });
 
-    const auth = { password: 'secret' };
+    const auth: AuthMethod = { Password: 'secret' };
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, auth as any);
+      await result.current.handleRemoteEntryAdd(entry, auth);
     });
 
     expect(result.current.remoteAuthStore.has('remote-1')).toBe(true);
@@ -194,7 +224,7 @@ describe('useRemoteProjects', () => {
     });
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, { password: 'test' } as any);
+      await result.current.handleRemoteEntryAdd(entry, { Password: 'test' });
     });
 
     await act(async () => {
@@ -234,7 +264,7 @@ describe('useRemoteProjects', () => {
   it('restoreAuthFromEntries 从 saved_auth 恢复 auth', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
 
-    const authData = { password: 'test123' };
+    const authData = { Password: 'test123' };
     const encoded = btoa(JSON.stringify(authData));
 
     const entries = [
@@ -242,7 +272,7 @@ describe('useRemoteProjects', () => {
     ];
 
     act(() => {
-      result.current.restoreAuthFromEntries(entries as any);
+      result.current.restoreAuthFromEntries(entries);
     });
 
     expect(result.current.remoteAuthStore.has('e1')).toBe(true);
@@ -256,7 +286,7 @@ describe('useRemoteProjects', () => {
     ];
 
     act(() => {
-      result.current.restoreAuthFromEntries(entries as any);
+      result.current.restoreAuthFromEntries(entries);
     });
 
     expect(result.current.remoteAuthStore.has('e1')).toBe(false);

@@ -1,7 +1,7 @@
 ﻿import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Worktree, FileChange } from "../../types";
-import FileTree, { buildTree } from "./FileTree";
+import { FileTree, buildTree } from "../files";
 import { BranchIcon, ChevronRightIcon, TrashIcon, FolderGitIcon } from "../icons";
 import { terminalCache, destroyTerminalCache } from "../terminal";
 import { cn } from "../../utils/cn";

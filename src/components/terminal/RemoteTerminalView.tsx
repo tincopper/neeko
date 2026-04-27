@@ -7,8 +7,8 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily } from "../../utils/terminal";
-import { CloseRoundIcon } from "../icons";
-import { pendingPtyResize } from "./TerminalView";
+import { setupTerminalInput, type TerminalInputController } from "./terminalInput";
+import { useEditorContext } from "../../contexts";
 
 interface RemoteTerminalCache {
   term: Terminal;
@@ -16,6 +16,7 @@ interface RemoteTerminalCache {
   element: HTMLElement;
   sessionId: string | null;
   unlisten: (() => void) | null;
+  inputController: TerminalInputController | null;
 }
 
 // 全局缓存：key = "remote:{entryId}:{projectId}"
@@ -25,9 +26,21 @@ export function remoteCacheKey(entryId: string, projectId: string) {
   return `remote:${entryId}:${projectId}`;
 }
 
+function resolveRemoteCacheKey(keyOrPrefix: string): string | null {
+  if (remoteTerminalCache.has(keyOrPrefix)) return keyOrPrefix;
+  for (const key of remoteTerminalCache.keys()) {
+    if (key.startsWith(keyOrPrefix + ":")) {
+      return key;
+    }
+  }
+  return null;
+}
+
 /** 向已有 SSH 终端会话发送 agent 命令（Ctrl+C 中断当前进程后重新启动） */
 export function launchAgentInRemoteTerminal(cacheKey: string, command: string, args: string[]) {
-  const cache = remoteTerminalCache.get(cacheKey);
+  const resolved = resolveRemoteCacheKey(cacheKey);
+  if (!resolved) return;
+  const cache = remoteTerminalCache.get(resolved);
   if (!cache?.sessionId) return;
   const sessionId = cache.sessionId;
   const ctrlC = Array.from(new TextEncoder().encode("\x03"));
@@ -47,7 +60,8 @@ export async function switchAgentInRemoteTerminal(
   agentId: string,
   agentCommandOverrides?: Record<string, string>,
 ) {
-  const wrapper = remoteWrapperRefs.get(cacheKey)
+  const resolved = resolveRemoteCacheKey(cacheKey) ?? cacheKey
+  const wrapper = remoteWrapperRefs.get(resolved)
   if (!wrapper) {
     // 回退：wrapper 未就绪，用旧路径
     const agent = await invoke<{ id: string; command: string; args: string[] }>(
@@ -61,13 +75,14 @@ export async function switchAgentInRemoteTerminal(
   }
 
   // 1. 摘除旧缓存事件监听
-  const oldCache = remoteTerminalCache.get(cacheKey)
+  const oldCache = remoteTerminalCache.get(resolved)
   if (oldCache) {
     oldCache.unlisten?.()
+    oldCache.inputController?.dispose()
   }
 
   // 2. 删除旧条目
-  remoteTerminalCache.delete(cacheKey)
+  remoteTerminalCache.delete(resolved)
 
   // 3. 清空 wrapper DOM
   while (wrapper.firstChild) {
@@ -75,7 +90,7 @@ export async function switchAgentInRemoteTerminal(
   }
 
   // 4. 触发重建（selectedAgentId 已由 handleSelectRemoteAgent 更新到 props）
-  remoteRebuildCallbacks.get(cacheKey)?.()
+  remoteRebuildCallbacks.get(resolved)?.()
 
   // 5. 后台异步关闭旧 PTY（注意 SSH 用 close_remote_terminal_session）
   if (oldCache?.sessionId) {
@@ -85,27 +100,42 @@ export async function switchAgentInRemoteTerminal(
 }
 
 export function destroyRemoteCache(key: string) {
-  const cache = remoteTerminalCache.get(key);
+  const resolved = resolveRemoteCacheKey(key);
+  if (!resolved) return;
+  const cache = remoteTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
+  cache.inputController?.dispose();
   if (cache.sessionId) {
     invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
   cache.term.dispose();
-  remoteTerminalCache.delete(key);
+  remoteTerminalCache.delete(resolved);
+}
+
+export function destroyRemoteCachesByPrefix(prefix: string) {
+  const keys = Array.from(remoteTerminalCache.keys());
+  for (const key of keys) {
+    if (key === prefix || key.startsWith(prefix + ":")) {
+      destroyRemoteCache(key);
+    }
+  }
 }
 
 /** 手动刷新 Remote 终端：关闭 SSH PTY + 销毁缓存 + 触发重建 */
 export function refreshRemoteTerminal(key: string) {
-  const cache = remoteTerminalCache.get(key);
+  const resolved = resolveRemoteCacheKey(key);
+  if (!resolved) return;
+  const cache = remoteTerminalCache.get(resolved);
   if (!cache) return;
   cache.unlisten?.();
+  cache.inputController?.dispose();
   if (cache.sessionId) {
     invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
   }
   cache.term.dispose();
-  remoteTerminalCache.delete(key);
-  remoteRebuildCallbacks.get(key)?.();
+  remoteTerminalCache.delete(resolved);
+  remoteRebuildCallbacks.get(resolved)?.();
 }
 
 /** Remote 终端重建回调注册表 */
@@ -129,12 +159,9 @@ interface RemoteTerminalViewProps {
   onSessionReady?: (projectId: string) => void;
   /** 会话建立后自动启动的 Agent ID */
   selectedAgentId?: string | null;
-  /** cache key 后缀，side terminal 传 ":side" */
+  paneId?: string;
+  /** cache key 后缀，worktree 终端使用 */
   cacheKeySuffix?: string;
-  /** side terminal 模式：显示关闭按钮并固定宽度 */
-  sideMode?: boolean;
-  onClose?: () => void;
-  width?: number;
 }
 
 export default React.memo(function RemoteTerminalView({
@@ -149,50 +176,35 @@ export default React.memo(function RemoteTerminalView({
   fontSize = 14,
   fontFamily = "",
   onSessionReady,
-  selectedAgentId,
+  selectedAgentId: _selectedAgentId,
+  paneId = "p1",
   cacheKeySuffix = "",
-  sideMode = false,
-  onClose,
-  width,
 }: RemoteTerminalViewProps) {
+  const { activeTabId, tabs } = useEditorContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const [rebuildCount, setRebuildCount] = useState(0);
+  const [ready, setReady] = useState(false);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const tabAgentId = activeTab?.agentId ?? null;
 
   // 字体变化时同步到已有实例
   useEffect(() => {
-    const key = remoteCacheKey(entryId, projectId) + cacheKeySuffix;
+    const key = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
     const cache = remoteTerminalCache.get(key);
     if (!cache) return;
     cache.term.options.fontSize = fontSize;
     cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, entryId, projectId]);
-
-  // side terminal 宽度变化时重算 PTY 尺寸（rerender-split-combined-hooks）
-  useEffect(() => {
-    const key = remoteCacheKey(entryId, projectId) + cacheKeySuffix;
-    const cache = remoteTerminalCache.get(key);
-    if (!cache) return;
-    const timer = setTimeout(() => {
-      cache.fitAddon.fit();
-      if (cache.sessionId) {
-        invoke("resize_remote_terminal", {
-          sessionId: cache.sessionId,
-          cols: cache.term.cols,
-          rows: cache.term.rows,
-        }).catch(() => {});
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [width]);
+  }, [fontSize, fontFamily, entryId, projectId, cacheKeySuffix, paneId, activeTabId]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    const key = remoteCacheKey(entryId, projectId) + cacheKeySuffix;
+    const key = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
     currentKeyRef.current = key;
+    setReady(false);
 
     // 注册重建回调
     remoteRebuildCallbacks.set(key, () => {
@@ -227,22 +239,28 @@ export default React.memo(function RemoteTerminalView({
     detachAll();
 
     if (remoteTerminalCache.has(key)) {
-      attach(remoteTerminalCache.get(key)!);
+      const cache = remoteTerminalCache.get(key)!;
+      setReady(!!cache.sessionId);
+      attach(cache);
     } else {
       // 新建终端
       const element = document.createElement("div");
       element.style.width = "100%";
       element.style.height = "100%";
 
+      const cssVar = (name: string) =>
+        getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
       const term = new Terminal({
         cursorBlink: true,
         fontSize,
         fontFamily: buildFontFamily(fontFamily),
         theme: {
-          background: "#000000",
-          foreground: "#ededed",
-          cursor: "#ffffff",
-          selectionBackground: "#333333",
+          background: cssVar("--bg-primary") || "#000000",
+          foreground: cssVar("--text-primary") || "#ededed",
+          cursor: cssVar("--accent-blue") || "#ffffff",
+          selectionBackground: cssVar("--terminal-selection") || "#333333",
+          selectionForeground: cssVar("--text-primary") || "#ededed",
           black: "#000000", red: "#e06c75", green: "#98c379", yellow: "#e5c07b",
           blue: "#61afef", magenta: "#c678dd", cyan: "#56b6c2", white: "#abb2bf",
           brightBlack: "#5c6370", brightRed: "#e06c75", brightGreen: "#98c379",
@@ -263,7 +281,14 @@ export default React.memo(function RemoteTerminalView({
       term.open(element);
       fitAddon.fit();
 
-      const cache: RemoteTerminalCache = { term, fitAddon, element, sessionId: null, unlisten: null };
+      const cache: RemoteTerminalCache = {
+        term,
+        fitAddon,
+        element,
+        sessionId: null,
+        unlisten: null,
+        inputController: null,
+      };
       remoteTerminalCache.set(key, cache);
 
       term.write(`\x1b[33m[SSH] Connecting to ${username}@${host}:${port}${projectPath}...\x1b[0m\r\n`);
@@ -282,14 +307,15 @@ export default React.memo(function RemoteTerminalView({
 
           if (currentKeyRef.current !== key) return;
           cache.sessionId = session.id;
+          setReady(true);
           onSessionReady?.(projectId);
 
           // 自动启动 Agent（SSH shell 初始化较慢，延迟 800ms 确保 shell 就绪）
-          if (selectedAgentId) {
+          if (tabAgentId) {
             setTimeout(async () => {
               if (!cache.sessionId) return;
               try {
-                const agent = await invoke<AgentConfig>("get_agent", { agentId: selectedAgentId });
+                const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
                 const cmdStr = [agent.command, ...agent.args].join(" ") + "\r";
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
                 emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
@@ -306,12 +332,15 @@ export default React.memo(function RemoteTerminalView({
           });
           cache.unlisten = unlisten;
 
-          // 输入 → 后端
-          term.onData((data) => {
-            if (!cache.sessionId) return;
-            const bytes = Array.from(new TextEncoder().encode(data));
-            emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
-          });
+           // 输入 → 后端
+           cache.inputController = setupTerminalInput({
+              term,
+              sendInput: (text: string) => {
+                 if (!cache.sessionId) return;
+                 const bytes = Array.from(new TextEncoder().encode(text));
+                 emit(`terminal-input-${cache.sessionId}`, bytes).catch(() => {});
+              },
+           });
 
           requestAnimationFrame(() => {
             if (currentKeyRef.current !== key) return;
@@ -325,6 +354,7 @@ export default React.memo(function RemoteTerminalView({
           });
         } catch (err) {
           if (currentKeyRef.current !== key) return;
+          setReady(true);
           term.write(`\x1b[31m[SSH] Failed to connect: ${err}\x1b[0m\r\n`);
         }
       })();
@@ -343,8 +373,9 @@ export default React.memo(function RemoteTerminalView({
       }
     };
     window.addEventListener("resize", handleResize);
-    // 监听容器尺寸变化：平时只做 fit，拖拽结束后第一次触发时额外做 PTY resize
     let resizeRafId: number | null = null;
+    let prevCols = 0;
+    let prevRows = 0;
     const ro = new ResizeObserver(() => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       resizeRafId = requestAnimationFrame(() => {
@@ -352,7 +383,9 @@ export default React.memo(function RemoteTerminalView({
         const c = remoteTerminalCache.get(key);
         if (!c) return;
         c.fitAddon.fit();
-        if (pendingPtyResize && c.sessionId) {
+        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
+          prevCols = c.term.cols;
+          prevRows = c.term.rows;
           invoke("resize_remote_terminal", {
             sessionId: c.sessionId,
             cols: c.term.cols,
@@ -371,28 +404,15 @@ export default React.memo(function RemoteTerminalView({
       remoteRebuildCallbacks.delete(key);
       remoteWrapperRefs.delete(key);
     };
-  }, [entryId, projectId, projectPath, cacheKeySuffix, rebuildCount]);
-
-  if (sideMode) {
-    return (
-      <div
-        className="shrink-0 flex flex-col overflow-hidden min-w-0 min-h-0 bg-bg-primary"
-        style={width ? { flex: "none", width } : undefined}
-      >
-        <div className="flex items-center gap-2 p-1 px-2.5 bg-bg-secondary border-b border-border shrink-0 h-7 box-border">
-          <span className="text-xs font-medium text-text-secondary">Terminal</span>
-          <span className="text-[0.72em] text-text-muted ml-1">Ctrl+W to close</span>
-          <button className="ml-auto bg-transparent border-none text-text-muted cursor-pointer p-1 rounded transition-colors duration-150" onClick={onClose} title="Close (Ctrl+W)">
-            <CloseRoundIcon size={12} />
-          </button>
-        </div>
-        <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
-      </div>
-    );
-  }
+  }, [entryId, projectId, projectPath, cacheKeySuffix, paneId, activeTabId, rebuildCount]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+    <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">
+      {!ready && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]">
+          Connecting...
+        </div>
+      )}
       <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
     </div>
   );

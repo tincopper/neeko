@@ -1,0 +1,10 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 拆分与回调稳定性"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "useAppContainer 编排与状态边界"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "TS 严格模式与 invoke 错误处理"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "共享类型与避免 any"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "提取 WSL/Remote 共享逻辑"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "store 与 contexts 的跨层数据流"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "Hook 单测模式"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Tauri IPC mock 约定"}

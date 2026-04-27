@@ -1,30 +1,30 @@
-use crate::state::agent::AgentConfig;
+use crate::models::agent::AgentConfig;
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+use std::env;
+use std::process::Command;
+use which::{which, which_in};
 
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        Command::new("cmd")
-            .args(["/c", &format!("where {}", command)])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Command::new("sh")
-            .args(["-c", &format!("which {}", command)])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+    if cfg!(target_os = "windows") {
+        // Windows: 直接使用系统 PATH，无需 bash
+        which(command).is_ok()
+    } else {
+        // Unix: 获取交互式 shell 的 PATH（覆盖 nvm/fish 等修改 PATH 的场景）
+        let output = Command::new("bash")
+            .args(["-i", "-c", "echo $PATH"])
+            .output()
+            .expect("failed to execute echo $PATH process");
+
+        let interactive_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
+        which_in(
+            command,
+            Some(interactive_path),
+            env::current_dir().unwrap().as_path(),
+        )
+        .is_ok()
     }
 }
 
@@ -61,17 +61,6 @@ impl AgentManager {
             args: vec![],
             env: HashMap::new(),
             icon: Some("claude-code.png".to_string()),
-            enabled: true,
-        });
-
-        // qwen
-        self.agents.push(AgentConfig {
-            id: "qwen".to_string(),
-            name: "qwen".to_string(),
-            command: "qwen".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-            icon: Some("qwen.png".to_string()),
             enabled: true,
         });
 
@@ -177,10 +166,7 @@ impl AgentManager {
             .collect();
 
         let results = join_all(tasks).await;
-        results
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .collect()
+        results.into_iter().filter_map(|r| r.ok()).collect()
     }
 }
 
@@ -189,9 +175,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_seven_presets() {
+    fn should_initialize_with_six_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 6);
     }
 
     #[test]
@@ -221,7 +207,7 @@ mod tests {
             enabled: true,
         };
         manager.add_agent(custom);
-        assert_eq!(manager.get_agents().len(), 8);
+        assert_eq!(manager.get_agents().len(), 7);
         assert!(manager.get_agent("custom").is_some());
     }
 
@@ -229,7 +215,7 @@ mod tests {
     fn should_remove_agent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), 6);
+        assert_eq!(manager.get_agents().len(), 5);
         assert!(manager.get_agent("opencode").is_none());
     }
 
@@ -237,7 +223,7 @@ mod tests {
     fn should_not_panic_when_removing_nonexistent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("nonexistent");
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 6);
     }
 
     #[test]
@@ -247,7 +233,6 @@ mod tests {
         let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
         assert!(ids.contains(&"opencode"));
         assert!(ids.contains(&"claude-code"));
-        assert!(ids.contains(&"qwen"));
         assert!(ids.contains(&"gemini"));
         assert!(ids.contains(&"codex"));
         assert!(ids.contains(&"qoder"));
@@ -262,11 +247,20 @@ mod tests {
 
     #[test]
     fn should_return_true_for_existing_command() {
+        // Windows 使用 cmd.exe，Unix 使用 bash
         #[cfg(target_os = "windows")]
         let cmd = "cmd";
         #[cfg(not(target_os = "windows"))]
-        let cmd = "sh";
+        let cmd = "bash";
         assert!(check_command_exists(cmd));
+    }
+
+    #[test]
+    fn should_return_true_for_windows_specific_command() {
+        #[cfg(target_os = "windows")]
+        assert!(check_command_exists("powershell"));
+        #[cfg(not(target_os = "windows"))]
+        assert!(check_command_exists("sh"));
     }
 
     #[test]

@@ -1,0 +1,41 @@
+{
+  "id": "skill-pr08-fix-command-registration",
+  "name": "skill-pr08-fix-command-registration",
+  "title": "PR#8: Fix Skill command registration and state injection",
+  "description": "修复 24 个 Skill Tauri 命令未注册到 invoke_handler 的问题，以及 State 类型注入不匹配的问题",
+  "status": "planning",
+  "dev_type": "backend",
+  "scope": "skill",
+  "package": null,
+  "priority": "P0",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-16",
+  "completedAt": null,
+  "branch": "feature/skill-pr08-fix-command-registration",
+  "base_branch": "feature/skill-pr07-project-tag-binding",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    { "phase": 1, "action": "implement" },
+    { "phase": 2, "action": "check" },
+    { "phase": 3, "action": "improve-ut" }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/skill/commands.rs",
+    "src-tauri/src/skill/mod.rs"
+  ],
+  "notes": "这是最高优先级的修复 — 没有这个 PR，所有 Skill 前端功能都无法工作",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/lib.rs"
+    ]
+  }
+}

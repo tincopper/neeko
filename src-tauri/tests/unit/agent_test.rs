@@ -1,5 +1,5 @@
 use neeko_lib::agent::AgentManager;
-use neeko_lib::state::AgentConfig;
+use neeko_lib::models::AgentConfig;
 use std::collections::HashMap;
 
 #[test]
@@ -21,9 +21,20 @@ fn new_manager_contains_claude_code() {
 #[test]
 fn new_manager_contains_all_defaults() {
     let manager = AgentManager::new();
-    let expected_ids = ["opencode", "claude-code", "qwen", "gemini", "codex", "qoder", "codebuddy"];
+    let expected_ids = [
+        "opencode",
+        "claude-code",
+        "gemini",
+        "codex",
+        "qoder",
+        "codebuddy",
+    ];
     for id in expected_ids {
-        assert!(manager.get_agent(id).is_some(), "Missing default agent: {}", id);
+        assert!(
+            manager.get_agent(id).is_some(),
+            "Missing default agent: {}",
+            id
+        );
     }
 }
 

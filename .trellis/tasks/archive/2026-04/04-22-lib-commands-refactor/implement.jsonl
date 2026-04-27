@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令注册模式与 generate_handler 约束"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "保持 app.rs 与 commands 目录职责边界"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "确保命令签名与错误边界保持不变"}
+{"file": "/Users/vinci/workspace/neeko/src-tauri/src/app.rs", "reason": "参考现有命令清单并替换为宏聚合"}
+{"file": "/Users/vinci/workspace/neeko/src-tauri/src/commands/mod.rs", "reason": "在聚合导出处新增 core_commands 宏"}

@@ -1,51 +1,53 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import type { WSLEntrySession, RemoteEntrySession } from '../../types';
+import { useAppStore } from '../../store/appStore';
+import { createProject } from '../../testing/factories';
 
 // mock terminal refresh functions
 vi.mock('../../components/terminal', () => ({
   refreshTerminal: vi.fn(),
-  refreshSideTerminal: vi.fn(),
   refreshWslTerminal: vi.fn(),
   refreshRemoteTerminal: vi.fn(),
 }));
 
 function createDefaultParams() {
   return {
-    projects: [] as { id: string }[],
-    activeProjectId: null as string | null,
-    activeProjectIdRef: { current: null } as React.MutableRefObject<string | null>,
-    sideTerminalOpenRef: { current: new Set<string>() } as React.MutableRefObject<Set<string>>,
-    setSideTerminalOpen: vi.fn(),
-    focusedSideTerminalIndex: null as string | null,
-    setFocusedSideTerminalIndex: vi.fn(),
-    wslEntriesRef: { current: [] as WSLEntrySession[] },
-    activeWslKeyRef: { current: null as { distro: string; projectId: string } | null },
-    selectWslProjectRef: { current: vi.fn() },
-    remoteEntriesRef: { current: [] as RemoteEntrySession[] },
-    activeRemoteKeyRef: { current: null as { host: string; projectId: string } | null },
-    selectRemoteProjectRef: { current: vi.fn() },
-    selectProjectRef: { current: vi.fn() },
-    wslSideOpenRef: { current: new Set<string>() },
-    remoteSideOpenRef: { current: new Set<string>() },
-    setWslSideTerminalOpen: vi.fn(),
-    setRemoteSideTerminalOpen: vi.fn(),
-    activeWorktreePathRef: { current: null as string | null },
-    openedWorktreesRef: { current: [] as { path: string; branch: string }[] },
     updateWtPath: vi.fn(),
-    wslOpenedWtRef: { current: [] as { path: string; branch: string }[] },
-    activeWslWorktreePathRef: { current: null as string | null },
     setWslWorktreePath: vi.fn(),
     setWslWtBranch: vi.fn(),
-    remoteOpenedWtRef: { current: [] as { path: string; branch: string }[] },
-    activeRemoteWorktreePathRef: { current: null as string | null },
     setRemoteWorktreePath: vi.fn(),
     setRemoteWtBranch: vi.fn(),
-    isTerminalViewRef: { current: true },
-    activeProjectRef: { current: null as { id: string; selected_ide: string | null } | null },
-    handleOpenIde: vi.fn(),
+    activeTabId: null as string | null,
+    onCloseTab: vi.fn(),
   };
+}
+
+function seedStore(overrides: Partial<ReturnType<typeof useAppStore.getState>> = {}) {
+  const defaults = {
+    projects: [],
+    activeProjectId: null,
+    activeProject: null,
+    isTerminalView: true,
+    wslEntries: [],
+    activeWslKey: null,
+    remoteEntries: [],
+    activeRemoteKey: null,
+    activeWorktreePath: null,
+    openedWorktrees: [],
+    wslOpenedWt: [],
+    activeWslWorktreePath: null,
+    remoteOpenedWt: [],
+    activeRemoteWorktreePath: null,
+    worktreeState: {},
+    selectProject: vi.fn(),
+    selectWslProject: vi.fn(),
+    selectRemoteProject: vi.fn(),
+    openIde: vi.fn(),
+  };
+  const state = { ...defaults, ...overrides };
+  useAppStore.setState(state);
+  return state;
 }
 
 function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean } = {}) {
@@ -62,9 +64,11 @@ function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean }
 
 describe('useKeyboardShortcuts', () => {
   let params: ReturnType<typeof createDefaultParams>;
+  let storeState: ReturnType<typeof seedStore>;
 
   beforeEach(() => {
     params = createDefaultParams();
+    storeState = seedStore();
   });
 
   it('注册后不崩溃', () => {
@@ -73,78 +77,47 @@ describe('useKeyboardShortcuts', () => {
     }).not.toThrow();
   });
 
-  it.skip('Ctrl+Alt+T 在 terminal 视图中打开 side terminal', () => {
-    params.isTerminalViewRef.current = true;
-    renderHook(() => useKeyboardShortcuts(params));
-
-    dispatchKey('KeyT', { ctrlKey: true, altKey: true });
-
-    // 验证 setSideTerminalOpen 被调用，传入一个函数
-    expect(params.setSideTerminalOpen).toHaveBeenCalled();
-    const callFn = params.setSideTerminalOpen.mock.calls[0][0];
-    expect(callFn(new Set<string>()).has('0')).toBe(true);
-  });
-
-  it.skip('Ctrl+W 关闭已打开的 side terminal', () => {
-    params.sideTerminalOpenRef.current = new Set(['0']);
-    params.focusedSideTerminalIndex = '0';
-    renderHook(() => useKeyboardShortcuts(params));
-
-    dispatchKey('KeyW', { ctrlKey: true });
-
-    // 验证 setSideTerminalOpen 被调用，传入一个函数
-    expect(params.setSideTerminalOpen).toHaveBeenCalled();
-    // 验证 setFocusedSideTerminalIndex 被调用为 null
-    expect(params.setFocusedSideTerminalIndex).toHaveBeenCalledWith(null);
-  });
-
-  it.skip('Ctrl+W 无聚焦终端时关闭最后一个', () => {
-    params.sideTerminalOpenRef.current = new Set(['0', '1']);
-    params.focusedSideTerminalIndex = null;
-    renderHook(() => useKeyboardShortcuts(params));
-
-    dispatchKey('KeyW', { ctrlKey: true });
-
-    // 验证 setSideTerminalOpen 被调用
-    expect(params.setSideTerminalOpen).toHaveBeenCalled();
-    // 验证 setFocusedSideTerminalIndex 被调用为 null
-    expect(params.setFocusedSideTerminalIndex).toHaveBeenCalledWith(null);
-  });
-
-  it('Ctrl+W 不关闭未打开的 side terminal', () => {
-    params.sideTerminalOpenRef.current = new Set();
-    renderHook(() => useKeyboardShortcuts(params));
-
-    dispatchKey('KeyW', { ctrlKey: true });
-
-    expect(params.setSideTerminalOpen).not.toHaveBeenCalled();
-  });
-
   it('Ctrl+O 触发 handleOpenIde', () => {
-    params.activeProjectRef.current = { id: 'p1', selected_ide: 'code' };
+    storeState = seedStore({
+      ...storeState,
+      activeProject: {
+        id: 'p1',
+        name: 'p1',
+        path: '/tmp/p1',
+        git_info: null,
+        terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
+        selected_agent: null,
+        selected_ide: 'code',
+        active_view: 'Terminal',
+        collapsed: true,
+      },
+    });
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyO', { ctrlKey: true });
 
-    expect(params.handleOpenIde).toHaveBeenCalledWith({ id: 'p1', selected_ide: 'code' });
+    expect(storeState.openIde).toHaveBeenCalledWith({ id: 'p1', selected_ide: 'code' });
   });
 
   it('Ctrl+O 不触发当无活跃项目', () => {
-    params.activeProjectRef.current = null;
+    storeState = seedStore({ ...storeState, activeProject: null });
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyO', { ctrlKey: true });
 
-    expect(params.handleOpenIde).not.toHaveBeenCalled();
+    expect(storeState.openIde).not.toHaveBeenCalled();
   });
 
   it('Ctrl+N 循环 worktree', () => {
-    params.isTerminalViewRef.current = true;
-    params.openedWorktreesRef.current = [
-      { path: '/wt1', branch: 'main' },
-      { path: '/wt2', branch: 'develop' },
-    ];
-    params.activeWorktreePathRef.current = null;
+    storeState = seedStore({
+      ...storeState,
+      isTerminalView: true,
+      openedWorktrees: [
+        { path: '/wt1', branch: 'main' },
+        { path: '/wt2', branch: 'develop' },
+      ],
+      activeWorktreePath: null,
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -154,12 +127,15 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+N 在最后一个 worktree 后回到 null', () => {
-    params.isTerminalViewRef.current = true;
-    params.openedWorktreesRef.current = [
-      { path: '/wt1', branch: 'main' },
-      { path: '/wt2', branch: 'develop' },
-    ];
-    params.activeWorktreePathRef.current = '/wt2';
+    storeState = seedStore({
+      ...storeState,
+      isTerminalView: true,
+      openedWorktrees: [
+        { path: '/wt1', branch: 'main' },
+        { path: '/wt2', branch: 'develop' },
+      ],
+      activeWorktreePath: '/wt2',
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -169,8 +145,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+N 无 worktree 时不崩溃', () => {
-    params.isTerminalViewRef.current = true;
-    params.openedWorktreesRef.current = [];
+    storeState = seedStore({ ...storeState, isTerminalView: true, openedWorktrees: [] });
 
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -180,54 +155,82 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Q 循环到下一个项目', () => {
-    params.projects = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
-    params.activeProjectId = 'p1';
+    storeState = seedStore({
+      ...storeState,
+      projects: [createProject({ id: 'p1' }), createProject({ id: 'p2' }), createProject({ id: 'p3' })],
+      activeProjectId: 'p1',
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyQ', { ctrlKey: true });
 
-    expect(params.selectProjectRef.current).toHaveBeenCalledWith('p2');
+    expect(storeState.selectProject).toHaveBeenCalledWith('p2');
   });
 
   it('Ctrl+Q 在最后一个项目后回到第一个', () => {
-    params.projects = [{ id: 'p1' }, { id: 'p2' }];
-    params.activeProjectId = 'p2';
+    storeState = seedStore({
+      ...storeState,
+      projects: [createProject({ id: 'p1' }), createProject({ id: 'p2' })],
+      activeProjectId: 'p2',
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyQ', { ctrlKey: true });
 
-    expect(params.selectProjectRef.current).toHaveBeenCalledWith('p1');
+    expect(storeState.selectProject).toHaveBeenCalledWith('p1');
   });
 
   it('Ctrl+数字键切换到对应项目', () => {
-    params.projects = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }];
+    storeState = seedStore({
+      ...storeState,
+      projects: [createProject({ id: 'p1' }), createProject({ id: 'p2' }), createProject({ id: 'p3' })],
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('Digit2', { ctrlKey: true });
 
-    expect(params.selectProjectRef.current).toHaveBeenCalledWith('p2');
+    expect(storeState.selectProject).toHaveBeenCalledWith('p2');
   });
 
   it('Ctrl+数字键超出范围时不崩溃', () => {
-    params.projects = [{ id: 'p1' }];
+    storeState = seedStore({ ...storeState, projects: [createProject({ id: 'p1' })] });
 
     renderHook(() => useKeyboardShortcuts(params));
 
     expect(() => {
       dispatchKey('Digit9', { ctrlKey: true });
     }).not.toThrow();
-    expect(params.selectProjectRef.current).not.toHaveBeenCalled();
+    expect(storeState.selectProject).not.toHaveBeenCalled();
   });
 
   it('普通按键不触发快捷键', () => {
-    params.isTerminalViewRef.current = true;
+    storeState = seedStore({ ...storeState, isTerminalView: true });
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('KeyT');
 
-    expect(params.setSideTerminalOpen).not.toHaveBeenCalled();
+    expect(storeState.selectProject).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+W 关闭当前活跃 tab', () => {
+    params.activeTabId = 't1';
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('KeyW', { ctrlKey: true });
+
+    expect(params.onCloseTab).toHaveBeenCalledWith('t1');
+  });
+
+  it('Ctrl+W 无活跃 tab 时不崩溃', () => {
+    params.activeTabId = null;
+    renderHook(() => useKeyboardShortcuts(params));
+
+    expect(() => {
+      dispatchKey('KeyW', { ctrlKey: true });
+    }).not.toThrow();
+    expect(params.onCloseTab).not.toHaveBeenCalled();
   });
 });

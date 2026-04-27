@@ -7,6 +7,27 @@
   --sidebar-width: 280px;
   --font-size: 12px;           /* UI 整体字体，由 appearanceFontSize 驱动 */
   --terminal-font-size: 14px;  /* 终端字体，由 terminalFontSize 驱动 */
+
+  /* CodeMirror 专用变量 */
+  --cm-keyword: #c678dd;
+  --cm-comment: #5c6370;
+  --cm-string: #98c379;
+  --cm-number: #d19a66;
+  --cm-operator: #56b6c2;
+  --cm-variableName: #e06c75;
+  --cm-typeName: #e5c07b;
+  --cm-propertyName: #e06c75;
+  --cm-function: #61afef;
+  --cm-className: #e5c07b;
+  --cm-definition: #61afef;
+  --cm-string2: #98c379;
+  --cm-meta: #61afef;
+  --cm-attribute: #d19a66;
+  --cm-tag: #e06c75;
+  --cm-atom: #d19a66;
+  --cm-bool: #d19a66;
+  --cm-punctuation: #abb2bf;
+  --cm-bracket: #abb2bf;
 }
 
 :root[data-theme="dark"],
@@ -28,6 +49,9 @@
   /* Border */
   --border-color: #333333;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(97, 175, 239, 0.3);
+
   /* Accent colors */
   --accent-blue:       #61afef;
   --accent-blue-rgb:   97, 175, 239;
@@ -45,6 +69,27 @@
   --diff-removed:      #e06c7520;
   --diff-added-text:   #98c379;
   --diff-removed-text: #e06c75;
+
+  /* CodeMirror 语法高亮 (Dark/One Dark Pro) */
+  --cm-keyword: #c678dd;
+  --cm-comment: #5c6370;
+  --cm-string: #98c379;
+  --cm-number: #d19a66;
+  --cm-operator: #56b6c2;
+  --cm-variableName: #e06c75;
+  --cm-typeName: #e5c07b;
+  --cm-propertyName: #e06c75;
+  --cm-function: #61afef;
+  --cm-className: #e5c07b;
+  --cm-definition: #61afef;
+  --cm-string2: #98c379;
+  --cm-meta: #61afef;
+  --cm-attribute: #d19a66;
+  --cm-tag: #e06c75;
+  --cm-atom: #d19a66;
+  --cm-bool: #d19a66;
+  --cm-punctuation: #abb2bf;
+  --cm-bracket: #abb2bf;
 }
 
 /* Dark + One Dark Pro hljs (One Dark Pro palette) */
@@ -133,6 +178,9 @@
   /* Border */
   --border-color: #3e4451;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(97, 175, 239, 0.3);
+
   /* Accent colors */
   --accent-blue:       #61afef;
   --accent-blue-rgb:   97, 175, 239;
@@ -150,6 +198,27 @@
   --diff-removed:      #e06c7520;
   --diff-added-text:   #98c379;
   --diff-removed-text: #e06c75;
+
+  /* CodeMirror 语法高亮 (One Dark Pro) */
+  --cm-keyword: #c678dd;
+  --cm-comment: #5c6370;
+  --cm-string: #98c379;
+  --cm-number: #d19a66;
+  --cm-operator: #56b6c2;
+  --cm-variableName: #e06c75;
+  --cm-typeName: #e5c07b;
+  --cm-propertyName: #e06c75;
+  --cm-function: #61afef;
+  --cm-className: #e5c07b;
+  --cm-definition: #61afef;
+  --cm-string2: #98c379;
+  --cm-meta: #61afef;
+  --cm-attribute: #d19a66;
+  --cm-tag: #e06c75;
+  --cm-atom: #d19a66;
+  --cm-bool: #d19a66;
+  --cm-punctuation: #abb2bf;
+  --cm-bracket: #abb2bf;
 }
 
 /* One Dark Pro hljs */
@@ -199,6 +268,9 @@
   /* Border */
   --border-color: #d4c9bb;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(201, 100, 66, 0.2);
+
   /* Accent colors — Claude orange-brown palette */
   --accent-blue:       #c96442;
   --accent-blue-rgb:   201, 100, 66;
@@ -216,6 +288,27 @@
   --diff-removed:      #c0392b18;
   --diff-added-text:   #5a8a5e;
   --diff-removed-text: #c0392b;
+
+  /* CodeMirror 语法高亮 (Claude) */
+  --cm-keyword: #8b5cf6;
+  --cm-comment: #a89282;
+  --cm-string: #5a8a5e;
+  --cm-number: #b8860b;
+  --cm-operator: #c96442;
+  --cm-variableName: #c0392b;
+  --cm-typeName: #b8860b;
+  --cm-propertyName: #c0392b;
+  --cm-function: #c96442;
+  --cm-className: #b8860b;
+  --cm-definition: #c96442;
+  --cm-string2: #5a8a5e;
+  --cm-meta: #c96442;
+  --cm-attribute: #b8860b;
+  --cm-tag: #c0392b;
+  --cm-atom: #b8860b;
+  --cm-bool: #b8860b;
+  --cm-punctuation: #2d1e14;
+  --cm-bracket: #2d1e14;
 }
 
 /* Claude hljs (warm earthy tones) */
@@ -265,6 +358,9 @@
   /* Border */
   --border-color: #d4d4d4;
 
+  /* Terminal selection */
+  --terminal-selection: rgba(47, 124, 211, 0.2);
+
   /* Accent colors */
   --accent-blue:       #2f7cd3;
   --accent-blue-rgb:   47, 124, 211;
@@ -282,6 +378,27 @@
   --diff-removed:      #d32f2f15;
   --diff-added-text:   #4a9e3f;
   --diff-removed-text: #d32f2f;
+
+  /* CodeMirror 语法高亮 (Light) */
+  --cm-keyword: #a626a4;
+  --cm-comment: #a0a1a7;
+  --cm-string: #50a14f;
+  --cm-number: #986801;
+  --cm-operator: #4078f2;
+  --cm-variableName: #e45649;
+  --cm-typeName: #986801;
+  --cm-propertyName: #e45649;
+  --cm-function: #4078f2;
+  --cm-className: #986801;
+  --cm-definition: #4078f2;
+  --cm-string2: #50a14f;
+  --cm-meta: #4078f2;
+  --cm-attribute: #986801;
+  --cm-tag: #e45649;
+  --cm-atom: #986801;
+  --cm-bool: #986801;
+  --cm-punctuation: #383a42;
+  --cm-bracket: #383a42;
 }
 
 /* Light hljs (light-friendly colors) */

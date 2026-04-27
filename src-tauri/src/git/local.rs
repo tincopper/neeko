@@ -1,4 +1,4 @@
-use crate::state::{
+use crate::models::{
     BranchGroup, CommitDetail, CommitInfo, DiffHunk, DiffLine, DiffResult, FileChange, FileStatus,
     GitInfo, Worktree,
 };

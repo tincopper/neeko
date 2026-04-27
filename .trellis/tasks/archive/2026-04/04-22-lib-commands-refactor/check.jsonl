@@ -1,0 +1,7 @@
+{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".opencode/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "审查命令注册结构一致性"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "审查目录职责是否被破坏"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验 Result<AppError> 契约未被改坏"}
+{"file": "/Users/vinci/workspace/neeko/src-tauri/src/app.rs", "reason": "核对 generate_handler 仅保留宏调用"}
+{"file": "/Users/vinci/workspace/neeko/src-tauri/src/commands/mod.rs", "reason": "核对宏内容与导出一致"}

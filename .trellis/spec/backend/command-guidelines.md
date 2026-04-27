@@ -6,7 +6,7 @@
 
 ## 概述
 
-所有 `#[tauri::command]` 函数都定义为 `lib.rs` 中的**自由函数**。约 50 多个命令注册在一个 `generate_handler!` 宏调用中。命令通过域注释进行分组。
+所有 `#[tauri::command]` 函数按领域拆分到模块中。`app.rs` 通过 `crate::neeko_invoke_handler!()` 统一注册命令，完整清单维护在 `commands/mod.rs` 的 `neeko_invoke_handler!` 宏内。
 
 ---
 
@@ -16,24 +16,24 @@
 
 ```rust
 #[tauri::command]
-fn add_project(
+pub fn add_project(
     path: String,
     agent_id: Option<String>,
     ide: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
-) -> Result<Project, String> {
+) -> Result<Project, AppError> {
     let mut pm = state.project_manager.lock().unwrap();
     // ... 业务逻辑 ...
     Ok(project)
 }
 ```
 
-### 异步命令（仅用于 SSH 操作）
+### 异步命令（仅用于 SSH/Skill 操作）
 
 ```rust
 #[tauri::command]
-async fn create_remote_terminal_session(
+pub async fn create_remote_terminal_session(
     host: String,
     port: u16,
     username: String,
@@ -43,18 +43,18 @@ async fn create_remote_terminal_session(
     rows: u16,
     state: State<'_, AppStateWrapper>,  // 异步命令需要显式生命周期
     app_handle: tauri::AppHandle,
-) -> Result<TerminalSession, String> {
+) -> Result<TerminalSession, AppError> {
     // ... 异步 SSH 逻辑 ...
 }
 ```
 
 ### 关键规则
 
-1. **所有命令放在 `lib.rs`** 中作为自由函数（不在 manager 模块中）
-2. **返回类型始终为 `Result<T, String>`** —— 不使用裸类型，不使用自定义错误类型
+1. **命令实现按领域放在 `commands/` 子模块**，由 `commands/mod.rs` 聚合导出，并在 `neeko_invoke_handler!` 宏中集中注册
+2. **返回类型始终为 `Result<T, AppError>`** —— 不使用裸类型，不使用 `String`
 3. **状态访问** 通过 `state: State<AppStateWrapper>` 参数
 4. **Mutex 锁** 使用 `.lock().unwrap()` —— 锁中毒视为致命错误
-5. **异步** 仅在命令需要异步 I/O 时使用（通过 russh 的 SSH 操作）
+5. **异步** 仅在命令需要异步 I/O 时使用（SSH 操作、Skill spawn_blocking）
 6. **显式生命周期** 异步命令中需要 `State<'_, AppStateWrapper>`
 
 ---
@@ -72,6 +72,7 @@ pub struct AppStateWrapper {
     storage_manager: StorageManager,
     active_project_id: Mutex<Option<String>>,
     watcher_manager: WatcherManager,
+    skill_store: Arc<skill::skill_store::SkillStore>,
 }
 ```
 
@@ -84,7 +85,7 @@ pub struct AppStateWrapper {
 
 ```rust
 #[tauri::command]
-fn some_command(state: State<AppStateWrapper>) -> Result<(), String> {
+fn some_command(state: State<AppStateWrapper>) -> Result<(), AppError> {
     // Mutex 包裹的：先获取锁再使用
     let mut pm = state.project_manager.lock().unwrap();
     pm.do_something();
@@ -100,47 +101,41 @@ fn some_command(state: State<AppStateWrapper>) -> Result<(), String> {
 
 ## 命令组织
 
-`lib.rs` 中的命令按领域分组，使用分段注释：
+`commands/` 下的模块按领域拆分：
 
-```rust
-// ─── 项目管理命令 ───────────────────────────────────────
-#[tauri::command]
-fn add_project(...) { ... }
-fn remove_project(...) { ... }
-fn rename_project(...) { ... }
-
-// ─── 终端命令 ───────────────────────────────────────────
-#[tauri::command]
-fn create_terminal_session(...) { ... }
-fn close_terminal_session(...) { ... }
-fn resize_terminal(...) { ... }
-
-// ─── Git 命令 ───────────────────────────────────────────
-#[tauri::command]
-fn get_git_info_command(...) { ... }
-fn checkout_branch_command(...) { ... }
-
-// ─── 持久化命令 ─────────────────────────────────────────
-#[tauri::command]
-fn save_session(...) { ... }
-fn load_session(...) { ... }
-```
+| 模块 | 领域 |
+|------|------|
+| `project.rs` | 本地项目 CRUD |
+| `git.rs` | 本地 Git 操作 |
+| `terminal.rs` | 本地终端会话 |
+| `wsl.rs` / `wsl_git.rs` | WSL 终端和 Git |
+| `remote.rs` / `remote_git.rs` | SSH 远程终端和 Git |
+| `agent.rs` | Agent 管理 |
+| `ide.rs` | IDE 启动 |
+| `config.rs` | 配置和会话持久化 |
+| `file.rs` | 文件树和文件内容 |
 
 ---
 
 ## 命令边界的错误处理
 
-所有内部错误在命令边界转换为 `String`：
+所有内部错误在命令边界转换为 `AppError`：
 
 ```rust
 #[tauri::command]
-fn some_command(state: State<AppStateWrapper>) -> Result<Project, String> {
+fn some_command(state: State<AppStateWrapper>) -> Result<Project, AppError> {
     let result = state.project_manager
         .lock().unwrap()
         .do_something()
-        .map_err(|e| e.to_string())?;  // anyhow::Error -> String
+        .map_err(AppError::from)?;  // anyhow::Error -> AppError
     Ok(result)
 }
+```
+
+对于业务逻辑错误，使用显式 `AppError` 变体：
+
+```rust
+.ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
 ```
 
 详见[错误处理](./error-handling.md)。
@@ -162,33 +157,42 @@ const project = await invoke<Project>("add_project", {
 });
 ```
 
-注意：Tauri 会自动将 camelCase 的 JS 参数转换为 snake_case 的 Rust 参数。
+注意：Tauri 会自动将 camelCase 的 JS 参数转换为 snake_case 的 Rust 参数。错误返回类型为 `AppError`（序列化为 JSON 对象），前端可以按 `error` 字段处理。
 
 ---
 
 ## 注册新命令
 
-在 `lib.rs` 的 `generate_handler!` 宏中添加函数名：
+1. 在对应域模块中定义命令函数
+
+2. 在聚合导出处导出函数
+
+3. 将命令路径加入 `neeko_invoke_handler!` 命令清单
 
 ```rust
-tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![
-        add_project,
-        remove_project,
-        // ... 所有命令列在此处
-        your_new_command,  // <-- 在此添加
-    ])
+// src-tauri/src/commands/mod.rs
+#[macro_export]
+macro_rules! neeko_invoke_handler {
+    () => {
+        tauri::generate_handler![
+            // ... existing commands ...
+            $crate::commands::your_new_command,
+        ]
+    };
+}
 ```
+
+`app.rs` 保持 `.invoke_handler(crate::neeko_invoke_handler!())` 固定调用。
 
 ---
 
 ## 常见错误
 
-### 1. 忘记将命令添加到 `generate_handler!`
+### 1. 忘记将命令加入 `neeko_invoke_handler!` 清单
 
 命令会编译通过，但前端无法调用。
 
-### 2. 使用裸返回类型而非 `Result<T, String>`
+### 2. 使用裸返回类型而非 `Result<T, AppError>`
 
 ```rust
 // 错误 —— 前端无法处理错误
@@ -197,7 +201,7 @@ fn get_info(state: State<AppStateWrapper>) -> Project { ... }
 
 // 正确
 #[tauri::command]
-fn get_info(state: State<AppStateWrapper>) -> Result<Project, String> { ... }
+fn get_info(state: State<AppStateWrapper>) -> Result<Project, AppError> { ... }
 ```
 
 ### 3. 跨 await 点持有 Mutex 锁
@@ -222,7 +226,66 @@ some_async_call().await;
 ```rust
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn some_wsl_command() -> Result<(), String> {
-    Err("WSL is only supported on Windows".into())
+fn some_wsl_command() -> Result<(), AppError> {
+    Err(AppError::Wsl("WSL is only supported on Windows".to_string()))
 }
 ```
+
+### 5. 在 `commands/mod.rs` 中忘记导出子模块
+
+```rust
+// commands/mod.rs
+pub use project::*;  // 必须显式导出，否则 app.rs 无法引用
+```
+
+---
+
+## 终端分屏会话契约 2026-04-17
+
+### 变更文件
+
+- `src-tauri/src/commands/config.rs`
+- `src-tauri/src/storage.rs`
+- `src-tauri/src/models/session.rs`
+
+### 命令签名
+
+`save_session` 当前签名：
+
+```rust
+#[tauri::command]
+pub fn save_session(
+    wsl_entries: Vec<WSLEntrySession>,
+    remote_entries: Vec<RemoteEntrySession>,
+    sidebar_width: Option<u32>,
+    worktree_state: Option<std::collections::HashMap<String, String>>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError>
+```
+
+### 字段契约
+
+- 已移除字段：`side_terminal_width`
+- 持久化字段保留：`sidebar_width`、`worktree_state`
+- `SessionStore` 必须与前端 `src/types.ts` 的 `SessionStore` 同步
+
+### 校验与错误矩阵
+
+| 场景 | 输入 | 期望行为 | 错误输出 |
+|------|------|----------|----------|
+| Good | `wsl_entries`、`remote_entries` 正常数组，`worktree_state` 为 `Some` | 正常保存 sessions.json | 无 |
+| Base | `worktree_state=None` | 使用已有 `SessionStore.worktree_state` | 无 |
+| Bad | `state.project_manager` 锁失败 | 立即返回错误 | `Err(AppError::LockPoisoned(...))` |
+| Bad | 序列化或写文件失败 | 返回 `AppError::Storage(...)` | `Err(AppError::Storage(...))` |
+
+### Good/Base/Bad 用例
+
+- Good：`src-tauri/tests/unit/storage_test.rs::save_and_load_session_with_projects`
+- Base：`src-tauri/tests/unit/state_test.rs::session_store_defaults_for_missing_fields`
+- Bad：命令层通过 `map_err(AppError::from)` 覆盖，测试关注返回 `Result::Err`
+
+### 必测断言点
+
+- `SessionStore` 默认反序列化不再包含 `side_terminal_width`
+- `create_session_from_projects` 签名与调用点已同步为 4 个业务参数
+- `save_session` 命令参数与前端调用参数名保持一致

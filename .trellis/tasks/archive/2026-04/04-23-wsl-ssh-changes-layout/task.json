@@ -1,0 +1,53 @@
+{
+  "id": "wsl-ssh-changes-layout",
+  "name": "wsl-ssh-changes-layout",
+  "title": "WSL/SSH项目展示改为Changes布局",
+  "description": "将WSL和SSH项目的侧边栏展示从分支列表形式改为与本地项目一致的local+Changes布局，包括交互式分支下拉、Changes折叠区域、per-worktree Changes展示，以及新增对应的Rust后端命令",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "connections",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-23",
+  "completedAt": "2026-04-23",
+  "branch": "feature/wsl-ssh-changes-layout",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

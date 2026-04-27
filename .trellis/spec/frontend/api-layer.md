@@ -151,8 +151,107 @@ useEffect(() => {
 
 | 事件名 | 用途 | 负载类型 |
 |--------|------|----------|
-| `terminal-output-{id}` | 终端输出 | `string` |
+| `terminal-input-{id}` | 终端输入（前端 emit） | `number[]` (UTF-8 bytes) |
+| `terminal-output-{id}` | 终端输出 | `number[]` |
+| `terminal-closed-{id}` | 终端关闭通知 | `null` |
 | `git-changed` | Git 状态变更 | `string` (projectId) |
+
+---
+
+## Scenario: 终端 IME 输入单一状态机契约（xterm.js owning composition）
+
+### 1. Scope / Trigger
+- Trigger: 终端输入链路属于跨层契约（xterm.js DOM 输入层 -> 前端 IPC 层 -> Rust PTY 写入层），且本次修复涉及输入行为与事件负载约束。
+- Scope: `terminalFactory.ts`、`WSLTerminalView.tsx`、`RemoteTerminalView.tsx` 的输入转发路径统一到 `terminalInput.ts`。
+
+### 2. Signatures
+- Frontend helper signature:
+
+```typescript
+export function setupTerminalInput({
+  term,
+  sendInput,
+}: {
+  term: Terminal;
+  sendInput: (text: string) => void;
+}): { dispose: () => void }
+```
+
+- IPC event signatures:
+  - Input: `emit("terminal-input-{sessionId}", bytes: number[])`
+  - Output: `listen<number[]>("terminal-output-{sessionId}", ...)`
+  - Closed: `listen<null>("terminal-closed-{sessionId}", ...)`
+
+- Backend command signatures（调用面不变）:
+  - `create_terminal_session(projectId, cols, rows, shell?, workingDir?)`
+  - `create_wsl_terminal_session(distro, projectPath, cols, rows)`
+  - `create_remote_terminal_session(host, port, username, auth, projectPath, cols, rows)`
+
+### 3. Contracts
+- Request fields:
+  - `terminal-input-{sessionId}` payload 必须为 UTF-8 编码后的 `number[]`（`TextEncoder` 结果）。
+  - `sendInput(text)` 只接收原始终端文本，不做应用层 composition 拆分。
+- Response fields:
+  - `terminal-output-{sessionId}` payload 为 `number[]`（原始字节流）；由视图层写入 xterm。
+  - `terminal-closed-{sessionId}` payload 为 `null`，用于销毁缓存与触发重建。
+- Environment keys:
+  - 前端无新增 env key。
+- Ownership contract:
+  - IME `compositionstart/update/end` 生命周期只由 xterm.js 内部 `CompositionHelper` 管理。
+  - 应用层禁止维护第二套 `isComposing/compositionPendingText` 状态机。
+
+### 4. Validation & Error Matrix
+| Condition | Expected Behavior | Error / Risk |
+|---|---|---|
+| `term.onData` 触发普通字符 | 立即 `sendInput(data)` | 无 |
+| 用户使用中文 IME 输入并上屏 | 由 xterm.js 统一提交一次 | 应用层再做去重可能导致重复上屏 |
+| 用户切换中英文（Shift） | 不出现额外延迟，不重复提交上一段中文 | 双状态机会导致重复输入/卡顿 |
+| `dispose()` 后收到旧事件 | 不再转发输入 | 未释放会造成内存泄漏/重复写入 |
+
+### 5. Good/Base/Bad Cases
+- Good: 使用 `setupTerminalInput` 仅转发 `onData`，不监听 `composition*`。
+- Base: 英文输入、退格、回车在 local/WSL/remote 三类终端行为一致。
+- Bad: 在组件层加 `isComposing`、`compositionPendingText`、fake `compositionend`、超时补丁。
+
+### 6. Tests Required (with assertion points)
+- Unit（前端 helper）:
+  - 断言 `term.onData("abc")` 时调用一次 `sendInput("abc")`。
+  - 断言 `dispose()` 后不再调用 `sendInput`。
+- Integration（TerminalView/WSL/Remote）:
+  - 断言三类终端都通过 `setupTerminalInput` 建立输入链路。
+  - 断言 payload 使用 `TextEncoder` 转为 `number[]` 后发送到 `terminal-input-{sessionId}`。
+- Manual regression（macOS + 微信输入法）:
+  - Case A: 输入 `啊啊啊啊啊` -> Shift 切英文 -> 输入 `aa`，断言无重复中文、无 1-2 秒卡顿。
+  - Case B: 中文连续上屏 + 回车，断言仅提交一次。
+
+### 7. Wrong vs Correct
+#### Wrong
+```typescript
+// 组件层自行维护 composition 状态机（禁止）
+let isComposing = false;
+let compositionPendingText = "";
+textarea.addEventListener("compositionstart", ...);
+textarea.addEventListener("compositionend", ...);
+term.onData((data) => {
+  if (isComposing) return;
+  if (compositionPendingText === data) return;
+  sendInput(data);
+});
+```
+
+#### Correct
+```typescript
+export function setupTerminalInput({ term, sendInput }: {
+  term: Terminal;
+  sendInput: (text: string) => void;
+}) {
+  const disposable = term.onData((data) => {
+    sendInput(data);
+  });
+
+  return { dispose: () => disposable.dispose() };
+}
+```
 
 ---
 
@@ -261,3 +360,57 @@ export const projectService = {
 - [Hook 指南](../frontend/hook-guidelines.md)
 - [Tauri v2 invoke API](https://tauri.app/v2/api/js/core/#invoke)
 - [Tauri v2 listen API](https://tauri.app/v2/api/js/event/#listen)
+
+---
+
+## 终端分屏 IPC 契约 2026-04-17
+
+### 变更文件
+
+- `src/components/terminal/TerminalView.tsx`
+- `src/components/terminal/WSLTerminalView.tsx`
+- `src/components/terminal/RemoteTerminalView.tsx`
+- `src/components/MainContent.tsx`
+- `src/components/RemoteProjectView.tsx`
+- `src/types.ts`
+
+### 会话键契约
+
+分屏后每个 pane 对应独立会话键：
+
+| 终端类型 | 键格式 |
+|------|------|
+| Local | `${projectId}:${tabId}:${paneId}` |
+| WSL | `wsl:${distro}:${projectId}${cacheKeySuffix}:${paneId}` |
+| Remote | `remote:${entryId}:${projectId}${cacheKeySuffix}:${paneId}` |
+
+### 命令调用契约
+
+- Local 新建会话：`create_terminal_session`
+  - 参数：`projectId`、`cols`、`rows`、`shell`、`workingDir`
+- WSL 新建会话：`create_wsl_terminal_session`
+  - 参数：`distro`、`projectPath`、`cols`、`rows`
+- Remote 新建会话：`create_remote_terminal_session`
+  - 参数：`host`、`port`、`username`、`auth`、`projectPath`、`cols`、`rows`
+
+### 校验与错误矩阵
+
+| 场景 | 输入 | 期望行为 | 错误处理 |
+|------|------|----------|----------|
+| Good | pane 初次创建 | 显示 `Connecting...`，会话建立后挂载 xterm | 无 |
+| Base | 切换 tab 或重新挂载 | 复用缓存并重新 `fit + resize` | 无 |
+| Bad | `invoke` 创建会话失败 | 保持 pane 可见并显示失败消息 | 终端输出 `Failed to connect` |
+| Bad | 分屏超上限 4 | split 按钮禁用 | 前端阻断操作 |
+
+### Good/Base/Bad 用例
+
+- Good：`src/hooks/__tests__/useSplitLayout.test.ts::splitPane 创建新 pane 并设置为 active`
+- Base：`src/hooks/__tests__/useSplitLayout.test.ts::layoutId 变化会重置布局`
+- Bad：`src/hooks/__tests__/useSplitLayout.test.ts::达到上限后 canSplit=false`
+
+### 必测断言点
+
+- pane 数量上限为 4，`canSplit=false` 时按钮禁用
+- pane 关闭后 active pane 正确回退
+- 缓存前缀清理会删除同项目同 tab 的所有 pane 会话
+- `save_session` 不再发送 `side_terminal_width`

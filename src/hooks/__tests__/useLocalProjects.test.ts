@@ -7,7 +7,7 @@ import { createProject } from '../../testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
 vi.mock('../../components/terminal', () => ({
-  destroyTerminalCache: vi.fn(),
+  destroyTerminalCachesByPrefix: vi.fn(),
   refreshTerminal: vi.fn(),
   refreshSideTerminal: vi.fn(),
 }));
@@ -199,22 +199,22 @@ describe('useLocalProjects', () => {
   });
 
   it('handleOpenIde 调用 open_ide', async () => {
-    mockInvoke.mockResolvedValue([]);
-
-    const { result } = renderHook(() => useLocalProjects());
-
-    // activeProjectRef 需要设置路径
-    result.current.activeProjectRef.current = {
+    const project = createProject({
       id: 'p1',
       name: 'test',
       path: '/tmp/test',
-      git_info: null,
-      terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
-      selected_agent: null,
       selected_ide: 'code',
-      active_view: 'Terminal',
-      collapsed: true,
-    };
+    });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_projects') return [project];
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useLocalProjects());
+
+    await act(async () => {
+      await result.current.loadProjects();
+    });
 
     await act(async () => {
       await result.current.handleOpenIde({ id: 'p1', selected_ide: 'code' });

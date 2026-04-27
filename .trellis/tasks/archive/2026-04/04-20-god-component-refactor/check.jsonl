@@ -1,0 +1,5 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "改造后回归检查"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查组件拆分结构"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查类型完整性"}

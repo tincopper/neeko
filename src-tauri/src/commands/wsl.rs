@@ -1,6 +1,26 @@
-use crate::state::*;
+use crate::models::*;
+use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
+
+#[macro_export]
+macro_rules! wsl_commands {
+    () => {
+        $crate::commands::get_wsl_distros,
+        $crate::commands::get_wsl_directories,
+        $crate::commands::get_wsl_home_dir,
+        $crate::commands::create_wsl_terminal_session,
+        $crate::commands::refresh_wsl_git_info,
+        $crate::commands::get_wsl_file_diff_command,
+        $crate::commands::wsl_checkout_branch,
+        $crate::commands::wsl_create_branch,
+        $crate::commands::wsl_rename_branch,
+        $crate::commands::wsl_create_worktree,
+        $crate::commands::wsl_remove_worktree,
+        $crate::commands::wsl_rename_worktree,
+        $crate::commands::open_wsl_ide,
+    };
+}
 
 fn wsl_command(program: &str) -> std::process::Command {
     #[allow(unused_mut)]
@@ -14,9 +34,11 @@ fn wsl_command(program: &str) -> std::process::Command {
 }
 
 #[tauri::command]
-pub fn get_wsl_distros() -> Result<Vec<String>, String> {
+pub fn get_wsl_distros() -> Result<Vec<String>, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err("WSL is only supported on Windows".to_string());
+        return Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ));
     }
     let output = wsl_command("wsl.exe")
         .args(["-l", "-q"])
@@ -26,7 +48,7 @@ pub fn get_wsl_distros() -> Result<Vec<String>, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("WSL command failed: {}", stderr));
+        return Err(AppError::Wsl(format!("WSL command failed: {}", stderr)));
     }
 
     let distros: Vec<String> = String::from_utf8_lossy(&output.stdout)
@@ -39,9 +61,11 @@ pub fn get_wsl_distros() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<String>, String> {
+pub fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<String>, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err("WSL is only supported on Windows".to_string());
+        return Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ));
     }
     let dir_path = path.unwrap_or_else(|| "/".to_string());
 
@@ -67,9 +91,11 @@ pub fn get_wsl_directories(distro: String, path: Option<String>) -> Result<Vec<S
 }
 
 #[tauri::command]
-pub fn get_wsl_home_dir(distro: String) -> Result<String, String> {
+pub fn get_wsl_home_dir(distro: String) -> Result<String, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err("WSL is only supported on Windows".to_string());
+        return Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ));
     }
     let output = wsl_command("wsl.exe")
         .args(["-d", &distro, "bash", "-c", "echo $HOME"])
@@ -79,7 +105,7 @@ pub fn get_wsl_home_dir(distro: String) -> Result<String, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("WSL command failed: {}", stderr));
+        return Err(AppError::Wsl(format!("WSL command failed: {}", stderr)));
     }
 
     let home_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -95,12 +121,14 @@ pub fn create_wsl_terminal_session(
     rows: u16,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
-) -> Result<TerminalSession, String> {
+) -> Result<TerminalSession, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err("WSL is only supported on Windows".to_string());
+        return Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ));
     }
     state
         .terminal_manager
         .create_wsl_session(&distro, &project_path, cols, rows, app_handle)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }

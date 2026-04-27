@@ -1,35 +1,48 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { destroyTerminalCache } from "../components/terminal";
+import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig } from "../types";
+import { useAppStore } from "../store/appStore";
+import { applyStateAction } from "../utils/entryUpdates";
 
 export function useLocalProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const projects = useAppStore((state) => state.projects);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const activeProject = useAppStore((state) => state.activeProject);
+
+  const setProjects: Dispatch<SetStateAction<Project[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => {
+      const nextProjects = applyStateAction(state.projects, updater);
+      const nextActiveProject = state.activeProjectId
+        ? nextProjects.find((project) => project.id === state.activeProjectId) ?? null
+        : null;
+      return {
+        projects: nextProjects,
+        activeProject: nextActiveProject,
+      };
+    });
+  }, []);
+
+  const setActiveProjectId = useCallback((projectId: string | null) => {
+    useAppStore.setState((state) => ({
+      activeProjectId: projectId,
+      activeProject: projectId
+        ? state.projects.find((project) => project.id === projectId) ?? null
+        : null,
+    }));
+  }, []);
+
+  const setActiveProject: Dispatch<SetStateAction<Project | null>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      activeProject: applyStateAction(state.activeProject, updater),
+    }));
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-
-  const activeProjectIdRef = useRef<string | null>(null);
-  const selectProjectRef = useRef<(id: string) => void>(() => {});
-  const activeProjectRef = useRef<Project | null>(null);
-  const isTerminalViewRef = useRef(false);
-
-  useEffect(() => { activeProjectIdRef.current = activeProjectId; }, [activeProjectId]);
-
-  // 同步 activeProject
-  useEffect(() => {
-    if (activeProjectId) {
-      const project = projects.find((p) => p.id === activeProjectId);
-      setActiveProject(project || null);
-    } else {
-      setActiveProject(null);
-    }
-  }, [activeProjectId, projects]);
-
-  useEffect(() => { activeProjectRef.current = activeProject; }, [activeProject]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -93,18 +106,25 @@ export function useLocalProjects() {
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
       await invoke("remove_project", { projectId });
-      setProjects(prev => {
-        const next = prev.filter((p) => p.id !== projectId);
-        if (activeProjectId === projectId) {
-          setActiveProjectId(next.length > 0 ? next[0].id : null);
-        }
-        return next;
+      useAppStore.setState((state) => {
+        const nextProjects = state.projects.filter((project) => project.id !== projectId);
+        const nextActiveProjectId = state.activeProjectId === projectId
+          ? (nextProjects[0]?.id ?? null)
+          : state.activeProjectId;
+        const nextActiveProject = nextActiveProjectId
+          ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
+          : null;
+        return {
+          projects: nextProjects,
+          activeProjectId: nextActiveProjectId,
+          activeProject: nextActiveProject,
+        };
       });
-      destroyTerminalCache(projectId);
+      destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
     }
-  }, [activeProjectId]);
+  }, []);
 
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
@@ -112,16 +132,15 @@ export function useLocalProjects() {
     await invoke("set_view_terminal", { projectId });
     await loadProjects();
   }, [loadProjects]);
-  selectProjectRef.current = handleSelectProject;
 
   const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
-    if (activeProjectIdRef.current !== projectId) {
+    if (activeProjectId !== projectId) {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
     }
     await invoke("set_view_diff", { projectId, filePath });
     await loadProjects();
-  }, [loadProjects]);
+  }, [activeProjectId, loadProjects]);
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
     try {
@@ -135,14 +154,15 @@ export function useLocalProjects() {
   const handleOpenIde = useCallback(async (project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) return;
     try {
+      const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
       await invoke("open_ide", {
         ideCommand: project.selected_ide,
-        projectPath: (activeProjectRef.current as Project | null)?.path ?? "",
+        projectPath,
       });
     } catch (e: unknown) {
       console.error("[App] Failed to open IDE:", e);
     }
-  }, []);
+  }, [projects]);
 
   const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
@@ -171,7 +191,6 @@ export function useLocalProjects() {
     loading, setLoading,
     pendingPath, setPendingPath,
     agents,
-    activeProjectIdRef, selectProjectRef, activeProjectRef, isTerminalViewRef,
     loadProjects, loadAgents,
     handleAddProject, handleConfirmAddProject, handleRemoveProject,
     handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,

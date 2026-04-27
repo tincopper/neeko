@@ -1,0 +1,43 @@
+﻿{
+  "id": "skill-pr12-marketplace-backend",
+  "name": "skill-pr12-marketplace-backend",
+  "title": "PR#12: Marketplace backend — Skills.sh API, git fetcher, cache",
+  "description": "实现 Skill 市场后端：Skills.sh API 集成（leaderboard + search）、Git 仓库克隆、market skill 安装、缓存机制",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": "skill",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-04-16",
+  "completedAt": "2026-04-22",
+  "branch": "feature/skill-pr12-marketplace-backend",
+  "base_branch": "feature/skill-pr11-tag-group-management-ui",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "skill-pr01-data-model",
+  "relatedFiles": [
+    "src-tauri/src/skill/mod.rs",
+    "src-tauri/src/skill/skill_store.rs",
+    "src-tauri/src/skill/commands.rs",
+    "src-tauri/src/skill/migrations.rs",
+    "src-tauri/src/skill/installer.rs",
+    "src-tauri/Cargo.toml"
+  ],
+  "notes": "核心后端 PR，需新增 skillssh_api.rs + git_fetcher.rs + 新 Tauri 命令 + DB 缓存表",
+  "meta": {
+    "ref_project": "E:\\workspaces\\rust_space\\skills-manager",
+    "ref_files": [
+      "src-tauri/src/core/skillssh_api.rs",
+      "src-tauri/src/core/git_fetcher.rs",
+      "src-tauri/src/commands/browse.rs",
+      "src-tauri/src/commands/skills.rs"
+    ]
+  }
+}

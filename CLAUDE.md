@@ -309,7 +309,7 @@ PTY 会话在组件卸载时保持存活（DOM detach/reattach）。
 
 ## 预置 Agent
 
-opencode, claude-code, qwen, gemini, codex, qoder, codebuddy
+opencode, claude-code, gemini, codex, qoder, codebuddy
 
 ## 预置 IDE
 

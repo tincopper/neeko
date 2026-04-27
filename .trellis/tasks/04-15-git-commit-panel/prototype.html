@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Git Commit Panel — Prototype</title>
+<style>
+  /* ===== Reset & Base ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    background: #1e1e1e;
+    color: #abb2bf;
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  /* ===== Theme: One Dark Pro ===== */
+  :root {
+    --bg-primary: #282c34;
+    --bg-secondary: #21252b;
+    --bg-tertiary: #2c313c;
+    --bg-hover: #3e4451;
+    --text-primary: #abb2bf;
+    --text-secondary: #828997;
+    --text-muted: #5c6370;
+    --border: #181a1f;
+    --accent-blue: #61afef;
+    --accent-green: #98c379;
+    --accent-yellow: #e5c07b;
+    --accent-red: #e06c75;
+    --accent-purple: #c678dd;
+    --diff-added-bg: rgba(63, 185, 80, 0.10);
+    --diff-removed-bg: rgba(248, 81, 73, 0.10);
+    --badge-m: #e5c07b;
+    --badge-a: #98c379;
+    --badge-d: #e06c75;
+    --badge-r: #c678dd;
+    --badge-u: #5c6370;
+    --badge-m-bg: rgba(229, 192, 123, 0.15);
+    --badge-a-bg: rgba(152, 195, 121, 0.15);
+    --badge-d-bg: rgba(224, 108, 117, 0.15);
+    --badge-r-bg: rgba(198, 120, 221, 0.15);
+    --badge-u-bg: rgba(92, 99, 112, 0.15);
+    --radius: 4px;
+  }
+
+  /* ===== Panel Container ===== */
+  .panel {
+    width: 340px;
+    min-height: 600px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  /* ===== Section Headers ===== */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+  .section-header:hover { background: var(--bg-tertiary); }
+  .section-header .chevron {
+    display: inline-block;
+    transition: transform 0.15s;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .section-header.collapsed .chevron { transform: rotate(-90deg); }
+
+  /* ===== 1. Branch Info ===== */
+  .branch-info {
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .branch-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .branch-name .icon { color: var(--accent-green); font-size: 14px; }
+  .branch-name .name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .branch-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--accent-blue); }
+  .btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+  /* ===== 2. Changes List ===== */
+  .changes-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .changes-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+  .changes-header-left { display: flex; align-items: center; gap: 8px; }
+  .changes-count {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    padding: 0 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .changes-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-btn {
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .filter-btn:hover { color: var(--text-secondary); background: var(--bg-tertiary); }
+  .filter-btn.active { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(97,175,239,0.1); }
+
+  .changes-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 0;
+  }
+  .changes-list::-webkit-scrollbar { width: 6px; }
+  .changes-list::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+
+  .dir-group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    color: var(--text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .dir-group-header:hover { background: var(--bg-tertiary); }
+  .dir-group-header .dir-chevron { font-size: 8px; transition: transform 0.15s; }
+  .dir-group-header.collapsed .dir-chevron { transform: rotate(-90deg); }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px 3px 20px;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-size: 12px;
+  }
+  .file-item:hover { background: var(--bg-hover); }
+  .file-item.selected { background: rgba(97,175,239,0.12); }
+
+  .file-checkbox {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--text-muted);
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .file-checkbox.checked {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+  .file-checkbox.checked::after {
+    content: "✓";
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .file-checkbox.indeterminate {
+    border-color: var(--accent-blue);
+  }
+  .file-checkbox.indeterminate::after {
+    content: "−";
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .file-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+  .file-path {
+    color: var(--text-muted);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100px;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 16px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+    letter-spacing: 0;
+  }
+  .status-M { color: var(--badge-m); background: var(--badge-m-bg); }
+  .status-A { color: var(--badge-a); background: var(--badge-a-bg); }
+  .status-D { color: var(--badge-d); background: var(--badge-d-bg); }
+  .status-R { color: var(--badge-r); background: var(--badge-r-bg); }
+  .status-U { color: var(--badge-u); background: var(--badge-u-bg); }
+
+  .file-stats {
+    display: flex;
+    gap: 4px;
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .stat-add { color: var(--accent-green); }
+  .stat-del { color: var(--accent-red); }
+
+  /* ===== 3. Commit Form ===== */
+  .commit-form {
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .commit-textarea {
+    width: 100%;
+    min-height: 60px;
+    max-height: 120px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+  .commit-textarea::placeholder { color: var(--text-muted); }
+  .commit-textarea:focus { border-color: var(--accent-blue); }
+
+  .commit-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .btn-commit {
+    flex: 1;
+    padding: 5px 12px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent-blue);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .btn-commit:hover { background: #4d9ee0; }
+  .btn-commit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-commit-push {
+    flex: 1;
+    padding: 5px 12px;
+    border: 1px solid var(--accent-blue);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .btn-commit-push:hover { background: rgba(97,175,239,0.1); }
+
+  .btn-ai {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border: 1px solid var(--accent-purple);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--accent-purple);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn-ai:hover { background: rgba(198,120,221,0.1); }
+  .btn-ai svg { width: 14px; height: 14px; }
+
+  /* ===== 4. Commit History ===== */
+  .history-section { background: var(--bg-secondary); }
+  .history-list { padding: 2px 0; }
+  .commit-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .commit-item:hover { background: var(--bg-tertiary); }
+  .commit-hash {
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 11px;
+    color: var(--accent-blue);
+    flex-shrink: 0;
+    min-width: 52px;
+  }
+  .commit-meta { flex: 1; min-width: 0; }
+  .commit-msg {
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+  .commit-detail {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .commit-author { }
+  .commit-time { }
+
+  /* ===== Utility ===== */
+  .collapsed-content { display: none; }
+  .divider { height: 1px; background: var(--border); }
+
+  /* ===== Scrollbar ===== */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+
+  /* ===== Theme Switcher ===== */
+  .theme-bar {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    background: var(--bg-tertiary);
+    padding: 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    z-index: 100;
+  }
+  .theme-btn {
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .theme-btn.active { color: var(--accent-blue); border-color: var(--accent-blue); }
+  .theme-btn:hover { color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<!-- Theme Switcher -->
+<div class="theme-bar">
+  <button class="theme-btn active" onclick="setTheme('one-dark-pro')">One Dark</button>
+  <button class="theme-btn" onclick="setTheme('dark')">Dark</button>
+  <button class="theme-btn" onclick="setTheme('light')">Light</button>
+  <button class="theme-btn" onclick="setTheme('claude')">Claude</button>
+</div>
+
+<!-- Panel -->
+<div class="panel" id="panel">
+
+  <!-- 1. Branch Info -->
+  <div class="branch-info">
+    <div class="branch-name">
+      <span class="icon">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6a1 1 0 00-1 1v1.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.5 2.5 0 016 7h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM3.5 3a.75.75 0 100 1.5.75.75 0 000-1.5zM4 13.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"/></svg>
+      </span>
+      <span class="name">feature/git-commit-panel</span>
+    </div>
+    <div class="branch-actions">
+      <button class="btn" title="Fetch">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"/></svg>
+        Fetch
+      </button>
+      <button class="btn" title="Pull">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8.75 1.75V5H11a.75.75 0 010 1.5H8.75v3.25h-.094a.75.75 0 010 1.5H8.75V14a.75.75 0 01-1.5 0v-2.75H4a.75.75 0 010-1.5h3.25V6.5H4a.75.75 0 010-1.5h3.25V1.75a.75.75 0 011.5 0z"/></svg>
+        Pull
+      </button>
+      <button class="btn" title="Push">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.5A2.5 2.5 0 013.5 0h8.75a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0V1.5h-8A1 1 0 002.5 2.5v4.75a.75.75 0 01-1.5 0V2.5zM7.25 8a.75.75 0 01.75-.75h5.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75H8a.75.75 0 01-.75-.75V8zm1.5.75v3h4v-3h-4z"/></svg>
+        Push
+      </button>
+      <button class="btn" title="New Branch">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 110 1.5H8.5v4.25a.75.75 0 11-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/></svg>
+        Branch
+      </button>
+      <button class="btn" title="New Worktree">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm0 2.122a2.25 2.25 0 10-1.5 0v.878A2.25 2.25 0 005.75 8.5h1.5v2.128a2.251 2.251 0 101.5 0V8.5h1.5a2.25 2.25 0 002.25-2.25v-.878a2.25 2.25 0 10-1.5 0v.878a.75.75 0 01-.75.75h-4.5A.75.75 0 015 6.25v-.878zm3.75 7.378a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm3-8.75a.75.75 0 100-1.5.75.75 0 000 1.5z"/></svg>
+        Worktree
+      </button>
+      <button class="btn" title="Refresh">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.643 3.143.427 1.927A.25.25 0 000 2.104V5.75c0 .138.112.25.25.25h3.646a.25.25 0 00.177-.427L2.715 4.215a6.5 6.5 0 11-1.18 4.458.75.75 0 10-1.493.154 8.001 8.001 0 101.6-5.684zM7.75 4a.75.75 0 01.75.75v2.992l2.028.812a.75.75 0 01-.557 1.392l-2.5-1A.75.75 0 017 8.25v-3.5A.75.75 0 017.75 4z"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- 2. Changes List -->
+  <div class="changes-section">
+    <div class="changes-header">
+      <div class="changes-header-left">
+        <span>Changes</span>
+        <span class="changes-count" id="changesCount">8</span>
+      </div>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:10px;color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0">
+        <div class="file-checkbox" id="selectAllCheckbox" onclick="toggleSelectAll()"></div>
+        All
+      </label>
+    </div>
+
+    <div class="changes-toolbar">
+      <button class="filter-btn active" data-filter="all" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" data-filter="M" onclick="setFilter('M',this)">Modified</button>
+      <button class="filter-btn" data-filter="A" onclick="setFilter('A',this)">Added</button>
+      <button class="filter-btn" data-filter="D" onclick="setFilter('D',this)">Deleted</button>
+      <button class="filter-btn" data-filter="R" onclick="setFilter('R',this)">Renamed</button>
+      <button class="filter-btn" data-filter="U" onclick="setFilter('U',this)">Untracked</button>
+    </div>
+
+    <div class="changes-list" id="changesList">
+      <!-- Rendered by JS -->
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 3. Commit Form -->
+  <div class="commit-form">
+    <textarea class="commit-textarea" id="commitMessage" placeholder="Commit message..."></textarea>
+    <div class="commit-actions">
+      <button class="btn-ai" title="AI Generate Commit Message">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm3.25 8.5a.75.75 0 01-.75.75H6.93l1.72 1.72a.75.75 0 01-1.06 1.06L5.03 9.47a.75.75 0 010-1.06l2.56-2.56a.75.75 0 011.06 1.06L6.93 8.62h3.57a.75.75 0 01.75.75V8.5z"/></svg>
+        AI
+      </button>
+      <button class="btn-commit" id="commitBtn">Commit</button>
+      <button class="btn-commit-push" id="commitPushBtn">Commit & Push</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 4. Commit History -->
+  <div class="history-section">
+    <div class="section-header" id="historyHeader" onclick="toggleSection('history')">
+      <span>Recent Commits</span>
+      <span class="chevron" id="historyChevron">▼</span>
+    </div>
+    <div id="historyContent">
+      <div class="history-list" id="historyList">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ===== Mock Data =====
+const FILES = [
+  { path: "src/components/project/GitCommitPanel.tsx", status: "A", additions: 142, deletions: 0 },
+  { path: "src/components/project/BranchInfo.tsx", status: "A", additions: 68, deletions: 0 },
+  { path: "src/components/project/ChangesList.tsx", status: "A", additions: 185, deletions: 0 },
+  { path: "src/components/project/CommitForm.tsx", status: "A", additions: 72, deletions: 0 },
+  { path: "src/components/project/CommitHistory.tsx", status: "A", additions: 93, deletions: 0 },
+  { path: "src/types.ts", status: "M", additions: 18, deletions: 2 },
+  { path: "src-tauri/src/git/local.rs", status: "M", additions: 56, deletions: 3 },
+  { path: "src-tauri/src/commands/git.rs", status: "M", additions: 34, deletions: 0 },
+];
+
+const COMMITS = [
+  { hash: "e4420d6", msg: "chore(task): create git commit panel feature task", author: "hehaishui", time: "2 hours ago" },
+  { hash: "e7893c8", msg: "feat(codemirror): extend language support with common file types", author: "hehaishui", time: "5 hours ago" },
+  { hash: "7327433", msg: "Merge pull request #5 from VinciWu557/enhance/project_sidebar", author: "hehaishui", time: "1 day ago" },
+  { hash: "fb32fbe", msg: "chore: record journal", author: "hehaishui", time: "1 day ago" },
+  { hash: "223f0fd", msg: "chore(task): archive 04-15-markdown-preview-enhancement", author: "hehaishui", time: "1 day ago" },
+  { hash: "7b33a59", msg: "feat(terminal): add side terminal resize handle with drag support", author: "hehaishui", time: "2 days ago" },
+  { hash: "aa01d18", msg: "fix(remote): handle SSH reconnection timeout gracefully", author: "hehaishui", time: "2 days ago" },
+  { hash: "cc4f02e", msg: "refactor(hooks): extract useCrossDomainRefs for shared state", author: "hehaishui", time: "3 days ago" },
+  { hash: "d19e7aa", msg: "feat(settings): add terminal font size configuration", author: "hehaishui", time: "3 days ago" },
+  { hash: "3e8b2f1", msg: "fix(wsl): correct path resolution for Ubuntu distros", author: "hehaishui", time: "4 days ago" },
+];
+
+// ===== State =====
+let selectedFiles = new Set();
+let activeFilter = "all";
+let collapsedDirs = new Set();
+
+// ===== File Tree Rendering =====
+function getDir(filePath) {
+  const parts = filePath.split("/");
+  return parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+}
+function getFileName(filePath) {
+  return filePath.split("/").pop();
+}
+
+function groupByDir(files) {
+  const groups = {};
+  for (const f of files) {
+    const dir = getDir(f.path);
+    if (!groups[dir]) groups[dir] = [];
+    groups[dir].push(f);
+  }
+  return groups;
+}
+
+function getFileIcon(name) {
+  const ext = name.split(".").pop().toLowerCase();
+  const colors = {
+    ts: "#3178c6", tsx: "#3178c6", js: "#f7df1e", jsx: "#61dafb",
+    rs: "#dea584", css: "#563d7c", json: "#cbcb41", md: "#083fa1",
+    html: "#e34c26",
+  };
+  const color = colors[ext] || "#828997";
+  return `<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="1" width="12" height="14" rx="2" fill="${color}" opacity="0.15"/><rect x="2" y="1" width="12" height="14" rx="2" stroke="${color}" stroke-width="1" fill="none"/><text x="8" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="${color}">${ext.toUpperCase().slice(0,3)}</text></svg>`;
+}
+
+function renderChangesList() {
+  const list = document.getElementById("changesList");
+  const filtered = FILES.filter(f => activeFilter === "all" || f.status === activeFilter);
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:11px">No changes${activeFilter !== "all" ? " for filter: " + activeFilter : ""}</div>`;
+    document.getElementById("changesCount").textContent = "0";
+    return;
+  }
+
+  document.getElementById("changesCount").textContent = filtered.length;
+
+  const groups = groupByDir(filtered);
+  const dirs = Object.keys(groups).sort();
+  let html = "";
+
+  for (const dir of dirs) {
+    const files = groups[dir];
+    const isCollapsed = collapsedDirs.has(dir);
+
+    if (dir) {
+      html += `<div class="dir-group-header ${isCollapsed ? "collapsed" : ""}" onclick="toggleDir('${dir}')">
+        <span class="dir-chevron">▼</span>
+        <span style="color:var(--text-secondary)">${dir}/</span>
+        <span style="color:var(--text-muted);font-size:10px">(${files.length})</span>
+      </div>`;
+    }
+
+    if (!isCollapsed) {
+      for (const f of files) {
+        const checked = selectedFiles.has(f.path);
+        const fname = getFileName(f.path);
+        html += `<div class="file-item" onclick="toggleFile('${f.path}')">
+          <div class="file-checkbox ${checked ? "checked" : ""}" onclick="event.stopPropagation();toggleFile('${f.path}')"></div>
+          <span class="file-icon">${getFileIcon(fname)}</span>
+          <span class="file-name">${fname}</span>
+          <span class="file-path">${dir ? "" : ""}</span>
+          <span class="status-badge status-${f.status}" title="${statusLabel(f.status)}">${f.status}</span>
+          <span class="file-stats">
+            <span class="stat-add">+${f.additions}</span>
+            <span class="stat-del">-${f.deletions}</span>
+          </span>
+        </div>`;
+      }
+    }
+  }
+
+  list.innerHTML = html;
+  updateSelectAllState();
+}
+
+function statusLabel(s) {
+  return { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", U: "Untracked" }[s] || s;
+}
+
+function toggleFile(path) {
+  if (selectedFiles.has(path)) selectedFiles.delete(path);
+  else selectedFiles.add(path);
+  renderChangesList();
+}
+
+function toggleSelectAll() {
+  const filtered = FILES.filter(f => activeFilter === "all" || f.status === activeFilter);
+  const allSelected = filtered.every(f => selectedFiles.has(f.path));
+  if (allSelected) {
+    filtered.forEach(f => selectedFiles.delete(f.path));
+  } else {
+    filtered.forEach(f => selectedFiles.add(f.path));
+  }
+  renderChangesList();
+}
+
+function updateSelectAllState() {
+  const filtered = FILES.filter(f => activeFilter === "all" || f.status === activeFilter);
+  const cb = document.getElementById("selectAllCheckbox");
+  if (filtered.length === 0) { cb.className = "file-checkbox"; return; }
+  const allSelected = filtered.every(f => selectedFiles.has(f.path));
+  const someSelected = filtered.some(f => selectedFiles.has(f.path));
+  cb.className = "file-checkbox" + (allSelected ? " checked" : someSelected ? " indeterminate" : "");
+}
+
+function setFilter(filter, btn) {
+  activeFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderChangesList();
+}
+
+function toggleDir(dir) {
+  if (collapsedDirs.has(dir)) collapsedDirs.delete(dir);
+  else collapsedDirs.add(dir);
+  renderChangesList();
+}
+
+// ===== Commit History =====
+function renderHistory() {
+  const list = document.getElementById("historyList");
+  list.innerHTML = COMMITS.map(c => `
+    <div class="commit-item" title="${c.msg}">
+      <span class="commit-hash">${c.hash}</span>
+      <div class="commit-meta">
+        <div class="commit-msg">${c.msg}</div>
+        <div class="commit-detail">
+          <span class="commit-author">${c.author}</span>
+          <span class="commit-time">${c.time}</span>
+        </div>
+      </div>
+    </div>
+  `).join("");
+}
+
+// ===== Section Toggle =====
+function toggleSection(id) {
+  const header = document.getElementById(id + "Header");
+  const content = document.getElementById(id + "Content");
+  const chevron = document.getElementById(id + "Chevron");
+  const isCollapsed = header.classList.contains("collapsed");
+  if (isCollapsed) {
+    header.classList.remove("collapsed");
+    content.style.display = "";
+    chevron.style.transform = "";
+  } else {
+    header.classList.add("collapsed");
+    content.style.display = "none";
+    chevron.style.transform = "rotate(-90deg)";
+  }
+}
+
+// ===== Theme Switcher =====
+function setTheme(name) {
+  document.querySelectorAll(".theme-btn").forEach(b => b.classList.remove("active"));
+  event.target.classList.add("active");
+  const r = document.documentElement.style;
+  const themes = {
+    "one-dark-pro": {
+      bg1: "#282c34", bg2: "#21252b", bg3: "#2c313c", hover: "#3e4451",
+      t1: "#abb2bf", t2: "#828997", tm: "#5c6370", border: "#181a1f",
+      blue: "#61afef", green: "#98c379", yellow: "#e5c07b", red: "#e06c75", purple: "#c678dd",
+      badgeM: "rgba(229,192,123,0.15)", badgeA: "rgba(152,195,121,0.15)",
+      badgeD: "rgba(224,108,117,0.15)", badgeR: "rgba(198,120,221,0.15)", badgeU: "rgba(92,99,112,0.15)",
+    },
+    dark: {
+      bg1: "#000000", bg2: "#0a0a0a", bg3: "#141414", hover: "#222222",
+      t1: "#ededed", t2: "#888888", tm: "#666666", border: "#333333",
+      blue: "#61afef", green: "#98c379", yellow: "#e5c07b", red: "#e06c75", purple: "#c678dd",
+      badgeM: "rgba(229,192,123,0.15)", badgeA: "rgba(152,195,121,0.15)",
+      badgeD: "rgba(224,108,117,0.15)", badgeR: "rgba(198,120,221,0.15)", badgeU: "rgba(92,99,112,0.15)",
+    },
+    light: {
+      bg1: "#ffffff", bg2: "#f5f5f5", bg3: "#e8e8e8", hover: "#e0e0e0",
+      t1: "#1e1e1e", t2: "#6e6e6e", tm: "#a0a0a0", border: "#d4d4d4",
+      blue: "#2f7cd3", green: "#4a9e3f", yellow: "#c49000", red: "#d32f2f", purple: "#8e24aa",
+      badgeM: "rgba(196,144,0,0.12)", badgeA: "rgba(74,158,63,0.12)",
+      badgeD: "rgba(211,47,47,0.12)", badgeR: "rgba(142,36,170,0.12)", badgeU: "rgba(160,160,160,0.12)",
+    },
+    claude: {
+      bg1: "#f5f0e8", bg2: "#ede8df", bg3: "#e4ddd3", hover: "#d8d0c4",
+      t1: "#3d3225", t2: "#7a6e5d", tm: "#a09585", border: "#ccc3b5",
+      blue: "#c96442", green: "#5a8a5e", yellow: "#b8860b", red: "#c0392b", purple: "#8e24aa",
+      badgeM: "rgba(184,134,11,0.12)", badgeA: "rgba(90,138,94,0.12)",
+      badgeD: "rgba(192,57,43,0.12)", badgeR: "rgba(142,36,170,0.12)", badgeU: "rgba(160,149,133,0.12)",
+    },
+  };
+  const t = themes[name];
+  if (!t) return;
+  r.setProperty("--bg-primary", t.bg1);
+  r.setProperty("--bg-secondary", t.bg2);
+  r.setProperty("--bg-tertiary", t.bg3);
+  r.setProperty("--bg-hover", t.hover);
+  r.setProperty("--text-primary", t.t1);
+  r.setProperty("--text-secondary", t.t2);
+  r.setProperty("--text-muted", t.tm);
+  r.setProperty("--border", t.border);
+  r.setProperty("--accent-blue", t.blue);
+  r.setProperty("--accent-green", t.green);
+  r.setProperty("--accent-yellow", t.yellow);
+  r.setProperty("--accent-red", t.red);
+  r.setProperty("--accent-purple", t.purple);
+  r.setProperty("--badge-m", t.yellow);
+  r.setProperty("--badge-a", t.green);
+  r.setProperty("--badge-d", t.red);
+  r.setProperty("--badge-r", t.purple);
+  r.setProperty("--badge-u", t.tm);
+  r.setProperty("--badge-m-bg", t.badgeM);
+  r.setProperty("--badge-a-bg", t.badgeA);
+  r.setProperty("--badge-d-bg", t.badgeD);
+  r.setProperty("--badge-r-bg", t.badgeR);
+  r.setProperty("--badge-u-bg", t.badgeU);
+  // Also update body bg
+  document.body.style.background = name === "light" || name === "claude" ? "#e0ddd6" : "#1e1e1e";
+}
+
+// ===== Init =====
+// Pre-select all files
+FILES.forEach(f => selectedFiles.add(f.path));
+renderChangesList();
+renderHistory();
+</script>
+</body>
+</html>

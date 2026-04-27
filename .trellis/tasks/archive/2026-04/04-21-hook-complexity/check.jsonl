@@ -1,0 +1,8 @@
+{"file": ".gemini/commands/trellis/finish-work.toml", "reason": "Finish work checklist"}
+{"file": ".gemini/commands/trellis/check.toml", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "检查 hook 参数边界与回调稳定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查状态 source of truth 与 context 分层"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 TS 与回调约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查共享类型一致性"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查测试结构与断言行为"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "检查 Tauri mock 边界"}

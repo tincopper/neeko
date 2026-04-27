@@ -1,4 +1,5 @@
-use crate::state::*;
+use crate::models::*;
+use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;
 use tauri::State;
@@ -10,13 +11,13 @@ pub fn add_project(
     ide: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
-) -> Result<Project, String> {
+) -> Result<Project, AppError> {
     let project = state
         .project_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .add_project(PathBuf::from(path), agent_id, ide)
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     state
         .watcher_manager
@@ -42,7 +43,7 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) {
         let projects = pm.list_projects();
         let session = state
             .storage_manager
-            .create_session_from_projects(&projects, None, None, None, None);
+            .create_session_from_projects(&projects, None, None, None);
         if let Err(e) = state.storage_manager.save_session(&session) {
             log::error!(
                 "Failed to save session after removing project {}: {}",
@@ -63,24 +64,24 @@ pub fn list_projects(state: State<AppStateWrapper>) -> Vec<Project> {
 }
 
 #[tauri::command]
-pub fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<Project, String> {
+pub fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<Project, AppError> {
     state
         .project_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .get_project(&project_id)
         .cloned()
-        .ok_or_else(|| format!("Project not found: {}", project_id))
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))
 }
 
 #[tauri::command]
-pub fn refresh_git_info(project_id: String, state: State<AppStateWrapper>) -> Result<(), String> {
+pub fn refresh_git_info(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?
+        .map_err(AppError::from)?
         .refresh_git_info(&project_id)
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -118,7 +119,7 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
         let projects = pm.list_projects();
         let session = state
             .storage_manager
-            .create_session_from_projects(&projects, None, None, None, None);
+            .create_session_from_projects(&projects, None, None, None);
         if let Err(e) = state.storage_manager.save_session(&session) {
             log::error!(
                 "Failed to save session after collapsing project {}: {}",
@@ -130,11 +131,11 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
 }
 
 #[tauri::command]
-pub fn reorder_projects(ordered_ids: Vec<String>, state: State<AppStateWrapper>) -> Result<(), String> {
-    let mut pm = state
-        .project_manager
-        .lock()
-        .map_err(|e| format!("Lock poisoned: {}", e))?;
+pub fn reorder_projects(
+    ordered_ids: Vec<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
     pm.reorder_projects(&ordered_ids);
 
     // Persist the new order
@@ -142,9 +143,9 @@ pub fn reorder_projects(ordered_ids: Vec<String>, state: State<AppStateWrapper>)
     drop(pm);
     let session = state
         .storage_manager
-        .create_session_from_projects(&projects, None, None, None, None);
+        .create_session_from_projects(&projects, None, None, None);
     state
         .storage_manager
         .save_session(&session)
-        .map_err(|e| format!("Failed to save session: {}", e))
+        .map_err(|e| AppError::Storage(e.to_string()))
 }

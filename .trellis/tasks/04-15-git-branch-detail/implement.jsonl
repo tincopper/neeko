@@ -1,0 +1,10 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件模式 React.memo/Props/Tailwind"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型安全：types.ts 集中管理/蛇形命名"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 模式 useCallback/useRef 镜像"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "Tauri IPC 调用模式"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Tauri 命令注册/状态访问"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Rust 类型 state.rs/serde 同步"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "anyhow/Result<String> 错误处理"}

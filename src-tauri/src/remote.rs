@@ -1,4 +1,4 @@
-use crate::state::{AuthMethod, TerminalSession, TerminalStatus};
+use crate::models::{AuthMethod, TerminalSession, TerminalStatus};
 use anyhow::Result;
 use russh::*;
 use std::collections::HashMap;
