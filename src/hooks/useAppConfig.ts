@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../types";
+import { updateAllTerminalThemes } from "../components/terminal";
 
 const DEFAULT_CONFIG: AppConfig = {
    theme: "dark",
@@ -48,6 +49,9 @@ export function useAppConfig() {
    // 同步主题到 data-theme 属性
    useEffect(() => {
       document.documentElement.setAttribute("data-theme", config.theme);
+      requestAnimationFrame(() => {
+         updateAllTerminalThemes();
+      });
    }, [config.theme]);
 
    // 持久化保存配置
