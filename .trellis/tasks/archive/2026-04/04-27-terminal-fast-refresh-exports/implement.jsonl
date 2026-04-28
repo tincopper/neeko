@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/quality-guidelines.md", "reason": "前端类型检查和质量门禁"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/component-guidelines.md", "reason": "组件模块导出和 React.memo 约定"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/directory-structure.md", "reason": "Terminal 模块拆分和桶文件导出约定"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/api-layer.md", "reason": "终端 IPC 调用与事件监听清理约定"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/type-safety.md", "reason": "严格类型与无未使用导出约定"}

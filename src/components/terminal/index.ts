@@ -13,18 +13,21 @@ export {
 } from "./terminalCache";
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
-export { default as WorktreeTerminalView, worktreeKey } from "./WorktreeTerminalView";
-export { default as WSLTerminalView, wslCacheKey, destroyWslCache, destroyWslCachesByPrefix, getWslSessionId, getWslOpenProjectIds, launchAgentInWslTerminal, getAllWslOpenProjectIds, refreshWslTerminal } from "./WSLTerminalView";
-export { default as RemoteTerminalView, remoteCacheKey, launchAgentInRemoteTerminal, destroyRemoteCache, destroyRemoteCachesByPrefix, refreshRemoteTerminal } from "./RemoteTerminalView";
+export { default as WorktreeTerminalView } from "./WorktreeTerminalView";
+export { worktreeKey } from "./worktreeTerminalKey";
+export { default as WSLTerminalView } from "./WSLTerminalView";
+export { wslCacheKey, destroyWslCache, destroyWslCachesByPrefix, getWslSessionId, getWslOpenProjectIds, launchAgentInWslTerminal, getAllWslOpenProjectIds, refreshWslTerminal } from "./wslTerminalCache";
+export { default as RemoteTerminalView } from "./RemoteTerminalView";
+export { remoteCacheKey, launchAgentInRemoteTerminal, destroyRemoteCache, destroyRemoteCachesByPrefix, refreshRemoteTerminal } from "./remoteTerminalCache";
 export { default as SplitLayout } from "./SplitLayout";
 export { default as PaneToolbar } from "./PaneToolbar";
-export { switchAgentInWslTerminal, wslWrapperRefs } from "./WSLTerminalView";
-export { switchAgentInRemoteTerminal, remoteWrapperRefs } from "./RemoteTerminalView";
+export { switchAgentInWslTerminal, wslWrapperRefs } from "./wslTerminalCache";
+export { switchAgentInRemoteTerminal, remoteWrapperRefs } from "./remoteTerminalCache";
 
 import { buildTerminalTheme } from "../../utils/terminal";
 import { terminalCache } from "./terminalCache";
-import { wslTerminalCache } from "./WSLTerminalView";
-import { remoteTerminalCache } from "./RemoteTerminalView";
+import { wslTerminalCache } from "./wslTerminalCache";
+import { remoteTerminalCache } from "./remoteTerminalCache";
 
 export function updateAllTerminalThemes() {
   const theme = buildTerminalTheme();

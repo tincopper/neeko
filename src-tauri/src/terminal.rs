@@ -167,17 +167,41 @@ impl TerminalManager {
             &session_id[..8.min(session_id.len())]
         ));
 
+        if let Some(handle) = self.take_session_handle(session_id) {
+            close_pty_handle(session_id, handle);
+        }
+    }
+
+    pub fn close_session_in_background(&self, session_id: &str) {
+        log_info(&format!(
+            "[PTY] Closing session {} in background",
+            &session_id[..8.min(session_id.len())]
+        ));
+
+        if let Some(handle) = self.take_session_handle(session_id) {
+            let close_id = session_id.to_string();
+            let thread_name = format!("pty-close-{}", &close_id[..8.min(close_id.len())]);
+            if let Err(e) = thread::Builder::new().name(thread_name).spawn(move || {
+                close_pty_handle(&close_id, handle);
+            }) {
+                log_error(&format!(
+                    "[PTY] Failed to spawn close worker for {}: {}",
+                    &session_id[..8.min(session_id.len())],
+                    e
+                ));
+            }
+        }
+    }
+
+    fn take_session_handle(&self, session_id: &str) -> Option<PtyHandle> {
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.remove(session_id);
         }
 
-        if let Ok(mut handles) = self.pty_handles.lock() {
-            if let Some(mut handle) = handles.remove(session_id) {
-                handle.app_handle.unlisten(handle.input_listener_id);
-                drop(handle.master);
-                graceful_kill(&mut *handle.child);
-            }
-        }
+        self.pty_handles
+            .lock()
+            .ok()
+            .and_then(|mut handles| handles.remove(session_id))
     }
 
     pub fn close_all_sessions(&self) {
@@ -414,6 +438,16 @@ fn spawn_reader_thread(
     Ok(())
 }
 
+fn close_pty_handle(session_id: &str, mut handle: PtyHandle) {
+    handle.app_handle.unlisten(handle.input_listener_id);
+    drop(handle.master);
+    graceful_kill(&mut *handle.child);
+    log_info(&format!(
+        "[PTY] Session {} closed",
+        &session_id[..8.min(session_id.len())]
+    ));
+}
+
 // ─── 工具函数 ───────────────────────────────────────────────────────
 
 fn create_pty(cols: u16, rows: u16) -> Result<PtyPair> {
@@ -482,6 +516,7 @@ fn default_shell_cmd() -> CommandBuilder {
 const GRACEFUL_TIMEOUT_SECS: u64 = 3;
 
 fn graceful_kill(child: &mut dyn Child) {
+    let started_at = Instant::now();
     let pid = match child.process_id() {
         Some(p) => p,
         None => {
@@ -502,7 +537,11 @@ fn graceful_kill(child: &mut dyn Child) {
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => {
-                    log_info(&format!("[PTY] PID {} exited after SIGTERM", pid));
+                    log_info(&format!(
+                        "[PTY] PID {} exited after SIGTERM in {:?}",
+                        pid,
+                        started_at.elapsed()
+                    ));
                     return;
                 }
                 Ok(None) => {
@@ -522,6 +561,11 @@ fn graceful_kill(child: &mut dyn Child) {
             libc::kill(pid as i32, libc::SIGKILL);
         }
         let _ = child.wait();
+        log_info(&format!(
+            "[PTY] PID {} killed after SIGKILL in {:?}",
+            pid,
+            started_at.elapsed()
+        ));
     }
 
     #[cfg(windows)]
@@ -534,7 +578,11 @@ fn graceful_kill(child: &mut dyn Child) {
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => {
-                    log_info(&format!("[PTY] PID {} exited gracefully", pid));
+                    log_info(&format!(
+                        "[PTY] PID {} exited gracefully in {:?}",
+                        pid,
+                        started_at.elapsed()
+                    ));
                     return;
                 }
                 Ok(None) => {
@@ -552,6 +600,11 @@ fn graceful_kill(child: &mut dyn Child) {
         ));
         let _ = child.kill();
         let _ = child.wait();
+        log_info(&format!(
+            "[PTY] PID {} force killed in {:?}",
+            pid,
+            started_at.elapsed()
+        ));
     }
 }
 
