@@ -74,10 +74,12 @@
 @layer components {
 
   /* xterm.js overrides */
-  .terminal-wrapper .xterm { height: 100%; padding: 0; background-color: var(--bg-primary) !important; }
-  .terminal-wrapper .xterm-viewport { overflow-y: scroll !important; background-color: var(--bg-primary) !important; scrollbar-width: none !important; }
+  .terminal-wrapper .xterm { width: 100%; height: 100%; padding: 0; background-color: var(--terminal-bg) !important; }
+  .terminal-wrapper .xterm-viewport { overflow-y: scroll !important; background-color: var(--terminal-bg) !important; scrollbar-width: none !important; }
   .terminal-wrapper .xterm-viewport::-webkit-scrollbar { display: none !important; }
-  .terminal-wrapper .xterm-screen { height: 100%; background-color: var(--bg-primary) !important; }
+  .terminal-wrapper .xterm-scrollable-element { background-color: var(--terminal-bg) !important; }
+  .terminal-wrapper .xterm-screen { width: 100% !important; background-color: var(--terminal-bg) !important; }
+  .terminal-wrapper .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
 
   /* Side terminal grid :has() layout */
   .side-terminal-grid-container { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2px; }

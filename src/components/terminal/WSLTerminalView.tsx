@@ -293,6 +293,7 @@ export default React.memo(function WSLTerminalView({
             fontFamily: buildFontFamily(fontFamily),
             theme: buildTerminalTheme(),
             scrollback: 10000,
+            overviewRuler: { width: 0 },
             allowProposedApi: true,
          });
 
@@ -433,13 +434,13 @@ export default React.memo(function WSLTerminalView({
    }
 
    return (
-      <div className="relative flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
          {!ready && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]">
                Connecting...
             </div>
          )}
-         <div className="flex-1 p-0 bg-bg-primary overflow-hidden min-w-0 min-h-0" ref={wrapperRef} />
+         <div className="flex-1 p-0 overflow-hidden min-w-0 min-h-0" style={{ backgroundColor: "var(--terminal-bg)" }} ref={wrapperRef} />
       </div>
    );
 });
