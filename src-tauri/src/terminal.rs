@@ -67,6 +67,9 @@ impl TerminalManager {
             return Err(anyhow::anyhow!("Working directory does not exist: {}", cwd));
         }
 
+        // 写入 OpenCode 项目级 TUI 配置（主题同步）
+        write_opencode_tui_config(project_path);
+
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
@@ -558,4 +561,25 @@ fn log_info(msg: &str) {
 
 fn log_error(msg: &str) {
     log::error!("{}", msg);
+}
+
+/// 读取 Neeko 配置并写入 OpenCode 项目级 TUI 配置
+/// 静默执行，失败不影响终端创建
+fn write_opencode_tui_config(project_path: &str) {
+    let theme = match read_neeko_theme() {
+        Some(t) => t,
+        None => return,
+    };
+    if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
+        log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
+    }
+}
+
+/// 从 ~/.neeko/config.json 读取当前主题
+fn read_neeko_theme() -> Option<String> {
+    let home = dirs::home_dir()?;
+    let config_path = home.join(".neeko").join("config.json");
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+    Some(crate::opencode_theme::get_current_theme(&config))
 }

@@ -3,6 +3,7 @@ pub mod commands;
 pub mod error;
 pub mod git;
 pub mod models;
+pub mod opencode_theme;
 pub mod project;
 pub mod remote;
 pub mod skill;
