@@ -141,7 +141,7 @@ function MainContent() {
    const showFileViewer = fileTabs.length > 0;
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden bg-bg-primary">
+      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 bg-bg-primary">
          {/* 终端头部：引导页和 FileViewer 模式下不显示 */}
          {hasActiveProject && !showFileViewer && !showGuidePage && (
             <div className="shrink-0 bg-bg-secondary border-b border-border">
@@ -227,7 +227,7 @@ function MainContent() {
          )}
 
          {activeWslProject && !activeProject && (
-            <div className="content-area flex-1 overflow-hidden flex flex-col">
+            <div className="content-area flex-1 overflow-hidden flex flex-col min-h-0">
                {wslDiffState ? (
                   <DiffView
                      diffSource={{ type: "wsl", distro: wslDiffState.distro, projectPath: wslDiffState.projectPath }}
@@ -253,7 +253,7 @@ function MainContent() {
          )}
 
          {activeProject ? (
-            <div className="content-area flex-1 overflow-hidden flex flex-col">
+            <div className="content-area flex-1 overflow-hidden flex flex-col min-h-0">
                {showFileViewer ? (
                   <FileViewer />
                ) : worktreeDiffState ? (

@@ -103,10 +103,12 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
               if (el) paneRefs.current.set(node.paneId, el);
               else paneRefs.current.delete(node.paneId);
             }}
-            className={`relative min-w-[120px] min-h-[80px] flex-1 flex flex-col overflow-hidden border-2 transition-shadow duration-150 ${
-              isActive
-                ? "border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset"
-                : "border-transparent"
+            className={`relative min-w-[120px] min-h-[80px] flex-1 flex flex-col overflow-hidden transition-shadow duration-150 ${
+              state.paneCount > 1
+                ? isActive
+                  ? "border-2 border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset"
+                  : "border-2 border-transparent"
+                : "border-0"
             }`}
             onMouseDown={() => setActivePaneId(node.paneId)}
           >
