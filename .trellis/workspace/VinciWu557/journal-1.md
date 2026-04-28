@@ -1128,3 +1128,142 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 修复终端中文输入法 Shift 符号输入
+
+**Date**: 2026-04-27
+**Task**: 修复终端中文输入法 Shift 符号输入
+**Branch**: `main`
+
+### Summary
+
+定位并修复 xterm 在中文输入法下 Shift 组合符号首次输入丢失的问题。实现终端输入层 beforeinput fallback，覆盖 Shift+/、Shift+数字等符号输入，并补充 terminalInput 单元测试；用户已验证问题修复。
+
+### Main Changes
+
+- Confirmed the root cause with DevTools event tracing: Chinese IME emits `beforeinput/input` for Shift symbols before the `keydown 229` event that xterm expects.
+- Added a narrow `beforeinput` fallback in `src/components/terminal/terminalInput.ts` for Shift-generated symbol text so the input still flows through xterm's own `onData` path.
+- Expanded coverage from `Shift+/` to Shift number and punctuation symbols while avoiding letters, numbers, whitespace, and normal Chinese text to prevent duplicate input.
+- Added `src/components/terminal/__tests__/terminalInput.test.ts` with regression coverage for xterm `onData` forwarding, dispose behavior, IME Shift symbols, and ordinary `Shift+/` non-duplication.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e583a73` | (see git log) |
+
+### Testing
+
+- [OK] `pnpm test:run src/components/terminal/__tests__/terminalInput.test.ts`
+- [OK] `pnpm type-check`
+- [OK] `pnpm test:run`
+- [WARN] `pnpm lint` remains blocked by pre-existing Rust `cargo fmt --check` diffs unrelated to this frontend change.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 30: fix: terminal Fast Refresh 导出警告
+
+**Date**: 2026-04-28
+**Task**: fix: terminal Fast Refresh 导出警告
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+将组件文件中的非组件导出（缓存 Map、工具函数、重建回调）拆分到独立 `.ts` 模块：
+
+| 变更 | 说明 |
+|------|------|
+| 新增 `remoteTerminalCache.ts` | SSH Remote 终端缓存 + 工具函数 |
+| 新增 `wslTerminalCache.ts` | WSL 终端缓存 + 工具函数 |
+| 新增 `worktreeTerminalKey.ts` | Worktree cache key 工具 |
+| 修改 `RemoteTerminalView.tsx` | 移除非组件导出，改为 import 新模块 |
+| 修改 `WSLTerminalView.tsx` | 同上 |
+| 修改 `TerminalView.tsx` | 移除 re-export 块 |
+| 修改 `WorktreeTerminalView.tsx` | 改为从新模块 import |
+| 修改 `SplitLayout.tsx` | import 路径更新 |
+| 修改 `index.ts` | 桶文件指向新模块 |
+
+**验证**: type-check 通过，231 个测试通过，API 导出面完整无遗漏。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd58b8b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 31: fix: 终端关闭 IPC 挂起
+
+**Date**: 2026-04-28
+**Task**: fix: 终端关闭 IPC 挂起
+**Branch**: `fix/terminal_close_hanging`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+
+`close_terminal_session` 同步调用 `close_session`，当 Agent 子进程不响应 SIGTERM 时，IPC 会阻塞最多 `GRACEFUL_TIMEOUT_SECS`（3 秒），导致前端 tab 关闭卡顿。
+
+## 方案
+
+- 新增 `close_session_in_background`：先从 `sessions` / `pty_handles` 移除会话，再派生后台线程执行 PTY 清理。
+- 提取 `take_session_handle`（取出会话 + handle）和 `close_pty_handle`（统一清理 listener / master / child）。
+- `close_terminal_session` 命令改为调用 `close_session_in_background`，IPC 立即返回。
+- `close_all_sessions` 保持同步，应用退出时仍确保资源清理。
+- `graceful_kill` 增加耗时日志，便于排查超时情况。
+
+## 更新文件
+
+| 文件 | 变更 |
+|------|------|
+| `src-tauri/src/commands/terminal.rs` | 调用改为 `close_session_in_background` |
+| `src-tauri/src/terminal.rs` | 新增后台关闭逻辑 + 提取公共函数 + 耗时日志 |
+| `.trellis/spec/backend/concurrency-guidelines.md` | 补充 "终端关闭不阻塞 IPC" spec 场景 |
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e239181` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

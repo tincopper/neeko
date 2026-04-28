@@ -1,19 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppContext } from "../../contexts";
+import { createTerminalForProject } from "./terminalFactory";
 import {
-   createTerminalForProject,
    terminalCache,
    terminalRebuildCallbacks,
    pendingPtyResize,
-} from "./TerminalView";
+} from "./terminalCache";
 import { buildFontFamily } from "../../utils/terminal";
 import { useAppStore } from "../../store/appStore";
-
-// cache key 格式：projectId + ":wt:" + worktreePath
-export function worktreeKey(projectId: string, worktreePath: string) {
-   return `${projectId}:wt:${worktreePath}`;
-}
+import { worktreeKey } from "./worktreeTerminalKey";
 
 function WorktreeTerminalView() {
    const activeProject = useAppStore((state) => state.activeProject);
