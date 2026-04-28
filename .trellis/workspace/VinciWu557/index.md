@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 30
+- **Total Sessions**: 31
 - **Last Active**: 2026-04-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1217 | Active |
+| `journal-1.md` | ~1269 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 31 | 2026-04-28 | fix: 终端关闭 IPC 挂起 | `e239181` | `fix/terminal_close_hanging` |
 | 30 | 2026-04-28 | fix: terminal Fast Refresh 导出警告 | `cd58b8b` | `main` |
 | 29 | 2026-04-27 | 修复终端中文输入法 Shift 符号输入 | `e583a73` | `main` |
 | 28 | 2026-04-26 | 设置页从弹窗改为全页视图 | `bc4d131` | `enhance/setting_panel` |
