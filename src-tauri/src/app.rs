@@ -27,6 +27,11 @@ pub fn run() {
         log::warn!("Failed to ensure skill central repo: {e}");
     }
 
+    // Install OpenCode theme files to ~/.config/opencode/themes/
+    if let Err(e) = crate::opencode_theme::install_theme_files() {
+        log::warn!("Failed to install OpenCode theme files: {e}");
+    }
+
     // Unix: resolve full PATH from user's login shell to fix GUI app Agent detection issues
     #[cfg(unix)]
     {

@@ -99,6 +99,10 @@ impl RemoteTerminalManager {
 
         log_info(&format!("[SSH] Authentication successful for {}", username));
 
+        // 安装远程 OpenCode 主题文件和项目 TUI 配置
+        // 使用单独的 channel 执行，失败不影响终端创建
+        setup_remote_opencode_theme(&session, project_path).await;
+
         // 打开 channel
         let mut channel = session.channel_open_session().await?;
 
@@ -411,6 +415,53 @@ fn log_info(msg: &str) {
 
 fn log_error(msg: &str) {
     log::error!("{}", msg);
+}
+
+/// 安装远程 OpenCode 主题文件和项目 TUI 配置
+/// 使用单独的 channel 执行，静默失败
+async fn setup_remote_opencode_theme(
+    session: &russh::client::Handle<Client>,
+    project_path: &str,
+) {
+    let theme = match read_neeko_theme() {
+        Some(t) => t,
+        None => return,
+    };
+
+    // 打开单独的 channel 用于主题设置
+    let mut setup_channel = match session.channel_open_session().await {
+        Ok(ch) => ch,
+        Err(e) => {
+            log_warn(&format!("[SSH] Failed to open channel for theme setup: {}", e));
+            return;
+        }
+    };
+
+    // 安装主题文件
+    if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut setup_channel).await {
+        log_warn(&format!("[SSH] Failed to install remote theme files: {}", e));
+    }
+
+    // 写入项目 TUI 配置
+    if let Err(e) = crate::opencode_theme::write_remote_tui_config(&mut setup_channel, project_path, &theme).await {
+        log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
+    }
+
+    // 关闭 setup channel
+    let _ = setup_channel.close().await;
+}
+
+/// 从 ~/.neeko/config.json 读取当前主题
+fn read_neeko_theme() -> Option<String> {
+    let home = dirs::home_dir()?;
+    let config_path = home.join(".neeko").join("config.json");
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+    Some(crate::opencode_theme::get_current_theme(&config))
+}
+
+fn log_warn(msg: &str) {
+    log::warn!("{}", msg);
 }
 
 // IDE 相关函数已移至 commands/ide.rs
