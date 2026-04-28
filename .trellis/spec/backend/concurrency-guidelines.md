@@ -162,6 +162,78 @@ invoke<GitInfo>("get_git_info_command", { path })
 
 ---
 
+## Scenario: 本地终端关闭不阻塞 IPC
+
+### 1. Scope / Trigger
+
+- Trigger：关闭运行中 Agent（如 Claude/Codex/opencode）的终端 tab 时，子进程可能不响应 SIGTERM，`graceful_kill` 最多等待 3 秒。
+- Scope：`close_terminal_session` 命令、`TerminalManager` 会话映射、PTY handle 清理、前端 terminal cache 销毁。
+
+### 2. Signatures
+
+```rust
+#[tauri::command]
+pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
+
+impl TerminalManager {
+    pub fn close_session_in_background(&self, session_id: &str);
+    pub fn close_session(&self, session_id: &str);
+}
+```
+
+### 3. Contracts
+
+1. 前端 tab 关闭调用 `close_terminal_session` 时，命令必须快速返回，不等待 `graceful_kill` 完成。
+2. `close_session_in_background` 先从 `sessions` 和 `pty_handles` 移除会话，再派生 `pty-close-{id[..8]}` 线程关闭 PTY。
+3. 后台关闭线程负责注销 input listener、drop PTY master、执行 `graceful_kill`。
+4. `close_all_sessions` 仍可使用同步 `close_session`，保证应用退出时尽量完成资源清理。
+5. 禁止在持有 `pty_handles` 锁时执行 `graceful_kill` 或其他可能阻塞的进程等待。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 预期行为 | 错误风险 |
+|------|----------|----------|
+| 关闭普通 shell tab | IPC 快速返回，后台线程完成关闭 | 无 |
+| 关闭运行中 Agent tab | UI 不等待 3 秒；后台超时后 SIGKILL | 若同步等待会导致 tab 关闭卡顿 |
+| 后台线程创建失败 | 记录错误，不阻塞命令返回 | handle 会随闭包 drop，需关注日志 |
+| 应用退出 close_all_sessions | 同步遍历关闭剩余会话 | 退出路径允许等待资源清理 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：`close_terminal_session` 调用 `close_session_in_background`，前端立即完成 tab 状态更新。
+- Base：后台线程里执行 `close_pty_handle(session_id, handle)`，统一清理 listener/master/child。
+- Bad：命令层直接调用同步 `close_session`，导致 Agent 不退出时 IPC 等满 `GRACEFUL_TIMEOUT_SECS`。
+
+### 6. Tests Required
+
+- 单元/集成可测点：关闭命令调用后，`sessions` 与 `pty_handles` 立即移除对应 id。
+- 回归验证点：运行 Agent 后关闭 tab，前端 `close_terminal_session` 的 Promise 不应接近 `GRACEFUL_TIMEOUT_SECS`。
+- 日志验证点：后台仍可看到 `PID ... did not exit ... SIGKILL`，但 UI 不被这段等待阻塞。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+#[tauri::command]
+pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
+    state.terminal_manager.close_session(&session_id);
+}
+```
+
+#### Correct
+
+```rust
+#[tauri::command]
+pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
+    state
+        .terminal_manager
+        .close_session_in_background(&session_id);
+}
+```
+
+---
+
 ## 常见错误
 
 ### 1. 跨 thread::spawn 或 await 持有 Mutex 锁

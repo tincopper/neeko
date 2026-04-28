@@ -30,7 +30,9 @@ pub fn create_terminal_session(
 
 #[tauri::command]
 pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
-    state.terminal_manager.close_session(&session_id);
+    state
+        .terminal_manager
+        .close_session_in_background(&session_id);
 }
 
 #[tauri::command]
