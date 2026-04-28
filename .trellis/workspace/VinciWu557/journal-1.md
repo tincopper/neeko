@@ -1167,3 +1167,51 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: fix: terminal Fast Refresh 导出警告
+
+**Date**: 2026-04-28
+**Task**: fix: terminal Fast Refresh 导出警告
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+将组件文件中的非组件导出（缓存 Map、工具函数、重建回调）拆分到独立 `.ts` 模块：
+
+| 变更 | 说明 |
+|------|------|
+| 新增 `remoteTerminalCache.ts` | SSH Remote 终端缓存 + 工具函数 |
+| 新增 `wslTerminalCache.ts` | WSL 终端缓存 + 工具函数 |
+| 新增 `worktreeTerminalKey.ts` | Worktree cache key 工具 |
+| 修改 `RemoteTerminalView.tsx` | 移除非组件导出，改为 import 新模块 |
+| 修改 `WSLTerminalView.tsx` | 同上 |
+| 修改 `TerminalView.tsx` | 移除 re-export 块 |
+| 修改 `WorktreeTerminalView.tsx` | 改为从新模块 import |
+| 修改 `SplitLayout.tsx` | import 路径更新 |
+| 修改 `index.ts` | 桶文件指向新模块 |
+
+**验证**: type-check 通过，231 个测试通过，API 导出面完整无遗漏。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd58b8b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
