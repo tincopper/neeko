@@ -18,21 +18,6 @@ import {
 import { createTerminalForProject } from "./terminalFactory";
 import type { TerminalCache, TerminalViewProps } from "./terminalTypes";
 
-export {
-   terminalCache,
-   terminalRebuildCallbacks,
-   terminalWrapperRefs,
-   executedAgentKeys,
-   pendingPtyResize,
-   setPendingPtyResize,
-   terminalCacheKey,
-   destroyTerminalCache,
-   destroyTerminalCachesByPrefix,
-   refreshTerminal,
-} from "./terminalCache";
-export { createTerminalForProject } from "./terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
-
 function TerminalView({ paneId }: TerminalViewProps) {
    const { config } = useAppContext();
    const activeProject = useAppStore((state) => state.activeProject);

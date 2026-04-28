@@ -1,0 +1,6 @@
+{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".opencode/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/directory-structure.md", "reason": "检查终端模块拆分和桶文件导出"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/quality-guidelines.md", "reason": "检查类型和测试门禁"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/frontend/api-layer.md", "reason": "检查终端 IPC 调用与事件监听清理"}
+{"file": "/Users/vinci/workspace/neeko/.trellis/spec/unit-test/frontend-testing.md", "reason": "前端终端相关回归测试约定"}

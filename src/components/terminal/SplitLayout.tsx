@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { setPendingPtyResize } from "./TerminalView";
+import { setPendingPtyResize } from "./terminalCache";
 import PaneToolbar from "./PaneToolbar";
 import { useSplitLayout } from "../../hooks/useSplitLayout";
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep } from "../../types";
