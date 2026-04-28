@@ -1215,3 +1215,55 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 31: fix: 终端关闭 IPC 挂起
+
+**Date**: 2026-04-28
+**Task**: fix: 终端关闭 IPC 挂起
+**Branch**: `fix/terminal_close_hanging`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+
+`close_terminal_session` 同步调用 `close_session`，当 Agent 子进程不响应 SIGTERM 时，IPC 会阻塞最多 `GRACEFUL_TIMEOUT_SECS`（3 秒），导致前端 tab 关闭卡顿。
+
+## 方案
+
+- 新增 `close_session_in_background`：先从 `sessions` / `pty_handles` 移除会话，再派生后台线程执行 PTY 清理。
+- 提取 `take_session_handle`（取出会话 + handle）和 `close_pty_handle`（统一清理 listener / master / child）。
+- `close_terminal_session` 命令改为调用 `close_session_in_background`，IPC 立即返回。
+- `close_all_sessions` 保持同步，应用退出时仍确保资源清理。
+- `graceful_kill` 增加耗时日志，便于排查超时情况。
+
+## 更新文件
+
+| 文件 | 变更 |
+|------|------|
+| `src-tauri/src/commands/terminal.rs` | 调用改为 `close_session_in_background` |
+| `src-tauri/src/terminal.rs` | 新增后台关闭逻辑 + 提取公共函数 + 耗时日志 |
+| `.trellis/spec/backend/concurrency-guidelines.md` | 补充 "终端关闭不阻塞 IPC" spec 场景 |
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e239181` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
