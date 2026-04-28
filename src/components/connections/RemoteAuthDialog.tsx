@@ -96,7 +96,7 @@ export function RemoteAuthDialog({
               value={password}
               onChange={e => setPassword(e.target.value)}
               onKeyDown={e => e.key === "Enter" && !connecting && handleConnect()}
-              placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+              placeholder="••••••••"
               autoFocus
             />
           </>
@@ -118,7 +118,7 @@ export function RemoteAuthDialog({
           <Checkbox
             checked={saveCredentials}
             onCheckedChange={checked => setSaveCredentials(!!checked)}
-            label="\u8BB0\u4F4F\u5BC6\u7801\uFF08\u672C\u5730\u5B58\u50A8\uFF09"
+            label="Remember credentials (local storage)"
           />
         </div>
 

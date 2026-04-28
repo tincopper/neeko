@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { RemoteTerminalView, SplitLayout } from "./terminal";
 import DiffView from "./DiffView";
 import { useAppContext, useEditorContext, useRemoteContext } from "../contexts";
+import { Button } from "./ui/button";
 
 function RemoteProjectView() {
    const { config } = useAppContext();
@@ -13,6 +14,7 @@ function RemoteProjectView() {
       onRemoteDiffBack,
       activeRemoteWorktreePath,
       setRemoteOpenSessions,
+      setPendingAuthEntry,
    } = useRemoteContext();
 
    if (!activeRemoteProject) {
@@ -36,7 +38,13 @@ function RemoteProjectView() {
             <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
                <div className="empty-icon text-[3.43em] opacity-50">🔑</div>
                <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
-               <p className="text-[var(--font-size)]">Waiting for credentials...</p>
+                <Button
+                   variant="primary"
+                   onClick={() => setPendingAuthEntry(entry)}
+                   style={{ color: 'var(--text-on-accent)' }}
+                >
+                   Enter Credentials
+                </Button>
             </div>
          </div>
       );

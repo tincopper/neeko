@@ -9,7 +9,7 @@ import { applyStateAction, upsertEntryById } from "../utils/entryUpdates";
 
 export type { ActiveRemoteKey };
 
-export function useRemoteProjects(saveSession: SaveSessionFn) {
+export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (message: string, type?: "info" | "error") => void) {
   const remoteEntries = useAppStore((state) => state.remoteEntries);
   const activeRemoteKey = useAppStore((state) => state.activeRemoteKey);
   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
@@ -141,8 +141,9 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
         try {
           const auth: AuthMethod = JSON.parse(atob(entry.saved_auth));
           restored.set(entry.id, auth);
-        } catch {
-          // ignore invalid saved_auth
+        } catch (e) {
+          console.warn(`[Remote] Failed to parse saved_auth for entry ${entry.id}:`, e);
+          showToast(`Failed to restore credentials for ${entry.host}:${entry.port}. Please re-enter.`, "error");
         }
       }
     }
@@ -153,7 +154,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn) {
         return merged;
       });
     }
-  }, []);
+  }, [showToast]);
 
   return {
     remoteEntries, setRemoteEntries,

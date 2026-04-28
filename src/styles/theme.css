@@ -59,6 +59,9 @@
   --accent-yellow: #e5c07b;
   --accent-red:    #e06c75;
 
+  /* Text on accent backgrounds */
+  --text-on-accent: #111111;
+
   /* Status */
   --status-idle:    #98c379;
   --status-running: #e5c07b;
@@ -188,6 +191,9 @@
   --accent-yellow: #e5c07b;
   --accent-red:    #e06c75;
 
+  /* Text on accent backgrounds */
+  --text-on-accent: #111111;
+
   /* Status */
   --status-idle:    #98c379;
   --status-running: #e5c07b;
@@ -278,6 +284,9 @@
   --accent-yellow: #b8860b;
   --accent-red:    #c0392b;
 
+  /* Text on accent backgrounds */
+  --text-on-accent: #f5f0e8;
+
   /* Status */
   --status-idle:    #5a8a5e;
   --status-running: #b8860b;
@@ -367,6 +376,9 @@
   --accent-green:  #4a9e3f;
   --accent-yellow: #c49000;
   --accent-red:    #d32f2f;
+
+  /* Text on accent backgrounds */
+  --text-on-accent: #ffffff;
 
   /* Status */
   --status-idle:    #4a9e3f;
