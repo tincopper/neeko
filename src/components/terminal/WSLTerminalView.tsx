@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../../types";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
-import { setupTerminalInput, type TerminalInputController } from "./terminalInput";
+import { setupTerminalInput } from "./terminalInput";
 import {
    wslCacheKey,
    wslRebuildCallbacks,

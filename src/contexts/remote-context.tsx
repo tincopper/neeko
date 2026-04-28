@@ -39,7 +39,8 @@ export interface RemoteContextValue {
     entryId: string,
     extra: Record<string, unknown>,
   ) => Promise<unknown>;
-  onRemoteDiffBack: () => void;
+   onRemoteDiffBack: () => void;
+   setPendingAuthEntry: React.Dispatch<React.SetStateAction<RemoteEntrySession | null>>;
 }
 
 const RemoteContext = createContext<RemoteContextValue | null>(null);

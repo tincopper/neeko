@@ -49,7 +49,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const session = useSessionPersistence();
   const wsl = useWslProjects(session.saveSession);
-  const remote = useRemoteProjects(session.saveSession);
+  const remote = useRemoteProjects(session.saveSession, showToast);
 
   const {
     activeProjectId,
@@ -100,6 +100,7 @@ export function useAppContainer(): UseAppContainerResult {
     remoteAddToEntryId,
     remoteAuthStore,
     pendingAuthEntry,
+    setPendingAuthEntry,
     handleRemoteEntryAdd,
     handleCloseRemoteProject,
     handleRemoveRemoteProject,
@@ -526,6 +527,7 @@ export function useAppContainer(): UseAppContainerResult {
     onOpenRemoteWorktreeTerminal: handleOpenRemoteWorktreeTerminalWithSync,
     invokeRemoteGit: remoteActions.invokeRemoteGit,
     onRemoteDiffBack: handleRemoteDiffBack,
+    setPendingAuthEntry,
   };
 
   const editorValue = {
