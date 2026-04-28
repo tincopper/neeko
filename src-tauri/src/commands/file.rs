@@ -9,7 +9,6 @@ const EXCLUDED_DIRS: &[&str] = &[
     ".git",
     "node_modules",
     "target",
-    ".trellis",
     "dist",
     "build",
     ".next",
