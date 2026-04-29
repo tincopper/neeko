@@ -53,19 +53,21 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
 
-  // Trigger SSH auth dialog via effect
+  // Trigger SSH auth dialog via effect (only depend on activeRemoteProject to avoid
+  // unnecessary re-triggers when remoteAuthStore Map reference changes)
   useEffect(() => {
     if (!activeRemoteProject) {
       setPendingAuthEntry(null);
       return;
     }
-    const hasAuth = remoteAuthStore.has(activeRemoteProject.entry.id);
+    // Read auth store directly to avoid Map reference dependency
+    const hasAuth = useAppStore.getState().remoteAuthStore.has(activeRemoteProject.entry.id);
     if (!hasAuth) {
       setPendingAuthEntry(activeRemoteProject.entry);
     } else {
       setPendingAuthEntry(null);
     }
-  }, [activeRemoteProject, remoteAuthStore, setPendingAuthEntry]);
+  }, [activeRemoteProject, setPendingAuthEntry]);
 
   const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
     try {
@@ -133,7 +135,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     setRemoteAddToEntryId(null);
   }, [setRemoteAuthStore]);
 
-  /** 从持久化的 saved_auth 恢复 remoteAuthStore */
+  /** 从持久化的 saved_auth 恢复 remoteAuthStore（同步更新 store） */
   const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
     const restored = new Map<string, AuthMethod>();
     for (const entry of entries) {
@@ -148,10 +150,11 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
       }
     }
     if (restored.size > 0) {
-      setRemoteAuthStore(prev => {
-        const merged = new Map(prev);
+      // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就绪
+      useAppStore.setState((state) => {
+        const merged = new Map(state.remoteAuthStore);
         for (const [k, v] of restored) merged.set(k, v);
-        return merged;
+        return { remoteAuthStore: merged };
       });
     }
   }, [showToast]);
