@@ -20,7 +20,7 @@ fn safe_path(path: &str) -> String {
 }
 
 /// 执行 wsl.exe -d distro bash -c "<cmd>" 并返回 stdout
-fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
+pub fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
     let output = no_window_cmd("wsl.exe")
         .arg("-d")
         .arg(distro)
@@ -106,7 +106,10 @@ pub fn open_wsl_ide(distro: &str, project_path: &str, ide: &str) -> Result<()> {
 }
 
 /// 通过 WSL 获取 worktree 的变更文件列表
-pub fn get_wsl_worktree_changed_files(distro: &str, worktree_path: &str) -> Result<Vec<FileChange>> {
+pub fn get_wsl_worktree_changed_files(
+    distro: &str,
+    worktree_path: &str,
+) -> Result<Vec<FileChange>> {
     let sp = safe_path(worktree_path);
     let output = run_wsl_bash(
         distro,

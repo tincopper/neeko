@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { IS_WINDOWS } from "../../utils/platform";
 import {
    useAppContext,
@@ -58,6 +58,17 @@ const ProjectsPanel: React.FC = () => {
    } = useRemoteContext();
 
    const [dialog, setDialog] = useState<DialogState | null>(null);
+   const [remoteHomeDir, setRemoteHomeDir] = useState<string>("");
+
+   useEffect(() => {
+      if (!dialog || dialog.type !== "new-worktree" || dialog.source?.type !== "remote" || !dialog.source.entryId || !invokeRemoteGit) {
+         setRemoteHomeDir("");
+         return;
+      }
+      invokeRemoteGit("get_remote_home_dir", dialog.source.entryId, {})
+         .then((dir) => setRemoteHomeDir(dir as string))
+         .catch(() => setRemoteHomeDir(""));
+   }, [dialog, invokeRemoteGit]);
 
    const handleOpenDialog = useCallback(
       (d: { type: string; source: { type: string; distro?: string; entryId?: string; projectPath: string }; branches: string[] }) => {
@@ -198,6 +209,7 @@ const ProjectsPanel: React.FC = () => {
                dialog={dialog}
                onClose={() => setDialog(null)}
                onRefreshGit={onRefreshGit}
+               remoteHomeDir={remoteHomeDir}
                onRefreshAfterWslSsh={
                   dialog.source
                      ? (() => {

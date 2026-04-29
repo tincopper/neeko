@@ -66,10 +66,7 @@ fn base64_encode(input: &str) -> String {
 }
 
 /// 通过 SSH 执行命令并等待完成
-async fn ssh_exec(
-    channel: &mut russh::Channel<russh::client::Msg>,
-    cmd: &str,
-) -> Result<()> {
+async fn ssh_exec(channel: &mut russh::Channel<russh::client::Msg>, cmd: &str) -> Result<()> {
     use russh::ChannelMsg;
 
     channel.exec(true, cmd.as_bytes()).await?;
@@ -78,7 +75,10 @@ async fn ssh_exec(
         match channel.wait().await {
             Some(ChannelMsg::ExitStatus { exit_status }) => {
                 if exit_status != 0 {
-                    return Err(anyhow::anyhow!("SSH command failed with exit code {}", exit_status));
+                    return Err(anyhow::anyhow!(
+                        "SSH command failed with exit code {}",
+                        exit_status
+                    ));
                 }
             }
             Some(ChannelMsg::Eof) | None => break,
@@ -122,7 +122,10 @@ pub fn install_theme_files() -> Result<()> {
         fs::write(&path, content)?;
     }
 
-    log::info!("[OpenCodeTheme] Installed theme files to {}", themes_dir.display());
+    log::info!(
+        "[OpenCodeTheme] Installed theme files to {}",
+        themes_dir.display()
+    );
     Ok(())
 }
 
@@ -147,8 +150,8 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
         // 读取并合并
         match fs::read_to_string(&tui_path) {
             Ok(content) => {
-                let mut config: serde_json::Value = serde_json::from_str(&content)
-                    .unwrap_or_else(|_| json!({}));
+                let mut config: serde_json::Value =
+                    serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
                 if let Some(obj) = config.as_object_mut() {
                     obj.insert("theme".to_string(), json!(theme_name));
                 }
@@ -156,7 +159,10 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
             }
             Err(e) => {
                 log::warn!("[OpenCodeTheme] Failed to read tui.json: {}", e);
-                fs::write(&tui_path, serde_json::to_string_pretty(&json!({ "theme": theme_name }))?)?;
+                fs::write(
+                    &tui_path,
+                    serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
+                )?;
             }
         }
     } else {
@@ -225,16 +231,23 @@ pub async fn write_remote_tui_config(
     let backup_path = format!("{}/tui.json.neeko.bak", opencode_dir);
 
     // mkdir -p .opencode
-    ssh_exec(channel, &format!("mkdir -p {}", shell_escape(&opencode_dir))).await?;
+    ssh_exec(
+        channel,
+        &format!("mkdir -p {}", shell_escape(&opencode_dir)),
+    )
+    .await?;
 
     // 备份（如果 tui.json 存在且备份不存在）
-    ssh_exec(channel, &format!(
-        "test -f {} && test ! -f {} && cp {} {}",
-        shell_escape(&tui_path),
-        shell_escape(&backup_path),
-        shell_escape(&tui_path),
-        shell_escape(&backup_path)
-    ))
+    ssh_exec(
+        channel,
+        &format!(
+            "test -f {} && test ! -f {} && cp {} {}",
+            shell_escape(&tui_path),
+            shell_escape(&backup_path),
+            shell_escape(&tui_path),
+            shell_escape(&backup_path)
+        ),
+    )
     .await
     .ok(); // 忽略错误（文件不存在等）
 
@@ -327,7 +340,10 @@ fn build_theme_json(c: &ThemeColors) -> serde_json::Value {
     theme.insert("diffContextBg".into(), json_str("none"));
     theme.insert("diffLineNumber".into(), json_str(c.text_muted));
     theme.insert("diffAddedLineNumberBg".into(), json_str(c.diff_added_bg));
-    theme.insert("diffRemovedLineNumberBg".into(), json_str(c.diff_removed_bg));
+    theme.insert(
+        "diffRemovedLineNumberBg".into(),
+        json_str(c.diff_removed_bg),
+    );
 
     // Markdown
     theme.insert("markdownText".into(), json_str(c.text));

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { homeDir } from "@tauri-apps/api/path";
 import { cn } from "../../utils/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -26,6 +27,7 @@ interface GitDialogProps {
   onClose: () => void;
   onRefreshGit: (projectId: string) => void;
   onRefreshAfterWslSsh?: () => void;
+  remoteHomeDir?: string;
 }
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
@@ -41,6 +43,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
   onClose,
   onRefreshGit,
   onRefreshAfterWslSsh,
+  remoteHomeDir,
 }) => {
   const [branchName, setBranchName] = useState("");
   const [worktreePath, setWorktreePath] = useState("");
@@ -50,6 +53,19 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const [quickName, setQuickName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [homeDirPath, setHomeDirPath] = useState("");
+
+  useEffect(() => {
+    if (dialog.type !== "new-worktree") return;
+    const src = dialog.source;
+    if (src?.type === "wsl" && src.distro) {
+      invoke<string>("get_wsl_home_dir", { distro: src.distro }).then(setHomeDirPath).catch(() => {});
+    } else if (src?.type === "remote") {
+      if (remoteHomeDir) setHomeDirPath(remoteHomeDir);
+    } else {
+      homeDir().then(setHomeDirPath).catch(() => {});
+    }
+  }, [dialog, remoteHomeDir]);
 
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
@@ -79,7 +95,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const handleCreateQuickWorktree = async () => {
     if (!quickName.trim()) return;
     const name = quickName.trim();
-    const computedPath = `.neeko/worktrees/${name}`;
+    const computedPath = `${homeDirPath}/.neeko/worktrees/${name}`;
     setSubmitting(true);
     setError(null);
     try {
@@ -223,9 +239,9 @@ const GitDialog: React.FC<GitDialogProps> = ({
                   autoFocus
                 />
                 <div className="mt-1.5 text-[11px] text-text-muted font-mono break-all leading-[1.4]">
-                  {dialog.projectPath && quickName.trim()
-                    ? `${dialog.projectPath}/.neeko/worktrees/${quickName.trim()}`
-                    : "Path: <project>/.neeko/worktrees/<name>"}
+                  {homeDirPath && quickName.trim()
+                    ? `${homeDirPath}/.neeko/worktrees/${quickName.trim()}`
+                    : "Path: <home>/.neeko/worktrees/<name>"}
                 </div>
                 {error && <ErrorMessage>{error}</ErrorMessage>}
                 <DialogFooter>
