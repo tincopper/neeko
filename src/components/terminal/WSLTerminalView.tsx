@@ -268,7 +268,7 @@ export default React.memo(function WSLTerminalView({
                Connecting...
             </div>
          )}
-         <div className="flex-1 p-0 overflow-hidden min-w-0 min-h-0" style={{ backgroundColor: "var(--terminal-bg)" }} ref={wrapperRef} />
+         <div className="terminal-wrapper flex-1 p-0 overflow-hidden min-w-0 min-h-0" style={{ backgroundColor: "var(--terminal-bg)" }} ref={wrapperRef} />
       </div>
    );
 });
