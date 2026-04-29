@@ -419,10 +419,7 @@ fn log_error(msg: &str) {
 
 /// 安装远程 OpenCode 主题文件和项目 TUI 配置
 /// 使用单独的 channel 执行，静默失败
-async fn setup_remote_opencode_theme(
-    session: &russh::client::Handle<Client>,
-    project_path: &str,
-) {
+async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, project_path: &str) {
     let theme = match read_neeko_theme() {
         Some(t) => t,
         None => return,
@@ -432,18 +429,27 @@ async fn setup_remote_opencode_theme(
     let mut setup_channel = match session.channel_open_session().await {
         Ok(ch) => ch,
         Err(e) => {
-            log_warn(&format!("[SSH] Failed to open channel for theme setup: {}", e));
+            log_warn(&format!(
+                "[SSH] Failed to open channel for theme setup: {}",
+                e
+            ));
             return;
         }
     };
 
     // 安装主题文件
     if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut setup_channel).await {
-        log_warn(&format!("[SSH] Failed to install remote theme files: {}", e));
+        log_warn(&format!(
+            "[SSH] Failed to install remote theme files: {}",
+            e
+        ));
     }
 
     // 写入项目 TUI 配置
-    if let Err(e) = crate::opencode_theme::write_remote_tui_config(&mut setup_channel, project_path, &theme).await {
+    if let Err(e) =
+        crate::opencode_theme::write_remote_tui_config(&mut setup_channel, project_path, &theme)
+            .await
+    {
         log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
     }
 

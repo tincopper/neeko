@@ -107,6 +107,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::remote_get_worktree_changed_files,
             $crate::commands::remote_is_worktree_dirty,
             $crate::commands::remote_get_worktree_file_diff,
+            $crate::commands::get_remote_home_dir,
             $crate::commands::open_remote_ide,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,

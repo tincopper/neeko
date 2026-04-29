@@ -25,7 +25,7 @@ fn safe_path(path: &str) -> String {
 }
 
 /// SSH 一次性认证连接 + 执行命令 + 返回 stdout
-async fn ssh_exec_command(
+pub async fn ssh_exec_command(
     host: &str,
     port: u16,
     username: &str,
@@ -383,7 +383,10 @@ pub async fn get_remote_worktree_file_diff(
 ) -> Result<DiffResult> {
     let sp = safe_path(worktree_path);
     let fp = safe_path(file_path);
-    let cmd = format!("cd '{}' && git diff --unified=3 -- '{}' 2>/dev/null", sp, fp);
+    let cmd = format!(
+        "cd '{}' && git diff --unified=3 -- '{}' 2>/dev/null",
+        sp, fp
+    );
     let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_unified_diff(&output))
 }

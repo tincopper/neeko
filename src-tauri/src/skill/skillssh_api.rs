@@ -123,7 +123,9 @@ fn parse_rsc_initial_skills(html: &str) -> Result<Vec<SkillsShSkill>> {
     // The RSC payload uses escaped quotes: \" inside JavaScript string literals.
     // Pattern: initialSkills":[  or  initialSkills\":[  (escaped quote)
     let re = Regex::new(r#"initialSkills\\?":\[(.*?)\]"#)?;
-    let caps = re.captures(html).context("No initialSkills found in RSC payload")?;
+    let caps = re
+        .captures(html)
+        .context("No initialSkills found in RSC payload")?;
     let raw_array = caps.get(1).context("No skills array content")?.as_str();
 
     // Parse individual skill objects from the JSON array.
@@ -131,7 +133,7 @@ fn parse_rsc_initial_skills(html: &str) -> Result<Vec<SkillsShSkill>> {
     // serde_json handles \" -> " natively.
     // Hot page entries have extra fields: "installsYesterday":N,"change":N
     let skill_re = Regex::new(
-        r#"\{\\?"source\\?":\\?"[^"]+\\?",\\?"skillId\\?":\\?"[^"]+\\?",\\?"name\\?":\\?"[^"]+\\?",\\?"installs\\?":\d+(?:,\\?"installsYesterday\\?":\d+,\\?"change\\?":\d+)?\}"#
+        r#"\{\\?"source\\?":\\?"[^"]+\\?",\\?"skillId\\?":\\?"[^"]+\\?",\\?"name\\?":\\?"[^"]+\\?",\\?"installs\\?":\d+(?:,\\?"installsYesterday\\?":\d+,\\?"change\\?":\d+)?\}"#,
     )?;
 
     let mut skills = Vec::new();

@@ -14,13 +14,12 @@ pub fn create_worktree(
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
-        crate::git::create_worktree(
-            &project.path,
-            &PathBuf::from(&worktree_path),
-            &branch_name,
-            new_branch,
-        )
-        .map_err(AppError::from)
+        let wt = PathBuf::from(&worktree_path);
+        if let Some(parent) = wt.parent() {
+            std::fs::create_dir_all(parent).map_err(AppError::from)?;
+        }
+        crate::git::create_worktree(&project.path, &wt, &branch_name, new_branch)
+            .map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",

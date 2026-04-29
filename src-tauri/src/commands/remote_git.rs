@@ -96,6 +96,21 @@ pub async fn remote_create_worktree(
     branch_name: String,
     new_branch: bool,
 ) -> Result<(), AppError> {
+    let parent = std::path::Path::new(&worktree_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(&worktree_path));
+    if let Some(parent_str) = parent.to_str() {
+        let safe_parent = parent_str.replace('\'', "'\\''");
+        crate::git::remote::ssh_exec_command(
+            &host,
+            port,
+            &username,
+            &auth,
+            &format!("mkdir -p '{}'", safe_parent),
+        )
+        .await
+        .map_err(AppError::from)?;
+    }
     let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
     let cmd = if new_branch {
         format!(
@@ -161,7 +176,11 @@ pub async fn remote_get_worktree_changed_files(
     worktree_path: String,
 ) -> Result<Vec<FileChange>, AppError> {
     crate::git::remote::get_remote_worktree_changed_files(
-        &host, port, &username, &auth, &worktree_path,
+        &host,
+        port,
+        &username,
+        &auth,
+        &worktree_path,
     )
     .await
     .map_err(AppError::from)
@@ -175,11 +194,9 @@ pub async fn remote_is_worktree_dirty(
     auth: AuthMethod,
     worktree_path: String,
 ) -> Result<bool, AppError> {
-    crate::git::remote::remote_is_worktree_dirty(
-        &host, port, &username, &auth, &worktree_path,
-    )
-    .await
-    .map_err(AppError::from)
+    crate::git::remote::remote_is_worktree_dirty(&host, port, &username, &auth, &worktree_path)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -192,8 +209,26 @@ pub async fn remote_get_worktree_file_diff(
     file_path: String,
 ) -> Result<DiffResult, AppError> {
     crate::git::remote::get_remote_worktree_file_diff(
-        &host, port, &username, &auth, &worktree_path, &file_path,
+        &host,
+        port,
+        &username,
+        &auth,
+        &worktree_path,
+        &file_path,
     )
     .await
     .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn get_remote_home_dir(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+) -> Result<String, AppError> {
+    crate::git::remote::ssh_exec_command(&host, port, &username, &auth, "echo $HOME")
+        .await
+        .map(|s| s.trim().to_string())
+        .map_err(AppError::from)
 }

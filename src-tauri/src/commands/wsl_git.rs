@@ -113,6 +113,13 @@ pub fn wsl_create_worktree(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
+        let parent = std::path::Path::new(&worktree_path)
+            .parent()
+            .unwrap_or(std::path::Path::new(&worktree_path));
+        if let Some(parent_str) = parent.to_str() {
+            let safe_parent = parent_str.replace('\'', "'\\''");
+            crate::git::run_wsl_bash(&distro, &format!("mkdir -p '{}'", safe_parent))?;
+        }
         let args: Vec<&str> = if new_branch {
             vec!["worktree", "add", "-b", &branch_name, &worktree_path]
         } else {
@@ -189,8 +196,7 @@ pub fn wsl_get_worktree_changed_files(
 ) -> Result<Vec<FileChange>, AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::get_wsl_worktree_changed_files(&distro, &worktree_path)
-            .map_err(AppError::from)
+        crate::git::get_wsl_worktree_changed_files(&distro, &worktree_path).map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -202,10 +208,7 @@ pub fn wsl_get_worktree_changed_files(
 }
 
 #[tauri::command]
-pub fn wsl_is_worktree_dirty(
-    distro: String,
-    worktree_path: String,
-) -> Result<bool, AppError> {
+pub fn wsl_is_worktree_dirty(distro: String, worktree_path: String) -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
         crate::git::wsl_is_worktree_dirty(&distro, &worktree_path).map_err(AppError::from)
