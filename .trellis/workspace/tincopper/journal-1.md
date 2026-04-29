@@ -742,3 +742,37 @@ Fixed branch switching for WSL/SSH projects and added worktree support
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: fix: SSH auth restore on restart + file tree .trellis visibility
+
+**Date**: 2026-04-29
+**Task**: fix: SSH auth restore on restart + file tree .trellis visibility
+**Branch**: `main`
+
+### Summary
+
+Fixed two issues: (1) .trellis directory not visible in file tree panel by removing it from EXCLUDED_DIRS in Rust backend, (2) SSH authentication not restoring from saved credentials on app restart by making restoreAuthFromEntries use synchronous useAppStore.setState and optimizing effect dependencies to avoid Map reference re-triggers. Also fixed unused TerminalInputController import causing build failure.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0530425` | (see git log) |
+| `9fc3075` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

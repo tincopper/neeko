@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-04-23
+- **Total Sessions**: 21
+- **Last Active**: 2026-04-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~744 | Active |
+| `journal-1.md` | ~778 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-04-29 | fix: SSH auth restore on restart + file tree .trellis visibility | `0530425`, `9fc3075` | `main` |
 | 20 | 2026-04-23 | WSL/SSH worktree support and branch switching fix | `011303f`, `256d899` | `main` |
 | 19 | 2026-04-22 | Implement Marketplace UI | `42c9e93` | `feature/git-commit-panel` |
 | 18 | 2026-04-22 | Implement Marketplace Backend for Skills.sh | `a3f360b` | `feature/git-commit-panel` |
