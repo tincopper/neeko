@@ -42,6 +42,7 @@ const makeRemoteEntry = (overrides: {
 
 describe('useRemoteProjects', () => {
   const mockSaveSession = vi.fn();
+  const mockShowToast = vi.fn();
 
   const resetStore = () => {
     useAppStore.setState({
@@ -73,12 +74,13 @@ describe('useRemoteProjects', () => {
 
   beforeEach(() => {
     mockSaveSession.mockReset();
+    mockShowToast.mockReset();
     mockSaveSession.mockResolvedValue(undefined);
     resetStore();
   });
 
   it('初始状态为空', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     expect(result.current.remoteEntries).toEqual([]);
     expect(result.current.activeRemoteKey).toBeNull();
@@ -88,7 +90,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoteEntryAdd 添加新 entry', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entry = makeRemoteEntry({
       id: 'remote-1',
@@ -106,7 +108,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoteEntryAdd 更新已有 entry', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entry = makeRemoteEntry({
       id: 'remote-1',
@@ -135,7 +137,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoteEntryAdd 保存 auth 到 store', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entry = makeRemoteEntry({ id: 'remote-1' });
 
@@ -149,7 +151,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoteEntryAdd 有 saved_auth 时写入 entry', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entry = makeRemoteEntry({ id: 'remote-1' });
 
@@ -161,7 +163,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleCloseRemoteProject 关闭活跃项目', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
       result.current.setRemoteEntries([
@@ -191,7 +193,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoveRemoteProject 从 entry 中移除项目', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
       result.current.setRemoteEntries([
@@ -215,7 +217,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoveRemoteEntry 移除整个 entry 并清理 auth', async () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entry = makeRemoteEntry({
       id: 'e1',
@@ -236,7 +238,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleAddRemoteProject 打开对话框', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
       result.current.handleAddRemoteProject('e1');
@@ -247,7 +249,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('handleRemoteDialogClose 关闭对话框', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
       result.current.handleAddRemoteProject('e1');
@@ -262,7 +264,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('restoreAuthFromEntries 从 saved_auth 恢复 auth', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const authData = { Password: 'test123' };
     const encoded = btoa(JSON.stringify(authData));
@@ -279,7 +281,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('restoreAuthFromEntries 忽略无效的 saved_auth', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     const entries = [
       makeRemoteEntry({ id: 'e1', host: 'host1', saved_auth: 'invalid-base64!!!' }),
@@ -293,7 +295,7 @@ describe('useRemoteProjects', () => {
   });
 
   it('pendingAuthEntry 在无 auth 时触发', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession));
+    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
       result.current.setRemoteEntries([

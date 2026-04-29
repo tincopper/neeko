@@ -1,0 +1,4 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "修改 useSessionBootstrap 和 useRemoteProjects hook"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "涉及 Zustand store remoteAuthStore 状态管理"}
