@@ -68,7 +68,7 @@ impl TerminalManager {
         }
 
         // 写入 OpenCode 项目级 TUI 配置（主题同步）
-        write_opencode_tui_config(project_path);
+        write_opencode_tui_config(cwd);
 
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));

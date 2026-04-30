@@ -267,45 +267,55 @@ export function useAppContainer(): UseAppContainerResult {
   const currentProjectId =
     activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
 
+  // worktree 使用独立的 tabKey，避免与 local tab 共享状态
+  const tabKey = activeWorktreePath && currentProjectId
+    ? `${currentProjectId}:wt:${activeWorktreePath}`
+    : currentProjectId;
+
   useEffect(() => {
-    if (currentProjectId) {
-      const existing = getTabs(currentProjectId);
-      if (existing.length > 0) {
-        ensureDefaultTab(currentProjectId);
+    if (tabKey) {
+      const existing = getTabs(tabKey);
+      if (existing.length === 0) {
+        // 新 worktree 或新项目：创建默认 tab 并带上 selected_agent
+        const agentId = activeProject?.selected_agent ?? null;
+        const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
+        ensureDefaultTab(tabKey, agentId, agentName);
+      } else {
+        ensureDefaultTab(tabKey);
       }
     }
-  }, [currentProjectId, getTabs, ensureDefaultTab]);
+  }, [tabKey, getTabs, ensureDefaultTab, activeProject?.selected_agent, agents]);
 
-  const tabs = currentProjectId ? getTabs(currentProjectId) : [];
-  const activeTabId = currentProjectId ? getActiveTabId(currentProjectId) : null;
+  const tabs = tabKey ? getTabs(tabKey) : [];
+  const activeTabId = tabKey ? getActiveTabId(tabKey) : null;
 
   const handleAddTab = useCallback(() => {
-    if (!currentProjectId) return;
-    addTab(currentProjectId);
-  }, [currentProjectId, addTab]);
+    if (!tabKey) return;
+    addTab(tabKey);
+  }, [tabKey, addTab]);
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
-      if (!currentProjectId) return;
-      closeTab(currentProjectId, tabId);
+      if (!tabKey) return;
+      closeTab(tabKey, tabId);
     },
-    [currentProjectId, closeTab],
+    [tabKey, closeTab],
   );
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
-      if (!currentProjectId) return;
-      activateTab(currentProjectId, tabId);
+      if (!tabKey) return;
+      activateTab(tabKey, tabId);
     },
-    [currentProjectId, activateTab],
+    [tabKey, activateTab],
   );
 
   const handleTabStatusChange = useCallback(
     (tabId: string, status: "Idle" | "Running" | "Failed") => {
-      if (!currentProjectId) return;
-      updateTabStatus(currentProjectId, tabId, status);
+      if (!tabKey) return;
+      updateTabStatus(tabKey, tabId, status);
     },
-    [currentProjectId, updateTabStatus],
+    [tabKey, updateTabStatus],
   );
 
   const handleFileSelect = useCallback(
@@ -419,8 +429,8 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {
-      if (!currentProjectId) return;
-      const newTab = handleTabAgentClick(currentProjectId, agent);
+      if (!tabKey) return;
+      const newTab = handleTabAgentClick(tabKey, agent);
 
       if (activeProject) {
         invoke("set_project_agent", {
@@ -440,7 +450,7 @@ export function useAppContainer(): UseAppContainerResult {
       }
     },
     [
-      currentProjectId,
+      tabKey,
       handleTabAgentClick,
       activeProject,
       activeWslProject,

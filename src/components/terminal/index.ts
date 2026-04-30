@@ -13,7 +13,6 @@ export {
 } from "./terminalCache";
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
-export { default as WorktreeTerminalView } from "./WorktreeTerminalView";
 export { worktreeKey } from "./worktreeTerminalKey";
 export { default as WSLTerminalView } from "./WSLTerminalView";
 export { wslCacheKey, destroyWslCache, destroyWslCachesByPrefix, getWslSessionId, getWslOpenProjectIds, launchAgentInWslTerminal, getAllWslOpenProjectIds, refreshWslTerminal } from "./wslTerminalCache";
