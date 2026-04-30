@@ -4,6 +4,8 @@ import type { TerminalInputController } from "./terminalInput";
 
 export interface TerminalViewProps {
   paneId: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
 }
 
 export interface TerminalCache {

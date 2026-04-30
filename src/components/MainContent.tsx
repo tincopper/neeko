@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { SplitLayout, TerminalView, WorktreeTerminalView, WSLTerminalView } from "./terminal";
+import { SplitLayout, TerminalView, WSLTerminalView } from "./terminal";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
@@ -47,6 +47,7 @@ function MainContent() {
    } = useEditorContext();
    const activeProject = useAppStore((state) => state.activeProject);
    const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
    const worktreeDiffState = useAppStore((state) => state.worktreeDiffState);
    const fileTabs = useAppStore((state) => state.fileTabs);
 
@@ -277,16 +278,16 @@ function MainContent() {
                   />
                ) : isTerminalView || activeWorktreePath ? (
                   <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-                     {!activeWorktreePath && (
-                        <SplitLayout
-                           layoutId={localLayoutId}
-                           renderPane={(paneId) => <TerminalView paneId={paneId} />}
-                        />
-                     )}
-
-                     {activeWorktreePath && (
-                        <WorktreeTerminalView />
-                     )}
+                     <SplitLayout
+                        layoutId={localLayoutId}
+                        renderPane={(paneId) => (
+                           <TerminalView
+                              paneId={paneId}
+                              worktreePath={activeWorktreePath ?? undefined}
+                              worktreeBranch={activeWorktreeBranch ?? undefined}
+                           />
+                        )}
+                     />
                   </div>
                ) : diffFilePath ? (
                   <DiffView
