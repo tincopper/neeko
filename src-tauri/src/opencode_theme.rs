@@ -179,6 +179,38 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
     Ok(())
 }
 
+/// 将 Windows 路径转换为 WSL 路径格式
+/// D:\project\foo → /mnt/d/project/foo
+fn windows_to_wsl_path(windows_path: &str) -> String {
+    let path = windows_path
+        .trim_start_matches('\\')
+        .trim_start_matches('/');
+    let path = path.replace('\\', "/");
+    if path.len() >= 2 {
+        let drive = path.chars().next().unwrap().to_lowercase();
+        let rest = &path[2..];
+        format!("/mnt/{}{}", drive, rest)
+    } else {
+        path.to_string()
+    }
+}
+
+/// WSL 项目创建前调用（内部读取主题配置）
+/// 将 Windows 路径转换为 WSL 内部路径后写入 .opencode/tui.json
+pub fn write_wsl_tui_config(windows_project_path: &str) -> Result<()> {
+    let wsl_path = windows_to_wsl_path(windows_project_path);
+    let neeko_theme = get_current_theme(&read_neeko_config());
+    write_project_tui_config(&wsl_path, &neeko_theme)
+}
+
+/// 从 ~/.neeko/config.json 读取当前主题配置
+fn read_neeko_config() -> serde_json::Value {
+    let home = dirs::home_dir().unwrap_or_default();
+    let config_path = home.join(".neeko").join("config.json");
+    let content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".to_string());
+    serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+}
+
 /// 从 ~/.neeko/config.json 读取当前主题
 /// 如果读取失败或值无效，返回 "dark"
 pub fn get_current_theme(config_json: &serde_json::Value) -> String {
