@@ -25,9 +25,9 @@ Neeko consolidates all project Agent terminals into a single desktop application
 
 ## Preview
 
-| Main Interface                         | Side Terminal Panel                                 |
-| -------------------------------------- | --------------------------------------------------- |
-| ![Main Interface](docs/.img/index.png) | ![Side Terminal Panel](docs/.img/side-terminal.png) |
+| Main Interface                    | File Management Panel | Skills Management Panel                              |
+| ---------------------------------- | --------------------- | ---------------------------------------------------- |
+| ![Main Interface](docs/.img/index.png) | ![File Management](docs/.img/files.png) | ![Skills Management](docs/.img/skill-manager.png) |
 
 ## Features
 
@@ -40,6 +40,7 @@ Neeko consolidates all project Agent terminals into a single desktop application
 - **One-Click IDE Launch** — Bind an IDE to each project, `Ctrl+O` or click the icon to open in VSCode / Cursor / GoLand, etc.; IDE icons displayed from built-in SVG/PNG assets
 - **Git Sidebar** — View changed files as a hierarchical tree, switch branches, manage Worktrees without leaving the app; file list auto-refreshes when files change on disk
 - **Diff Viewer** — Click changed files to view diffs in unified or side-by-side mode, with syntax highlighting, word-level diff, and change block navigation
+- **Theme Sync** — Application theme (dark, light, one-dark-pro, claude) automatically syncs to OpenCode TUI config for local, WSL, and SSH remote projects
 - **Inline Rename** — Double-click any branch name or worktree to rename it in place; press Enter to confirm or Escape to cancel
 - **Session Persistence** — Automatically restores project list, Agent, and IDE configs after restart; worktree terminal state is preserved per-project when switching between projects
 - **Terminal Refresh** — `Ctrl+R` rebuilds the current terminal's DOM from the cached PTY session without losing state

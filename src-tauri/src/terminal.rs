@@ -1,4 +1,5 @@
 use crate::models::{TerminalSession, TerminalStatus};
+use crate::opencode_theme::write_wsl_tui_config;
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -112,6 +113,11 @@ impl TerminalManager {
         log_info(&format!("[WSL] Session ID: {}", id));
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
+
+        // 写入 OpenCode 项目级 TUI 配置（主题同步）
+        if let Err(e) = write_wsl_tui_config(project_path) {
+            log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+        }
 
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[WSL] PTY opened ({}x{})", cols, rows));
