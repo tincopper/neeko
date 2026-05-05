@@ -3,7 +3,7 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
-use crate::command::ssh::exec;
+use crate::utils::command::ssh::exec;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具（必须在使用前定义）

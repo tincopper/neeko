@@ -1,4 +1,4 @@
-use crate::command::local;
+use crate::utils::command::local;
 use anyhow::Result;
 
 pub fn safe_path(path: &str) -> String {
