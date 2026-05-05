@@ -776,3 +776,38 @@ Fixed two issues: (1) .trellis directory not visible in file tree panel by remov
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Refactor command execution functions and sync OpenCode theme for WSL
+
+**Date**: 2026-05-05
+**Task**: Refactor command execution functions and sync OpenCode theme for WSL
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `36a5306` | (see git log) |
+| `3e043af` | (see git log) |
+| `a72bb8a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
