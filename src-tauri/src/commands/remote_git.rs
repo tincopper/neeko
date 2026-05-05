@@ -101,7 +101,7 @@ pub async fn remote_create_worktree(
         .unwrap_or(std::path::Path::new(&worktree_path));
     if let Some(parent_str) = parent.to_str() {
         let safe_parent = parent_str.replace('\'', "'\\''");
-        crate::git::remote::ssh_exec_command(
+        crate::command::ssh::exec_command(
             &host,
             port,
             &username,
@@ -227,7 +227,7 @@ pub async fn get_remote_home_dir(
     username: String,
     auth: AuthMethod,
 ) -> Result<String, AppError> {
-    crate::git::remote::ssh_exec_command(&host, port, &username, &auth, "echo $HOME")
+    crate::command::ssh::exec_command(&host, port, &username, &auth, "echo $HOME")
         .await
         .map(|s| s.trim().to_string())
         .map_err(AppError::from)

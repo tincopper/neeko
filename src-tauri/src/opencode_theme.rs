@@ -3,6 +3,8 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
+use crate::command::ssh::exec;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具（必须在使用前定义）
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -65,29 +67,6 @@ fn base64_encode(input: &str) -> String {
     result
 }
 
-/// 通过 SSH 执行命令并等待完成
-async fn ssh_exec(channel: &mut russh::Channel<russh::client::Msg>, cmd: &str) -> Result<()> {
-    use russh::ChannelMsg;
-
-    channel.exec(true, cmd.as_bytes()).await?;
-
-    loop {
-        match channel.wait().await {
-            Some(ChannelMsg::ExitStatus { exit_status }) => {
-                if exit_status != 0 {
-                    return Err(anyhow::anyhow!(
-                        "SSH command failed with exit code {}",
-                        exit_status
-                    ));
-                }
-            }
-            Some(ChannelMsg::Eof) | None => break,
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
 /// 通过 SSH 写入远程文件（使用 base64 编码避免特殊字符问题）
 async fn write_remote_file(
     channel: &mut russh::Channel<russh::client::Msg>,
@@ -96,7 +75,7 @@ async fn write_remote_file(
 ) -> Result<()> {
     let encoded = base64_encode(content);
     let cmd = format!("echo '{}' | base64 -d > {}", encoded, shell_escape(path));
-    ssh_exec(channel, &cmd).await
+    exec(channel, &cmd).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -238,7 +217,7 @@ pub async fn install_remote_theme_files(
     ];
 
     // mkdir -p ~/.config/opencode/themes
-    ssh_exec(channel, "mkdir -p ~/.config/opencode/themes").await?;
+    exec(channel, "mkdir -p ~/.config/opencode/themes").await?;
 
     for (name, theme_json) in &themes {
         let json_str = serde_json::to_string_pretty(theme_json)?;
@@ -263,14 +242,14 @@ pub async fn write_remote_tui_config(
     let backup_path = format!("{}/tui.json.neeko.bak", opencode_dir);
 
     // mkdir -p .opencode
-    ssh_exec(
+    exec(
         channel,
         &format!("mkdir -p {}", shell_escape(&opencode_dir)),
     )
     .await?;
 
     // 备份（如果 tui.json 存在且备份不存在）
-    ssh_exec(
+    exec(
         channel,
         &format!(
             "test -f {} && test ! -f {} && cp {} {}",

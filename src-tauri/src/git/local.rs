@@ -1,19 +1,8 @@
+use crate::command::local::exec;
 use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-fn no_window_cmd(program: &str) -> Command {
-    #[allow(unused_mut)]
-    let mut cmd = Command::new(program);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    cmd
-}
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -194,7 +183,7 @@ fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
                 let path = wt.path().to_path_buf();
                 // Use git command to get branch and head info (avoids N+1 repo opens)
                 let wt_path_str = path.to_str().unwrap_or(".");
-                if let Ok(output) = no_window_cmd("git")
+                if let Ok(output) = exec("git")
                     .args(["-C", wt_path_str, "rev-parse", "--abbrev-ref", "HEAD"])
                     .output()
                 {
@@ -205,7 +194,7 @@ fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
                         branch
                     };
 
-                    if let Ok(output) = no_window_cmd("git")
+                    if let Ok(output) = exec("git")
                         .args(["-C", wt_path_str, "rev-parse", "HEAD"])
                         .output()
                     {
@@ -370,7 +359,7 @@ pub fn create_worktree(
         args.push(branch_name);
     }
 
-    let output = no_window_cmd("git")
+    let output = exec("git")
         .args(&args)
         .current_dir(repo_path)
         .output()
@@ -387,7 +376,7 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     let wt_path_str = worktree_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
-    let output = no_window_cmd("git")
+    let output = exec("git")
         .args(["worktree", "remove", "--force", wt_path_str])
         .current_dir(repo_path)
         .output()
@@ -418,7 +407,7 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
 
     // 检查已跟踪文件的修改
-    let diff_output = no_window_cmd("git")
+    let diff_output = exec("git")
         .args(["diff", "--quiet", "--"])
         .current_dir(wt_path_str)
         .output()
@@ -429,7 +418,7 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
     }
 
     // 检查暂存区
-    let cached_output = no_window_cmd("git")
+    let cached_output = exec("git")
         .args(["diff", "--cached", "--quiet", "--"])
         .current_dir(wt_path_str)
         .output()
@@ -440,7 +429,7 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
     }
 
     // 检查未跟踪文件
-    let untracked_output = no_window_cmd("git")
+    let untracked_output = exec("git")
         .args(["ls-files", "--others", "--exclude-standard"])
         .current_dir(wt_path_str)
         .output()
@@ -456,7 +445,7 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
 /// 删除本地分支
 pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result<()> {
     let flag = if force { "-D" } else { "-d" };
-    let output = no_window_cmd("git")
+    let output = exec("git")
         .args(["branch", flag, branch_name])
         .current_dir(repo_path)
         .output()
@@ -503,7 +492,7 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid new worktree path"))?;
 
-    let output = no_window_cmd("git")
+    let output = exec("git")
         .args(["worktree", "move", wt_old_str, wt_new_str])
         .current_dir(repo_path)
         .output()
