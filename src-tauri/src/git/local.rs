@@ -1,4 +1,4 @@
-use crate::command::local::exec;
+use crate::utils::command::local::exec;
 use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
