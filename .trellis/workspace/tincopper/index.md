@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
-- **Last Active**: 2026-04-29
+- **Total Sessions**: 22
+- **Last Active**: 2026-05-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~778 | Active |
+| `journal-1.md` | ~813 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-05-05 | Refactor command execution functions and sync OpenCode theme for WSL | `36a5306`, `3e043af`, `a72bb8a` | `main` |
 | 21 | 2026-04-29 | fix: SSH auth restore on restart + file tree .trellis visibility | `0530425`, `9fc3075` | `main` |
 | 20 | 2026-04-23 | WSL/SSH worktree support and branch switching fix | `011303f`, `256d899` | `main` |
 | 19 | 2026-04-22 | Implement Marketplace UI | `42c9e93` | `feature/git-commit-panel` |
