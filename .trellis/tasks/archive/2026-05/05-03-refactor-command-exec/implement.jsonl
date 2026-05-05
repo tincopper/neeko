@@ -1,0 +1,6 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Reference for command/ module structure"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "后端命令执行规范参考"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "代码复用重构思考指南"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理规范参考"}

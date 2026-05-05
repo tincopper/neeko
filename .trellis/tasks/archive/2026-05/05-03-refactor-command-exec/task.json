@@ -1,0 +1,53 @@
+{
+  "id": "refactor-command-exec",
+  "name": "refactor-command-exec",
+  "title": "Refactor command execution functions",
+  "description": "重构命令执行函数：将分散在 git/local.rs、git/wsl.rs、opencode_theme.rs、git/remote.rs 中的 no_window_cmd、run_wsl_bash、ssh_exec、ssh_exec_command 统一提取到 command/ 模块，统一命名为 command::local::exec、command::wsl::exec、command::ssh::exec",
+  "status": "completed",
+  "dev_type": "backend",
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-03",
+  "completedAt": "2026-05-05",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 3,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
