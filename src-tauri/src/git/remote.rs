@@ -1,111 +1,10 @@
 use anyhow::Result;
-use russh::*;
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use crate::command::ssh::{exec_command, safe_path};
 use crate::models::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 
 use super::local::parse_unified_diff;
-
-struct Client;
-
-impl client::Handler for Client {
-    type Error = russh::Error;
-
-    async fn check_server_key(
-        &mut self,
-        _server_public_key: &russh::keys::PublicKey,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
-    }
-}
-
-fn safe_path(path: &str) -> String {
-    path.replace('\'', "'\\''")
-}
-
-/// SSH 一次性认证连接 + 执行命令 + 返回 stdout
-pub async fn ssh_exec_command(
-    host: &str,
-    port: u16,
-    username: &str,
-    auth: &AuthMethod,
-    cmd: &str,
-) -> Result<String> {
-    let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (host, port), Client).await?;
-
-    let auth_result = match auth {
-        AuthMethod::Password(password) => session.authenticate_password(username, password).await?,
-        AuthMethod::KeyFile(key_path) => {
-            let key_pair = russh::keys::load_secret_key(key_path, None)?;
-            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session
-                .authenticate_publickey(username, key_with_hash)
-                .await?
-        }
-        AuthMethod::KeyFileWithPassphrase {
-            key_path,
-            passphrase,
-        } => {
-            let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
-            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session
-                .authenticate_publickey(username, key_with_hash)
-                .await?
-        }
-    };
-
-    if !auth_result.success() {
-        return Err(anyhow::anyhow!("SSH authentication failed"));
-    }
-
-    let mut channel = session.channel_open_session().await?;
-    channel.exec(true, cmd.as_bytes()).await?;
-
-    let mut stdout_buf = Vec::new();
-    let mut stderr_buf = Vec::new();
-    let mut exit_code: Option<u32> = None;
-    loop {
-        match channel.wait().await {
-            Some(russh::ChannelMsg::Data { data }) => {
-                stdout_buf.extend_from_slice(&data);
-            }
-            Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
-                // channel 1 = stderr
-                stderr_buf.extend_from_slice(&data);
-            }
-            Some(russh::ChannelMsg::ExitStatus { exit_status }) => {
-                exit_code = Some(exit_status);
-                // continue draining in case Data arrives after ExitStatus
-            }
-            Some(russh::ChannelMsg::Eof) | None => break,
-            _ => {}
-        }
-    }
-
-    let _ = channel.close().await;
-    let _ = session
-        .disconnect(russh::Disconnect::ByApplication, "", "")
-        .await;
-
-    let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
-
-    // 退出码非零视为失败
-    if let Some(code) = exit_code {
-        if code != 0 {
-            let stderr = String::from_utf8_lossy(&stderr_buf).trim().to_string();
-            let msg = if !stderr.is_empty() {
-                stderr
-            } else {
-                format!("SSH command failed with exit code {}", code)
-            };
-            return Err(anyhow::anyhow!("{}", msg));
-        }
-    }
-
-    Ok(stdout)
-}
 
 /// 通过 SSH 获取完整 GitInfo（1 次 SSH 连接）
 pub async fn get_remote_git_info(
@@ -127,7 +26,7 @@ pub async fn get_remote_git_info(
           && printf '\\n__STATUS__\\n' \
           && git status --porcelain 2>/dev/null"
     );
-    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_git_info_output(&output))
 }
 
@@ -143,7 +42,7 @@ pub async fn get_remote_file_diff(
     let sp = safe_path(project_path);
     let fp = safe_path(file_path);
     let cmd = format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null");
-    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_unified_diff(&output))
 }
 
@@ -158,7 +57,7 @@ pub async fn run_remote_git(
 ) -> Result<String> {
     let sp = safe_path(project_path);
     let cmd = format!("cd '{sp}' && {git_cmd}");
-    ssh_exec_command(host, port, username, auth, &cmd).await
+    exec_command(host, port, username, auth, &cmd).await
 }
 
 /// 解析合并 git 命令输出为 GitInfo
@@ -316,7 +215,7 @@ pub async fn get_remote_worktree_changed_files(
 ) -> Result<Vec<FileChange>> {
     let sp = safe_path(worktree_path);
     let cmd = format!("cd '{}' && git status --porcelain 2>/dev/null", sp);
-    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_command(host, port, username, auth, &cmd).await?;
 
     let files: Vec<FileChange> = output
         .lines()
@@ -341,7 +240,7 @@ pub async fn remote_is_worktree_dirty(
         "cd '{}' && git diff --quiet -- 2>/dev/null; echo EXIT_CODE:$?",
         sp
     );
-    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+    if let Ok(output) = exec_command(host, port, username, auth, &cmd).await {
         if !output.trim().ends_with("EXIT_CODE:0") {
             return Ok(true);
         }
@@ -352,7 +251,7 @@ pub async fn remote_is_worktree_dirty(
         "cd '{}' && git diff --cached --quiet -- 2>/dev/null; echo EXIT_CODE:$?",
         sp
     );
-    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+    if let Ok(output) = exec_command(host, port, username, auth, &cmd).await {
         if !output.trim().ends_with("EXIT_CODE:0") {
             return Ok(true);
         }
@@ -363,7 +262,7 @@ pub async fn remote_is_worktree_dirty(
         "cd '{}' && git ls-files --others --exclude-standard 2>/dev/null",
         sp
     );
-    if let Ok(output) = ssh_exec_command(host, port, username, auth, &cmd).await {
+    if let Ok(output) = exec_command(host, port, username, auth, &cmd).await {
         if !output.trim().is_empty() {
             return Ok(true);
         }
@@ -387,7 +286,7 @@ pub async fn get_remote_worktree_file_diff(
         "cd '{}' && git diff --unified=3 -- '{}' 2>/dev/null",
         sp, fp
     );
-    let output = ssh_exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_unified_diff(&output))
 }
 

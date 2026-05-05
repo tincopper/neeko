@@ -1,54 +1,15 @@
 use anyhow::Result;
-use std::process::Command;
 
+use crate::command::wsl::{exec, open_ide, safe_path};
 use crate::models::{DiffResult, FileChange, GitInfo};
 
 use super::local::parse_unified_diff;
 use super::remote::parse_git_info_output;
 
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-fn no_window_cmd(program: &str) -> Command {
-    let mut cmd = Command::new(program);
-    use std::os::windows::process::CommandExt;
-    cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd
-}
-
-fn safe_path(path: &str) -> String {
-    path.replace('\'', "'\\''")
-}
-
-/// 执行 wsl.exe -d distro bash -c "<cmd>" 并返回 stdout
-pub fn run_wsl_bash(distro: &str, cmd: &str) -> Result<String> {
-    let output = no_window_cmd("wsl.exe")
-        .arg("-d")
-        .arg(distro)
-        .arg("bash")
-        .arg("-c")
-        .arg(cmd)
-        .output()
-        .map_err(|e| anyhow::anyhow!("Failed to execute wsl.exe: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let msg = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            format!("Command failed with status {}", output.status)
-        };
-        return Err(anyhow::anyhow!("{}", msg));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
 /// 通过 WSL 获取完整 GitInfo（通过 wsl.exe 调用）
 pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
     let sp = safe_path(project_path);
-    let output = run_wsl_bash(
+    let output = exec(
         distro,
         &format!(
             "cd '{sp}' \
@@ -70,7 +31,7 @@ pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
 pub fn get_wsl_file_diff(distro: &str, project_path: &str, file_path: &str) -> Result<DiffResult> {
     let sp = safe_path(project_path);
     let fp = safe_path(file_path);
-    let output = run_wsl_bash(
+    let output = exec(
         distro,
         &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
     )?;
@@ -86,23 +47,12 @@ pub fn run_wsl_git(distro: &str, project_path: &str, git_args: &[&str]) -> Resul
         .map(|a| format!("'{}'", safe_path(a)))
         .collect();
     let git_cmd = format!("cd '{}' && git {}", sp, quoted_args.join(" "));
-    run_wsl_bash(distro, &git_cmd)
+    exec(distro, &git_cmd)
 }
 
 /// 通过 WSL 打开 IDE
 pub fn open_wsl_ide(distro: &str, project_path: &str, ide: &str) -> Result<()> {
-    // 在 WSL 中以后台模式运行 code 或 zed
-    let _ = no_window_cmd("wsl.exe")
-        .arg("-d")
-        .arg(distro)
-        .arg("--cd")
-        .arg(project_path)
-        .arg("--")
-        .arg(ide)
-        .arg(".")
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to launch IDE in WSL: {}", e))?;
-    Ok(())
+    open_ide(distro, project_path, ide)
 }
 
 /// 通过 WSL 获取 worktree 的变更文件列表
@@ -111,7 +61,7 @@ pub fn get_wsl_worktree_changed_files(
     worktree_path: &str,
 ) -> Result<Vec<FileChange>> {
     let sp = safe_path(worktree_path);
-    let output = run_wsl_bash(
+    let output = exec(
         distro,
         &format!("cd '{sp}' && git status --porcelain 2>/dev/null"),
     )?;
@@ -129,7 +79,7 @@ pub fn wsl_is_worktree_dirty(distro: &str, worktree_path: &str) -> Result<bool> 
     let sp = safe_path(worktree_path);
 
     // 检查已跟踪文件的修改
-    let diff_result = run_wsl_bash(
+    let diff_result = exec(
         distro,
         &format!("cd '{sp}' && git diff --quiet -- 2>/dev/null; echo EXIT_CODE:$?"),
     );
@@ -140,7 +90,7 @@ pub fn wsl_is_worktree_dirty(distro: &str, worktree_path: &str) -> Result<bool> 
     }
 
     // 检查暂存区
-    let cached_result = run_wsl_bash(
+    let cached_result = exec(
         distro,
         &format!("cd '{sp}' && git diff --cached --quiet -- 2>/dev/null; echo EXIT_CODE:$?"),
     );
@@ -151,7 +101,7 @@ pub fn wsl_is_worktree_dirty(distro: &str, worktree_path: &str) -> Result<bool> 
     }
 
     // 检查未跟踪文件
-    let untracked_result = run_wsl_bash(
+    let untracked_result = exec(
         distro,
         &format!("cd '{sp}' && git ls-files --others --exclude-standard 2>/dev/null"),
     );
@@ -172,7 +122,7 @@ pub fn get_wsl_worktree_file_diff(
 ) -> Result<DiffResult> {
     let sp = safe_path(worktree_path);
     let fp = safe_path(file_path);
-    let output = run_wsl_bash(
+    let output = exec(
         distro,
         &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
     )?;
