@@ -65,3 +65,26 @@ pub fn get_config_dir(state: State<AppStateWrapper>) -> String {
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Neeko!", name)
 }
+
+#[tauri::command]
+pub fn save_vcs_settings_command(
+    project_id: String,
+    settings: serde_json::Value,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    state
+        .storage_manager
+        .save_vcs_settings(&project_id, &settings)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn load_vcs_settings_command(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<serde_json::Value, AppError> {
+    state
+        .storage_manager
+        .load_vcs_settings(&project_id)
+        .map_err(AppError::from)
+}

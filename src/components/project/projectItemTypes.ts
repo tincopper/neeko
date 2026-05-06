@@ -8,6 +8,9 @@ export interface ProjectItemActions {
   onRefreshGit: (projectId: string) => void;
   onBackToMainTerminal: (projectId: string) => void;
   onOpenDialog: (dialog: DialogState) => void;
+  onCommit?: (projectId: string) => void;
+  onPush?: (projectId: string) => void;
+  onPull?: (projectId: string) => void;
   onOpenIde?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
   onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;

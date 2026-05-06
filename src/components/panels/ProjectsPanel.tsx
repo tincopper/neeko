@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "../../utils/platform";
 import {
    useAppContext,
@@ -8,6 +9,7 @@ import {
 } from "../../contexts";
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
+import CommitDialog from "../project/CommitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
 import { useAppStore } from "../../store/appStore";
 
@@ -58,6 +60,7 @@ const ProjectsPanel: React.FC = () => {
    } = useRemoteContext();
 
    const [dialog, setDialog] = useState<DialogState | null>(null);
+   const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
    const [remoteHomeDir, setRemoteHomeDir] = useState<string>("");
 
    useEffect(() => {
@@ -76,6 +79,28 @@ const ProjectsPanel: React.FC = () => {
       },
       []
    );
+
+   const handleCommit = useCallback((projectId: string) => {
+      setCommitProjectId(projectId);
+   }, []);
+
+   const handlePush = useCallback(async (projectId: string) => {
+      try {
+         await invoke("push_command", { projectId, setUpstream: false });
+         onRefreshGit(projectId);
+      } catch (e) {
+         showToast?.(String(e), "error");
+      }
+   }, [onRefreshGit, showToast]);
+
+   const handlePull = useCallback(async (projectId: string) => {
+      try {
+         await invoke("pull_command", { projectId });
+         onRefreshGit(projectId);
+      } catch (e) {
+         showToast?.(String(e), "error");
+      }
+   }, [onRefreshGit, showToast]);
 
    const isEmpty =
       projects.length === 0 &&
@@ -101,6 +126,9 @@ const ProjectsPanel: React.FC = () => {
                            onRefreshGit,
                            onBackToMainTerminal,
                            onOpenDialog: setDialog,
+                           onCommit: handleCommit,
+                           onPush: handlePush,
+                           onPull: handlePull,
                            onOpenIde,
                            onOpenWorktreeTerminal,
                            onSelectWorktreeFile,
@@ -232,8 +260,15 @@ const ProjectsPanel: React.FC = () => {
                      : undefined
                }
             />
-         )}
-      </>
+          )}
+          {commitProjectId && (
+             <CommitDialog
+                projectId={commitProjectId}
+                onClose={() => setCommitProjectId(null)}
+                onRefreshGit={onRefreshGit}
+             />
+          )}
+       </>
    );
 };
 
