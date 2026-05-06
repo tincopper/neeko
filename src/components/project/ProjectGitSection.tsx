@@ -67,16 +67,25 @@ export default function ProjectGitSection({
   }, [branchDropdownOpen]);
 
   const changedFiles = project.git_info?.changed_files ?? [];
-  const tree = useMemo(() => buildTree(changedFiles), [changedFiles]);
+  const untrackedFiles = useMemo(
+    () => changedFiles.filter((f) => f.status === "Untracked"),
+    [changedFiles]
+  );
+  const trackedChangedFiles = useMemo(
+    () => changedFiles.filter((f) => f.status !== "Untracked"),
+    [changedFiles]
+  );
+  const tree = useMemo(() => buildTree(trackedChangedFiles), [trackedChangedFiles]);
+  const untrackedTree = useMemo(() => buildTree(untrackedFiles), [untrackedFiles]);
   const { totalAdditions, totalDeletions } = useMemo(() => {
     let additions = 0;
     let deletions = 0;
-    for (const f of changedFiles) {
+    for (const f of trackedChangedFiles) {
       additions += f.additions;
       deletions += f.deletions;
     }
     return { totalAdditions: additions, totalDeletions: deletions };
-  }, [changedFiles]);
+  }, [trackedChangedFiles]);
 
   const branches = project.git_info?.branches ?? [];
   const worktrees = project.git_info?.worktrees ?? [];
@@ -109,6 +118,19 @@ export default function ProjectGitSection({
       onRefreshGit(project.id);
     } catch (e: unknown) {
       onShowToast?.(String(e), "error");
+    }
+  };
+
+  const [stagingFiles, setStagingFiles] = useState(false);
+  const handleAddToGit = async (files: string[]) => {
+    setStagingFiles(true);
+    try {
+      await invoke("stage_files_command", { projectId: project.id, filePaths: files });
+      onRefreshGit(project.id);
+    } catch (e: unknown) {
+      onShowToast?.(String(e), "error");
+    } finally {
+      setStagingFiles(false);
     }
   };
 
@@ -223,7 +245,7 @@ export default function ProjectGitSection({
                   size={9}
                   className={`text-[0.6em] text-text-muted w-2.5 shrink-0 transition-transform duration-150 ${localChangesExpanded ? "rotate-90" : ""}`}
                 />
-                Changes ({changedFiles.length})
+                Changes ({trackedChangedFiles.length})
                 {(totalAdditions > 0 || totalDeletions > 0) && (
                   <span className="inline-flex items-center gap-1 ml-auto font-semibold text-[1.1em]">
                     {totalAdditions > 0 && (
@@ -248,6 +270,27 @@ export default function ProjectGitSection({
                   />
                 </div>
               )}
+            </>
+          )}
+          {untrackedFiles.length > 0 && (
+            <>
+              <div className="flex items-center justify-between text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted py-0.5 px-2 ml-8 mr-1 select-none">
+                <span>Unversioned ({untrackedFiles.length})</span>
+                <button
+                  className="text-[0.85em] normal-case tracking-normal text-accent hover:underline cursor-pointer bg-transparent border-none px-1"
+                  onClick={() => handleAddToGit(untrackedFiles.map((f) => f.path))}
+                  disabled={stagingFiles}
+                >
+                  {stagingFiles ? "Adding..." : "+ Add to Git"}
+                </button>
+              </div>
+              <div className="ml-10">
+                <FileTree
+                  nodes={untrackedTree}
+                  projectId={project.id}
+                  onSelectFile={onSelectFile}
+                />
+              </div>
             </>
           )}
         </>

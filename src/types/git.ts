@@ -18,3 +18,84 @@ export interface GitInfo {
   changed_files: FileChange[];
   is_clean: boolean;
 }
+
+export interface CommitEntry {
+  hash: string;
+  short_hash: string;
+  author: string;
+  timestamp: string;
+  message: string;
+  refs: string;
+}
+
+export interface CommitResult {
+  success: boolean;
+  hash: string;
+  message: string;
+}
+
+export interface AheadBehind {
+  ahead: number;
+  behind: number;
+}
+
+export type DiffLine =
+  | { Context: string }
+  | { Added: string }
+  | { Removed: string }
+  | { Collapsed: string };
+
+export interface DiffHunk {
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
+  lines: DiffLine[];
+}
+
+export interface DiffResult {
+  hunks: DiffHunk[];
+  truncated?: boolean;
+}
+
+export interface PRListItem {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  head_ref_name: string;
+  base_ref_name: string;
+  created_at: string;
+  is_cross_repository: boolean;
+  head_repository_owner: string;
+}
+
+export interface PRStatusCheck {
+  __typename: string;
+  name?: string;
+  status?: string;
+  conclusion?: string;
+  detailsUrl?: string;
+}
+
+export interface PRInfo {
+  number: number;
+  title: string;
+  state: string;
+  body: string | null;
+  author: string;
+  head_ref_name: string;
+  base_ref_name: string;
+  url: string;
+  created_at: string;
+  mergeable: string | null;
+  merge_state_status: string | null;
+  is_draft: boolean;
+  is_cross_repository: boolean;
+  status_check_rollup: PRStatusCheck[] | null;
+}
+
+export interface PRMergeResult {
+  success: boolean;
+  message: string;
+}
