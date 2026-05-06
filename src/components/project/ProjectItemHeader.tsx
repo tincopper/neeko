@@ -44,6 +44,9 @@ interface ProjectItemHeaderProps {
     onOpenIde?: (projectId: string) => void;
     onOpenDialog: (type: DialogType, e: React.MouseEvent) => void;
     onRemoveProject: (projectId: string) => void;
+    onCommit?: (projectId: string) => void;
+    onPush?: (projectId: string) => void;
+    onPull?: (projectId: string) => void;
   };
 }
 
@@ -62,7 +65,12 @@ export default function ProjectItemHeader({
     onOpenIde,
     onOpenDialog,
     onRemoveProject,
+    onCommit,
+    onPush,
+    onPull,
   } = actions;
+
+  const hasGitActions = !!(onCommit || (project.git_info && (onPush || onPull)));
 
   return (
     <div
@@ -81,6 +89,90 @@ export default function ProjectItemHeader({
           {project.name}
         </span>
       </div>
+
+      {/* Git dropdown — always visible when active and has actions */}
+      {isActive && hasGitActions && (
+        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
+            onClick={(e) => {
+              e.stopPropagation();
+              setGitMenuOpen((v) => !v);
+            }}
+            title="Git actions"
+          >
+            <GitLogoIcon size={12} />
+          </button>
+          {gitMenuOpen && (
+            <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[150px] z-[1000] shadow-lg overflow-hidden">
+              {onCommit && (
+                <div
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setGitMenuOpen(false);
+                    onCommit(project.id);
+                  }}
+                >
+                  <GitLogoIcon size={12} />
+                  Commit Changes
+                </div>
+              )}
+              {project.git_info && (
+                <>
+                  {onPush && (
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGitMenuOpen(false);
+                        onPush(project.id);
+                      }}
+                    >
+                      <GitLogoIcon size={12} />
+                      Push
+                    </div>
+                  )}
+                  {onPull && (
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setGitMenuOpen(false);
+                        onPull(project.id);
+                      }}
+                    >
+                      <GitLogoIcon size={12} />
+                      Pull
+                    </div>
+                  )}
+                  <div className="border-t border-border my-0.5" />
+                  <div
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+                    onClick={(e) => {
+                      setGitMenuOpen(false);
+                      onOpenDialog("new-branch", e);
+                    }}
+                  >
+                    <GitLogoIcon size={12} />
+                    New Branch
+                  </div>
+                  <div
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+                    onClick={(e) => {
+                      setGitMenuOpen(false);
+                      onOpenDialog("new-worktree", e);
+                    }}
+                  >
+                    <FolderGitIcon size={12} />
+                    New Worktree
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {project.selected_ide && onOpenIde && (
         <button
@@ -102,44 +194,6 @@ export default function ProjectItemHeader({
       <div
         className={`gh-project-actions flex items-center gap-0.5 shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-150`}
       >
-        {project.git_info && (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
-              onClick={(e) => {
-                e.stopPropagation();
-                setGitMenuOpen((v) => !v);
-              }}
-              title="Git actions"
-            >
-              <GitLogoIcon size={12} />
-            </button>
-            {gitMenuOpen && (
-              <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">
-                <div
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
-                  onClick={(e) => {
-                    setGitMenuOpen(false);
-                    onOpenDialog("new-branch", e);
-                  }}
-                >
-                  <GitLogoIcon size={12} />
-                  New Branch
-                </div>
-                <div
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
-                  onClick={(e) => {
-                    setGitMenuOpen(false);
-                    onOpenDialog("new-worktree", e);
-                  }}
-                >
-                  <FolderGitIcon size={12} />
-                  New Worktree
-                </div>
-              </div>
-            )}
-          </div>
-        )}
         <button
           className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150"
           onClick={(e) => {

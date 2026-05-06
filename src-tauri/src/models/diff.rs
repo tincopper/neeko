@@ -6,6 +6,8 @@ pub enum DiffLine {
     Context(String),
     Added(String),
     Removed(String),
+    /// 折叠的连续未修改上下文（"12 unmodified lines"）
+    Collapsed(String),
 }
 
 /// Diff Hunk
@@ -22,4 +24,7 @@ pub struct DiffHunk {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffResult {
     pub hunks: Vec<DiffHunk>,
+    /// 是否因为 line_limit 被截断
+    #[serde(default)]
+    pub truncated: bool,
 }

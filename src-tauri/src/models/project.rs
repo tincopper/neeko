@@ -78,3 +78,98 @@ pub struct FileContent {
     pub size: u64,
     pub is_binary: bool,
 }
+
+/// Commit 记录
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitEntry {
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub timestamp: String,
+    pub message: String,
+    pub refs: String,
+}
+
+/// Commit 结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitResult {
+    pub success: bool,
+    pub hash: String,
+    pub message: String,
+}
+
+/// Ahead/Behind 计数
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AheadBehind {
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+/// gh --json author 返回 {"login":"xxx",...}，提取 login 字段
+fn extract_author_login(val: &serde_json::Value) -> String {
+    val.get("login")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn deserialize_author<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    use serde::de;
+    let val = serde_json::Value::deserialize(d)?;
+    match val {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Object(_) => Ok(extract_author_login(&val)),
+        _ => Err(de::Error::custom("author must be string or object")),
+    }
+}
+
+/// PR 列表项（对应 gh pr list --json）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PRListItem {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    #[serde(deserialize_with = "deserialize_author")]
+    pub author: String,
+    pub head_ref_name: String,
+    pub base_ref_name: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub is_cross_repository: bool,
+    #[serde(default)]
+    pub head_repository_owner: String,
+}
+
+/// PR 详细信息（对应 gh pr view --json）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PRInfo {
+    pub number: u64,
+    pub title: String,
+    pub state: String,
+    pub body: Option<String>,
+    #[serde(deserialize_with = "deserialize_author")]
+    pub author: String,
+    pub head_ref_name: String,
+    pub base_ref_name: String,
+    pub url: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub mergeable: Option<String>,
+    #[serde(default)]
+    pub merge_state_status: Option<String>,
+    #[serde(default)]
+    pub is_draft: bool,
+    #[serde(default)]
+    pub is_cross_repository: bool,
+    #[serde(default)]
+    pub status_check_rollup: Option<serde_json::Value>,
+}
+
+/// PR 合并结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PRMergeResult {
+    pub success: bool,
+    pub message: String,
+}

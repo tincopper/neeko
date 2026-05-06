@@ -22,6 +22,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     onRefreshGit,
     onBackToMainTerminal,
     onOpenDialog,
+    onCommit,
+    onPush,
+    onPull,
     onOpenIde,
     onOpenWorktreeTerminal,
     onSelectWorktreeFile,
@@ -64,6 +67,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     onRefresh,
     onOpenSettings,
     onRemoveProject,
+    onCommit,
+    onPush,
+    onPull,
     hasConfig: Boolean(config),
   });
 
@@ -127,6 +133,9 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           onOpenIde,
           onOpenDialog: openDialog,
           onRemoveProject,
+          onCommit,
+          onPush,
+          onPull,
         }}
       />
 
