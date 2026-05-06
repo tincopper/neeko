@@ -122,12 +122,6 @@ src/
 │   ├── platform.ts          # 平台检测常量
 │   └── terminal.ts          # 终端字体构建器
 │
-│   ├── adapters/            # 项目适配器（统一 local/wsl/remote）
-│   │   ├── ProjectAdapter.ts
-│   │   ├── LocalProjectAdapter.ts
-│   │   ├── WslProjectAdapter.ts
-│   │   └── RemoteProjectAdapter.ts
-│
 │   └── testing/             # 测试配置
 │       ├── setup.ts         # Vitest 全局配置
 │       └── factories.ts     # 测试数据工厂
@@ -210,7 +204,6 @@ export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands
 | 新的领域状态分发 | `contexts/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
 | IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
-| 项目类型适配器 | `adapters/<Name>Adapter.ts` |
 | 共享类型 | `types.ts` |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>/` |

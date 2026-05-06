@@ -1,184 +1,152 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalInputController } from "./terminalInput";
+import { createTerminalCacheBackend } from "./unifiedTerminalCache";
 
 export interface WslTerminalCache {
-   term: Terminal;
-   fitAddon: FitAddon;
-   element: HTMLElement;
-   sessionId: string | null;
-   unlisten: (() => void) | null;
-   inputController: TerminalInputController | null;
+  term: Terminal;
+  fitAddon: FitAddon;
+  element: HTMLElement;
+  sessionId: string | null;
+  unlisten: (() => void) | null;
+  inputController: TerminalInputController | null;
 }
 
-// 全局缓存：key = "wsl:{distro}:{projectId}"
-export const wslTerminalCache = new Map<string, WslTerminalCache>();
+const backend = createTerminalCacheBackend<WslTerminalCache>({
+  prefix: "wsl:",
+  closeSessionCmd: "close_terminal_session",
+  resizeSessionCmd: "resize_terminal",
+  logPrefix: "[WSL]",
+});
 
-/** WSL 终端重建回调注册表 */
-export const wslRebuildCallbacks = new Map<string, () => void>();
+// ---- Re-export factory maps with original names ----
+export const wslTerminalCache = backend.cache;
+export const wslRebuildCallbacks = backend.rebuildCallbacks;
+export const wslWrapperRefs = backend.wrapperRefs;
 
-/** DOM wrapper 节点注册表，供 switchAgentInWslTerminal 使用 */
-export const wslWrapperRefs = new Map<string, HTMLDivElement>();
-
+// ---- Key builder ----
 export function wslCacheKey(distro: string, projectId: string) {
-   return `wsl:${distro}:${projectId}`;
+  return backend.cacheKey(distro, projectId);
 }
 
-function resolveWslCacheKey(keyOrPrefix: string): string | null {
-   if (wslTerminalCache.has(keyOrPrefix)) return keyOrPrefix;
-   for (const key of wslTerminalCache.keys()) {
-      if (key.startsWith(keyOrPrefix + ":")) {
-         return key;
-      }
-   }
-   return null;
-}
-
+// ---- WSL-specific utility: parse projectId from a cache key ----
 function parseProjectIdFromWslKey(key: string): string | null {
-   const withWorktree = key.match(/^wsl:.+:([^:]+):wt:[^:]+:p\d+$/);
-   if (withWorktree) return withWorktree[1];
-   const normal = key.match(/^wsl:.+:([^:]+):p\d+$/);
-   if (normal) return normal[1];
-   return null;
+  const withWorktree = key.match(/^wsl:.+:([^:]+):wt:[^:]+:p\d+$/);
+  if (withWorktree) return withWorktree[1];
+  const normal = key.match(/^wsl:.+:([^:]+):p\d+$/);
+  if (normal) return normal[1];
+  return null;
 }
+
+// ---- Cache lifecycle (thin wrappers around factory) ----
 
 export function destroyWslCache(key: string) {
-   const resolved = resolveWslCacheKey(key);
-   if (!resolved) return;
-   const cache = wslTerminalCache.get(resolved);
-   if (!cache) return;
-   cache.unlisten?.();
-   cache.inputController?.dispose();
-   // 通知后端关闭 PTY session，释放子进程
-   if (cache.sessionId) {
-      invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => { });
-   }
-   cache.term.dispose();
-   wslTerminalCache.delete(resolved);
+  const resolved = backend.resolveCacheKey(key);
+  if (!resolved) return;
+  backend.destroyCache(resolved);
 }
 
 export function destroyWslCachesByPrefix(prefix: string) {
-   const keys = Array.from(wslTerminalCache.keys());
-   for (const key of keys) {
-      if (key === prefix || key.startsWith(prefix + ":")) {
-         destroyWslCache(key);
-      }
-   }
+  backend.destroyCachesByPrefix(prefix);
 }
 
-/** 手动刷新 WSL 终端：关闭 PTY + 销毁缓存 + 触发重建 */
 export function refreshWslTerminal(key: string) {
-   const resolved = resolveWslCacheKey(key);
-   if (!resolved) return;
-   const cache = wslTerminalCache.get(resolved);
-   if (!cache) return;
-   cache.unlisten?.();
-   cache.inputController?.dispose();
-   if (cache.sessionId) {
-      invoke("close_terminal_session", { sessionId: cache.sessionId }).catch(() => { });
-   }
-   cache.term.dispose();
-   wslTerminalCache.delete(resolved);
-   // 通过 rebuildCallbackMap 触发重建（需要组件注册）
-   wslRebuildCallbacks.get(resolved)?.();
+  backend.refreshTerminal(key);
 }
 
-/** 获取已建立的 WSL 终端 sessionId（尚未建立返回 null） */
+// ---- WSL-specific query helpers ----
+
 export function getWslSessionId(key: string): string | null {
-   return wslTerminalCache.get(key)?.sessionId ?? null;
+  return backend.getSessionId(key);
 }
 
-/** 已有活跃终端会话的项目 ID 集合（同一个 distro 下） */
 export function getWslOpenProjectIds(distro: string): Set<string> {
-   const result = new Set<string>();
-   for (const [key, cache] of wslTerminalCache.entries()) {
-      if (key.startsWith(`wsl:${distro}:`) && cache.sessionId) {
-         const projectId = parseProjectIdFromWslKey(key);
-         if (projectId) result.add(projectId);
-      }
-   }
-   return result;
+  const result = new Set<string>();
+  for (const [key, cache] of wslTerminalCache.entries()) {
+    if (key.startsWith(`wsl:${distro}:`) && cache.sessionId) {
+      const projectId = parseProjectIdFromWslKey(key);
+      if (projectId) result.add(projectId);
+    }
+  }
+  return result;
 }
 
-/** 向已有 WSL 终端会话发送 agent 命令（Ctrl+C 中断当前进程后重新启动） */
-export function launchAgentInWslTerminal(cacheKey: string, command: string, args: string[]) {
-   const resolved = resolveWslCacheKey(cacheKey);
-   if (!resolved) return;
-   const cache = wslTerminalCache.get(resolved);
-   if (!cache?.sessionId) return;
-   const sessionId = cache.sessionId;
-   const ctrlC = Array.from(new TextEncoder().encode("\x03"));
-   emit(`terminal-input-${sessionId}`, ctrlC).catch(() => { });
-   setTimeout(() => {
-      const cmdStr = [command, ...args].join(" ") + "\r";
-      const bytes = Array.from(new TextEncoder().encode(cmdStr));
-      emit(`terminal-input-${sessionId}`, bytes).catch(() => { });
-   }, 50);
+export function getAllWslOpenProjectIds(): Set<string> {
+  const result = new Set<string>();
+  for (const [key, cache] of wslTerminalCache.entries()) {
+    if (key.startsWith("wsl:") && cache.sessionId) {
+      const projectId = parseProjectIdFromWslKey(key);
+      if (projectId) result.add(projectId);
+    }
+  }
+  return result;
+}
+
+// ---- Agent interaction ----
+
+export function launchAgentInWslTerminal(
+  cacheKey: string,
+  command: string,
+  args: string[],
+) {
+  backend.launchAgentInTerminal(cacheKey, command, args);
 }
 
 /**
- * 即时切换 WSL Agent：清除旧 PTY 缓存 + 触发重建，后台异步关闭旧 PTY。
- * 组件重建时会读取最新的 selectedAgentId prop 自动启动新 Agent。
+ * Instantaneously switch WSL Agent: clear old PTY cache + trigger rebuild,
+ * close old PTY in background asynchronously.
+ * The component reads the latest selectedAgentId prop on rebuild and
+ * automatically starts the new Agent.
  */
 export async function switchAgentInWslTerminal(
-   cacheKey: string,
-   _distro: string,
-   _projectPath: string,
-   _projectName: string,
-   agentId: string,
-   _fontSize: number,
-   _fontFamily: string,
-   agentCommandOverrides?: Record<string, string>,
+  cacheKey: string,
+  _distro: string,
+  _projectPath: string,
+  _projectName: string,
+  agentId: string,
+  _fontSize: number,
+  _fontFamily: string,
+  agentCommandOverrides?: Record<string, string>,
 ) {
-   const resolved = resolveWslCacheKey(cacheKey) ?? cacheKey;
-   const wrapper = wslWrapperRefs.get(resolved);
-   if (!wrapper) {
-      // 回退：wrapper 未就绪，用旧路径
-      const agent = await invoke<{ id: string; command: string; args: string[] }>(
-         "get_agent", { agentId },
-      ).catch(() => null);
-      if (agent) {
-         const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
-         launchAgentInWslTerminal(cacheKey, cmd, agent.args);
-      }
-      return;
-   }
+  const resolved = backend.resolveCacheKey(cacheKey) ?? cacheKey;
+  const wrapper = wslWrapperRefs.get(resolved);
+  if (!wrapper) {
+    // Fallback: wrapper not ready, use old path
+    const agent = await invoke<{ id: string; command: string; args: string[] }>(
+      "get_agent",
+      { agentId },
+    ).catch(() => null);
+    if (agent) {
+      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
+      launchAgentInWslTerminal(cacheKey, cmd, agent.args);
+    }
+    return;
+  }
 
-   // 1. 摘除旧缓存事件监听，防止 terminal-closed 触发意外重建
-   const oldCache = wslTerminalCache.get(resolved);
-   if (oldCache) {
-      oldCache.unlisten?.();
-      oldCache.inputController?.dispose();
-   }
+  // 1. Remove old cache event listeners to prevent terminal-closed triggering unexpected rebuild
+  const oldCache = wslTerminalCache.get(resolved);
+  if (oldCache) {
+    oldCache.unlisten?.();
+    oldCache.inputController?.dispose();
+  }
 
-   // 2. 删除旧条目（槽位空出，重建时填入新实例）
-   wslTerminalCache.delete(resolved);
+  // 2. Delete old entry (slot vacated, filled with new instance on rebuild)
+  wslTerminalCache.delete(resolved);
 
-   // 3. 清空 wrapper DOM
-   while (wrapper.firstChild) {
-      wrapper.removeChild(wrapper.firstChild);
-   }
+  // 3. Clear wrapper DOM
+  while (wrapper.firstChild) {
+    wrapper.removeChild(wrapper.firstChild);
+  }
 
-   // 4. 触发重建（selectedAgentId 已由 handleSelectWslAgent 更新到 props）
-   wslRebuildCallbacks.get(resolved)?.();
+  // 4. Trigger rebuild (selectedAgentId already updated to props by handleSelectWslAgent)
+  wslRebuildCallbacks.get(resolved)?.();
 
-   // 5. 后台异步关闭旧 PTY
-   if (oldCache?.sessionId) {
-      invoke("close_terminal_session", { sessionId: oldCache.sessionId }).catch(() => { });
-   }
-   oldCache?.term.dispose();
-}
-
-/** 所有已有活跃终端会话的项目 ID 集合（跨所有 distro） */
-export function getAllWslOpenProjectIds(): Set<string> {
-   const result = new Set<string>();
-   for (const [key, cache] of wslTerminalCache.entries()) {
-      if (key.startsWith("wsl:") && cache.sessionId) {
-         const projectId = parseProjectIdFromWslKey(key);
-         if (projectId) result.add(projectId);
-      }
-   }
-   return result;
+  // 5. Close old PTY in background asynchronously
+  if (oldCache?.sessionId) {
+    invoke("close_terminal_session", {
+      sessionId: oldCache.sessionId,
+    }).catch(() => {});
+  }
+  oldCache?.term.dispose();
 }

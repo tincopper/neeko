@@ -91,21 +91,30 @@ export interface ProjectItemCardProps {
   onGetWorktreeFileDiff?: (worktreePath: string, filePath: string) => Promise<DiffResult>;
 }
 
-export interface WSLProjectCardProps {
-  project: WSLProject;
+export type ConnectionSource =
+  | { type: "wsl"; distro: string }
+  | {
+      type: "remote";
+      entryId: string;
+      host: string;
+      invokeRemoteGit: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
+    };
+
+export interface ConnectionProjectCardProps {
+  project: WSLProject | RemoteProject;
   entryId: string;
-  distro: string;
+  source: ConnectionSource;
   isActive: boolean;
   hasSession: boolean;
-  onSelectProject: (distro: string, project: WSLProject) => void;
+  onSelectProject: (identifier: string, project: WSLProject | RemoteProject) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
-  onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
-  onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
-  onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
-  onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
+  onSelectFile?: (identifier: string, projectPath: string, filePath: string) => void;
+  onRefreshGit?: (identifier: string, projectId: string, projectPath: string) => void;
+  onOpenIde?: (identifier: string, projectPath: string, ide: string) => void;
+  onOpenWorktreeTerminal?: (identifier: string, worktreePath: string, branch: string) => void;
   onOpenDialog?: (dialog: {
     type: string;
-    source: { type: string; distro: string; projectPath: string };
+    source: { type: string; distro?: string; entryId?: string; projectPath: string };
     branches: string[];
   }) => void;
   ideCommandOverrides?: Record<string, string>;
@@ -138,33 +147,6 @@ export interface WSLItemProps {
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (distro: string, projectId: string) => void;
-  agents?: AgentConfig[];
-  config?: AppConfig;
-  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
-}
-
-export interface RemoteProjectCardProps {
-  project: RemoteProject;
-  entryId: string;
-  host: string;
-  isActive: boolean;
-  hasSession: boolean;
-  onSelectProject: (host: string, project: RemoteProject) => void;
-  onRemoveProject: (entryId: string, projectId: string) => void;
-  onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
-  onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
-  onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
-  onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
-  invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
-  onOpenDialog?: (dialog: {
-    type: string;
-    source: { type: string; entryId: string; projectPath: string };
-    branches: string[];
-  }) => void;
-  ideCommandOverrides?: Record<string, string>;
-  onOpenSettings?: () => void;
-  onRefresh?: () => void;
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;

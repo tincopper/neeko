@@ -2,9 +2,8 @@ import React, { useState } from "react";
 import { getDistroIcon } from "../../utils/distros";
 import serverIcon from "../../assets/server.svg";
 import { PlusIcon, TrashIcon } from "../icons";
-import WSLProjectCard from "./WSLProjectCard";
-import RemoteProjectCard from "./RemoteProjectCard";
-import type { WSLItemProps, RemoteItemProps } from "./types";
+import ConnectionProjectCard from "./ConnectionProjectCard";
+import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from "./types";
 
 export const WSLItem = React.memo<WSLItemProps>(
   ({
@@ -87,20 +86,20 @@ export const WSLItem = React.memo<WSLItemProps>(
                   activeKey?.projectId === project.id;
                 const hasSession = openSessions.has(project.id);
                 return (
-                  <WSLProjectCard
+                  <ConnectionProjectCard
                     key={project.id}
                     project={project}
                     entryId={entry.id}
-                    distro={entry.distro}
+                    source={{ type: "wsl", distro: entry.distro }}
                     isActive={isActive}
                     hasSession={hasSession}
-                    onSelectProject={onSelectProject}
+                    onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
                     onRemoveProject={onRemoveProject}
                     onSelectFile={onSelectFile}
                     onRefreshGit={onRefreshGit}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    onOpenDialog={onOpenDialog}
+                    onOpenDialog={onOpenDialog as ConnectionProjectCardProps['onOpenDialog']}
                     ideCommandOverrides={ideCommandOverrides}
                     onOpenSettings={onOpenSettings}
                     onRefresh={
@@ -203,21 +202,25 @@ export const RemoteItem = React.memo<RemoteItemProps>(
                   activeKey?.host === entry.host && activeKey?.projectId === project.id;
                 const hasSession = openSessions.has(project.id);
                 return (
-                  <RemoteProjectCard
+                  <ConnectionProjectCard
                     key={project.id}
                     project={project}
                     entryId={entry.id}
-                    host={entry.host}
+                    source={{
+                      type: "remote",
+                      entryId: entry.id,
+                      host: entry.host,
+                      invokeRemoteGit: invokeRemoteGit!,
+                    }}
                     isActive={isActive}
                     hasSession={hasSession}
-                    onSelectProject={onSelectProject}
+                    onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
                     onRemoveProject={onRemoveProject}
                     onSelectFile={onSelectFile}
                     onRefreshGit={onRefreshGit}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    invokeRemoteGit={invokeRemoteGit}
-                    onOpenDialog={onOpenDialog}
+                    onOpenDialog={onOpenDialog as ConnectionProjectCardProps['onOpenDialog']}
                     ideCommandOverrides={ideCommandOverrides}
                     onOpenSettings={onOpenSettings}
                     onRefresh={
