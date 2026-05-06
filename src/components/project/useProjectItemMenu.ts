@@ -11,6 +11,9 @@ interface UseProjectItemMenuParams {
   onRefresh?: (projectId: string) => void;
   onOpenSettings?: () => void;
   onRemoveProject: (projectId: string) => void;
+  onCommit?: (projectId: string) => void;
+  onPush?: (projectId: string) => void;
+  onPull?: (projectId: string) => void;
   hasConfig: boolean;
 }
 
@@ -21,6 +24,9 @@ export function useProjectItemMenu({
   onRefresh,
   onOpenSettings,
   onRemoveProject,
+  onCommit,
+  onPush,
+  onPull,
   hasConfig,
 }: UseProjectItemMenuParams) {
   const [gitMenuOpen, setGitMenuOpen] = useState(false);
@@ -48,6 +54,27 @@ export function useProjectItemMenu({
     }
 
     if (gitInfo) {
+      if (onCommit) {
+        items.push({
+          label: "Commit Changes",
+          icon: GitLogoIcon,
+          action: () => onCommit(project.id),
+        });
+      }
+      if (onPush) {
+        items.push({
+          label: "Push",
+          icon: GitLogoIcon,
+          action: () => onPush(project.id),
+        });
+      }
+      if (onPull) {
+        items.push({
+          label: "Pull",
+          icon: GitLogoIcon,
+          action: () => onPull(project.id),
+        });
+      }
       items.push({
         label: "New Branch",
         icon: GitLogoIcon,
@@ -106,6 +133,9 @@ export function useProjectItemMenu({
     onRefresh,
     onOpenSettings,
     onRemoveProject,
+    onCommit,
+    onPush,
+    onPull,
     hasConfig,
   ]);
 

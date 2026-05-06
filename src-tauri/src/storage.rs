@@ -33,6 +33,23 @@ impl StorageManager {
         &self.config_dir
     }
 
+    pub fn save_vcs_settings(&self, project_id: &str, settings: &serde_json::Value) -> Result<()> {
+        let file = self.config_dir.join(format!("vcs_{}.json", project_id));
+        let json = serde_json::to_string_pretty(settings)?;
+        fs::write(&file, json)?;
+        Ok(())
+    }
+
+    pub fn load_vcs_settings(&self, project_id: &str) -> Result<serde_json::Value> {
+        let file = self.config_dir.join(format!("vcs_{}.json", project_id));
+        if file.exists() {
+            let content = fs::read_to_string(&file)?;
+            Ok(serde_json::from_str(&content)?)
+        } else {
+            Ok(serde_json::Value::Object(serde_json::Map::new()))
+        }
+    }
+
     pub fn save_session(&self, session: &SessionStore) -> Result<()> {
         let session_file = self.config_dir.join("sessions.json");
         let mut session = session.clone();

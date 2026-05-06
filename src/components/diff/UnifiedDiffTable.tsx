@@ -39,6 +39,19 @@ const UnifiedDiffTable: React.FC<UnifiedDiffTableProps> = ({
                   const curOld = oldNum;
                   const curNew = newNum;
 
+                  if (lineType === "collapsed") {
+                    return (
+                      <tr
+                        key={`${hunkIndex}-${lineIndex}`}
+                        className="bg-bg-secondary/60 text-text-muted text-center italic"
+                      >
+                        <td colSpan={4} className="py-1 px-2 text-[12px]">
+                          {content}
+                        </td>
+                      </tr>
+                    );
+                  }
+
                   if (lineType !== "added") {
                     oldNum++;
                   }
