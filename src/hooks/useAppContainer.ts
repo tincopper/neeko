@@ -273,18 +273,20 @@ export function useAppContainer(): UseAppContainerResult {
     : currentProjectId;
 
   useEffect(() => {
-    if (tabKey) {
-      const existing = getTabs(tabKey);
-      if (existing.length === 0) {
-        // 新 worktree 或新项目：创建默认 tab 并带上 selected_agent
-        const agentId = activeProject?.selected_agent ?? null;
-        const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
-        ensureDefaultTab(tabKey, agentId, agentName);
-      } else {
-        ensureDefaultTab(tabKey);
-      }
+    if (!tabKey) return;
+
+    // Local 项目（非 worktree）：不自动创建 tab，让 ProjectGuidePage 引导用户
+    if (activeProject && !activeWorktreePath) return;
+
+    const existing = getTabs(tabKey);
+    if (existing.length === 0) {
+      const agentId = activeProject?.selected_agent ?? null;
+      const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
+      ensureDefaultTab(tabKey, agentId, agentName);
+    } else {
+      ensureDefaultTab(tabKey);
     }
-  }, [tabKey, getTabs, ensureDefaultTab, activeProject?.selected_agent, agents]);
+  }, [tabKey, getTabs, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = tabKey ? getActiveTabId(tabKey) : null;
