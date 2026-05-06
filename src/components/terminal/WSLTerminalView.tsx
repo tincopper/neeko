@@ -14,7 +14,7 @@ import {
    wslTerminalCache,
    wslWrapperRefs,
    type WslTerminalCache,
-} from "./wslTerminalCache";
+} from "./terminalCache";
 import { useAppContext, useEditorContext, useWslContext } from "../../contexts";
 
 interface WSLTerminalViewProps {
