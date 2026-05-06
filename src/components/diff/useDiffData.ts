@@ -118,10 +118,13 @@ export function useDiffData({ projectId, diffSource, filePath }: UseDiffDataPara
 }
 
 export function getLineContent(line: DiffLine): string {
-  return line.Context ?? line.Added ?? line.Removed ?? "";
+  return line.Collapsed ?? line.Context ?? line.Added ?? line.Removed ?? "";
 }
 
-export function getLineType(line: DiffLine): "context" | "added" | "removed" {
+export function getLineType(line: DiffLine): "context" | "added" | "removed" | "collapsed" {
+  if (line.Collapsed !== undefined) {
+    return "collapsed";
+  }
   if (line.Context !== undefined) {
     return "context";
   }

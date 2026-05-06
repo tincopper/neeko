@@ -4,6 +4,7 @@ export interface DiffLine {
   Context?: string;
   Added?: string;
   Removed?: string;
+  Collapsed?: string;
 }
 
 export interface DiffHunk {
@@ -16,6 +17,7 @@ export interface DiffHunk {
 
 export interface DiffResult {
   hunks: DiffHunk[];
+  truncated?: boolean;
 }
 
 export type ViewMode = "unified" | "split";
