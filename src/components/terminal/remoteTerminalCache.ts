@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalInputController } from "./terminalInput";
+import { createTerminalCacheBackend } from "./unifiedTerminalCache";
 
 export interface RemoteTerminalCache {
   term: Terminal;
@@ -13,59 +13,65 @@ export interface RemoteTerminalCache {
   inputController: TerminalInputController | null;
 }
 
-// 全局缓存：key = "remote:{entryId}:{projectId}"
-export const remoteTerminalCache = new Map<string, RemoteTerminalCache>();
+const backend = createTerminalCacheBackend<RemoteTerminalCache>({
+  prefix: "remote:",
+  closeSessionCmd: "close_remote_terminal_session",
+  resizeSessionCmd: "resize_remote_terminal",
+  logPrefix: "[SSH]",
+});
 
-/** Remote 终端重建回调注册表 */
-export const remoteRebuildCallbacks = new Map<string, () => void>();
+// ---- Re-export factory maps with original names ----
+export const remoteTerminalCache = backend.cache;
+export const remoteRebuildCallbacks = backend.rebuildCallbacks;
+export const remoteWrapperRefs = backend.wrapperRefs;
 
-/** DOM wrapper 节点注册表，供 switchAgentInRemoteTerminal 使用 */
-export const remoteWrapperRefs = new Map<string, HTMLDivElement>();
-
+// ---- Key builder ----
 export function remoteCacheKey(entryId: string, projectId: string) {
-  return `remote:${entryId}:${projectId}`;
+  return backend.cacheKey(entryId, projectId);
 }
 
-function resolveRemoteCacheKey(keyOrPrefix: string): string | null {
-  if (remoteTerminalCache.has(keyOrPrefix)) return keyOrPrefix;
-  for (const key of remoteTerminalCache.keys()) {
-    if (key.startsWith(keyOrPrefix + ":")) {
-      return key;
-    }
-  }
-  return null;
-}
+// ---- Cache lifecycle (thin wrappers around factory) ----
 
-/** 向已有 SSH 终端会话发送 agent 命令（Ctrl+C 中断当前进程后重新启动） */
-export function launchAgentInRemoteTerminal(cacheKey: string, command: string, args: string[]) {
-  const resolved = resolveRemoteCacheKey(cacheKey);
+export function destroyRemoteCache(key: string) {
+  const resolved = backend.resolveCacheKey(key);
   if (!resolved) return;
-  const cache = remoteTerminalCache.get(resolved);
-  if (!cache?.sessionId) return;
-  const sessionId = cache.sessionId;
-  const ctrlC = Array.from(new TextEncoder().encode("\x03"));
-  emit(`terminal-input-${sessionId}`, ctrlC).catch(() => {});
-  setTimeout(() => {
-    const cmdStr = [command, ...args].join(" ") + "\r";
-    const bytes = Array.from(new TextEncoder().encode(cmdStr));
-    emit(`terminal-input-${sessionId}`, bytes).catch(() => {});
-  }, 50);
+  backend.destroyCache(resolved);
+}
+
+export function destroyRemoteCachesByPrefix(prefix: string) {
+  backend.destroyCachesByPrefix(prefix);
+}
+
+export function refreshRemoteTerminal(key: string) {
+  backend.refreshTerminal(key);
+}
+
+// ---- Agent interaction ----
+
+export function launchAgentInRemoteTerminal(
+  cacheKey: string,
+  command: string,
+  args: string[],
+) {
+  backend.launchAgentInTerminal(cacheKey, command, args);
 }
 
 /**
- * 即时切换 SSH Remote Agent：清除旧 PTY 缓存 + 触发重建，后台异步关闭旧 PTY。
+ * Instantaneously switch SSH Remote Agent: clear old PTY cache + trigger rebuild,
+ * close old PTY in background asynchronously.
  */
 export async function switchAgentInRemoteTerminal(
   cacheKey: string,
   agentId: string,
   agentCommandOverrides?: Record<string, string>,
 ) {
-  const resolved = resolveRemoteCacheKey(cacheKey) ?? cacheKey;
+  const resolved = backend.resolveCacheKey(cacheKey) ?? cacheKey;
   const wrapper = remoteWrapperRefs.get(resolved);
   if (!wrapper) {
-    // 回退：wrapper 未就绪，用旧路径
+    // Fallback: wrapper not ready, use old path
     const agent = await invoke<{ id: string; command: string; args: string[] }>(
-      "get_agent", { agentId },
+      "get_agent",
+      { agentId },
     ).catch(() => null);
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
@@ -74,66 +80,29 @@ export async function switchAgentInRemoteTerminal(
     return;
   }
 
-  // 1. 摘除旧缓存事件监听
+  // 1. Remove old cache event listeners
   const oldCache = remoteTerminalCache.get(resolved);
   if (oldCache) {
     oldCache.unlisten?.();
     oldCache.inputController?.dispose();
   }
 
-  // 2. 删除旧条目
+  // 2. Delete old entry
   remoteTerminalCache.delete(resolved);
 
-  // 3. 清空 wrapper DOM
+  // 3. Clear wrapper DOM
   while (wrapper.firstChild) {
     wrapper.removeChild(wrapper.firstChild);
   }
 
-  // 4. 触发重建（selectedAgentId 已由 handleSelectRemoteAgent 更新到 props）
+  // 4. Trigger rebuild (selectedAgentId already updated to props by handleSelectRemoteAgent)
   remoteRebuildCallbacks.get(resolved)?.();
 
-  // 5. 后台异步关闭旧 PTY（注意 SSH 用 close_remote_terminal_session）
+  // 5. Close old SSH PTY in background (note: uses close_remote_terminal_session)
   if (oldCache?.sessionId) {
-    invoke("close_remote_terminal_session", { sessionId: oldCache.sessionId }).catch(() => {});
+    invoke("close_remote_terminal_session", {
+      sessionId: oldCache.sessionId,
+    }).catch(() => {});
   }
   oldCache?.term.dispose();
-}
-
-export function destroyRemoteCache(key: string) {
-  const resolved = resolveRemoteCacheKey(key);
-  if (!resolved) return;
-  const cache = remoteTerminalCache.get(resolved);
-  if (!cache) return;
-  cache.unlisten?.();
-  cache.inputController?.dispose();
-  if (cache.sessionId) {
-    invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
-  }
-  cache.term.dispose();
-  remoteTerminalCache.delete(resolved);
-}
-
-export function destroyRemoteCachesByPrefix(prefix: string) {
-  const keys = Array.from(remoteTerminalCache.keys());
-  for (const key of keys) {
-    if (key === prefix || key.startsWith(prefix + ":")) {
-      destroyRemoteCache(key);
-    }
-  }
-}
-
-/** 手动刷新 Remote 终端：关闭 SSH PTY + 销毁缓存 + 触发重建 */
-export function refreshRemoteTerminal(key: string) {
-  const resolved = resolveRemoteCacheKey(key);
-  if (!resolved) return;
-  const cache = remoteTerminalCache.get(resolved);
-  if (!cache) return;
-  cache.unlisten?.();
-  cache.inputController?.dispose();
-  if (cache.sessionId) {
-    invoke("close_remote_terminal_session", { sessionId: cache.sessionId }).catch(() => {});
-  }
-  cache.term.dispose();
-  remoteTerminalCache.delete(resolved);
-  remoteRebuildCallbacks.get(resolved)?.();
 }

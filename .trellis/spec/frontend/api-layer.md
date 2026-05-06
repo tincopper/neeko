@@ -84,47 +84,13 @@ try {
 
 ---
 
-## 适配器模式
+## 适配器模式（已移除）
 
-对于需要统一处理 local/wsl/remote 三种项目类型的场景，使用 Adapter 模式：
+> **2026-05-06**: `src/adapters/` 目录与 `useUnifiedProjects` hook 已作为死代码移除。
+> 当前 `useAppContainer` 直接使用三个独立 hook（`useLocalProjects`、`useWslProjects`、`useRemoteProjects`）
+> 来管理不同项目源，不再通过 Adapter 抽象层统一。
 
-```
-src/adapters/
-├── ProjectAdapter.ts      # 基类接口
-├── LocalProjectAdapter.ts # 本地项目适配器
-├── WslProjectAdapter.ts   # WSL 项目适配器
-└── RemoteProjectAdapter.ts # SSH 项目适配器
-```
-
-### 适配器接口
-
-```typescript
-// src/adapters/ProjectAdapter.ts
-export interface ProjectAdapter {
-  type: 'local' | 'wsl' | 'remote';
-  getProjects(): UnifiedProject[];
-  selectProject(projectId: string): void;
-  refreshGit(projectId: string): Promise<void>;
-  openIde(projectId: string, ide: string): Promise<void>;
-  // ...
-}
-```
-
-### 使用方式
-
-```typescript
-// 在 useUnifiedProjects hook 中
-const localAdapter = new LocalProjectAdapter(localProjects, ...);
-const wslAdapter = new WslProjectAdapter(wslEntries, ...);
-const remoteAdapter = new RemoteProjectAdapter(remoteEntries, ...);
-
-// 统一接口
-const allProjects = [
-  ...localAdapter.getProjects(),
-  ...wslAdapter.getProjects(),
-  ...remoteAdapter.getProjects()
-];
-```
+如需在未来重新统一项目源操作，请参考 PRD 中 Phase 1-2 的设计方案（`TerminalBackendAdapter` 接口 + Strategy 模式）。
 
 ---
 

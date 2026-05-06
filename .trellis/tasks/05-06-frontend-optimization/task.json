@@ -1,0 +1,45 @@
+{
+  "id": "frontend-optimization",
+  "name": "frontend-optimization",
+  "title": "前端代码优化：消除终端层/项目卡片重复代码、移除未使用依赖、优化构建配置和架构卫生",
+  "description": "",
+  "status": "planned",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-06",
+  "completedAt": null,
+  "branch": "feature/frontend-optimization",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 4,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "update-spec"
+    },
+    {
+      "phase": 4,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Phases 1(cache), 2-5 completed. Terminal cache unified via factory pattern (-130 lines duplicated logic). Project cards merged (-180 lines). Dead code removed (-400 lines). Terminal views NOT unified yet (high risk, different prop signatures).",
+  "meta": {}
+}
