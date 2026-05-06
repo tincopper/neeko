@@ -8,6 +8,8 @@ import type {
 } from "../../types";
 import { IS_MACOS } from "../../utils/platform";
 import neekoIcon from "../../assets/neeko-icon.png";
+import { GitCommitHorizontal } from "lucide-react";
+import { cn } from "../../utils/cn";
 
 interface TitleBarProps {
    activeProject: Project | null;
@@ -16,6 +18,8 @@ interface TitleBarProps {
    activeWorktreeBranch: string;
    activeWslWorktreeBranch: string;
    activeRemoteWorktreeBranch: string;
+   showGitPanel?: boolean;
+   onToggleGitPanel?: () => void;
 }
 
 function TitleBar({
@@ -25,6 +29,8 @@ function TitleBar({
    activeWorktreeBranch,
    activeWslWorktreeBranch,
    activeRemoteWorktreeBranch,
+   showGitPanel,
+   onToggleGitPanel,
 }: TitleBarProps) {
    const currentProjectName =
       activeProject?.name ??
@@ -55,6 +61,23 @@ function TitleBar({
             <div className="flex items-center gap-2 shrink-0" data-tauri-drag-region>
                {currentProjectName && <span className="text-[var(--font-size)] font-medium text-text-primary max-w-[220px] truncate">{currentProjectName}</span>}
                {currentBranch && <span className="text-[var(--font-size)] px-2 py-0.5 rounded-full bg-bg-tertiary text-accent-green">{currentBranch}</span>}
+               {onToggleGitPanel && currentProjectName && (
+                  <button
+                     className={cn(
+                        "p-1 rounded transition-colors duration-100",
+                        showGitPanel
+                           ? "bg-accent-blue/20 text-accent-blue"
+                           : "text-text-muted hover:text-accent-blue hover:bg-bg-hover"
+                     )}
+                     title="Git Commit Panel"
+                     onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleGitPanel();
+                     }}
+                  >
+                     <GitCommitHorizontal size={15} />
+                  </button>
+               )}
                {!IS_MACOS && <WindowControls />}
             </div>
          </div>

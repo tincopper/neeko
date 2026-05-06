@@ -3,6 +3,9 @@ use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitI
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use super::invalidate_repo_caches;
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -64,10 +67,10 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
                 continue;
             }
 
-            let file_status = if status.contains(Status::WT_NEW)
-                || status.contains(Status::INDEX_NEW)
-            {
+            let file_status = if status.contains(Status::INDEX_NEW) {
                 FileStatus::Added
+            } else if status.contains(Status::WT_NEW) {
+                FileStatus::Untracked
             } else if status.contains(Status::WT_DELETED) || status.contains(Status::INDEX_DELETED)
             {
                 FileStatus::Deleted
@@ -157,7 +160,9 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
         // Handle untracked/added files not in diff (count their lines as additions)
         if let Some(workdir) = repo.workdir() {
             for file in &mut files {
-                if (file.status == FileStatus::Added) && file.additions == 0 && file.deletions == 0
+                if (file.status == FileStatus::Added || file.status == FileStatus::Untracked)
+                    && file.additions == 0
+                    && file.deletions == 0
                 {
                     let full_path = workdir.join(&file.path);
                     if full_path.exists() && full_path.is_file() {
@@ -230,6 +235,7 @@ pub fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
     repo.set_head(&format!("refs/heads/{}", branch_name))
         .context("Failed to set HEAD")?;
 
+    invalidate_repo_caches(repo_path);
     Ok(())
 }
 
@@ -337,6 +343,7 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
 
     Ok(DiffResult {
         hunks: result_hunks,
+        truncated: false,
     })
 }
 
@@ -459,6 +466,7 @@ pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result
         }
         anyhow::bail!("git branch {} failed: {}", flag, stderr.trim());
     }
+    invalidate_repo_caches(repo_path);
     Ok(())
 }
 
@@ -528,7 +536,10 @@ pub fn parse_unified_diff(output: &str) -> DiffResult {
         }
     }
 
-    DiffResult { hunks }
+    DiffResult {
+        hunks,
+        truncated: false,
+    }
 }
 
 fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
@@ -570,6 +581,707 @@ fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
         _rest,
     ))
 }
+
+/// 将连续上下文的中间部分折叠（参考 Muxy GitDiffParser.collapseContextRows）
+fn flush_context_buffer(
+    collapsed_lines: &mut Vec<DiffLine>,
+    buffer: &mut Vec<DiffLine>,
+    threshold: usize,
+    keep_edges: usize,
+) {
+    let count = buffer.len();
+    let min_keep = keep_edges * 2;
+    if count > threshold && count > min_keep {
+        let middle = count - min_keep;
+        collapsed_lines.extend(buffer.drain(..keep_edges));
+        collapsed_lines.push(DiffLine::Collapsed(format!("{} unmodified lines", middle)));
+        buffer.drain(..middle);
+        collapsed_lines.extend(buffer.drain(..));
+    } else {
+        collapsed_lines.extend(buffer.drain(..));
+    }
+}
+
+/// 折叠连续上下文行（参考 Muxy GitDiffParser.collapseContextRows），保留前后 3 行
+pub fn collapse_diff_context(hunks: &mut Vec<DiffHunk>, threshold: usize) {
+    for hunk in hunks.iter_mut() {
+        let mut collapsed_lines: Vec<DiffLine> = Vec::new();
+        let mut context_buffer: Vec<DiffLine> = Vec::new();
+        for line in hunk.lines.drain(..) {
+            match &line {
+                DiffLine::Context(_) => context_buffer.push(line),
+                _ => {
+                    flush_context_buffer(&mut collapsed_lines, &mut context_buffer, threshold, 3);
+                    collapsed_lines.push(line);
+                }
+            }
+        }
+        flush_context_buffer(&mut collapsed_lines, &mut context_buffer, threshold, 3);
+        hunk.lines = collapsed_lines;
+    }
+}
+
+/// CLI 方式获取文件 diff（工作区 vs index，仅未暂存变更）
+pub fn get_file_diff_cli(
+    repo_path: &Path,
+    file_path: &str,
+    line_limit: Option<usize>,
+) -> Result<DiffResult> {
+    let output = exec("git")
+        .args(["diff", "-U3", "--", file_path])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff")?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut result = parse_unified_diff(&stdout);
+    if let Some(limit) = line_limit {
+        let mut total = 0;
+        for hunk in result.hunks.iter() {
+            total += hunk.lines.len();
+        }
+        if total > limit {
+            result.truncated = true;
+            let mut current = 0;
+            for hunk in result.hunks.iter_mut() {
+                let remaining = limit.saturating_sub(current);
+                if remaining == 0 {
+                    hunk.lines.clear();
+                } else if hunk.lines.len() > remaining {
+                    hunk.lines.truncate(remaining);
+                }
+                current += hunk.lines.len();
+            }
+            result.hunks.retain(|h| !h.lines.is_empty());
+        }
+    }
+    collapse_diff_context(&mut result.hunks, 12);
+    Ok(result)
+}
+
+/// Stage 指定文件
+pub fn stage_files(repo_path: &Path, file_paths: &[String]) -> Result<()> {
+    if file_paths.is_empty() {
+        return Ok(());
+    }
+    let mut args = vec!["add", "--"];
+    args.extend(file_paths.iter().map(|s| s.as_str()));
+    let output = exec("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git add")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Unstage 指定文件
+pub fn unstage_files(repo_path: &Path, file_paths: &[String]) -> Result<()> {
+    if file_paths.is_empty() {
+        return Ok(());
+    }
+    for path in file_paths {
+        let output = exec("git")
+            .args(["reset", "HEAD", "--", path])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git reset HEAD")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("unknown revision") || stderr.contains("ambiguous") {
+                let rm_output = exec("git")
+                    .args(["rm", "--cached", "-f", "--", path])
+                    .current_dir(repo_path)
+                    .output()
+                    .context("Failed to run git rm --cached")?;
+                if !rm_output.status.success() {
+                    anyhow::bail!(
+                        "git rm --cached failed for '{}': {}",
+                        path,
+                        String::from_utf8_lossy(&rm_output.stderr).trim()
+                    );
+                }
+                continue;
+            }
+            anyhow::bail!("git reset HEAD failed for '{}': {}", path, stderr.trim());
+        }
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Stage 所有变更
+pub fn stage_all(repo_path: &Path) -> Result<()> {
+    let output = exec("git")
+        .args(["add", "-A"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git add -A")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git add -A failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Unstage 所有变更（兼容无 HEAD 的新仓库）
+pub fn unstage_all(repo_path: &Path) -> Result<()> {
+    let output = exec("git")
+        .args(["reset", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git reset HEAD")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("unknown revision") || stderr.contains("ambiguous") {
+            let rm_output = exec("git")
+                .args(["rm", "--cached", "-r", "."])
+                .current_dir(repo_path)
+                .output()
+                .context("Failed to run git rm --cached -r .")?;
+            if !rm_output.status.success() {
+                anyhow::bail!(
+                    "git rm --cached failed: {}",
+                    String::from_utf8_lossy(&rm_output.stderr).trim()
+                );
+            }
+        } else {
+            anyhow::bail!("git reset HEAD failed: {}", stderr.trim());
+        }
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Discard 单个文件的变更（理解为：恢复到 HEAD 版本）
+/// - 未跟踪文件 → 删除
+/// - 已暂存文件 → 先 unstage 再恢复工作区
+/// - 仅工作区修改 → 恢复到 index 版本
+pub fn discard_file(repo_path: &Path, file_path: &str) -> Result<()> {
+    let output = exec("git")
+        .args(["status", "--porcelain=1", "-z", "--", file_path])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git status")?;
+
+    let stdout_bytes = &output.stdout;
+    if stdout_bytes.is_empty() {
+        anyhow::bail!("File '{}' has no changes to discard.", file_path);
+    }
+
+    let x = stdout_bytes.first().copied().unwrap_or(b' ');
+    let y = stdout_bytes.get(1).copied().unwrap_or(b' ');
+
+    // ?? → 未跟踪文件：直接删除
+    if x == b'?' && y == b'?' {
+        let full_path = repo_path.join(file_path);
+        if full_path.exists() {
+            std::fs::remove_file(&full_path)?;
+        }
+        return Ok(());
+    }
+
+    // X (index) 有变更 → 先 reset HEAD 撤销暂存
+    if x != b' ' && x != b'?' {
+        let reset = exec("git")
+            .args(["reset", "HEAD", "--", file_path])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git reset HEAD")?;
+        if !reset.status.success() {
+            let stderr = String::from_utf8_lossy(&reset.stderr);
+            if !stderr.contains("unknown revision") && !stderr.contains("ambiguous") {
+                anyhow::bail!("git reset HEAD failed: {}", stderr.trim());
+            }
+            // 新仓库无 HEAD，尝试 git rm --cached
+            if x == b'A' {
+                let rm_cached = exec("git")
+                    .args(["rm", "--cached", "-f", "--", file_path])
+                    .current_dir(repo_path)
+                    .output()
+                    .context("Failed to run git rm --cached")?;
+                if !rm_cached.status.success() {
+                    anyhow::bail!(
+                        "git rm --cached failed: {}",
+                        String::from_utf8_lossy(&rm_cached.stderr).trim()
+                    );
+                }
+            }
+        }
+    }
+
+    // y (worktree) 有变更 → checkout 恢复文件
+    if y != b' ' && y != b'?' {
+        let checkout = exec("git")
+            .args(["checkout", "--", file_path])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git checkout")?;
+        if !checkout.status.success() {
+            anyhow::bail!(
+                "git checkout failed: {}",
+                String::from_utf8_lossy(&checkout.stderr).trim()
+            );
+        }
+    }
+
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Discard 所有变更
+pub fn discard_all(repo_path: &Path) -> Result<()> {
+    let output = exec("git")
+        .args(["checkout", "--", "."])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git checkout -- .")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git checkout -- . failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let output = exec("git")
+        .args(["clean", "-fd"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git clean -fd")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git clean -fd failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Commit 暂存区变更
+pub fn commit(repo_path: &Path, message: &str) -> Result<CommitResult> {
+    let output = exec("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git commit")?;
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("nothing to commit") || stderr.contains("nothing added") {
+            anyhow::bail!(
+                "No staged changes. Select files and click 'Stage Selected' first, then commit."
+            );
+        }
+        anyhow::bail!("git commit failed: {}", stderr.trim());
+    }
+    let hash = extract_commit_hash(&combined).unwrap_or_default();
+    invalidate_repo_caches(repo_path);
+    Ok(CommitResult {
+        success: true,
+        hash,
+        message: message.to_string(),
+    })
+}
+
+/// Commit 选中文件
+pub fn commit_files(
+    repo_path: &Path,
+    file_paths: &[String],
+    message: &str,
+) -> Result<CommitResult> {
+    stage_files(repo_path, file_paths)?;
+    commit(repo_path, message)
+}
+
+/// Commit 并 Push
+pub fn commit_and_push(repo_path: &Path, message: &str) -> Result<CommitResult> {
+    let commit_result = commit(repo_path, message)?;
+    push(repo_path, false)?;
+    Ok(commit_result)
+}
+
+/// Fetch 远程更新
+pub fn fetch(repo_path: &Path) -> Result<()> {
+    let output = exec("git")
+        .args(["fetch"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git fetch")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git fetch failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Pull 远程更新（参考 Muxy upstream 检测模式）
+/// 拆为 fetch + merge --ff-only，避免 git pull 混合 stderr 难以排查
+pub fn pull(repo_path: &Path) -> Result<()> {
+    let branch = get_current_branch_via_cli(repo_path)?;
+    let remote_branch = format!("origin/{}", branch);
+
+    // Step 1: fetch
+    let output = exec("git")
+        .args(["fetch", "origin", &branch])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git fetch")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git fetch origin {} failed: {}", branch, stderr.trim());
+    }
+
+    // Step 2: merge --ff-only (只允许快进，避免冲突)
+    let output = exec("git")
+        .args(["merge", "--ff-only", &remote_branch])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git merge")?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // 过滤 remote: 信息行，只展示本地错误
+        let msg = if stdout.trim().is_empty() {
+            stderr
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("remote: "))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string()
+        } else {
+            stdout.trim().to_string()
+        };
+        let msg = if msg.is_empty() {
+            "merge failed (no details)".to_string()
+        } else {
+            msg
+        };
+        anyhow::bail!("git merge {} failed: {}", remote_branch, msg);
+    }
+
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Push 到远程（参考 Muxy upstream 检测模式）
+pub fn push(repo_path: &Path, set_upstream: bool) -> Result<()> {
+    let branch = get_current_branch_via_cli(repo_path)?;
+    let has_upstream = check_upstream(repo_path, &branch)?;
+    if !set_upstream && !has_upstream {
+        anyhow::bail!(
+            "No upstream configured for branch '{}'. Push with --set-upstream to push.",
+            branch
+        );
+    }
+    let mut args = vec!["push"];
+    if set_upstream {
+        args.push("--set-upstream");
+    }
+    args.push("origin");
+    args.push(&branch);
+    let result = exec("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git push")?;
+    if !result.status.success() {
+        anyhow::bail!(
+            "git push failed: {}",
+            String::from_utf8_lossy(&result.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// 获取 Commit 历史（参考 Muxy git log 格式）
+pub fn get_commit_log(repo_path: &Path, count: usize) -> Result<Vec<CommitEntry>> {
+    let format = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D";
+    let output = exec("git")
+        .args(["log", format, &format!("-{}", count), "--decorate=full"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git log")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git log failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(parse_commit_log(&String::from_utf8_lossy(&output.stdout)))
+}
+
+/// 获取 Ahead/Behind 计数（参考 Muxy）
+pub fn get_ahead_behind(repo_path: &Path) -> Result<AheadBehind> {
+    let branch = get_current_branch_via_cli(repo_path)?;
+    if !check_upstream(repo_path, &branch)? {
+        return Ok(AheadBehind {
+            ahead: 0,
+            behind: 0,
+        });
+    }
+    let output = exec("git")
+        .args([
+            "rev-list",
+            "--left-right",
+            "--count",
+            &format!("origin/{}...{}", branch, branch),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git rev-list --left-right --count")?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parts: Vec<&str> = stdout.split('\t').collect();
+    Ok(AheadBehind {
+        ahead: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+        behind: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
+    })
+}
+
+fn get_current_branch_via_cli(repo_path: &Path) -> Result<String> {
+    let output = exec("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get current branch")?;
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch == "HEAD" {
+        anyhow::bail!(
+            "Cannot perform this operation on a detached HEAD. Please checkout a branch first."
+        );
+    }
+    Ok(branch)
+}
+
+fn check_upstream(repo_path: &Path, branch: &str) -> Result<bool> {
+    Ok(exec("git")
+        .args([
+            "rev-parse",
+            "--abbrev-ref",
+            &format!("{}@{{upstream}}", branch),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false))
+}
+
+fn extract_commit_hash(stdout: &str) -> Option<String> {
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            // 支持 "[branch abc1234]" 和 "[detached HEAD abc1234]" 格式
+            if let Some(idx) = trimmed.find("] ") {
+                let bracket_content = &trimmed[1..idx];
+                // 取最后一个空格后的部分作为 hash
+                if let Some(last_space) = bracket_content.rfind(' ') {
+                    return Some(bracket_content[last_space + 1..].to_string());
+                }
+                // 如果没有空格，整个内容就是 hash（如 "[abc1234]"）
+                return Some(bracket_content.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn parse_commit_log(output: &str) -> Vec<CommitEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\0').collect();
+            if parts.len() >= 6 {
+                Some(CommitEntry {
+                    hash: parts[0].to_string(),
+                    short_hash: parts[1].to_string(),
+                    author: parts[2].to_string(),
+                    timestamp: parts[3].to_string(),
+                    message: parts[4].to_string(),
+                    refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Cherry-pick 指定 commit（参考 Muxy GitRepositoryService.cherryPick）
+pub fn cherry_pick(repo_path: &Path, commit_hash: &str) -> Result<()> {
+    let output = exec("git")
+        .args(["cherry-pick", commit_hash])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git cherry-pick")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git cherry-pick failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Revert 指定 commit（参考 Muxy GitRepositoryService.revert）
+pub fn revert(repo_path: &Path, commit_hash: &str) -> Result<()> {
+    let output = exec("git")
+        .args(["revert", "--no-edit", commit_hash])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git revert")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git revert failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// 创建 tag（参考 Muxy GitRepositoryService.createTag）
+pub fn create_tag(repo_path: &Path, name: &str, message: Option<&str>) -> Result<()> {
+    let mut args = vec!["tag", "-a", name, "-m"];
+    args.push(message.unwrap_or(name));
+    let output = exec("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git tag")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git tag failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// Checkout detached HEAD（参考 Muxy GitRepositoryService.checkoutDetached）
+pub fn checkout_detached(repo_path: &Path, commit_hash: &str) -> Result<()> {
+    let output = exec("git")
+        .args(["checkout", commit_hash])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git checkout (detached)")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git checkout detached failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// 创建并切换分支（参考 Muxy GitRepositoryService.createAndSwitchBranch）
+pub fn create_and_switch_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
+    let output = exec("git")
+        .args(["checkout", "-b", branch_name])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git checkout -b")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git checkout -b failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// 获取默认分支名（纯本地操作，无需联网）
+pub fn default_branch(repo_path: &Path) -> Result<String> {
+    let rp = repo_path.to_path_buf();
+    super::cache::get_cached_default_branch(repo_path, || {
+        // 优先从 refs/remotes/origin/HEAD 符号引用读取（纯本地）
+        let output = exec("git")
+            .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
+            .current_dir(&rp)
+            .output()
+            .context("Failed to resolve origin/HEAD")?;
+        if output.status.success() {
+            let full_ref = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Some(branch) = full_ref.strip_prefix("refs/remotes/origin/") {
+                return Ok(branch.to_string());
+            }
+        }
+        // 回退：检查本地是否有 origin/main 或 origin/master
+        for candidate in &["main", "master"] {
+            if exec("git")
+                .args([
+                    "rev-parse",
+                    "--verify",
+                    &format!("refs/remotes/origin/{}", candidate),
+                ])
+                .current_dir(&rp)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
+                return Ok(candidate.to_string());
+            }
+        }
+        Ok("main".to_string())
+    })
+}
+
+/// 获取仓库 web URL（参考 Muxy GitRepositoryService.remoteWebURL）
+pub fn remote_web_url(repo_path: &Path) -> Result<String> {
+    let output = exec("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get remote URL")?;
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if let Some(rest) = url.strip_prefix("git@") {
+        if let Some((host, path)) = rest.split_once(':') {
+            return Ok(format!(
+                "https://{}/{}",
+                host,
+                path.strip_suffix(".git").unwrap_or(path)
+            ));
+        }
+    }
+    if let Some(rest) = url.strip_prefix("ssh://") {
+        // ssh://[user@]host[:port]/path
+        let after_at = rest.split('@').nth(1).unwrap_or(rest);
+        let (host_port, path) = after_at.split_once('/').unwrap_or((after_at, ""));
+        // Strip SSH port — HTTPS uses 443
+        let host = host_port.split(':').next().unwrap_or(host_port);
+        if !path.is_empty() {
+            return Ok(format!(
+                "https://{}/{}",
+                host,
+                path.strip_suffix(".git").unwrap_or(path)
+            ));
+        }
+    }
+    Ok(url.strip_suffix(".git").unwrap_or(&url).to_string())
+}
+
+use crate::models::{AheadBehind, CommitEntry, CommitResult};
 
 #[cfg(test)]
 mod tests {
@@ -822,6 +1534,6 @@ mod tests {
             .iter()
             .find(|f| f.path.to_string_lossy().contains("new_file.txt"));
         assert!(new_file_entry.is_some(), "Should detect new file");
-        assert_eq!(new_file_entry.unwrap().status, FileStatus::Added);
+        assert_eq!(new_file_entry.unwrap().status, FileStatus::Untracked);
     }
 }
