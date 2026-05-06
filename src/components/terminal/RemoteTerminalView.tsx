@@ -14,7 +14,7 @@ import {
   remoteTerminalCache,
   remoteWrapperRefs,
   type RemoteTerminalCache,
-} from "./remoteTerminalCache";
+} from "./terminalCache";
 import { useEditorContext } from "../../contexts";
 
 interface RemoteTerminalViewProps {
