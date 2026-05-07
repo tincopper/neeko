@@ -1300,3 +1300,36 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 33: Fix terminal overviewRuler width
+
+**Date**: 2026-05-07
+**Task**: Fix terminal overviewRuler width
+**Branch**: `fix/git_panel`
+
+### Summary
+
+Changed overviewRuler.width from 1 to 0 in terminalFactory.ts to disable scrollbar ruler, aligning with RemoteTerminalView and WSLTerminalView.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b9d296d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
