@@ -9,6 +9,8 @@ vi.mock('../../components/terminal', () => ({
   refreshTerminal: vi.fn(),
   refreshWslTerminal: vi.fn(),
   refreshRemoteTerminal: vi.fn(),
+  terminalCacheKey: (projectId: string, tabId?: string | null) =>
+    tabId ? `${projectId}:${tabId}:p1` : `${projectId}:p1`,
 }));
 
 function createDefaultParams() {
@@ -20,6 +22,8 @@ function createDefaultParams() {
     setRemoteWtBranch: vi.fn(),
     activeTabId: null as string | null,
     onCloseTab: vi.fn(),
+    shortcuts: {} as Record<string, string>,
+    onToggleTerminal: vi.fn(),
   };
 }
 
@@ -44,6 +48,7 @@ function seedStore(overrides: Partial<ReturnType<typeof useAppStore.getState>> =
     selectWslProject: vi.fn(),
     selectRemoteProject: vi.fn(),
     openIde: vi.fn(),
+    toggleFileView: vi.fn(),
   };
   const state = { ...defaults, ...overrides };
   useAppStore.setState(state);
@@ -232,5 +237,37 @@ describe('useKeyboardShortcuts', () => {
       dispatchKey('KeyW', { ctrlKey: true });
     }).not.toThrow();
     expect(params.onCloseTab).not.toHaveBeenCalled();
+  });
+
+  it('Ctrl+Alt+R 刷新当前 tab 终端', async () => {
+    const { refreshTerminal } = await import('../../components/terminal');
+    params.activeTabId = 'tab1';
+    storeState = seedStore({
+      ...storeState,
+      activeProjectId: 'p1',
+      isTerminalView: true,
+      activeProject: createProject({ id: 'p1' }),
+    });
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('KeyR', { ctrlKey: true, altKey: true });
+
+    expect(refreshTerminal).toHaveBeenCalledWith('p1:tab1:p1');
+  });
+
+  it('Ctrl+Alt+R 无活跃 tab 时刷新项目终端', async () => {
+    const { refreshTerminal } = await import('../../components/terminal');
+    params.activeTabId = null;
+    storeState = seedStore({
+      ...storeState,
+      activeProjectId: 'p1',
+      isTerminalView: true,
+      activeProject: createProject({ id: 'p1' }),
+    });
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('KeyR', { ctrlKey: true, altKey: true });
+
+    expect(refreshTerminal).toHaveBeenCalledWith('p1:p1');
   });
 });

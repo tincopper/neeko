@@ -53,15 +53,17 @@ interface AppStoreState {
   activeFileTabId: string | null;
   fileViewLoading: boolean;
   activeFilePath: string | null;
+  fileViewOpen: boolean;
   selectProject: (id: string) => void;
   selectWslProject: (distro: string, project: WSLProject) => void;
   selectRemoteProject: (host: string, project: RemoteProject) => void;
   openIde: (project: IdeProject) => void;
+  toggleFileView: () => void;
 }
 
 const noop = () => {};
 
-export const useAppStore = create<AppStoreState>(() => ({
+export const useAppStore = create<AppStoreState>((set) => ({
   projects: [],
   activeProjectId: null,
   activeProject: null,
@@ -88,8 +90,10 @@ export const useAppStore = create<AppStoreState>(() => ({
   activeFileTabId: null,
   fileViewLoading: false,
   activeFilePath: null,
+  fileViewOpen: true,
   selectProject: noop,
   selectWslProject: noop,
   selectRemoteProject: noop,
   openIde: noop,
+  toggleFileView: () => set((state) => ({ fileViewOpen: !state.fileViewOpen })),
 }));

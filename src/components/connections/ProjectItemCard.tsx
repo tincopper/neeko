@@ -143,7 +143,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
          if (onRefresh) {
             items.push({
                label: "Refresh Terminal",
-               shortcut: "Ctrl+R",
+                shortcut: "Ctrl+Alt+R",
                action: () => onRefresh(),
             });
          }

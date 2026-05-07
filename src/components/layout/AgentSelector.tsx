@@ -310,7 +310,6 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
           >
             <span className="add-menu-icon">⌘</span>
             <span>Terminal</span>
-            <span className="menu-shortcut">Ctrl+T</span>
           </div>
 
           {/* Chat Option (Reserved) */}

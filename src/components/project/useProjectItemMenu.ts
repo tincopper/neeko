@@ -105,7 +105,7 @@ export function useProjectItemMenu({
     if (onRefresh) {
       items.push({
         label: "Refresh Terminal",
-        shortcut: "Ctrl+R",
+        shortcut: "Ctrl+Alt+R",
         action: () => onRefresh(project.id),
       });
     }

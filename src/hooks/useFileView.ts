@@ -81,6 +81,7 @@ export function useFileView() {
       useAppStore.setState({
         activeFileTabId: tabId,
         activeFilePath: existingTab.filePath,
+        fileViewOpen: true,
       });
       return;
     }
@@ -109,6 +110,7 @@ export function useFileView() {
           fileTabs: nextTabs,
           activeFileTabId: tabId,
           activeFilePath: getActiveFilePath(nextTabs, tabId),
+          fileViewOpen: true,
         };
       });
     } catch (e) {
@@ -155,6 +157,7 @@ export function useFileView() {
     useAppStore.setState((state) => ({
       activeFileTabId: tabId,
       activeFilePath: getActiveFilePath(state.fileTabs, tabId),
+      fileViewOpen: true,
     }));
   }, []);
 

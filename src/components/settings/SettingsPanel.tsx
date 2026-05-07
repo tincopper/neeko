@@ -11,6 +11,7 @@ import TerminalPanel from "./TerminalPanel";
 import AgentsPanel from "./AgentsPanel";
 import IdePanel from "./IdePanel";
 import GitPanel from "./GitPanel";
+import ShortcutPanel from "./ShortcutPanel";
 
 export type { AppConfig, DiffMode };
 export { BUILTIN_FONTS, PRESET_SHELLS };
@@ -142,6 +143,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                   />
                );
 
+            case "shortcuts":
+               return (
+                  <ShortcutPanel
+                     config={config}
+                     onConfigChange={onConfigChange}
+                  />
+               );
+
             default:
                return null;
          }
@@ -149,7 +158,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
 
       if (fullPage) {
          return (
-            <div className="flex flex-col flex-1 min-h-0 bg-bg-primary tab-content">
+            <div className="flex flex-col flex-1 min-h-0 bg-bg-primary tab-content" data-modal="true">
                <div className="flex items-center gap-2 p-3.5 px-5 border-b border-border shrink-0">
                   <button
                      className="bg-none border-none text-text-muted cursor-pointer p-1 rounded flex items-center justify-center transition-[background-color,color] duration-150 hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue"
@@ -196,6 +205,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
       return (
          <div
             className="fixed inset-0 bg-black/55 flex items-center justify-center z-[2000]"
+            data-modal="true"
             onClick={onClose}
          >
             <div

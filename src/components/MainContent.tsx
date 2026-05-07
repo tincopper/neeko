@@ -139,7 +139,7 @@ function MainContent() {
          : null;
 
    // Determine if we should show FileViewer
-   const showFileViewer = fileTabs.length > 0;
+   const showFileViewer = fileTabs.length > 0 && useAppStore((s) => s.fileViewOpen);
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 bg-bg-primary">
