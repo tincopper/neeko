@@ -811,3 +811,36 @@ Fixed two issues: (1) .trellis directory not visible in file tree panel by remov
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: feat: project drag-and-drop sorting with cursor following
+
+**Date**: 2026-05-07
+**Task**: feat: project drag-and-drop sorting with cursor following
+**Branch**: `main`
+
+### Summary
+
+Replace HTML5 Drag API with Pointer Events for drag-and-drop sorting. Add DraggableProjectItem wrapper and useProjectItemDrag hook with real-time dragOffset tracking (transform: translate). Support WSL and SSH remote project list sorting. Add unit tests (250 pass). Create interaction-patterns.md spec doc.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fdc7edf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
