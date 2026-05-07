@@ -1,0 +1,53 @@
+{
+  "id": "project-drag-sort",
+  "name": "project-drag-sort",
+  "title": "Fix project list drag-and-drop sorting and add WSL/SSH support",
+  "description": "修复当前项目列表拖拽排序功能无效的问题，同时新增 WSL 和 SSH 远程项目列表的拖拽排序支持。",
+  "status": "planning",
+  "dev_type": "frontend",
+  "scope": "project-list",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-07",
+  "completedAt": null,
+  "branch": "feature/project-drag-sort",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 4,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "brainstorm"
+    },
+    {
+      "phase": 2,
+      "action": "research"
+    },
+    {
+      "phase": 3,
+      "action": "implement"
+    },
+    {
+      "phase": 4,
+      "action": "check"
+    },
+    {
+      "phase": 5,
+      "action": "update-spec"
+    },
+    {
+      "phase": 6,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

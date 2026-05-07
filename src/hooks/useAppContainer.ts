@@ -86,6 +86,7 @@ export function useAppContainer(): UseAppContainerResult {
     handleRemoveWslEntry,
     handleAddWslProject,
     handleWslDialogClose,
+    handleWslDragEnd,
   } = wsl;
 
   const {
@@ -107,6 +108,7 @@ export function useAppContainer(): UseAppContainerResult {
     handleRemoveRemoteEntry,
     handleAddRemoteProject,
     handleRemoteDialogClose,
+    handleRemoteDragEnd,
     restoreAuthFromEntries,
   } = remote;
 
@@ -517,6 +519,7 @@ export function useAppContainer(): UseAppContainerResult {
     onOpenWslIde: wslActions.handleOpenWslIde,
     onOpenWslWorktreeTerminal: handleOpenWslWorktreeTerminalWithSync,
     onWslDiffBack: handleWslDiffBack,
+    onWslDragEnd: handleWslDragEnd,
   };
 
   const remoteValue = {
@@ -539,6 +542,7 @@ export function useAppContainer(): UseAppContainerResult {
     onOpenRemoteWorktreeTerminal: handleOpenRemoteWorktreeTerminalWithSync,
     invokeRemoteGit: remoteActions.invokeRemoteGit,
     onRemoteDiffBack: handleRemoteDiffBack,
+    onRemoteDragEnd: handleRemoteDragEnd,
     setPendingAuthEntry,
   };
 

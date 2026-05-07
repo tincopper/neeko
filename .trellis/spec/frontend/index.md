@@ -21,6 +21,7 @@
 | [质量指南](./quality-guidelines.md) | 代码规范、禁止模式 | 已填写 |
 | [类型安全](./type-safety.md) | 类型模式、校验 | 已填写 |
 | [API 层](./api-layer.md) | Tauri IPC 调用、事件监听、适配器模式 | 已填写 |
+| [交互模式](./interaction-patterns.md) | 拖拽排序、手势、Pointer Events 模式 | 已填写 |
 
 ---
 

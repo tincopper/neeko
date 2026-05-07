@@ -34,12 +34,13 @@ export interface RemoteContextValue {
     worktreePath: string,
     branch: string,
   ) => void;
-  invokeRemoteGit?: (
+   invokeRemoteGit?: (
     command: string,
     entryId: string,
     extra: Record<string, unknown>,
   ) => Promise<unknown>;
    onRemoteDiffBack: () => void;
+   onRemoteDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
    setPendingAuthEntry: React.Dispatch<React.SetStateAction<RemoteEntrySession | null>>;
 }
 

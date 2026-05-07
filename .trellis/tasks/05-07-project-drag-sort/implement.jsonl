@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "前端组件设计原则，用于指导 DraggableProjectItem 组件设计"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 设计原则，用于指导 useProjectItemDrag 实现"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "前端状态管理指南，用于理解项目列表状态管理"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端单元测试规范，用于编写拖拽功能测试"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量指南，用于验证代码质量"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端类型安全指南，用于确保类型正确"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "代码复用思考指南，用于指导组件设计"}

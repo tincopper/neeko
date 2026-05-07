@@ -1,0 +1,4 @@
+{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".opencode/commands/trellis/check.md", "reason": "Code quality check spec"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查阶段验证代码质量"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查阶段验证测试覆盖率"}

@@ -5,6 +5,7 @@ import ContextMenu from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import ProjectItemHeader from "./ProjectItemHeader";
 import ProjectGitSection from "./ProjectGitSection";
+import DraggableProjectItem from "./DraggableProjectItem";
 import { useProjectItemDrag } from "./useProjectItemDrag";
 import { useProjectItemMenu } from "./useProjectItemMenu";
 import type { ProjectItemProps } from "./projectItemTypes";
@@ -43,13 +44,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
 
   const {
-    isDragOver,
-    handleDragStart,
-    handleDragEnd,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
-  } = useProjectItemDrag(project.id, onDragEnd);
+    isDragging,
+    dragOffset,
+    dropIndicator,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handlePointerCancel,
+  } = useProjectItemDrag({ projectId: project.id, onDragEnd });
 
   const {
     gitMenuOpen,
@@ -111,14 +113,17 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   };
 
   return (
-    <div
-      className={`gh-project mb-0.5 rounded-md overflow-visible transition-[opacity,transform] duration-150 ${isActive ? "active" : ""} ${isDragOver ? "border-t-2 border-accent-blue -mt-0.5" : ""}`}
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+    <DraggableProjectItem
+      dragId={project.id}
+      isDragging={isDragging}
+      dragOffset={dragOffset}
+      dropIndicator={dropIndicator}
+      isActive={isActive}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      className="gh-project"
     >
       <ProjectItemHeader
         project={project}
@@ -181,7 +186,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           }}
         />
       )}
-    </div>
+    </DraggableProjectItem>
   );
 };
 

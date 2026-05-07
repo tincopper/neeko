@@ -42,6 +42,7 @@ const ProjectsPanel: React.FC = () => {
       onRefreshWslGit,
       onOpenWslIde,
       onOpenWslWorktreeTerminal,
+      onWslDragEnd,
    } = useWslContext();
    const {
       remoteEntries,
@@ -57,6 +58,7 @@ const ProjectsPanel: React.FC = () => {
       onOpenRemoteIde,
       onOpenRemoteWorktreeTerminal,
       invokeRemoteGit,
+      onRemoteDragEnd,
    } = useRemoteContext();
 
    const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -175,16 +177,17 @@ const ProjectsPanel: React.FC = () => {
                            agents={agents}
                            config={config}
                             onSaveProjectSettings={
-                               onSaveProjectSettings
-                                  ? (agentId, ideCmd) => {
-                                     const e = wslEntries.find((en) => en.distro === activeWslKey?.distro);
-                                     const p = e?.projects.find((pr) => pr.id === activeWslKey?.projectId);
-                                     if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                                  }
-                                  : undefined
-                            }
-                            onShowToast={showToast}
-                         />
+                                onSaveProjectSettings
+                                   ? (agentId, ideCmd) => {
+                                      const e = wslEntries.find((en) => en.distro === activeWslKey?.distro);
+                                      const p = e?.projects.find((pr) => pr.id === activeWslKey?.projectId);
+                                      if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                                   }
+                                   : undefined
+                             }
+                             onShowToast={showToast}
+                             onDragEnd={onWslDragEnd}
+                          />
                       ))}
 
                    {remoteEntries.map((entry) => (
@@ -217,16 +220,17 @@ const ProjectsPanel: React.FC = () => {
                         agents={agents}
                         config={config}
                          onSaveProjectSettings={
-                            onSaveProjectSettings
-                               ? (agentId, ideCmd) => {
-                                  const e = remoteEntries.find((en) => en.id === activeRemoteKey?.host);
-                                  const p = e?.projects.find((pr) => pr.id === activeRemoteKey?.projectId);
-                                  if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                               }
-                               : undefined
-                         }
-                         onShowToast={showToast}
-                      />
+                             onSaveProjectSettings
+                                ? (agentId, ideCmd) => {
+                                   const e = remoteEntries.find((en) => en.id === activeRemoteKey?.host);
+                                   const p = e?.projects.find((pr) => pr.id === activeRemoteKey?.projectId);
+                                   if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
+                                }
+                                : undefined
+                          }
+                          onShowToast={showToast}
+                          onDragEnd={onRemoteDragEnd}
+                       />
                    ))}
                </>
             )}
