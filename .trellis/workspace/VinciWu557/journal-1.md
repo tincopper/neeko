@@ -1267,3 +1267,69 @@ Refactored Tauri command registration into centralized macro handler, updated ba
 ### Next Steps
 
 - None - task complete
+
+
+## Session 32: Trellis 0.4.x → 0.5.4 迁移
+
+**Date**: 2026-05-07
+**Task**: Trellis 0.4.x → 0.5.4 迁移
+**Branch**: `fix/git_panel`
+
+### Summary
+
+执行 trellis update --migrate 完成框架迁移：重命名 agent/skill/command 为 trellis-* 前缀，移除退役命令和 Multi-Agent Pipeline，更新 hooks 到 0.5.4 运行时。验证二次 update 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `390ea8a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 33: Fix terminal overviewRuler width
+
+**Date**: 2026-05-07
+**Task**: Fix terminal overviewRuler width
+**Branch**: `fix/git_panel`
+
+### Summary
+
+Changed overviewRuler.width from 1 to 0 in terminalFactory.ts to disable scrollbar ruler, aligning with RemoteTerminalView and WSLTerminalView.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b9d296d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
