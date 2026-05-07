@@ -206,4 +206,119 @@ describe('useWslProjects', () => {
     expect(result.current.wslDialogOpen).toBe(false);
     expect(result.current.wslAddToEntryId).toBeNull();
   });
+
+  describe('handleWslDragEnd', () => {
+    it('同一 entry 内正常排序', async () => {
+      const { result } = renderHook(() => useWslProjects(mockSaveSession));
+
+      const entry = makeWslEntry({
+        id: 'e1',
+        distro: 'Ubuntu',
+        projects: [
+          makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' }),
+          makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' }),
+          makeWslProject({ id: 'wp3', name: 'p3', path: '/tmp/p3' }),
+        ],
+      });
+
+      act(() => {
+        result.current.setWslEntries([entry]);
+      });
+
+      await act(async () => {
+        result.current.handleWslDragEnd('e1', 'wp1', 'wp3');
+      });
+
+      expect(result.current.wslEntries[0].projects.map(p => p.id)).toEqual(['wp2', 'wp3', 'wp1']);
+      expect(mockSaveSession).toHaveBeenCalled();
+    });
+
+    it('拖拽到相同位置不做任何操作', async () => {
+      const { result } = renderHook(() => useWslProjects(mockSaveSession));
+
+      const entry = makeWslEntry({
+        id: 'e1',
+        distro: 'Ubuntu',
+        projects: [
+          makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' }),
+          makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' }),
+        ],
+      });
+
+      act(() => {
+        result.current.setWslEntries([entry]);
+      });
+
+      mockSaveSession.mockClear();
+
+      await act(async () => {
+        result.current.handleWslDragEnd('e1', 'wp1', 'wp1');
+      });
+
+      expect(result.current.wslEntries[0].projects.map(p => p.id)).toEqual(['wp1', 'wp2']);
+      expect(mockSaveSession).not.toHaveBeenCalled();
+    });
+
+    it('跨 entry 拖拽被忽略', async () => {
+      const { result } = renderHook(() => useWslProjects(mockSaveSession));
+
+      const entries = [
+        makeWslEntry({
+          id: 'e1',
+          distro: 'Ubuntu',
+          projects: [
+            makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' }),
+          ],
+        }),
+        makeWslEntry({
+          id: 'e2',
+          distro: 'Debian',
+          projects: [
+            makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' }),
+          ],
+        }),
+      ];
+
+      act(() => {
+        result.current.setWslEntries(entries);
+      });
+
+      // Drag wp1 into e2 (entryId='e2') — should be a no-op since wp1 isn't in e2
+      await act(async () => {
+        result.current.handleWslDragEnd('e2', 'wp1', 'wp2');
+      });
+
+      // wp1 still in e1, wp2 still in e2 — no cross-entry movement
+      expect(result.current.wslEntries[0].projects[0].id).toBe('wp1');
+      expect(result.current.wslEntries[1].projects[0].id).toBe('wp2');
+    });
+
+    it('排序后调用 saveSession 持久化', async () => {
+      const { result } = renderHook(() => useWslProjects(mockSaveSession));
+
+      const entry = makeWslEntry({
+        id: 'e1',
+        distro: 'Ubuntu',
+        projects: [
+          makeWslProject({ id: 'wp1', name: 'p1', path: '/tmp/p1' }),
+          makeWslProject({ id: 'wp2', name: 'p2', path: '/tmp/p2' }),
+        ],
+      });
+
+      act(() => {
+        result.current.setWslEntries([entry]);
+      });
+
+      mockSaveSession.mockClear();
+
+      await act(async () => {
+        result.current.handleWslDragEnd('e1', 'wp2', 'wp1');
+      });
+
+      expect(mockSaveSession).toHaveBeenCalledTimes(1);
+      // Verify the new order is passed to saveSession
+      const savedEntries = mockSaveSession.mock.calls[0][0];
+      expect(savedEntries[0].projects.map(p => p.id)).toEqual(['wp2', 'wp1']);
+    });
+  });
 });

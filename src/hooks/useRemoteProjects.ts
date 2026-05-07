@@ -133,7 +133,35 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
   const handleRemoteDialogClose = useCallback(() => {
     setRemoteDialogOpen(false);
     setRemoteAddToEntryId(null);
-  }, [setRemoteAuthStore]);
+  }, []);
+
+  const handleRemoteDragEnd = useCallback((entryId: string, draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+
+    setRemoteEntries((prev) => {
+      const newEntries = prev.map((entry) => {
+        if (entry.id !== entryId) return entry;
+
+        const projects = [...entry.projects];
+        const draggedIndex = projects.findIndex((p) => p.id === draggedId);
+        const targetIndex = projects.findIndex((p) => p.id === targetId);
+
+        if (draggedIndex < 0 || targetIndex < 0) return entry;
+
+        const [dragged] = projects.splice(draggedIndex, 1);
+        projects.splice(targetIndex, 0, dragged);
+
+        return { ...entry, projects };
+      });
+
+      // Persist the new order
+      saveSession(undefined, newEntries).catch((e) =>
+        console.error("[Remote] Failed to persist project order:", e)
+      );
+
+      return newEntries;
+    });
+  }, [saveSession]);
 
   /** 从持久化的 saved_auth 恢复 remoteAuthStore（同步更新 store） */
   const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
@@ -171,6 +199,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     handleRemoteEntryAdd,
     handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry,
     handleAddRemoteProject, handleRemoteDialogClose,
+    handleRemoteDragEnd,
     restoreAuthFromEntries,
   };
 }

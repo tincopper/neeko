@@ -43,6 +43,46 @@ export function useToast() {
 3. **用 `useRef` 管理可变状态**，适用于不需要触发重渲染的数据（计时器、缓存、当前值镜像）
 4. **返回对象**，包含状态值和操作回调
 
+### 交互 Hook 模式（拖拽、手势等）
+
+纯逻辑交互 Hook 封装指针事件处理、阈值检测、目标查找等，不包含样式知识：
+
+```tsx
+// src/components/project/useProjectItemDrag.ts
+export function useProjectItemDrag({ projectId, onDragEnd }: UseProjectItemDragOptions) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState<DragOffset>({ x: 0, y: 0 });
+  const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
+
+  // 可变 ref 跟踪指针状态（不触发重渲染）
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const activeRef = useRef(false);
+  // ref 镜像状态，避免 handlePointerUp 的 stale closure
+  const dropIndicatorRef = useRef<DropIndicator | null>(null);
+
+  // 阈值检测（5px）后激活拖拽
+  // setPointerCapture 保证指针离开元素后仍跟踪
+  // elementsFromPoint 查找放置目标（临时隐藏拖拽元素穿透检测）
+  // [data-no-drag] 排除交互元素
+
+  return {
+    isDragging, dragOffset, dropIndicator,
+    handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel,
+  };
+}
+```
+
+**关键模式**：
+1. **ref 镜像状态**：频繁变化的状态（如 `dropIndicator`）用 `useRef` 镜像，在 `useCallback` 内从 ref 读取，避免依赖数组膨胀导致引用不稳定
+2. **阈值激活**：5px 移动阈值防止误触发，通过 `activeRef` 跟踪激活状态
+3. **Pointer Capture**：`setPointerCapture` 保证指针离开元素后仍能跟踪移动
+4. **穿透检测**：`elementsFromPoint` 查找放置目标时，临时设置 `pointerEvents: "none"` 使拖拽元素透明
+5. **分离关注点**：Hook 仅处理逻辑，样式由 `DraggableProjectItem` 组件负责
+
+详见 [交互模式指南](./interaction-patterns.md)。
+
+---
+
 ### 编排 Hook 模式
 
 当容器层职责区域变得臃肿时，按领域拆分为小型编排 Hook：

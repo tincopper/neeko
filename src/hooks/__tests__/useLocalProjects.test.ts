@@ -305,4 +305,79 @@ describe('useLocalProjects', () => {
 
     expect(result.current.activeProject).toBeNull();
   });
+
+  describe('handleDragEnd', () => {
+    it('列表内正常排序', async () => {
+      const projects = [
+        createProject({ id: 'p1', name: 'proj1' }),
+        createProject({ id: 'p2', name: 'proj2' }),
+        createProject({ id: 'p3', name: 'proj3' }),
+      ];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      mockInvoke.mockResolvedValue(undefined);
+
+      act(() => {
+        result.current.handleDragEnd('p1', 'p3');
+      });
+
+      expect(result.current.projects.map(p => p.id)).toEqual(['p2', 'p3', 'p1']);
+      expect(mockInvoke).toHaveBeenCalledWith('reorder_projects', {
+        orderedIds: ['p2', 'p3', 'p1'],
+      });
+    });
+
+    it('拖拽到相同位置不做任何操作', async () => {
+      const projects = [
+        createProject({ id: 'p1', name: 'proj1' }),
+        createProject({ id: 'p2', name: 'proj2' }),
+      ];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      mockInvoke.mockClear();
+
+      act(() => {
+        result.current.handleDragEnd('p1', 'p1');
+      });
+
+      expect(result.current.projects.map(p => p.id)).toEqual(['p1', 'p2']);
+      expect(mockInvoke).not.toHaveBeenCalledWith('reorder_projects', expect.anything());
+    });
+
+    it('排序后调用 reorder_projects 持久化', async () => {
+      const projects = [
+        createProject({ id: 'p1', name: 'proj1' }),
+        createProject({ id: 'p2', name: 'proj2' }),
+      ];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      mockInvoke.mockResolvedValue(undefined);
+
+      act(() => {
+        result.current.handleDragEnd('p2', 'p1');
+      });
+
+      expect(mockInvoke).toHaveBeenCalledWith('reorder_projects', {
+        orderedIds: ['p2', 'p1'],
+      });
+    });
+  });
 });

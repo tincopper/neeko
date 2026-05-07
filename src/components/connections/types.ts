@@ -124,6 +124,7 @@ export interface ConnectionProjectCardProps {
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
+  onDragEnd?: (draggedId: string, targetId: string) => void;
 }
 
 export interface WSLItemProps {
@@ -151,6 +152,7 @@ export interface WSLItemProps {
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
+  onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }
 
 export interface RemoteItemProps {
@@ -179,4 +181,5 @@ export interface RemoteItemProps {
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
+  onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }

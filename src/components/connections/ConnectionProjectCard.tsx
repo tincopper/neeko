@@ -1,6 +1,8 @@
 import React, { useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ProjectItemCard from "./ProjectItemCard";
+import { DraggableProjectItem } from "../project";
+import { useProjectItemDrag } from "../project/useProjectItemDrag";
 import type { ConnectionProjectCardProps } from "./types";
 import type { FileChange } from "../../types";
 
@@ -30,6 +32,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     config,
     onSaveProjectSettings,
     onShowToast,
+    onDragEnd,
   }) => {
     // Extract primitives for stable useCallback dependencies
     const isWsl = source.type === "wsl";
@@ -43,6 +46,17 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const connectionId = isWsl ? distro : remoteEntryId;
     // selectProjectId: scope identifier for onSelectProject (WSL uses distro, Remote uses host)
     const selectProjectId = isWsl ? distro : host;
+
+    // Drag support
+    const {
+      isDragging,
+      dragOffset,
+      dropIndicator,
+      handlePointerDown,
+      handlePointerMove,
+      handlePointerUp,
+      handlePointerCancel,
+    } = useProjectItemDrag({ projectId: project.id, onDragEnd });
 
     const handleSelectFile = useCallback(
       (fp: string) => {
@@ -221,33 +235,45 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     );
 
     return (
-      <ProjectItemCard
-        project={project}
+      <DraggableProjectItem
+        dragId={project.id}
+        isDragging={isDragging}
+        dragOffset={dragOffset}
+        dropIndicator={dropIndicator}
         isActive={isActive}
-        hasSession={hasSession}
-        onSelectProject={() => onSelectProject(selectProjectId, project)}
-        onToggleCollapsed={() => {}}
-        onSelectFile={handleSelectFile}
-        onCheckoutBranch={handleCheckout}
-        onCommitRenameBranch={handleRenameBranch}
-        onOpenWorktreeTerminal={handleOpenWorktree}
-        onCommitRenameWorktree={handleRenameWorktree}
-        onRemoveWorktree={handleRemoveWorktree}
-        onRemoveProject={handleRemove}
-        onOpenIde={handleOpenIde}
-        onOpenDialog={handleOpenDialog}
-        currentBranch={project.git_info?.current_branch ?? ""}
-        ideCommandOverrides={ideCommandOverrides}
-        onOpenSettings={onOpenSettings}
-        onRefresh={onRefresh}
-        agents={agents}
-        config={config}
-        onSaveProjectSettings={onSaveProjectSettings}
-        onRefreshGit={handleRefreshGit}
-        onShowToast={onShowToast}
-        onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
-        onIsWorktreeDirty={handleIsWorktreeDirty}
-      />
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      >
+        <ProjectItemCard
+          project={project}
+          isActive={isActive}
+          hasSession={hasSession}
+          onSelectProject={() => onSelectProject(selectProjectId, project)}
+          onToggleCollapsed={() => {}}
+          onSelectFile={handleSelectFile}
+          onCheckoutBranch={handleCheckout}
+          onCommitRenameBranch={handleRenameBranch}
+          onOpenWorktreeTerminal={handleOpenWorktree}
+          onCommitRenameWorktree={handleRenameWorktree}
+          onRemoveWorktree={handleRemoveWorktree}
+          onRemoveProject={handleRemove}
+          onOpenIde={handleOpenIde}
+          onOpenDialog={handleOpenDialog}
+          currentBranch={project.git_info?.current_branch ?? ""}
+          ideCommandOverrides={ideCommandOverrides}
+          onOpenSettings={onOpenSettings}
+          onRefresh={onRefresh}
+          agents={agents}
+          config={config}
+          onSaveProjectSettings={onSaveProjectSettings}
+          onRefreshGit={handleRefreshGit}
+          onShowToast={onShowToast}
+          onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
+          onIsWorktreeDirty={handleIsWorktreeDirty}
+        />
+      </DraggableProjectItem>
     );
   },
 );

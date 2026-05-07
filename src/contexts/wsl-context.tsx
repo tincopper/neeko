@@ -20,6 +20,7 @@ export interface WslContextValue {
   onOpenWslIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWslWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
   onWslDiffBack: () => void;
+  onWslDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }
 
 const WslContext = createContext<WslContextValue | null>(null);

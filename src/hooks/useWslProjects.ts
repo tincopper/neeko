@@ -109,6 +109,34 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     setWslAddToEntryId(null);
   }, []);
 
+  const handleWslDragEnd = useCallback((entryId: string, draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+
+    setWslEntries((prev) => {
+      const newEntries = prev.map((entry) => {
+        if (entry.id !== entryId) return entry;
+
+        const projects = [...entry.projects];
+        const draggedIndex = projects.findIndex((p) => p.id === draggedId);
+        const targetIndex = projects.findIndex((p) => p.id === targetId);
+
+        if (draggedIndex < 0 || targetIndex < 0) return entry;
+
+        const [dragged] = projects.splice(draggedIndex, 1);
+        projects.splice(targetIndex, 0, dragged);
+
+        return { ...entry, projects };
+      });
+
+      // Persist the new order
+      saveSession(newEntries).catch((e) =>
+        console.error("[WSL] Failed to persist project order:", e)
+      );
+
+      return newEntries;
+    });
+  }, [saveSession]);
+
   return {
     wslEntries, setWslEntries,
     activeWslKey, setActiveWslKey,
@@ -119,5 +147,6 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     handleWSLEntryAdd,
     handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry,
     handleAddWslProject, handleWslDialogClose,
+    handleWslDragEnd,
   };
 }

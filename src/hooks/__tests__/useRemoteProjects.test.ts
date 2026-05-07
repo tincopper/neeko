@@ -317,4 +317,117 @@ describe('useRemoteProjects', () => {
     expect(result.current.pendingAuthEntry).not.toBeNull();
     expect(result.current.pendingAuthEntry?.id).toBe('e1');
   });
+
+  describe('handleRemoteDragEnd', () => {
+    it('同一 entry 内正常排序', async () => {
+      const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+
+      act(() => {
+        result.current.setRemoteEntries([
+          makeRemoteEntry({
+            id: 'e1',
+            host: 'host1',
+            projects: [
+              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
+              makeRemoteProject({ id: 'rp3', name: 'p3', path: '/opt/p3' }),
+            ],
+          }),
+        ]);
+      });
+
+      await act(async () => {
+        result.current.handleRemoteDragEnd('e1', 'rp1', 'rp3');
+      });
+
+      expect(result.current.remoteEntries[0].projects.map(p => p.id)).toEqual(['rp2', 'rp3', 'rp1']);
+      expect(mockSaveSession).toHaveBeenCalled();
+    });
+
+    it('拖拽到相同位置不做任何操作', async () => {
+      const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+
+      act(() => {
+        result.current.setRemoteEntries([
+          makeRemoteEntry({
+            id: 'e1',
+            host: 'host1',
+            projects: [
+              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
+            ],
+          }),
+        ]);
+      });
+
+      mockSaveSession.mockClear();
+
+      await act(async () => {
+        result.current.handleRemoteDragEnd('e1', 'rp1', 'rp1');
+      });
+
+      expect(result.current.remoteEntries[0].projects.map(p => p.id)).toEqual(['rp1', 'rp2']);
+      expect(mockSaveSession).not.toHaveBeenCalled();
+    });
+
+    it('跨 entry 拖拽被忽略', async () => {
+      const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+
+      act(() => {
+        result.current.setRemoteEntries([
+          makeRemoteEntry({
+            id: 'e1',
+            host: 'host1',
+            projects: [
+              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+            ],
+          }),
+          makeRemoteEntry({
+            id: 'e2',
+            host: 'host2',
+            projects: [
+              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
+            ],
+          }),
+        ]);
+      });
+
+      // Drag rp1 into e2 — should be a no-op since rp1 isn't in e2
+      await act(async () => {
+        result.current.handleRemoteDragEnd('e2', 'rp1', 'rp2');
+      });
+
+      // rp1 still in e1, rp2 still in e2
+      expect(result.current.remoteEntries[0].projects[0].id).toBe('rp1');
+      expect(result.current.remoteEntries[1].projects[0].id).toBe('rp2');
+    });
+
+    it('排序后调用 saveSession 持久化', async () => {
+      const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+
+      act(() => {
+        result.current.setRemoteEntries([
+          makeRemoteEntry({
+            id: 'e1',
+            host: 'host1',
+            projects: [
+              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
+              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
+            ],
+          }),
+        ]);
+      });
+
+      mockSaveSession.mockClear();
+
+      await act(async () => {
+        result.current.handleRemoteDragEnd('e1', 'rp2', 'rp1');
+      });
+
+      expect(mockSaveSession).toHaveBeenCalledTimes(1);
+      // Verify the new order is passed to saveSession(undefined, newEntries)
+      const savedEntries = mockSaveSession.mock.calls[0][1];
+      expect(savedEntries[0].projects.map(p => p.id)).toEqual(['rp2', 'rp1']);
+    });
+  });
 });

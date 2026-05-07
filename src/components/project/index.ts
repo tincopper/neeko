@@ -7,6 +7,7 @@ export { default as ProjectItemHeader } from "./ProjectItemHeader";
 export { default as ProjectGitSection } from "./ProjectGitSection";
 export { default as ProjectGuidePage } from "./ProjectGuidePage";
 export { default as GitCommitPanel } from "./GitCommitPanel";
+export { default as DraggableProjectItem } from "./DraggableProjectItem";
 export { useProjectItemDrag } from "./useProjectItemDrag";
 export { useProjectItemMenu } from "./useProjectItemMenu";
 export type {
@@ -14,3 +15,4 @@ export type {
   ProjectItemActions,
   ProjectItemViewConfig,
 } from "./projectItemTypes";
+export type { DragOffset, DropIndicator } from "./useProjectItemDrag";

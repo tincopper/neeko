@@ -194,6 +194,69 @@ import { cn } from "../utils/cn";
 
 ---
 
+## 纯表现包装器模式（DraggableProjectItem）
+
+对于需要将交互逻辑与视觉表现分离的场景，使用纯表现包装器组件：
+
+```tsx
+// src/components/project/DraggableProjectItem.tsx
+interface DraggableProjectItemProps {
+  dragId: string;                          // data-drag-id 标识
+  isDragging: boolean;                     // 从 useProjectItemDrag 获取
+  dragOffset: DragOffset;                  // 从 useProjectItemDrag 获取
+  dropIndicator: DropIndicator | null;     // 从 useProjectItemDrag 获取
+  isActive?: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;  // 透传 hook handlers
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onPointerCancel: (e: React.PointerEvent) => void;
+  children: React.ReactNode;               // 被包装的实际内容
+  className?: string;
+}
+```
+
+**设计原则**：
+1. **零业务逻辑**：组件不包含任何状态管理或业务逻辑，仅接收 props 并渲染
+2. **样式组合**：通过 `cn()` 组合 Tailwind 类，处理条件样式
+3. **动态样式**：使用内联 `style` 处理运行时计算值（`transform: translate()`）
+4. **指示器叠加**：放置指示器（蓝色边框 + 发光）作为绝对定位元素渲染在 children 前后
+5. **`React.memo` 包裹**：避免在 Props 与 Context 混合分发架构中的不必要重渲染
+
+**使用方式**：
+
+```tsx
+// 在 ProjectItem 或 ConnectionProjectCard 中
+const { isDragging, dragOffset, dropIndicator, ...handlers } = useProjectItemDrag({
+  projectId: project.id,
+  onDragEnd,
+});
+
+return (
+  <DraggableProjectItem
+    dragId={project.id}
+    isDragging={isDragging}
+    dragOffset={dragOffset}
+    dropIndicator={dropIndicator}
+    isActive={isActive}
+    {...handlers}
+  >
+    {/* 实际项目内容 */}
+    <ProjectItemHeader ... />
+    <ProjectGitSection ... />
+  </DraggableProjectItem>
+);
+```
+
+**视觉行为**：
+- 拖拽中：`opacity-50 scale-[1.02] rotate-[0.5deg] shadow-lg z-50`
+- 光标跟随：`transform: translate(${dragOffset.x}px, ${dragOffset.y}px)`
+- 放置指示器：蓝色顶部/底部边框 + 发光效果
+- 非拖拽时：`cursor-grab`
+
+详见 [交互模式指南](./interaction-patterns.md)。
+
+---
+
 ## 无障碍
 
 - 装饰性图片使用 `alt=""`

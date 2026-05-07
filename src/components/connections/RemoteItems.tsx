@@ -27,9 +27,14 @@ export const WSLItem = React.memo<WSLItemProps>(
     config,
     onSaveProjectSettings,
     onShowToast,
+    onDragEnd,
   }) => {
     void onCloseProject;
     const [collapsed, setCollapsed] = useState(false);
+
+    const handleDragEnd = onDragEnd
+      ? (draggedId: string, targetId: string) => onDragEnd(entry.id, draggedId, targetId)
+      : undefined;
 
     return (
       <div className="gh-project mb-0.5 rounded-md overflow-visible">
@@ -109,6 +114,7 @@ export const WSLItem = React.memo<WSLItemProps>(
                     config={config}
                     onSaveProjectSettings={onSaveProjectSettings}
                     onShowToast={onShowToast}
+                    onDragEnd={handleDragEnd}
                   />
                 );
               })
@@ -143,10 +149,15 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     config,
     onSaveProjectSettings,
     onShowToast,
+    onDragEnd,
   }) => {
     void onCloseProject;
     const [collapsed, setCollapsed] = useState(false);
     const label = `${entry.host}:${entry.port}`;
+
+    const handleDragEnd = onDragEnd
+      ? (draggedId: string, targetId: string) => onDragEnd(entry.id, draggedId, targetId)
+      : undefined;
 
     return (
       <div className="gh-project mb-0.5 rounded-md overflow-visible">
@@ -230,6 +241,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(
                     config={config}
                     onSaveProjectSettings={onSaveProjectSettings}
                     onShowToast={onShowToast}
+                    onDragEnd={handleDragEnd}
                   />
                 );
               })
