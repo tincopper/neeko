@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: AppConfig = {
    agentSelectorShowPresetBar: true,
    agentSelectorCompactMode: false,
    hiddenAgentIds: [],
+   shortcuts: {},
 };
 
 
@@ -73,7 +74,8 @@ export function useAppConfig() {
             prev.customAgents === next.customAgents &&
             prev.agentSelectorShowPresetBar === next.agentSelectorShowPresetBar &&
             prev.agentSelectorCompactMode === next.agentSelectorCompactMode &&
-            prev.hiddenAgentIds === next.hiddenAgentIds
+            prev.hiddenAgentIds === next.hiddenAgentIds &&
+            prev.shortcuts === next.shortcuts
          ) return prev;
          return next;
       });
@@ -155,6 +157,10 @@ export function useAppConfig() {
                   hiddenAgentIds: Array.isArray(saved.hiddenAgentIds)
                      ? saved.hiddenAgentIds.filter((id: unknown) => typeof id === "string")
                      : DEFAULT_CONFIG.hiddenAgentIds,
+                  shortcuts:
+                     saved.shortcuts && typeof saved.shortcuts === "object"
+                        ? saved.shortcuts
+                        : DEFAULT_CONFIG.shortcuts,
                });
             }
          } catch (e) {

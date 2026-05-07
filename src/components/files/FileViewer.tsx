@@ -30,19 +30,6 @@ function FileViewer() {
 
    const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
-   // Ctrl+W 关闭当前 Tab
-   useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-         if (e.ctrlKey && e.key === "w" && activeTabId) {
-            e.preventDefault();
-            e.stopPropagation();
-            onCloseTab(activeTabId);
-         }
-      };
-      window.addEventListener("keydown", handleKeyDown, { capture: true });
-      return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-   }, [activeTabId, onCloseTab]);
-
    if (tabs.length === 0 || !activeTab) {
       return (
          <div className="flex flex-col h-full items-center justify-center text-text-secondary">

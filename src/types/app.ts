@@ -20,4 +20,5 @@ export interface AppConfig {
   agentSelectorShowPresetBar: boolean;
   agentSelectorCompactMode: boolean;
   hiddenAgentIds: string[];
+  shortcuts: Record<string, string>;
 }

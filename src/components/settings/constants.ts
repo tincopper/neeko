@@ -6,6 +6,7 @@ import {
   EditorIcon,
   GitLogoIcon,
   GridIcon,
+  KeyboardIcon,
   TerminalIcon,
 } from "../icons";
 
@@ -15,6 +16,7 @@ export type NavCategory =
   | "agents"
   | "ide"
   | "git"
+  | "shortcuts"
   | "appearance";
 
 export interface NavItem {
@@ -53,6 +55,11 @@ export const NAV_ITEMS: NavItem[] = [
     id: "git",
     label: "Git",
     icon: React.createElement(GitLogoIcon, { size: 16 }),
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    icon: React.createElement(KeyboardIcon, { size: 16 }),
   },
 ];
 

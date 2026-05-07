@@ -314,6 +314,10 @@ export function useAppContainer(): UseAppContainerResult {
     [tabKey, activateTab],
   );
 
+  const handleToggleTerminal = useCallback(() => {
+    useAppStore.getState().toggleFileView();
+  }, []);
+
   const handleTabStatusChange = useCallback(
     (tabId: string, status: "Idle" | "Running" | "Failed") => {
       if (!tabKey) return;
@@ -429,6 +433,8 @@ export function useAppContainer(): UseAppContainerResult {
     setRemoteWtBranch: remoteActions.setRemoteActiveWtBranch,
     activeTabId,
     onCloseTab: handleCloseTab,
+    shortcuts: config.shortcuts,
+    onToggleTerminal: handleToggleTerminal,
   });
 
   const handleAgentClick = useCallback(

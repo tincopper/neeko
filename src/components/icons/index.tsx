@@ -19,6 +19,7 @@ import {
   FolderGit2,
   Folder,
   Sun,
+  Keyboard,
   type LucideProps,
 } from "lucide-react";
 
@@ -41,6 +42,7 @@ export const ErrorOctagonIcon = OctagonAlert;
 export const GitLogoIcon = GitBranch;
 export const SearchIcon = Search;
 export const AppearanceIcon = Sun;
+export const KeyboardIcon = Keyboard;
 
 // ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
 
