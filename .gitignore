@@ -19,6 +19,8 @@ build/
 *.swp
 *.swo
 .snow
+.pi
+.pnpm-store
 
 # OS
 .DS_Store
