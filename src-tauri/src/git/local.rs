@@ -3,7 +3,6 @@ use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitI
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::invalidate_repo_caches;
 
