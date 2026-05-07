@@ -39,7 +39,7 @@ export async function createTerminalForProject(
     fontFamily: buildFontFamily(fontFamily),
     theme: buildTerminalTheme(),
     scrollback: 10000,
-    overviewRuler: { width: 1 },
+    overviewRuler: { width: 0 },
     allowProposedApi: true,
   });
 
