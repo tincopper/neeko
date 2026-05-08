@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FileNode, FileContent, FileTab } from "../types";
+import type { FileNode, FileContent, Tab, FileTabData } from "../types";
 import { useAppStore } from "../store/appStore";
 
 /**
@@ -17,32 +17,52 @@ function getFileName(filePath: string): string {
   return filePath.replace(/\\/g, "/").split("/").pop() || filePath;
 }
 
-function getActiveFilePath(tabs: FileTab[], activeTabId: string | null): string | null {
-  if (!activeTabId) {
-    return null;
-  }
-  return tabs.find((tab) => tab.id === activeTabId)?.filePath ?? null;
+/** Type guard: narrow Tab to file kind */
+function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
+  return tab.data.kind === "file";
 }
 
 export function useFileView() {
   const fileTree = useAppStore((state) => state.fileTree);
-  const tabs = useAppStore((state) => state.fileTabs);
-  const activeTabId = useAppStore((state) => state.activeFileTabId);
+  const activeProjectId = useAppStore((state) => state.activeProjectId);
   const fileTreeLoading = useAppStore((state) => state.fileViewLoading);
-  const activeFilePath = useAppStore((state) => state.activeFilePath);
   const [error, setError] = useState<string | null>(null);
 
-  // Refs for avoiding stale closures
-  const tabsRef = useRef<FileTab[]>(tabs);
-  const activeTabIdRef = useRef<string | null>(activeTabId);
+  // Read project tabs from unified store
+  const projectTabs = useAppStore((state) => {
+    if (!activeProjectId) return null;
+    return state.tabs[activeProjectId] ?? null;
+  });
 
-  useEffect(() => {
-    tabsRef.current = tabs;
-  }, [tabs]);
+  // Derive file tabs (filtered by kind === "file")
+  const fileTabs = useMemo(() => {
+    if (!projectTabs) return [];
+    return projectTabs.tabs.filter(isFileTab);
+  }, [projectTabs]);
 
+  // Derive active file tab ID
+  const activeFileTabId = useMemo(() => {
+    if (!projectTabs) return null;
+    // Prefer the project's active tab if it's a file tab
+    const active = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
+    if (active && active.data.kind === "file") return active.id;
+    // Fall back to first file tab
+    const first = projectTabs.tabs.find(isFileTab);
+    return first?.id ?? null;
+  }, [projectTabs]);
+
+  // Derive active file path
+  const activeFilePath = useMemo(() => {
+    if (!activeFileTabId) return null;
+    const tab = fileTabs.find((t) => t.id === activeFileTabId);
+    return tab?.data.filePath ?? null;
+  }, [fileTabs, activeFileTabId]);
+
+  // Ref for projectId in callbacks (avoids stale closures)
+  const projectIdRef = useRef(activeProjectId);
   useEffect(() => {
-    activeTabIdRef.current = activeTabId;
-  }, [activeTabId]);
+    projectIdRef.current = activeProjectId;
+  }, [activeProjectId]);
 
   /**
    * Load the directory tree for a project
@@ -75,14 +95,11 @@ export function useFileView() {
   const openFile = useCallback(async (projectId: string, filePath: string) => {
     const tabId = getTabId(projectId, filePath);
 
-    // Check if tab already exists — just activate, no loading
-    const existingTab = tabsRef.current.find((t) => t.id === tabId);
-    if (existingTab) {
-      useAppStore.setState({
-        activeFileTabId: tabId,
-        activeFilePath: existingTab.filePath,
-        fileViewOpen: true,
-      });
+    // Check if tab already exists in unified store — just activate, no loading
+    const state = useAppStore.getState();
+    const existing = state.tabs[projectId];
+    if (existing?.tabs.some((t) => t.id === tabId)) {
+      state.activateTab(projectId, tabId);
       return;
     }
 
@@ -94,25 +111,21 @@ export function useFileView() {
         filePath,
       });
 
-      const newTab: FileTab = {
+      const newTab: Tab = {
         id: tabId,
         projectId,
-        filePath,
-        fileName: getFileName(filePath),
-        content,
-        isDirty: false,
-        order: tabsRef.current.length,
+        title: getFileName(filePath),
+        order: existing?.tabs.length ?? 0,
+        data: {
+          kind: "file",
+          filePath,
+          fileName: getFileName(filePath),
+          content,
+          isDirty: false,
+        },
       };
 
-      useAppStore.setState((state) => {
-        const nextTabs = [...state.fileTabs, newTab];
-        return {
-          fileTabs: nextTabs,
-          activeFileTabId: tabId,
-          activeFilePath: getActiveFilePath(nextTabs, tabId),
-          fileViewOpen: true,
-        };
-      });
+      useAppStore.getState().addTab(projectId, newTab);
     } catch (e) {
       setError(String(e));
     }
@@ -122,62 +135,37 @@ export function useFileView() {
    * Close a tab
    */
   const closeTab = useCallback((tabId: string) => {
-    useAppStore.setState((state) => {
-      const idx = state.fileTabs.findIndex((t) => t.id === tabId);
-      if (idx === -1) {
-        return {};
-      }
-
-      const newTabs = state.fileTabs.filter((t) => t.id !== tabId);
-      let nextActiveTabId = state.activeFileTabId;
-
-      // Update active tab if we're closing the active one
-      if (activeTabIdRef.current === tabId) {
-        if (newTabs.length === 0) {
-          nextActiveTabId = null;
-        } else {
-          // Activate the next tab, or the previous one if closing the last
-          const nextIdx = Math.min(idx, newTabs.length - 1);
-          nextActiveTabId = newTabs[nextIdx].id;
-        }
-      }
-
-      return {
-        fileTabs: newTabs,
-        activeFileTabId: nextActiveTabId,
-        activeFilePath: getActiveFilePath(newTabs, nextActiveTabId),
-      };
-    });
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    useAppStore.getState().closeTab(pid, tabId);
   }, []);
 
   /**
    * Activate a tab
    */
   const activateTab = useCallback((tabId: string) => {
-    useAppStore.setState((state) => ({
-      activeFileTabId: tabId,
-      activeFilePath: getActiveFilePath(state.fileTabs, tabId),
-      fileViewOpen: true,
-    }));
+    const pid = projectIdRef.current;
+    if (!pid) return;
+    useAppStore.getState().activateTab(pid, tabId);
   }, []);
 
   /**
    * Update tab content (for dirty tracking)
    */
   const updateTabContent = useCallback((tabId: string, content: string) => {
-    useAppStore.setState((state) => {
-      const nextTabs = state.fileTabs.map((t) => {
-        if (t.id !== tabId) return t;
-        return {
-          ...t,
-          content: { ...t.content, content },
-          isDirty: content !== t.content.content,
-        };
-      });
-      return {
-        fileTabs: nextTabs,
-        activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
-      };
+    const pid = projectIdRef.current;
+    if (!pid) return;
+
+    const state = useAppStore.getState();
+    const projectTabs = state.tabs[pid];
+    if (!projectTabs) return;
+
+    const tab = projectTabs.tabs.find((t) => t.id === tabId);
+    if (!tab || tab.data.kind !== "file") return;
+
+    state.updateTab(pid, tabId, {
+      content: { ...tab.data.content, content },
+      isDirty: content !== tab.data.content.content,
     });
   }, []);
 
@@ -185,33 +173,31 @@ export function useFileView() {
    * Save file content
    */
   const saveFile = useCallback(async (content: string): Promise<boolean> => {
-    const tabId = activeTabIdRef.current;
-    if (!tabId) return false;
+    const pid = projectIdRef.current;
+    if (!pid) return false;
 
-    const tab = tabsRef.current.find((t) => t.id === tabId);
-    if (!tab) return false;
+    const state = useAppStore.getState();
+    const projectTabs = state.tabs[pid];
+    if (!projectTabs) return false;
+
+    // Find the active file tab
+    const active = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
+    const fileTab = active && active.data.kind === "file"
+      ? active
+      : projectTabs.tabs.find(isFileTab);
+    if (!fileTab || fileTab.data.kind !== "file") return false;
 
     try {
       await invoke("write_file_content", {
-        projectId: tab.projectId,
-        filePath: tab.filePath,
+        projectId: fileTab.projectId,
+        filePath: fileTab.data.filePath,
         content,
       });
 
-      // Update tab: mark as not dirty, update original content
-      useAppStore.setState((state) => {
-        const nextTabs = state.fileTabs.map((t) => {
-          if (t.id !== tabId) return t;
-          return {
-            ...t,
-            content: { ...t.content, content },
-            isDirty: false,
-          };
-        });
-        return {
-          fileTabs: nextTabs,
-          activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
-        };
+      // Update tab: mark as not dirty, update content
+      state.updateTab(pid, fileTab.id, {
+        content: { ...fileTab.data.content, content },
+        isDirty: false,
       });
       return true;
     } catch (e) {
@@ -224,14 +210,19 @@ export function useFileView() {
    * Mark tab as dirty
    */
   const setTabDirty = useCallback((tabId: string, isDirty: boolean) => {
-    useAppStore.setState((state) => {
-      const nextTabs = state.fileTabs.map((t) => (
-        t.id === tabId ? { ...t, isDirty } : t
-      ));
-      return {
-        fileTabs: nextTabs,
-        activeFilePath: getActiveFilePath(nextTabs, state.activeFileTabId),
-      };
+    const pid = projectIdRef.current;
+    if (!pid) return;
+
+    const state = useAppStore.getState();
+    const projectTabs = state.tabs[pid];
+    if (!projectTabs) return;
+
+    const tab = projectTabs.tabs.find((t) => t.id === tabId);
+    if (!tab || tab.data.kind !== "file") return;
+
+    state.updateTab(pid, tabId, {
+      content: tab.data.content,
+      isDirty,
     });
   }, []);
 
@@ -240,22 +231,14 @@ export function useFileView() {
    */
   const clearFileView = useCallback(() => {
     useAppStore.setState({
-      activeFileTabId: null,
-      fileTabs: [],
       fileTree: [],
       activeFilePath: null,
     });
     setError(null);
   }, []);
 
-  // Derived state
-  const activeTab = tabs.find((t) => t.id === activeTabId) || null;
-
   return {
     fileTree,
-    tabs,
-    activeTabId,
-    activeTab,
     activeFilePath,
     isLoading: fileTreeLoading,
     error,

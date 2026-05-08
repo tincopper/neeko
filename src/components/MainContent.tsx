@@ -5,7 +5,7 @@ import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
 import { ProjectGuidePage } from "./project";
-import TerminalTabBar from "./layout/TerminalTabBar";
+import UnifiedTabBar from "./layout/UnifiedTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import {
    useAppContext,
@@ -14,30 +14,20 @@ import {
    useRemoteContext,
    useEditorContext,
 } from "../contexts";
-import type { AgentConfig } from "../types";
+import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
 
 function MainContent() {
    const { config, showToast } = useAppContext();
    const {
-      onSelectProject,
       onAddProject,
-      onWorktreeDiffBack,
       onOpenIde,
    } = useProjectActionsContext();
    const {
       activeWslProject,
-      activeWslWorktreePath,
-      wslDiffState,
-      onWslDiffBack,
    } = useWslContext();
    const { activeRemoteProject } = useRemoteContext();
    const {
-      tabs,
-      activeTabId,
-      onActivateTab,
-      onCloseTab,
-      onAddTab,
       agents,
       compactMode,
       showAgentBar,
@@ -46,10 +36,54 @@ function MainContent() {
       onAgentClick,
    } = useEditorContext();
    const activeProject = useAppStore((state) => state.activeProject);
-   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
-   const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
-   const worktreeDiffState = useAppStore((state) => state.worktreeDiffState);
-   const fileTabs = useAppStore((state) => state.fileTabs);
+
+   // Determine the current project ID (local, WSL, or Remote)
+   const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
+
+   // Get unified tabs from store
+   const projectTabs = useAppStore((state) => {
+      if (!currentProjectId) return null;
+      return state.tabs[currentProjectId] ?? null;
+   });
+
+   const tabs = projectTabs?.tabs ?? [];
+   const storeActiveTabId = projectTabs?.activeTabId ?? null;
+   const activeTab = tabs.find((t) => t.id === storeActiveTabId) ?? null;
+
+   const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
+
+   // Tab operations
+   const handleActivateTab = useCallback((tabId: string) => {
+      if (!currentProjectId) return;
+      useAppStore.getState().activateTab(currentProjectId, tabId);
+   }, [currentProjectId]);
+
+   const handleCloseTab = useCallback((tabId: string) => {
+      if (!currentProjectId) return;
+      useAppStore.getState().closeTab(currentProjectId, tabId);
+   }, [currentProjectId]);
+
+   const handleAddTerminalTab = useCallback(() => {
+      if (!currentProjectId) return;
+      const existingTabs = useAppStore.getState().tabs[currentProjectId];
+      const terminalCount = (existingTabs?.tabs ?? []).filter((t) => t.data.kind === "terminal").length;
+      if (terminalCount >= 10) return;
+
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+         id: tabId,
+         projectId: currentProjectId,
+         title: `Terminal ${terminalCount + 1}`,
+         order: existingTabs?.tabs.length ?? 0,
+         data: {
+            kind: "terminal",
+            agentId: null,
+            status: "Idle",
+         },
+      };
+      useAppStore.getState().addTab(currentProjectId, tab);
+      useAppStore.getState().activateTab(currentProjectId, tabId);
+   }, [currentProjectId]);
 
    // Manage Presets dropdown
    const [managerOpen, setManagerOpen] = useState(false);
@@ -67,8 +101,6 @@ function MainContent() {
    }, [managerOpen]);
 
    const allEnabledAgents = useMemo(() => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)), [agents]);
-
-   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
 
    // Agent installed status
    const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
@@ -95,18 +127,13 @@ function MainContent() {
    );
 
    const currentAgentId =
-      activeTab?.agentId ??
+      (activeTab?.data.kind === "terminal" ? activeTab.data.agentId : null) ??
       activeProject?.selected_agent ??
       activeWslProject?.project.selected_agent ??
       activeRemoteProject?.project.selected_agent ??
       null;
 
    const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)), [agents, hiddenAgentIds]);
-   const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
-   const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
-
-   const isTerminalView = activeProject?.active_view === "Terminal";
-   const showGuidePage = isTerminalView && tabs.length === 0 && !activeWorktreePath;
 
    const selectedAgent = useMemo(() => {
       const agentId = activeProject?.selected_agent;
@@ -115,8 +142,8 @@ function MainContent() {
    }, [activeProject?.selected_agent, agents]);
 
    const handleGuideOpenTerminal = useCallback(() => {
-      onAddTab();
-   }, [onAddTab]);
+      handleAddTerminalTab();
+   }, [handleAddTerminalTab]);
 
    const handleGuideOpenAgent = useCallback(() => {
       if (!selectedAgent) return;
@@ -127,33 +154,29 @@ function MainContent() {
       if (!activeProject || !onOpenIde) return;
       onOpenIde(activeProject.id);
    }, [activeProject, onOpenIde]);
+
    const localLayoutId = activeProject
-      ? `local:${activeProject.id}:${activeTabId ?? "default"}`
+      ? `local:${activeProject.id}:${storeActiveTabId ?? "default"}`
       : "local:none";
    const wslLayoutId = activeWslProject
-      ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${activeTabId ?? "default"}:${activeWslWorktreePath ?? "main"}`
+      ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${storeActiveTabId ?? "default"}`
       : "wsl:none";
-   const diffFilePath =
-      typeof activeProject?.active_view === "object"
-         ? (activeProject.active_view as { Diff: { file_path: string } }).Diff?.file_path || null
-         : null;
 
-   // Determine if we should show FileViewer
-   const showFileViewer = fileTabs.length > 0 && useAppStore((s) => s.fileViewOpen);
+   const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 bg-bg-primary">
-         {/* 终端头部：引导页和 FileViewer 模式下不显示 */}
-         {hasActiveProject && !showFileViewer && !showGuidePage && (
+         {/* 统一 TabBar + Agent Bar */}
+         {hasActiveProject && tabs.length > 0 && (
             <div className="shrink-0 bg-bg-secondary border-b border-border">
                <div className="h-8 flex items-center px-2 gap-1">
                   <div className="flex-1 min-w-0">
-                     <TerminalTabBar
+                     <UnifiedTabBar
                         tabs={tabs}
-                        activeTabId={activeTabId}
-                        onActivateTab={onActivateTab}
-                        onCloseTab={onCloseTab}
-                        onAddTab={onAddTab}
+                        activeTabId={storeActiveTabId}
+                        onActivateTab={handleActivateTab}
+                        onCloseTab={handleCloseTab}
+                        onAddTerminalTab={handleAddTerminalTab}
                      />
                   </div>
                </div>
@@ -227,48 +250,44 @@ function MainContent() {
             </div>
          )}
 
-         {activeWslProject && !activeProject && (
-            <div className="content-area flex-1 overflow-hidden flex flex-col min-h-0">
-               {wslDiffState ? (
-                  <DiffView
-                     diffSource={{ type: "wsl", distro: wslDiffState.distro, projectPath: wslDiffState.projectPath }}
-                     filePath={wslDiffState.filePath}
-                     initialMode={config.diffMode}
-                     onBack={onWslDiffBack}
-                  />
-               ) : (
+         {/* 内容区域 */}
+         {activeRemoteProject && !activeProject && !activeWslProject ? (
+            <RemoteProjectView />
+         ) : (
+             <div className="flex-1 flex flex-col overflow-hidden">
+               {/* Terminal */}
+               {activeTab?.data.kind === "terminal" && (
                   <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
                      <SplitLayout
-                        layoutId={wslLayoutId}
+                        layoutId={activeWslProject ? wslLayoutId : localLayoutId}
                         renderPane={(paneId) => (
-                           <WSLTerminalView paneId={paneId} />
+                           activeWslProject ? (
+                              <WSLTerminalView paneId={paneId} />
+                           ) : (
+                              <TerminalView paneId={paneId} />
+                           )
                         )}
                      />
                   </div>
                )}
-            </div>
-         )}
 
-         {activeRemoteProject && !activeProject && !activeWslProject && (
-            <RemoteProjectView />
-         )}
-
-         {activeProject ? (
-            <div className="content-area flex-1 overflow-hidden flex flex-col min-h-0">
-               {showFileViewer ? (
-                  <FileViewer />
-               ) : worktreeDiffState ? (
+               {/* Diff */}
+               {activeTab?.data.kind === "diff" && (
                   <DiffView
-                     diffSource={{
-                        type: "worktree",
-                        projectId: activeProject.id,
-                        worktreePath: worktreeDiffState.worktreePath,
-                     }}
-                     filePath={worktreeDiffState.filePath}
+                     diffSource={activeTab.data.diffSource}
+                     filePath={activeTab.data.filePath}
                      initialMode={config.diffMode}
-                     onBack={onWorktreeDiffBack}
+                     onBack={() => handleCloseTab(activeTab.id)}
                   />
-               ) : showGuidePage ? (
+               )}
+
+               {/* File Editor */}
+               {activeTab?.data.kind === "file" && (
+                  <FileViewer />
+               )}
+
+               {/* Guide Page (local project with no tabs) */}
+               {!activeTab && hasActiveProject && activeProject && (
                   <ProjectGuidePage
                      selectedAgent={selectedAgent}
                      selectedIde={activeProject.selected_ide}
@@ -276,43 +295,26 @@ function MainContent() {
                      onOpenAgent={handleGuideOpenAgent}
                      onOpenIde={handleGuideOpenIde}
                   />
-               ) : isTerminalView || activeWorktreePath ? (
-                  <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-                     <SplitLayout
-                        layoutId={localLayoutId}
-                        renderPane={(paneId) => (
-                           <TerminalView
-                              paneId={paneId}
-                              worktreePath={activeWorktreePath ?? undefined}
-                              worktreeBranch={activeWorktreeBranch ?? undefined}
-                           />
-                        )}
-                     />
+               )}
+
+               {/* Welcome Page (no project) */}
+               {!activeTab && !hasActiveProject && (
+                  <div className="empty-state flex-1 flex flex-col text-text-secondary">
+                     <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
+                        <div className="empty-icon text-[3.43em] opacity-50">📁</div>
+                        <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
+                        <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
+                        <button
+                           className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
+                           onClick={onAddProject}
+                        >
+                           Add Project
+                        </button>
+                     </div>
                   </div>
-               ) : diffFilePath ? (
-                  <DiffView
-                     projectId={activeProject.id}
-                     filePath={diffFilePath}
-                     initialMode={config.diffMode}
-                     onBack={() => onSelectProject(activeProject.id)}
-                  />
-               ) : null}
+               )}
             </div>
-         ) : !activeWslProject && !activeRemoteProject ? (
-            <div className="empty-state flex-1 flex flex-col text-text-secondary">
-               <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
-                  <div className="empty-icon text-[3.43em] opacity-50">📁</div>
-                  <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
-                  <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
-                  <button
-                     className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
-                     onClick={onAddProject}
-                  >
-                     Add Project
-                  </button>
-               </div>
-            </div>
-         ) : null}
+         )}
       </div>
    );
 }

@@ -118,7 +118,8 @@ pub fn wsl_create_worktree(
             .unwrap_or(std::path::Path::new(&worktree_path));
         if let Some(parent_str) = parent.to_str() {
             let safe_parent = parent_str.replace('\'', "'\\''");
-            let _ = crate::utils::command::wsl::exec(&distro, &format!("mkdir -p '{}'", safe_parent))?;
+            let _ =
+                crate::utils::command::wsl::exec(&distro, &format!("mkdir -p '{}'", safe_parent))?;
         }
         let args: Vec<&str> = if new_branch {
             vec!["worktree", "add", "-b", &branch_name, &worktree_path]

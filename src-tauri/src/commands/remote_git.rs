@@ -101,7 +101,7 @@ pub async fn remote_create_worktree(
         .unwrap_or(std::path::Path::new(&worktree_path));
     if let Some(parent_str) = parent.to_str() {
         let safe_parent = parent_str.replace('\'', "'\\''");
-crate::utils::command::ssh::exec_command(
+        crate::utils::command::ssh::exec_command(
             &host,
             port,
             &username,

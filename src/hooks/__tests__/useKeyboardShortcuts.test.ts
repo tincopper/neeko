@@ -48,7 +48,6 @@ function seedStore(overrides: Partial<ReturnType<typeof useAppStore.getState>> =
     selectWslProject: vi.fn(),
     selectRemoteProject: vi.fn(),
     openIde: vi.fn(),
-    toggleFileView: vi.fn(),
   };
   const state = { ...defaults, ...overrides };
   useAppStore.setState(state);

@@ -1,2 +1,2 @@
-pub mod fonts;
 pub mod command;
+pub mod fonts;

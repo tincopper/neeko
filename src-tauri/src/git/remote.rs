@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::utils::command::ssh::{exec_command, safe_path};
 use crate::models::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::local::parse_unified_diff;
 

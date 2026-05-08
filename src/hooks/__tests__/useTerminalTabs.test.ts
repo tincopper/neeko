@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useTerminalTabs } from "../../hooks/useTerminalTabs";
+import { useAppStore } from "../../store/appStore";
 
 vi.mock("../../components/terminal", () => ({
   destroyTerminalCachesByPrefix: vi.fn(),
@@ -8,6 +9,11 @@ vi.mock("../../components/terminal", () => ({
 
 describe("useTerminalTabs", () => {
   const PROJECT_ID = "test-project";
+
+  beforeEach(() => {
+    // Clear the unified store tabs between tests
+    useAppStore.setState({ tabs: {}, activeTabId: null });
+  });
 
   it("should close the last tab and set activeTabId to null", () => {
     const { result } = renderHook(() => useTerminalTabs());

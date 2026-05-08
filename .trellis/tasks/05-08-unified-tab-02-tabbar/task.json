@@ -1,0 +1,59 @@
+{
+  "id": "unified-tab-02-tabbar",
+  "name": "unified-tab-02-tabbar",
+  "title": "Phase 2/6: 统一 TabBar 和 TabItem 组件",
+  "description": "新建 UnifiedTabBar + UnifiedTabItem 组件替代 TerminalTabBar 和 FileViewer 内联 tab bar。根据 tab.data.kind 显示不同图标（终端/文件/diff）和状态指示器（running 绿点/dirty 橙点）。Agent Bar 仅在终端 tab 激活时显示。使用 shadcn/ui Tabs/Tooltip/DropdownMenu 组件，Tailwind 样式。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "ui",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-02-tabbar",
+  "base_branch": "feature/unified-tab-01-types-store",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/components/layout/UnifiedTabBar.tsx",
+    "src/components/layout/UnifiedTabItem.tsx",
+    "src/components/layout/TerminalTabBar.tsx",
+    "src/components/layout/TerminalTab.tsx",
+    "src/components/MainContent.tsx"
+  ],
+  "notes": "产出：(1) UnifiedTabBar — 统一 tab 容器，支持横向滚动、+按钮（终端<10时显示）; (2) UnifiedTabItem — 单个 tab 渲染，图标+标题+状态点+关闭按钮; (3) Agent Bar 条件渲染逻辑\n\n高内聚要求：(1) UnifiedTabBar 只负责布局和 tab 列表渲染; (2) UnifiedTabItem 只负责单个 tab 外观; (3) tab 操作逻辑通过 props callbacks 传入，不在组件内直接操作 store; (4) 图标映射抽为独立 utils",
+  "meta": {
+    "ui_components": {
+      "UnifiedTabBar": "flex 容器 + 横向滚动 + UnifiedTabItem[] + AgentBar 条件渲染",
+      "UnifiedTabItem": "图标 + 标题(truncate) + 状态点 + 关闭按钮",
+      "shadcn_used": [
+        "Tooltip",
+        "DropdownMenu (右键菜单)"
+      ]
+    },
+    "visual_design": {
+      "terminal_icon": "Terminal icon (lucide)",
+      "file_icon": "FileText icon (lucide)",
+      "diff_icon": "GitBranch or Diff icon (lucide)",
+      "status_running": "green dot (bg-status-running)",
+      "status_dirty": "orange dot (bg-accent)"
+    }
+  }
+}

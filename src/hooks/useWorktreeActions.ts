@@ -2,13 +2,13 @@ import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
+import type { Tab } from "../types";
 import type { WorktreeItem } from "./useWorktreeState";
 
 interface UseWorktreeActionsParams {
   setActiveWorktreePath: (path: string | null) => void;
   setActiveWorktreeBranch: (branch: string) => void;
   setOpenedWorktrees: Dispatch<SetStateAction<WorktreeItem[]>>;
-  setWorktreeDiffState: (state: { worktreePath: string; filePath: string } | null) => void;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
 }
 
@@ -20,14 +20,12 @@ interface UseWorktreeActionsResult {
     branch: string,
   ) => Promise<void>;
   handleSelectWorktreeFile: (worktreePath: string, filePath: string) => void;
-  handleWorktreeDiffBack: () => void;
 }
 
 export function useWorktreeActions({
   setActiveWorktreePath,
   setActiveWorktreeBranch,
   setOpenedWorktrees,
-  setWorktreeDiffState,
   saveWorktreeState,
 }: UseWorktreeActionsParams): UseWorktreeActionsResult {
   const activeProjectId = useAppStore((state) => state.activeProjectId);
@@ -38,9 +36,8 @@ export function useWorktreeActions({
       setActiveWorktreePath(null);
       setActiveWorktreeBranch("");
     }
-    setWorktreeDiffState(null);
     invoke("set_view_terminal", { projectId }).catch(() => { });
-  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, setWorktreeDiffState]);
+  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch]);
 
   const handleOpenWorktreeTerminal = useCallback(async (
     projectId: string,
@@ -48,14 +45,17 @@ export function useWorktreeActions({
     branch: string,
   ) => {
     if (activeProjectId !== projectId) {
-      useAppStore.setState((state) => ({
-        activeProjectId: projectId,
-        activeProject: state.projects.find((project) => project.id === projectId) ?? null,
-      }));
+      useAppStore.setState((state) => {
+        const targetProjectTabs = state.tabs[projectId];
+        return {
+          activeProjectId: projectId,
+          activeProject: state.projects.find((project) => project.id === projectId) ?? null,
+          activeTabId: targetProjectTabs?.activeTabId ?? null,
+        };
+      });
       await invoke("set_active_project", { projectId });
     }
 
-    setWorktreeDiffState(null);
     setActiveWorktreePath(worktreePath);
     setActiveWorktreeBranch(branch);
     setOpenedWorktrees((prev) => {
@@ -68,7 +68,6 @@ export function useWorktreeActions({
     invoke("set_view_terminal", { projectId }).catch(() => { });
   }, [
     activeProjectId,
-    setWorktreeDiffState,
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
@@ -76,17 +75,31 @@ export function useWorktreeActions({
   ]);
 
   const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {
-    setWorktreeDiffState({ worktreePath, filePath });
-  }, [setWorktreeDiffState]);
+    if (!activeProjectId) return;
 
-  const handleWorktreeDiffBack = useCallback(() => {
-    setWorktreeDiffState(null);
-  }, [setWorktreeDiffState]);
+    // Create a diff tab in the unified store
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const existingTabs = useAppStore.getState().tabs[activeProjectId];
+    const tab: Tab = {
+      id: tabId,
+      projectId: activeProjectId,
+      title: fileName,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: "diff",
+        filePath,
+        fileName,
+        diffSource: { type: "worktree", projectId: activeProjectId, worktreePath },
+      },
+    };
+    useAppStore.getState().addTab(activeProjectId, tab);
+    useAppStore.getState().activateTab(activeProjectId, tabId);
+  }, [activeProjectId]);
 
   return {
     handleBackToMainTerminal,
     handleOpenWorktreeTerminal,
     handleSelectWorktreeFile,
-    handleWorktreeDiffBack,
   };
 }

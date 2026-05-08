@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
-import type { Project, AgentConfig } from "../types";
+import type { Project, AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
 import { applyStateAction } from "../utils/entryUpdates";
 
@@ -26,12 +26,18 @@ export function useLocalProjects() {
   }, []);
 
   const setActiveProjectId = useCallback((projectId: string | null) => {
-    useAppStore.setState((state) => ({
-      activeProjectId: projectId,
-      activeProject: projectId
-        ? state.projects.find((project) => project.id === projectId) ?? null
-        : null,
-    }));
+    useAppStore.setState((state) => {
+      const targetProjectTabs = projectId ? state.tabs[projectId] : null;
+      const restoredTabId = targetProjectTabs?.activeTabId ?? null;
+
+      return {
+        activeProjectId: projectId,
+        activeProject: projectId
+          ? state.projects.find((project) => project.id === projectId) ?? null
+          : null,
+        activeTabId: restoredTabId,
+      };
+    });
   }, []);
 
   const setActiveProject: Dispatch<SetStateAction<Project | null>> = useCallback((updater) => {
@@ -114,10 +120,14 @@ export function useLocalProjects() {
         const nextActiveProject = nextActiveProjectId
           ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
           : null;
+        const nextActiveTabId = nextActiveProjectId
+          ? (state.tabs[nextActiveProjectId]?.activeTabId ?? null)
+          : null;
         return {
           projects: nextProjects,
           activeProjectId: nextActiveProjectId,
           activeProject: nextActiveProject,
+          activeTabId: nextActiveTabId,
         };
       });
       destroyTerminalCachesByPrefix(projectId);
@@ -129,7 +139,6 @@ export function useLocalProjects() {
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
     await invoke("set_active_project", { projectId });
-    await invoke("set_view_terminal", { projectId });
     await loadProjects();
   }, [loadProjects]);
 
@@ -138,9 +147,26 @@ export function useLocalProjects() {
       setActiveProjectId(projectId);
       await invoke("set_active_project", { projectId });
     }
-    await invoke("set_view_diff", { projectId, filePath });
-    await loadProjects();
-  }, [activeProjectId, loadProjects]);
+
+    // Create a diff tab in the unified store
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const existingTabs = useAppStore.getState().tabs[projectId];
+    const tab: Tab = {
+      id: tabId,
+      projectId,
+      title: fileName,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: "diff",
+        filePath,
+        fileName,
+        diffSource: { type: "local", projectId },
+      },
+    };
+    useAppStore.getState().addTab(projectId, tab);
+    useAppStore.getState().activateTab(projectId, tabId);
+  }, [activeProjectId]);
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
     try {

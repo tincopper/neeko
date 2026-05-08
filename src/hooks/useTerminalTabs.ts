@@ -1,189 +1,180 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import type { TerminalTab, AgentConfig } from "../types";
+import { useCallback } from "react";
+import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
+import { useAppStore } from "../store/appStore";
 
 function generateTabId(): string {
   return `tab_${crypto.randomUUID()}`;
 }
 
-const MAX_TABS = 10;
+/** Type guard: narrow Tab to terminal kind */
+function isTerminalTab(tab: Tab): tab is Tab & { data: TerminalTabData } {
+  return tab.data.kind === "terminal";
+}
 
-interface TabState {
-  [projectId: string]: {
-    tabs: TerminalTab[];
-    activeTabId: string | null;
+/** Convert a unified Tab (terminal kind) to legacy TerminalTab */
+function tabToTerminalTab(tab: Tab & { data: TerminalTabData }): TerminalTab {
+  return {
+    id: tab.id,
+    projectId: tab.projectId,
+    agentId: tab.data.agentId,
+    title: tab.title,
+    status: tab.data.status,
+    order: tab.order,
   };
 }
 
 export function useTerminalTabs() {
-  const [tabState, setTabState] = useState<TabState>({});
-  const tabStateRef = useRef<TabState>({});
-
-  useEffect(() => {
-    tabStateRef.current = tabState;
-  }, [tabState]);
+  // Subscribe to the entire tabs record for reactivity
+  const storeTabs = useAppStore((state) => state.tabs);
 
   const getTabs = useCallback(
     (projectId: string): TerminalTab[] => {
-      return tabState[projectId]?.tabs ?? [];
+      const projectTabs = storeTabs[projectId];
+      if (!projectTabs) return [];
+      return projectTabs.tabs.filter(isTerminalTab).map(tabToTerminalTab);
     },
-    [tabState]
+    [storeTabs]
   );
 
   const getActiveTab = useCallback(
     (projectId: string): TerminalTab | null => {
-      const state = tabState[projectId];
-      if (!state) return null;
-      return state.tabs.find((t) => t.id === state.activeTabId) ?? null;
+      const projectTabs = storeTabs[projectId];
+      if (!projectTabs) return null;
+
+      const terminalTabs = projectTabs.tabs.filter(isTerminalTab);
+      if (terminalTabs.length === 0) return null;
+
+      // If activeTabId points to a terminal tab, use it
+      const active = terminalTabs.find((t) => t.id === projectTabs.activeTabId);
+      if (active) return tabToTerminalTab(active);
+
+      // Otherwise, return the first terminal tab
+      return tabToTerminalTab(terminalTabs[0]);
     },
-    [tabState]
+    [storeTabs]
   );
 
   const getActiveTabId = useCallback(
     (projectId: string): string | null => {
-      return tabState[projectId]?.activeTabId ?? null;
+      const projectTabs = storeTabs[projectId];
+      if (!projectTabs) return null;
+
+      const terminalTabs = projectTabs.tabs.filter(isTerminalTab);
+      if (terminalTabs.length === 0) return null;
+
+      // If activeTabId points to a terminal tab, use it
+      if (terminalTabs.some((t) => t.id === projectTabs.activeTabId)) {
+        return projectTabs.activeTabId;
+      }
+
+      // Otherwise, return the first terminal tab's ID
+      return terminalTabs[0].id;
     },
-    [tabState]
+    [storeTabs]
   );
 
   const ensureDefaultTab = useCallback(
     (projectId: string, agentId?: string | null, agentName?: string): string => {
-      const existing = tabState[projectId];
-      if (existing && existing.tabs.length > 0) {
-        // Backfill agentId only on the sole auto-created tab (not user-added blank tabs)
-        if (agentId && existing.tabs.length === 1 && existing.tabs[0].agentId === null) {
-          setTabState(prev => {
-            const s = prev[projectId];
-            if (!s || s.tabs.length !== 1 || s.tabs[0].agentId !== null) return prev;
-            const tab = s.tabs[0];
-            return {
-              ...prev,
-              [projectId]: {
-                ...s,
-                tabs: [{ ...tab, agentId, title: agentName ?? agentId }],
-              },
-            };
+      const state = useAppStore.getState();
+      const existing = state.tabs[projectId];
+      const terminalTabs = existing?.tabs.filter(isTerminalTab) ?? [];
+
+      if (terminalTabs.length > 0) {
+        // Backfill agentId only on the sole auto-created terminal tab
+        if (agentId && terminalTabs.length === 1 && terminalTabs[0].data.agentId === null) {
+          state.updateTab(projectId, terminalTabs[0].id, {
+            agentId,
+            title: agentName ?? agentId,
           });
         }
-        if (!existing.activeTabId) {
-          const firstTabId = existing.tabs[0].id;
-          setTabState((prev) => ({
-            ...prev,
-            [projectId]: { ...prev[projectId], activeTabId: firstTabId },
-          }));
-          return firstTabId;
-        }
-        return existing.activeTabId;
+
+        // 如果当前 active tab 是 terminal tab，返回它
+        const activeTerminal = terminalTabs.find((t) => t.id === existing?.activeTabId);
+        if (activeTerminal) return activeTerminal.id;
+
+        // 如果 active tab 不是 terminal tab，不要强制激活 terminal tab
+        // 保留用户当前的 tab 选择（例如 file/diff tab）
+        return terminalTabs[0].id;
       }
 
-      const defaultTab: TerminalTab = {
-        id: generateTabId(),
+      // Create a default terminal tab
+      const tabId = generateTabId();
+      const defaultTab: Tab = {
+        id: tabId,
         projectId,
-        agentId: agentId ?? null,
         title: agentName ?? (agentId ?? "Terminal"),
-        status: "Idle",
-        order: 0,
+        order: existing?.tabs.length ?? 0,
+        data: {
+          kind: "terminal",
+          agentId: agentId ?? null,
+          status: "Idle",
+        },
       };
 
-      setTabState((prev) => ({
-        ...prev,
-        [projectId]: { tabs: [defaultTab], activeTabId: defaultTab.id },
-      }));
-
-      return defaultTab.id;
+      state.addTab(projectId, defaultTab);
+      state.activateTab(projectId, tabId);
+      return tabId;
     },
-    [tabState]
+    []
   );
 
   const addTab = useCallback(
     (projectId: string, agentId?: string | null): TerminalTab | null => {
-      const existing = tabState[projectId];
-      const tabs = existing?.tabs ?? [];
-      if (tabs.length >= MAX_TABS) return null;
+      const state = useAppStore.getState();
+      const existing = state.tabs[projectId];
+      const terminalCount = (existing?.tabs ?? []).filter(isTerminalTab).length;
+      if (terminalCount >= 10) return null;
 
-      const agentName = agentId ? agentId : null;
-      const newTab: TerminalTab = {
-        id: generateTabId(),
+      const tabId = generateTabId();
+      const newTab: Tab = {
+        id: tabId,
         projectId,
-        agentId: agentId ?? null,
-        title: agentName ?? `Terminal ${tabs.length + 1}`,
-        status: "Idle",
-        order: tabs.length,
+        title: agentId ?? `Terminal ${terminalCount + 1}`,
+        order: existing?.tabs.length ?? 0,
+        data: {
+          kind: "terminal",
+          agentId: agentId ?? null,
+          status: "Idle",
+        },
       };
 
-      setTabState((prev) => {
-        const currentTabs = prev[projectId]?.tabs ?? [];
-        return {
-          ...prev,
-          [projectId]: {
-            tabs: [...currentTabs, newTab],
-            activeTabId: newTab.id,
-          },
-        };
-      });
+      state.addTab(projectId, newTab);
+      state.activateTab(projectId, tabId);
 
-      return newTab;
+      return {
+        id: tabId,
+        projectId,
+        agentId: agentId ?? null,
+        title: agentId ?? `Terminal ${terminalCount + 1}`,
+        status: "Idle",
+        order: newTab.order,
+      };
     },
-    [tabState]
+    []
   );
 
   const closeTab = useCallback(
     (projectId: string, tabId: string): void => {
+      // Clean up terminal cache before closing
       destroyTerminalCachesByPrefix(`${projectId}:${tabId}`);
-      setTabState((prev) => {
-        const state = prev[projectId];
-        if (!state) return prev;
-
-        const tabs = state.tabs.filter((t) => t.id !== tabId);
-
-        let activeTabId = state.activeTabId;
-        if (activeTabId === tabId) {
-          const closedIndex = state.tabs.findIndex((t) => t.id === tabId);
-          activeTabId =
-            tabs[Math.min(closedIndex, tabs.length - 1)]?.id ?? null;
-        }
-
-        return {
-          ...prev,
-          [projectId]: { tabs, activeTabId },
-        };
-      });
+      useAppStore.getState().closeTab(projectId, tabId);
     },
     []
   );
 
   const activateTab = useCallback(
     (projectId: string, tabId: string): void => {
-      setTabState((prev) => {
-        const state = prev[projectId];
-        if (!state) return prev;
-        if (!state.tabs.find((t) => t.id === tabId)) return prev;
-        return {
-          ...prev,
-          [projectId]: { ...state, activeTabId: tabId },
-        };
-      });
+      useAppStore.getState().activateTab(projectId, tabId);
     },
     []
   );
 
   const setTabAgent = useCallback(
     (projectId: string, tabId: string, agentId: string | null, agentName?: string): void => {
-      setTabState((prev) => {
-        const state = prev[projectId];
-        if (!state) return prev;
-
-        const tabs = state.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                agentId,
-                title: agentName ?? (agentId ? agentId : "Terminal"),
-              }
-            : t
-        );
-
-        return { ...prev, [projectId]: { ...state, tabs } };
+      useAppStore.getState().updateTab(projectId, tabId, {
+        agentId,
+        title: agentName ?? (agentId ? agentId : "Terminal"),
       });
     },
     []
@@ -191,42 +182,21 @@ export function useTerminalTabs() {
 
   const updateTabTitle = useCallback(
     (projectId: string, tabId: string, title: string): void => {
-      setTabState((prev) => {
-        const state = prev[projectId];
-        if (!state) return prev;
-
-        const tabs = state.tabs.map((t) =>
-          t.id === tabId ? { ...t, title } : t
-        );
-
-        return { ...prev, [projectId]: { ...state, tabs } };
-      });
+      useAppStore.getState().updateTab(projectId, tabId, { title });
     },
     []
   );
 
   const updateTabStatus = useCallback(
     (projectId: string, tabId: string, status: TerminalTab["status"]): void => {
-      setTabState((prev) => {
-        const state = prev[projectId];
-        if (!state) return prev;
-
-        const tabs = state.tabs.map((t) =>
-          t.id === tabId ? { ...t, status } : t
-        );
-
-        return { ...prev, [projectId]: { ...state, tabs } };
-      });
+      useAppStore.getState().updateTab(projectId, tabId, { status });
     },
     []
   );
 
   const handleAgentClick = useCallback(
-    (
-      projectId: string,
-      agent: AgentConfig,
-    ): TerminalTab | null => {
-      // 点击 Agent 时始终新建 tab
+    (projectId: string, agent: AgentConfig): TerminalTab | null => {
+      // Always create a new tab when clicking an agent
       return addTab(projectId, agent.id);
     },
     [addTab]
@@ -234,16 +204,22 @@ export function useTerminalTabs() {
 
   const clearProjectTabs = useCallback(
     (projectId: string): void => {
-      setTabState((prev) => {
-        const { [projectId]: _, ...rest } = prev;
-        return rest;
-      });
+      // Clean up all terminal caches for this project
+      const state = useAppStore.getState();
+      const existing = state.tabs[projectId];
+      if (existing) {
+        for (const tab of existing.tabs) {
+          if (isTerminalTab(tab)) {
+            destroyTerminalCachesByPrefix(`${projectId}:${tab.id}`);
+          }
+        }
+      }
+      state.clearProjectTabs(projectId);
     },
     []
   );
 
   return {
-    tabState,
     getTabs,
     getActiveTab,
     getActiveTabId,

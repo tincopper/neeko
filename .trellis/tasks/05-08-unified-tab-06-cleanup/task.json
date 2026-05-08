@@ -1,0 +1,63 @@
+{
+  "id": "unified-tab-06-cleanup",
+  "name": "unified-tab-06-cleanup",
+  "title": "Phase 6/6: 清理旧代码与回归测试",
+  "description": "删除旧的 TerminalTabBar/TerminalTab 组件，移除 appStore 中废弃字段（fileTabs/activeFileTabId/fileViewOpen/worktreeDiffState），清理 useAppContainer 中的旧逻辑。运行全量回归测试确保无退化。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-06-cleanup",
+  "base_branch": "feature/unified-tab-05-diff-integration",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/components/layout/TerminalTabBar.tsx",
+    "src/components/layout/TerminalTab.tsx",
+    "src/store/appStore.ts",
+    "src/components/MainContent.tsx",
+    "src/hooks/useAppContainer.ts"
+  ],
+  "notes": "产出：(1) 删除 TerminalTabBar.tsx; (2) 删除 TerminalTab.tsx; (3) 清理 appStore 废弃字段; (4) pnpm lint + type-check + test:run 通过; (5) cargo test 通过; (6) pnpm tauri dev 手动验证\n\n回归检查清单：(1) 终端 tab 创建/切换/关闭; (2) 终端 Agent 绑定; (3) 终端 SplitLayout 分屏; (4) 文件 tab 打开/关闭/dirty 追踪; (5) Diff tab 打开/关闭; (6) 项目切换 tab 隔离; (7) Agent Bar 仅终端 tab 时显示",
+  "meta": {
+    "files_to_delete": [
+      "src/components/layout/TerminalTabBar.tsx",
+      "src/components/layout/TerminalTab.tsx"
+    ],
+    "store_fields_to_remove": [
+      "fileTabs",
+      "activeFileTabId",
+      "fileViewOpen",
+      "worktreeDiffState"
+    ],
+    "regression_checklist": [
+      "终端 tab: 创建/切换/关闭/Agent 绑定",
+      "终端 SplitLayout: 分屏正常",
+      "文件 tab: 打开/关闭/dirty 追踪/保存",
+      "Diff tab: 本地/worktree/WSL 三种打开方式",
+      "项目切换: tab 按项目隔离",
+      "Agent Bar: 仅终端 tab 激活时显示",
+      "Tab 上限: 终端 10 个，文件/diff 不限"
+    ]
+  }
+}
