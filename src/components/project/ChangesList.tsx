@@ -15,6 +15,7 @@ interface ChangesListProps {
   onStageSelected: () => void;
   onUnstageSelected: () => void;
   onDiscardFile: (path: string) => void;
+  onFileSelect?: (path: string) => void;
   loading: boolean;
 }
 
@@ -38,6 +39,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   onStageSelected,
   onUnstageSelected,
   onDiscardFile,
+  onFileSelect,
   loading,
 }) => {
   const [filter, setFilter] = useState<FilterStatus>("all");
@@ -96,15 +98,17 @@ const ChangesList: React.FC<ChangesListProps> = ({
             <div
               key={file.path}
               className={cn(
-                "flex items-center gap-2 py-0.5 px-3 text-xs transition-colors duration-100 group",
+                "flex items-center gap-2 py-0.5 px-3 text-xs transition-colors duration-100 group cursor-pointer",
                 isSelected
                   ? "bg-accent-blue/5 text-text-primary"
                   : "text-text-secondary hover:bg-bg-hover"
               )}
+              onClick={() => onFileSelect?.(file.path)}
             >
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={() => onToggleFile(file.path)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
               />
               <span className="flex-1 truncate font-mono text-[11px]">
                 {file.path}
@@ -131,7 +135,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
               <button
                 className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100 opacity-0 group-hover:opacity-100"
                 title="Discard changes"
-                onClick={() => onDiscardFile(file.path)}
+                onClick={(e) => { e.stopPropagation(); onDiscardFile(file.path); }}
                 disabled={loading}
               >
                 <Undo2 size={12} />
