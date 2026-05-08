@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-05-08",
-  "completedAt": null,
+  "completedAt": "2026-05-08",
   "branch": "feature/unified-tab-04-terminal-migration",
   "base_branch": "feature/unified-tab-02-tabbar",
   "worktree_path": null,
