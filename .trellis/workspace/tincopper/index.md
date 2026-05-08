@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 24
+- **Total Sessions**: 25
 - **Last Active**: 2026-05-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~880 | Active |
+| `journal-1.md` | ~914 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 25 | 2026-05-08 | unified tab system + fix PTY leak on project switch | `f168600`, `b801923` | `main` |
 | 24 | 2026-05-08 | 统一Tab系统 + 修复项目切换PTY泄漏 | `f168600`, `b801923` | `main` |
 | 23 | 2026-05-07 | feat: project drag-and-drop sorting with cursor following | `fdc7edf` | `main` |
 | 22 | 2026-05-05 | Refactor command execution functions and sync OpenCode theme for WSL | `36a5306`, `3e043af`, `a72bb8a` | `main` |
