@@ -31,7 +31,7 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings, settin
       onLoadFileTree,
    } = useFileActionsContext();
    const { showToast } = useAppContext();
-   const { onRefreshGit } = useProjectActionsContext();
+   const { onSelectFile, onRefreshGit } = useProjectActionsContext();
    const activeProject = useAppStore((state) => state.activeProject);
    const activeProjectId = useAppStore((state) => state.activeProjectId);
    const fileTree = useAppStore((state) => state.fileTree);
@@ -120,6 +120,7 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings, settin
                               <GitCommitPanel
                                  project={activeProject}
                                  onRefreshGit={onRefreshGit}
+                                 onSelectFile={onSelectFile}
                                  onShowToast={showToast}
                               />
                            ),

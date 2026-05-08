@@ -11,6 +11,7 @@ import GitDialog, { type DialogState } from "./GitDialog";
 interface GitCommitPanelProps {
   project: Project;
   onRefreshGit: (projectId: string) => void;
+  onSelectFile?: (projectId: string, filePath: string) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onOpenDialog?: (type: "new-branch" | "new-worktree", e: React.MouseEvent) => void;
 }
@@ -18,6 +19,7 @@ interface GitCommitPanelProps {
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   project,
   onRefreshGit,
+  onSelectFile,
   onShowToast,
   onOpenDialog,
 }) => {
@@ -323,6 +325,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           onStageSelected={handleStage}
           onUnstageSelected={handleUnstage}
           onDiscardFile={handleDiscardFile}
+          onFileSelect={(path) => onSelectFile?.(project.id, path)}
           loading={loading}
         />
       </div>

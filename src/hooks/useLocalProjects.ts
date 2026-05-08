@@ -148,10 +148,17 @@ export function useLocalProjects() {
       await invoke("set_active_project", { projectId });
     }
 
-    // Create a diff tab in the unified store
+    const existingTabs = useAppStore.getState().tabs[projectId];
+    const existingDiffTab = existingTabs?.tabs.find(
+      (t) => t.data.kind === "diff" && t.data.filePath === filePath
+    );
+    if (existingDiffTab) {
+      useAppStore.getState().activateTab(projectId, existingDiffTab.id);
+      return;
+    }
+
     const fileName = filePath.split(/[\\/]/).pop() || filePath;
     const tabId = `tab_${crypto.randomUUID()}`;
-    const existingTabs = useAppStore.getState().tabs[projectId];
     const tab: Tab = {
       id: tabId,
       projectId,

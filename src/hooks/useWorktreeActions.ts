@@ -77,10 +77,17 @@ export function useWorktreeActions({
   const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {
     if (!activeProjectId) return;
 
-    // Create a diff tab in the unified store
+    const existingTabs = useAppStore.getState().tabs[activeProjectId];
+    const existingDiffTab = existingTabs?.tabs.find(
+      (t) => t.data.kind === "diff" && t.data.filePath === filePath
+    );
+    if (existingDiffTab) {
+      useAppStore.getState().activateTab(activeProjectId, existingDiffTab.id);
+      return;
+    }
+
     const fileName = filePath.split(/[\\/]/).pop() || filePath;
     const tabId = `tab_${crypto.randomUUID()}`;
-    const existingTabs = useAppStore.getState().tabs[activeProjectId];
     const tab: Tab = {
       id: tabId,
       projectId: activeProjectId,
