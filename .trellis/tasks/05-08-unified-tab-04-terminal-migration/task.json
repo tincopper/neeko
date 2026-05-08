@@ -1,0 +1,60 @@
+{
+  "id": "unified-tab-04-terminal-migration",
+  "name": "unified-tab-04-terminal-migration",
+  "title": "Phase 4/6: 终端 Tab 迁移到 Zustand Store",
+  "description": "将 useTerminalTabs 的终端 tab 管理从 React 本地 state 迁移到 Zustand 统一 store。保留 terminalCache 映射逻辑不变，保留 SplitLayout 分屏能力。更新 EditorContext 为统一 Tab 类型。终端 tab 上限 10 个保留。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-04-terminal-migration",
+  "base_branch": "feature/unified-tab-02-tabbar",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/hooks/useTerminalTabs.ts",
+    "src/contexts/editor-context.tsx",
+    "src/components/MainContent.tsx",
+    "src/hooks/useAppContainer.ts",
+    "src/components/terminal/SplitLayout.tsx",
+    "src/components/terminal/terminalCache.ts",
+    "src/components/terminal/TerminalView.tsx"
+  ],
+  "notes": "产出：(1) useTerminalTabs 内部改为调用 store.addTab/closeTab/activateTab; (2) EditorContext tabs 改为 Tab[] 类型; (3) terminalCache key 格式保持 {projectId}:{tabId}:{paneId}; (4) SplitLayout 不变\n\n迁移要点：(1) ensureDefaultTab → store.addTab(kind:'terminal'); (2) tab.status 更新通过 store.updateTab; (3) terminal tab 上限在 addTab action 中校验; (4) agentId 存储在 Tab.data (TerminalTabData) 中; (5) 清理时 destroyTerminalCachesByPrefix 逻辑不变",
+  "meta": {
+    "migration_map": {
+      "useTerminalTabs.addTab": "调用 store.addTerminalTab(projectId, agentId?)",
+      "useTerminalTabs.closeTab": "调用 store.closeTab(projectId, tabId)",
+      "useTerminalTabs.activateTab": "调用 store.activateTab(projectId, tabId)",
+      "useTerminalTabs.updateTabStatus": "调用 store.updateTab(projectId, tabId, { status })",
+      "EditorContext": "tabs: TerminalTab[] → tabs: Tab[]"
+    },
+    "preserved": [
+      "terminalCache key 映射",
+      "SplitLayout 分屏",
+      "10 tab 上限",
+      "destroyTerminalCachesByPrefix 清理逻辑"
+    ],
+    "worktree_key": "projectId:wt:worktreePath 格式保持不变"
+  }
+}

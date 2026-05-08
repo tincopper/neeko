@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::utils::command::wsl::{exec, open_ide, safe_path};
 use crate::models::{DiffResult, FileChange, GitInfo};
+use crate::utils::command::wsl::{exec, open_ide, safe_path};
 
 use super::local::parse_unified_diff;
 use super::remote::parse_git_info_output;

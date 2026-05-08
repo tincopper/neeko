@@ -41,7 +41,6 @@ function createDeps() {
     setActiveWorktreePath: vi.fn(),
     setActiveWorktreeBranch: vi.fn(),
     setOpenedWorktrees: vi.fn(),
-    setWorktreeDiffState: vi.fn(),
     saveWorktreeState: vi.fn(),
   };
 }

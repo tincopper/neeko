@@ -1,5 +1,5 @@
-use crate::utils::command::local::exec;
 use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::utils::command::local::exec;
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};

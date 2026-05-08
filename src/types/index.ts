@@ -8,4 +8,5 @@ export * from "./project";
 export * from "./session";
 export * from "./skill";
 export * from "./split";
+export * from "./tab";
 export * from "./terminal";

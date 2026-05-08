@@ -3,6 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useLocalProjects } from '../../hooks/useLocalProjects';
+import { useAppStore } from '../../store/appStore';
 import { createProject } from '../../testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
@@ -171,7 +172,7 @@ describe('useLocalProjects', () => {
 
     expect(result.current.activeProjectId).toBe('sel-1');
     expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'sel-1' });
-    expect(mockInvoke).toHaveBeenCalledWith('set_view_terminal', { projectId: 'sel-1' });
+
   });
 
   it('handleRefreshGit 刷新 git 信息', async () => {
@@ -256,7 +257,7 @@ describe('useLocalProjects', () => {
     expect(diffIdx).toBeGreaterThan(terminalIdx);
   });
 
-  it('handleSelectFile 在项目已激活时不重复调用 set_view_terminal', async () => {
+  it('handleSelectFile 在项目已激活时创建 diff tab', async () => {
     const project = createProject({ id: 'p-active' });
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_projects') return [project];
@@ -275,10 +276,14 @@ describe('useLocalProjects', () => {
       await result.current.handleSelectFile('p-active', 'src/bar.ts');
     });
 
-    // 项目已激活，不应再调用 set_active_project 和 set_view_terminal
+    // 项目已激活，不应再调用 set_active_project
     expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
-    expect(mockInvoke).not.toHaveBeenCalledWith('set_view_terminal', expect.anything());
-    expect(mockInvoke).toHaveBeenCalledWith('set_view_diff', { projectId: 'p-active', filePath: 'src/bar.ts' });
+    // 应在 store 中创建 diff tab
+    const storeTabs = useAppStore.getState().tabs['p-active'];
+    expect(storeTabs).toBeDefined();
+    const diffTab = storeTabs?.tabs.find((t) => t.data.kind === 'diff');
+    expect(diffTab).toBeDefined();
+    expect(diffTab?.data.kind === 'diff' && diffTab.data.filePath).toBe('src/bar.ts');
   });
 
   it('activeProject 随 activeProjectId 同步', async () => {

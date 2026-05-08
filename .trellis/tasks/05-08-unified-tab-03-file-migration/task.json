@@ -1,0 +1,58 @@
+{
+  "id": "unified-tab-03-file-migration",
+  "name": "unified-tab-03-file-migration",
+  "title": "Phase 3/6: 文件 Tab 迁移到统一 Store",
+  "description": "将 useFileView 的文件 tab 管理迁移到 Zustand 统一 store（使用 Phase 1 定义的 Tab 类型）。FileViewer 移除内联 tab bar，简化为纯 FileEditor 组件。MainContent 文件渲染从 showFileViewer 条件切换到 activeTab.kind === 'file' 判断。移除 fileViewOpen 状态。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-03-file-migration",
+  "base_branch": "feature/unified-tab-02-tabbar",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/hooks/useFileView.ts",
+    "src/components/files/FileViewer.tsx",
+    "src/components/files/FileEditor.tsx",
+    "src/components/MainContent.tsx",
+    "src/hooks/useAppContainer.ts",
+    "src/contexts/file-actions-context.tsx",
+    "src/store/appStore.ts"
+  ],
+  "notes": "产出：(1) useFileView 内部改为调用 store.addTab/closeTab; (2) FileViewer 拆分 — tab bar 部分移除，只保留 FileEditor; (3) MainContent 移除 showFileViewer 条件; (4) 清理 fileViewOpen 字段\n\n迁移要点：(1) openFile 创建 kind:'file' 的 Tab; (2) FileEditor 接收 Tab.data (FileTabData) 而非 FileTab; (3) isDirty 状态通过 store.updateTab 同步; (4) 保持 key={activeTab.id} 的 remount 行为",
+  "meta": {
+    "migration_map": {
+      "useFileView.openFile": "调用 store.openFileTab(projectId, filePath)",
+      "useFileView.closeTab": "调用 store.closeTab(projectId, tabId)",
+      "useFileView.activateTab": "调用 store.activateTab(projectId, tabId)",
+      "FileViewer": "移除 tab bar，简化为 FileEditor 包装",
+      "MainContent.showFileViewer": "移除，改为 activeTab?.data.kind === 'file'"
+    },
+    "removed_state": [
+      "fileViewOpen",
+      "fileTabs (迁移到 store.tabs)",
+      "activeFileTabId (迁移到 store.activeTabId)"
+    ]
+  }
+}

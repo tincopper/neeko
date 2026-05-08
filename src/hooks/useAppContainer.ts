@@ -20,11 +20,11 @@ import { useWorktreeActions } from "./useWorktreeActions";
 import { useRemoteAuthActions } from "./useRemoteAuthActions";
 import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
+import { useAppStore } from "../store/appStore";
 import { useFileView } from "./useFileView";
 import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
-import { useAppStore } from "../store/appStore";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -152,17 +152,6 @@ export function useAppContainer(): UseAppContainerResult {
     saveSession: session.saveSession,
   });
 
-  const setWorktreeDiffState = useCallback(
-    (next: { worktreePath: string; filePath: string } | null) => {
-      useAppStore.setState({ worktreeDiffState: next });
-    },
-    [],
-  );
-
-  useEffect(() => {
-    setWorktreeDiffState(null);
-  }, [activeProjectId, setWorktreeDiffState]);
-
   const agentActions = useAgentActions({
     terminal: {
       fontSize: config.terminalFontSize ?? 14,
@@ -179,7 +168,6 @@ export function useAppContainer(): UseAppContainerResult {
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
-    setWorktreeDiffState,
     saveWorktreeState: session.saveWorktreeState,
   });
 
@@ -192,7 +180,6 @@ export function useAppContainer(): UseAppContainerResult {
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
       clearWorktreeForProject(projectId);
-      setWorktreeDiffState(null);
       fileView.clearFileView();
       await handleSelectProject(projectId);
     },
@@ -257,7 +244,6 @@ export function useAppContainer(): UseAppContainerResult {
 
   const {
     getTabs,
-    getActiveTabId,
     ensureDefaultTab,
     addTab,
     closeTab,
@@ -269,10 +255,8 @@ export function useAppContainer(): UseAppContainerResult {
   const currentProjectId =
     activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
 
-  // worktree 使用独立的 tabKey，避免与 local tab 共享状态
-  const tabKey = activeWorktreePath && currentProjectId
-    ? `${currentProjectId}:wt:${activeWorktreePath}`
-    : currentProjectId;
+  // Use currentProjectId directly for unified tab system
+  const tabKey = currentProjectId;
 
   useEffect(() => {
     if (!tabKey) return;
@@ -280,18 +264,21 @@ export function useAppContainer(): UseAppContainerResult {
     // Local 项目（非 worktree）：不自动创建 tab，让 ProjectGuidePage 引导用户
     if (activeProject && !activeWorktreePath) return;
 
-    const existing = getTabs(tabKey);
-    if (existing.length === 0) {
+    // 检查项目是否有任何类型的 tab（不仅是 terminal）
+    const projectTabs = useAppStore.getState().tabs[tabKey];
+    const hasAnyTabs = projectTabs && projectTabs.tabs.length > 0;
+
+    if (!hasAnyTabs) {
+      // 只有在项目没有任何 tab 时才创建默认终端（WSL/Remote 场景）
       const agentId = activeProject?.selected_agent ?? null;
       const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
       ensureDefaultTab(tabKey, agentId, agentName);
-    } else {
-      ensureDefaultTab(tabKey);
     }
-  }, [tabKey, getTabs, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
+    // 如果项目已有 tab（任何类型），不做任何操作，保留用户之前的 tab 状态
+  }, [tabKey, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
-  const activeTabId = tabKey ? getActiveTabId(tabKey) : null;
+  const activeTabId = useAppStore((state) => state.activeTabId);
 
   const handleAddTab = useCallback(() => {
     if (!tabKey) return;
@@ -315,7 +302,7 @@ export function useAppContainer(): UseAppContainerResult {
   );
 
   const handleToggleTerminal = useCallback(() => {
-    useAppStore.getState().toggleFileView();
+    // fileViewOpen removed — toggleTerminal is currently a no-op
   }, []);
 
   const handleTabStatusChange = useCallback(
@@ -494,7 +481,6 @@ export function useAppContainer(): UseAppContainerResult {
     onSelectWorktreeFile: worktreeActions.handleSelectWorktreeFile,
     onDragEnd: handleDragEnd,
     onSaveProjectSettings: agentActions.handleSaveProjectSettings,
-    onWorktreeDiffBack: worktreeActions.handleWorktreeDiffBack,
   };
 
   const fileActionsValue = {

@@ -72,6 +72,11 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
          return;
       }
 
+      // Guard: if activeTabId is stale (from another project), skip PTY creation
+      if (activeTabId && !isWorktree && tabs.length > 0 && !tabs.some((t) => t.id === activeTabId)) {
+         return;
+      }
+
       const wrapper = wrapperRef.current;
       if (!wrapper) {
          return;

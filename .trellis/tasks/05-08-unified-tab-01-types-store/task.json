@@ -1,0 +1,75 @@
+{
+  "id": "unified-tab-01-types-store",
+  "name": "unified-tab-01-types-store",
+  "title": "Phase 1/6: 统一 Tab 类型系统与 Zustand Store 重构",
+  "description": "新建 src/types/tab.ts 定义统一 Tab 类型（TerminalTabData/FileTabData/DiffTabData discriminated union），重构 appStore 新增 per-project tabs 字段和 CRUD actions（addTab/closeTab/activateTab/updateTab），提供 openFileTab/openDiffTab 便捷方法。保留旧字段兼容，后续 phase 逐步移除。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "store",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-01-types-store",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/types/tab.ts",
+    "src/types/terminal.ts",
+    "src/types/file.ts",
+    "src/store/appStore.ts",
+    "src/components/diff/types.ts"
+  ],
+  "notes": "产出：(1) src/types/tab.ts — TabKind, TerminalTabData, FileTabData, DiffTabData, Tab 类型; (2) appStore 新增 tabs: Record<string, { tabs: Tab[]; activeTabId: string | null }> 和 actions; (3) 旧 fileTabs/activeFileTabId 暂保留兼容\n\n关键约束：(1) 类型定义集中在一个文件; (2) Store actions 纯函数无副作用; (3) per-project 隔离设计",
+  "meta": {
+    "type_definition": {
+      "location": "src/types/tab.ts",
+      "types": [
+        "TabKind",
+        "TerminalTabData",
+        "FileTabData",
+        "DiffTabData",
+        "TabData",
+        "Tab"
+      ],
+      "pattern": "discriminated union via kind field"
+    },
+    "store_changes": {
+      "new_fields": [
+        "tabs (per-project Record)",
+        "activeTabId"
+      ],
+      "new_actions": [
+        "addTab",
+        "closeTab",
+        "activateTab",
+        "updateTab",
+        "clearProjectTabs"
+      ],
+      "convenience": [
+        "openFileTab",
+        "openDiffTab",
+        "addTerminalTab"
+      ],
+      "backward_compat": "保留 fileTabs/activeFileTabId/fileViewOpen 至 Phase 3 清理"
+    }
+  }
+}

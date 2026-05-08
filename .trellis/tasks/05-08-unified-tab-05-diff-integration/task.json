@@ -1,0 +1,62 @@
+{
+  "id": "unified-tab-05-diff-integration",
+  "name": "unified-tab-05-diff-integration",
+  "title": "Phase 5/6: Diff 视图集成为 Tab",
+  "description": "将三种 diff 打开方式（本地项目/worktree/WSL）统一为创建 diff tab。移除 MainContent 中的 worktreeDiffState/wslDiffState/diffFilePath 状态和互斥条件链。DiffView 从覆盖渲染变为 tab 内容渲染，通过 activeTab.kind === 'diff' 判断。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-05-diff-integration",
+  "base_branch": "feature/unified-tab-03-file-migration",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "05-08-unified-tab-system",
+  "relatedFiles": [
+    "src/hooks/useLocalProjects.ts",
+    "src/hooks/useWorktreeActions.ts",
+    "src/hooks/useWslActions.ts",
+    "src/components/MainContent.tsx",
+    "src/components/diff/DiffView.tsx",
+    "src/hooks/useAppContainer.ts",
+    "src/store/appStore.ts",
+    "src-tauri/src/commands/project.rs",
+    "src-tauri/src/project.rs"
+  ],
+  "notes": "产出：(1) openDiffTab 便捷方法; (2) 三种 diff 流程改为 store.openDiffTab; (3) MainContent 移除 worktreeDiffState/wslDiffState/diffFilePath; (4) DiffView 通过 activeTab.kind==='diff' 渲染; (5) 后端 set_view_diff/active_view 可选废弃\n\n迁移要点：(1) 本地 diff: handleSelectFile → openDiffTab({type:'local', projectId}, filePath); (2) worktree diff: handleSelectWorktreeFile → openDiffTab({type:'worktree',...}, filePath); (3) WSL diff: handleSelectWslFile → openDiffTab({type:'wsl',...}, filePath); (4) DiffView onBack → closeTab; (5) DiffView 接收 Tab.data (DiffTabData) 而非独立 props",
+  "meta": {
+    "migration_map": {
+      "useLocalProjects.handleSelectFile": "openDiffTab({type:'local', projectId}, filePath)",
+      "useWorktreeActions.handleSelectWorktreeFile": "openDiffTab({type:'worktree', projectId, worktreePath}, filePath)",
+      "useWslActions.handleSelectWslFile": "openDiffTab({type:'wsl', distro, projectPath}, filePath)",
+      "DiffView.onBack": "closeTab(projectId, tabId)"
+    },
+    "removed_state": [
+      "worktreeDiffState",
+      "wslDiffState",
+      "diffFilePath",
+      "onWorktreeDiffBack",
+      "onWslDiffBack"
+    ],
+    "backend_optional": "set_view_diff 命令和 active_view 字段可废弃（需确认无其他依赖）"
+  }
+}

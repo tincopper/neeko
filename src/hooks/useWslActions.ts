@@ -11,6 +11,7 @@ import type {
   AgentConfig,
   AppConfig,
   GitInfo,
+  Tab,
   WSLProject,
   WSLEntrySession,
 } from "../types";
@@ -102,8 +103,28 @@ export function useWslActions({
   }, [resetConnectionState, refreshWslGit]);
 
   const handleSelectWslFile = useCallback((distro: string, projectPath: string, filePath: string) => {
-    setWslDiffState({ distro, projectPath, filePath });
-  }, [setWslDiffState]);
+    if (!activeWslProject) return;
+
+    // Create a diff tab in the unified store
+    const projectId = activeWslProject.project.id;
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const existingTabs = useAppStore.getState().tabs[projectId];
+    const tab: Tab = {
+      id: tabId,
+      projectId,
+      title: fileName,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: "diff",
+        filePath,
+        fileName,
+        diffSource: { type: "wsl", distro, projectPath },
+      },
+    };
+    useAppStore.getState().addTab(projectId, tab);
+    useAppStore.getState().activateTab(projectId, tabId);
+  }, [activeWslProject]);
 
   const handleRefreshWslGit = useCallback(async (
     distro: string,

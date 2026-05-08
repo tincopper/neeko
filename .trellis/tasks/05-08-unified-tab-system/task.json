@@ -1,0 +1,82 @@
+{
+  "id": "unified-tab-system",
+  "name": "unified-tab-system",
+  "title": "统一 Tab 系统：合并终端/文件/Diff Tab，消除视图互斥",
+  "description": "将 TerminalTab、FileTab、DiffTab 统一为一种 Tab 类型（discriminated union），共享同一个 TabBar 组件。消除 MainContent 中的互斥条件链（FileViewer/DiffView/Terminal 互相覆盖），改为根据 activeTab.kind 渲染对应内容。采用 shadcn/ui 组件 + Tailwind 样式，遵循高内聚低耦合原则：Context + 子 hook 架构，展示组件 props ≤ 5，跨域交互通过 Store。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "refactor",
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-08",
+  "completedAt": null,
+  "branch": "feature/unified-tab-system",
+  "base_branch": "main",
+  "worktree_path": null,
+  "current_phase": 0,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "update-spec"
+    },
+    {
+      "phase": 4,
+      "action": "record-session"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-08-unified-tab-01-types-store",
+    "05-08-unified-tab-02-tabbar",
+    "05-08-unified-tab-03-file-migration",
+    "05-08-unified-tab-04-terminal-migration",
+    "05-08-unified-tab-05-diff-integration",
+    "05-08-unified-tab-06-cleanup"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "src/types/tab.ts",
+    "src/types/terminal.ts",
+    "src/types/file.ts",
+    "src/store/appStore.ts",
+    "src/components/layout/UnifiedTabBar.tsx",
+    "src/components/layout/UnifiedTabItem.tsx",
+    "src/components/MainContent.tsx",
+    "src/components/files/FileViewer.tsx",
+    "src/components/diff/DiffView.tsx",
+    "src/hooks/useTerminalTabs.ts",
+    "src/hooks/useFileView.ts",
+    "src/hooks/useAppContainer.ts",
+    "src/contexts/editor-context.tsx",
+    "src/contexts/file-actions-context.tsx",
+    "src/components/terminal/SplitLayout.tsx",
+    "src/components/terminal/terminalCache.ts"
+  ],
+  "notes": "工程规范：(1) shadcn/ui 组件 + Tailwind; (2) 高内聚：每个组件/hook 只负责一个领域; (3) 低耦合：跨域交互通过 Context/Store; (4) 展示组件 props ≤ 5; (5) 类型集中在 src/types/tab.ts; (6) Context + 子 hook 模式\n\n依赖关系：Phase1 → Phase2 → Phase3+Phase4 → Phase5 → Phase6",
+  "meta": {
+    "architecture": {
+      "pattern": "Context + Container/Presentation + Hook-per-domain",
+      "tab_types": "TerminalTabData | FileTabData | DiffTabData (discriminated union)",
+      "store": "Zustand per-project tabs + activeTabId",
+      "rendering": "activeTab.kind === 'terminal' | 'file' | 'diff' → 对应内容组件"
+    },
+    "design_decisions": {
+      "agent_bar": "仅终端 tab 激活时显示",
+      "terminal_split": "保持 SplitLayout 分屏能力",
+      "file_open": "复用已有 tab 或创建新 tab",
+      "tab_limit": "仅终端 tab 限制 10 个，文件/diff 不限"
+    }
+  }
+}

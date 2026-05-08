@@ -16,7 +16,6 @@ export interface ProjectActionsContextValue {
     agentId: string | null,
     ideCommand: string | null,
   ) => void;
-  onWorktreeDiffBack: () => void;
 }
 
 const ProjectActionsContext = createContext<ProjectActionsContextValue | null>(null);

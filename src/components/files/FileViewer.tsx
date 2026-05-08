@@ -4,23 +4,38 @@ import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightS
 import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { X, Eye, Save, FileCode } from "lucide-react";
+import { Eye, Save, FileCode } from "lucide-react";
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
-import type { FileTab, AppTheme } from "../../types";
+import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useAppStore } from "../../store/appStore";
 
 type MarkdownMode = "preview" | "source";
 
+/** Type guard: narrow Tab to file kind */
+function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
+   return tab.data.kind === "file";
+}
+
+/** Convert a unified Tab (file kind) to legacy FileTab for FileEditor */
+function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
+   return {
+      id: tab.id,
+      projectId: tab.projectId,
+      filePath: tab.data.filePath,
+      fileName: tab.data.fileName,
+      content: tab.data.content,
+      isDirty: tab.data.isDirty,
+      order: tab.order,
+   };
+}
+
 function FileViewer() {
    const { config } = useAppContext();
-   const tabs = useAppStore((state) => state.fileTabs);
-   const activeTabId = useAppStore((state) => state.activeFileTabId);
+   const activeProjectId = useAppStore((state) => state.activeProjectId);
    const {
       onFileSave: onSave,
-      onFileCloseTab: onCloseTab,
-      onFileActivateTab: onActivateTab,
       onFileContentChange: onContentChange,
    } = useFileActionsContext();
 
@@ -28,9 +43,26 @@ function FileViewer() {
    const fontFamily = config.fontFamily;
    const fontSize = config.editorFontSize;
 
-   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
+   // Read project tabs from unified store
+   const projectTabs = useAppStore((state) => {
+      if (!activeProjectId) return null;
+      return state.tabs[activeProjectId] ?? null;
+   });
 
-   if (tabs.length === 0 || !activeTab) {
+   // Derive the active file tab from unified Tab.data (FileTabData)
+   const activeFileTab = useMemo(() => {
+      if (!projectTabs) return null;
+      // Prefer the project's active tab if it's a file tab
+      let target = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
+      if (!target || !isFileTab(target)) {
+         // Fall back to first file tab
+         target = projectTabs.tabs.find(isFileTab);
+      }
+      if (!target || !isFileTab(target)) return null;
+      return tabToFileTab(target);
+   }, [projectTabs]);
+
+   if (!activeFileTab) {
       return (
          <div className="flex flex-col h-full items-center justify-center text-text-secondary">
             <FileCode size={48} className="mb-3 opacity-30" />
@@ -42,36 +74,9 @@ function FileViewer() {
 
    return (
       <div className="flex flex-col h-full">
-         {/* Tab bar */}
-         <div className="flex items-center bg-bg-secondary border-b border-border overflow-x-auto">
-            {tabs.map((tab) => (
-               <div
-                  key={tab.id}
-                  className={`flex items-center gap-1 px-3 py-1.5 text-[var(--font-size)] cursor-pointer border-r border-border whitespace-nowrap select-none transition-colors ${tab.id === activeTabId
-                     ? "bg-bg-primary text-text-primary"
-                     : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                     }`}
-                  onClick={() => onActivateTab(tab.id)}
-               >
-                  <span className="truncate max-w-[120px]">{tab.fileName}</span>
-                  {tab.isDirty && <span className="text-accent">●</span>}
-                  <button
-                     className="ml-1 p-0.5 rounded hover:bg-bg-hover opacity-60 hover:opacity-100 transition-opacity"
-                     onClick={(e) => {
-                        e.stopPropagation();
-                        onCloseTab(tab.id);
-                     }}
-                  >
-                     <X size={12} />
-                  </button>
-               </div>
-            ))}
-         </div>
-
-         {/* Editor content */}
          <FileEditor
-            key={activeTab.id}
-            tab={activeTab}
+            key={activeFileTab.id}
+            tab={activeFileTab}
             theme={theme}
             fontFamily={fontFamily}
             fontSize={fontSize}
