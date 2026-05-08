@@ -1,13 +1,16 @@
 import React, { useCallback } from "react";
 import { Terminal, FileText, ArrowLeftRight } from "lucide-react";
 import { cn } from "../../utils/cn";
+import { getAgentIconSrc } from "../../utils/agents";
 import type { Tab } from "../../types/tab";
+import type { AgentConfig } from "../../types";
 
 interface UnifiedTabItemProps {
   tab: Tab;
   isActive: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  agents?: AgentConfig[];
 }
 
 /** 根据 tab kind 返回对应图标 */
@@ -23,7 +26,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
 }
 
 const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
-  ({ tab, isActive, onActivate, onClose }) => {
+  ({ tab, isActive, onActivate, onClose, agents = [] }) => {
     const handleClick = useCallback(() => {
       onActivate(tab.id);
     }, [tab.id, onActivate]);
@@ -37,6 +40,14 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
     );
 
     const Icon = getTabIcon(tab.data.kind);
+
+    const data = tab.data;
+    const agentIconSrc =
+      data.kind === "terminal" && data.agentId
+        ? getAgentIconSrc(
+            agents.find((a) => a.id === data.agentId)?.icon
+          )
+        : null;
 
     // 状态指示器
     const showRunningDot =
@@ -55,11 +66,21 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         onClick={handleClick}
         title={tab.title}
       >
-        <Icon
-          size={12}
-          className="shrink-0 opacity-70"
-          style={{ fontSize: "var(--terminal-font-size)" }}
-        />
+        {agentIconSrc ? (
+          <img
+            src={agentIconSrc}
+            width={12}
+            height={12}
+            className="shrink-0 opacity-70"
+            alt=""
+          />
+        ) : (
+          <Icon
+            size={12}
+            className="shrink-0 opacity-70"
+            style={{ fontSize: "var(--terminal-font-size)" }}
+          />
+        )}
 
         {showRunningDot && (
           <span className="w-1.5 h-1.5 rounded-full bg-status-running shrink-0" />

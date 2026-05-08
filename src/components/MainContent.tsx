@@ -177,6 +177,7 @@ function MainContent() {
                         onActivateTab={handleActivateTab}
                         onCloseTab={handleCloseTab}
                         onAddTerminalTab={handleAddTerminalTab}
+                        agents={agents}
                      />
                   </div>
                </div>

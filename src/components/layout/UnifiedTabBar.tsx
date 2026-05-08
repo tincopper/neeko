@@ -123,6 +123,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
               isActive={tab.id === activeTabId}
               onActivate={onActivateTab}
               onClose={onCloseTab}
+              agents={agents}
             />
           ))}
 
