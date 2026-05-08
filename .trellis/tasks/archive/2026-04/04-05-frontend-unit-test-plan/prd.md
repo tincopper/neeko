@@ -184,9 +184,9 @@ import { useToast } from '../../hooks/useToast';
 
 ## Acceptance Criteria
 
-- [ ] 测试基础设施搭建完成（vitest + setup + scripts）
-- [ ] P0 Utils 100% 覆盖
-- [ ] P1 Hooks 核心路径覆盖
-- [ ] P2 Hooks 核心 CRUD + 错误路径覆盖
-- [ ] `pnpm test:run` 全部通过
-- [ ] `pnpm test:coverage` 可正常生成报告
+- [x] 测试基础设施搭建完成（vitest + setup + scripts）
+- [x] P0 Utils 100% 覆盖
+- [x] P1 Hooks 核心路径覆盖
+- [x] P2 Hooks 核心 CRUD + 错误路径覆盖
+- [x] `pnpm test:run` 全部通过
+- [x] `pnpm test:coverage` 可正常生成报告
