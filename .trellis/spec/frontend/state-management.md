@@ -314,3 +314,39 @@ Context 粒度过大将放大重渲染影响。新增字段时优先放入最贴
 ### 5. 模块级缓存泄漏
 
 终端缓存销毁时必须同步清理关联状态，避免 stale session。
+
+### 6. 切换项目时 global activeTabId 未同步
+
+**问题**：`useAppStore` 同时持有 global `activeTabId` 和 per-project `tabs[projectId].activeTabId`。切换项目时如果只更新 `activeProjectId` 而不恢复 global `activeTabId`，TerminalView 会用旧项目的 tab ID 计算 `cacheKey`，导致 cache miss 和孤立 PTY 创建。
+
+**正确模式**：任何修改 `activeProjectId` 的 setState 必须同步恢复 global `activeTabId`：
+
+```tsx
+// 正确：切换项目时同步 activeTabId
+useAppStore.setState((state) => {
+  const targetProjectTabs = projectId ? state.tabs[projectId] : null;
+  return {
+    activeProjectId: projectId,
+    activeProject: projectId ? state.projects.find((p) => p.id === projectId) ?? null : null,
+    activeTabId: targetProjectTabs?.activeTabId ?? null,
+  };
+});
+```
+
+```tsx
+// 错误：只更新 activeProjectId，遗漏 activeTabId
+useAppStore.setState((state) => ({
+  activeProjectId: projectId,
+  activeProject: projectId ? state.projects.find((p) => p.id === projectId) ?? null : null,
+}));
+```
+
+**涉及函数**：`setActiveProjectId`、`handleRemoveProject`（useLocalProjects）、worktree 项目切换（useWorktreeActions）。
+
+**TerminalView 防御性 guard**：TerminalView useEffect 内应校验 `activeTabId` 是否属于当前项目的 terminal tabs，若不属于则跳过 PTY 创建：
+
+```tsx
+if (activeTabId && !isWorktree && tabs.length > 0 && !tabs.some((t) => t.id === activeTabId)) {
+  return; // stale activeTabId from another project
+}
+```
