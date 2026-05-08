@@ -878,3 +878,37 @@ Replace HTML5 Drag API with Pointer Events for drag-and-drop sorting. Add Dragga
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: unified tab system + fix PTY leak on project switch
+
+**Date**: 2026-05-08
+**Task**: unified tab system + fix PTY leak on project switch
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f168600` | (see git log) |
+| `b801923` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
