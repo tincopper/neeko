@@ -38,9 +38,19 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 }) => {
   const togglePanel = useDockStore((s) => s.togglePanel);
 
+  const leftExpanded = useDockStore(
+    (s) => s.zones.left?.expanded ?? true,
+  );
+
+  const rightExpanded = useDockStore(
+    (s) => s.zones.right?.expanded ?? false,
+  );
+
   const rightPanelIds = useDockStore(
     (s) => s.zones.right?.panels ?? [],
   );
+
+  const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
   // -- Keyboard shortcuts (Ctrl+1..2 -> toggle left panel) --
   const handleKeyDown = useCallback(
@@ -88,37 +98,39 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         className="flex-1"
       >
         {/* Left dock zone */}
-        <ResizablePanel
-          id="left-zone"
-          defaultSize="18%"
-          minSize="12%"
-          maxSize="35%"
-        >
-          <DockZone zoneId="left" />
-        </ResizablePanel>
+        {leftExpanded && (
+          <ResizablePanel
+            id="left-zone"
+            defaultSize="18%"
+            minSize="12%"
+            maxSize="35%"
+          >
+            <DockZone zoneId="left" />
+          </ResizablePanel>
+        )}
 
-        <ResizableHandle id="handle-left-center" withHandle />
+        {leftExpanded && (
+          <ResizableHandle id="handle-left-center" withHandle />
+        )}
 
         {/* Center area: editor content */}
         <ResizablePanel id="center-area" defaultSize="64%" minSize="40%" className="overflow-hidden">
           {children}
         </ResizablePanel>
 
-        {/* Right dock zone — only render when there are panels */}
-        {rightPanelIds.length > 0 && (
-          <>
-            <ResizableHandle id="handle-center-right" withHandle />
-            <ResizablePanel
-              id="right-zone"
-              defaultSize="18%"
-              minSize="12%"
-              maxSize="35%"
-              collapsedSize={0}
-              collapsible
-            >
-              <DockZone zoneId="right" />
-            </ResizablePanel>
-          </>
+        {/* Right dock zone — only render when expanded and has panels */}
+        {rightVisible && (
+          <ResizableHandle id="handle-center-right" withHandle />
+        )}
+        {rightVisible && (
+          <ResizablePanel
+            id="right-zone"
+            defaultSize="18%"
+            minSize="12%"
+            maxSize="35%"
+          >
+            <DockZone zoneId="right" />
+          </ResizablePanel>
         )}
       </ResizablePanelGroup>
 

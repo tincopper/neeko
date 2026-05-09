@@ -12,12 +12,11 @@ const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "" })
   if (src) {
     return (
       <img
-        className="w-[18px] h-[18px] object-contain"
+        className="w-4 h-4 object-contain"
         src={src}
         width={size}
         height={size}
         alt=""
-        style={{ display: "inline-block", verticalAlign: "middle" }}
       />
     );
   }

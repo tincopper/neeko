@@ -22,7 +22,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
   // Direct store selectors — fine-grained re-renders
   const isActive = useDockStore((s) => {
     for (const zone of Object.values(s.zones)) {
-      if (zone.panels.includes(panelId) && zone.expanded) return true;
+      if (zone.panels.includes(panelId) && zone.expanded && zone.activePanelId === panelId) return true;
     }
     return false;
   });
