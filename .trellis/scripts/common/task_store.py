@@ -41,6 +41,11 @@ from .paths import (
     get_repo_root,
     get_tasks_dir,
 )
+from .safe_commit import (
+    print_gitignore_warning,
+    safe_archive_paths_to_add,
+    safe_git_add,
+)
 from .task_utils import (
     archive_task_complete,
     find_task_by_name,
@@ -383,13 +388,37 @@ def cmd_archive(args: argparse.Namespace) -> int:
 
 
 def _auto_commit_archive(task_name: str, repo_root: Path) -> None:
-    """Stage .trellis/tasks/ changes and commit after archive."""
-    tasks_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}"
-    run_git(["add", "-A", tasks_rel], cwd=repo_root)
+    """Stage Trellis-owned task paths and commit after archive.
 
-    # Check if there are staged changes
+    Only stages specific subpaths (the archive subtree and active task dirs),
+    never the whole `.trellis/` tree. If `.gitignore` excludes `.trellis/`,
+    falls back to `git add -f <specific>` and emits a warning that explicitly
+    forbids `git add -f .trellis/` (which would fan out to caches/backups).
+    """
+    paths = safe_archive_paths_to_add(repo_root)
+    if not paths:
+        print("[OK] No task changes to commit.", file=sys.stderr)
+        return
+
+    success, used_force, err = safe_git_add(paths, repo_root)
+    if not success:
+        if err and "ignored by" in err.lower():
+            print_gitignore_warning(paths)
+        else:
+            print(
+                f"[WARN] git add failed: {err.strip() if err else 'unknown error'}",
+                file=sys.stderr,
+            )
+        return
+
+    if used_force:
+        print(
+            "[OK] Staged Trellis-owned paths with -f (specific paths, not .trellis/).",
+            file=sys.stderr,
+        )
+
     rc, _, _ = run_git(
-        ["diff", "--cached", "--quiet", "--", tasks_rel], cwd=repo_root
+        ["diff", "--cached", "--quiet", "--", *paths], cwd=repo_root
     )
     if rc == 0:
         print("[OK] No task changes to commit.", file=sys.stderr)
