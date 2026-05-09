@@ -350,7 +350,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleAddWslOrNoop = IS_WINDOWS ? handleAddWslClick : noop;
 
-  const { initialSidebarWidth, initializing } = useSessionBootstrap({
+  const { initializing } = useSessionBootstrap({
     loadProjects,
     setWslEntries,
     setRemoteEntries,
@@ -571,8 +571,6 @@ export function useAppContainer(): UseAppContainerResult {
       ideCommandOverrides: config.ideCommandOverrides ?? {},
       showToast,
     },
-    initialSidebarWidth,
-    onSidebarWidthPersist: session.saveSidebarWidth,
     projectActionsValue,
     fileActionsValue,
     wslValue,

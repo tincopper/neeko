@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
-import { Button, Badge, ResizablePanel } from "../ui";
+import { Button, Badge } from "../ui";
+import { ResizablePanel } from "../ui/resizable-panel";
 import { MarkdownPreview } from "../ui/MarkdownPreview";
 import type { ManagedSkillDto } from "../../types";
 import { useAppConfig } from "../../hooks/useAppConfig";
@@ -58,7 +59,7 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
               {skill.name}
             </span>
             <Badge variant="default" className="text-[10px] px-1.5 py-0">
-              {skill.source_type === "local" ? "±¾µØ" : skill.source_type}
+              {skill.source_type === "local" ? "ï¿½ï¿½ï¿½ï¿½" : skill.source_type}
             </Badge>
           </div>
           <button

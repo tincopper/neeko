@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
-import { Button, Input, ResizablePanel } from "../ui";
+import { Button, Input } from "../ui";
+import { ResizablePanel } from "../ui/resizable-panel";
 import MarkdownEditor from "./MarkdownEditor";
 import type { ManagedSkillDto } from "../../types";
 

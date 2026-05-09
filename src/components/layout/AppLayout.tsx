@@ -1,140 +1,184 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { useSidebar, useFileActionsContext, useAppContext, useProjectActionsContext, SkillProvider } from "../../contexts";
-import ActivityBar from "./ActivityBar";
-import PanelArea from "./PanelArea";
-import RightPanel from "./RightPanel";
-import { ProjectsPanel, FilesPanel } from "../panels";
-import { SkillsPanel, SkillContent } from "../skills";
-import SettingsPanel from "../SettingsPanel";
-import MainContent from "../MainContent";
-import { GitCommitPanel } from "../project";
-import { useAppStore } from "../../store/appStore";
-import type { AppConfig } from "../../types";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { Plus, Settings } from "lucide-react";
+import { useDockStore } from "@/store/dockStore";
+import { useAppStore } from "@/store/appStore";
+import { cn } from "@/lib/utils";
+import { SkillProvider } from "@/contexts/skill-context";
+import { DockLayout } from "@/components/dock";
+import SettingsPanel from "@/components/SettingsPanel";
+import MainContent from "@/components/MainContent";
+import { SkillContent } from "@/components/skills";
+import { IS_WINDOWS } from "@/utils/platform";
+import linuxIcon from "@/assets/linux.svg";
+import serverIcon from "@/assets/server.svg";
+import type { AppConfig } from "@/types";
 
 interface AppLayoutProps {
-   onAddProject: () => void;
-   onAddWsl: () => void;
-   onAddRemote: () => void;
-   onOpenSettings: () => void;
-   settingsOpen: boolean;
-   onCloseSettings: () => void;
-   onConfigChange: (next: AppConfig) => void;
-   showGitPanel?: boolean;
-   onCloseGitPanel?: () => void;
+  onAddProject: () => void;
+  onAddWsl: () => void;
+  onAddRemote: () => void;
+  onOpenSettings: () => void;
+  settingsOpen: boolean;
+  onCloseSettings: () => void;
+  onConfigChange: (next: AppConfig) => void;
 }
 
-function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings, settingsOpen, onCloseSettings, onConfigChange, showGitPanel, onCloseGitPanel }: AppLayoutProps) {
-   const { activePanel } = useSidebar();
-   const {
-      onFileSelect,
-      onFileRefresh,
-      onLoadFileTree,
-   } = useFileActionsContext();
-   const { showToast } = useAppContext();
-   const { onSelectFile, onRefreshGit } = useProjectActionsContext();
-   const activeProject = useAppStore((state) => state.activeProject);
-   const activeProjectId = useAppStore((state) => state.activeProjectId);
-   const fileTree = useAppStore((state) => state.fileTree);
-   const fileViewLoading = useAppStore((state) => state.fileViewLoading);
-   const activeFilePath = useAppStore((state) => state.activeFilePath);
+/**
+ * Toolbar footer component — Add Project dropdown + Settings button.
+ * Placed below DockBar in the left toolbar column.
+ */
+const ToolbarFooter: React.FC<{
+  onAddProject: () => void;
+  onAddWsl: () => void;
+  onAddRemote: () => void;
+  onOpenSettings: () => void;
+  isSettingsOpen: boolean;
+}> = React.memo(
+  ({ onAddProject, onAddWsl, onAddRemote, onOpenSettings, isSettingsOpen }) => {
+    const [showAddMenu, setShowAddMenu] = useState(false);
+    const addMenuRef = useRef<HTMLDivElement>(null);
 
-   const [rightPanelWidth, setRightPanelWidth] = useState(320);
-
-   const activeProjectName = activeProject?.name ?? null;
-   const skillsActive = activePanel === "skills";
-
-   const handleRightPanelResizeStart = useCallback((e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = rightPanelWidth;
-      const onMouseMove = (ev: MouseEvent) => {
-         const delta = startX - ev.clientX;
-         setRightPanelWidth(Math.max(260, Math.min(600, startWidth + delta)));
+    useEffect(() => {
+      const handler = (event: MouseEvent) => {
+        if (
+          addMenuRef.current &&
+          !addMenuRef.current.contains(event.target as Node)
+        ) {
+          setShowAddMenu(false);
+        }
       };
-      const onMouseUp = () => {
-         document.removeEventListener("mousemove", onMouseMove);
-         document.removeEventListener("mouseup", onMouseUp);
-      };
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-   }, [rightPanelWidth]);
+      if (showAddMenu) document.addEventListener("mousedown", handler);
+      return () => document.removeEventListener("mousedown", handler);
+    }, [showAddMenu]);
 
-   useEffect(() => {
-      if (activePanel === "files" && activeProjectId) {
-         onLoadFileTree(activeProjectId);
-      }
-   }, [activePanel, activeProjectId, onLoadFileTree]);
+    const closeAndCall = useCallback(
+      (fn: () => void) => {
+        setShowAddMenu(false);
+        fn();
+      },
+      [],
+    );
 
-   return (
-      <div className="flex flex-1 min-h-0 overflow-hidden bg-bg-primary">
-         <ActivityBar
-            onOpenSettings={onOpenSettings}
-            onAddProject={onAddProject}
-            onAddWsl={onAddWsl}
-            onAddRemote={onAddRemote}
-            isSettingsOpen={settingsOpen}
-         />
-
-         {settingsOpen ? (
-            <div className="flex-1 flex min-w-0 transition-opacity duration-200 motion-safe:transition-opacity">
-               <SettingsPanel
-                  fullPage
-                  onConfigChange={onConfigChange}
-                  onClose={onCloseSettings}
-               />
+    return (
+      <>
+        {/* Add Project menu */}
+        <div className="relative flex flex-col items-center w-full" ref={addMenuRef}>
+          <button
+            className="relative w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+            title="Add Project"
+            onClick={() => setShowAddMenu((v) => !v)}
+          >
+            <span className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-bg-hover">
+              <Plus size={20} strokeWidth={1.8} />
+            </span>
+          </button>
+          {showAddMenu && (
+            <div className="absolute left-12 bottom-0 z-50 w-48 rounded-md border border-border bg-bg-tertiary shadow-lg overflow-hidden">
+              <div
+                className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
+                onClick={() => closeAndCall(onAddProject)}
+              >
+                <span className="mr-2">📁</span>
+                <span>Add Local Project</span>
+              </div>
+              {IS_WINDOWS && (
+                <div
+                  className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
+                  onClick={() => closeAndCall(onAddWsl)}
+                >
+                  <img src={linuxIcon} className="w-3.5 h-3.5 mr-2" alt="" />
+                  <span>Add WSL Distro</span>
+                </div>
+              )}
+              <div
+                className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
+                onClick={() => closeAndCall(onAddRemote)}
+              >
+                <img src={serverIcon} className="w-3.5 h-3.5 mr-2" alt="" />
+                <span>Add Remote Server</span>
+              </div>
             </div>
-         ) : skillsActive ? (
-            <SkillProvider activeProjectId={activeProjectId}>
-               <PanelArea>
-                  <SkillsPanel />
-               </PanelArea>
-               <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
-                  <SkillContent />
-               </div>
-            </SkillProvider>
-         ) : (
-            <>
-               <PanelArea>
-                  {activePanel === "projects" && <ProjectsPanel />}
-                  {activePanel === "files" && (
-                     <FilesPanel
-                        projectName={activeProjectName}
-                        fileTree={fileTree}
-                        isLoading={fileViewLoading}
-                        activeFilePath={activeFilePath}
-                        onSelectFile={onFileSelect}
-                        onRefresh={onFileRefresh}
-                     />
-                  )}
-               </PanelArea>
+          )}
+        </div>
 
-               <MainContent />
+        {/* Settings button */}
+        <button
+          className="relative w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+          title="Settings"
+          onClick={onOpenSettings}
+        >
+          <span
+            className={cn(
+              "flex items-center justify-center w-8 h-8 rounded-md",
+              "hover:bg-bg-hover",
+              isSettingsOpen && "bg-bg-hover text-text-primary",
+            )}
+          >
+            <Settings size={20} strokeWidth={1.8} />
+          </span>
+        </button>
+      </>
+    );
+  },
+);
+ToolbarFooter.displayName = "ToolbarFooter";
 
-               {showGitPanel && activeProject && (
-                  <RightPanel
-                     tabs={[
-                        {
-                           id: "commit",
-                           label: "Commit",
-                           content: (
-                              <GitCommitPanel
-                                 project={activeProject}
-                                 onRefreshGit={onRefreshGit}
-                                 onSelectFile={onSelectFile}
-                                 onShowToast={showToast}
-                              />
-                           ),
-                        },
-                     ]}
-                     width={rightPanelWidth}
-                     onResizeStart={handleRightPanelResizeStart}
-                     onClose={onCloseGitPanel}
-                  />
-               )}
-            </>
-         )}
+/**
+ * Top-level layout container.
+ *
+ * Replaces the old flex-based ActivityBar + PanelArea + MainContent + RightPanel
+ * layout with the new DockLayout framework. Panel toggling is driven by dockStore
+ * (via DockBar + DockZone). Special modes (Settings full-page, Skills two-column)
+ * take over the center area via conditional rendering.
+ */
+function AppLayout({
+  onAddProject,
+  onAddWsl,
+  onAddRemote,
+  onOpenSettings,
+  settingsOpen,
+  onCloseSettings,
+  onConfigChange,
+}: AppLayoutProps) {
+  const skillsActive = useDockStore(
+    (s) => s.zones.left?.activePanelId === "skills",
+  );
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
+
+  // Center content: settings full-page → skills two-column → normal MainContent
+  const centerContent = settingsOpen ? (
+    <div className="flex-1 flex min-w-0 transition-opacity duration-200 motion-safe:transition-opacity">
+      <SettingsPanel
+        fullPage
+        onConfigChange={onConfigChange}
+        onClose={onCloseSettings}
+      />
+    </div>
+  ) : skillsActive ? (
+    <SkillProvider activeProjectId={activeProjectId}>
+      <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
+        <SkillContent />
       </div>
-   );
+    </SkillProvider>
+  ) : (
+    <MainContent />
+  );
+
+  return (
+    <DockLayout
+      toolbarFooterLeft={
+        <ToolbarFooter
+          onAddProject={onAddProject}
+          onAddWsl={onAddWsl}
+          onAddRemote={onAddRemote}
+          onOpenSettings={onOpenSettings}
+          isSettingsOpen={settingsOpen}
+        />
+      }
+    >
+      {centerContent}
+    </DockLayout>
+  );
 }
 
 export default React.memo(AppLayout);

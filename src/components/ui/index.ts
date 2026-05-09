@@ -11,7 +11,10 @@ export {
 } from "./select";
 export {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+  DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuRadioItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut,
+  DropdownMenuGroup, DropdownMenuPortal, DropdownMenuSub,
+  DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuRadioGroup,
 } from "./dropdown-menu";
 export { Checkbox } from "./checkbox";
 export { Badge, badgeVariants } from "./badge";
@@ -21,4 +24,14 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, 
 export { Separator } from "./separator";
 export { Switch } from "./switch";
 export { ToggleGroup, ToggleGroupItem } from "./toggle-group";
-export { ResizablePanel, useResizableWidth } from './resizable-panel';
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./resizable";
+export { ScrollArea, ScrollBar } from "./scroll-area";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
+export {
+  ContextMenu, ContextMenuTrigger, ContextMenuContent,
+  ContextMenuItem, ContextMenuCheckboxItem, ContextMenuRadioItem,
+  ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut,
+  ContextMenuGroup, ContextMenuPortal, ContextMenuSub,
+  ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuRadioGroup,
+} from "./context-menu";

@@ -18,8 +18,6 @@ type EditorProviderValue = React.ComponentProps<typeof EditorProvider>["value"];
 
 interface AppProvidersProps {
    appValue: AppProviderValue;
-   initialSidebarWidth: number;
-   onSidebarWidthPersist: (w: number) => void;
    projectActionsValue: ProjectActionsProviderValue;
    fileActionsValue: FileActionsProviderValue;
    wslValue: WslProviderValue;
@@ -30,8 +28,6 @@ interface AppProvidersProps {
 
 function AppProviders({
    appValue,
-   initialSidebarWidth,
-   onSidebarWidthPersist,
    projectActionsValue,
    fileActionsValue,
    wslValue,
@@ -41,10 +37,7 @@ function AppProviders({
 }: AppProvidersProps) {
    return (
       <AppProvider value={appValue}>
-         <SidebarProvider
-            initialPanelWidth={initialSidebarWidth}
-            onPanelWidthPersist={onSidebarWidthPersist}
-         >
+         <SidebarProvider>
             <ProjectActionsProvider value={projectActionsValue}>
                <FileActionsProvider value={fileActionsValue}>
                   <WslProvider value={wslValue}>
