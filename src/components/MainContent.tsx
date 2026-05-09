@@ -162,7 +162,7 @@ function MainContent() {
       ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}:${storeActiveTabId ?? "default"}`
       : "wsl:none";
 
-   const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
+   const showAgentBarContent = showAgentBar && hasActiveProject && activeTab?.data.kind === "terminal" && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">

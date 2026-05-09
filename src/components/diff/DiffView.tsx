@@ -13,7 +13,7 @@ function getFileName(path: string): string {
 }
 
 const DiffView: React.FC<DiffViewProps> = React.memo(
-  ({ projectId, diffSource, filePath, initialMode, onBack }) => {
+  ({ projectId, diffSource, filePath, initialMode }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "unified");
 
     const {
@@ -156,13 +156,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
               title="Next Change"
             >
               <ChevronRightIcon size={14} />
-            </button>
-            <button
-              className="bg-transparent border-none text-text-secondary text-lg cursor-pointer px-2 py-1 rounded transition-all duration-200 hover:bg-bg-hover hover:text-text-primary"
-              onClick={onBack}
-              title="Back to Terminal"
-            >
-              &times;
             </button>
           </div>
         </div>
