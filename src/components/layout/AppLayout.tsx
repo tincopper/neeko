@@ -156,12 +156,14 @@ function AppLayout({
     </div>
   ) : skillsActive ? (
     <SkillProvider activeProjectId={activeProjectId}>
-      <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary">
+      <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
         <SkillContent />
       </div>
     </SkillProvider>
   ) : (
-    <MainContent />
+    <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
+      <MainContent />
+    </div>
   );
 
   return (

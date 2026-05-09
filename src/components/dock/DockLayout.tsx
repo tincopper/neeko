@@ -27,6 +27,10 @@ const SHORTCUT_PANEL_IDS: string[] = [
 /**
  * Top-level dock layout container.
  *
+ * Implements IDEA 2026 Islands design: bg-primary acts as the "sea",
+ * each panel is a floating "island" with rounded corners, borders,
+ * and padding gaps between islands.
+ *
  * Composes DockBar (left & right) + resizable panel group (left, center, right).
  * All dock state is managed internally via useDockStore -- zero state props needed.
  *
@@ -77,7 +81,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   return (
     <div className="flex flex-1 min-h-0">
       {/* Left toolbar column: icon bar + optional footer */}
-      <div className="flex flex-col shrink-0 bg-bg-secondary">
+      <div className="flex flex-col shrink-0">
         <DockBar side="left" />
         {toolbarFooterLeft && (
           <>
@@ -91,19 +95,21 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         )}
       </div>
 
-      {/* Resizable 3-zone main area (left dock + center editor + right dock) */}
+      {/* Resizable 3-zone main area (left dock + center editor + right dock)
+          Each panel gets island padding (p-1) to create visual gaps */}
       <ResizablePanelGroup
         orientation="horizontal"
         id="neeko-main"
         className="flex-1"
       >
-        {/* Left dock zone */}
+        {/* Left dock zone (island) */}
         {leftExpanded && (
           <ResizablePanel
             id="left-zone"
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
+            className="p-0.5"
           >
             <DockZone zoneId="left" />
           </ResizablePanel>
@@ -113,12 +119,17 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           <ResizableHandle id="handle-left-center" withHandle />
         )}
 
-        {/* Center area: editor content */}
-        <ResizablePanel id="center-area" defaultSize="64%" minSize="40%" className="overflow-hidden">
+        {/* Center area: editor content (island) */}
+        <ResizablePanel
+          id="center-area"
+          defaultSize="64%"
+          minSize="40%"
+          className="p-0.5 overflow-hidden"
+        >
           {children}
         </ResizablePanel>
 
-        {/* Right dock zone — only render when expanded and has panels */}
+        {/* Right dock zone (island) — only render when expanded and has panels */}
         {rightVisible && (
           <ResizableHandle id="handle-center-right" withHandle />
         )}
@@ -128,6 +139,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
+            className="p-0.5"
           >
             <DockZone zoneId="right" />
           </ResizablePanel>
@@ -135,7 +147,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       </ResizablePanelGroup>
 
       {/* Right toolbar column */}
-      <div className="flex flex-col shrink-0 bg-bg-secondary">
+      <div className="flex flex-col shrink-0">
         <DockBar side="right" />
       </div>
     </div>

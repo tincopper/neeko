@@ -8,9 +8,8 @@ interface DockZoneProps {
   zoneId: string;
 }
 
-/** Docking zone container -- renders active panel directly.
- *  Panel switching is done via DockBar icons, not tab headers.
- *  No auto-hide, no collapse -- panels stay visible. */
+/** Docking zone container -- renders active panel as a floating "island".
+ *  Islands theme: rounded-lg border, subtle shadow, bg-secondary surface. */
 const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   const zone = useDockStore((s) => s.zones[zoneId]);
 
@@ -33,7 +32,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
     return (
       <div
         className={cn(
-          "flex h-full items-center justify-center text-xs text-text-muted bg-bg-secondary",
+          "flex h-full items-center justify-center text-xs text-text-muted",
           isDragOver && "ring-2 ring-inset ring-accent-blue/50",
         )}
         {...dragHandlers}
@@ -51,7 +50,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   return (
     <div
       className={cn(
-        "flex h-full flex-col bg-bg-secondary overflow-hidden",
+        "flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary",
         isDragOver && "ring-2 ring-inset ring-accent-blue/50",
       )}
       {...dragHandlers}
