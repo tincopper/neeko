@@ -28,8 +28,8 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
     );
   }
 
-  // Empty zone state
-  if (zone.panels.length === 0) {
+  // Empty or collapsed zone state
+  if (zone.panels.length === 0 || !zone.expanded) {
     return (
       <div
         className={cn(
@@ -44,7 +44,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   }
 
   // Render active panel directly -- no tabs, no collapse
-  const activePanelId = zone.activePanelId ?? zone.panels[0];
+  const activePanelId = zone.activePanelId;
   const activeDef = activePanelId ? dockPanelRegistry[activePanelId] : null;
   const ActiveComponent = activeDef?.component;
 

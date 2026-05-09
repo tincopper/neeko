@@ -121,27 +121,16 @@ export const useDockStore = create<DockStore>()(
             // Panel is already in a zone
             const zone = zones[currentZoneId];
             if (zone.activePanelId === panelId) {
-              // Active panel → close it (remove from zone)
-              set((state) => {
-                const z = state.zones[currentZoneId];
-                const nextPanels = z.panels.filter((p) => p !== panelId);
-                const nextActive =
-                  nextPanels.length > 0 ? nextPanels[0] : null;
-                return {
-                  zones: {
-                    ...state.zones,
-                    [currentZoneId]: {
-                      ...z,
-                      panels: nextPanels,
-                      activePanelId: nextActive,
-                      expanded: nextPanels.length > 0,
-                    },
+              // Already active → toggle expanded (show/hide)
+              set((state) => ({
+                zones: {
+                  ...state.zones,
+                  [currentZoneId]: {
+                    ...state.zones[currentZoneId],
+                    expanded: !zone.expanded,
                   },
-                  barItems: state.barItems.map((item) =>
-                    item.panelId === panelId ? { ...item, visible: true } : item,
-                  ),
-                };
-              });
+                },
+              }));
             } else {
               // Not the active panel → just switch to it
               set((state) => ({
@@ -156,24 +145,28 @@ export const useDockStore = create<DockStore>()(
               }));
             }
           } else {
-            // Panel is not in any zone → replace target zone with this panel (radio behavior)
+            // Panel is not in any zone → add to its default zone alongside existing panels
             const def = dockPanelRegistry[panelId];
             if (!def) return;
             const targetZoneId = def.defaultZone;
-            set((state) => ({
-              zones: {
-                ...state.zones,
-                [targetZoneId]: {
-                  ...state.zones[targetZoneId],
-                  panels: [panelId],
-                  activePanelId: panelId,
-                  expanded: true,
+            set((state) => {
+              const zone = state.zones[targetZoneId];
+              const nextPanels = zone ? [...zone.panels, panelId] : [panelId];
+              return {
+                zones: {
+                  ...state.zones,
+                  [targetZoneId]: {
+                    ...zone,
+                    panels: nextPanels,
+                    activePanelId: panelId,
+                    expanded: true,
+                  },
                 },
-              },
-              barItems: state.barItems.map((item) =>
-                item.panelId === panelId ? { ...item, visible: true } : item,
-              ),
-            }));
+                barItems: state.barItems.map((item) =>
+                  item.panelId === panelId ? { ...item, visible: true } : item,
+                ),
+              };
+            });
           }
         },
 
@@ -249,7 +242,7 @@ export const useDockStore = create<DockStore>()(
             const nextPanels = zone.panels.filter((p) => p !== panelId);
             const nextActive =
               zone.activePanelId === panelId
-                ? nextPanels.length > 0 ? nextPanels[0] : null
+                ? null
                 : zone.activePanelId;
             return {
               zones: {
@@ -301,14 +294,8 @@ export const useDockStore = create<DockStore>()(
         const zones: Record<string, DockZoneState> = {};
         for (const [zoneId, defaultZone] of Object.entries(defaults.zones)) {
           const savedZone = saved?.zones?.[zoneId];
-          const savedActivePanelId = savedZone?.activePanelId;
           const panels = defaultZone.panels;
-          const restoredActivePanelId =
-            savedActivePanelId && panels.includes(savedActivePanelId)
-              ? savedActivePanelId
-              : panels.length > 0
-                ? panels[0]
-                : null;
+          const restoredActivePanelId = panels.length > 0 ? panels[0] : null;
           zones[zoneId] = {
             ...defaultZone,
             expanded: zoneId === "left" ? true : (savedZone?.expanded ?? defaultZone.expanded),

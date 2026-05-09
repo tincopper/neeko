@@ -12,10 +12,10 @@ interface ProjectGuidePageProps {
 }
 
 const ROW_CLASS =
-  "w-80 flex items-center gap-3 px-3 py-2 rounded-md bg-transparent border-none text-left cursor-pointer transition-colors duration-150 text-text-secondary hover:bg-white/5 hover:text-text-primary";
+  "flex items-center gap-3 px-3 py-2 rounded-md bg-transparent border-none text-left cursor-pointer transition-colors duration-150 text-text-secondary hover:bg-white/5 hover:text-text-primary";
 
 const ICON_CLASS =
-  "shrink-0 w-5 h-5 flex items-center justify-center opacity-60";
+  "shrink-0 w-6 h-6 flex items-center justify-center opacity-70";
 
 function ProjectGuidePage({
   selectedAgent,
@@ -40,8 +40,8 @@ function ProjectGuidePage({
         >
           <span className={ICON_CLASS}>
             <svg
-              width="16"
-              height="16"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -53,7 +53,7 @@ function ProjectGuidePage({
               <line x1="12" y1="19" x2="20" y2="19" />
             </svg>
           </span>
-          <span className="flex-1">Open Terminal</span>
+          <span>Open Terminal</span>
         </button>
 
         {selectedAgent && (
@@ -65,7 +65,7 @@ function ProjectGuidePage({
             <span className={ICON_CLASS}>
               <AgentIcon icon={selectedAgent.icon} />
             </span>
-            <span className="flex-1">Open {selectedAgent.name}</span>
+            <span>Open {selectedAgent.name}</span>
           </button>
         )}
 
@@ -77,8 +77,8 @@ function ProjectGuidePage({
           >
             <span className={ICON_CLASS}>
               <svg
-                width="16"
-                height="16"
+                width="18"
+                height="18"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -91,7 +91,7 @@ function ProjectGuidePage({
                 <line x1="10" y1="14" x2="21" y2="3" />
               </svg>
             </span>
-            <span className="flex-1">Open in {selectedIde}</span>
+            <span>Open in {selectedIde}</span>
           </button>
         )}
       </div>
