@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { X } from "lucide-react";
-import { Button, Input, ResizablePanel } from "../ui";
+import { Button, Input } from "../ui";
+import { ResizablePanel } from "../ui/resizable-panel";
 import MarkdownEditor from "./MarkdownEditor";
 
 interface CreateSkillDialogProps {

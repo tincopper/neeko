@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
 @import "./theme.css";
+@import "./shadcn-theme.css";
 
 /* -- Tailwind Theme -- */
 @theme {

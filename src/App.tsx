@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AppLayout, TitleBar } from "./components/layout";
 import { AppToast } from "./components/AppToast";
 import { SplashScreen } from "./components/SplashScreen";
@@ -19,8 +18,6 @@ function App() {
     appModalsProps,
   } = useAppContainer();
 
-  const [showGitPanel, setShowGitPanel] = useState(false);
-
   if (initializing) {
     return <SplashScreen />;
   }
@@ -29,16 +26,10 @@ function App() {
     <div className="w-screen h-screen flex flex-col">
       <TitleBar
         {...titleBarProps}
-        showGitPanel={showGitPanel}
-        onToggleGitPanel={() => setShowGitPanel((v) => !v)}
       />
 
       <AppProviders {...appProvidersProps}>
-        <AppLayout
-          {...appLayoutProps}
-          showGitPanel={showGitPanel}
-          onCloseGitPanel={() => setShowGitPanel(false)}
-        />
+        <AppLayout {...appLayoutProps} />
         <AppModals {...appModalsProps} />
       </AppProviders>
 
