@@ -42,9 +42,10 @@ const DEFAULT_ZONES: Record<string, Omit<DockZoneState, "panels" | "activePanelI
 function buildDefaultPanels(): Record<string, string[]> {
   const zones: Record<string, { panelId: string; order: number }[]> = {};
   for (const [panelId, def] of Object.entries(dockPanelRegistry)) {
-    const z = def.defaultZone;
-    if (!zones[z]) zones[z] = [];
-    zones[z].push({ panelId, order: def.defaultOrder });
+    if (def.defaultZone === "left") {
+      if (!zones.left) zones.left = [];
+      zones.left.push({ panelId, order: def.defaultOrder });
+    }
   }
   const result: Record<string, string[]> = {};
   for (const [zoneId, items] of Object.entries(zones)) {
@@ -285,7 +286,7 @@ export const useDockStore = create<DockStore>()(
     },
     {
       name: "neeko-dock-layout",
-      version: 3,
+      version: 4,
       partialize: (state) => ({
         zones: state.zones,
         barItems: state.barItems,
@@ -300,11 +301,18 @@ export const useDockStore = create<DockStore>()(
         const zones: Record<string, DockZoneState> = {};
         for (const [zoneId, defaultZone] of Object.entries(defaults.zones)) {
           const savedZone = saved?.zones?.[zoneId];
+          const savedActivePanelId = savedZone?.activePanelId;
+          const panels = defaultZone.panels;
+          const restoredActivePanelId =
+            savedActivePanelId && panels.includes(savedActivePanelId)
+              ? savedActivePanelId
+              : panels.length > 0
+                ? panels[0]
+                : null;
           zones[zoneId] = {
             ...defaultZone,
-            // Keep expanded from saved state (but force left expanded)
             expanded: zoneId === "left" ? true : (savedZone?.expanded ?? defaultZone.expanded),
-            activePanelId: savedZone?.activePanelId ?? defaultZone.activePanelId,
+            activePanelId: restoredActivePanelId,
           };
         }
         // Rebuild barItems from registry to pick up side/order changes
