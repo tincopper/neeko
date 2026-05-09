@@ -23,7 +23,12 @@ function App() {
   }
 
   return (
-    <div className="w-screen h-screen flex flex-col">
+    <div
+      className="w-screen h-screen flex flex-col"
+      style={{
+        background: `linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))`,
+      }}
+    >
       <TitleBar
         {...titleBarProps}
       />

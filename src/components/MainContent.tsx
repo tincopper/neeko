@@ -165,10 +165,10 @@ function MainContent() {
    const showAgentBarContent = showAgentBar && hasActiveProject && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 bg-bg-primary">
+      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
          {/* 统一 TabBar + Agent Bar */}
          {hasActiveProject && tabs.length > 0 && (
-            <div className="shrink-0 bg-bg-secondary border-b border-border">
+            <div className="shrink-0 bg-bg-secondary">
                <div className="h-8 flex items-center px-2 gap-1">
                   <div className="flex-1 min-w-0">
                      <UnifiedTabBar
