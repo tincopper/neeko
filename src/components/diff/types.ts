@@ -41,7 +41,7 @@ export interface DiffViewProps {
   diffSource?: DiffSource;
   filePath: string;
   initialMode?: ViewMode;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 export interface SplitRow {
