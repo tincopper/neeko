@@ -249,7 +249,6 @@ export function useAppContainer(): UseAppContainerResult {
     getTabs,
     ensureDefaultTab,
     addTab,
-    closeTab,
     activateTab,
     updateTabStatus,
     handleAgentClick: handleTabAgentClick,
@@ -290,10 +289,16 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
-      if (!tabKey) return;
-      closeTab(tabKey, tabId);
+      const state = useAppStore.getState();
+      // Find which project this tab belongs to and close it
+      for (const [projectId, pt] of Object.entries(state.tabs)) {
+        if (pt.tabs.some((t) => t.id === tabId)) {
+          state.closeTab(projectId, tabId);
+          return;
+        }
+      }
     },
-    [tabKey, closeTab],
+    [],
   );
 
   const handleActivateTab = useCallback(
@@ -341,23 +346,35 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleToggleSettings = useCallback(() => {
     const state = useAppStore.getState();
-    const projectTabs = state.tabs[APP_SETTINGS_PROJECT_ID];
-    const settingsTab = projectTabs?.tabs.find((t) => t.data.kind === "settings");
+    // Find settings tab across all projects
+    let targetProject: string | null = null;
+    let settingsTabId: string | null = null;
+    for (const [projectId, pt] of Object.entries(state.tabs)) {
+      const found = pt.tabs.find((t) => t.data.kind === "settings");
+      if (found) {
+        targetProject = projectId;
+        settingsTabId = found.id;
+        break;
+      }
+    }
 
-    if (settingsTab) {
-      state.closeTab(APP_SETTINGS_PROJECT_ID, settingsTab.id);
+    if (targetProject && settingsTabId) {
+      state.closeTab(targetProject, settingsTabId);
     } else {
+      // Add to current project, or fallback to __app__
+      const projectId = currentProjectId ?? APP_SETTINGS_PROJECT_ID;
+      const existingTabs = state.tabs[projectId];
       const tab: Tab = {
         id: SETTINGS_TAB_ID,
-        projectId: APP_SETTINGS_PROJECT_ID,
+        projectId,
         title: "Settings",
-        order: 0,
+        order: existingTabs?.tabs.length ?? 0,
         data: { kind: "settings" },
       };
-      state.addTab(APP_SETTINGS_PROJECT_ID, tab);
-      state.activateTab(APP_SETTINGS_PROJECT_ID, SETTINGS_TAB_ID);
+      state.addTab(projectId, tab);
+      state.activateTab(projectId, SETTINGS_TAB_ID);
     }
-  }, []);
+  }, [currentProjectId]);
 
   const handleAddWslClick = useCallback(() => {
     setWslDialogOpen(true);
