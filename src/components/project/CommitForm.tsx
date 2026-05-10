@@ -50,7 +50,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
         <textarea
           ref={textareaRef}
           className="w-full bg-bg-tertiary/60 border-0 rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted resize-none outline-none focus:ring-1 focus:ring-accent-blue/30 transition-all duration-100 font-mono"
-          style={textareaHeight ? { height: textareaHeight, minHeight: textareaHeight } : { minHeight: 50 }}
+          style={textareaHeight ? { height: textareaHeight, minHeight: textareaHeight } : { minHeight: 100 }}
           placeholder="Commit message (⌘+Enter to commit)"
           value={message}
           onChange={(e) => setMessage(e.target.value)}

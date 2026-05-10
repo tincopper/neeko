@@ -26,7 +26,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
-  const [textareaHeight, setTextareaHeight] = useState(60);
+  const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   const changedFiles = project.git_info?.changed_files ?? [];
