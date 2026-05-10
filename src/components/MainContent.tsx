@@ -22,7 +22,7 @@ import { useAppStore } from "../store/appStore";
 const SETTINGS_TAB_ID = "settings_tab";
 
 function MainContent() {
-   const { config, showToast } = useAppContext();
+   const { config, showToast, saveConfig } = useAppContext();
    const {
       onAddProject,
       onOpenIde,
@@ -117,11 +117,9 @@ function MainContent() {
 
    const handleSettingsConfigChange = useCallback(
       (next: typeof config) => {
-         invoke("save_config", { config: next }).catch((err) =>
-            console.error("[MainContent] Failed to save config:", err),
-         );
+         saveConfig(next);
       },
-      [],
+      [saveConfig],
    );
 
    // Manage Presets dropdown

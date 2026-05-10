@@ -92,7 +92,7 @@ export default function ProjectItemHeader({
 
       {/* Git dropdown — always visible when active and has actions */}
       {isActive && hasGitActions && (
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className={`relative shrink-0 ${isActive ? "opacity-0 group-hover:opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-150`} onClick={(e) => e.stopPropagation()}>
           <button
             className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
             onClick={(e) => {
