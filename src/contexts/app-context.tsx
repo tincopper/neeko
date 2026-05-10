@@ -8,6 +8,7 @@ interface AppContextValue {
   loading: boolean;
   ideCommandOverrides: Record<string, string>;
   showToast: (message: string, type?: "info" | "error") => void;
+  saveConfig: (next: AppConfig) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);

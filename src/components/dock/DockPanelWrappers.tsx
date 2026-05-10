@@ -26,10 +26,13 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeFilePath = useAppStore((s) => s.activeFilePath);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
 
-  // Load file tree when this panel is the active tab in the left zone
-  const isActive = useDockStore(
-    (s) => s.zones.left?.activePanelId === "files",
-  );
+  // Load file tree when this panel is the active tab in any zone
+  const isActive = useDockStore((s) => {
+    for (const zone of Object.values(s.zones)) {
+      if (zone.activePanelId === "files" && zone.expanded) return true;
+    }
+    return false;
+  });
 
   useEffect(() => {
     if (isActive && activeProjectId) {

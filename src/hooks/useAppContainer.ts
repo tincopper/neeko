@@ -606,6 +606,7 @@ export function useAppContainer(): UseAppContainerResult {
       loading,
       ideCommandOverrides: config.ideCommandOverrides ?? {},
       showToast,
+      saveConfig,
     },
     projectActionsValue,
     fileActionsValue,

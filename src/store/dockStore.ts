@@ -42,10 +42,9 @@ const DEFAULT_ZONES: Record<string, Omit<DockZoneState, "panels" | "activePanelI
 function buildDefaultPanels(): Record<string, string[]> {
   const zones: Record<string, { panelId: string; order: number }[]> = {};
   for (const [panelId, def] of Object.entries(dockPanelRegistry)) {
-    if (def.defaultZone === "left") {
-      if (!zones.left) zones.left = [];
-      zones.left.push({ panelId, order: def.defaultOrder });
-    }
+    const zoneId = def.defaultZone;
+    if (!zones[zoneId]) zones[zoneId] = [];
+    zones[zoneId].push({ panelId, order: def.defaultOrder });
   }
   const result: Record<string, string[]> = {};
   for (const [zoneId, items] of Object.entries(zones)) {
