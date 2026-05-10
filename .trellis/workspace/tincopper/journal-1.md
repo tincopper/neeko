@@ -912,3 +912,40 @@ Replace HTML5 Drag API with Pointer Events for drag-and-drop sorting. Add Dragga
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: Dock Layout Design & Git Log Viewer
+
+**Date**: 2026-05-10
+**Task**: Dock Layout Design & Git Log Viewer
+**Branch**: `feature/dock-layout-design`
+
+### Summary
+
+feat(git): add git log viewer with commit detail panel, fix UI consistency across panels
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0567e22` | (see git log) |
+| `b5c93eb` | (see git log) |
+| `fbfbbea` | (see git log) |
+| `545e1c3` | (see git log) |
+| `5590d1d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
