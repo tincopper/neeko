@@ -29,14 +29,13 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
   const def = dockPanelRegistry[panelId];
   const isTab = def?.openAs === "tab";
 
-  // For tab-mode buttons, track if the tab is open
+  // For tab-mode buttons, track if the tab is open in the active project
   const isTabActive = useAppStore((s) => {
     if (!isTab) return false;
     const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-    for (const pt of Object.values(s.tabs)) {
-      if (pt.tabs.some((t) => t.data.kind === tabKind)) return true;
-    }
-    return false;
+    const projectId = s.activeProjectId ?? "__app__";
+    const projectTabs = s.tabs[projectId];
+    return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
   });
 
   // For dock-mode buttons, track if the dock panel is active
