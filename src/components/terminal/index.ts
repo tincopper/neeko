@@ -40,7 +40,6 @@ export {
   remoteTerminalCache,
 } from "./terminalCache";
 export { default as SplitLayout } from "./SplitLayout";
-export { default as PaneToolbar } from "./PaneToolbar";
 
 import { buildTerminalTheme } from "../../utils/terminal";
 import {

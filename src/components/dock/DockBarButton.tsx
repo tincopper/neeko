@@ -54,7 +54,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
             className={cn(
               "flex items-center justify-center w-8 h-8 rounded-md",
               "hover:bg-bg-hover",
-              isActive && "bg-bg-hover text-text-primary",
+              isActive && "bg-bg-selected text-text-primary",
             )}
           >
             {Icon ? <Icon className="h-5 w-5" /> : <span>{def.title[0]}</span>}

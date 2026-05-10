@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { SplitLayout, TerminalView, WSLTerminalView } from "./terminal";
+import type { SplitStateInfo } from "./terminal/SplitLayout";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
@@ -54,6 +55,28 @@ function MainContent() {
    const activeTab = tabs.find((t) => t.id === storeActiveTabId) ?? null;
 
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
+
+   // Split layout state (exposed from SplitLayout)
+   const [splitInfo, setSplitInfo] = useState<SplitStateInfo>({ paneCount: 1, canSplit: true, activePaneId: "p1" });
+   const splitHorizontalRef = useRef<(() => void) | null>(null);
+   const splitVerticalRef = useRef<(() => void) | null>(null);
+   const closePaneRef = useRef<(() => void) | null>(null);
+
+   const handleSplitStateChange = useCallback((info: SplitStateInfo) => {
+      setSplitInfo(info);
+   }, []);
+
+   const handleSetSplitHorizontal = useCallback((cb: () => void) => {
+      splitHorizontalRef.current = cb;
+   }, []);
+
+   const handleSetSplitVertical = useCallback((cb: () => void) => {
+      splitVerticalRef.current = cb;
+   }, []);
+
+   const handleSetClosePane = useCallback((cb: () => void) => {
+      closePaneRef.current = cb;
+   }, []);
 
    // Tab operations
    const handleActivateTab = useCallback((tabId: string) => {
@@ -179,6 +202,7 @@ function MainContent() {
       : "wsl:none";
 
    const showAgentBarContent = showAgentBar && hasActiveProject && activeTab?.data.kind === "terminal" && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
+   const showAgentBarRow = hasActiveProject && activeTab?.data.kind === "terminal";
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
@@ -198,69 +222,111 @@ function MainContent() {
                   </div>
                </div>
 
-               {showAgentBarContent && (
+               {showAgentBarRow && (
                   <div className="h-8 px-2 pb-1 flex items-center gap-1">
-                     {/* Gear button */}
-                     <div className="relative shrink-0" ref={managerRef}>
-                        <button
-                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                           style={{ fontSize: "var(--terminal-font-size)" }}
-                           onClick={() => setManagerOpen((v) => !v)}
-                           title="Manage Presets"
-                        >
-                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.573-1.066z" />
-                              <circle cx="12" cy="12" r="3" />
-                           </svg>
-                        </button>
-                        {/* Manage Presets dropdown */}
-                        {managerOpen && (
-                           <div
-                              className="absolute left-0 top-full mt-1 z-50 min-w-[180px] max-h-[280px] overflow-y-auto rounded-md border border-border bg-bg-secondary shadow-lg py-1"
-                           >
-                              {allEnabledAgents.map((agent) => {
-                                 const pinned = !hiddenAgentIds.includes(agent.id);
+                     {/* Gear button + Agent buttons */}
+                     {showAgentBarContent && (
+                        <>
+                           <div className="relative shrink-0" ref={managerRef}>
+                              <button
+                                 className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                                 style={{ fontSize: "var(--terminal-font-size)" }}
+                                 onClick={() => setManagerOpen((v) => !v)}
+                                 title="Manage Presets"
+                              >
+                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.573-1.066z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                 </svg>
+                              </button>
+                              {/* Manage Presets dropdown */}
+                              {managerOpen && (
+                                 <div
+                                    className="absolute left-0 top-full mt-1 z-50 min-w-[180px] max-h-[280px] overflow-y-auto rounded-md border border-border bg-bg-secondary shadow-lg py-1"
+                                 >
+                                    {allEnabledAgents.map((agent) => {
+                                       const pinned = !hiddenAgentIds.includes(agent.id);
+                                       return (
+                                          <div
+                                             key={agent.id}
+                                             className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
+                                             style={{ fontSize: "var(--terminal-font-size)" }}
+                                             onClick={() => onToggleHiddenAgent(agent.id)}
+                                          >
+                                             <AgentIcon icon={agent.icon} />
+                                             <span className="flex-1 truncate">{agent.name}</span>
+                                             {pinned ? (
+                                                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-text-secondary shrink-0">
+                                                   <path d="M9.828.722a.5.5 0 01.354.146l4.95 4.95a.5.5 0 010 .707c-.48.48-1.307.848-2.21.988V14.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5v-2.5H6v2.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5V6.81c-.903-.14-1.73-.508-2.21-.988a.5.5 0 010-.707l4.95-4.95a.5.5 0 01.354-.146z" />
+                                                </svg>
+                                             ) : (
+                                                <span className="flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-text-secondary text-[10px] leading-none shrink-0">+</span>
+                                             )}
+                                          </div>
+                                       );
+                                    })}
+                                 </div>
+                              )}
+                           </div>
+                           {/* Agent buttons */}
+                           <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
+                              {enabledAgents.map((agent) => {
+                                 const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+                                 const selected = currentAgentId === agent.id;
                                  return (
-                                    <div
+                                    <button
                                        key={agent.id}
-                                       className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 cursor-pointer text-text-primary"
+                                       className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
                                        style={{ fontSize: "var(--terminal-font-size)" }}
-                                       onClick={() => onToggleHiddenAgent(agent.id)}
+                                       onClick={() => handleAgentClick(agent)}
+                                       disabled={!installed}
+                                       title={agent.name}
                                     >
                                        <AgentIcon icon={agent.icon} />
-                                       <span className="flex-1 truncate">{agent.name}</span>
-                                       {pinned ? (
-                                          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="text-text-secondary shrink-0">
-                                             <path d="M9.828.722a.5.5 0 01.354.146l4.95 4.95a.5.5 0 010 .707c-.48.48-1.307.848-2.21.988V14.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5v-2.5H6v2.5a.5.5 0 01-.5.5h-2a.5.5 0 01-.5-.5V6.81c-.903-.14-1.73-.508-2.21-.988a.5.5 0 010-.707l4.95-4.95a.5.5 0 01.354-.146z" />
-                                          </svg>
-                                       ) : (
-                                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-white/10 text-text-secondary text-[10px] leading-none shrink-0">+</span>
-                                       )}
-                                    </div>
+                                       {!compactMode && <span>{agent.name}</span>}
+                                    </button>
                                  );
                               })}
                            </div>
+                        </>
+                     )}
+                     {/* Spacer */}
+                     {!showAgentBarContent && <div className="flex-1" />}
+                     {/* Split buttons */}
+                     <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+                        <button
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                           title={splitInfo.canSplit ? "Split Horizontal" : "Maximum panes reached"}
+                           disabled={!splitInfo.canSplit}
+                           onClick={() => splitHorizontalRef.current?.()}
+                        >
+                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                              <rect x="1" y="2" width="10" height="8" stroke="currentColor" strokeWidth="1" />
+                              <path d="M6 2V10" stroke="currentColor" strokeWidth="1" />
+                           </svg>
+                        </button>
+                        <button
+                           className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                           title={splitInfo.canSplit ? "Split Vertical" : "Maximum panes reached"}
+                           disabled={!splitInfo.canSplit}
+                           onClick={() => splitVerticalRef.current?.()}
+                        >
+                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                              <rect x="1" y="2" width="10" height="8" stroke="currentColor" strokeWidth="1" />
+                              <path d="M1 6H11" stroke="currentColor" strokeWidth="1" />
+                           </svg>
+                        </button>
+                        {splitInfo.paneCount > 1 && (
+                           <button
+                              className="tb-icon-btn flex items-center justify-center w-6 h-6 rounded-md transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                              title="Close Pane"
+                              onClick={() => closePaneRef.current?.()}
+                           >
+                              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                 <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                              </svg>
+                           </button>
                         )}
-                     </div>
-                     {/* Agent buttons */}
-                     <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
-                        {enabledAgents.map((agent) => {
-                           const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
-                           const selected = currentAgentId === agent.id;
-                           return (
-                              <button
-                                 key={agent.id}
-                                 className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
-                                 style={{ fontSize: "var(--terminal-font-size)" }}
-                                 onClick={() => handleAgentClick(agent)}
-                                 disabled={!installed}
-                                 title={agent.name}
-                              >
-                                 <AgentIcon icon={agent.icon} />
-                                 {!compactMode && <span>{agent.name}</span>}
-                              </button>
-                           );
-                        })}
                      </div>
                   </div>
                )}
@@ -290,6 +356,10 @@ function MainContent() {
                               <TerminalView paneId={paneId} />
                            )
                         )}
+                        onSplitStateChange={handleSplitStateChange}
+                        onSplitHorizontal={handleSetSplitHorizontal}
+                        onSplitVertical={handleSetSplitVertical}
+                        onClosePane={handleSetClosePane}
                      />
                   </div>
                )}
