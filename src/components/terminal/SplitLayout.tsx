@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { setPendingPtyResize } from "./terminalCache";
-import PaneToolbar from "./PaneToolbar";
 import { useSplitLayout } from "../../hooks/useSplitLayout";
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep } from "../../types";
 
-const MIN_PANE_WIDTH = 120;
-const MIN_PANE_HEIGHT = 80;
-const TOOLBAR_FADE_OUT_MS = 300;
+export interface SplitStateInfo {
+  paneCount: number;
+  canSplit: boolean;
+  activePaneId: PaneId;
+}
 
 interface SplitLayoutProps {
   layoutId: string;
@@ -14,6 +15,10 @@ interface SplitLayoutProps {
   renderPane: (paneId: PaneId) => React.ReactNode;
   className?: string;
   onActivePaneChange?: (paneId: PaneId) => void;
+  onSplitStateChange?: (info: SplitStateInfo) => void;
+  onSplitHorizontal?: (cb: () => void) => void;
+  onSplitVertical?: (cb: () => void) => void;
+  onClosePane?: (cb: () => void) => void;
 }
 
 interface RenderNodeProps {
@@ -21,45 +26,38 @@ interface RenderNodeProps {
   path: SplitPathStep[];
 }
 
-function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePaneChange }: SplitLayoutProps) {
+function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePaneChange, onSplitStateChange, onSplitHorizontal, onSplitVertical, onClosePane }: SplitLayoutProps) {
   const { state, splitPane, closePane, setRatio, canSplit, setActivePaneId } = useSplitLayout(layoutId, maxPanes);
-  const [recentlyBlurredPaneId, setRecentlyBlurredPaneId] = useState<PaneId | null>(null);
-  const prevActivePaneRef = useRef<PaneId>(state.activePaneId);
   const paneRefs = useRef(new Map<PaneId, HTMLDivElement>());
-
-  useEffect(() => {
-    if (prevActivePaneRef.current !== state.activePaneId) {
-      setRecentlyBlurredPaneId(prevActivePaneRef.current);
-      const timer = setTimeout(() => {
-        setRecentlyBlurredPaneId((prev) => (prev === prevActivePaneRef.current ? null : prev));
-      }, TOOLBAR_FADE_OUT_MS);
-      prevActivePaneRef.current = state.activePaneId;
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [state.activePaneId]);
 
   useEffect(() => {
     onActivePaneChange?.(state.activePaneId);
   }, [state.activePaneId, onActivePaneChange]);
 
-  const handleSplit = useCallback(
-    (paneId: PaneId, direction: PaneDirection) => {
+  useEffect(() => {
+    onSplitStateChange?.({ paneCount: state.paneCount, canSplit, activePaneId: state.activePaneId });
+  }, [state.paneCount, canSplit, state.activePaneId, onSplitStateChange]);
+
+  // Expose split handlers to parent
+  useEffect(() => {
+    if (!onSplitHorizontal || !onSplitVertical) return;
+    onSplitHorizontal(() => {
       if (!canSplit) return;
-      const paneElement = paneRefs.current.get(paneId);
-      if (paneElement) {
-        const rect = paneElement.getBoundingClientRect();
-        if (direction === "horizontal" && rect.width < MIN_PANE_WIDTH * 2) {
-          return;
-        }
-        if (direction === "vertical" && rect.height < MIN_PANE_HEIGHT * 2) {
-          return;
-        }
-      }
-      splitPane(paneId, direction);
-    },
-    [canSplit, splitPane]
-  );
+      splitPane(state.activePaneId, "horizontal");
+    });
+    onSplitVertical(() => {
+      if (!canSplit) return;
+      splitPane(state.activePaneId, "vertical");
+    });
+  }, [canSplit, state.activePaneId, splitPane, onSplitHorizontal, onSplitVertical]);
+
+  useEffect(() => {
+    if (!onClosePane) return;
+    onClosePane(() => {
+      if (state.paneCount <= 1) return;
+      closePane(state.activePaneId);
+    });
+  }, [state.paneCount, state.activePaneId, closePane, onClosePane]);
 
   const startDrag = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, path: SplitPathStep[], direction: PaneDirection, container: HTMLDivElement | null) => {
@@ -94,7 +92,6 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
     ({ node, path }: RenderNodeProps): React.ReactNode => {
       if (node.type === "leaf") {
         const isActive = state.activePaneId === node.paneId;
-        const showToolbar = isActive || recentlyBlurredPaneId === node.paneId;
 
         return (
           <div
@@ -112,14 +109,6 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
             }`}
             onMouseDown={() => setActivePaneId(node.paneId)}
           >
-            <PaneToolbar
-              visible={showToolbar}
-              canSplit={canSplit}
-              paneCount={state.paneCount}
-              onSplitHorizontal={() => handleSplit(node.paneId, "horizontal")}
-              onSplitVertical={() => handleSplit(node.paneId, "vertical")}
-              onClose={() => closePane(node.paneId)}
-            />
             {renderPane(node.paneId)}
           </div>
         );
@@ -164,7 +153,7 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
         </div>
       );
     },
-    [canSplit, closePane, handleSplit, recentlyBlurredPaneId, renderPane, setActivePaneId, startDrag, state.activePaneId, state.paneCount]
+    [canSplit, renderPane, setActivePaneId, startDrag, state.activePaneId, state.paneCount]
   );
 
   const tree = useMemo(() => renderTree({ node: state.root, path: [] }), [renderTree, state.root]);

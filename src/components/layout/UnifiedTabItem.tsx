@@ -62,7 +62,7 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         className={cn(
           "flex items-center gap-1 h-6 px-2 rounded-md cursor-pointer min-w-0 transition-colors",
           isActive
-            ? "bg-bg-hover text-text-primary"
+            ? "bg-bg-selected text-text-primary"
             : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
         )}
         onClick={handleClick}
