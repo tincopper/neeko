@@ -160,6 +160,11 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
         });
     }
 
+    // 主 worktree（项目本身）是第一个条目，前端不需要显示
+    if !worktrees.is_empty() {
+        worktrees.remove(0);
+    }
+
     let is_clean = changed_files.is_empty();
 
     GitInfo {
@@ -305,15 +310,22 @@ main
 feature/test
 
 __WORKTREES__
+worktree /path/to/main
+HEAD abc123
+branch refs/heads/main
+
 worktree /path/to/wt
+HEAD def456
 branch refs/heads/feature
 
 __STATUS__";
         let info = parse_git_info_output(output);
         assert_eq!(info.current_branch, "main");
         assert_eq!(info.branches.len(), 2);
+        // 主 worktree（第一条）被过滤，只保留 linked worktree
         assert_eq!(info.worktrees.len(), 1);
         assert_eq!(info.worktrees[0].branch, "feature");
+        assert_eq!(info.worktrees[0].path.to_str().unwrap(), "/path/to/wt");
     }
 
     #[test]

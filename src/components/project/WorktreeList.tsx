@@ -133,7 +133,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
 
   return (
     <>
-      <div className="pl-0.5">
+      <div>
         {filteredWorktrees.map((wt) => {
           const isExpanded = expandedWt.has(wt.path);
           const wtFiles = changedFiles[wt.path] ?? [];
@@ -144,7 +144,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
             <div key={wt.path} className="mb-0.5">
               <div
                 className={cn(
-                  "group flex items-center gap-1 py-1 px-2 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover",
+                  "group flex items-center gap-1 py-1 px-2 pl-4 mr-1 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover hover:text-text-primary",
                   deleting === wt.path && "wt-deleting"
                 )}
                 onClick={(e) => {
@@ -192,12 +192,6 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
                     <TrashIcon size={12} />
                   </button>
                 )}
-                <span
-                  className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-1.5 shrink-0 max-w-[90px] truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
-                  title={wt.branch}
-                >
-                  <BranchIcon size={11} /> {wt.branch}
-                </span>
               </div>
               {isExpanded && (
                 <div>

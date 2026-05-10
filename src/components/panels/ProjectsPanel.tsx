@@ -75,13 +75,6 @@ const ProjectsPanel: React.FC = () => {
          .catch(() => setRemoteHomeDir(""));
    }, [dialog, invokeRemoteGit]);
 
-   const handleOpenDialog = useCallback(
-      (d: { type: string; source: { type: string; distro?: string; entryId?: string; projectPath: string }; branches: string[] }) => {
-         setDialog(d as DialogState);
-      },
-      []
-   );
-
    const handleCommit = useCallback((projectId: string) => {
       setCommitProjectId(projectId);
    }, []);
@@ -160,10 +153,8 @@ const ProjectsPanel: React.FC = () => {
                            onRemoveEntry={onRemoveWslEntry}
                            onAddProject={onAddWslProject}
                            onSelectFile={onSelectWslFile}
-                           onRefreshGit={onRefreshWslGit}
                            onOpenIde={onOpenWslIde}
                            onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
-                           onOpenDialog={handleOpenDialog}
                            ideCommandOverrides={ideCommandOverrides}
                            onRefresh={
                               onRefreshWslGit
@@ -202,11 +193,9 @@ const ProjectsPanel: React.FC = () => {
                         onRemoveEntry={onRemoveRemoteEntry}
                         onAddProject={onAddRemoteProject}
                         onSelectFile={onSelectRemoteFile}
-                        onRefreshGit={onRefreshRemoteGit}
                         onOpenIde={onOpenRemoteIde}
                         onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
                         invokeRemoteGit={invokeRemoteGit}
-                        onOpenDialog={handleOpenDialog}
                         ideCommandOverrides={ideCommandOverrides}
                         onRefresh={
                            onRefreshRemoteGit

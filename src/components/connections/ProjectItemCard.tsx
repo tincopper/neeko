@@ -4,8 +4,6 @@ import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
 import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
 import {
    CloseTerminalIcon,
-   FolderGitIcon,
-   GitLogoIcon,
 } from "../icons";
 import ProjectBody from "./ProjectBody";
 import { getAvatarStyle } from "./utils";
@@ -19,37 +17,27 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
       onSelectProject,
       onToggleCollapsed,
       onSelectFile,
-      onCheckoutBranch,
-      onCommitRenameBranch,
       onOpenWorktreeTerminal,
       onCommitRenameWorktree,
       onRemoveWorktree,
       onRemoveProject,
       onOpenIde,
-      onOpenDialog,
-      currentBranch,
       ideCommandOverrides,
       onOpenSettings,
       onRefresh,
       agents,
       config,
       onSaveProjectSettings,
-      onRefreshGit,
       onShowToast,
       onGetWorktreeChangedFiles,
       onIsWorktreeDirty,
-      onGetWorktreeFileDiff,
    }) => {
       const [collapsed, setCollapsed] = useState(true);
       const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-      const [renamingBranch, setRenamingBranch] = useState<string | null>(null);
-      const [renameBranchValue, setRenameBranchValue] = useState("");
       const [renamingWorktree, setRenamingWorktree] = useState<string | null>(null);
       const [renameWorktreeValue, setRenameWorktreeValue] = useState("");
-      const [gitMenuOpen, setGitMenuOpen] = useState(false);
       const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
       const [settingsOpen, setSettingsOpen] = useState(false);
-      const renameInputRef = useRef<HTMLInputElement>(null);
       const renameWtInputRef = useRef<HTMLInputElement>(null);
       const gitInfoLoaded = useRef(false);
 
@@ -67,19 +55,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
          setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
       }, []);
 
-      const handleStartRenameBranch = useCallback((branch: string, _currentBranch: string) => {
-         setRenamingBranch(branch);
-         setRenameBranchValue(branch);
-         setTimeout(() => renameInputRef.current?.focus(), 0);
-      }, []);
-
-      const handleCommitRenameBranch = useCallback(() => {
-         if (renamingBranch && renameBranchValue.trim() && renameBranchValue !== renamingBranch) {
-            onCommitRenameBranch(renamingBranch, renameBranchValue.trim());
-         }
-         setRenamingBranch(null);
-      }, [renamingBranch, renameBranchValue, onCommitRenameBranch]);
-
       const handleStartRenameWorktree = useCallback((path: string) => {
          setRenamingWorktree(path);
          const name = path.split("/").pop() || "";
@@ -93,15 +68,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
          }
          setRenamingWorktree(null);
       }, [renamingWorktree, renameWorktreeValue, onCommitRenameWorktree]);
-
-      React.useEffect(() => {
-         if (!gitMenuOpen) {
-            return;
-         }
-         const handler = () => setGitMenuOpen(false);
-         document.addEventListener("click", handler);
-         return () => document.removeEventListener("click", handler);
-      }, [gitMenuOpen]);
 
       const handleContextMenu = (e: React.MouseEvent) => {
          e.preventDefault();
@@ -117,26 +83,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                label: "Open in IDE",
                shortcut: "Ctrl+O",
                action: () => onOpenIde(),
-            });
-         }
-
-         if (project.git_info) {
-            const branches = project.git_info.branches;
-            items.push({
-               label: "New Branch",
-               icon: GitLogoIcon,
-               action: () => {
-                  setGitMenuOpen(false);
-                  onOpenDialog?.("new-branch", branches);
-               },
-            });
-            items.push({
-               label: "New Worktree",
-               icon: FolderGitIcon,
-               action: () => {
-                  setGitMenuOpen(false);
-                  onOpenDialog?.("new-worktree", branches);
-               },
             });
          }
 
@@ -224,44 +170,6 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                      } transition-opacity duration-150`}
                   onClick={(e) => e.stopPropagation()}
                >
-                  {gitInfo && onOpenDialog && (
-                     <div className="relative" onClick={(e) => e.stopPropagation()}>
-                        <button
-                           className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
-                           onClick={(e) => {
-                              e.stopPropagation();
-                              setGitMenuOpen((v) => !v);
-                           }}
-                           title="Git actions"
-                        >
-                           <GitLogoIcon size={11} />
-                        </button>
-                        {gitMenuOpen && (
-                           <div className="absolute top-[calc(100%+2px)] right-0 bg-bg-secondary border border-border rounded-md min-w-[140px] z-[1000] shadow-lg overflow-hidden">
-                              <div
-                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
-                                 onClick={() => {
-                                    setGitMenuOpen(false);
-                                    onOpenDialog("new-branch", gitInfo.branches);
-                                 }}
-                              >
-                                 <GitLogoIcon size={12} />
-                                 New Branch
-                              </div>
-                              <div
-                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
-                                 onClick={() => {
-                                    setGitMenuOpen(false);
-                                    onOpenDialog("new-worktree", gitInfo.branches);
-                                 }}
-                              >
-                                 <FolderGitIcon size={12} />
-                                 New Worktree
-                              </div>
-                           </div>
-                        )}
-                     </div>
-                  )}
                   {hasSession && (
                      <button
                         className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
@@ -282,39 +190,27 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
             </div>
 
             {!collapsed && (
-               <ProjectBody
-                  gitInfo={gitInfo ?? null}
-                  projectId={project.id}
-                  expandedSections={expandedSections}
-                  renamingBranch={renamingBranch}
-                  renameBranchValue={renameBranchValue}
-                  renamingWorktree={renamingWorktree}
-                  renameWorktreeValue={renameWorktreeValue}
-                  onToggleSection={toggleSection}
-                  onCheckoutBranch={(branch) => onCheckoutBranch(branch)}
-                  onStartRenameBranch={handleStartRenameBranch}
-                  onRenameBranchChange={setRenameBranchValue}
-                  onCommitRenameBranch={handleCommitRenameBranch}
-                  onCancelRename={() => setRenamingBranch(null)}
-                  onSelectFile={onSelectFile}
-                  onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                  onStartRenameWorktree={handleStartRenameWorktree}
-                  onRenameWorktreeChange={setRenameWorktreeValue}
-                  onCommitRenameWorktree={handleCommitRenameWorktree}
-                  onRemoveWorktree={onRemoveWorktree}
-                  onCancelRenameWorktree={() => setRenamingWorktree(null)}
-                  renameInputRef={renameInputRef as React.RefObject<HTMLInputElement>}
-                  renameWtInputRef={renameWtInputRef as React.RefObject<HTMLInputElement>}
-                  currentBranch={currentBranch}
-                  onSelectProject={() => onSelectProject()}
-                  isActive={isActive}
-                  onRefreshGit={onRefreshGit}
-                  onShowToast={onShowToast}
-                  onOpenDialog={onOpenDialog}
-                  onGetWorktreeChangedFiles={onGetWorktreeChangedFiles}
-                  onIsWorktreeDirty={onIsWorktreeDirty}
-                  onGetWorktreeFileDiff={onGetWorktreeFileDiff}
-               />
+                <ProjectBody
+                   gitInfo={gitInfo ?? null}
+                   projectId={project.id}
+                   expandedSections={expandedSections}
+                   renamingWorktree={renamingWorktree}
+                   renameWorktreeValue={renameWorktreeValue}
+                   onToggleSection={toggleSection}
+                   onSelectFile={onSelectFile}
+                   onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                   onStartRenameWorktree={handleStartRenameWorktree}
+                   onRenameWorktreeChange={setRenameWorktreeValue}
+                   onCommitRenameWorktree={handleCommitRenameWorktree}
+                   onRemoveWorktree={onRemoveWorktree}
+                   onCancelRenameWorktree={() => setRenamingWorktree(null)}
+                   renameWtInputRef={renameWtInputRef as React.RefObject<HTMLInputElement>}
+                   onSelectProject={() => onSelectProject()}
+                   isActive={isActive}
+                   onShowToast={onShowToast}
+                   onGetWorktreeChangedFiles={onGetWorktreeChangedFiles}
+                   onIsWorktreeDirty={onIsWorktreeDirty}
+                />
             )}
 
             {contextMenu && (
