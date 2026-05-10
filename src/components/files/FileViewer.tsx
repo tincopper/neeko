@@ -324,7 +324,7 @@ function EditorHeader({
 
             {canEdit && (
                <button
-                  className="px-2 py-1 text-xs rounded bg-accent/20 hover:bg-accent/30 text-accent transition-colors flex items-center gap-1 disabled:opacity-50"
+                  className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1 disabled:opacity-50"
                   onClick={onSave}
                   disabled={!isDirty || isSaving}
                   title="Save (Ctrl+S)"

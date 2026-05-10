@@ -159,10 +159,28 @@ function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelect
     );
   }
 
+  const activeFileName = activeFilePath ? activeFilePath.split(/[\\/]/).pop() || activeFilePath : null;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {activeFileName ? (
+            <>
+              <img
+                src={fileIconSrc(activeFileName)}
+                alt=""
+                width={16}
+                height={16}
+                className="shrink-0"
+              />
+              <span className="font-semibold text-[var(--font-size)] truncate">{activeFileName}</span>
+              <span className="text-text-muted text-[var(--font-size)] truncate">{activeFilePath}</span>
+            </>
+          ) : (
+            <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
+          )}
+        </div>
         <button
           className="p-1 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
           onClick={onRefresh}

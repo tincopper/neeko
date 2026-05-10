@@ -11,7 +11,7 @@ interface SplitDiffTableProps {
 
 const SplitDiffTable: React.FC<SplitDiffTableProps> = ({ diffResult, language }) => {
   return (
-    <table className="w-full border-collapse font-mono text-base diff-table-split">
+    <table className="w-full border-collapse font-mono diff-table-split" style={{ fontSize: 'var(--font-size)' }}>
       <colgroup>
         <col className="col-linenum" />
         <col className="col-code" />

@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { Terminal, FileText, ArrowLeftRight, Settings, GitBranch } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { getAgentIconSrc } from "../../utils/agents";
+import { fileIconSrc } from "../../utils/fileIcons";
 import type { Tab } from "../../types/tab";
 import type { AgentConfig } from "../../types";
 
@@ -53,6 +54,11 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           )
         : null;
 
+    const fileIcon =
+      data.kind === "file" || data.kind === "diff"
+        ? fileIconSrc(data.fileName)
+        : null;
+
     // 状态指示器
     const showRunningDot =
       tab.data.kind === "terminal" && tab.data.status === "Running";
@@ -73,6 +79,14 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         {agentIconSrc ? (
           <img
             src={agentIconSrc}
+            width={12}
+            height={12}
+            className="shrink-0 opacity-70"
+            alt=""
+          />
+        ) : fileIcon ? (
+          <img
+            src={fileIcon}
             width={12}
             height={12}
             className="shrink-0 opacity-70"
