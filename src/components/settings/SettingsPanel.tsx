@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAppContext } from "../../contexts";
 import { cn } from "../../utils/cn";
 import type { AppConfig, DiffMode } from "../../types";
-import { CloseIcon, ArrowLeftIcon } from "../icons";
+import { CloseIcon } from "../icons";
 import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from "./constants";
 import { useSettingsPanelState } from "./useSettingsPanelState";
 import AppearancePanel from "./AppearancePanel";
@@ -158,22 +158,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
 
       if (fullPage) {
          return (
-            <div className="flex flex-col flex-1 min-h-0 bg-bg-primary tab-content" data-modal="true">
-               <div className="flex items-center gap-2 p-3.5 px-5 border-b border-border shrink-0">
-                  <button
-                     className="bg-none border-none text-text-muted cursor-pointer p-1 rounded flex items-center justify-center transition-[background-color,color] duration-150 hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue"
-                     onClick={onClose}
-                     title="Back"
-                  >
-                     <ArrowLeftIcon size={18} />
-                  </button>
-                  <span className="text-[0.93em] font-semibold text-text-primary tracking-[0.2px]">
-                     Settings
-                  </span>
-               </div>
+            <div className="flex flex-col flex-1 min-h-0 tab-content" data-modal="true">
 
                <div className="flex flex-1 overflow-hidden">
-                  <nav className="w-[168px] shrink-0 bg-bg-primary border-r border-border p-2.5 px-1.5 flex flex-col gap-0.5 overflow-y-auto">
+                  <nav className="w-[168px] shrink-0 p-2.5 px-1.5 flex flex-col gap-0.5 overflow-y-auto">
                      {NAV_ITEMS.map((item) => (
                         <button
                            key={item.id}

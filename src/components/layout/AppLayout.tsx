@@ -5,22 +5,17 @@ import { useAppStore } from "@/store/appStore";
 import { cn } from "@/lib/utils";
 import { SkillProvider } from "@/contexts/skill-context";
 import { DockLayout } from "@/components/dock";
-import SettingsPanel from "@/components/SettingsPanel";
 import MainContent from "@/components/MainContent";
 import { SkillContent } from "@/components/skills";
 import { IS_WINDOWS } from "@/utils/platform";
 import linuxIcon from "@/assets/linux.svg";
 import serverIcon from "@/assets/server.svg";
-import type { AppConfig } from "@/types";
 
 interface AppLayoutProps {
   onAddProject: () => void;
   onAddWsl: () => void;
   onAddRemote: () => void;
   onOpenSettings: () => void;
-  settingsOpen: boolean;
-  onCloseSettings: () => void;
-  onConfigChange: (next: AppConfig) => void;
 }
 
 /**
@@ -136,25 +131,18 @@ function AppLayout({
   onAddWsl,
   onAddRemote,
   onOpenSettings,
-  settingsOpen,
-  onCloseSettings,
-  onConfigChange,
 }: AppLayoutProps) {
   const skillsActive = useDockStore(
     (s) => s.zones.left?.activePanelId === "skills",
   );
   const activeProjectId = useAppStore((s) => s.activeProjectId);
 
-  // Center content: settings full-page → skills two-column → normal MainContent
-  const centerContent = settingsOpen ? (
-    <div className="flex-1 flex min-w-0 transition-opacity duration-200 motion-safe:transition-opacity">
-      <SettingsPanel
-        fullPage
-        onConfigChange={onConfigChange}
-        onClose={onCloseSettings}
-      />
-    </div>
-  ) : skillsActive ? (
+  const isSettingsOpen = useAppStore((s) =>
+    (s.tabs["__app__"]?.tabs ?? []).some((t) => t.data.kind === "settings"),
+  );
+
+  // Center content: skills two-column → normal MainContent (settings handled inside MainContent)
+  const centerContent = skillsActive ? (
     <SkillProvider activeProjectId={activeProjectId}>
       <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
         <SkillContent />
@@ -174,7 +162,7 @@ function AppLayout({
           onAddWsl={onAddWsl}
           onAddRemote={onAddRemote}
           onOpenSettings={onOpenSettings}
-          isSettingsOpen={settingsOpen}
+          isSettingsOpen={isSettingsOpen}
         />
       }
     >

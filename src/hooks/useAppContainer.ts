@@ -23,8 +23,11 @@ import { useTerminalTabs } from "./useTerminalTabs";
 import { useAppStore } from "../store/appStore";
 import { useFileView } from "./useFileView";
 import { useSyncToStore } from "./useSyncToStore";
-import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
+import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, Tab, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
+
+const APP_SETTINGS_PROJECT_ID = "__app__";
+const SETTINGS_TAB_ID = "settings_tab";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -43,7 +46,7 @@ interface UseAppContainerResult {
 const noop = () => { };
 
 export function useAppContainer(): UseAppContainerResult {
-  const { config, settingsOpen, setSettingsOpen, saveConfig } = useAppConfig();
+  const { config, saveConfig } = useAppConfig();
   const { toast, showToast } = useToast();
   const local = useLocalProjects();
 
@@ -337,8 +340,24 @@ export function useAppContainer(): UseAppContainerResult {
   }, [remoteActions.setRemoteDiffState]);
 
   const handleToggleSettings = useCallback(() => {
-    setSettingsOpen((value) => !value);
-  }, [setSettingsOpen]);
+    const state = useAppStore.getState();
+    const projectTabs = state.tabs[APP_SETTINGS_PROJECT_ID];
+    const settingsTab = projectTabs?.tabs.find((t) => t.data.kind === "settings");
+
+    if (settingsTab) {
+      state.closeTab(APP_SETTINGS_PROJECT_ID, settingsTab.id);
+    } else {
+      const tab: Tab = {
+        id: SETTINGS_TAB_ID,
+        projectId: APP_SETTINGS_PROJECT_ID,
+        title: "Settings",
+        order: 0,
+        data: { kind: "settings" },
+      };
+      state.addTab(APP_SETTINGS_PROJECT_ID, tab);
+      state.activateTab(APP_SETTINGS_PROJECT_ID, SETTINGS_TAB_ID);
+    }
+  }, []);
 
   const handleAddWslClick = useCallback(() => {
     setWslDialogOpen(true);
@@ -583,9 +602,6 @@ export function useAppContainer(): UseAppContainerResult {
     onAddWsl: handleAddWslOrNoop,
     onAddRemote: handleAddRemoteClick,
     onOpenSettings: handleToggleSettings,
-    settingsOpen,
-    onCloseSettings: () => setSettingsOpen(false),
-    onConfigChange: saveConfig,
   };
 
   const appModalsProps: AppModalsProps = {

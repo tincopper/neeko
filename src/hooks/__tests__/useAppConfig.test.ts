@@ -20,7 +20,6 @@ describe('useAppConfig', () => {
     expect(result.current.config.diffMode).toBe('unified');
     expect(result.current.config.shell).toBe('');
     expect(result.current.config.fontFamily).toBe('');
-    expect(result.current.settingsOpen).toBe(false);
   });
 
   it('挂载时加载配置', async () => {
@@ -175,21 +174,6 @@ describe('useAppConfig', () => {
     // 浅比较：saveConfig 传入相同对象时 setConfig 返回 prev，值不变
     expect(result.current.config.terminalFontSize).toBe(before.terminalFontSize);
     expect(result.current.config.diffMode).toBe(before.diffMode);
-  });
-
-  it('settingsOpen 状态可切换', () => {
-    mockInvoke.mockResolvedValue({});
-    const { result } = renderHook(() => useAppConfig());
-
-    act(() => {
-      result.current.setSettingsOpen(true);
-    });
-    expect(result.current.settingsOpen).toBe(true);
-
-    act(() => {
-      result.current.setSettingsOpen(false);
-    });
-    expect(result.current.settingsOpen).toBe(false);
   });
 
   it('appearanceFontSize 变化时同步 CSS 变量 --font-size', async () => {

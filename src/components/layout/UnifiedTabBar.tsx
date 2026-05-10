@@ -11,7 +11,7 @@ interface UnifiedTabBarProps {
   activeTabId: string | null;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onAddTerminalTab: () => void;
+  onAddTerminalTab?: () => void;
   /** 关闭其他 tab */
   onCloseOtherTabs?: (tabId: string) => void;
   /** 关闭所有 tab */
@@ -128,7 +128,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
           ))}
 
           {/* 新增终端按钮 */}
-          {terminalTabCount < 10 && (
+          {terminalTabCount < 10 && onAddTerminalTab && (
             <button
               className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               onClick={onAddTerminalTab}

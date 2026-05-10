@@ -241,45 +241,8 @@ describe("SettingsPanel", () => {
           expect(document.querySelector(".fixed.inset-0")).toBeNull();
        });
 
-       it("全页模式渲染返回按钮", () => {
-          const config = { ...defaultConfig };
-          const appContext = {
-             config,
-             agents: [],
-             agentInstalledMap: {},
-             loading: false,
-             ideCommandOverrides: config.ideCommandOverrides ?? {},
-             showToast: vi.fn(),
-          };
-          render(
-             <AppProvider value={appContext}>
-                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={vi.fn()} />
-             </AppProvider>
-          );
-          expect(screen.getByTitle("Back")).toBeInTheDocument();
-       });
 
-       it("点击返回按钮调用 onClose", () => {
-          const config = { ...defaultConfig };
-          const appContext = {
-             config,
-             agents: [],
-             agentInstalledMap: {},
-             loading: false,
-             ideCommandOverrides: config.ideCommandOverrides ?? {},
-             showToast: vi.fn(),
-          };
-          const onClose = vi.fn();
-          render(
-             <AppProvider value={appContext}>
-                <SettingsPanel fullPage onConfigChange={vi.fn()} onClose={onClose} />
-             </AppProvider>
-          );
-          fireEvent.click(screen.getByTitle("Back"));
-          expect(onClose).toHaveBeenCalledTimes(1);
-       });
-
-       it("全页模式内容区可正常滚动", () => {
+        it("全页模式内容区可正常滚动", () => {
           const config = { ...defaultConfig };
           const appContext = {
              config,
