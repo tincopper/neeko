@@ -25,7 +25,7 @@ function ProjectGuidePage({
   onOpenIde,
 }: ProjectGuidePageProps) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-bg-primary">
+    <div className="flex-1 flex flex-col items-center justify-center">
       <img
         src={neekoIcon}
         alt=""

@@ -291,7 +291,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   }, []);
 
   return (
-    <div className="flex flex-col h-full bg-bg-primary">
+    <div className="flex flex-col h-full">
       {dialog && (
         <GitDialog
           dialog={dialog}

@@ -36,12 +36,12 @@
   --titlebar-gradient-start: #000000;
 
   /* Background layers */
-  --bg-primary:   #000000;
-  --bg-gradient-start: #0a0a0a;
-  --bg-gradient-end:   #000000;
-  --bg-secondary: #0a0a0a;
-  --bg-tertiary:  #141414;
-  --bg-hover:     #222222;
+  --bg-primary:   #1a1b1e;
+  --bg-gradient-start: #1d1e22;
+  --bg-gradient-end:   #1a1b1e;
+  --bg-secondary: #252528;
+  --bg-tertiary:  #2d2e32;
+  --bg-hover:     #37383d;
 
   /* Text */
   --text-primary:   #ededed;
@@ -49,7 +49,7 @@
   --text-muted:     #666666;
 
   /* Border */
-  --border-color: #333333;
+  --border-color: #2f3035;
 
   /* Terminal selection */
   --terminal-selection: rgba(97, 175, 239, 0.3);
@@ -170,11 +170,11 @@
   --titlebar-gradient-start: #21252b;
 
   /* Background layers */
-  --bg-primary:   #282c34;
-  --bg-gradient-start: #2d333b;
-  --bg-gradient-end:   #282c34;
-  --bg-secondary: #21252b;
-  --bg-tertiary:  #2c313c;
+  --bg-primary:   #21252b;
+  --bg-gradient-start: #23272e;
+  --bg-gradient-end:   #21252b;
+  --bg-secondary: #2c313a;
+  --bg-tertiary:  #333842;
   --bg-hover:     #3e4451;
 
   /* Text */
@@ -183,7 +183,7 @@
   --text-muted:     #5c6370;
 
   /* Border */
-  --border-color: #3e4451;
+  --border-color: #363b46;
 
   /* Terminal selection */
   --terminal-selection: rgba(97, 175, 239, 0.3);
@@ -265,12 +265,12 @@
   --titlebar-gradient-start: #e8e0d4;
 
   /* Background layers */
-  --bg-primary:   #f5f0e8;
-  --bg-gradient-start: #f7f3eb;
-  --bg-gradient-end:   #f5f0e8;
-  --bg-secondary: #ede8df;
-  --bg-tertiary:  #e4ddd3;
-  --bg-hover:     #d8d0c4;
+  --bg-primary:   #f0ebe2;
+  --bg-gradient-start: #f1ece4;
+  --bg-gradient-end:   #f0ebe2;
+  --bg-secondary: #faf7f2;
+  --bg-tertiary:  #e6dfd6;
+  --bg-hover:     #dcd4c8;
 
   /* Text */
   --text-primary:   #2d1e14;
@@ -278,7 +278,7 @@
   --text-muted:     #a89282;
 
   /* Border */
-  --border-color: #d4c9bb;
+  --border-color: #d8cdc0;
 
   /* Terminal selection */
   --terminal-selection: rgba(201, 100, 66, 0.2);
@@ -360,12 +360,12 @@
   --titlebar-gradient-start: #c8dff5;
 
   /* Background layers */
-  --bg-primary:   #ffffff;
-  --bg-gradient-start: #fcfcfc;
-  --bg-gradient-end:   #f8f8f8;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary:  #e8e8e8;
-  --bg-hover:     #e0e0e0;
+  --bg-primary:   #ebecf0;
+  --bg-gradient-start: #e5e8ef;
+  --bg-gradient-end:   #ebecf0;
+  --bg-secondary: #ffffff;
+  --bg-tertiary:  #f4f5f7;
+  --bg-hover:     #e2e3e7;
 
   /* Text */
   --text-primary:   #1e1e1e;
@@ -373,7 +373,7 @@
   --text-muted:     #a0a0a0;
 
   /* Border */
-  --border-color: #d4d4d4;
+  --border-color: #dadbdd;
 
   /* Terminal selection */
   --terminal-selection: rgba(47, 124, 211, 0.2);

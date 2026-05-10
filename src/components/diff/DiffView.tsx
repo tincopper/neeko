@@ -160,7 +160,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto bg-bg-primary">
+        <div className="flex-1 overflow-auto">
           {diffResult && diffResult.hunks.length > 0 ? (
             viewMode === "unified" ? (
               <UnifiedDiffTable diffResult={diffResult} language={language} />
