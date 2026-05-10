@@ -21,10 +21,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     onSelectProject,
     onRemoveProject,
     onSelectFile,
-    onRefreshGit,
     onOpenIde,
     onOpenWorktreeTerminal,
-    onOpenDialog,
     ideCommandOverrides,
     onOpenSettings,
     onRefresh,
@@ -65,54 +63,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       [onSelectFile, connectionId, project.path],
     );
 
-    const handleCheckout = useCallback(
-      (branch: string): Promise<void> => {
-        if (isWsl) {
-          return invoke("wsl_checkout_branch", {
-            distro,
-            projectPath: project.path,
-            branchName: branch,
-          }).then(
-            () => onRefreshGit?.(connectionId, project.id, project.path) ?? Promise.resolve(),
-          );
-        }
-        if (remoteInvoke) {
-          return remoteInvoke("remote_checkout_branch", remoteEntryId, {
-            projectPath: project.path,
-            branchName: branch,
-          }).then(
-            () => onRefreshGit?.(connectionId, project.id, project.path) ?? Promise.resolve(),
-          );
-        }
-        return Promise.resolve();
-      },
-      [isWsl, distro, project.path, connectionId, project.id, onRefreshGit, remoteInvoke, remoteEntryId],
-    );
-
-    const handleRenameBranch = useCallback(
-      (oldName: string, newName: string) => {
-        if (isWsl) {
-          invoke("wsl_rename_branch", {
-            distro,
-            projectPath: project.path,
-            oldName,
-            newName,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch(console.error);
-        } else if (remoteInvoke) {
-          remoteInvoke("remote_rename_branch", remoteEntryId, {
-            projectPath: project.path,
-            oldName,
-            newName,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch(console.error);
-        }
-      },
-      [isWsl, distro, project.path, connectionId, project.id, onRefreshGit, remoteInvoke, remoteEntryId],
-    );
-
     const handleOpenWorktree = useCallback(
       (wtPath: string, branch: string) => {
         onOpenWorktreeTerminal?.(connectionId, wtPath, branch);
@@ -128,20 +78,16 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
             projectPath: project.path,
             worktreePath: oldPath,
             newName,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch(console.error);
+          }).catch(console.error);
         } else if (remoteInvoke) {
           remoteInvoke("remote_rename_worktree", remoteEntryId, {
             projectPath: project.path,
             worktreePath: oldPath,
             newName,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch(console.error);
+          }).catch(console.error);
         }
       },
-      [isWsl, distro, project.path, connectionId, project.id, onRefreshGit, remoteInvoke, remoteEntryId],
+      [isWsl, distro, project.path, remoteInvoke, remoteEntryId],
     );
 
     const handleRemoveWorktree = useCallback(
@@ -151,23 +97,19 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
             distro,
             projectPath: project.path,
             worktreePath: wtPath,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch((e: unknown) => {
-              console.error(`${logTag} Failed to remove worktree:`, e);
-            });
+          }).catch((e: unknown) => {
+            console.error(`${logTag} Failed to remove worktree:`, e);
+          });
         } else if (remoteInvoke) {
           remoteInvoke("remote_remove_worktree", remoteEntryId, {
             projectPath: project.path,
             worktreePath: wtPath,
-          })
-            .then(() => onRefreshGit?.(connectionId, project.id, project.path))
-            .catch((e: unknown) => {
-              console.error(`${logTag} Failed to remove worktree:`, e);
-            });
+          }).catch((e: unknown) => {
+            console.error(`${logTag} Failed to remove worktree:`, e);
+          });
         }
       },
-      [isWsl, distro, project.path, connectionId, project.id, onRefreshGit, remoteInvoke, remoteEntryId, logTag],
+      [isWsl, distro, project.path, remoteInvoke, remoteEntryId, logTag],
     );
 
     const handleRemove = useCallback(() => {
@@ -181,25 +123,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           : undefined,
       [onOpenIde, connectionId, project.path, project.selected_ide],
     );
-
-    const handleOpenDialog = useMemo(
-      () =>
-        onOpenDialog
-          ? (type: string, branches: string[]) =>
-              onOpenDialog({
-                type,
-                source: isWsl
-                  ? { type: "wsl", distro, projectPath: project.path }
-                  : { type: "remote", entryId: remoteEntryId, projectPath: project.path },
-                branches,
-              })
-          : undefined,
-      [onOpenDialog, isWsl, distro, remoteEntryId, project.path],
-    );
-
-    const handleRefreshGit = useCallback(() => {
-      onRefreshGit?.(connectionId, project.id, project.path);
-    }, [onRefreshGit, connectionId, project.id, project.path]);
 
     const handleGetWorktreeChangedFiles = useCallback(
       (worktreePath: string): Promise<FileChange[]> => {
@@ -253,22 +176,17 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           onSelectProject={() => onSelectProject(selectProjectId, project)}
           onToggleCollapsed={() => {}}
           onSelectFile={handleSelectFile}
-          onCheckoutBranch={handleCheckout}
-          onCommitRenameBranch={handleRenameBranch}
           onOpenWorktreeTerminal={handleOpenWorktree}
           onCommitRenameWorktree={handleRenameWorktree}
           onRemoveWorktree={handleRemoveWorktree}
           onRemoveProject={handleRemove}
           onOpenIde={handleOpenIde}
-          onOpenDialog={handleOpenDialog}
-          currentBranch={project.git_info?.current_branch ?? ""}
           ideCommandOverrides={ideCommandOverrides}
           onOpenSettings={onOpenSettings}
           onRefresh={onRefresh}
           agents={agents}
           config={config}
           onSaveProjectSettings={onSaveProjectSettings}
-          onRefreshGit={handleRefreshGit}
           onShowToast={onShowToast}
           onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
           onIsWorktreeDirty={handleIsWorktreeDirty}

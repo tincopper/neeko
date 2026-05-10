@@ -286,6 +286,15 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
   }, [onOpenDialog, project]);
 
+  const handleCheckoutBranch = useCallback(async (branchName: string) => {
+    try {
+      await invoke("checkout_branch", { projectId: project.id, branchName });
+      onRefreshGit(project.id);
+    } catch (e: unknown) {
+      onShowToast?.(String(e), "error");
+    }
+  }, [project.id, onRefreshGit, onShowToast]);
+
   const handleDialogClose = useCallback(() => {
     setDialog(null);
   }, []);
@@ -313,6 +322,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         }}
         onNewBranch={handleNewBranch}
         onNewWorktree={handleNewWorktree}
+        onCheckoutBranch={handleCheckoutBranch}
       />
 
       <div className="flex-1 min-h-0 flex flex-col">

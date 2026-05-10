@@ -19,9 +19,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const {
     onSelectProject,
     onRemoveProject,
-    onSelectFile,
     onRefreshGit,
-    onBackToMainTerminal,
     onOpenDialog,
     onCommit,
     onPush,
@@ -152,9 +150,7 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
           actions={{
             onToggleSection: toggleSection,
             onSelectProject,
-            onSelectFile,
             onRefreshGit,
-            onBackToMainTerminal,
             onOpenDialog: openDialog,
             onOpenWorktreeTerminal,
             onSelectWorktreeFile,

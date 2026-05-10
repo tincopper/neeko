@@ -16,10 +16,8 @@ export const WSLItem = React.memo<WSLItemProps>(
     onRemoveEntry,
     onAddProject,
     onSelectFile,
-    onRefreshGit,
     onOpenIde,
     onOpenWorktreeTerminal,
-    onOpenDialog,
     ideCommandOverrides,
     onOpenSettings,
     onRefresh,
@@ -101,10 +99,8 @@ export const WSLItem = React.memo<WSLItemProps>(
                     onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
                     onRemoveProject={onRemoveProject}
                     onSelectFile={onSelectFile}
-                    onRefreshGit={onRefreshGit}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    onOpenDialog={onOpenDialog as ConnectionProjectCardProps['onOpenDialog']}
                     ideCommandOverrides={ideCommandOverrides}
                     onOpenSettings={onOpenSettings}
                     onRefresh={
@@ -137,11 +133,9 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     onRemoveEntry,
     onAddProject,
     onSelectFile,
-    onRefreshGit,
     onOpenIde,
     onOpenWorktreeTerminal,
     invokeRemoteGit,
-    onOpenDialog,
     ideCommandOverrides,
     onOpenSettings,
     onRefresh,
@@ -228,10 +222,8 @@ export const RemoteItem = React.memo<RemoteItemProps>(
                     onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
                     onRemoveProject={onRemoveProject}
                     onSelectFile={onSelectFile}
-                    onRefreshGit={onRefreshGit}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    onOpenDialog={onOpenDialog as ConnectionProjectCardProps['onOpenDialog']}
                     ideCommandOverrides={ideCommandOverrides}
                     onOpenSettings={onOpenSettings}
                     onRefresh={

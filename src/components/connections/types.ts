@@ -9,7 +9,6 @@ import type {
   WSLEntrySession,
   WSLProject,
 } from "../../types";
-import type { DiffResult } from "../diff/types";
 
 export interface WtConfirmState {
   path: string;
@@ -32,16 +31,9 @@ export interface ProjectBodyProps {
   gitInfo: GitInfo | null;
   projectId: string;
   expandedSections: Record<string, boolean>;
-  renamingBranch: string | null;
-  renameBranchValue: string;
   renamingWorktree: string | null;
   renameWorktreeValue: string;
   onToggleSection: (section: string, e: React.MouseEvent) => void;
-  onCheckoutBranch: (branch: string) => Promise<void>;
-  onStartRenameBranch: (branch: string, currentBranch: string) => void;
-  onRenameBranchChange: (val: string) => void;
-  onCommitRenameBranch: () => void;
-  onCancelRename: () => void;
   onSelectFile: (filePath: string) => void;
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onStartRenameWorktree: (path: string) => void;
@@ -49,17 +41,12 @@ export interface ProjectBodyProps {
   onCommitRenameWorktree: () => void;
   onRemoveWorktree: (path: string, branch: string) => void;
   onCancelRenameWorktree: () => void;
-  renameInputRef: React.RefObject<HTMLInputElement>;
   renameWtInputRef: React.RefObject<HTMLInputElement>;
-  currentBranch: string;
   onSelectProject: () => void;
   isActive: boolean;
-  onRefreshGit?: () => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
-  onOpenDialog?: (type: string, branches: string[]) => void;
   onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
   onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
-  onGetWorktreeFileDiff?: (worktreePath: string, filePath: string) => Promise<DiffResult>;
 }
 
 export interface ProjectItemCardProps {
@@ -69,26 +56,20 @@ export interface ProjectItemCardProps {
   onSelectProject: () => void;
   onToggleCollapsed?: () => void;
   onSelectFile: (filePath: string) => void;
-  onCheckoutBranch: (branch: string) => Promise<void>;
-  onCommitRenameBranch: (oldName: string, newName: string) => void;
   onOpenWorktreeTerminal: (path: string, branch: string) => void;
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
   onRemoveWorktree: (path: string, branch: string) => void;
   onRemoveProject: () => void;
   onOpenIde?: () => void;
-  onOpenDialog?: (type: string, branches: string[]) => void;
-  currentBranch: string;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: () => void;
   agents?: AgentConfig[];
   config?: AppConfig;
   onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
-  onRefreshGit?: () => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
   onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
-  onGetWorktreeFileDiff?: (worktreePath: string, filePath: string) => Promise<DiffResult>;
 }
 
 export type ConnectionSource =
@@ -109,14 +90,8 @@ export interface ConnectionProjectCardProps {
   onSelectProject: (identifier: string, project: WSLProject | RemoteProject) => void;
   onRemoveProject: (entryId: string, projectId: string) => void;
   onSelectFile?: (identifier: string, projectPath: string, filePath: string) => void;
-  onRefreshGit?: (identifier: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (identifier: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (identifier: string, worktreePath: string, branch: string) => void;
-  onOpenDialog?: (dialog: {
-    type: string;
-    source: { type: string; distro?: string; entryId?: string; projectPath: string };
-    branches: string[];
-  }) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: () => void;
@@ -137,14 +112,8 @@ export interface WSLItemProps {
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
   onSelectFile?: (distro: string, projectPath: string, filePath: string) => void;
-  onRefreshGit?: (distro: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (distro: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (distro: string, worktreePath: string, branch: string) => void;
-  onOpenDialog?: (dialog: {
-    type: string;
-    source: { type: string; distro: string; projectPath: string };
-    branches: string[];
-  }) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (distro: string, projectId: string) => void;
@@ -165,15 +134,9 @@ export interface RemoteItemProps {
   onRemoveEntry: (entryId: string) => void;
   onAddProject: (entryId: string) => void;
   onSelectFile?: (entryId: string, projectPath: string, filePath: string) => void;
-  onRefreshGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
-  onOpenDialog?: (dialog: {
-    type: string;
-    source: { type: string; entryId: string; projectPath: string };
-    branches: string[];
-  }) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (entryId: string, projectId: string) => void;
