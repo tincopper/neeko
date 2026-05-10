@@ -250,6 +250,7 @@ const Section: React.FC<SectionProps> = ({
                           ? "modified"
                           : "default"
                   }
+                  className="rounded-sm border-0 px-1 py-0 text-[10px]"
                 >
                   {file.status === "Untracked"
                     ? "U"

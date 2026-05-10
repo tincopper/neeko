@@ -1070,8 +1070,8 @@ pub fn get_ahead_behind(repo_path: &Path) -> Result<AheadBehind> {
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let parts: Vec<&str> = stdout.split('\t').collect();
     Ok(AheadBehind {
-        ahead: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
-        behind: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
+        ahead: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
+        behind: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
     })
 }
 

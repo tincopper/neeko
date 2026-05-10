@@ -151,7 +151,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
           <span className="flex items-center gap-1 text-[11px] text-text-muted ml-0.5">
             {aheadBehind.behind > 0 && (
-              <span className="flex items-center gap-0.5 text-accent-yellow" title={`${aheadBehind.behind} commits behind`}>
+              <span className="flex items-center gap-0.5 text-accent-blue" title={`${aheadBehind.behind} commits behind`}>
                 <ArrowDown size={10} />
                 {aheadBehind.behind}
               </span>
