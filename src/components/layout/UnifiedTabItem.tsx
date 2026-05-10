@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Terminal, FileText, ArrowLeftRight } from "lucide-react";
+import { Terminal, FileText, ArrowLeftRight, Settings } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { getAgentIconSrc } from "../../utils/agents";
 import type { Tab } from "../../types/tab";
@@ -22,6 +22,8 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
       return FileText;
     case "diff":
       return ArrowLeftRight;
+    case "settings":
+      return Settings;
   }
 }
 

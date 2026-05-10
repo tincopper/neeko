@@ -7,6 +7,7 @@ import { FileViewer } from "./files";
 import { ProjectGuidePage } from "./project";
 import UnifiedTabBar from "./layout/UnifiedTabBar";
 import AgentIcon from "./layout/AgentIcon";
+import SettingsPanel from "./SettingsPanel";
 import {
    useAppContext,
    useProjectActionsContext,
@@ -16,6 +17,8 @@ import {
 } from "../contexts";
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
+
+const EMPTY_TABS: Tab[] = [];
 
 function MainContent() {
    const { config, showToast } = useAppContext();
@@ -52,6 +55,19 @@ function MainContent() {
 
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
 
+   // Settings tab detection — use EMPTY_TABS const to avoid new [] references
+   const settingsTabs = useAppStore((state) => {
+      const appTabs = state.tabs["__app__"];
+      return appTabs ? appTabs.tabs : EMPTY_TABS;
+   });
+   const settingsActiveTabId = useAppStore((state) => state.tabs["__app__"]?.activeTabId ?? null);
+   const settingsTabActive = useAppStore((state) => {
+      const appTabs = state.tabs["__app__"];
+      if (!appTabs) return false;
+      const settingsTab = appTabs.tabs.find((t) => t.data.kind === "settings");
+      return settingsTab ? state.activeTabId === settingsTab.id : false;
+   });
+
    // Tab operations
    const handleActivateTab = useCallback((tabId: string) => {
       if (!currentProjectId) return;
@@ -62,6 +78,10 @@ function MainContent() {
       if (!currentProjectId) return;
       useAppStore.getState().closeTab(currentProjectId, tabId);
    }, [currentProjectId]);
+
+   const handleActivateSettingsTab = useCallback((tabId: string) => {
+      useAppStore.getState().activateTab("__app__", tabId);
+   }, []);
 
    const handleAddTerminalTab = useCallback(() => {
       if (!currentProjectId) return;
@@ -84,6 +104,19 @@ function MainContent() {
       useAppStore.getState().addTab(currentProjectId, tab);
       useAppStore.getState().activateTab(currentProjectId, tabId);
    }, [currentProjectId]);
+
+   const handleCloseSettingsTab = useCallback(() => {
+      useAppStore.getState().closeTab("__app__", "settings_tab");
+   }, []);
+
+   const handleSettingsConfigChange = useCallback(
+      (next: typeof config) => {
+         invoke("save_config", { config: next }).catch((err) =>
+            console.error("[MainContent] Failed to save config:", err),
+         );
+      },
+      [],
+   );
 
    // Manage Presets dropdown
    const [managerOpen, setManagerOpen] = useState(false);
@@ -167,18 +200,18 @@ function MainContent() {
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
          {/* 统一 TabBar + Agent Bar */}
-         {hasActiveProject && tabs.length > 0 && (
-            <div className="shrink-0 bg-bg-secondary">
-               <div className="h-8 flex items-center px-2 gap-1">
-                  <div className="flex-1 min-w-0">
-                     <UnifiedTabBar
-                        tabs={tabs}
-                        activeTabId={storeActiveTabId}
-                        onActivateTab={handleActivateTab}
-                        onCloseTab={handleCloseTab}
-                        onAddTerminalTab={handleAddTerminalTab}
-                        agents={agents}
-                     />
+         {(settingsTabActive || (hasActiveProject && tabs.length > 0)) && (
+             <div className="shrink-0 bg-bg-secondary">
+                <div className="h-8 flex items-center px-2 gap-1">
+                   <div className="flex-1 min-w-0">
+                      <UnifiedTabBar
+                         tabs={settingsTabActive ? settingsTabs : tabs}
+                         activeTabId={settingsTabActive ? settingsActiveTabId : storeActiveTabId}
+                         onActivateTab={settingsTabActive ? handleActivateSettingsTab : handleActivateTab}
+                         onCloseTab={settingsTabActive ? handleCloseSettingsTab : handleCloseTab}
+                         onAddTerminalTab={settingsTabActive ? undefined : handleAddTerminalTab}
+                         agents={agents}
+                      />
                   </div>
                </div>
 
@@ -252,7 +285,13 @@ function MainContent() {
          )}
 
          {/* 内容区域 */}
-         {activeRemoteProject && !activeProject && !activeWslProject ? (
+         {settingsTabActive ? (
+            <SettingsPanel
+               fullPage
+               onConfigChange={handleSettingsConfigChange}
+               onClose={handleCloseSettingsTab}
+            />
+         ) : activeRemoteProject && !activeProject && !activeWslProject ? (
             <RemoteProjectView />
          ) : (
              <div className="flex-1 flex flex-col overflow-hidden">

@@ -29,7 +29,6 @@ type PartialLoadedConfig = Partial<AppConfig> & {
 };
 export function useAppConfig() {
    const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
-   const [settingsOpen, setSettingsOpen] = useState(false);
 
    // 同步 UI 字体大小到 CSS 变量 --font-size（由 appearanceFontSize 驱动）
    useEffect(() => {
@@ -169,5 +168,5 @@ export function useAppConfig() {
       })();
    }, []);
 
-   return { config, settingsOpen, setSettingsOpen, saveConfig };
+   return { config, saveConfig };
 }
