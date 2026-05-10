@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and quality requirements"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Lint, type-check, test quality gates"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript strictness, no any, proper generics"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "File size limits, props minimization, composition rules"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Store pattern validation, no stale closures"}
-{"file": ".trellis/tasks/05-09-dock-layout-design/prd.md", "reason": "Verify all acceptance criteria (13 ACs) are met"}
-{"file": "AGENTS.md", "reason": "Regression command set: pnpm lint, pnpm type-check, pnpm test:run"}
