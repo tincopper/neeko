@@ -1,4 +1,5 @@
 import React from "react";
+import { Settings } from "lucide-react";
 import neekoIcon from "../../assets/neeko-icon.png";
 import AgentIcon from "../layout/AgentIcon";
 import type { AgentConfig } from "../../types";
@@ -9,6 +10,7 @@ interface ProjectGuidePageProps {
   onOpenTerminal: () => void;
   onOpenAgent: () => void;
   onOpenIde: () => void;
+  onOpenSettings: () => void;
 }
 
 const ROW_CLASS =
@@ -23,6 +25,7 @@ function ProjectGuidePage({
   onOpenTerminal,
   onOpenAgent,
   onOpenIde,
+  onOpenSettings,
 }: ProjectGuidePageProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center">
@@ -94,6 +97,17 @@ function ProjectGuidePage({
             <span>Open in {selectedIde}</span>
           </button>
         )}
+
+        <button
+          className={ROW_CLASS}
+          style={{ fontSize: "calc(var(--font-size) + 2px)" }}
+          onClick={onOpenSettings}
+        >
+          <span className={ICON_CLASS}>
+            <Settings size={18} strokeWidth={2} />
+          </span>
+          <span>Settings</span>
+        </button>
       </div>
     </div>
   );
