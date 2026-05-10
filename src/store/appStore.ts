@@ -112,6 +112,9 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
     case "settings": {
       return { kind: "settings" };
     }
+    case "gitLog": {
+      return { kind: "gitLog" };
+    }
   }
 }
 

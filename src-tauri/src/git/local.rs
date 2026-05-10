@@ -1,4 +1,7 @@
-use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::models::{
+    CommitDetail, CommitEntry, CommitFileChange, DiffHunk, DiffLine, DiffResult, FileChange,
+    FileStatus, GitInfo, Worktree,
+};
 use crate::utils::command::local::exec;
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
@@ -1012,10 +1015,27 @@ pub fn push(repo_path: &Path, set_upstream: bool) -> Result<()> {
 }
 
 /// 获取 Commit 历史（参考 Muxy git log 格式）
-pub fn get_commit_log(repo_path: &Path, count: usize) -> Result<Vec<CommitEntry>> {
-    let format = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D";
+pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec<CommitEntry>> {
+    let format = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D%x00%P";
+    let count_str = format!("-{}", count);
+    let skip_str = if skip > 0 {
+        Some(format!("--skip={}", skip))
+    } else {
+        None
+    };
+    let mut args = vec![
+        "log",
+        format,
+        count_str.as_str(),
+        "--decorate=full",
+        "--all",
+        "--topo-order",
+    ];
+    if let Some(ref s) = skip_str {
+        args.push(s.as_str());
+    }
     let output = exec("git")
-        .args(["log", format, &format!("-{}", count), "--decorate=full"])
+        .args(&args)
         .current_dir(repo_path)
         .output()
         .context("Failed to run git log")?;
@@ -1108,6 +1128,14 @@ fn parse_commit_log(output: &str) -> Vec<CommitEntry> {
         .filter_map(|line| {
             let parts: Vec<&str> = line.split('\0').collect();
             if parts.len() >= 6 {
+                let parents = parts
+                    .get(6)
+                    .map(|s| {
+                        s.split_whitespace()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
                 Some(CommitEntry {
                     hash: parts[0].to_string(),
                     short_hash: parts[1].to_string(),
@@ -1115,12 +1143,170 @@ fn parse_commit_log(output: &str) -> Vec<CommitEntry> {
                     timestamp: parts[3].to_string(),
                     message: parts[4].to_string(),
                     refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
+                    parents,
                 })
             } else {
                 None
             }
         })
         .collect()
+}
+
+/// 获取单个 Commit 详细信息
+pub fn get_commit_detail(repo_path: &Path, commit_hash: &str) -> Result<CommitDetail> {
+    let format = "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%B%x00%P%x00%D";
+    let output = exec("git")
+        .args(["show", format, "--no-patch", commit_hash])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git show")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git show failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Split by NUL — the message body (%B) may contain newlines,
+    // so we must not use lines() which would split on those.
+    let parts: Vec<&str> = stdout.split('\0').collect();
+    if parts.len() < 7 {
+        anyhow::bail!("Unexpected git show output format");
+    }
+    let parents = parts
+        .get(6)
+        .map(|s| {
+            s.split_whitespace()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let refs = parts.get(7).map(|s| s.to_string()).unwrap_or_default();
+    Ok(CommitDetail {
+        hash: parts[0].to_string(),
+        short_hash: parts[1].to_string(),
+        author: parts[2].to_string(),
+        email: parts[3].to_string(),
+        timestamp: parts[4].to_string(),
+        message: parts[5].trim().to_string(),
+        parents,
+        refs,
+    })
+}
+
+/// 获取某个 Commit 改动的文件列表
+pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<CommitFileChange>> {
+    let output = exec("git")
+        .args([
+            "diff-tree",
+            "--no-commit-id",
+            "-r",
+            "--numstat",
+            commit_hash,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff-tree --numstat")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git diff-tree --numstat failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let status_output = exec("git")
+        .args([
+            "diff-tree",
+            "--no-commit-id",
+            "-r",
+            "--name-status",
+            commit_hash,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff-tree --name-status")?;
+    let status_stdout = String::from_utf8_lossy(&status_output.stdout);
+
+    let status_map: std::collections::HashMap<String, String> = status_stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                Some((parts[1].to_string(), parts[0].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let files: Vec<CommitFileChange> = stdout
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let path = parts[2].to_string();
+                let additions = parts[0].parse::<usize>().unwrap_or(0);
+                let deletions = parts[1].parse::<usize>().unwrap_or(0);
+                let status = status_map
+                    .get(&path)
+                    .cloned()
+                    .unwrap_or_else(|| "M".to_string());
+                Some(CommitFileChange {
+                    path,
+                    status,
+                    additions,
+                    deletions,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(files)
+}
+
+/// 获取某个 Commit 中某个文件的 diff
+pub fn get_commit_file_diff(
+    repo_path: &Path,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let output = exec("git")
+        .args([
+            "diff",
+            &format!("{}^", commit_hash),
+            commit_hash,
+            "--",
+            file_path,
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff for commit file")?;
+    if !output.status.success() {
+        // For initial commit (no parent), try git show
+        let show_output = exec("git")
+            .args(["show", &format!("{}:{}", commit_hash, file_path)])
+            .current_dir(repo_path)
+            .output();
+        if let Ok(so) = show_output {
+            if so.status.success() {
+                // Return empty diff for initial commit file content
+                return Ok(DiffResult {
+                    hunks: vec![],
+                    truncated: false,
+                });
+            }
+        }
+        anyhow::bail!(
+            "git diff for commit file failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut result = parse_unified_diff(&stdout);
+    collapse_diff_context(&mut result.hunks, 12);
+    Ok(result)
 }
 
 /// Cherry-pick 指定 commit（参考 Muxy GitRepositoryService.cherryPick）
@@ -1280,7 +1466,7 @@ pub fn remote_web_url(repo_path: &Path) -> Result<String> {
     Ok(url.strip_suffix(".git").unwrap_or(&url).to_string())
 }
 
-use crate::models::{AheadBehind, CommitEntry, CommitResult};
+use crate::models::{AheadBehind, CommitResult};
 
 #[cfg(test)]
 mod tests {

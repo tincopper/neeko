@@ -42,6 +42,7 @@ const DEFAULT_ZONES: Record<string, Omit<DockZoneState, "panels" | "activePanelI
 function buildDefaultPanels(): Record<string, string[]> {
   const zones: Record<string, { panelId: string; order: number }[]> = {};
   for (const [panelId, def] of Object.entries(dockPanelRegistry)) {
+    if (def.openAs === "tab") continue; // tab-mode panels are not dock panels
     const zoneId = def.defaultZone;
     if (!zones[zoneId]) zones[zoneId] = [];
     zones[zoneId].push({ panelId, order: def.defaultOrder });

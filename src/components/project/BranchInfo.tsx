@@ -74,7 +74,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+    <div className="flex items-center gap-2 px-2.5 py-1.5 bg-bg-tertiary/50 rounded-md">
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {gitInfo ? (
           <div className="relative min-w-0" ref={branchDropdownRef}>
@@ -166,7 +166,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         )}
       </div>
 
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0 bg-bg-tertiary rounded-md p-0.5">
         <button
           className="p-1 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100"
           title="Fetch"
@@ -191,9 +191,9 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         >
           <ArrowUp size={13} />
         </button>
+      </div>
 
-        <span className="w-px h-4 bg-border mx-0.5" />
-
+      <div className="flex items-center gap-0.5 shrink-0 bg-bg-tertiary rounded-md p-0.5">
         <button
           className="p-1 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100"
           title="New Branch"
@@ -208,9 +208,9 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         >
           <FolderGit2 size={13} />
         </button>
+      </div>
 
-        <span className="w-px h-4 bg-border mx-0.5" />
-
+      <div className="flex items-center gap-0.5 shrink-0">
         <button
           className="p-1 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100"
           title="Refresh"

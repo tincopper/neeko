@@ -53,6 +53,12 @@ importers:
       '@codemirror/view':
         specifier: ^6.36.6
         version: 6.41.0
+      '@gitgraph/core':
+        specifier: ^1.5.0
+        version: 1.5.0
+      '@gitgraph/react':
+        specifier: ^1.6.0
+        version: 1.6.0(react@18.3.1)
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
@@ -596,6 +602,14 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@gitgraph/core@1.5.0':
+    resolution: {integrity: sha512-8CeeHbkKoFHM1y9vfjYiHyEpzl1mEhVrg5c/eFgDBsntOYswoDKU2yOf6DjtVINcE60wmcuynBSJqjMkQo07Ww==}
+
+  '@gitgraph/react@1.6.0':
+    resolution: {integrity: sha512-cLFNZDoEiNbsnMfdT82zeZti5saYghQamfCbTpVvCRr+BrrQ/k94glkZqYPXKKNTEqbQV6L9JeOfAk1hNiFYXA==}
+    peerDependencies:
+      react: '>= 16.8.0'
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -3374,6 +3388,13 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@gitgraph/core@1.5.0': {}
+
+  '@gitgraph/react@1.6.0(react@18.3.1)':
+    dependencies:
+      '@gitgraph/core': 1.5.0
+      react: 18.3.1
 
   '@iconify/types@2.0.0': {}
 

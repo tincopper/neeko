@@ -26,6 +26,25 @@ export interface CommitEntry {
   timestamp: string;
   message: string;
   refs: string;
+  parents: string[];
+}
+
+export interface CommitDetail {
+  hash: string;
+  short_hash: string;
+  author: string;
+  email: string;
+  timestamp: string;
+  message: string;
+  parents: string[];
+  refs: string;
+}
+
+export interface CommitFileChange {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface CommitResult {

@@ -6,6 +6,7 @@ import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
 import { FileViewer } from "./files";
 import { ProjectGuidePage } from "./project";
+import { GitLogPanel } from "./gitlog";
 import UnifiedTabBar from "./layout/UnifiedTabBar";
 import AgentIcon from "./layout/AgentIcon";
 import SettingsPanel from "./SettingsPanel";
@@ -18,6 +19,7 @@ import {
 } from "../contexts";
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
+import { cn } from "../utils/cn";
 
 const SETTINGS_TAB_ID = "settings_tab";
 
@@ -386,12 +388,22 @@ function MainContent() {
                   />
                )}
 
-               {/* File Editor */}
-               {activeTab?.data.kind === "file" && (
-                  <FileViewer />
-               )}
+                {/* File Editor */}
+                {activeTab?.data.kind === "file" && (
+                   <FileViewer />
+                )}
 
-               {/* Guide Page (local project with no tabs) */}
+                {/* Git Log — keep mounted to preserve state across tab switches */}
+                <div
+                  className={cn(
+                    "flex-1 min-h-0",
+                    activeTab?.data.kind === "gitLog" ? "flex flex-col" : "hidden",
+                  )}
+                >
+                  <GitLogPanel />
+                </div>
+
+                {/* Guide Page (local project with no tabs) */}
                {!activeTab && hasActiveProject && activeProject && (
                   <ProjectGuidePage
                      selectedAgent={selectedAgent}

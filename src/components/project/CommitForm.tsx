@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "../ui/button";
 import { GitCommitHorizontal, ArrowUp, Sparkles } from "lucide-react";
 
@@ -7,6 +7,7 @@ interface CommitFormProps {
   onCommitAndPush: (message: string) => void;
   onAiGenerate?: () => void;
   loading: boolean;
+  textareaHeight?: number;
 }
 
 const CommitForm: React.FC<CommitFormProps> = ({
@@ -14,21 +15,10 @@ const CommitForm: React.FC<CommitFormProps> = ({
   onCommitAndPush,
   onAiGenerate,
   loading,
+  textareaHeight,
 }) => {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
-    }
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [message]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -55,20 +45,20 @@ const CommitForm: React.FC<CommitFormProps> = ({
   };
 
   return (
-    <div className="px-3 py-2 border-b border-border shrink-0">
+    <div className="px-2.5 py-2 shrink-0">
       <div className="relative">
         <textarea
           ref={textareaRef}
-          className="w-full bg-bg-tertiary border border-border rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted resize-none outline-none focus:border-accent-blue/50 transition-colors duration-100 font-mono min-h-[50px]"
+          className="w-full bg-bg-tertiary/60 border-0 rounded-md px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-muted resize-none outline-none focus:ring-1 focus:ring-accent-blue/30 transition-all duration-100 font-mono"
+          style={textareaHeight ? { height: textareaHeight, minHeight: textareaHeight } : { minHeight: 50 }}
           placeholder="Commit message (⌘+Enter to commit)"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          rows={3}
         />
       </div>
 
-      <div className="flex items-center gap-1.5 mt-2">
+      <div className="flex items-center gap-1.5 mt-1.5">
         <Button
           variant="primary"
           size="sm"

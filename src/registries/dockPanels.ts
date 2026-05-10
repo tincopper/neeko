@@ -4,6 +4,7 @@ import {
   FileText,
   Wrench,
   GitCommitHorizontal,
+  GitBranch,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -15,8 +16,9 @@ export interface DockPanelDef {
   icon: string; // key into dockPanelIcons
   defaultZone: "left" | "right";
   defaultOrder: number;
-  component: React.LazyExoticComponent<React.ComponentType<Record<string, unknown>>>;
+  component?: React.LazyExoticComponent<React.ComponentType<Record<string, unknown>>>;
   minPanelSize?: number; // px, minimum panel size when expanded
+  openAs?: "tab" | "panel"; // default "panel"
 }
 
 // ── Icon map (static imports for tree-shaking) ──
@@ -26,6 +28,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   FileText,
   Wrench,
   GitCommitHorizontal,
+  GitBranch,
 };
 
 // ── Lazy-loaded panel components ──
@@ -85,7 +88,7 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
     title: "Files",
     icon: "FileText",
     defaultZone: "right",
-    defaultOrder: 1,
+    defaultOrder: 0,
     component: LazyFilesPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
@@ -107,10 +110,18 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
     title: "Commit",
     icon: "GitCommitHorizontal",
     defaultZone: "right",
-    defaultOrder: 0,
+    defaultOrder: 1,
     component: LazyGitCommitPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
+  },
+  git: {
+    id: "git",
+    title: "Git Log",
+    icon: "GitBranch",
+    defaultZone: "right",
+    defaultOrder: 2,
+    openAs: "tab",
   },
 };

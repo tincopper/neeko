@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { Project, CommitEntry, AheadBehind, CommitResult } from "../../types";
+import type { Project, AheadBehind, CommitResult } from "../../types";
 import BranchInfo from "./BranchInfo";
 import ChangesList from "./ChangesList";
 import CommitForm from "./CommitForm";
-import CommitHistory from "./CommitHistory";
 import PullRequestsPanel from "./PullRequestsPanel";
 import GitDialog, { type DialogState } from "./GitDialog";
 
@@ -25,26 +24,44 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
-  const [commits, setCommits] = useState<CommitEntry[]>([]);
-  const [historyExpanded, setHistoryExpanded] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [_stagedFiles, setStagedFiles] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<DialogState | null>(null);
-  const loadedRef = useRef(false);
+  const [textareaHeight, setTextareaHeight] = useState(60);
+  const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   const changedFiles = project.git_info?.changed_files ?? [];
 
+  const handleDividerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragStartRef.current = { startY: e.clientY, startHeight: textareaHeight };
+
+      const onMouseMove = (ev: MouseEvent) => {
+        if (!dragStartRef.current) return;
+        const delta = dragStartRef.current.startY - ev.clientY;
+        const newHeight = Math.max(40, Math.min(300, dragStartRef.current.startHeight + delta));
+        setTextareaHeight(newHeight);
+      };
+
+      const onMouseUp = () => {
+        dragStartRef.current = null;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.body.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [textareaHeight],
+  );
+
   useEffect(() => {
     if (!project.git_info) return;
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-
     refreshAheadBehind();
-    refreshCommits();
-  }, [project.id]);
-
-  useEffect(() => {
-    loadedRef.current = false;
   }, [project.id]);
 
   const refreshAheadBehind = async () => {
@@ -55,18 +72,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       setAheadBehind(ab);
     } catch {
       // repo may not have remote configured
-    }
-  };
-
-  const refreshCommits = async () => {
-    try {
-      const list = await invoke<CommitEntry[]>("get_commit_log_command", {
-        projectId: project.id,
-        count: 10,
-      });
-      setCommits(list);
-    } catch {
-      // ignore
     }
   };
 
@@ -84,54 +89,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     },
     []
   );
-
-  const selectAll = useCallback(() => {
-    setSelectedFiles(new Set(changedFiles.map((f) => f.path)));
-  }, [changedFiles]);
-
-  const deselectAll = useCallback(() => {
-    setSelectedFiles(new Set());
-  }, []);
-
-  const handleStage = useCallback(async () => {
-    const files = Array.from(selectedFiles);
-    if (files.length === 0) return;
-    setLoading(true);
-    try {
-      await invoke("stage_files_command", { projectId: project.id, filePaths: files });
-      setStagedFiles((prev) => {
-        const next = new Set(prev);
-        files.forEach((f) => next.add(f));
-        return next;
-      });
-      onRefreshGit(project.id);
-      onShowToast?.("Staged successfully", "info");
-    } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFiles, project.id, onRefreshGit, onShowToast]);
-
-  const handleUnstage = useCallback(async () => {
-    const files = Array.from(selectedFiles);
-    if (files.length === 0) return;
-    setLoading(true);
-    try {
-      await invoke("unstage_files_command", { projectId: project.id, filePaths: files });
-      setStagedFiles((prev) => {
-        const next = new Set(prev);
-        files.forEach((f) => next.delete(f));
-        return next;
-      });
-      onRefreshGit(project.id);
-      onShowToast?.("Unstaged successfully", "info");
-    } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedFiles, project.id, onRefreshGit, onShowToast]);
 
   const handleDiscardFile = useCallback(
     async (path: string) => {
@@ -169,8 +126,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           message,
         });
         onRefreshGit(project.id);
-        refreshCommits();
-        setStagedFiles(new Set());
         setSelectedFiles(new Set());
         onShowToast?.(
           `Committed ${result.hash ? result.hash.slice(0, 7) : "successfully"}`,
@@ -204,9 +159,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           setUpstream: false,
         });
         onRefreshGit(project.id);
-        refreshCommits();
         refreshAheadBehind();
-        setStagedFiles(new Set());
         setSelectedFiles(new Set());
         onShowToast?.("Committed & pushed successfully", "info");
       } catch (e: unknown) {
@@ -236,7 +189,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     try {
       await invoke("pull_command", { projectId: project.id });
       onRefreshGit(project.id);
-      refreshCommits();
       refreshAheadBehind();
       onShowToast?.("Pulled successfully", "info");
     } catch (e: unknown) {
@@ -300,7 +252,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full gap-0.5 p-1.5">
       {dialog && (
         <GitDialog
           dialog={dialog}
@@ -318,42 +270,36 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onRefresh={() => {
           onRefreshGit(project.id);
           refreshAheadBehind();
-          refreshCommits();
         }}
         onNewBranch={handleNewBranch}
         onNewWorktree={handleNewWorktree}
         onCheckoutBranch={handleCheckoutBranch}
       />
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-md">
         <ChangesList
           files={changedFiles}
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}
-          onSelectAll={selectAll}
-          onDeselectAll={deselectAll}
-          onStageSelected={handleStage}
-          onUnstageSelected={handleUnstage}
           onDiscardFile={handleDiscardFile}
           onFileSelect={(path) => onSelectFile?.(project.id, path)}
           loading={loading}
         />
       </div>
 
+      {/* Draggable divider */}
+      <div
+        className="group h-1.5 shrink-0 cursor-row-resize flex items-center justify-center"
+        onMouseDown={handleDividerMouseDown}
+      >
+        <div className="w-8 h-[3px] rounded-full bg-border group-hover:bg-accent-blue/50 transition-colors duration-150" />
+      </div>
+
       <CommitForm
         onCommit={handleCommit}
         onCommitAndPush={handleCommitAndPush}
         loading={loading}
-      />
-
-      <CommitHistory
-        projectId={project.id}
-        commits={commits}
-        expanded={historyExpanded}
-        onToggle={() => setHistoryExpanded((v) => !v)}
-        loading={loading}
-        onShowToast={onShowToast}
-        onRefreshGit={() => onRefreshGit(project.id)}
+        textareaHeight={textareaHeight}
       />
 
       <PullRequestsPanel
