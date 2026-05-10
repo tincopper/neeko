@@ -18,7 +18,7 @@ import {
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
 
-const EMPTY_TABS: Tab[] = [];
+const SETTINGS_TAB_ID = "settings_tab";
 
 function MainContent() {
    const { config, showToast } = useAppContext();
@@ -55,19 +55,6 @@ function MainContent() {
 
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
 
-   // Settings tab detection — use EMPTY_TABS const to avoid new [] references
-   const settingsTabs = useAppStore((state) => {
-      const appTabs = state.tabs["__app__"];
-      return appTabs ? appTabs.tabs : EMPTY_TABS;
-   });
-   const settingsActiveTabId = useAppStore((state) => state.tabs["__app__"]?.activeTabId ?? null);
-   const settingsTabActive = useAppStore((state) => {
-      const appTabs = state.tabs["__app__"];
-      if (!appTabs) return false;
-      const settingsTab = appTabs.tabs.find((t) => t.data.kind === "settings");
-      return settingsTab ? state.activeTabId === settingsTab.id : false;
-   });
-
    // Tab operations
    const handleActivateTab = useCallback((tabId: string) => {
       if (!currentProjectId) return;
@@ -78,10 +65,6 @@ function MainContent() {
       if (!currentProjectId) return;
       useAppStore.getState().closeTab(currentProjectId, tabId);
    }, [currentProjectId]);
-
-   const handleActivateSettingsTab = useCallback((tabId: string) => {
-      useAppStore.getState().activateTab("__app__", tabId);
-   }, []);
 
    const handleAddTerminalTab = useCallback(() => {
       if (!currentProjectId) return;
@@ -106,8 +89,8 @@ function MainContent() {
    }, [currentProjectId]);
 
    const handleCloseSettingsTab = useCallback(() => {
-      useAppStore.getState().closeTab("__app__", "settings_tab");
-   }, []);
+      handleCloseTab(SETTINGS_TAB_ID);
+   }, [handleCloseTab]);
 
    const handleSettingsConfigChange = useCallback(
       (next: typeof config) => {
@@ -200,16 +183,16 @@ function MainContent() {
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
          {/* 统一 TabBar + Agent Bar */}
-         {(settingsTabActive || (hasActiveProject && tabs.length > 0)) && (
+         {hasActiveProject && tabs.length > 0 && (
              <div className="shrink-0 bg-bg-secondary">
                 <div className="h-8 flex items-center px-2 gap-1">
                    <div className="flex-1 min-w-0">
                       <UnifiedTabBar
-                         tabs={settingsTabActive ? settingsTabs : tabs}
-                         activeTabId={settingsTabActive ? settingsActiveTabId : storeActiveTabId}
-                         onActivateTab={settingsTabActive ? handleActivateSettingsTab : handleActivateTab}
-                         onCloseTab={settingsTabActive ? handleCloseSettingsTab : handleCloseTab}
-                         onAddTerminalTab={settingsTabActive ? undefined : handleAddTerminalTab}
+                         tabs={tabs}
+                         activeTabId={storeActiveTabId}
+                         onActivateTab={handleActivateTab}
+                         onCloseTab={handleCloseTab}
+                         onAddTerminalTab={handleAddTerminalTab}
                          agents={agents}
                       />
                   </div>
@@ -285,7 +268,7 @@ function MainContent() {
          )}
 
          {/* 内容区域 */}
-         {settingsTabActive ? (
+         {activeTab?.data.kind === "settings" ? (
             <SettingsPanel
                fullPage
                onConfigChange={handleSettingsConfigChange}

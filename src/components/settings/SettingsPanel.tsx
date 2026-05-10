@@ -158,7 +158,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
 
       if (fullPage) {
          return (
-            <div className="flex flex-col flex-1 min-h-0 tab-content" data-modal="true">
+            <div className="flex flex-col flex-1 min-h-0 tab-content">
 
                <div className="flex flex-1 overflow-hidden">
                   <nav className="w-[168px] shrink-0 p-2.5 px-1.5 flex flex-col gap-0.5 overflow-y-auto">

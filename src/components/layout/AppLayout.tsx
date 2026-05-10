@@ -138,7 +138,9 @@ function AppLayout({
   const activeProjectId = useAppStore((s) => s.activeProjectId);
 
   const isSettingsOpen = useAppStore((s) =>
-    (s.tabs["__app__"]?.tabs ?? []).some((t) => t.data.kind === "settings"),
+    Object.values(s.tabs).some((pt) =>
+      pt.tabs.some((t) => t.data.kind === "settings"),
+    ),
   );
 
   // Center content: skills two-column → normal MainContent (settings handled inside MainContent)
