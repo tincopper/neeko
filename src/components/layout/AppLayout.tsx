@@ -59,7 +59,7 @@ const ToolbarFooter: React.FC<{
         {/* Add Project menu */}
         <div className="relative flex flex-col items-center w-full" ref={addMenuRef}>
           <button
-            className="relative w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+            className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
             title="Add Project"
             onClick={() => setShowAddMenu((v) => !v)}
           >
@@ -98,7 +98,7 @@ const ToolbarFooter: React.FC<{
 
         {/* Settings button */}
         <button
-          className="relative w-12 h-12 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+          className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
           title="Settings"
           onClick={onOpenSettings}
         >
