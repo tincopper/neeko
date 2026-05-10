@@ -1,0 +1,18 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions, commit format, session recording"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide - index of all frontend specs"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component design patterns, file size limits, composition over props"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store patterns, context usage, props minimization"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook design patterns, extraction guidelines"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "Resize, drag-and-drop, keyboard interaction patterns"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "File placement conventions for dock/ components"}
+{"file": ".trellis/tasks/05-09-dock-layout-design/prd.md", "reason": "Complete technical design - component architecture, data model, implementation phases"}
+{"file": "package.json", "reason": "Add react-resizable-panels dependency, install shadcn components"}
+{"file": "src/components/layout/AppLayout.tsx", "reason": "Main layout to replace - contains ActivityBar, PanelArea, RightPanel, local resize states"}
+{"file": "src/components/layout/ActivityBar.tsx", "reason": "Migrate to DockBar with shadcn Tooltip + Badge"}
+{"file": "src/components/layout/PanelArea.tsx", "reason": "Migrate to DockZone left with Tabs"}
+{"file": "src/components/layout/RightPanel.tsx", "reason": "Migrate to DockZone right with Tabs"}
+{"file": "src/contexts/sidebar-context.tsx", "reason": "Resize logic to remove, toggle logic to preserve"}
+{"file": "src/components/ui/sidebar.tsx", "reason": "Variant=panel resize to remove, variant=icon to preserve"}
+{"file": "src/components/ui/resizable-panel.tsx", "reason": "To be removed - replaced by shadcn Resizable"}
+{"file": "src/components/MainContent.tsx", "reason": "Must remain unchanged - verify no regressions after layout migration"}
+{"file": "AGENTS.md", "reason": "Development conventions, project architecture, command registration"}
