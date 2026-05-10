@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
-- **Last Active**: 2026-05-08
+- **Total Sessions**: 26
+- **Last Active**: 2026-05-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~914 | Active |
+| `journal-1.md` | ~951 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-05-10 | Dock Layout Design & Git Log Viewer | `0567e22`, `b5c93eb`, `fbfbbea`, `545e1c3`, `5590d1d` | `feature/dock-layout-design` |
 | 25 | 2026-05-08 | unified tab system + fix PTY leak on project switch | `f168600`, `b801923` | `main` |
 | 24 | 2026-05-08 | 统一Tab系统 + 修复项目切换PTY泄漏 | `f168600`, `b801923` | `main` |
 | 23 | 2026-05-07 | feat: project drag-and-drop sorting with cursor following | `fdc7edf` | `main` |
