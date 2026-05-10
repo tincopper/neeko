@@ -136,7 +136,7 @@ const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
       {/* Panel content */}
       {zone.panels.map((panelId) => {
         const def = dockPanelRegistry[panelId];
-        if (!def) return null;
+        if (!def || !def.component) return null;
 
         const PanelComponent = def.component;
 

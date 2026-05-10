@@ -295,7 +295,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    return (
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
          <div
-            className="terminal-wrapper flex-1 p-0 overflow-hidden min-w-0 min-h-0"
+            className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
             style={{ backgroundColor: "var(--terminal-bg)" }}
             ref={wrapperRef}
          />

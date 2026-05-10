@@ -412,11 +412,12 @@ pub fn push_command(
 pub fn get_commit_log_command(
     project_id: String,
     count: usize,
+    skip: Option<usize>,
     state: State<AppStateWrapper>,
 ) -> Result<Vec<CommitEntry>, AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
-        crate::git::get_commit_log(&project.path, count).map_err(AppError::from)
+        crate::git::get_commit_log(&project.path, count, skip.unwrap_or(0)).map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",
@@ -433,6 +434,59 @@ pub fn get_ahead_behind_command(
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
         crate::git::get_ahead_behind(&project.path).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_detail_command(
+    project_id: String,
+    commit_hash: String,
+    state: State<AppStateWrapper>,
+) -> Result<CommitDetail, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_detail(&project.path, &commit_hash).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_files_command(
+    project_id: String,
+    commit_hash: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<CommitFileChange>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_files(&project.path, &commit_hash).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn get_commit_file_diff_command(
+    project_id: String,
+    commit_hash: String,
+    file_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<DiffResult, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_commit_file_diff(&project.path, &commit_hash, &file_path)
+            .map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",

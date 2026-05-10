@@ -88,6 +88,30 @@ pub struct CommitEntry {
     pub timestamp: String,
     pub message: String,
     pub refs: String,
+    #[serde(default)]
+    pub parents: Vec<String>,
+}
+
+/// Commit 详细信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitDetail {
+    pub hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub email: String,
+    pub timestamp: String,
+    pub message: String,
+    pub parents: Vec<String>,
+    pub refs: String,
+}
+
+/// Commit 改动的文件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitFileChange {
+    pub path: String,
+    pub status: String,
+    pub additions: usize,
+    pub deletions: usize,
 }
 
 /// Commit 结果

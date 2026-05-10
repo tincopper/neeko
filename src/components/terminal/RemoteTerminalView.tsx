@@ -274,7 +274,7 @@ export default React.memo(function RemoteTerminalView({
           Connecting...
         </div>
       )}
-      <div className="terminal-wrapper flex-1 p-0 overflow-hidden min-w-0 min-h-0" style={{ backgroundColor: "var(--terminal-bg)" }} ref={wrapperRef} />
+      <div className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0" style={{ backgroundColor: "var(--terminal-bg)" }} ref={wrapperRef} />
     </div>
   );
 });

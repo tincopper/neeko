@@ -34,7 +34,8 @@ export type DiffSource =
       auth: AuthMethod;
       projectPath: string;
     }
-  | { type: "worktree"; projectId: string; worktreePath: string };
+  | { type: "worktree"; projectId: string; worktreePath: string }
+  | { type: "commit"; projectId: string; commitHash: string };
 
 export interface DiffViewProps {
   projectId?: string;

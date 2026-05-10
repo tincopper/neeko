@@ -159,9 +159,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
 
   return (
     <div className="flex flex-col shrink-0">
-      <div className="flex items-center gap-1 px-3 py-1">
+      <div className="flex items-center gap-1 px-2.5 py-1">
         <div
-          className="flex items-center gap-1 text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer rounded transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary select-none flex-1"
+          className="flex items-center gap-1 text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer rounded-md transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary select-none flex-1"
           onClick={() => setExpanded((v) => !v)}
         >
           <ChevronRightIcon
@@ -188,7 +188,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
 
       {expanded && (
         <>
-          <div className="flex items-center gap-1 px-3 py-0.5">
+          <div className="flex items-center gap-1 px-2.5 py-0.5">
             {(["open", "closed", "merged", "all"] as const).map((s) => (
               <button
                 key={s}
@@ -214,7 +214,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               prList.map((pr) => (
                 <div
                   key={pr.number}
-                  className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary hover:bg-bg-hover transition-colors duration-100 group cursor-pointer"
+                    className="flex items-center gap-1.5 py-1 px-2.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors duration-100 group cursor-pointer"
                   onClick={() => handleOpenUrl(pr.number)}
                 >
                   {pr.is_cross_repository ? (

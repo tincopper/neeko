@@ -63,7 +63,7 @@ const ToolbarFooter: React.FC<{
             title="Add Project"
             onClick={() => setShowAddMenu((v) => !v)}
           >
-            <span className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-bg-hover">
+            <span className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-bg-hover">
               <Plus size={20} strokeWidth={1.8} />
             </span>
           </button>
@@ -104,7 +104,7 @@ const ToolbarFooter: React.FC<{
         >
           <span
             className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-md",
+              "flex items-center justify-center w-7 h-7 rounded-md",
               "hover:bg-bg-hover",
               isSettingsOpen && "bg-bg-hover text-text-primary",
             )}

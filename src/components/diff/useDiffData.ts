@@ -41,6 +41,12 @@ export function useDiffData({ projectId, diffSource, filePath }: UseDiffDataPara
           worktreePath: diffSource.worktreePath,
           filePath,
         });
+      } else if (diffSource?.type === "commit") {
+        result = await invoke<DiffResult>("get_commit_file_diff_command", {
+          projectId: diffSource.projectId,
+          commitHash: diffSource.commitHash,
+          filePath,
+        });
       } else {
         result = await invoke<DiffResult>("get_file_diff_command", {
           projectId: projectId ?? diffSource?.projectId,

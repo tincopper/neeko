@@ -6,11 +6,18 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useDockStore } from "@/store/dockStore";
+import { useAppStore } from "@/store/appStore";
 import {
   dockPanelRegistry,
   dockPanelIcons,
 } from "@/registries/dockPanels";
 import { cn } from "@/lib/utils";
+import type { TabKind } from "@/types/tab";
+
+/** Map panel IDs to TabKind values for panels that open as tabs */
+const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
+  git: "gitLog",
+};
 
 interface DockBarButtonProps {
   panelId: string;
@@ -19,21 +26,61 @@ interface DockBarButtonProps {
 /** Individual icon button on the DockBar (tool window bar).
  *  Subscribes directly to dockStore — no parent props needed for state. */
 const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
-  // Direct store selectors — fine-grained re-renders
-  const isActive = useDockStore((s) => {
+  const def = dockPanelRegistry[panelId];
+  const isTab = def?.openAs === "tab";
+
+  // For tab-mode buttons, track if the tab is open
+  const isTabActive = useAppStore((s) => {
+    if (!isTab) return false;
+    const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
+    for (const pt of Object.values(s.tabs)) {
+      if (pt.tabs.some((t) => t.data.kind === tabKind)) return true;
+    }
+    return false;
+  });
+
+  // For dock-mode buttons, track if the dock panel is active
+  const isDockActive = useDockStore((s) => {
+    if (isTab) return false;
     for (const zone of Object.values(s.zones)) {
       if (zone.panels.includes(panelId) && zone.expanded && zone.activePanelId === panelId) return true;
     }
     return false;
   });
 
+  const isActive = isTab ? isTabActive : isDockActive;
+
   const togglePanel = useDockStore((s) => s.togglePanel);
+  const addTab = useAppStore((s) => s.addTab);
+  const closeTab = useAppStore((s) => s.closeTab);
+  const activateTab = useAppStore((s) => s.activateTab);
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const tabs = useAppStore((s) => s.tabs);
 
   const handleClick = useCallback(() => {
-    togglePanel(panelId);
-  }, [togglePanel, panelId]);
+    if (isTab) {
+      const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
+      const projectId = activeProjectId ?? "__app__";
+      const projectTabs = tabs[projectId];
+      const existing = projectTabs?.tabs.find((t) => t.data.kind === tabKind);
+      if (existing) {
+        closeTab(projectId, existing.id);
+      } else {
+        const tabId = `${panelId}_tab`;
+        addTab(projectId, {
+          id: tabId,
+          projectId,
+          title: def?.title ?? panelId,
+          order: 100,
+          data: { kind: tabKind } as never,
+        });
+        activateTab(projectId, tabId);
+      }
+    } else {
+      togglePanel(panelId);
+    }
+  }, [isTab, togglePanel, addTab, closeTab, activateTab, activeProjectId, tabs, panelId, def]);
 
-  const def = dockPanelRegistry[panelId];
   if (!def) return null;
 
   const Icon = dockPanelIcons[def.icon];
@@ -52,7 +99,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
         >
           <span
             className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-md",
+              "flex items-center justify-center w-7 h-7 rounded-md",
               "hover:bg-bg-hover",
               isActive && "bg-bg-selected text-text-primary",
             )}
