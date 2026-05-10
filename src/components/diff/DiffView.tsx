@@ -94,11 +94,11 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
               height={16}
               className="shrink-0"
             />
-            <span className="font-semibold">{getFileName(filePath)}</span>
-            <span className="text-text-muted text-sm">{filePath}</span>
+            <span className="font-semibold text-[var(--font-size)]">{getFileName(filePath)}</span>
+            <span className="text-text-muted text-[var(--font-size)]">{filePath}</span>
             {diffResult &&
               (changeStats.additions > 0 || changeStats.deletions > 0) && (
-                <span className="bg-bg-tertiary py-0.5 px-2 rounded-full text-xs text-text-secondary flex gap-1">
+                <span className="bg-bg-tertiary py-0.5 px-2 rounded-full text-[var(--font-size)] text-text-secondary flex gap-1">
                   <span className="text-[#3fb950] font-semibold">
                     +{changeStats.additions}
                   </span>{" "}
@@ -113,7 +113,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             <div className="flex border border-border rounded overflow-hidden">
               <button
                 className={cn(
-                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-sm transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0",
+                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0",
                   viewMode === "unified" && "!bg-accent-blue !text-white",
                 )}
                 onClick={() => setViewMode("unified")}
@@ -123,7 +123,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
               </button>
               <button
                 className={cn(
-                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-sm transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0",
+                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0",
                   viewMode === "split" && "!bg-accent-blue !text-white",
                 )}
                 onClick={() => setViewMode("split")}
@@ -134,20 +134,20 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             </div>
 
             <button
-              className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
+              className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-[var(--font-size)] transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => navigateBlock("prev")}
               disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
               title="Previous Change"
             >
               <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
             </button>
-            <span className="text-sm text-text-secondary min-w-[60px] text-center">
+            <span className="text-[var(--font-size)] text-text-secondary min-w-[60px] text-center">
               {totalChangeBlocks > 0
                 ? `${currentBlockIndex + 1} / ${totalChangeBlocks}`
                 : "0 / 0"}
             </span>
             <button
-              className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
+              className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-[var(--font-size)] transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => navigateBlock("next")}
               disabled={
                 totalChangeBlocks === 0 ||

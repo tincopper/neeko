@@ -15,7 +15,7 @@ const UnifiedDiffTable: React.FC<UnifiedDiffTableProps> = ({
   language,
 }) => {
   return (
-    <table className="w-full border-collapse font-mono text-base">
+    <table className="w-full border-collapse font-mono" style={{ fontSize: 'var(--font-size)' }}>
       <tbody>
         {(() => {
           let globalBlockIdx = 0;
