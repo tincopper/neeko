@@ -194,6 +194,20 @@ function MainContent() {
       onOpenIde(activeProject.id);
    }, [activeProject, onOpenIde]);
 
+   const handleGuideOpenSettings = useCallback(() => {
+      if (!currentProjectId) return;
+      const existingTabs = useAppStore.getState().tabs[currentProjectId];
+      const tab: Tab = {
+         id: SETTINGS_TAB_ID,
+         projectId: currentProjectId,
+         title: "Settings",
+         order: existingTabs?.tabs.length ?? 0,
+         data: { kind: "settings" },
+      };
+      useAppStore.getState().addTab(currentProjectId, tab);
+      useAppStore.getState().activateTab(currentProjectId, SETTINGS_TAB_ID);
+   }, [currentProjectId]);
+
    const localLayoutId = activeProject
       ? `local:${activeProject.id}:${storeActiveTabId ?? "default"}`
       : "local:none";
@@ -384,9 +398,10 @@ function MainContent() {
                   <ProjectGuidePage
                      selectedAgent={selectedAgent}
                      selectedIde={activeProject.selected_ide}
-                     onOpenTerminal={handleGuideOpenTerminal}
-                     onOpenAgent={handleGuideOpenAgent}
-                     onOpenIde={handleGuideOpenIde}
+                      onOpenTerminal={handleGuideOpenTerminal}
+                      onOpenAgent={handleGuideOpenAgent}
+                      onOpenIde={handleGuideOpenIde}
+                      onOpenSettings={handleGuideOpenSettings}
                   />
                )}
 
