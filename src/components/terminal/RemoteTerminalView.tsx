@@ -270,7 +270,7 @@ export default React.memo(function RemoteTerminalView({
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
       {!ready && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg-primary text-text-secondary text-[var(--terminal-font-size)]">
+        <div className="absolute inset-0 z-10 flex items-center justify-center text-text-secondary text-[var(--terminal-font-size)]">
           Connecting...
         </div>
       )}

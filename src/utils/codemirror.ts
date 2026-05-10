@@ -346,7 +346,7 @@ export function createCmTheme(fontFamily: string, fontSize: number) {
     settings: {
       fontSize: `${fontSize}px`,
       fontFamily: ff,
-      background: "var(--bg-primary)",
+      background: "var(--bg-secondary)",
       foreground: "var(--text-primary)",
       caret: "var(--accent-blue)",
       selection: "rgba(var(--accent-blue-rgb), 0.3)",

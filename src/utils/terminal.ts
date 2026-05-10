@@ -60,7 +60,7 @@ export function buildTerminalTheme(): ITheme {
   const theme =
     document.documentElement.getAttribute("data-theme") || "dark";
   const isLight = theme === "light" || theme === "claude";
-  const bg = cssVar("--bg-primary") || (isLight ? "#ffffff" : "#000000");
+  const bg = cssVar("--bg-secondary") || (isLight ? "#ffffff" : "#000000");
 
   // Sync terminal background to a dedicated CSS variable so all terminal
   // container layers (wrapper, xterm, scrollable-element, screen) stay in
