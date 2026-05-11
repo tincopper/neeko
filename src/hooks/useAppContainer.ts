@@ -183,8 +183,11 @@ export function useAppContainer(): UseAppContainerResult {
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
       clearWorktreeForProject(projectId);
-      fileView.clearFileView();
       await handleSelectProject(projectId);
+      const project = useAppStore.getState().activeProject;
+      if (project) {
+        await fileView.loadFileTree(projectId, project.path);
+      }
     },
     [clearWorktreeForProject, handleSelectProject, fileView],
   );
@@ -342,8 +345,9 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleFileRefresh = useCallback(() => {
     if (activeProjectId) {
-      const wtPath = useAppStore.getState().activeWorktreePath ?? undefined;
-      fileView.loadFileTree(activeProjectId, wtPath);
+      const wtPath = useAppStore.getState().activeWorktreePath;
+      const projectPath = useAppStore.getState().activeProject?.path;
+      fileView.loadFileTree(activeProjectId, wtPath ?? projectPath);
     }
   }, [activeProjectId, fileView.loadFileTree]);
 

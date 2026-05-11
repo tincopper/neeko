@@ -4,6 +4,7 @@ import type { FileNode } from "../../types";
 
 interface FilesPanelProps {
   projectName: string | null;
+  projectPath?: string | null;
   fileTree: FileNode[];
   isLoading: boolean;
   activeFilePath: string | null;
@@ -114,7 +115,7 @@ function FileTreeNode({
 
 const MemoizedFileTreeNode = React.memo(FileTreeNode);
 
-function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh }: FilesPanelProps) {
+function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh }: FilesPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
 
@@ -178,7 +179,14 @@ function FilesPanel({ projectName, fileTree, isLoading, activeFilePath, onSelect
               <span className="text-text-muted text-[var(--font-size)] truncate">{activeFilePath}</span>
             </>
           ) : (
-            <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
+              {projectPath && (
+                <span className="text-[calc(var(--font-size)-1px)] text-text-muted truncate" title={projectPath}>
+                  {projectPath}
+                </span>
+              )}
+            </div>
           )}
         </div>
         <button
