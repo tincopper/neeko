@@ -4,7 +4,7 @@ import { SplitLayout, TerminalView, WSLTerminalView } from "./terminal";
 import type { SplitStateInfo } from "./terminal/SplitLayout";
 import DiffView from "./DiffView";
 import RemoteProjectView from "./RemoteProjectView";
-import { FileViewer } from "./files";
+import { FileViewer, HtmlPreview } from "./files";
 import { ProjectGuidePage } from "./project";
 import { GitLogPanel } from "./gitlog";
 import UnifiedTabBar from "./layout/UnifiedTabBar";
@@ -391,6 +391,14 @@ function MainContent() {
                 {/* File Editor */}
                 {activeTab?.data.kind === "file" && (
                    <FileViewer />
+                )}
+
+                {/* HTML Preview */}
+                {activeTab?.data.kind === "html-preview" && (
+                   <HtmlPreview
+                      filePath={activeTab.data.filePath}
+                      fileName={activeTab.data.fileName}
+                   />
                 )}
 
                 {/* Git Log — keep mounted to preserve state across tab switches */}

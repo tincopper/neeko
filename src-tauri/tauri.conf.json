@@ -12,7 +12,8 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {}
     },
     "windows": [
       {
