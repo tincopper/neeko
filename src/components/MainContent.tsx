@@ -22,6 +22,7 @@ import { useAppStore } from "../store/appStore";
 import { cn } from "../utils/cn";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
+const APP_SETTINGS_PROJECT_ID = "__app__";
 const SETTINGS_TAB_ID = "settings_tab";
 
 function MainContent() {
@@ -51,7 +52,7 @@ function MainContent() {
    // Composite tab key: worktree gets its own independent tab space
    const tabKey = activeWorktreePath && currentProjectId
       ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-      : currentProjectId;
+      : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
    // Get unified tabs from store
    const projectTabs = useAppStore((state) => {
@@ -228,7 +229,7 @@ function MainContent() {
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
          {/* 统一 TabBar + Agent Bar */}
-         {hasActiveProject && tabs.length > 0 && (
+         {tabs.length > 0 && (
              <div className="shrink-0 bg-bg-secondary">
                 <div className="h-8 flex items-center px-2 gap-1">
                    <div className="flex-1 min-w-0">
@@ -431,8 +432,8 @@ function MainContent() {
                   />
                )}
 
-               {/* Welcome Page (no project) */}
-               {!activeTab && !hasActiveProject && (
+               {/* Welcome Page (no project, no tabs) */}
+               {!activeTab && !hasActiveProject && tabs.length === 0 && (
                   <div className="empty-state flex-1 flex flex-col text-text-secondary">
                      <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
                         <div className="empty-icon text-[3.43em] opacity-50">📁</div>
