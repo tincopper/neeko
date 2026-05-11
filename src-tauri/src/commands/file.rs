@@ -154,10 +154,17 @@ fn read_dir_recursive(
 pub fn read_file_content(
     project_id: String,
     file_path: String,
+    root_path: Option<String>,
     state: State<AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
-    // Get project path
-    let project_path = {
+    // Resolve base path: worktree path or project path
+    let project_path = if let Some(ref rp) = root_path {
+        let root = std::path::PathBuf::from(rp);
+        if !root.exists() {
+            return Err(AppError::File(format!("Root path not found: {}", rp)));
+        }
+        root
+    } else {
         let pm = state
             .project_manager
             .lock()
@@ -228,10 +235,17 @@ pub fn write_file_content(
     project_id: String,
     file_path: String,
     content: String,
+    root_path: Option<String>,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    // Get project path
-    let project_path = {
+    // Resolve base path: worktree path or project path
+    let project_path = if let Some(ref rp) = root_path {
+        let root = std::path::PathBuf::from(rp);
+        if !root.exists() {
+            return Err(AppError::File(format!("Root path not found: {}", rp)));
+        }
+        root
+    } else {
         let pm = state
             .project_manager
             .lock()

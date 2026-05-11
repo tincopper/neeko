@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../store/appStore";
 import type { Tab } from "../types";
 import type { WorktreeItem } from "./useWorktreeState";
+import { buildWorktreeTabKey } from "../utils/tabKey";
 
 interface UseWorktreeActionsParams {
   setActiveWorktreePath: (path: string | null) => void;
@@ -77,12 +78,13 @@ export function useWorktreeActions({
   const handleSelectWorktreeFile = useCallback((worktreePath: string, filePath: string) => {
     if (!activeProjectId) return;
 
-    const existingTabs = useAppStore.getState().tabs[activeProjectId];
+    const tabKey = buildWorktreeTabKey(activeProjectId, worktreePath);
+    const existingTabs = useAppStore.getState().tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath
     );
     if (existingDiffTab) {
-      useAppStore.getState().activateTab(activeProjectId, existingDiffTab.id);
+      useAppStore.getState().activateTab(tabKey, existingDiffTab.id);
       return;
     }
 
@@ -100,8 +102,8 @@ export function useWorktreeActions({
         diffSource: { type: "worktree", projectId: activeProjectId, worktreePath },
       },
     };
-    useAppStore.getState().addTab(activeProjectId, tab);
-    useAppStore.getState().activateTab(activeProjectId, tabId);
+    useAppStore.getState().addTab(tabKey, tab);
+    useAppStore.getState().activateTab(tabKey, tabId);
   }, [activeProjectId]);
 
   return {

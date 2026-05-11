@@ -10,6 +10,7 @@ import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useAppStore } from "../../store/appStore";
+import { buildWorktreeTabKey } from "../../utils/tabKey";
 
 type MarkdownMode = "preview" | "source";
 
@@ -40,6 +41,7 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
 function FileViewer() {
    const { config } = useAppContext();
    const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
    const {
       onFileSave: onSave,
       onFileContentChange: onContentChange,
@@ -49,10 +51,15 @@ function FileViewer() {
    const fontFamily = config.fontFamily;
    const fontSize = config.editorFontSize;
 
+   // Composite tab key: worktree gets its own independent tab space
+   const tabKey = activeWorktreePath && activeProjectId
+      ? buildWorktreeTabKey(activeProjectId, activeWorktreePath)
+      : activeProjectId;
+
    // Read project tabs from unified store
    const projectTabs = useAppStore((state) => {
-      if (!activeProjectId) return null;
-      return state.tabs[activeProjectId] ?? null;
+      if (!tabKey) return null;
+      return state.tabs[tabKey] ?? null;
    });
 
    // Derive the active file tab from unified Tab.data (FileTabData)
