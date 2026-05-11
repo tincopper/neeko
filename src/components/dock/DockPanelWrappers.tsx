@@ -63,6 +63,7 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const { onSelectFile, onRefreshGit } = useProjectActionsContext();
   const { showToast } = useAppContext();
   const activeProject = useAppStore((s) => s.activeProject);
+  const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
 
   if (!activeProject) {
     return (
@@ -72,9 +73,20 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     );
   }
 
+  // Override git_info.current_branch when a worktree is active
+  const project = activeWorktreeBranch && activeProject.git_info
+    ? {
+        ...activeProject,
+        git_info: {
+          ...activeProject.git_info,
+          current_branch: activeWorktreeBranch,
+        },
+      }
+    : activeProject;
+
   return (
     <GitCommitPanel
-      project={activeProject}
+      project={project}
       onRefreshGit={onRefreshGit}
       onSelectFile={onSelectFile}
       onShowToast={showToast}
