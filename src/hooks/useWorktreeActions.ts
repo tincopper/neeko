@@ -66,6 +66,20 @@ export function useWorktreeActions({
     });
     saveWorktreeState(projectId, worktreePath);
     invoke("set_view_terminal", { projectId }).catch(() => { });
+
+    // Create a new terminal tab for the worktree
+    const existingTabs = useAppStore.getState().tabs[projectId];
+    const terminalCount = (existingTabs?.tabs.filter((t) => t.data.kind === "terminal").length ?? 0);
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const terminalTab: Tab = {
+      id: tabId,
+      projectId,
+      title: `Terminal ${terminalCount + 1}`,
+      order: existingTabs?.tabs.length ?? 0,
+      data: { kind: "terminal", agentId: null, status: "Idle" as const },
+    };
+    useAppStore.getState().addTab(projectId, terminalTab);
+    useAppStore.getState().activateTab(projectId, tabId);
   }, [
     activeProjectId,
     setActiveWorktreePath,
