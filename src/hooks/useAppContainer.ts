@@ -181,8 +181,20 @@ export function useAppContainer(): UseAppContainerResult {
 
   const fileView = useFileView();
 
+  // Close settings tab in __app__ space if open (from no-project state)
+  const closeAppSettingsTab = useCallback(() => {
+    const appTabs = useAppStore.getState().tabs[APP_SETTINGS_PROJECT_ID];
+    if (appTabs) {
+      const settingsTab = appTabs.tabs.find((t) => t.data.kind === "settings");
+      if (settingsTab) {
+        useAppStore.getState().closeTab(APP_SETTINGS_PROJECT_ID, settingsTab.id);
+      }
+    }
+  }, []);
+
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
+      closeAppSettingsTab();
       clearWorktreeForProject(projectId);
       await handleSelectProject(projectId);
       const project = useAppStore.getState().activeProject;
@@ -190,7 +202,7 @@ export function useAppContainer(): UseAppContainerResult {
         await fileView.loadFileTree(projectId, project.path);
       }
     },
-    [clearWorktreeForProject, handleSelectProject, fileView],
+    [closeAppSettingsTab, clearWorktreeForProject, handleSelectProject, fileView],
   );
 
   const clearWslTransientState = useCallback(() => {
@@ -219,10 +231,11 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleSelectWslProjectWithSync = useCallback(
     (distro: string, project: WSLProject) => {
+      closeAppSettingsTab();
       clearRemoteTransientState();
       wslActions.handleSelectWslProject(distro, project);
     },
-    [clearRemoteTransientState, wslActions.handleSelectWslProject],
+    [closeAppSettingsTab, clearRemoteTransientState, wslActions.handleSelectWslProject],
   );
 
   const handleOpenWslWorktreeTerminalWithSync = useCallback(
@@ -235,10 +248,11 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleSelectRemoteProjectWithSync = useCallback(
     (host: string, project: RemoteProject) => {
+      closeAppSettingsTab();
       clearWslTransientState();
       remoteActions.handleSelectRemoteProject(host, project);
     },
-    [clearWslTransientState, remoteActions.handleSelectRemoteProject],
+    [closeAppSettingsTab, clearWslTransientState, remoteActions.handleSelectRemoteProject],
   );
 
   const handleOpenRemoteWorktreeTerminalWithSync = useCallback(
@@ -263,9 +277,10 @@ export function useAppContainer(): UseAppContainerResult {
 
   // Tab key: composite when worktree is active, plain projectId otherwise
   // Each worktree gets its own independent tab space (like a separate project)
+  // Fallback to __app__ when no project is selected (e.g. settings tab before project load)
   const tabKey = activeWorktreePath && currentProjectId
     ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-    : currentProjectId;
+    : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
   // Restore activeTabId when switching tab spaces (project ↔ worktree)
   useEffect(() => {
@@ -276,6 +291,9 @@ export function useAppContainer(): UseAppContainerResult {
 
   useEffect(() => {
     if (!tabKey) return;
+
+    // __app__ space: only used for settings tab, no default terminal needed
+    if (tabKey === APP_SETTINGS_PROJECT_ID) return;
 
     // Local 项目（非 worktree）：不自动创建 tab，让 ProjectGuidePage 引导用户
     if (activeProject && !activeWorktreePath) return;
