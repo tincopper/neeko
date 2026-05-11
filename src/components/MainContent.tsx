@@ -396,6 +396,7 @@ function MainContent() {
                 {/* HTML Preview */}
                 {activeTab?.data.kind === "html-preview" && (
                    <HtmlPreview
+                      projectId={activeTab.projectId}
                       filePath={activeTab.data.filePath}
                       fileName={activeTab.data.fileName}
                    />
