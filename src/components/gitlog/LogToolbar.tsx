@@ -21,7 +21,7 @@ const LogToolbar: React.FC<LogToolbarProps> = ({
       <SearchIcon size={12} className="text-text-muted shrink-0" />
       <input
         type="text"
-        className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder:text-text-muted"
+        className="flex-1 bg-transparent border-none outline-none text-[var(--font-size)] text-text-primary placeholder:text-text-muted"
         placeholder="Search commits..."
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
@@ -31,7 +31,7 @@ const LogToolbar: React.FC<LogToolbarProps> = ({
       />
       {searchQuery && (
         <button
-          className="text-text-muted hover:text-text-secondary text-[10px] px-1"
+          className="text-text-muted hover:text-text-secondary text-[calc(var(--font-size)-2px)] px-1"
           onClick={() => onSearchChange("")}
         >
           x

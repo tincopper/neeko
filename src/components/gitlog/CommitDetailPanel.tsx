@@ -101,20 +101,20 @@ function CommitMessage({ message }: { message: string }) {
       <div className="flex items-start gap-1.5 flex-wrap">
         {type && (
           <span className={cn(
-            "shrink-0 text-[9px] font-medium px-1.5 py-0.5 rounded leading-none mt-px",
+            "shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1.5 py-0.5 rounded leading-none mt-px",
             typeBadgeStyle(type),
           )}>
             {type}{scope ? `(${scope})` : ""}
           </span>
         )}
-        <span className="text-xs font-medium text-text-primary leading-snug break-words min-w-0">
+        <span className="text-[var(--font-size)] font-medium text-text-primary leading-snug break-words min-w-0">
           {subject || (type ? "" : message.split("\n")[0])}
         </span>
       </div>
 
       {/* Body 段落 */}
       {body.map((para, i) => (
-        <p key={i} className="text-[11px] text-text-secondary leading-relaxed whitespace-pre-wrap break-words pl-0.5">
+        <p key={i} className="text-[calc(var(--font-size)-1px)] text-text-secondary leading-relaxed whitespace-pre-wrap break-words pl-0.5">
           {para}
         </p>
       ))}
@@ -127,7 +127,7 @@ function CommitMessage({ message }: { message: string }) {
             if (fm) {
               const isBreaking = fm[1].toUpperCase().includes("BREAKING");
               return (
-                <div key={i} className="flex items-start gap-1.5 text-[10px]">
+                <div key={i} className="flex items-start gap-1.5 text-[calc(var(--font-size)-2px)]">
                   <span className={cn(
                     "shrink-0 font-mono font-medium",
                     isBreaking ? "text-accent-red" : "text-text-muted",
@@ -139,7 +139,7 @@ function CommitMessage({ message }: { message: string }) {
               );
             }
             return (
-              <p key={i} className="text-[10px] text-text-muted whitespace-pre-wrap break-words">
+              <p key={i} className="text-[calc(var(--font-size)-2px)] text-text-muted whitespace-pre-wrap break-words">
                 {line}
               </p>
             );
@@ -185,7 +185,7 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-text-muted">
+      <div className="flex h-full items-center justify-center text-[var(--font-size)] text-text-muted">
         Loading...
       </div>
     );
@@ -193,7 +193,7 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-xs text-accent-red">
+      <div className="flex h-full items-center justify-center p-4 text-[var(--font-size)] text-accent-red">
         {error}
       </div>
     );
@@ -201,7 +201,7 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
 
   if (!detail) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-text-muted">
+      <div className="flex h-full items-center justify-center text-[var(--font-size)] text-text-muted">
         Select a commit to view details
       </div>
     );
@@ -214,11 +214,11 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
         {/* hash + refs */}
         <div className="flex items-center gap-1.5 mb-1.5">
           <GitCommitHorizontal size={12} className="text-text-muted shrink-0" />
-          <span className="text-xs font-mono text-accent-blue shrink-0">
+          <span className="text-[var(--font-size)] font-mono text-accent-blue shrink-0">
             {detail.short_hash}
           </span>
           {detail.refs && (
-            <span className="text-[9px] font-medium px-1 py-px rounded bg-accent-yellow/10 text-accent-yellow truncate">
+            <span className="text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded bg-accent-yellow/10 text-accent-yellow truncate">
               {refsLabel(detail.refs)}
             </span>
           )}
@@ -228,7 +228,7 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
         <CommitMessage message={detail.message} />
 
         {/* author · email · time */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[10px] text-text-muted">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[calc(var(--font-size)-2px)] text-text-muted">
           <span className="font-medium text-text-secondary">{detail.author}</span>
           <span className="opacity-50">·</span>
           <span>{detail.email}</span>
@@ -238,7 +238,7 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
 
         {/* parents */}
         {detail.parents.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 mt-1 text-[10px] text-text-muted">
+          <div className="flex flex-wrap items-center gap-1 mt-1 text-[calc(var(--font-size)-2px)] text-text-muted">
             <span>Parent:</span>
             {detail.parents.map((p) => (
               <span key={p} className="font-mono text-accent-blue">
@@ -251,16 +251,16 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
 
       {/* Changed files header */}
       <div className="flex items-center gap-1.5 px-1 shrink-0">
-        <span className="text-xs text-text-secondary font-medium">
+        <span className="text-[var(--font-size)] text-text-secondary font-medium">
           Changed Files
         </span>
-        <span className="text-[10px] text-text-muted">({files.length})</span>
+        <span className="text-[calc(var(--font-size)-2px)] text-text-muted">({files.length})</span>
       </div>
 
       {/* File list */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {files.length === 0 ? (
-          <div className="flex items-center justify-center py-4 text-xs text-text-muted">
+          <div className="flex items-center justify-center py-4 text-[var(--font-size)] text-text-muted">
             No files changed
           </div>
         ) : (
@@ -269,22 +269,22 @@ const CommitDetailPanel: React.FC<CommitDetailPanelProps> = ({
             return (
               <div
                 key={file.path}
-                className="flex items-center gap-1.5 px-2 py-1 text-xs hover:bg-bg-hover cursor-pointer transition-colors duration-100 group"
+                className="flex items-center gap-1.5 px-2 py-1 text-[var(--font-size)] hover:bg-bg-hover cursor-pointer transition-colors duration-100 group"
                 onDoubleClick={() => handleDoubleClick(file.path)}
                 title="Double-click to view diff"
               >
                 <span className={statusInfo.color}>{statusInfo.icon}</span>
-                <span className="flex-1 truncate text-text-primary font-mono text-[11px]">
+                <span className="flex-1 truncate text-text-primary font-mono text-[calc(var(--font-size)-1px)]">
                   {file.path}
                 </span>
                 <span className="flex items-center gap-0.5 shrink-0">
                   <span className="flex items-center gap-px text-accent-green">
                     <Plus size={9} />
-                    <span className="text-[10px]">{file.additions}</span>
+                    <span className="text-[calc(var(--font-size)-2px)]">{file.additions}</span>
                   </span>
                   <span className="flex items-center gap-px text-accent-red">
                     <Minus size={9} />
-                    <span className="text-[10px]">{file.deletions}</span>
+                    <span className="text-[calc(var(--font-size)-2px)]">{file.deletions}</span>
                   </span>
                 </span>
               </div>
