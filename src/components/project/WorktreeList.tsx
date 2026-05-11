@@ -5,6 +5,7 @@ import { FileTree, buildTree } from "../files";
 import { BranchIcon, ChevronRightIcon, TrashIcon, FolderGitIcon } from "../icons";
 import { terminalCache, destroyTerminalCache } from "../terminal";
 import { cn } from "../../utils/cn";
+import { useAppStore } from "../../store/appStore";
 
 interface WorktreeListProps {
   worktrees: Worktree[];
@@ -34,6 +35,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
+  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
 
   const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
@@ -144,8 +146,11 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
             <div key={wt.path} className="mb-0.5">
               <div
                 className={cn(
-                  "group flex items-center gap-1 py-1 px-2 pl-4 mr-1 text-[var(--font-size)] rounded-md text-text-secondary transition-colors duration-100 cursor-pointer hover:bg-bg-hover hover:text-text-primary",
-                  deleting === wt.path && "wt-deleting"
+                  "group flex items-center gap-1 py-1 px-2 pl-4 mr-1 text-[var(--font-size)] rounded-md transition-colors duration-100 cursor-pointer",
+                  deleting === wt.path && "wt-deleting",
+                  activeWorktreePath === wt.path
+                    ? "bg-bg-tertiary/60 text-text-primary"
+                    : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
