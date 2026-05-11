@@ -3,6 +3,7 @@ import type { Project } from "../../types";
 import type { DialogType } from "./GitDialog";
 import WorktreeList from "./WorktreeList";
 import { TerminalIcon } from "../icons";
+import { useAppStore } from "../../store/appStore";
 
 interface ProjectGitSectionProps {
   project: Project;
@@ -35,11 +36,12 @@ export default function ProjectGitSection({
   } = actions;
 
   const worktrees = project.git_info?.worktrees ?? [];
+  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
 
   return (
     <div className="py-0.5 pb-1">
       <div
-        className={`group flex items-center gap-1 py-1 px-2 pl-4 mr-1 rounded-md transition-colors duration-100 cursor-pointer ${isActive ? "bg-bg-tertiary/60 text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"}`}
+        className={`group flex items-center gap-1 py-1 px-2 pl-4 mr-1 rounded-md transition-colors duration-100 cursor-pointer ${isActive && !activeWorktreePath ? "bg-bg-tertiary/60 text-text-primary" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"}`}
         onClick={() => onSelectProject(project.id)}
         title="Open primary terminal"
       >
