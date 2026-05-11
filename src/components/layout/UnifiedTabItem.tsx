@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Terminal, FileText, ArrowLeftRight, Settings, GitBranch } from "lucide-react";
+import { Terminal, FileText, ArrowLeftRight, Settings, GitBranch, Globe } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { getAgentIconSrc } from "../../utils/agents";
 import { fileIconSrc } from "../../utils/fileIcons";
@@ -27,6 +27,8 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
       return Settings;
     case "gitLog":
       return GitBranch;
+    case "html-preview":
+      return Globe;
   }
 }
 

@@ -2,7 +2,7 @@ import type { DiffSource, ViewMode } from "../components/diff/types";
 import type { FileContent } from "./file";
 
 /** Tab 类型标签 */
-export type TabKind = "terminal" | "file" | "diff" | "settings" | "gitLog";
+export type TabKind = "terminal" | "file" | "diff" | "settings" | "gitLog" | "html-preview";
 
 /** 终端 Tab 数据 */
 export interface TerminalTabData {
@@ -39,8 +39,15 @@ export interface GitLogTabData {
   kind: "gitLog";
 }
 
+/** HTML 预览 Tab 数据 */
+export interface HtmlPreviewTabData {
+  kind: "html-preview";
+  filePath: string;
+  fileName: string;
+}
+
 /** Tab 数据联合类型 */
-export type TabData = TerminalTabData | FileTabData | DiffTabData | SettingsTabData | GitLogTabData;
+export type TabData = TerminalTabData | FileTabData | DiffTabData | SettingsTabData | GitLogTabData | HtmlPreviewTabData;
 
 /** 统一 Tab 接口 */
 export interface Tab {

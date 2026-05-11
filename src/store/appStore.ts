@@ -115,6 +115,14 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
     case "gitLog": {
       return { kind: "gitLog" };
     }
+    case "html-preview": {
+      if (!("filePath" in partial)) return data;
+      return {
+        kind: "html-preview",
+        filePath: partial.filePath !== undefined ? partial.filePath : data.filePath,
+        fileName: partial.fileName !== undefined ? partial.fileName : data.fileName,
+      };
+    }
   }
 }
 

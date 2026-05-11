@@ -4,7 +4,7 @@ import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightS
 import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { Eye, Save, FileCode } from "lucide-react";
+import { Eye, Save, FileCode, Globe } from "lucide-react";
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
@@ -12,6 +12,12 @@ import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useAppStore } from "../../store/appStore";
 
 type MarkdownMode = "preview" | "source";
+
+/** 检查文件是否为 HTML 文件 */
+function isHtmlFile(filePath: string): boolean {
+   const ext = filePath.split(".").pop()?.toLowerCase();
+   return ext === "html" || ext === "htm";
+}
 
 /** Type guard: narrow Tab to file kind */
 function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
@@ -103,6 +109,7 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
 
    const isMd = isMarkdownFile(tab.filePath);
+   const isHtml = isHtmlFile(tab.filePath);
    const currentContent = tab.content.content;
 
    // Load language extension lazily
@@ -125,6 +132,40 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
       await onSave(currentContent);
       setIsSaving(false);
    }, [currentContent, onSave]);
+
+   // 打开 HTML 预览 Tab
+   const handleOpenHtmlPreview = useCallback(() => {
+      const activeProjectId = useAppStore.getState().activeProjectId;
+      if (!activeProjectId) return;
+
+      // 使用固定的 Tab ID 进行去重
+      const previewTabId = `${activeProjectId}:preview:${tab.filePath}`;
+
+      // 检查是否已存在该预览 Tab
+      const existingTabs = useAppStore.getState().tabs[activeProjectId];
+      const existingPreview = existingTabs?.tabs.find((t) => t.id === previewTabId);
+
+      if (existingPreview) {
+         // 如果已存在，直接激活
+         useAppStore.getState().activateTab(activeProjectId, previewTabId);
+         return;
+      }
+
+      // 创建新的 html-preview Tab
+      const previewTab: Tab = {
+         id: previewTabId,
+         projectId: activeProjectId,
+         title: `Preview: ${tab.fileName}`,
+         order: existingTabs?.tabs.length ?? 0,
+         data: {
+            kind: "html-preview",
+            filePath: tab.filePath,
+            fileName: tab.fileName,
+         },
+      };
+
+      useAppStore.getState().addTab(activeProjectId, previewTab);
+   }, [tab.filePath, tab.fileName]);
 
    // Ctrl+S handler
    const saveKeymap = useMemo(() => keymap.of([{
@@ -188,10 +229,12 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
                isDirty={false}
                canEdit={false}
                isMd={false}
+               isHtml={false}
                markdownMode="preview"
                isSaving={false}
                onSave={() => { }}
                onToggleMarkdown={() => { }}
+               onOpenHtmlPreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -213,10 +256,12 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
                isDirty={false}
                canEdit={false}
                isMd={false}
+               isHtml={false}
                markdownMode="preview"
                isSaving={false}
                onSave={() => { }}
                onToggleMarkdown={() => { }}
+               onOpenHtmlPreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -239,10 +284,12 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
             isDirty={tab.isDirty}
             canEdit={canEdit}
             isMd={isMd}
+            isHtml={isHtml}
             markdownMode={markdownMode}
             isSaving={isSaving}
             onSave={handleSave}
             onToggleMarkdown={() => setMarkdownMode((m) => (m === "preview" ? "source" : "preview"))}
+            onOpenHtmlPreview={handleOpenHtmlPreview}
          />
 
          <div className="flex-1 min-h-0 overflow-hidden">
@@ -274,10 +321,12 @@ interface EditorHeaderProps {
    isDirty: boolean;
    canEdit: boolean;
    isMd: boolean;
+   isHtml: boolean;
    markdownMode: MarkdownMode;
    isSaving: boolean;
    onSave: () => void;
    onToggleMarkdown: () => void;
+   onOpenHtmlPreview: () => void;
 }
 
 function EditorHeader({
@@ -285,10 +334,12 @@ function EditorHeader({
    isDirty,
    canEdit,
    isMd,
+   isHtml,
    markdownMode,
    isSaving,
    onSave,
    onToggleMarkdown,
+   onOpenHtmlPreview,
 }: EditorHeaderProps) {
    return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
@@ -319,6 +370,17 @@ function EditorHeader({
                   ) : (
                      <span className="flex items-center gap-1"><Eye size={12} /> Preview</span>
                   )}
+               </button>
+            )}
+
+            {/* HTML Preview button */}
+            {isHtml && (
+               <button
+                  className="px-2 py-1 text-[var(--font-size)] rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                  onClick={onOpenHtmlPreview}
+                  title="Open HTML preview"
+               >
+                  <Globe size={12} /> Preview
                </button>
             )}
 
