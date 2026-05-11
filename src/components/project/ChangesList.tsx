@@ -80,7 +80,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   if (files.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-xs text-text-muted py-4">No changes</span>
+        <span className="text-[var(--font-size)] text-text-muted py-4">No changes</span>
       </div>
     );
   }
@@ -111,7 +111,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
                   <button
                     key={s}
                     className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded transition-colors duration-100",
+                      "text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded transition-colors duration-100",
                       filter === s
                         ? "bg-bg-tertiary text-text-primary"
                         : "text-text-muted hover:text-text-secondary",
@@ -202,16 +202,16 @@ const Section: React.FC<SectionProps> = ({
           onCheckedChange={onSelectAll}
         />
         <span
-          className="text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer hover:text-text-secondary"
+          className="text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer hover:text-text-secondary"
           onClick={onToggle}
         >
           {title} ({count})
         </span>
         {additions != null && additions > 0 && (
-          <span className="text-[#3fb950] text-[0.72em] font-semibold">+{additions}</span>
+          <span className="text-[#3fb950] text-[calc(var(--font-size)-2px)] font-semibold">+{additions}</span>
         )}
         {deletions != null && deletions > 0 && (
-          <span className="text-[#f85149] text-[0.72em] font-semibold">-{deletions}</span>
+          <span className="text-[#f85149] text-[calc(var(--font-size)-2px)] font-semibold">-{deletions}</span>
         )}
         {filter && <span className="ml-auto">{filter}</span>}
       </div>
@@ -225,7 +225,7 @@ const Section: React.FC<SectionProps> = ({
               <div
                 key={file.path}
                 className={cn(
-                  "flex items-center gap-2 py-0.5 px-2.5 text-xs transition-colors duration-100 group cursor-pointer",
+                  "flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer",
                   isSelected
                     ? "bg-accent-blue/5 text-text-primary"
                     : "text-text-secondary hover:bg-bg-hover",
@@ -237,7 +237,7 @@ const Section: React.FC<SectionProps> = ({
                   onCheckedChange={() => onToggleFile(file.path)}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 />
-                <span className="shrink-0 font-mono text-[11px]">
+                <span className="shrink-0 font-mono text-[calc(var(--font-size)-1px)]">
                   {file.path}
                 </span>
                 <Badge
@@ -250,14 +250,14 @@ const Section: React.FC<SectionProps> = ({
                           ? "modified"
                           : "default"
                   }
-                  className="rounded-sm border-0 px-1 py-0 text-[10px]"
+                  className="rounded-sm border-0 px-1 py-0 text-[calc(var(--font-size)-2px)]"
                 >
                   {file.status === "Untracked"
                     ? "U"
                     : file.status[0]}
                 </Badge>
                 {(file.additions > 0 || file.deletions > 0) && (
-                  <span className="text-[10px] font-mono shrink-0">
+                  <span className="text-[calc(var(--font-size)-2px)] font-mono shrink-0">
                     {file.additions > 0 && (
                       <span className="text-accent-green">+{file.additions}</span>
                     )}

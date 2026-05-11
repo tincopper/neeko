@@ -105,7 +105,7 @@ const CommitList: React.FC<CommitListProps> = ({
 
   if (loading && commits.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-xs text-text-muted">
+      <div className="flex-1 flex items-center justify-center text-[var(--font-size)] text-text-muted">
         Loading...
       </div>
     );
@@ -113,7 +113,7 @@ const CommitList: React.FC<CommitListProps> = ({
 
   if (filteredCommits.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-xs text-text-muted">
+      <div className="flex-1 flex items-center justify-center text-[var(--font-size)] text-text-muted">
         {searchQuery ? "No matching commits" : "No commits yet"}
       </div>
     );
@@ -154,13 +154,13 @@ const CommitList: React.FC<CommitListProps> = ({
                          <div className="flex items-center gap-1 min-w-0">
                            {type && (
                              <span className={cn(
-                               "shrink-0 text-[9px] font-medium px-1 py-px rounded leading-none",
+                               "shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none",
                                typeStyle(type),
                              )}>
                                {type}
                              </span>
                            )}
-                           <span className="flex-1 truncate text-xs text-text-primary leading-tight">
+                           <span className="flex-1 truncate text-[var(--font-size)] text-text-primary leading-tight">
                              {subject}
                            </span>
                            <button
@@ -187,15 +187,15 @@ const CommitList: React.FC<CommitListProps> = ({
 
                          {/* 第二行：作者 · 时间 + refs badge */}
                          <div className="flex items-center gap-1 min-w-0 mt-0.5">
-                           <span className="text-[10px] text-text-muted truncate leading-tight" style={{ maxWidth: 80 }}>
+                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted truncate leading-tight" style={{ maxWidth: 80 }}>
                              {commit.author}
                            </span>
-                           <span className="text-[10px] text-text-muted shrink-0 leading-tight">·</span>
-                           <span className="text-[10px] text-text-muted shrink-0 leading-tight">
+                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">·</span>
+                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">
                              {formatTimestamp(commit.timestamp)}
                            </span>
                            {refs && (
-                             <span className="ml-auto shrink-0 text-[9px] font-medium px-1 py-px rounded leading-none bg-accent-yellow/10 text-accent-yellow truncate" style={{ maxWidth: 80 }}>
+                             <span className="ml-auto shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none bg-accent-yellow/10 text-accent-yellow truncate" style={{ maxWidth: 80 }}>
                                {refs}
                              </span>
                            )}
@@ -242,12 +242,12 @@ const CommitList: React.FC<CommitListProps> = ({
                 {/* 创建 branch / tag 内联输入框 */}
                 {actionState?.hash === commit.hash && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-tertiary mx-3 rounded mb-0.5">
-                    <span className="text-[10px] text-text-muted shrink-0">
+                    <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
                       {actionState.action === "create-branch" ? "Branch:" : "Tag:"}
                     </span>
                     <input
                       type="text"
-                      className="flex-1 bg-transparent border border-border rounded px-1.5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-blue"
+                      className="flex-1 bg-transparent border border-border rounded px-1.5 py-0.5 text-[var(--font-size)] text-text-primary outline-none focus:border-accent-blue"
                       placeholder={
                         actionState.action === "create-branch" ? "branch-name" : "v1.0.0"
                       }
@@ -271,7 +271,7 @@ const CommitList: React.FC<CommitListProps> = ({
                       <Check size={11} />
                     </button>
                     <button
-                      className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100 text-[10px]"
+                      className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100 text-[calc(var(--font-size)-2px)]"
                       onClick={() => {
                         setActionState(null);
                         setInputValue("");
@@ -288,7 +288,7 @@ const CommitList: React.FC<CommitListProps> = ({
 
           {/* 无限滚动哨兵 */}
           {hasMore && (
-            <div ref={sentinelRef} className="py-2 text-center text-xs text-text-muted">
+            <div ref={sentinelRef} className="py-2 text-center text-[var(--font-size)] text-text-muted">
               {loadingMore ? "Loading more..." : ""}
             </div>
           )}
@@ -309,7 +309,7 @@ function MenuItem({
 }) {
   return (
     <button
-      className="flex items-center gap-1.5 w-full px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
+      className="flex items-center gap-1.5 w-full px-2 py-1 text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
       onClick={onClick}
     >
       <span className="text-text-muted shrink-0">{icon}</span>

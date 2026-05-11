@@ -161,20 +161,20 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     <div className="flex flex-col shrink-0">
       <div className="flex items-center gap-1 px-2.5 py-1">
         <div
-          className="flex items-center gap-1 text-[0.72em] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer rounded-md transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary select-none flex-1"
+          className="flex items-center gap-1 text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer rounded-md transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary select-none flex-1"
           onClick={() => setExpanded((v) => !v)}
         >
           <ChevronRightIcon
             size={9}
             className={cn(
-              "text-[0.6em] w-2.5 shrink-0 transition-transform duration-150",
+              "text-[calc(var(--font-size)-4px)] w-2.5 shrink-0 transition-transform duration-150",
               expanded && "rotate-90"
             )}
           />
           Pull Requests ({prList.length})
         </div>
         <select
-          className="text-[10px] bg-transparent border-none text-text-muted cursor-pointer appearance-none px-1"
+          className="text-[calc(var(--font-size)-2px)] bg-transparent border-none text-text-muted cursor-pointer appearance-none px-1"
           value={autoSync}
           onChange={(e) => setAutoSync(Number(e.target.value))}
         >
@@ -193,7 +193,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               <button
                 key={s}
                 className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded transition-colors duration-100",
+                  "text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded transition-colors duration-100",
                   filter === s
                     ? "bg-bg-tertiary text-text-primary"
                     : "text-text-muted hover:text-text-secondary"
@@ -207,14 +207,14 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
 
           <div className="max-h-[200px] overflow-y-auto">
             {loading && prList.length === 0 ? (
-              <div className="p-3 text-center text-xs text-text-muted">Loading...</div>
+              <div className="p-3 text-center text-[var(--font-size)] text-text-muted">Loading...</div>
             ) : prList.length === 0 ? (
-              <div className="p-3 text-center text-xs text-text-muted">No pull requests</div>
+              <div className="p-3 text-center text-[var(--font-size)] text-text-muted">No pull requests</div>
             ) : (
               prList.map((pr) => (
                 <div
                   key={pr.number}
-                    className="flex items-center gap-1.5 py-1 px-2.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors duration-100 group cursor-pointer"
+                    className="flex items-center gap-1.5 py-1 px-2.5 text-[var(--font-size)] text-text-secondary hover:bg-bg-hover transition-colors duration-100 group cursor-pointer"
                   onClick={() => handleOpenUrl(pr.number)}
                 >
                   {pr.is_cross_repository ? (
@@ -243,13 +243,13 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   <span className="flex-1 truncate">{pr.title}</span>
                   {pr.is_cross_repository && pr.head_repository_owner && (
                     <span
-                      className="text-[9px] text-text-muted shrink-0 max-w-[60px] truncate"
+                      className="text-[calc(var(--font-size)-3px)] text-text-muted shrink-0 max-w-[60px] truncate"
                       title={`Fork from ${pr.head_repository_owner}`}
                     >
                       {pr.head_repository_owner}
                     </span>
                   )}
-                  <span className="text-[10px] text-text-muted shrink-0">
+                  <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
                     #{pr.number}
                   </span>
                   {pr.state === "OPEN" && (

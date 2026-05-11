@@ -79,7 +79,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         {gitInfo ? (
           <div className="relative min-w-0" ref={branchDropdownRef}>
             <span
-              className="flex items-center gap-1 text-xs text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-2 py-0.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
+              className="flex items-center gap-1 text-[var(--font-size)] text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-2 py-0.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
               title={currentBranch}
               onClick={() => setBranchDropdownOpen((v) => !v)}
             >
@@ -94,7 +94,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
                   <SearchIcon size={12} className="text-text-muted shrink-0" />
                   <input
                     ref={branchSearchInputRef}
-                    className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-xs font-inherit"
+                    className="gh-branch-dropdown-search-input flex-1 bg-transparent border-none outline-none text-text-primary text-[var(--font-size)] font-inherit"
                     placeholder="Search branches..."
                     value={branchSearchQuery}
                     onChange={(e) => setBranchSearchQuery(e.target.value)}
@@ -112,7 +112,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
                     return (
                       <div
                         key={branch}
-                        className={`flex items-center gap-1.5 py-1 px-3 text-xs font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
+                        className={`flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] font-mono text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary ${isCurrent ? "!text-accent-blue cursor-default" : ""}`}
                         onClick={() => handleCheckout(branch)}
                         title={isCurrent ? "Current branch" : "Click to checkout"}
                       >
@@ -125,12 +125,12 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
                     );
                   })}
                   {dropdownBranches.length === 0 && (
-                    <div className="p-3 text-center text-xs text-text-muted">No branches found</div>
+                    <div className="p-3 text-center text-[var(--font-size)] text-text-muted">No branches found</div>
                   )}
                 </div>
                 <div className="border-t border-border py-1">
                   <div
-                    className="flex items-center gap-1.5 py-1 px-3 text-xs text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
+                    className="flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
                     onClick={() => {
                       setBranchDropdownOpen(false);
                       setBranchSearchQuery("");
@@ -145,11 +145,11 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
             )}
           </div>
         ) : (
-          <span className="text-xs text-text-muted italic">Not a git repo</span>
+          <span className="text-[var(--font-size)] text-text-muted italic">Not a git repo</span>
         )}
 
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
-          <span className="flex items-center gap-1 text-[11px] text-text-muted ml-0.5">
+          <span className="flex items-center gap-1 text-[calc(var(--font-size)-1px)] text-text-muted ml-0.5">
             {aheadBehind.behind > 0 && (
               <span className="flex items-center gap-0.5 text-accent-blue" title={`${aheadBehind.behind} commits behind`}>
                 <ArrowDown size={10} />

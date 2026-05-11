@@ -139,7 +139,7 @@ const GitLogPanel: React.FC = () => {
 
   if (!activeProjectId) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-xs text-text-muted">
+      <div className="flex h-full items-center justify-center p-4 text-[var(--font-size)] text-text-muted">
         No project selected
       </div>
     );
