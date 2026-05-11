@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab, FileTabData } from "../types";
 import { useAppStore } from "../store/appStore";
+import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
 
 /**
  * Generate a unique tab ID from project ID and file path
@@ -25,13 +26,19 @@ function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
 export function useFileView() {
   const fileTree = useAppStore((state) => state.fileTree);
   const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
   const fileTreeLoading = useAppStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
-  // Read project tabs from unified store
+  // Composite tab key: worktree gets its own independent tab space
+  const tabKey = activeWorktreePath && activeProjectId
+    ? buildWorktreeTabKey(activeProjectId, activeWorktreePath)
+    : activeProjectId;
+
+  // Read project tabs from unified store using tabKey
   const projectTabs = useAppStore((state) => {
-    if (!activeProjectId) return null;
-    return state.tabs[activeProjectId] ?? null;
+    if (!tabKey) return null;
+    return state.tabs[tabKey] ?? null;
   });
 
   // Derive file tabs (filtered by kind === "file")
@@ -58,11 +65,17 @@ export function useFileView() {
     return tab?.data.filePath ?? null;
   }, [fileTabs, activeFileTabId]);
 
-  // Ref for projectId in callbacks (avoids stale closures)
-  const projectIdRef = useRef(activeProjectId);
+  // Ref for tabKey in callbacks (avoids stale closures)
+  const tabKeyRef = useRef(tabKey);
   useEffect(() => {
-    projectIdRef.current = activeProjectId;
-  }, [activeProjectId]);
+    tabKeyRef.current = tabKey;
+  }, [tabKey]);
+
+  // Ref for worktreePath in callbacks (for root_path param to backend)
+  const worktreePathRef = useRef(activeWorktreePath);
+  useEffect(() => {
+    worktreePathRef.current = activeWorktreePath;
+  }, [activeWorktreePath]);
 
   /**
    * Load the directory tree for a project
@@ -93,23 +106,29 @@ export function useFileView() {
   /**
    * Open a file - adds a new tab or activates existing tab
    */
-  const openFile = useCallback(async (projectId: string, filePath: string) => {
-    const tabId = getTabId(projectId, filePath);
+  const openFile = useCallback(async (filePath: string) => {
+    const tk = tabKeyRef.current;
+    if (!tk) return;
+
+    const projectId = parseProjectIdFromTabKey(tk);
+    const tabId = getTabId(tk, filePath);
 
     // Check if tab already exists in unified store — just activate, no loading
     const state = useAppStore.getState();
-    const existing = state.tabs[projectId];
+    const existing = state.tabs[tk];
     if (existing?.tabs.some((t) => t.id === tabId)) {
-      state.activateTab(projectId, tabId);
+      state.activateTab(tk, tabId);
       return;
     }
 
     // Load file content — do NOT touch fileTreeLoading
     setError(null);
     try {
+      const rootPath = worktreePathRef.current ?? undefined;
       const content = await invoke<FileContent>("read_file_content", {
         projectId,
         filePath,
+        rootPath,
       });
 
       const newTab: Tab = {
@@ -126,7 +145,7 @@ export function useFileView() {
         },
       };
 
-      useAppStore.getState().addTab(projectId, newTab);
+      useAppStore.getState().addTab(tk, newTab);
     } catch (e) {
       setError(String(e));
     }
@@ -136,35 +155,35 @@ export function useFileView() {
    * Close a tab
    */
   const closeTab = useCallback((tabId: string) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    useAppStore.getState().closeTab(pid, tabId);
+    const tk = tabKeyRef.current;
+    if (!tk) return;
+    useAppStore.getState().closeTab(tk, tabId);
   }, []);
 
   /**
    * Activate a tab
    */
   const activateTab = useCallback((tabId: string) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
-    useAppStore.getState().activateTab(pid, tabId);
+    const tk = tabKeyRef.current;
+    if (!tk) return;
+    useAppStore.getState().activateTab(tk, tabId);
   }, []);
 
   /**
    * Update tab content (for dirty tracking)
    */
   const updateTabContent = useCallback((tabId: string, content: string) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
+    const tk = tabKeyRef.current;
+    if (!tk) return;
 
     const state = useAppStore.getState();
-    const projectTabs = state.tabs[pid];
-    if (!projectTabs) return;
+    const projTabs = state.tabs[tk];
+    if (!projTabs) return;
 
-    const tab = projectTabs.tabs.find((t) => t.id === tabId);
+    const tab = projTabs.tabs.find((t) => t.id === tabId);
     if (!tab || tab.data.kind !== "file") return;
 
-    state.updateTab(pid, tabId, {
+    state.updateTab(tk, tabId, {
       content: { ...tab.data.content, content },
       isDirty: content !== tab.data.content.content,
     });
@@ -174,29 +193,31 @@ export function useFileView() {
    * Save file content
    */
   const saveFile = useCallback(async (content: string): Promise<boolean> => {
-    const pid = projectIdRef.current;
-    if (!pid) return false;
+    const tk = tabKeyRef.current;
+    if (!tk) return false;
 
     const state = useAppStore.getState();
-    const projectTabs = state.tabs[pid];
-    if (!projectTabs) return false;
+    const projTabs = state.tabs[tk];
+    if (!projTabs) return false;
 
     // Find the active file tab
-    const active = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
+    const active = projTabs.tabs.find((t) => t.id === projTabs.activeTabId);
     const fileTab = active && active.data.kind === "file"
       ? active
-      : projectTabs.tabs.find(isFileTab);
+      : projTabs.tabs.find(isFileTab);
     if (!fileTab || fileTab.data.kind !== "file") return false;
 
     try {
+      const rootPath = worktreePathRef.current ?? undefined;
       await invoke("write_file_content", {
         projectId: fileTab.projectId,
         filePath: fileTab.data.filePath,
         content,
+        rootPath,
       });
 
       // Update tab: mark as not dirty, update content
-      state.updateTab(pid, fileTab.id, {
+      state.updateTab(tk, fileTab.id, {
         content: { ...fileTab.data.content, content },
         isDirty: false,
       });
@@ -211,17 +232,17 @@ export function useFileView() {
    * Mark tab as dirty
    */
   const setTabDirty = useCallback((tabId: string, isDirty: boolean) => {
-    const pid = projectIdRef.current;
-    if (!pid) return;
+    const tk = tabKeyRef.current;
+    if (!tk) return;
 
     const state = useAppStore.getState();
-    const projectTabs = state.tabs[pid];
-    if (!projectTabs) return;
+    const projTabs = state.tabs[tk];
+    if (!projTabs) return;
 
-    const tab = projectTabs.tabs.find((t) => t.id === tabId);
+    const tab = projTabs.tabs.find((t) => t.id === tabId);
     if (!tab || tab.data.kind !== "file") return;
 
-    state.updateTab(pid, tabId, {
+    state.updateTab(tk, tabId, {
       content: tab.data.content,
       isDirty,
     });

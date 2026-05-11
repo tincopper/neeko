@@ -20,6 +20,7 @@ import {
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
 import { cn } from "../utils/cn";
+import { buildWorktreeTabKey } from "../utils/tabKey";
 
 const SETTINGS_TAB_ID = "settings_tab";
 
@@ -49,7 +50,7 @@ function MainContent() {
 
    // Composite tab key: worktree gets its own independent tab space
    const tabKey = activeWorktreePath && currentProjectId
-      ? `${currentProjectId}:wt:${activeWorktreePath}`
+      ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
       : currentProjectId;
 
    // Get unified tabs from store

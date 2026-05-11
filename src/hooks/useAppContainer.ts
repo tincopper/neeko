@@ -25,6 +25,7 @@ import { useFileView } from "./useFileView";
 import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, Tab, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
+import { buildWorktreeTabKey } from "../utils/tabKey";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 const SETTINGS_TAB_ID = "settings_tab";
@@ -263,7 +264,7 @@ export function useAppContainer(): UseAppContainerResult {
   // Tab key: composite when worktree is active, plain projectId otherwise
   // Each worktree gets its own independent tab space (like a separate project)
   const tabKey = activeWorktreePath && currentProjectId
-    ? `${currentProjectId}:wt:${activeWorktreePath}`
+    ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
     : currentProjectId;
 
   // Restore activeTabId when switching tab spaces (project ↔ worktree)
@@ -336,11 +337,9 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleFileSelect = useCallback(
     (filePath: string) => {
-      if (activeProjectId) {
-        fileView.openFile(activeProjectId, filePath);
-      }
+      fileView.openFile(filePath);
     },
-    [activeProjectId, fileView.openFile],
+    [fileView.openFile],
   );
 
   const handleFileRefresh = useCallback(() => {
