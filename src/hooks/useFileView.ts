@@ -67,12 +67,13 @@ export function useFileView() {
   /**
    * Load the directory tree for a project
    */
-  const loadFileTree = useCallback(async (projectId: string) => {
+  const loadFileTree = useCallback(async (projectId: string, worktreePath?: string) => {
     useAppStore.setState({ fileViewLoading: true });
     setError(null);
     try {
       const tree = await invoke<FileNode[]>("read_dir_tree", {
         projectId,
+        rootPath: worktreePath ?? null,
         subPath: null,
         maxDepth: 4,
       });

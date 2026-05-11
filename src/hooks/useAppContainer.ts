@@ -342,7 +342,8 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleFileRefresh = useCallback(() => {
     if (activeProjectId) {
-      fileView.loadFileTree(activeProjectId);
+      const wtPath = useAppStore.getState().activeWorktreePath ?? undefined;
+      fileView.loadFileTree(activeProjectId, wtPath);
     }
   }, [activeProjectId, fileView.loadFileTree]);
 

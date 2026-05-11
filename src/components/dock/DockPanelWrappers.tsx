@@ -25,6 +25,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const fileViewLoading = useAppStore((s) => s.fileViewLoading);
   const activeFilePath = useAppStore((s) => s.activeFilePath);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
 
   // Load file tree when this panel is the active tab in any zone
   const isActive = useDockStore((s) => {
@@ -36,9 +37,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
 
   useEffect(() => {
     if (isActive && activeProjectId) {
-      onLoadFileTree(activeProjectId);
+      onLoadFileTree(activeProjectId, activeWorktreePath ?? undefined);
     }
-  }, [isActive, activeProjectId, onLoadFileTree]);
+  }, [isActive, activeProjectId, activeWorktreePath, onLoadFileTree]);
 
   return (
     <FilesPanel

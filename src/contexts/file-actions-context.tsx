@@ -7,7 +7,7 @@ export interface FileActionsContextValue {
   onFileActivateTab: (tabId: string) => void;
   onFileSave: (content: string) => Promise<boolean>;
   onFileContentChange: (tabId: string, content: string) => void;
-  onLoadFileTree: (projectId: string) => void;
+  onLoadFileTree: (projectId: string, worktreePath?: string) => void;
 }
 
 const FileActionsContext = createContext<FileActionsContextValue | null>(null);

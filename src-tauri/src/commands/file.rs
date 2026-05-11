@@ -23,41 +23,60 @@ const MAX_EDIT_SIZE: u64 = 512 * 1024;
 #[tauri::command]
 pub fn read_dir_tree(
     project_id: String,
+    root_path: Option<String>,
     sub_path: Option<String>,
     max_depth: Option<u32>,
     state: State<AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(4);
 
-    // Get project path
-    let project_path = {
-        let pm = state
-            .project_manager
-            .lock()
-            .map_err(|e| AppError::File(e.to_string()))?;
-        pm.get_project(&project_id)
-            .map(|p| p.path.clone())
-            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
+    let (target_root, base_root) = if let Some(ref rp) = root_path {
+        // Worktree mode: use the provided path directly as root
+        let root = std::path::PathBuf::from(rp);
+        if !root.exists() {
+            return Err(AppError::File(format!("Worktree path not found: {}", rp)));
+        }
+        if !root.is_dir() {
+            return Err(AppError::File(format!(
+                "Worktree path is not a directory: {}",
+                rp
+            )));
+        }
+        let canonical = root
+            .canonicalize()
+            .map_err(|e| AppError::File(format!("Invalid worktree path: {}", e)))?;
+        (canonical.clone(), canonical)
+    } else {
+        // Project mode: resolve root from project_id
+        let project_path = {
+            let pm = state
+                .project_manager
+                .lock()
+                .map_err(|e| AppError::File(e.to_string()))?;
+            pm.get_project(&project_id)
+                .map(|p| p.path.clone())
+                .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
+        };
+        let canonical = project_path
+            .canonicalize()
+            .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
+        (canonical, project_path)
     };
 
     let target_path = match sub_path {
-        Some(sp) => project_path.join(&sp),
-        None => project_path.clone(),
+        Some(sp) => target_root.join(&sp),
+        None => target_root.clone(),
     };
 
-    // Validate the target path is within the project root
+    // Validate the target path is within the root (prevents path traversal)
     let canonical_target = target_path
         .canonicalize()
         .map_err(|e| AppError::File(format!("Invalid path: {}", e)))?;
-    let canonical_root = project_path
-        .canonicalize()
-        .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
-
-    if !canonical_target.starts_with(&canonical_root) {
-        return Err(AppError::File("Path is outside project root".to_string()));
+    if !canonical_target.starts_with(&target_root) {
+        return Err(AppError::File("Path is outside root directory".to_string()));
     }
 
-    let nodes = read_dir_recursive(&target_path, &project_path, depth)?;
+    let nodes = read_dir_recursive(&target_path, &base_root, depth)?;
     Ok(nodes)
 }
 
