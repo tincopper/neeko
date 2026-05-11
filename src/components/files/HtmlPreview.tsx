@@ -95,9 +95,10 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     loadHtmlContent();
   }, [loadHtmlContent]);
 
-  // 处理 iframe 加载完成
+  // 处理 iframe 加载完成：将焦点归还父窗口，确保全局快捷键（Ctrl+W 等）可用
   const handleIframeLoad = useCallback(() => {
     setIsLoading(false);
+    window.focus();
   }, []);
 
   // 处理 iframe 加载错误
@@ -168,15 +169,22 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
           </div>
         )}
         {blobUrl && (
-          <iframe
-            ref={iframeRef}
-            src={blobUrl}
-            sandbox="allow-scripts allow-same-origin"
-            className="w-full h-full border-none"
-            title={`Preview: ${fileName}`}
-            onLoad={handleIframeLoad}
-            onError={handleIframeError}
-          />
+          <>
+            <iframe
+              ref={iframeRef}
+              src={blobUrl}
+              sandbox="allow-scripts allow-same-origin"
+              className="w-full h-full border-none"
+              title={`Preview: ${fileName}`}
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+            />
+            {/* Transparent overlay: prevent focus entering iframe so Ctrl+W etc. work */}
+            <div
+              className="absolute inset-0 z-20"
+              onMouseDown={(e) => e.preventDefault()}
+            />
+          </>
         )}
       </div>
     </div>
