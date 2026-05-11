@@ -257,8 +257,18 @@ export function useAppContainer(): UseAppContainerResult {
   const currentProjectId =
     activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
 
-  // Use currentProjectId directly for unified tab system
-  const tabKey = currentProjectId;
+  // Tab key: composite when worktree is active, plain projectId otherwise
+  // Each worktree gets its own independent tab space (like a separate project)
+  const tabKey = activeWorktreePath && currentProjectId
+    ? `${currentProjectId}:wt:${activeWorktreePath}`
+    : currentProjectId;
+
+  // Restore activeTabId when switching tab spaces (project ↔ worktree)
+  useEffect(() => {
+    if (!tabKey) return;
+    const projectTabs = useAppStore.getState().tabs[tabKey];
+    useAppStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
+  }, [tabKey]);
 
   useEffect(() => {
     if (!tabKey) return;

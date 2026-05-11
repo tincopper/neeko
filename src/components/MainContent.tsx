@@ -42,14 +42,20 @@ function MainContent() {
       onAgentClick,
    } = useEditorContext();
    const activeProject = useAppStore((state) => state.activeProject);
+   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
 
    // Determine the current project ID (local, WSL, or Remote)
    const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
 
+   // Composite tab key: worktree gets its own independent tab space
+   const tabKey = activeWorktreePath && currentProjectId
+      ? `${currentProjectId}:wt:${activeWorktreePath}`
+      : currentProjectId;
+
    // Get unified tabs from store
    const projectTabs = useAppStore((state) => {
-      if (!currentProjectId) return null;
-      return state.tabs[currentProjectId] ?? null;
+      if (!tabKey) return null;
+      return state.tabs[tabKey] ?? null;
    });
 
    const tabs = projectTabs?.tabs ?? [];
@@ -82,18 +88,18 @@ function MainContent() {
 
    // Tab operations
    const handleActivateTab = useCallback((tabId: string) => {
-      if (!currentProjectId) return;
-      useAppStore.getState().activateTab(currentProjectId, tabId);
-   }, [currentProjectId]);
+      if (!tabKey) return;
+      useAppStore.getState().activateTab(tabKey, tabId);
+   }, [tabKey]);
 
    const handleCloseTab = useCallback((tabId: string) => {
-      if (!currentProjectId) return;
-      useAppStore.getState().closeTab(currentProjectId, tabId);
-   }, [currentProjectId]);
+      if (!tabKey) return;
+      useAppStore.getState().closeTab(tabKey, tabId);
+   }, [tabKey]);
 
    const handleAddTerminalTab = useCallback(() => {
-      if (!currentProjectId) return;
-      const existingTabs = useAppStore.getState().tabs[currentProjectId];
+      if (!tabKey || !currentProjectId) return;
+      const existingTabs = useAppStore.getState().tabs[tabKey];
       const terminalCount = (existingTabs?.tabs ?? []).filter((t) => t.data.kind === "terminal").length;
       if (terminalCount >= 10) return;
 
@@ -109,9 +115,9 @@ function MainContent() {
             status: "Idle",
          },
       };
-      useAppStore.getState().addTab(currentProjectId, tab);
-      useAppStore.getState().activateTab(currentProjectId, tabId);
-   }, [currentProjectId]);
+      useAppStore.getState().addTab(tabKey, tab);
+      useAppStore.getState().activateTab(tabKey, tabId);
+   }, [tabKey, currentProjectId]);
 
    const handleCloseSettingsTab = useCallback(() => {
       handleCloseTab(SETTINGS_TAB_ID);

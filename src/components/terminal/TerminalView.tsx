@@ -21,17 +21,22 @@ import type { TerminalCache, TerminalViewProps } from "./terminalTypes";
 function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProps) {
    const { config } = useAppContext();
    const activeProject = useAppStore((state) => state.activeProject);
+   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
    const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
 
    const wrapperRef = useRef<HTMLDivElement>(null);
    const currentCacheKeyRef = useRef<string | null>(null);
    const [rebuildCount, setRebuildCount] = useState(0);
 
-   const isWorktree = !!worktreePath;
+   // Use prop if provided, otherwise read from store (worktree selected via sidebar)
+   const effectiveWorktreePath = worktreePath ?? activeWorktreePath;
+   const effectiveWorktreeBranch = worktreeBranch ?? activeWorktreeBranch;
+   const isWorktree = !!effectiveWorktreePath;
    const projectId = activeProject?.id ?? null;
-   const projectPath = worktreePath ?? activeProject?.path ?? null;
+   const projectPath = effectiveWorktreePath ?? activeProject?.path ?? null;
    const baseName = activeProject?.name ?? null;
-   const projectName = baseName && worktreeBranch ? `${baseName} [${worktreeBranch}]` : baseName;
+   const projectName = baseName && effectiveWorktreeBranch ? `${baseName} [${effectiveWorktreeBranch}]` : baseName;
    const projectSelectedAgent = activeProject?.selected_agent ?? null;
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
    const tabAgentId = activeTab?.agentId ?? null;
@@ -50,7 +55,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
 
    const cacheKey = projectId
       ? isWorktree
-         ? `${projectId}:wt:${worktreePath}:${activeTabId ?? "default"}:${paneId}`
+         ? `${projectId}:wt:${effectiveWorktreePath}:${activeTabId ?? "default"}:${paneId}`
          : terminalCacheKey(projectId, activeTabId, paneId)
       : `local:none:${paneId}`;
 
