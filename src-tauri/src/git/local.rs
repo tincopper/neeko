@@ -1493,6 +1493,130 @@ pub fn remote_web_url(repo_path: &Path) -> Result<String> {
 
 use crate::models::{AheadBehind, CommitResult};
 
+/// 获取指定文件相对于 HEAD 的 diff（未 staged 也包含）。
+/// 优先取 `git diff HEAD -- files`，新文件（untracked）回退到直接读文件内容。
+/// 超过 `line_limit` 行时截断并附加 stat 摘要。
+pub fn get_diff_for_files(repo_path: &Path, file_paths: &[String], line_limit: usize) -> Result<String> {
+    if file_paths.is_empty() {
+        return Ok(String::new());
+    }
+
+    // git diff HEAD -- file1 file2 ...（包含已 stage 和未 stage 的变更）
+    let mut args = vec!["diff", "HEAD", "--"];
+    args.extend(file_paths.iter().map(|s| s.as_str()));
+
+    let diff_output = exec("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff HEAD")?;
+
+    let mut diff_text = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+    // 对于新文件（untracked），git diff HEAD 返回空；读文件内容补充
+    if diff_text.trim().is_empty() {
+        let mut lines: Vec<String> = Vec::new();
+        for fp in file_paths {
+            let full = repo_path.join(fp);
+            if full.exists() {
+                if let Ok(content) = std::fs::read_to_string(&full) {
+                    lines.push(format!("--- /dev/null\n+++ b/{}", fp));
+                    for line in content.lines() {
+                        lines.push(format!("+{}", line));
+                    }
+                }
+            }
+        }
+        diff_text = lines.join("\n");
+    }
+
+    if diff_text.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    // stat 摘要
+    let mut stat_args = vec!["diff", "HEAD", "--stat", "--"];
+    stat_args.extend(file_paths.iter().map(|s| s.as_str()));
+    let stat_output = exec("git")
+        .args(&stat_args)
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff HEAD --stat")?;
+    let stat_text = String::from_utf8_lossy(&stat_output.stdout).trim().to_string();
+
+    let lines: Vec<&str> = diff_text.lines().collect();
+    if lines.len() <= line_limit {
+        Ok(diff_text)
+    } else {
+        let truncated = lines[..line_limit].join("\n");
+        Ok(format!(
+            "{}\n\n[diff truncated at {} lines]\n\nFile change summary:\n{}",
+            truncated, line_limit, stat_text
+        ))
+    }
+}
+
+/// 获取 staged changes 的 unified diff（git diff --cached）。
+/// 超过 `line_limit` 行时截断，并在末尾附加 `git diff --cached --stat` 摘要。
+pub fn get_staged_diff(repo_path: &Path, line_limit: usize) -> Result<String> {
+    // 获取完整的 staged diff
+    let diff_output = exec("git")
+        .args(["diff", "--cached"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff --cached")?;
+
+    let diff_text = String::from_utf8_lossy(&diff_output.stdout).to_string();
+
+    // 获取 stat 摘要（总是附加，无论是否截断）
+    let stat_output = exec("git")
+        .args(["diff", "--cached", "--stat"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git diff --cached --stat")?;
+    let stat_text = String::from_utf8_lossy(&stat_output.stdout).trim().to_string();
+
+    if diff_text.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    let lines: Vec<&str> = diff_text.lines().collect();
+    if lines.len() <= line_limit {
+        // diff 未超限，直接返回
+        Ok(diff_text)
+    } else {
+        // 截断并附加 stat 摘要
+        let truncated: String = lines[..line_limit].join("\n");
+        Ok(format!(
+            "{}\n\n[diff truncated at {} lines]\n\nFile change summary:\n{}",
+            truncated, line_limit, stat_text
+        ))
+    }
+}
+
+/// 获取最近 N 条 commit message（仅 subject 行）。
+pub fn get_recent_commit_messages(repo_path: &Path, count: usize) -> Result<Vec<String>> {
+    let count_str = format!("-{}", count);
+    let output = exec("git")
+        .args(["log", count_str.as_str(), "--format=%s"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run git log for recent messages")?;
+
+    if !output.status.success() {
+        // 空仓库或无提交记录时不报错，返回空列表
+        return Ok(vec![]);
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let messages: Vec<String> = text
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    Ok(messages)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

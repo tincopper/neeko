@@ -42,7 +42,7 @@ impl AgentManager {
     }
 
     fn add_default_agents(&mut self) {
-        // opencode
+        // opencode — `opencode run --pure --dangerously-skip-permissions=true -f <prompt_file>`
         self.agents.push(AgentConfig {
             id: "opencode".to_string(),
             name: "opencode".to_string(),
@@ -51,9 +51,16 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("opencode.png".to_string()),
             enabled: true,
+            prompt_args: Some(vec![
+                "run".to_string(),
+                "--pure".to_string(),
+                "--dangerously-skip-permissions=true".to_string(),
+                "-f".to_string(),
+            ]),
+            post_prompt_args: None,
         });
 
-        // claude code
+        // claude code — `claude --bare -p "<prompt>" --dangerously-skip-permissions`
         self.agents.push(AgentConfig {
             id: "claude-code".to_string(),
             name: "claude-code".to_string(),
@@ -62,9 +69,14 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("claude-code.png".to_string()),
             enabled: true,
+            prompt_args: Some(vec![
+                "--bare".to_string(),
+                "-p".to_string(),
+            ]),
+            post_prompt_args: Some(vec!["--dangerously-skip-permissions".to_string()]),
         });
 
-        // gemini
+        // gemini — `gemini --prompt "<prompt>"`
         self.agents.push(AgentConfig {
             id: "gemini".to_string(),
             name: "gemini".to_string(),
@@ -73,9 +85,11 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("gemini.png".to_string()),
             enabled: true,
+            prompt_args: Some(vec!["--prompt".to_string()]),
+            post_prompt_args: None,
         });
 
-        // codex
+        // codex — `codex "<prompt>"` (prompt 作为直接位置参数，无前置 flag)
         self.agents.push(AgentConfig {
             id: "codex".to_string(),
             name: "codex".to_string(),
@@ -84,9 +98,11 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("codex.png".to_string()),
             enabled: true,
+            prompt_args: Some(vec![]),
+            post_prompt_args: None,
         });
 
-        // qoder
+        // qoder — `qodercli --prompt "<prompt>"`
         self.agents.push(AgentConfig {
             id: "qoder".to_string(),
             name: "qoder".to_string(),
@@ -95,9 +111,11 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("qoder.svg".to_string()),
             enabled: true,
+            prompt_args: Some(vec!["--prompt".to_string()]),
+            post_prompt_args: None,
         });
 
-        // codebuddy
+        // codebuddy — `codebuddy --prompt "<prompt>"`
         self.agents.push(AgentConfig {
             id: "codebuddy".to_string(),
             name: "codebuddy".to_string(),
@@ -106,6 +124,8 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("codebuddy.svg".to_string()),
             enabled: true,
+            prompt_args: Some(vec!["--prompt".to_string()]),
+            post_prompt_args: None,
         });
     }
 
@@ -115,6 +135,35 @@ impl AgentManager {
 
     pub fn get_agent(&self, agent_id: &str) -> Option<&AgentConfig> {
         self.agents.iter().find(|a| a.id == agent_id)
+    }
+
+    /// 解析 agent 的 prompt 前置参数。
+    /// 优先使用 AgentConfig 中用户配置的 prompt_args；
+    /// 若为 None，回退到内置硬编码映射（确保老数据/自定义 agent 也能工作）。
+    pub fn resolve_prompt_args(agent: &AgentConfig) -> Option<Vec<String>> {
+        if agent.prompt_args.is_some() {
+            return agent.prompt_args.clone();
+        }
+        // 硬编码回退：按 agent id 映射已知支持的参数（兼容旧数据 / prompt_args 字段缺失的情况）
+        match agent.id.as_str() {
+            "opencode" => Some(vec!["run".to_string(), "--pure".to_string(), "--dangerously-skip-permissions=true".to_string(), "-f".to_string()]),
+            "claude-code" => Some(vec!["--bare".to_string(), "-p".to_string()]),
+            "gemini" | "qoder" | "codebuddy" => Some(vec!["--prompt".to_string()]),
+            "codex" => Some(vec![]),
+            _ => None,
+        }
+    }
+
+    /// 解析 agent 的 prompt 后置参数（追加在 prompt 之后）。
+    pub fn resolve_post_prompt_args(agent: &AgentConfig) -> Vec<String> {
+        if let Some(ref args) = agent.post_prompt_args {
+            return args.clone();
+        }
+        // 硬编码回退
+        match agent.id.as_str() {
+            "claude-code" => vec!["--dangerously-skip-permissions".to_string()],
+            _ => vec![],
+        }
     }
 
     pub fn add_agent(&mut self, agent: AgentConfig) {
@@ -205,6 +254,8 @@ mod tests {
             env: HashMap::new(),
             icon: None,
             enabled: true,
+            prompt_args: None,
+            post_prompt_args: None,
         };
         manager.add_agent(custom);
         assert_eq!(manager.get_agents().len(), 7);
