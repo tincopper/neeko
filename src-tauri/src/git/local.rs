@@ -636,6 +636,31 @@ pub fn get_file_diff_cli(
         .context("Failed to run git diff")?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let mut result = parse_unified_diff(&stdout);
+
+    // Fallback for untracked/added files: git diff returns empty for files
+    // not yet in HEAD (new files staged or untracked). Read the file directly
+    // and present all lines as Added so the user can see the content.
+    if result.hunks.is_empty() {
+        let full_path = repo_path.join(file_path);
+        if full_path.exists() && full_path.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&full_path) {
+                let lines: Vec<DiffLine> = content
+                    .lines()
+                    .map(|line| DiffLine::Added(line.to_string()))
+                    .collect();
+                if !lines.is_empty() {
+                    result.hunks.push(DiffHunk {
+                        old_start: 0,
+                        old_lines: 0,
+                        new_start: 1,
+                        new_lines: lines.len() as u32,
+                        lines,
+                    });
+                }
+            }
+        }
+    }
+
     if let Some(limit) = line_limit {
         let mut total = 0;
         for hunk in result.hunks.iter() {

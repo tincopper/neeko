@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::models::{DiffResult, FileChange, GitInfo};
+use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, GitInfo};
 use crate::utils::command::wsl::{exec, open_ide, safe_path};
 
 use super::local::parse_unified_diff;
@@ -35,7 +35,28 @@ pub fn get_wsl_file_diff(distro: &str, project_path: &str, file_path: &str) -> R
         distro,
         &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
     )?;
-    Ok(parse_unified_diff(&output))
+    let mut result = parse_unified_diff(&output);
+
+    // Fallback for untracked/added files: read via cat inside WSL
+    if result.hunks.is_empty() {
+        if let Ok(content) = exec(distro, &format!("cat '{sp}/{fp}' 2>/dev/null")) {
+            let lines: Vec<DiffLine> = content
+                .lines()
+                .map(|line| DiffLine::Added(line.to_string()))
+                .collect();
+            if !lines.is_empty() {
+                result.hunks.push(DiffHunk {
+                    old_start: 0,
+                    old_lines: 0,
+                    new_start: 1,
+                    new_lines: lines.len() as u32,
+                    lines,
+                });
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// 通过 WSL 执行通用 git 写操作（checkout/create_branch/rename 等）
@@ -126,5 +147,26 @@ pub fn get_wsl_worktree_file_diff(
         distro,
         &format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null"),
     )?;
-    Ok(parse_unified_diff(&output))
+    let mut result = parse_unified_diff(&output);
+
+    // Fallback for untracked/added files: read via cat inside WSL
+    if result.hunks.is_empty() {
+        if let Ok(content) = exec(distro, &format!("cat '{sp}/{fp}' 2>/dev/null")) {
+            let lines: Vec<DiffLine> = content
+                .lines()
+                .map(|line| DiffLine::Added(line.to_string()))
+                .collect();
+            if !lines.is_empty() {
+                result.hunks.push(DiffHunk {
+                    old_start: 0,
+                    old_lines: 0,
+                    new_start: 1,
+                    new_lines: lines.len() as u32,
+                    lines,
+                });
+            }
+        }
+    }
+
+    Ok(result)
 }

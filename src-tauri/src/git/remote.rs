@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::models::{AuthMethod, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::models::{AuthMethod, DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::local::parse_unified_diff;
@@ -43,7 +43,29 @@ pub async fn get_remote_file_diff(
     let fp = safe_path(file_path);
     let cmd = format!("cd '{sp}' && git diff --unified=3 -- '{fp}' 2>/dev/null");
     let output = exec_command(host, port, username, auth, &cmd).await?;
-    Ok(parse_unified_diff(&output))
+    let mut result = parse_unified_diff(&output);
+
+    // Fallback for untracked/added files: read via cat over SSH
+    if result.hunks.is_empty() {
+        let cat_cmd = format!("cat '{sp}/{fp}' 2>/dev/null");
+        if let Ok(content) = exec_command(host, port, username, auth, &cat_cmd).await {
+            let lines: Vec<DiffLine> = content
+                .lines()
+                .map(|line| DiffLine::Added(line.to_string()))
+                .collect();
+            if !lines.is_empty() {
+                result.hunks.push(DiffHunk {
+                    old_start: 0,
+                    old_lines: 0,
+                    new_start: 1,
+                    new_lines: lines.len() as u32,
+                    lines,
+                });
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 /// 通过 SSH 执行通用 git 写操作
