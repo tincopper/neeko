@@ -4,13 +4,15 @@ import { cn } from "../../utils/cn";
 import { Checkbox } from "../ui/checkbox";
 import { Badge } from "../ui/badge";
 import { ChevronRightIcon } from "../icons";
-import { Undo2 } from "lucide-react";
+import { Undo2, Plus, ListPlus } from "lucide-react";
 
 interface ChangesListProps {
   files: FileChange[];
   selectedFiles: Set<string>;
   onToggleFile: (path: string) => void;
   onDiscardFile: (path: string) => void;
+  onStageFile?: (path: string) => void;
+  onStageAllUntracked?: () => void;
   onFileSelect?: (path: string) => void;
   loading: boolean;
 }
@@ -30,6 +32,8 @@ const ChangesList: React.FC<ChangesListProps> = ({
   selectedFiles,
   onToggleFile,
   onDiscardFile,
+  onStageFile,
+  onStageAllUntracked,
   onFileSelect,
   loading,
 }) => {
@@ -141,7 +145,23 @@ const ChangesList: React.FC<ChangesListProps> = ({
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
           onDiscardFile={onDiscardFile}
+          onStageFile={onStageFile}
           loading={loading}
+          headerAction={
+            onStageAllUntracked && (
+              <button
+                className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
+                title="Stage all unversioned files"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStageAllUntracked();
+                }}
+                disabled={loading}
+              >
+                <ListPlus size={14} />
+              </button>
+            )
+          }
         />
       )}
     </div>
@@ -164,8 +184,10 @@ interface SectionProps {
   onToggleFile: (path: string) => void;
   onFileSelect?: (path: string) => void;
   onDiscardFile: (path: string) => void;
+  onStageFile?: (path: string) => void;
   loading: boolean;
   filter?: React.ReactNode;
+  headerAction?: React.ReactNode;
 }
 
 const Section: React.FC<SectionProps> = ({
@@ -182,8 +204,10 @@ const Section: React.FC<SectionProps> = ({
   onToggleFile,
   onFileSelect,
   onDiscardFile,
+  onStageFile,
   loading,
   filter,
+  headerAction,
 }) => {
   return (
     <div className="flex flex-col shrink-0 mb-1">
@@ -214,6 +238,7 @@ const Section: React.FC<SectionProps> = ({
           <span className="text-[#f85149] text-[calc(var(--font-size)-2px)] font-semibold">-{deletions}</span>
         )}
         {filter && <span className="ml-auto">{filter}</span>}
+        {headerAction && <span className={cn(!filter && "ml-auto")}>{headerAction}</span>}
       </div>
 
       {/* File list */}
@@ -278,6 +303,19 @@ const Section: React.FC<SectionProps> = ({
                 >
                   <Undo2 size={12} />
                 </button>
+                {onStageFile && (
+                  <button
+                    className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100 opacity-0 group-hover:opacity-100"
+                    title="Stage file (git add)"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStageFile(file.path);
+                    }}
+                    disabled={loading}
+                  >
+                    <Plus size={12} />
+                  </button>
+                )}
               </div>
             );
           })}
