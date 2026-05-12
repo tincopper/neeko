@@ -571,6 +571,96 @@ pub async fn remote_read_dir_tree(
     .map_err(AppError::from)
 }
 
+#[tauri::command]
+pub async fn remote_read_file_content(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_path: String,
+    root_path: Option<String>,
+) -> Result<FileContent, AppError> {
+    use crate::utils::command::ssh::{exec_command, safe_path};
+
+    let base = root_path.unwrap_or(project_path);
+    let full_path = format!("{}/{}", base, file_path);
+    let safe_fp = safe_path(&full_path);
+
+    // 文件大小
+    let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
+    let size: u64 = exec_command(&host, port, &username, &auth, &stat_cmd)
+        .await
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+
+    // 二进制检测
+    let binary_cmd =
+        format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
+    let is_binary = exec_command(&host, port, &username, &auth, &binary_cmd)
+        .await
+        .map(|out| out.trim() == "1")
+        .unwrap_or(false);
+
+    if is_binary {
+        return Ok(FileContent {
+            path: file_path,
+            content: String::new(),
+            size,
+            is_binary: true,
+        });
+    }
+
+    // 读取文件内容
+    let cat_cmd = format!("cat '{safe_fp}'");
+    let content = exec_command(&host, port, &username, &auth, &cat_cmd)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(FileContent {
+        path: file_path,
+        content,
+        size,
+        is_binary: false,
+    })
+}
+
+#[tauri::command]
+pub async fn remote_write_file_content(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_path: String,
+    content: String,
+    root_path: Option<String>,
+) -> Result<(), AppError> {
+    use crate::utils::command::ssh::{exec_command, safe_path};
+
+    let base = root_path.unwrap_or(project_path);
+    let full_path = format!("{}/{}", base, file_path);
+    let safe_fp = safe_path(&full_path);
+
+    // 确保父目录存在
+    if let Some(parent) = std::path::Path::new(&full_path).parent() {
+        let safe_parent = safe_path(parent.to_str().unwrap_or(""));
+        let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
+        let _ = exec_command(&host, port, &username, &auth, &mkdir_cmd).await;
+    }
+
+    // 使用 base64 编码传输，避免 shell 转义问题
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
+    exec_command(&host, port, &username, &auth, &write_cmd)
+        .await
+        .map_err(AppError::from)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

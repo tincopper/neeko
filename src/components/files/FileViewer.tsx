@@ -41,7 +41,11 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
 function FileViewer() {
    const { config } = useAppContext();
    const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const activeWslProject = useAppStore((state) => state.activeWslProject);
+   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
    const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const activeWslWorktreePath = useAppStore((state) => state.activeWslWorktreePath);
+   const activeRemoteWorktreePath = useAppStore((state) => state.activeRemoteWorktreePath);
    const {
       onFileSave: onSave,
       onFileContentChange: onContentChange,
@@ -51,10 +55,18 @@ function FileViewer() {
    const fontFamily = config.fontFamily;
    const fontSize = config.editorFontSize;
 
-   // Composite tab key: worktree gets its own independent tab space
-   const tabKey = activeWorktreePath && activeProjectId
-      ? buildWorktreeTabKey(activeProjectId, activeWorktreePath)
-      : activeProjectId;
+   // Composite tab key: unified across local/WSL/remote projects
+   const currentProjectId = activeProjectId
+      ?? activeWslProject?.project.id
+      ?? activeRemoteProject?.project.id
+      ?? null;
+   const effectiveWorktreePath = activeWorktreePath
+      ?? activeWslWorktreePath
+      ?? activeRemoteWorktreePath
+      ?? null;
+   const tabKey = effectiveWorktreePath && currentProjectId
+      ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
+      : currentProjectId;
 
    // Read project tabs from unified store
    const projectTabs = useAppStore((state) => {

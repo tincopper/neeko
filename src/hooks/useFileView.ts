@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab, FileTabData } from "../types";
 import type { ProjectCommands } from "../types/activeProject";
@@ -91,23 +91,16 @@ export function useFileView(
     return tab?.data.filePath ?? null;
   }, [fileTabs, activeFileTabId]);
 
-  // Ref for tabKey in callbacks (avoids stale closures)
+  // Refs for callbacks (avoids stale closures)
+  // Sync during render phase — ensures loadFileTree/openFile always read latest values
   const tabKeyRef = useRef(tabKey);
-  useEffect(() => {
-    tabKeyRef.current = tabKey;
-  }, [tabKey]);
+  tabKeyRef.current = tabKey;
 
-  // Ref for worktreePath in callbacks (for root_path param to backend)
   const worktreePathRef = useRef(effectiveWorktreePath);
-  useEffect(() => {
-    worktreePathRef.current = effectiveWorktreePath;
-  }, [effectiveWorktreePath]);
+  worktreePathRef.current = effectiveWorktreePath;
 
-  // Ref for externalCommands in callbacks (avoids stale closures)
   const externalCommandsRef = useRef(externalCommands);
-  useEffect(() => {
-    externalCommandsRef.current = externalCommands;
-  }, [externalCommands]);
+  externalCommandsRef.current = externalCommands;
 
   /**
    * Load the directory tree for a project

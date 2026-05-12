@@ -45,7 +45,6 @@ export function useGitLog(commands: ProjectCommands | null): GitLogData {
     if (!commands) return;
     if (loadedRef.current) return;
     loadedRef.current = true;
-    setCommits([]);
     setHasMore(true);
     fetchCommits(0, false);
   }, [commands, fetchCommits]);

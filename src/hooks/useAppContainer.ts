@@ -22,6 +22,7 @@ import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { useAppStore } from "../store/appStore";
 import { useFileView } from "./useFileView";
+import { useActiveProject } from "./useActiveProject";
 import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, Tab, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
@@ -179,7 +180,8 @@ export function useAppContainer(): UseAppContainerResult {
     saveSession: session.saveSession,
   });
 
-  const fileView = useFileView();
+  const activeContext = useActiveProject();
+  const fileView = useFileView(activeContext.commands, activeContext.worktreePath);
 
   // Close settings tab in __app__ space if open (from no-project state)
   const closeAppSettingsTab = useCallback(() => {
@@ -191,19 +193,6 @@ export function useAppContainer(): UseAppContainerResult {
       }
     }
   }, []);
-
-  const handleSelectProjectWithClear = useCallback(
-    async (projectId: string) => {
-      closeAppSettingsTab();
-      clearWorktreeForProject(projectId);
-      await handleSelectProject(projectId);
-      const project = useAppStore.getState().activeProject;
-      if (project) {
-        await fileView.loadFileTree(projectId, project.path);
-      }
-    },
-    [closeAppSettingsTab, clearWorktreeForProject, handleSelectProject, fileView],
-  );
 
   const clearWslTransientState = useCallback(() => {
     wslActions.setWslDiffState(null);
@@ -228,6 +217,28 @@ export function useAppContainer(): UseAppContainerResult {
     remoteActions.setRemoteActiveWtBranch,
     remoteActions.setRemoteOpenedWt,
   ]);
+
+  const handleSelectProjectWithClear = useCallback(
+    async (projectId: string) => {
+      closeAppSettingsTab();
+      clearWorktreeForProject(projectId);
+      // 清除 WSL/Remote 活跃状态，保证 useActiveProject 优先级正确返回 local context
+      useAppStore.setState({
+        activeWslKey: null,
+        activeWslProject: null,
+        activeRemoteKey: null,
+        activeRemoteProject: null,
+      });
+      clearWslTransientState();
+      clearRemoteTransientState();
+      await handleSelectProject(projectId);
+      const project = useAppStore.getState().activeProject;
+      if (project) {
+        await fileView.loadFileTree(projectId, project.path);
+      }
+    },
+    [closeAppSettingsTab, clearWorktreeForProject, clearWslTransientState, clearRemoteTransientState, handleSelectProject, fileView],
+  );
 
   const handleSelectWslProjectWithSync = useCallback(
     (distro: string, project: WSLProject) => {
@@ -361,12 +372,21 @@ export function useAppContainer(): UseAppContainerResult {
   );
 
   const handleFileRefresh = useCallback(() => {
-    if (activeProjectId) {
-      const wtPath = useAppStore.getState().activeWorktreePath;
-      const projectPath = useAppStore.getState().activeProject?.path;
-      fileView.loadFileTree(activeProjectId, wtPath ?? projectPath);
-    }
-  }, [activeProjectId, fileView.loadFileTree]);
+    const state = useAppStore.getState();
+    const projectId = state.activeProjectId
+      ?? state.activeWslProject?.project.id
+      ?? state.activeRemoteProject?.project.id
+      ?? null;
+    if (!projectId) return;
+    const rootPath = state.activeWorktreePath
+      ?? state.activeWslWorktreePath
+      ?? state.activeRemoteWorktreePath
+      ?? state.activeProject?.path
+      ?? state.activeWslProject?.project.path
+      ?? state.activeRemoteProject?.project.path
+      ?? undefined;
+    fileView.loadFileTree(projectId, rootPath);
+  }, [fileView.loadFileTree]);
 
   const handleWslDiffBack = useCallback(() => {
     wslActions.setWslDiffState(null);
