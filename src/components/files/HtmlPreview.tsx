@@ -15,8 +15,7 @@ interface HtmlPreviewProps {
  */
 function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const blobUrlRef = useRef<string | null>(null);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -26,7 +25,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     return convertFileSrc(dirPath, "asset");
   }, [filePath]);
 
-  // 通过后端命令读取 HTML 文件内容并创建 blob URL
+  // 通过后端命令读取 HTML 文件内容并通过 srcdoc 渲染
   const loadHtmlContent = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -58,17 +57,30 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
         htmlContent = `${baseTag}${htmlContent}`;
       }
 
-      // 创建 blob URL
-      const blob = new Blob([htmlContent], { type: "text/html; charset=utf-8" });
-      const url = URL.createObjectURL(blob);
+      // 注入锚点导航拦截脚本，防止 <base href> 导致 href="#..." 变成外部导航
+      const anchorFixScript =
+        `<script>(function(){` +
+        `document.addEventListener('click',function(e){` +
+        `var a=e.target.closest?e.target.closest('a[href^="#"]'):null;` +
+        `if(!a)return;` +
+        `e.preventDefault();e.stopPropagation();` +
+        `var h=a.getAttribute('href');` +
+        `if(h&&h.length>1){` +
+        `var t=document.getElementById(h.slice(1))||document.querySelector(h);` +
+        `if(t)t.scrollIntoView({behavior:'smooth',block:'start'});` +
+        `}` +
+        `},true);` +
+        `})();</script>`;
 
-      // 释放旧的 blob URL（通过 ref 避免 stale closure）
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
+      if (htmlContent.includes("</body>")) {
+        htmlContent = htmlContent.replace("</body>", `${anchorFixScript}</body>`);
+      } else if (htmlContent.includes("</html>")) {
+        htmlContent = htmlContent.replace("</html>", `${anchorFixScript}</html>`);
+      } else {
+        htmlContent += anchorFixScript;
       }
 
-      blobUrlRef.current = url;
-      setBlobUrl(url);
+      setHtmlContent(htmlContent);
     } catch (err) {
       console.error("[HtmlPreview] Failed to load HTML file:", err);
       setError(err instanceof Error ? err.message : "Failed to load HTML file");
@@ -81,12 +93,9 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   useEffect(() => {
     loadHtmlContent();
 
-    // 组件卸载时释放 blob URL
+    // 组件卸载时清理
     return () => {
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
+      setHtmlContent(null);
     };
   }, [loadHtmlContent]);
 
@@ -167,10 +176,10 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
             </div>
           </div>
         )}
-         {blobUrl && (
+         {htmlContent && (
             <iframe
               ref={iframeRef}
-              src={blobUrl}
+              srcDoc={htmlContent}
               sandbox="allow-scripts allow-same-origin"
               className="w-full h-full border-none"
               title={`Preview: ${fileName}`}
