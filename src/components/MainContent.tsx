@@ -363,7 +363,7 @@ function MainContent() {
                onClose={handleCloseSettingsTab}
             />
          ) : activeRemoteProject && !activeProject && !activeWslProject
-             && activeTab?.data.kind !== "file" && activeTab?.data.kind !== "gitLog" ? (
+              && activeTab?.data.kind !== "file" && activeTab?.data.kind !== "gitLog" && activeTab?.data.kind !== "diff" ? (
             <RemoteProjectView />
          ) : (
              <div className="flex-1 flex flex-col overflow-hidden">

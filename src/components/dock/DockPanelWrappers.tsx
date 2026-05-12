@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef } from "react";
 import {
   useFileActionsContext,
   useAppContext,
-  useProjectActionsContext,
   SkillProvider,
 } from "@/contexts";
 import { useAppStore } from "@/store/appStore";
@@ -11,6 +10,8 @@ import { FilesPanel } from "@/components/panels";
 import { SkillsPanel } from "@/components/skills";
 import { GitCommitPanel } from "@/components/project";
 import { useActiveProject } from "@/hooks/useActiveProject";
+import { buildDiffSource } from "@/utils/diffSource";
+import type { Tab } from "@/types";
 
 // ── FilesPanelWrapper ──
 
@@ -127,10 +128,10 @@ FilesPanelWrapper.displayName = "FilesPanelWrapper";
  * to GitCommitPanel. Shows a placeholder when no project is selected.
  */
 const GitCommitPanelWrapper: React.FC = React.memo(() => {
-  const { onSelectFile } = useProjectActionsContext();
   const { showToast } = useAppContext();
-  const { project, commands, capabilities } = useActiveProject();
+  const { project, commands, capabilities, connectionContext } = useActiveProject();
   const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
+  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
 
   const onRefreshGit = useCallback(async () => {
     if (!commands) return;
@@ -158,7 +159,34 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
       : project;
 
   const handleSelectFile = (filePath: string) => {
-    onSelectFile(project.id, filePath);
+    // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
+    // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path）
+    const state = useAppStore.getState();
+    const tabKey = state.activeProjectId
+      ?? state.activeWslProject?.project.id
+      ?? state.activeRemoteProject?.project.id
+      ?? project.id;
+    const existingTabs = state.tabs[tabKey];
+    const existingDiffTab = existingTabs?.tabs.find(
+      (t) => t.data.kind === "diff" && t.data.filePath === filePath,
+    );
+    if (existingDiffTab) {
+      state.activateTab(tabKey, existingDiffTab.id);
+      return;
+    }
+
+    const diffSource = buildDiffSource(connectionContext, activeWorktreePath);
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tab: Tab = {
+      id: tabId,
+      projectId: tabKey,
+      title: fileName,
+      order: existingTabs?.tabs.length ?? 0,
+      data: { kind: "diff", filePath, fileName, diffSource },
+    };
+    state.addTab(tabKey, tab);
+    state.activateTab(tabKey, tabId);
   };
 
   return (
