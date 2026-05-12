@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab, FileTabData } from "../types";
+import type { ProjectCommands } from "../types/activeProject";
 import { useAppStore } from "../store/appStore";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
 
@@ -23,17 +24,42 @@ function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
   return tab.data.kind === "file";
 }
 
-export function useFileView() {
+/**
+ * useFileView — 文件视图 hook
+ *
+ * 支持两种模式：
+ * - 无参数 (local 模式): 从 store 读取 activeProjectId / activeWorktreePath，直接 invoke
+ * - 传入 externalCommands / externalWorktreePath (WSL/Remote 模式): 通过 ProjectCommands 接口调用
+ *
+ * 选项 A：最小改动，保证本地功能不受影响，WSL/Remote 通过 externalCommands 接入。
+ */
+export function useFileView(
+  externalCommands?: ProjectCommands | null,
+  externalWorktreePath?: string | null,
+) {
   const fileTree = useAppStore((state) => state.fileTree);
   const activeProjectId = useAppStore((state) => state.activeProjectId);
+  const activeWslProject = useAppStore((state) => state.activeWslProject);
+  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
   const fileTreeLoading = useAppStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
+  // Unified current project ID — covers local/WSL/remote (matches MainContent tabKey logic)
+  const currentProjectId = activeProjectId
+    ?? activeWslProject?.project.id
+    ?? activeRemoteProject?.project.id
+    ?? null;
+
+  // Resolve effective worktree path: external takes priority
+  const effectiveWorktreePath = externalWorktreePath !== undefined
+    ? externalWorktreePath
+    : activeWorktreePath;
+
   // Composite tab key: worktree gets its own independent tab space
-  const tabKey = activeWorktreePath && activeProjectId
-    ? buildWorktreeTabKey(activeProjectId, activeWorktreePath)
-    : activeProjectId;
+  const tabKey = effectiveWorktreePath && currentProjectId
+    ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
+    : currentProjectId;
 
   // Read project tabs from unified store using tabKey
   const projectTabs = useAppStore((state) => {
@@ -72,10 +98,16 @@ export function useFileView() {
   }, [tabKey]);
 
   // Ref for worktreePath in callbacks (for root_path param to backend)
-  const worktreePathRef = useRef(activeWorktreePath);
+  const worktreePathRef = useRef(effectiveWorktreePath);
   useEffect(() => {
-    worktreePathRef.current = activeWorktreePath;
-  }, [activeWorktreePath]);
+    worktreePathRef.current = effectiveWorktreePath;
+  }, [effectiveWorktreePath]);
+
+  // Ref for externalCommands in callbacks (avoids stale closures)
+  const externalCommandsRef = useRef(externalCommands);
+  useEffect(() => {
+    externalCommandsRef.current = externalCommands;
+  }, [externalCommands]);
 
   /**
    * Load the directory tree for a project
@@ -84,12 +116,20 @@ export function useFileView() {
     useAppStore.setState({ fileViewLoading: true });
     setError(null);
     try {
-      const tree = await invoke<FileNode[]>("read_dir_tree", {
-        projectId,
-        rootPath: worktreePath ?? null,
-        subPath: null,
-        maxDepth: 4,
-      });
+      const cmds = externalCommandsRef.current;
+      let tree: FileNode[];
+      if (cmds) {
+        // WSL/Remote 模式：通过 ProjectCommands 接口调用
+        tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, 4);
+      } else {
+        // Local 模式：直接 invoke
+        tree = await invoke<FileNode[]>("read_dir_tree", {
+          projectId,
+          rootPath: worktreePath ?? null,
+          subPath: null,
+          maxDepth: 4,
+        });
+      }
       useAppStore.setState({
         fileTree: tree,
         fileViewLoading: false,
@@ -125,11 +165,19 @@ export function useFileView() {
     setError(null);
     try {
       const rootPath = worktreePathRef.current ?? undefined;
-      const content = await invoke<FileContent>("read_file_content", {
-        projectId,
-        filePath,
-        rootPath,
-      });
+      const cmds = externalCommandsRef.current;
+      let content: FileContent;
+      if (cmds) {
+        // WSL/Remote 模式：通过 ProjectCommands 接口调用
+        content = await cmds.readFileContent(filePath, rootPath);
+      } else {
+        // Local 模式：直接 invoke
+        content = await invoke<FileContent>("read_file_content", {
+          projectId,
+          filePath,
+          rootPath,
+        });
+      }
 
       const newTab: Tab = {
         id: tabId,
@@ -209,12 +257,19 @@ export function useFileView() {
 
     try {
       const rootPath = worktreePathRef.current ?? undefined;
-      await invoke("write_file_content", {
-        projectId: fileTab.projectId,
-        filePath: fileTab.data.filePath,
-        content,
-        rootPath,
-      });
+      const cmds = externalCommandsRef.current;
+      if (cmds) {
+        // WSL/Remote 模式：通过 ProjectCommands 接口调用
+        await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
+      } else {
+        // Local 模式：直接 invoke
+        await invoke("write_file_content", {
+          projectId: fileTab.projectId,
+          filePath: fileTab.data.filePath,
+          content,
+          rootPath,
+        });
+      }
 
       // Update tab: mark as not dirty, update content
       state.updateTab(tk, fileTab.id, {

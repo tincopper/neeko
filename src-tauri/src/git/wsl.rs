@@ -1,6 +1,9 @@
 use anyhow::Result;
 
-use crate::models::{DiffHunk, DiffLine, DiffResult, FileChange, GitInfo};
+use crate::models::{
+    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, DiffHunk, DiffLine,
+    DiffResult, FileChange, FileNode, GitInfo,
+};
 use crate::utils::command::wsl::{exec, open_ide, safe_path};
 
 use super::local::parse_unified_diff;
@@ -169,4 +172,268 @@ pub fn get_wsl_worktree_file_diff(
     }
 
     Ok(result)
+}
+
+// ─── New helper functions for extended WSL git commands ──────────────────
+
+/// 通过 WSL 执行 git log，返回 CommitEntry 列表
+pub fn wsl_get_commit_log(
+    distro: &str,
+    project_path: &str,
+    count: usize,
+    skip: usize,
+) -> Result<Vec<CommitEntry>> {
+    let sp = safe_path(project_path);
+    let format_str = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D%x00%P";
+    let count_str = format!("-{}", count);
+    let skip_str = format!("--skip={}", skip);
+
+    let cmd = if skip > 0 {
+        format!(
+            "cd '{sp}' && git log '{format_str}' '{count_str}' --decorate=full --all --topo-order '{skip_str}' 2>/dev/null",
+            sp = sp,
+            format_str = format_str,
+            count_str = count_str,
+            skip_str = skip_str
+        )
+    } else {
+        format!(
+            "cd '{sp}' && git log '{format_str}' '{count_str}' --decorate=full --all --topo-order 2>/dev/null",
+            sp = sp,
+            format_str = format_str,
+            count_str = count_str
+        )
+    };
+
+    let output = exec(distro, &cmd)?;
+    Ok(parse_wsl_commit_log(&output))
+}
+
+fn parse_wsl_commit_log(output: &str) -> Vec<CommitEntry> {
+    super::remote::parse_commit_log_output(output)
+}
+
+/// 通过 WSL 获取单个 commit 详细信息
+pub fn wsl_get_commit_detail(
+    distro: &str,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<CommitDetail> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+    let format_str = "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%B%x00%P%x00%D";
+    let cmd = format!(
+        "cd '{sp}' && git show '{format_str}' --no-patch '{ch}' 2>/dev/null",
+        sp = sp,
+        format_str = format_str,
+        ch = ch
+    );
+    let output = exec(distro, &cmd)?;
+
+    let parts: Vec<&str> = output.split('\0').collect();
+    if parts.len() < 7 {
+        anyhow::bail!(
+            "Unexpected git show output format for commit: {}",
+            commit_hash
+        );
+    }
+    let parents = parts
+        .get(6)
+        .map(|s| {
+            s.split_whitespace()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let refs = parts.get(7).map(|s| s.to_string()).unwrap_or_default();
+    Ok(CommitDetail {
+        hash: parts[0].to_string(),
+        short_hash: parts[1].to_string(),
+        author: parts[2].to_string(),
+        email: parts[3].to_string(),
+        timestamp: parts[4].to_string(),
+        message: parts[5].trim().to_string(),
+        parents,
+        refs,
+    })
+}
+
+/// 通过 WSL 获取某 commit 改动的文件列表
+pub fn wsl_get_commit_files(
+    distro: &str,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<Vec<CommitFileChange>> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+
+    // numstat for additions/deletions
+    let numstat_cmd =
+        format!("cd '{sp}' && git diff-tree --no-commit-id -r --numstat '{ch}' 2>/dev/null");
+    let numstat_out = exec(distro, &numstat_cmd)?;
+
+    // name-status for file status (M/A/D/R...)
+    let status_cmd =
+        format!("cd '{sp}' && git diff-tree --no-commit-id -r --name-status '{ch}' 2>/dev/null");
+    let status_out = exec(distro, &status_cmd)?;
+
+    let status_map: std::collections::HashMap<String, String> = status_out
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                Some((parts[1].to_string(), parts[0].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let files: Vec<CommitFileChange> = numstat_out
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let path = parts[2].to_string();
+                let additions = parts[0].parse::<usize>().unwrap_or(0);
+                let deletions = parts[1].parse::<usize>().unwrap_or(0);
+                let status = status_map
+                    .get(&path)
+                    .cloned()
+                    .unwrap_or_else(|| "M".to_string());
+                Some(CommitFileChange {
+                    path,
+                    status,
+                    additions,
+                    deletions,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(files)
+}
+
+/// 通过 WSL 获取某 commit 中某文件的 diff
+pub fn wsl_get_commit_file_diff(
+    distro: &str,
+    project_path: &str,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+    let fp = safe_path(file_path);
+    let cmd = format!("cd '{sp}' && git diff '{ch}^' '{ch}' -- '{fp}' 2>/dev/null");
+    let output = exec(distro, &cmd)?;
+    let mut result = parse_unified_diff(&output);
+    super::local::collapse_diff_context(&mut result.hunks, 12);
+    Ok(result)
+}
+
+/// 通过 WSL 获取 ahead/behind 计数
+pub fn wsl_get_ahead_behind(distro: &str, project_path: &str) -> Result<AheadBehind> {
+    let sp = safe_path(project_path);
+    // Check if upstream exists
+    let upstream_check = exec(
+        distro,
+        &format!(
+            "cd '{sp}' && git rev-parse --abbrev-ref HEAD@{{upstream}} 2>/dev/null; echo EXIT:$?"
+        ),
+    );
+    match upstream_check {
+        Ok(ref out) if out.contains("EXIT:0") => {}
+        _ => {
+            return Ok(AheadBehind {
+                ahead: 0,
+                behind: 0,
+            });
+        }
+    }
+
+    let cmd = format!("cd '{sp}' && git rev-list --left-right --count HEAD...@{{u}} 2>/dev/null");
+    match exec(distro, &cmd) {
+        Ok(output) => {
+            let trimmed = output.trim().to_string();
+            let parts: Vec<&str> = trimmed.split('\t').collect();
+            Ok(AheadBehind {
+                ahead: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+                behind: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
+            })
+        }
+        Err(_) => Ok(AheadBehind {
+            ahead: 0,
+            behind: 0,
+        }),
+    }
+}
+
+/// 通过 WSL 执行 git commit（先 stage 指定文件，再 commit）
+pub fn wsl_commit_files(
+    distro: &str,
+    project_path: &str,
+    file_paths: &[String],
+    message: &str,
+) -> Result<CommitResult> {
+    let sp = safe_path(project_path);
+
+    // Stage files
+    if !file_paths.is_empty() {
+        let quoted_files: Vec<String> = file_paths
+            .iter()
+            .map(|f| format!("'{}'", safe_path(f)))
+            .collect();
+        let stage_cmd = format!("cd '{sp}' && git add -- {}", quoted_files.join(" "));
+        exec(distro, &stage_cmd)?;
+    }
+
+    // Commit
+    let safe_msg = message.replace('\'', "'\\''");
+    let commit_cmd = format!("cd '{sp}' && git commit -m '{safe_msg}'");
+    let output = exec(distro, &commit_cmd)?;
+
+    // Extract hash from output like "[branch abc1234] ..."
+    let hash = extract_wsl_commit_hash(&output).unwrap_or_default();
+    Ok(CommitResult {
+        success: true,
+        hash,
+        message: message.to_string(),
+    })
+}
+
+fn extract_wsl_commit_hash(output: &str) -> Option<String> {
+    super::remote::extract_commit_hash_from_output(output)
+}
+
+/// 通过 WSL 读取目录树（使用 find 命令）
+pub fn wsl_read_dir_tree(
+    distro: &str,
+    root_path: &str,
+    sub_path: Option<&str>,
+    max_depth: u32,
+) -> Result<Vec<FileNode>> {
+    let actual_path = match sub_path {
+        Some(sp) if !sp.is_empty() => format!("{}/{}", root_path, sp),
+        _ => root_path.to_string(),
+    };
+    let safe_ap = safe_path(&actual_path);
+    let safe_root = safe_path(root_path);
+
+    let cmd = format!(
+        "find '{safe_ap}' -maxdepth {max_depth} \
+         -not -path '*/.git/*' \
+         -not -path '*/node_modules/*' \
+         -not -path '*/target/*' \
+         -not -name '.git' \
+         2>/dev/null | sort"
+    );
+    let output = exec(distro, &cmd)?;
+
+    // Build tree from flat path list
+    build_file_tree(&output, &actual_path, &safe_root)
+}
+
+fn build_file_tree(find_output: &str, root_path: &str, _safe_root: &str) -> Result<Vec<FileNode>> {
+    super::remote::build_file_tree_from_find(find_output, root_path)
 }

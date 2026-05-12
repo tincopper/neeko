@@ -161,6 +161,8 @@ fn agent_config_serde_roundtrip() {
         env: HashMap::from([("KEY".into(), "VAL".into())]),
         icon: Some("icon.png".into()),
         enabled: true,
+        prompt_args: None,
+        post_prompt_args: None,
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();

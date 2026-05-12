@@ -1496,7 +1496,11 @@ use crate::models::{AheadBehind, CommitResult};
 /// 获取指定文件相对于 HEAD 的 diff（未 staged 也包含）。
 /// 优先取 `git diff HEAD -- files`，新文件（untracked）回退到直接读文件内容。
 /// 超过 `line_limit` 行时截断并附加 stat 摘要。
-pub fn get_diff_for_files(repo_path: &Path, file_paths: &[String], line_limit: usize) -> Result<String> {
+pub fn get_diff_for_files(
+    repo_path: &Path,
+    file_paths: &[String],
+    line_limit: usize,
+) -> Result<String> {
     if file_paths.is_empty() {
         return Ok(String::new());
     }
@@ -1542,7 +1546,9 @@ pub fn get_diff_for_files(repo_path: &Path, file_paths: &[String], line_limit: u
         .current_dir(repo_path)
         .output()
         .context("Failed to run git diff HEAD --stat")?;
-    let stat_text = String::from_utf8_lossy(&stat_output.stdout).trim().to_string();
+    let stat_text = String::from_utf8_lossy(&stat_output.stdout)
+        .trim()
+        .to_string();
 
     let lines: Vec<&str> = diff_text.lines().collect();
     if lines.len() <= line_limit {
@@ -1574,7 +1580,9 @@ pub fn get_staged_diff(repo_path: &Path, line_limit: usize) -> Result<String> {
         .current_dir(repo_path)
         .output()
         .context("Failed to run git diff --cached --stat")?;
-    let stat_text = String::from_utf8_lossy(&stat_output.stdout).trim().to_string();
+    let stat_text = String::from_utf8_lossy(&stat_output.stdout)
+        .trim()
+        .to_string();
 
     if diff_text.trim().is_empty() {
         return Ok(String::new());

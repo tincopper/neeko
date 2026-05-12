@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/appStore";
 import { useAppContext } from "../../contexts";
+import { useActiveProject } from "../../hooks/useActiveProject";
 import { useGitLog } from "./useGitLog";
 import { useCommitDetail } from "./useCommitDetail";
 import LogToolbar from "./LogToolbar";
@@ -13,7 +13,7 @@ const MIN_LEFT_WIDTH = 300;
 const MAX_LEFT_WIDTH_RATIO = 0.7;
 
 const GitLogPanel: React.FC = () => {
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const { project, commands, capabilities } = useActiveProject();
   const { showToast } = useAppContext();
 
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
@@ -23,10 +23,10 @@ const GitLogPanel: React.FC = () => {
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const { commits, loading, hasMore, loadMore, refresh, loadingMore } =
-    useGitLog(activeProjectId);
+    useGitLog(commands);
 
   const { detail, files, loading: detailLoading, error: detailError } = useCommitDetail(
-    activeProjectId,
+    commands,
     selectedHash,
   );
 
@@ -68,39 +68,35 @@ const GitLogPanel: React.FC = () => {
 
   const handleAction = useCallback(
     async (hash: string, action: CommitMenuAction, value?: string) => {
-      if (!activeProjectId) return;
+      if (!commands) return;
       try {
         switch (action) {
           case "cherry-pick":
-            await invoke("cherry_pick_command", { projectId: activeProjectId, commitHash: hash });
-            showToast?.("Cherry-picked successfully", "info");
+            if (capabilities?.canCherryPick) {
+              await commands.cherryPick(hash);
+              showToast?.("Cherry-picked successfully", "info");
+            }
             break;
           case "revert":
-            await invoke("revert_command", { projectId: activeProjectId, commitHash: hash });
-            showToast?.("Reverted successfully", "info");
+            if (capabilities?.canRevert) {
+              await commands.revert(hash);
+              showToast?.("Reverted successfully", "info");
+            }
             break;
           case "checkout-detached":
-            await invoke("checkout_detached_command", {
-              projectId: activeProjectId,
-              commitHash: hash,
-            });
-            showToast?.("Checked out detached HEAD", "info");
+            // checkout-detached is not available in ProjectCommands interface.
+            // TODO: add checkoutDetached() to ProjectCommands if needed.
+            showToast?.("Checkout detached HEAD is not supported for this project type", "error");
             break;
           case "create-branch":
-            await invoke("create_branch", {
-              projectId: activeProjectId,
-              branchName: value,
-              startPoint: hash,
-            });
+            await commands.createBranch(value ?? "", hash);
             showToast?.(`Branch '${value}' created`, "info");
             break;
           case "create-tag":
-            await invoke("create_tag_command", {
-              projectId: activeProjectId,
-              tagName: value,
-              message: null,
-            });
-            showToast?.(`Tag '${value}' created`, "info");
+            if (capabilities?.canCreateTag) {
+              await commands.createTag(value ?? "");
+              showToast?.(`Tag '${value}' created`, "info");
+            }
             break;
         }
         refresh();
@@ -108,17 +104,22 @@ const GitLogPanel: React.FC = () => {
         showToast?.(String(e), "error");
       }
     },
-    [activeProjectId, showToast, refresh],
+    [commands, capabilities, showToast, refresh],
   );
 
   const handleOpenDiff = useCallback(
     (filePath: string) => {
-      if (!activeProjectId || !selectedHash) return;
+      if (!project || !selectedHash) return;
+      // Commit diff tab is only supported for local projects.
+      // For WSL/Remote, the DiffSource "commit" type does not have a variant
+      // that carries wsl/remote connection params, so we skip opening the tab.
+      if (project.type !== "local") return;
+
       const appStore = useAppStore.getState();
       const tabId = `diff_${selectedHash.slice(0, 7)}_${filePath.replace(/[/\\]/g, "_")}`;
-      appStore.addTab(activeProjectId, {
+      appStore.addTab(project.id, {
         id: tabId,
-        projectId: activeProjectId,
+        projectId: project.id,
         title: filePath.split(/[/\\]/).pop() ?? filePath,
         order: 200,
         data: {
@@ -127,17 +128,17 @@ const GitLogPanel: React.FC = () => {
           fileName: filePath.split(/[/\\]/).pop() ?? filePath,
           diffSource: {
             type: "commit",
-            projectId: activeProjectId,
+            projectId: project.id,
             commitHash: selectedHash,
           },
         },
       });
-      appStore.activateTab(activeProjectId, tabId);
+      appStore.activateTab(project.id, tabId);
     },
-    [activeProjectId, selectedHash],
+    [project, selectedHash],
   );
 
-  if (!activeProjectId) {
+  if (!project) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-[var(--font-size)] text-text-muted">
         No project selected

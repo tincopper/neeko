@@ -69,10 +69,7 @@ impl AgentManager {
             env: HashMap::new(),
             icon: Some("claude-code.png".to_string()),
             enabled: true,
-            prompt_args: Some(vec![
-                "--bare".to_string(),
-                "-p".to_string(),
-            ]),
+            prompt_args: Some(vec!["--bare".to_string(), "-p".to_string()]),
             post_prompt_args: Some(vec!["--dangerously-skip-permissions".to_string()]),
         });
 
@@ -146,7 +143,12 @@ impl AgentManager {
         }
         // 硬编码回退：按 agent id 映射已知支持的参数（兼容旧数据 / prompt_args 字段缺失的情况）
         match agent.id.as_str() {
-            "opencode" => Some(vec!["run".to_string(), "--pure".to_string(), "--dangerously-skip-permissions=true".to_string(), "-f".to_string()]),
+            "opencode" => Some(vec![
+                "run".to_string(),
+                "--pure".to_string(),
+                "--dangerously-skip-permissions=true".to_string(),
+                "-f".to_string(),
+            ]),
             "claude-code" => Some(vec!["--bare".to_string(), "-p".to_string()]),
             "gemini" | "qoder" | "codebuddy" => Some(vec!["--prompt".to_string()]),
             "codex" => Some(vec![]),

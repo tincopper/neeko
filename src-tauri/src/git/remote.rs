@@ -1,7 +1,10 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::models::{AuthMethod, DiffHunk, DiffLine, DiffResult, FileChange, FileStatus, GitInfo, Worktree};
+use crate::models::{
+    AheadBehind, AuthMethod, CommitDetail, CommitEntry, CommitFileChange, CommitResult, DiffHunk,
+    DiffLine, DiffResult, FileChange, FileNode, FileStatus, GitInfo, Worktree,
+};
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::local::parse_unified_diff;
@@ -315,6 +318,439 @@ pub async fn get_remote_worktree_file_diff(
     );
     let output = exec_command(host, port, username, auth, &cmd).await?;
     Ok(parse_unified_diff(&output))
+}
+
+// ─── Shared parsing helpers (used by both remote and wsl modules) ────────────
+
+/// 解析 git log 的 NUL 分隔格式输出为 CommitEntry 列表
+pub(crate) fn parse_commit_log_output(output: &str) -> Vec<CommitEntry> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\0').collect();
+            if parts.len() >= 6 {
+                let parents = parts
+                    .get(6)
+                    .map(|s| {
+                        s.split_whitespace()
+                            .map(|p| p.to_string())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                Some(CommitEntry {
+                    hash: parts[0].to_string(),
+                    short_hash: parts[1].to_string(),
+                    author: parts[2].to_string(),
+                    timestamp: parts[3].to_string(),
+                    message: parts[4].to_string(),
+                    refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
+                    parents,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// 从 git commit 输出中提取 commit hash（"[branch abc1234] ..."）
+pub(crate) fn extract_commit_hash_from_output(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if let Some(idx) = trimmed.find("] ") {
+                let bracket_content = &trimmed[1..idx];
+                if let Some(last_space) = bracket_content.rfind(' ') {
+                    return Some(bracket_content[last_space + 1..].to_string());
+                }
+                return Some(bracket_content.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 从 find 命令输出构建文件树（适用于 SSH/WSL 两侧）
+pub(crate) fn build_file_tree_from_find(
+    find_output: &str,
+    root_path: &str,
+) -> Result<Vec<FileNode>> {
+    use std::collections::HashMap;
+
+    let mut path_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut all_paths: Vec<String> = Vec::new();
+
+    for line in find_output.lines() {
+        let p = line.trim();
+        if p.is_empty() || p == root_path {
+            continue;
+        }
+        path_set.insert(p.to_string());
+        all_paths.push(p.to_string());
+    }
+
+    // Determine which paths are directories (they have children)
+    let mut is_dir_map: HashMap<String, bool> = HashMap::new();
+    for p in &all_paths {
+        is_dir_map.entry(p.clone()).or_insert(false);
+        if let Some(parent) = std::path::Path::new(p).parent() {
+            let parent_str = parent.to_string_lossy().to_string();
+            if parent_str != root_path && path_set.contains(&parent_str) {
+                is_dir_map.insert(parent_str, true);
+            }
+        }
+    }
+
+    let mut top_level: Vec<FileNode> = Vec::new();
+    for p in &all_paths {
+        let parent = std::path::Path::new(p)
+            .parent()
+            .map(|pp| pp.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if parent == root_path {
+            let name = std::path::Path::new(p)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| p.clone());
+            let is_dir = *is_dir_map.get(p).unwrap_or(&false);
+            let children = if is_dir {
+                collect_file_tree_children(p, &all_paths, &is_dir_map, root_path)
+            } else {
+                vec![]
+            };
+            let rel_path = p
+                .strip_prefix(&format!("{}/", root_path))
+                .or_else(|| p.strip_prefix(root_path))
+                .unwrap_or(p)
+                .to_string();
+            top_level.push(FileNode {
+                name,
+                path: rel_path,
+                is_dir,
+                children,
+            });
+        }
+    }
+
+    top_level.sort_by(|a, b| {
+        if a.is_dir != b.is_dir {
+            if a.is_dir {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        } else {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        }
+    });
+
+    Ok(top_level)
+}
+
+pub(crate) fn collect_file_tree_children(
+    dir_path: &str,
+    all_paths: &[String],
+    is_dir_map: &std::collections::HashMap<String, bool>,
+    root_path: &str,
+) -> Vec<FileNode> {
+    let mut children: Vec<FileNode> = Vec::new();
+    for p in all_paths {
+        let parent = std::path::Path::new(p)
+            .parent()
+            .map(|pp| pp.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if parent == dir_path {
+            let name = std::path::Path::new(p)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| p.clone());
+            let is_dir = *is_dir_map.get(p).unwrap_or(&false);
+            let grandchildren = if is_dir {
+                collect_file_tree_children(p, all_paths, is_dir_map, root_path)
+            } else {
+                vec![]
+            };
+            let rel_path = p
+                .strip_prefix(&format!("{}/", root_path))
+                .or_else(|| p.strip_prefix(root_path))
+                .unwrap_or(p)
+                .to_string();
+            children.push(FileNode {
+                name,
+                path: rel_path,
+                is_dir,
+                children: grandchildren,
+            });
+        }
+    }
+
+    children.sort_by(|a, b| {
+        if a.is_dir != b.is_dir {
+            if a.is_dir {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            }
+        } else {
+            a.name.to_lowercase().cmp(&b.name.to_lowercase())
+        }
+    });
+
+    children
+}
+
+// ─── Extended Remote git helper functions ────────────────────────────────────
+
+/// 通过 SSH 获取 commit 日志列表
+pub async fn remote_get_commit_log(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    count: usize,
+    skip: usize,
+) -> Result<Vec<CommitEntry>> {
+    let sp = safe_path(project_path);
+    let format_str = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D%x00%P";
+    let skip_part = if skip > 0 {
+        format!(" --skip={}", skip)
+    } else {
+        String::new()
+    };
+    let cmd = format!(
+        "cd '{sp}' && git log '{format_str}' -{count} --decorate=full --all --topo-order{skip_part} 2>/dev/null"
+    );
+    let output = exec_command(host, port, username, auth, &cmd).await?;
+    Ok(parse_commit_log_output(&output))
+}
+
+/// 通过 SSH 获取单个 commit 详细信息
+pub async fn remote_get_commit_detail_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<CommitDetail> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+    let format_str = "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%B%x00%P%x00%D";
+    let cmd = format!("cd '{sp}' && git show '{format_str}' --no-patch '{ch}' 2>/dev/null");
+    let output = exec_command(host, port, username, auth, &cmd).await?;
+
+    let parts: Vec<&str> = output.split('\0').collect();
+    if parts.len() < 7 {
+        anyhow::bail!(
+            "Unexpected git show output format for commit: {}",
+            commit_hash
+        );
+    }
+    let parents = parts
+        .get(6)
+        .map(|s| {
+            s.split_whitespace()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let refs = parts.get(7).map(|s| s.to_string()).unwrap_or_default();
+    Ok(CommitDetail {
+        hash: parts[0].to_string(),
+        short_hash: parts[1].to_string(),
+        author: parts[2].to_string(),
+        email: parts[3].to_string(),
+        timestamp: parts[4].to_string(),
+        message: parts[5].trim().to_string(),
+        parents,
+        refs,
+    })
+}
+
+/// 通过 SSH 获取某 commit 改动的文件列表
+pub async fn remote_get_commit_files_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    commit_hash: &str,
+) -> Result<Vec<CommitFileChange>> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+
+    let numstat_cmd =
+        format!("cd '{sp}' && git diff-tree --no-commit-id -r --numstat '{ch}' 2>/dev/null");
+    let numstat_out = exec_command(host, port, username, auth, &numstat_cmd).await?;
+
+    let status_cmd =
+        format!("cd '{sp}' && git diff-tree --no-commit-id -r --name-status '{ch}' 2>/dev/null");
+    let status_out = exec_command(host, port, username, auth, &status_cmd).await?;
+
+    let status_map: std::collections::HashMap<String, String> = status_out
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                Some((parts[1].to_string(), parts[0].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let files: Vec<CommitFileChange> = numstat_out
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let path = parts[2].to_string();
+                let additions = parts[0].parse::<usize>().unwrap_or(0);
+                let deletions = parts[1].parse::<usize>().unwrap_or(0);
+                let status = status_map
+                    .get(&path)
+                    .cloned()
+                    .unwrap_or_else(|| "M".to_string());
+                Some(CommitFileChange {
+                    path,
+                    status,
+                    additions,
+                    deletions,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(files)
+}
+
+/// 通过 SSH 获取某 commit 中某文件的 diff
+pub async fn remote_get_commit_file_diff_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    commit_hash: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    let sp = safe_path(project_path);
+    let ch = safe_path(commit_hash);
+    let fp = safe_path(file_path);
+    let cmd = format!("cd '{sp}' && git diff '{ch}^' '{ch}' -- '{fp}' 2>/dev/null");
+    let output = exec_command(host, port, username, auth, &cmd).await?;
+    let mut result = parse_unified_diff(&output);
+    super::local::collapse_diff_context(&mut result.hunks, 12);
+    Ok(result)
+}
+
+/// 通过 SSH 获取 ahead/behind 计数
+pub async fn remote_get_ahead_behind_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+) -> Result<AheadBehind> {
+    let sp = safe_path(project_path);
+    let upstream_check = exec_command(
+        host,
+        port,
+        username,
+        auth,
+        &format!(
+            "cd '{sp}' && git rev-parse --abbrev-ref HEAD@{{upstream}} 2>/dev/null; echo EXIT:$?"
+        ),
+    )
+    .await;
+    match upstream_check {
+        Ok(ref out) if out.contains("EXIT:0") => {}
+        _ => {
+            return Ok(AheadBehind {
+                ahead: 0,
+                behind: 0,
+            });
+        }
+    }
+
+    let cmd = format!("cd '{sp}' && git rev-list --left-right --count HEAD...@{{u}} 2>/dev/null");
+    match exec_command(host, port, username, auth, &cmd).await {
+        Ok(output) => {
+            let trimmed = output.trim().to_string();
+            let parts: Vec<&str> = trimmed.split('\t').collect();
+            Ok(AheadBehind {
+                ahead: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
+                behind: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
+            })
+        }
+        Err(_) => Ok(AheadBehind {
+            ahead: 0,
+            behind: 0,
+        }),
+    }
+}
+
+/// 通过 SSH 执行 git commit（先 stage 指定文件，再 commit）
+pub async fn remote_commit_files_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    project_path: &str,
+    file_paths: &[String],
+    message: &str,
+) -> Result<CommitResult> {
+    let sp = safe_path(project_path);
+
+    if !file_paths.is_empty() {
+        let quoted_files: Vec<String> = file_paths
+            .iter()
+            .map(|f| format!("'{}'", safe_path(f)))
+            .collect();
+        let stage_cmd = format!("cd '{sp}' && git add -- {}", quoted_files.join(" "));
+        exec_command(host, port, username, auth, &stage_cmd).await?;
+    }
+
+    let safe_msg = message.replace('\'', "'\\''");
+    let commit_cmd = format!("cd '{sp}' && git commit -m '{safe_msg}'");
+    let output = exec_command(host, port, username, auth, &commit_cmd).await?;
+
+    let hash = extract_commit_hash_from_output(&output).unwrap_or_default();
+    Ok(CommitResult {
+        success: true,
+        hash,
+        message: message.to_string(),
+    })
+}
+
+/// 通过 SSH 读取目录树（使用 find 命令）
+pub async fn remote_read_dir_tree_fn(
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: &AuthMethod,
+    root_path: &str,
+    sub_path: Option<&str>,
+    max_depth: u32,
+) -> Result<Vec<FileNode>> {
+    let actual_path = match sub_path {
+        Some(sp) if !sp.is_empty() => format!("{}/{}", root_path, sp),
+        _ => root_path.to_string(),
+    };
+    let safe_ap = safe_path(&actual_path);
+
+    let cmd = format!(
+        "find '{safe_ap}' -maxdepth {max_depth} \
+         -not -path '*/.git/*' \
+         -not -path '*/node_modules/*' \
+         -not -path '*/target/*' \
+         -not -name '.git' \
+         2>/dev/null | sort"
+    );
+    let output = exec_command(host, port, username, auth, &cmd).await?;
+    build_file_tree_from_find(&output, &actual_path)
 }
 
 #[cfg(test)]

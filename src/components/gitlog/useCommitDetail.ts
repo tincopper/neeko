@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { CommitDetail, CommitFileChange } from "../../types";
+import type { ProjectCommands } from "../../types/activeProject";
 import type { CommitDetailData } from "./types";
 
 export function useCommitDetail(
-  projectId: string | null,
+  commands: ProjectCommands | null,
   commitHash: string | null,
 ): CommitDetailData {
   const [detail, setDetail] = useState<CommitDetail | null>(null);
@@ -14,19 +14,13 @@ export function useCommitDetail(
   const lastHashRef = useRef<string | null>(null);
 
   const loadDetail = useCallback(async () => {
-    if (!projectId || !commitHash) return;
+    if (!commands || !commitHash) return;
     setLoading(true);
     setError(null);
     try {
       const [detailResult, filesResult] = await Promise.all([
-        invoke<CommitDetail>("get_commit_detail_command", {
-          projectId,
-          commitHash,
-        }),
-        invoke<CommitFileChange[]>("get_commit_files_command", {
-          projectId,
-          commitHash,
-        }),
+        commands.getCommitDetail(commitHash),
+        commands.getCommitFiles(commitHash),
       ]);
       setDetail(detailResult);
       setFiles(filesResult);
@@ -35,7 +29,7 @@ export function useCommitDetail(
     } finally {
       setLoading(false);
     }
-  }, [projectId, commitHash]);
+  }, [commands, commitHash]);
 
   useEffect(() => {
     if (!commitHash) {

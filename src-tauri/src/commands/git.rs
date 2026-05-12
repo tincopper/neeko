@@ -774,7 +774,13 @@ pub async fn generate_commit_message_command(
             .to_string();
 
         let post_pargs = crate::agent::AgentManager::resolve_post_prompt_args(agent);
-        log::info!("[AI commit] agent_id={} command={} prompt_args={:?} post_prompt_args={:?}", agent_id, cmd, pargs, post_pargs);
+        log::info!(
+            "[AI commit] agent_id={} command={} prompt_args={:?} post_prompt_args={:?}",
+            agent_id,
+            cmd,
+            pargs,
+            post_pargs
+        );
         (cmd, pargs, post_pargs)
     };
 
@@ -787,8 +793,8 @@ pub async fn generate_commit_message_command(
         ));
     }
 
-    let diff = crate::git::get_diff_for_files(&project_path, &file_paths, 500)
-        .map_err(AppError::from)?;
+    let diff =
+        crate::git::get_diff_for_files(&project_path, &file_paths, 500).map_err(AppError::from)?;
 
     if diff.trim().is_empty() {
         return Err(AppError::InvalidInput(
@@ -799,8 +805,8 @@ pub async fn generate_commit_message_command(
     log::info!("[AI commit] files={:?} diff_len={}", file_paths, diff.len());
 
     // 4. 获取最近 5 条 commit messages 用于风格参考
-    let recent_messages = crate::git::get_recent_commit_messages(&project_path, 5)
-        .unwrap_or_default();
+    let recent_messages =
+        crate::git::get_recent_commit_messages(&project_path, 5).unwrap_or_default();
 
     let recent_section = if recent_messages.is_empty() {
         "(no previous commits found)".to_string()
@@ -844,7 +850,11 @@ Changes to commit:
         prompt_file_content.clone()
     };
 
-    log::info!("[AI commit] diff_len={} recent_commits={}", diff.len(), recent_messages.len());
+    log::info!(
+        "[AI commit] diff_len={} recent_commits={}",
+        diff.len(),
+        recent_messages.len()
+    );
 
     // 6. 执行 agent CLI
     let full_path = resolve_full_path();
@@ -857,20 +867,23 @@ Changes to commit:
     // 若是文件模式，把 prompt_file_content 写入临时文件 .neeko/commit.prompt
     let prompt_file = if uses_file_mode {
         let neeko_dir = project_path.join(".neeko");
-        std::fs::create_dir_all(&neeko_dir).map_err(|e| {
-            AppError::InvalidInput(format!("Failed to create .neeko dir: {}", e))
-        })?;
+        std::fs::create_dir_all(&neeko_dir)
+            .map_err(|e| AppError::InvalidInput(format!("Failed to create .neeko dir: {}", e)))?;
         let tmp_path = neeko_dir.join("commit.prompt");
-        std::fs::write(&tmp_path, prompt_file_content.as_bytes()).map_err(|e| {
-            AppError::InvalidInput(format!("Failed to write prompt file: {}", e))
-        })?;
+        std::fs::write(&tmp_path, prompt_file_content.as_bytes())
+            .map_err(|e| AppError::InvalidInput(format!("Failed to write prompt file: {}", e)))?;
         log::info!("[AI commit] prompt file written to: {}", tmp_path.display());
         Some(tmp_path)
     } else {
         None
     };
 
-    log::info!("[AI commit] exec: {} {:?} <prompt({} chars)>", resolved_command, prompt_args, prompt.len());
+    log::info!(
+        "[AI commit] exec: {} {:?} <prompt({} chars)>",
+        resolved_command,
+        prompt_args,
+        prompt.len()
+    );
     log::info!("[AI commit] PATH={}", full_path);
 
     #[cfg(target_os = "windows")]
@@ -995,7 +1008,11 @@ fn resolve_command_path(command: &str, path_env: &str) -> String {
     #[cfg(not(target_os = "windows"))]
     {
         use which::which_in;
-        match which_in(command, Some(path_env), std::env::current_dir().unwrap_or_default()) {
+        match which_in(
+            command,
+            Some(path_env),
+            std::env::current_dir().unwrap_or_default(),
+        ) {
             Ok(p) => {
                 let s = p.to_string_lossy().to_string();
                 log::info!("[AI commit] resolved '{}' -> '{}'", command, s);
@@ -1149,17 +1166,33 @@ fn clean_ai_output(raw: &str) -> String {
 
     // 3. 去除常见 AI 废话前缀（逐行检查第一个非空行）
     let waste_prefixes: &[&str] = &[
-        "here is", "here's", "the commit message", "commit message:",
-        "suggested commit", "i suggest", "i'd suggest",
-        "based on", "this commit", "sure,", "sure!", "of course",
-        "以下是", "这是", "建议的", "提交信息：", "提交消息：",
+        "here is",
+        "here's",
+        "the commit message",
+        "commit message:",
+        "suggested commit",
+        "i suggest",
+        "i'd suggest",
+        "based on",
+        "this commit",
+        "sure,",
+        "sure!",
+        "of course",
+        "以下是",
+        "这是",
+        "建议的",
+        "提交信息：",
+        "提交消息：",
     ];
     let lines: Vec<&str> = inner.lines().collect();
     // 找到第一个非空且不是废话前缀的行作为起始
-    let start_idx = lines.iter().position(|l| {
-        let lower = l.trim().to_lowercase();
-        !lower.is_empty() && !waste_prefixes.iter().any(|p| lower.starts_with(p))
-    }).unwrap_or(0);
+    let start_idx = lines
+        .iter()
+        .position(|l| {
+            let lower = l.trim().to_lowercase();
+            !lower.is_empty() && !waste_prefixes.iter().any(|p| lower.starts_with(p))
+        })
+        .unwrap_or(0);
     let lines = &lines[start_idx..];
 
     // 4. 取 subject + 可选 body（subject + 空行 + body），遇到第二个空行截止

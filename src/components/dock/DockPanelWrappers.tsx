@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   useFileActionsContext,
   useAppContext,
@@ -10,22 +10,27 @@ import { useDockStore } from "@/store/dockStore";
 import { FilesPanel } from "@/components/panels";
 import { SkillsPanel } from "@/components/skills";
 import { GitCommitPanel } from "@/components/project";
+import { useActiveProject } from "@/hooks/useActiveProject";
 
 // ── FilesPanelWrapper ──
 
 /**
  * Thin wrapper that reads file context + store and passes props to FilesPanel.
  * Triggers file tree loading when the files panel becomes active.
+ *
+ * For local projects: delegates to onLoadFileTree (context → useFileView → invoke).
+ * For WSL/Remote projects: calls commands.readDirTree directly and updates the store.
  */
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree } =
     useFileActionsContext();
-  const projectName = useAppStore((s) => s.activeProject?.name ?? null);
+  const { project, commands, worktreePath } = useActiveProject();
+  const projectName = project?.name ?? null;
+  const fileRootPath = worktreePath ?? project?.path ?? null;
   const fileTree = useAppStore((s) => s.fileTree);
   const fileViewLoading = useAppStore((s) => s.fileViewLoading);
   const activeFilePath = useAppStore((s) => s.activeFilePath);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
-  const fileRootPath = useAppStore((s) => s.activeWorktreePath ?? s.activeProject?.path ?? null);
   const projectPath = fileRootPath;
 
   // Load file tree when this panel is the active tab in any zone
@@ -36,11 +41,47 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     return false;
   });
 
+  // Track previous project ID to avoid re-loading when project switch already
+  // triggered loadFileTree via handleSelectProjectWithClear in useAppContainer.
+  // This effect should only fire when:
+  //   1. Panel transitions from inactive → active (isActive flips to true)
+  //   2. fileRootPath changes within the SAME project (e.g., worktree switch)
+  //   3. WSL/Remote project needs initial tree load
+  const prevProjectIdRef = useRef<string | null>(null);
+  const prevIsActiveRef = useRef(false);
+
   useEffect(() => {
-    if (isActive && activeProjectId && fileRootPath) {
-      onLoadFileTree(activeProjectId, fileRootPath);
+    if (!isActive || !project || !fileRootPath) {
+      prevIsActiveRef.current = isActive;
+      return;
     }
-  }, [isActive, activeProjectId, fileRootPath, onLoadFileTree]);
+
+    const projectId = project.type === "local" ? activeProjectId : project.id;
+    const justBecameActive = !prevIsActiveRef.current && isActive;
+    const sameProject = prevProjectIdRef.current === projectId;
+
+    // For local projects: only load when panel just became active, or when
+    // fileRootPath changed within the same project (e.g., worktree switch).
+    // Skip when project ID changed — that's handled by handleSelectProjectWithClear.
+    if (project.type === "local" && activeProjectId) {
+      if (justBecameActive || (sameProject && fileRootPath)) {
+        onLoadFileTree(activeProjectId, fileRootPath);
+      }
+    } else if (project.type !== "local" && commands) {
+      // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
+      useAppStore.setState({ fileViewLoading: true });
+      commands.readDirTree(fileRootPath, undefined, 4)
+        .then((tree) => {
+          useAppStore.setState({ fileTree: tree, fileViewLoading: false });
+        })
+        .catch(() => {
+          useAppStore.setState({ fileTree: [], fileViewLoading: false });
+        });
+    }
+
+    prevProjectIdRef.current = projectId ?? null;
+    prevIsActiveRef.current = isActive;
+  }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree]);
 
   return (
     <FilesPanel
@@ -59,16 +100,21 @@ FilesPanelWrapper.displayName = "FilesPanelWrapper";
 // ── GitCommitPanelWrapper ──
 
 /**
- * Thin wrapper that reads project actions context + store and passes props
+ * Thin wrapper that reads unified project context and passes props
  * to GitCommitPanel. Shows a placeholder when no project is selected.
  */
 const GitCommitPanelWrapper: React.FC = React.memo(() => {
-  const { onSelectFile, onRefreshGit } = useProjectActionsContext();
-  const { showToast, config } = useAppContext();
-  const activeProject = useAppStore((s) => s.activeProject);
+  const { onSelectFile } = useProjectActionsContext();
+  const { showToast } = useAppContext();
+  const { project, commands, capabilities } = useActiveProject();
   const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
 
-  if (!activeProject) {
+  const onRefreshGit = useCallback(async () => {
+    if (!commands) return;
+    await commands.refreshGitInfo();
+  }, [commands]);
+
+  if (!project || !commands || !capabilities) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">
         No project selected
@@ -76,24 +122,30 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     );
   }
 
-  // Override git_info.current_branch when a worktree is active
-  const project = activeWorktreeBranch && activeProject.git_info
-    ? {
-        ...activeProject,
-        git_info: {
-          ...activeProject.git_info,
-          current_branch: activeWorktreeBranch,
-        },
-      }
-    : activeProject;
+  // Override gitInfo.current_branch when a worktree is active
+  const effectiveProject =
+    activeWorktreeBranch && project.gitInfo
+      ? {
+          ...project,
+          gitInfo: {
+            ...project.gitInfo,
+            current_branch: activeWorktreeBranch,
+          },
+        }
+      : project;
+
+  const handleSelectFile = (filePath: string) => {
+    onSelectFile(project.id, filePath);
+  };
 
   return (
     <GitCommitPanel
-      project={project}
+      project={effectiveProject}
+      commands={commands}
+      capabilities={capabilities}
       onRefreshGit={onRefreshGit}
-      onSelectFile={onSelectFile}
+      onSelectFile={handleSelectFile}
       onShowToast={showToast}
-      agentCommandOverrides={config.agentCommandOverrides}
     />
   );
 });
