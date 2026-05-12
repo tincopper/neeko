@@ -64,7 +64,7 @@ FilesPanelWrapper.displayName = "FilesPanelWrapper";
  */
 const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const { onSelectFile, onRefreshGit } = useProjectActionsContext();
-  const { showToast } = useAppContext();
+  const { showToast, config } = useAppContext();
   const activeProject = useAppStore((s) => s.activeProject);
   const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
 
@@ -93,6 +93,7 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
       onRefreshGit={onRefreshGit}
       onSelectFile={onSelectFile}
       onShowToast={showToast}
+      agentCommandOverrides={config.agentCommandOverrides}
     />
   );
 });

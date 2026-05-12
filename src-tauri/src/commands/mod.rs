@@ -77,6 +77,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::merge_pr_command,
             $crate::commands::close_pr_command,
             $crate::commands::checkout_pr_command,
+            $crate::commands::generate_commit_message_command,
             $crate::commands::cherry_pick_command,
             $crate::commands::revert_command,
             $crate::commands::create_tag_command,

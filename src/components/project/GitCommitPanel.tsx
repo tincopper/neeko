@@ -13,6 +13,8 @@ interface GitCommitPanelProps {
   onSelectFile?: (projectId: string, filePath: string) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onOpenDialog?: (type: "new-branch" | "new-worktree", e: React.MouseEvent) => void;
+  /** 与 AppConfig.agentCommandOverrides 对应，用于解析 agent 实际可执行路径 */
+  agentCommandOverrides?: Record<string, string>;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
@@ -21,6 +23,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   onSelectFile,
   onShowToast,
   onOpenDialog,
+  agentCommandOverrides,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
@@ -28,6 +31,10 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  // AI 生成 commit message 相关状态
+  const [commitMessage, setCommitMessage] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   const changedFiles = project.git_info?.changed_files ?? [];
 
@@ -63,6 +70,32 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     if (!project.git_info) return;
     refreshAheadBehind();
   }, [project.id]);
+
+  // 项目已选择 agent 时，AI 按钮可点击；具体是否支持 prompt 模式由后端验证并返回错误
+  const canAiGenerate = !!project.selected_agent;
+
+  const handleAiGenerate = useCallback(async () => {
+    if (!project.selected_agent) return;
+    const files = Array.from(selectedFiles);
+    if (files.length === 0) {
+      onShowToast?.("No files selected. Please select files to generate commit message.", "error");
+      return;
+    }
+    setAiGenerating(true);
+    try {
+      const generated = await invoke<string>("generate_commit_message_command", {
+        projectId: project.id,
+        agentId: project.selected_agent,
+        agentCommandOverride: agentCommandOverrides?.[project.selected_agent] ?? null,
+        filePaths: files,
+      });
+      setCommitMessage(generated.trim());
+    } catch (e: unknown) {
+      onShowToast?.(String(e), "error");
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [project.id, project.selected_agent, selectedFiles, agentCommandOverrides, onShowToast]);
 
   const refreshAheadBehind = async () => {
     try {
@@ -163,6 +196,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         });
         onRefreshGit(project.id);
         setSelectedFiles(new Set());
+        setCommitMessage("");
         onShowToast?.(
           `Committed ${result.hash ? result.hash.slice(0, 7) : "successfully"}`,
           "info"
@@ -197,6 +231,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onRefreshGit(project.id);
         refreshAheadBehind();
         setSelectedFiles(new Set());
+        setCommitMessage("");
         onShowToast?.("Committed & pushed successfully", "info");
       } catch (e: unknown) {
         onShowToast?.(String(e), "error");
@@ -334,8 +369,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       </div>
 
       <CommitForm
+        message={commitMessage}
+        onMessageChange={setCommitMessage}
         onCommit={handleCommit}
         onCommitAndPush={handleCommitAndPush}
+        onAiGenerate={handleAiGenerate}
+        canAiGenerate={canAiGenerate}
+        aiGenerating={aiGenerating}
         loading={loading}
         textareaHeight={textareaHeight}
       />
