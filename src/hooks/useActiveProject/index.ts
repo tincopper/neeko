@@ -30,17 +30,42 @@ export function useActiveProject(): ActiveProjectContext {
   const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
   const remoteAuthStore = useAppStore((s) => s.remoteAuthStore);
 
+  // 稳定 commands 引用：只依赖标量参数（id、path、host 等），
+  // 不依赖整个 activeProject 对象引用。这样即使 git-changed 事件
+  // 更新了 activeProject 引用，只要项目身份没变，commands 也保持稳定。
+  const commands = useMemo(() => {
+    if (activeRemoteProject !== null) {
+      const { entry, project } = activeRemoteProject;
+      const authKey = entry.id;
+      const savedAuth = remoteAuthStore.get(authKey);
+      if (savedAuth === undefined) return null;
+      return createRemoteCommands(entry.host, entry.port, entry.username, savedAuth, project.path);
+    }
+    if (activeWslProject !== null) {
+      return createWslCommands(activeWslProject.distro, activeWslProject.project.path);
+    }
+    if (activeProject !== null) {
+      return createLocalCommands(activeProject.id);
+    }
+    return null;
+  }, [
+    activeProject?.id,
+    activeWslProject?.distro,
+    activeWslProject?.project.path,
+    activeRemoteProject?.entry.id,
+    activeRemoteProject?.entry.host,
+    activeRemoteProject?.entry.port,
+    activeRemoteProject?.entry.username,
+    activeRemoteProject?.project.path,
+    remoteAuthStore,
+  ]);
+
   return useMemo((): ActiveProjectContext => {
     // ── Remote 优先 ───────────────────────────────────────────────────────
     if (activeRemoteProject !== null) {
       const { entry, project } = activeRemoteProject;
 
-      // 尝试从 auth store 获取已保存的认证方式
-      const authKey = `${entry.host}:${entry.port}`;
-      const savedAuth = remoteAuthStore.get(authKey);
-
-      // 若无认证方式，无法构建命令集（安全考量）
-      if (savedAuth === undefined) {
+      if (commands === null) {
         return {
           project: toRemoteUnifiedView(entry, project),
           commands: null,
@@ -56,19 +81,13 @@ export function useActiveProject(): ActiveProjectContext {
         host: entry.host,
         port: entry.port,
         username: entry.username,
-        auth: savedAuth,
+        auth: remoteAuthStore.get(entry.id)!,
         projectPath: project.path,
       };
 
       return {
         project: toRemoteUnifiedView(entry, project),
-        commands: createRemoteCommands(
-          entry.host,
-          entry.port,
-          entry.username,
-          savedAuth,
-          project.path,
-        ),
+        commands,
         capabilities: getCapabilities("remote"),
         connectionContext,
         worktreePath: activeRemoteWorktreePath,
@@ -88,7 +107,7 @@ export function useActiveProject(): ActiveProjectContext {
 
       return {
         project: toWslUnifiedView(distro, project),
-        commands: createWslCommands(distro, project.path),
+        commands,
         capabilities: getCapabilities("wsl"),
         connectionContext,
         worktreePath: activeWslWorktreePath,
@@ -105,7 +124,7 @@ export function useActiveProject(): ActiveProjectContext {
 
       return {
         project: toLocalUnifiedView(activeProject),
-        commands: createLocalCommands(activeProject.id),
+        commands,
         capabilities: getCapabilities("local"),
         connectionContext,
         worktreePath: activeWorktreePath,
@@ -130,5 +149,6 @@ export function useActiveProject(): ActiveProjectContext {
     activeWslWorktreePath,
     activeRemoteWorktreePath,
     remoteAuthStore,
+    commands,
   ]);
 }

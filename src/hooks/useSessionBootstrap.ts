@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project } from "../types";
+import { useAppStore } from "../store/appStore";
 
 export function useSessionBootstrap(deps: {
    loadProjects: () => Promise<void>;
@@ -44,8 +45,22 @@ export function useSessionBootstrap(deps: {
       const unlistenPromise = listen<string>("git-changed", (event) => {
          const projectId = event.payload;
          invoke("refresh_git_info", { projectId })
-            .then(() => deps.loadProjects())
-            .catch(() => deps.loadProjects());
+            .then(() => invoke<Project>("get_project", { projectId }))
+            .then((updatedProject) => {
+               useAppStore.setState((state) => {
+                  const nextProjects = state.projects.map((p) =>
+                     p.id === projectId ? updatedProject : p
+                  );
+                  const nextActiveProject = state.activeProjectId === projectId
+                     ? updatedProject
+                     : state.activeProject;
+                  return {
+                     projects: nextProjects,
+                     activeProject: nextActiveProject,
+                  };
+               });
+            })
+            .catch((e) => console.error("[SessionBootstrap] git-changed update failed:", e));
       });
 
       return () => {

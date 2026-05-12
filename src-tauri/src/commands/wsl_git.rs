@@ -615,6 +615,117 @@ pub fn wsl_read_dir_tree(
     }
 }
 
+#[tauri::command]
+pub fn wsl_read_file_content(
+    distro: String,
+    project_path: String,
+    file_path: String,
+    root_path: Option<String>,
+) -> Result<FileContent, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use crate::utils::command::wsl::{exec, safe_path};
+
+        let base = root_path.unwrap_or(project_path);
+        let full_path = format!("{}/{}", base, file_path);
+        let safe_fp = safe_path(&full_path);
+
+        // 文件大小
+        let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
+        let size: u64 = exec(&distro, &stat_cmd)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+
+        // 二进制检测：读取前 8KB 检查 null 字节
+        let binary_cmd =
+            format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
+        let is_binary = exec(&distro, &binary_cmd)
+            .map(|out| out.trim() == "1")
+            .unwrap_or(false);
+
+        if is_binary {
+            return Ok(FileContent {
+                path: file_path,
+                content: String::new(),
+                size,
+                is_binary: true,
+            });
+        }
+
+        // 读取文件内容
+        let cat_cmd = format!("cat '{safe_fp}'");
+        let content = exec(&distro, &cat_cmd).map_err(AppError::from)?;
+
+        Ok(FileContent {
+            path: file_path,
+            content,
+            size,
+            is_binary: false,
+        })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, project_path, file_path, root_path);
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn wsl_write_file_content(
+    distro: String,
+    project_path: String,
+    file_path: String,
+    content: String,
+    root_path: Option<String>,
+) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use crate::utils::command::wsl::{exec, safe_path};
+
+        let base = root_path.unwrap_or(project_path);
+        let full_path = format!("{}/{}", base, file_path);
+        let safe_fp = safe_path(&full_path);
+
+        // 确保父目录存在
+        if let Some(parent) = std::path::Path::new(&full_path).parent() {
+            let safe_parent = safe_path(parent.to_str().unwrap_or(""));
+            let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
+            let _ = exec(&distro, &mkdir_cmd);
+        }
+
+        // 写入到 Windows 临时文件，再通过 WSL cp 到目标路径
+        let temp = std::env::temp_dir().join(format!("neeko_wsl_write_{}", std::process::id()));
+        std::fs::write(&temp, content.as_bytes())
+            .map_err(|e| AppError::File(format!("Failed to write temp file: {}", e)))?;
+
+        // 获取 WSL 中的临时文件路径（通过 wslpath 转换）
+        let wslpath_cmd = format!("wslpath -a '{}'", temp.display());
+        let wsl_temp = crate::utils::command::wsl::exec(&distro, &wslpath_cmd)
+            .map_err(|e| AppError::File(format!("Failed to get wslpath: {}", e)))?;
+        let wsl_temp = wsl_temp.trim();
+
+        // 复制到目标路径
+        let cp_cmd = format!("cp '{wsl_temp}' '{safe_fp}'");
+        let result = exec(&distro, &cp_cmd);
+
+        // 清理临时文件
+        let _ = std::fs::remove_file(&temp);
+
+        result.map_err(AppError::from)?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (distro, project_path, file_path, content, root_path);
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Test scaffolding - these tests document expected behavior

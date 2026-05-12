@@ -41,14 +41,14 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     return false;
   });
 
-  // Track previous project ID to avoid re-loading when project switch already
-  // triggered loadFileTree via handleSelectProjectWithClear in useAppContainer.
+  // Track previous values to avoid redundant file tree loads.
   // This effect should only fire when:
   //   1. Panel transitions from inactive → active (isActive flips to true)
   //   2. fileRootPath changes within the SAME project (e.g., worktree switch)
   //   3. WSL/Remote project needs initial tree load
   const prevProjectIdRef = useRef<string | null>(null);
   const prevIsActiveRef = useRef(false);
+  const prevFileRootPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isActive || !project || !fileRootPath) {
@@ -59,12 +59,14 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     const projectId = project.type === "local" ? activeProjectId : project.id;
     const justBecameActive = !prevIsActiveRef.current && isActive;
     const sameProject = prevProjectIdRef.current === projectId;
+    const fileRootPathChanged = fileRootPath !== prevFileRootPathRef.current;
 
     // For local projects: only load when panel just became active, or when
-    // fileRootPath changed within the same project (e.g., worktree switch).
-    // Skip when project ID changed — that's handled by handleSelectProjectWithClear.
+    // fileRootPath actually changed within the same project (e.g., worktree switch).
+    // Skip when only the project object reference changed (e.g., git-changed re-fetch)
+    // but the project ID and fileRootPath are the same.
     if (project.type === "local" && activeProjectId) {
-      if (justBecameActive || (sameProject && fileRootPath)) {
+      if (justBecameActive || (sameProject && fileRootPathChanged)) {
         onLoadFileTree(activeProjectId, fileRootPath);
       }
     } else if (project.type !== "local" && commands) {
@@ -74,14 +76,35 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
         .then((tree) => {
           useAppStore.setState({ fileTree: tree, fileViewLoading: false });
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("[FilesPanelWrapper] Failed to load WSL/Remote file tree:", err);
           useAppStore.setState({ fileTree: [], fileViewLoading: false });
         });
     }
 
     prevProjectIdRef.current = projectId ?? null;
     prevIsActiveRef.current = isActive;
+    prevFileRootPathRef.current = fileRootPath;
   }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree]);
+
+  // WSL/Remote: use commands.readDirTree directly for refresh, bypassing
+  // useFileView.loadFileTree to avoid stale ref issues.
+  // Local: delegate to onFileRefresh (context → useFileView.loadFileTree).
+  const handleRefresh = useCallback(() => {
+    if (project?.type !== "local" && commands && fileRootPath) {
+      useAppStore.setState({ fileViewLoading: true });
+      commands.readDirTree(fileRootPath, undefined, 4)
+        .then((tree) => {
+          useAppStore.setState({ fileTree: tree, fileViewLoading: false });
+        })
+        .catch((err) => {
+          console.error("[FilesPanelWrapper] Refresh failed:", err);
+          useAppStore.setState({ fileTree: [], fileViewLoading: false });
+        });
+    } else {
+      onFileRefresh();
+    }
+  }, [project?.type, commands, fileRootPath, onFileRefresh]);
 
   return (
     <FilesPanel
@@ -91,7 +114,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       isLoading={fileViewLoading}
       activeFilePath={activeFilePath}
       onSelectFile={onFileSelect}
-      onRefresh={onFileRefresh}
+      onRefresh={handleRefresh}
     />
   );
 });

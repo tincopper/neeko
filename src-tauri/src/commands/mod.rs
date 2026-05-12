@@ -140,6 +140,8 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::wsl_revert_commit,
             $crate::commands::wsl_create_tag,
             $crate::commands::wsl_read_dir_tree,
+            $crate::commands::wsl_read_file_content,
+            $crate::commands::wsl_write_file_content,
             // --- Remote ---
             $crate::commands::create_remote_terminal_session,
             $crate::commands::close_remote_terminal_session,
@@ -175,6 +177,8 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::remote_revert_commit,
             $crate::commands::remote_create_tag,
             $crate::commands::remote_read_dir_tree,
+            $crate::commands::remote_read_file_content,
+            $crate::commands::remote_write_file_content,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,
