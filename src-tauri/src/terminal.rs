@@ -1,5 +1,5 @@
 use crate::models::{TerminalSession, TerminalStatus};
-use crate::opencode_theme::write_wsl_tui_config;
+use crate::opencode_theme::{install_wsl_theme_files, write_wsl_tui_config};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -114,8 +114,11 @@ impl TerminalManager {
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
 
-        // 写入 OpenCode 项目级 TUI 配置（主题同步）
-        if let Err(e) = write_wsl_tui_config(project_path) {
+        // 安装 WSL 主题文件并写入项目级 TUI 配置（主题同步）
+        if let Err(e) = install_wsl_theme_files(distro) {
+            log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
+        }
+        if let Err(e) = write_wsl_tui_config(distro, project_path) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
         }
 

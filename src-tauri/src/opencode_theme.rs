@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::utils::command::ssh::exec;
+use crate::utils::command::wsl;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具（必须在使用前定义）
@@ -65,17 +66,6 @@ fn base64_encode(input: &str) -> String {
     }
 
     result
-}
-
-/// 通过 SSH 写入远程文件（使用 base64 编码避免特殊字符问题）
-async fn write_remote_file(
-    channel: &mut russh::Channel<russh::client::Msg>,
-    path: &str,
-    content: &str,
-) -> Result<()> {
-    let encoded = base64_encode(content);
-    let cmd = format!("echo '{}' | base64 -d > {}", encoded, shell_escape(path));
-    exec(channel, &cmd).await
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -158,28 +148,92 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
     Ok(())
 }
 
-/// 将 Windows 路径转换为 WSL 路径格式
-/// D:\project\foo → /mnt/d/project/foo
-fn windows_to_wsl_path(windows_path: &str) -> String {
-    let path = windows_path
-        .trim_start_matches('\\')
-        .trim_start_matches('/');
-    let path = path.replace('\\', "/");
-    if path.len() >= 2 {
-        let drive = path.chars().next().unwrap().to_lowercase();
-        let rest = &path[2..];
-        format!("/mnt/{}{}", drive, rest)
-    } else {
-        path.to_string()
+/// 通过 WSL 安装主题文件到 WSL 内部的 ~/.config/opencode/themes/
+pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
+    let themes_dir = "$HOME/.config/opencode/themes";
+    wsl::exec(distro, &format!("mkdir -p {}", themes_dir))?;
+    log::debug!("[WSL][Theme] mkdir -p {} (distro={})", themes_dir, distro);
+
+    let themes = [
+        ("neeko-dark", generate_dark_theme()),
+        ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
+        ("neeko-claude", generate_claude_theme()),
+        ("neeko-light", generate_light_theme()),
+    ];
+
+    for (name, theme_json) in &themes {
+        let json_str = serde_json::to_string_pretty(theme_json)?;
+        let encoded = base64_encode(&json_str);
+        let path = format!("{}/{}.json", themes_dir, name);
+        let cmd = format!("echo '{}' | base64 -d > {}", encoded, path);
+        log::debug!(
+            "[WSL][Theme] Writing {} ({} bytes base64, distro={})",
+            path,
+            encoded.len(),
+            distro
+        );
+        if let Err(e) = wsl::exec(distro, &cmd) {
+            log::error!("[WSL][Theme] Failed to write {}: {}", path, e);
+            return Err(e);
+        }
     }
+
+    log::info!(
+        "[OpenCodeTheme] Installed WSL theme files for distro={}",
+        distro
+    );
+    Ok(())
 }
 
-/// WSL 项目创建前调用（内部读取主题配置）
-/// 将 Windows 路径转换为 WSL 内部路径后写入 .opencode/tui.json
-pub fn write_wsl_tui_config(windows_project_path: &str) -> Result<()> {
-    let wsl_path = windows_to_wsl_path(windows_project_path);
+/// WSL 项目终端创建前调用
+/// 通过 wsl.exe 在 WSL 内部写入 .opencode/tui.json
+pub fn write_wsl_tui_config(distro: &str, project_path: &str) -> Result<()> {
     let neeko_theme = get_current_theme(&read_neeko_config());
-    write_project_tui_config(&wsl_path, &neeko_theme)
+    let theme_name = map_theme_name(&neeko_theme);
+    let opencode_dir = format!("{}/.opencode", project_path);
+    let tui_path = format!("{}/tui.json", opencode_dir);
+    let backup_path = format!("{}/tui.json.neeko.bak", opencode_dir);
+
+    log::debug!(
+        "[WSL][Theme] Writing tui.json: distro={}, tui_path={}, theme={}",
+        distro,
+        tui_path,
+        theme_name
+    );
+
+    wsl::exec(distro, &format!("mkdir -p {}", shell_escape(&opencode_dir)))?;
+
+    // 备份（如果 tui.json 存在且备份不存在）
+    let _ = wsl::exec(
+        distro,
+        &format!(
+            "test -f {} && test ! -f {} && cp {} {}",
+            shell_escape(&tui_path),
+            shell_escape(&backup_path),
+            shell_escape(&tui_path),
+            shell_escape(&backup_path)
+        ),
+    );
+
+    // 写入 tui.json
+    let config = json!({ "theme": theme_name });
+    let content = serde_json::to_string_pretty(&config)?;
+    let encoded = base64_encode(&content);
+    wsl::exec(
+        distro,
+        &format!(
+            "echo '{}' | base64 -d > {}",
+            encoded,
+            shell_escape(&tui_path)
+        ),
+    )?;
+
+    log::info!(
+        "[OpenCodeTheme] Written WSL tui.json to {} with theme={}",
+        tui_path,
+        theme_name
+    );
+    Ok(())
 }
 
 /// 从 ~/.neeko/config.json 读取当前主题配置
@@ -206,6 +260,7 @@ pub fn get_current_theme(config_json: &serde_json::Value) -> String {
 
 /// 通过 SSH 在远程服务器上安装主题文件
 /// 将 4 个主题 JSON 写入远程 ~/.config/opencode/themes/
+/// 合并为单条 shell 命令（一个 channel 只能 exec 一次）
 pub async fn install_remote_theme_files(
     channel: &mut russh::Channel<russh::client::Msg>,
 ) -> Result<()> {
@@ -216,21 +271,27 @@ pub async fn install_remote_theme_files(
         ("neeko-light", generate_light_theme()),
     ];
 
-    // mkdir -p ~/.config/opencode/themes
-    exec(channel, "mkdir -p ~/.config/opencode/themes").await?;
-
+    let themes_dir = "$HOME/.config/opencode/themes";
+    let mut script = format!("mkdir -p {}", themes_dir);
     for (name, theme_json) in &themes {
         let json_str = serde_json::to_string_pretty(theme_json)?;
-        let safe_name = shell_escape(name);
-        let path = format!("~/.config/opencode/themes/{}.json", safe_name);
-        write_remote_file(channel, &path, &json_str).await?;
+        let encoded = base64_encode(&json_str);
+        let path = format!("{}/{}.json", themes_dir, name);
+        script.push_str(&format!(" && echo '{}' | base64 -d > {}", encoded, path));
     }
+
+    log::debug!(
+        "[SSH][Theme] Installing remote theme files ({} bytes script)",
+        script.len()
+    );
+    exec(channel, &script).await?;
 
     log::info!("[OpenCodeTheme] Installed remote theme files");
     Ok(())
 }
 
 /// 通过 SSH 在远程项目目录写入 .opencode/tui.json
+/// 合并为单条 shell 命令（一个 channel 只能 exec 一次）
 pub async fn write_remote_tui_config(
     channel: &mut russh::Channel<russh::client::Msg>,
     project_path: &str,
@@ -241,31 +302,28 @@ pub async fn write_remote_tui_config(
     let tui_path = format!("{}/tui.json", opencode_dir);
     let backup_path = format!("{}/tui.json.neeko.bak", opencode_dir);
 
-    // mkdir -p .opencode
-    exec(
-        channel,
-        &format!("mkdir -p {}", shell_escape(&opencode_dir)),
-    )
-    .await?;
-
-    // 备份（如果 tui.json 存在且备份不存在）
-    exec(
-        channel,
-        &format!(
-            "test -f {} && test ! -f {} && cp {} {}",
-            shell_escape(&tui_path),
-            shell_escape(&backup_path),
-            shell_escape(&tui_path),
-            shell_escape(&backup_path)
-        ),
-    )
-    .await
-    .ok(); // 忽略错误（文件不存在等）
-
-    // 写入 tui.json
     let config = json!({ "theme": theme_name });
     let content = serde_json::to_string_pretty(&config)?;
-    write_remote_file(channel, &tui_path, &content).await?;
+    let encoded = base64_encode(&content);
+
+    // mkdir + backup + write 合并为一条命令
+    let script = format!(
+        "mkdir -p {} && (test -f {} && test ! -f {} && cp {} {}; true) && echo '{}' | base64 -d > {}",
+        shell_escape(&opencode_dir),
+        shell_escape(&tui_path),
+        shell_escape(&backup_path),
+        shell_escape(&tui_path),
+        shell_escape(&backup_path),
+        encoded,
+        shell_escape(&tui_path),
+    );
+
+    log::debug!(
+        "[SSH][Theme] Writing remote tui.json to {} (theme={})",
+        tui_path,
+        theme_name
+    );
+    exec(channel, &script).await?;
 
     log::info!(
         "[OpenCodeTheme] Written remote tui.json to {} with theme={}",

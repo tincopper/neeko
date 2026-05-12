@@ -418,43 +418,46 @@ fn log_error(msg: &str) {
 }
 
 /// 安装远程 OpenCode 主题文件和项目 TUI 配置
-/// 使用单独的 channel 执行，静默失败
+/// 每个操作使用独立的 channel（SSH channel 只能 exec 一次）
 async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, project_path: &str) {
     let theme = match read_neeko_theme() {
         Some(t) => t,
         None => return,
     };
 
-    // 打开单独的 channel 用于主题设置
-    let mut setup_channel = match session.channel_open_session().await {
-        Ok(ch) => ch,
+    // channel 1: 安装主题文件到 ~/.config/opencode/themes/
+    match session.channel_open_session().await {
+        Ok(mut ch) => {
+            if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut ch).await {
+                log_warn(&format!(
+                    "[SSH] Failed to install remote theme files: {}",
+                    e
+                ));
+            }
+            let _ = ch.close().await;
+        }
         Err(e) => {
             log_warn(&format!(
-                "[SSH] Failed to open channel for theme setup: {}",
+                "[SSH] Failed to open channel for theme install: {}",
                 e
             ));
-            return;
         }
-    };
-
-    // 安装主题文件
-    if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut setup_channel).await {
-        log_warn(&format!(
-            "[SSH] Failed to install remote theme files: {}",
-            e
-        ));
     }
 
-    // 写入项目 TUI 配置
-    if let Err(e) =
-        crate::opencode_theme::write_remote_tui_config(&mut setup_channel, project_path, &theme)
-            .await
-    {
-        log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
+    // channel 2: 写入项目 TUI 配置
+    match session.channel_open_session().await {
+        Ok(mut ch) => {
+            if let Err(e) =
+                crate::opencode_theme::write_remote_tui_config(&mut ch, project_path, &theme).await
+            {
+                log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
+            }
+            let _ = ch.close().await;
+        }
+        Err(e) => {
+            log_warn(&format!("[SSH] Failed to open channel for tui.json: {}", e));
+        }
     }
-
-    // 关闭 setup channel
-    let _ = setup_channel.close().await;
 }
 
 /// 从 ~/.neeko/config.json 读取当前主题
