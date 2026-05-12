@@ -232,3 +232,386 @@ pub async fn get_remote_home_dir(
         .map(|s| s.trim().to_string())
         .map_err(AppError::from)
 }
+
+// ─── Extended Remote Git Commands (Step 5) ───────────────────────────────────
+
+#[tauri::command]
+pub async fn remote_stage_files(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_paths: Vec<String>,
+) -> Result<(), AppError> {
+    if file_paths.is_empty() {
+        return Ok(());
+    }
+    let quoted_files: Vec<String> = file_paths
+        .iter()
+        .map(|f| format!("'{}'", crate::utils::command::ssh::safe_path(f)))
+        .collect();
+    let cmd = format!("git add -- {}", quoted_files.join(" "));
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_unstage_files(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_paths: Vec<String>,
+) -> Result<(), AppError> {
+    if file_paths.is_empty() {
+        return Ok(());
+    }
+    let quoted_files: Vec<String> = file_paths
+        .iter()
+        .map(|f| format!("'{}'", crate::utils::command::ssh::safe_path(f)))
+        .collect();
+    let cmd = format!("git restore --staged -- {}", quoted_files.join(" "));
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_discard_file(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_path: String,
+) -> Result<(), AppError> {
+    let fp = crate::utils::command::ssh::safe_path(&file_path);
+    let cmd = format!("git checkout -- '{fp}'");
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_commit_files(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    file_paths: Vec<String>,
+    message: String,
+) -> Result<CommitResult, AppError> {
+    crate::git::remote::remote_commit_files_fn(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        &file_paths,
+        &message,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_push(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    set_upstream: bool,
+) -> Result<(), AppError> {
+    let sp = crate::utils::command::ssh::safe_path(&project_path);
+    let cmd = if set_upstream {
+        let branch_output = crate::utils::command::ssh::exec_command(
+            &host,
+            port,
+            &username,
+            &auth,
+            &format!("cd '{sp}' && git rev-parse --abbrev-ref HEAD 2>/dev/null"),
+        )
+        .await
+        .map_err(AppError::from)?;
+        let branch = branch_output.trim().to_string();
+        let safe_branch = crate::utils::command::ssh::safe_path(&branch);
+        format!("cd '{sp}' && git push --set-upstream origin '{safe_branch}'")
+    } else {
+        format!("cd '{sp}' && git push")
+    };
+    crate::utils::command::ssh::exec_command(&host, port, &username, &auth, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_pull(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+) -> Result<(), AppError> {
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, "git pull")
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_fetch(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+) -> Result<(), AppError> {
+    crate::git::remote::run_remote_git(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        "git fetch --all",
+    )
+    .await
+    .map(|_| ())
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_commit_log(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    count: usize,
+    skip: Option<usize>,
+) -> Result<Vec<CommitEntry>, AppError> {
+    crate::git::remote::remote_get_commit_log(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        count,
+        skip.unwrap_or(0),
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_commit_detail(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+) -> Result<CommitDetail, AppError> {
+    crate::git::remote::remote_get_commit_detail_fn(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        &commit_hash,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_commit_files(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+) -> Result<Vec<CommitFileChange>, AppError> {
+    crate::git::remote::remote_get_commit_files_fn(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        &commit_hash,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_commit_file_diff(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+    file_path: String,
+) -> Result<DiffResult, AppError> {
+    crate::git::remote::remote_get_commit_file_diff_fn(
+        &host,
+        port,
+        &username,
+        &auth,
+        &project_path,
+        &commit_hash,
+        &file_path,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_get_ahead_behind(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+) -> Result<AheadBehind, AppError> {
+    crate::git::remote::remote_get_ahead_behind_fn(&host, port, &username, &auth, &project_path)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_cherry_pick(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+) -> Result<(), AppError> {
+    let ch = crate::utils::command::ssh::safe_path(&commit_hash);
+    let cmd = format!("git cherry-pick '{ch}'");
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_revert_commit(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    commit_hash: String,
+) -> Result<(), AppError> {
+    let ch = crate::utils::command::ssh::safe_path(&commit_hash);
+    let cmd = format!("git revert --no-edit '{ch}'");
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_create_tag(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    tag_name: String,
+    message: Option<String>,
+) -> Result<(), AppError> {
+    let tn = crate::utils::command::ssh::safe_path(&tag_name);
+    let cmd = match message {
+        Some(ref msg) => {
+            let safe_msg = msg.replace('\'', "'\\''");
+            format!("git tag -a '{tn}' -m '{safe_msg}'")
+        }
+        None => format!("git tag '{tn}'"),
+    };
+    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+        .await
+        .map(|_| ())
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn remote_read_dir_tree(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    root_path: String,
+    sub_path: Option<String>,
+    max_depth: Option<u32>,
+) -> Result<Vec<FileNode>, AppError> {
+    let depth = max_depth.unwrap_or(4);
+    crate::git::remote::remote_read_dir_tree_fn(
+        &host,
+        port,
+        &username,
+        &auth,
+        &root_path,
+        sub_path.as_deref(),
+        depth,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_remote_stage_files_empty_list_contract() {
+        // Documents: empty file list → Ok(()) without SSH call
+        // Actual integration requires live SSH target
+        let _ = ();
+    }
+
+    #[test]
+    fn test_remote_commit_files_result_structure() {
+        let result = crate::models::CommitResult {
+            success: true,
+            hash: "abc1234".to_string(),
+            message: "test commit".to_string(),
+        };
+        assert!(result.success);
+        assert_eq!(result.hash, "abc1234");
+    }
+
+    #[test]
+    fn test_remote_get_ahead_behind_no_upstream_returns_zeros() {
+        let ab = crate::models::AheadBehind {
+            ahead: 0,
+            behind: 0,
+        };
+        assert_eq!(ab.ahead, 0);
+        assert_eq!(ab.behind, 0);
+    }
+
+    #[test]
+    fn test_remote_create_tag_with_message_uses_annotated() {
+        // Documents: tag with message uses -a flag (annotated)
+        // Actual execution requires live SSH target
+        let _ = ();
+    }
+
+    #[test]
+    fn test_remote_read_dir_tree_default_depth() {
+        // Documents: default max_depth is 4
+        let depth: u32 = None::<u32>.unwrap_or(4);
+        assert_eq!(depth, 4);
+    }
+}

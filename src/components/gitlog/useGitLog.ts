@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { CommitEntry } from "../../types";
+import type { ProjectCommands } from "../../types/activeProject";
 import type { GitLogData } from "./types";
 
 const PAGE_SIZE = 50;
 
-export function useGitLog(projectId: string | null): GitLogData {
+export function useGitLog(commands: ProjectCommands | null): GitLogData {
   const [commits, setCommits] = useState<CommitEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -15,7 +15,7 @@ export function useGitLog(projectId: string | null): GitLogData {
 
   const fetchCommits = useCallback(
     async (skip: number, append: boolean) => {
-      if (!projectId) return;
+      if (!commands) return;
       if (append) {
         setLoadingMore(true);
       } else {
@@ -23,11 +23,7 @@ export function useGitLog(projectId: string | null): GitLogData {
         setError(null);
       }
       try {
-        const list = await invoke<CommitEntry[]>("get_commit_log_command", {
-          projectId,
-          count: PAGE_SIZE,
-          skip,
-        });
+        const list = await commands.getCommitLog(PAGE_SIZE, skip);
         if (append) {
           setCommits((prev) => [...prev, ...list]);
         } else {
@@ -41,22 +37,22 @@ export function useGitLog(projectId: string | null): GitLogData {
         setLoadingMore(false);
       }
     },
-    [projectId],
+    [commands],
   );
 
   // Initial load
   useEffect(() => {
-    if (!projectId) return;
+    if (!commands) return;
     if (loadedRef.current) return;
     loadedRef.current = true;
     setCommits([]);
     setHasMore(true);
     fetchCommits(0, false);
-  }, [projectId, fetchCommits]);
+  }, [commands, fetchCommits]);
 
   useEffect(() => {
     loadedRef.current = false;
-  }, [projectId]);
+  }, [commands]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return;

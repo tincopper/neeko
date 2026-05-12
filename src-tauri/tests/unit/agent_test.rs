@@ -65,6 +65,8 @@ fn add_custom_agent() {
         env: HashMap::from([("KEY".into(), "val".into())]),
         icon: Some("test.png".into()),
         enabled: true,
+        prompt_args: None,
+        post_prompt_args: None,
     });
 
     assert_eq!(manager.get_agents().len(), initial + 1);
@@ -86,6 +88,8 @@ fn add_agent_with_duplicate_id() {
         env: HashMap::new(),
         icon: None,
         enabled: true,
+        prompt_args: None,
+        post_prompt_args: None,
     });
 
     // duplicates are allowed — both entries exist
@@ -103,6 +107,8 @@ fn remove_agent() {
         env: HashMap::new(),
         icon: None,
         enabled: true,
+        prompt_args: None,
+        post_prompt_args: None,
     });
     assert!(manager.get_agent("temp").is_some());
 

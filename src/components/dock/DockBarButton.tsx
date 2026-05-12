@@ -30,10 +30,15 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
   const isTab = def?.openAs === "tab";
 
   // For tab-mode buttons, track if the tab is open in the active project
+  // Use currentProjectId (covers local/WSL/remote) to match MainContent's tabKey
   const isTabActive = useAppStore((s) => {
     if (!isTab) return false;
     const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-    const projectId = s.activeProjectId ?? "__app__";
+    const projectId =
+      s.activeProjectId ??
+      s.activeWslProject?.project.id ??
+      s.activeRemoteProject?.project.id ??
+      "__app__";
     const projectTabs = s.tabs[projectId];
     return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
   });
@@ -53,13 +58,19 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
   const addTab = useAppStore((s) => s.addTab);
   const closeTab = useAppStore((s) => s.closeTab);
   const activateTab = useAppStore((s) => s.activateTab);
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  // Use currentProjectId that covers local/WSL/remote — matches MainContent's tabKey
+  const currentProjectId = useAppStore((s) =>
+    s.activeProjectId ??
+    s.activeWslProject?.project.id ??
+    s.activeRemoteProject?.project.id ??
+    null
+  );
   const tabs = useAppStore((s) => s.tabs);
 
   const handleClick = useCallback(() => {
     if (isTab) {
       const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-      const projectId = activeProjectId ?? "__app__";
+      const projectId = currentProjectId ?? "__app__";
       const projectTabs = tabs[projectId];
       const existing = projectTabs?.tabs.find((t) => t.data.kind === tabKind);
       if (existing) {
@@ -78,7 +89,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
     } else {
       togglePanel(panelId);
     }
-  }, [isTab, togglePanel, addTab, closeTab, activateTab, activeProjectId, tabs, panelId, def]);
+  }, [isTab, togglePanel, addTab, closeTab, activateTab, currentProjectId, tabs, panelId, def]);
 
   if (!def) return null;
 

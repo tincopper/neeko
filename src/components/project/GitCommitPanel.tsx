@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { Project, AheadBehind, CommitResult } from "../../types";
+import type { AheadBehind, CommitResult } from "../../types";
+import type {
+  UnifiedProjectView,
+  ProjectCommands,
+  ProjectCapabilities,
+} from "../../types/activeProject";
 import BranchInfo from "./BranchInfo";
 import ChangesList from "./ChangesList";
 import CommitForm from "./CommitForm";
@@ -8,22 +12,23 @@ import PullRequestsPanel from "./PullRequestsPanel";
 import GitDialog, { type DialogState } from "./GitDialog";
 
 interface GitCommitPanelProps {
-  project: Project;
-  onRefreshGit: (projectId: string) => void;
-  onSelectFile?: (projectId: string, filePath: string) => void;
+  project: UnifiedProjectView;
+  commands: ProjectCommands;
+  capabilities: ProjectCapabilities;
+  onRefreshGit: () => Promise<void>;
+  onSelectFile?: (filePath: string) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onOpenDialog?: (type: "new-branch" | "new-worktree", e: React.MouseEvent) => void;
-  /** 与 AppConfig.agentCommandOverrides 对应，用于解析 agent 实际可执行路径 */
-  agentCommandOverrides?: Record<string, string>;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   project,
+  commands,
+  capabilities,
   onRefreshGit,
   onSelectFile,
   onShowToast,
   onOpenDialog,
-  agentCommandOverrides,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
@@ -36,7 +41,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [commitMessage, setCommitMessage] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
 
-  const changedFiles = project.git_info?.changed_files ?? [];
+  const changedFiles = project.gitInfo?.changed_files ?? [];
 
   const handleDividerMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -67,15 +72,15 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   );
 
   useEffect(() => {
-    if (!project.git_info) return;
+    if (!project.gitInfo) return;
     refreshAheadBehind();
   }, [project.id]);
 
-  // 项目已选择 agent 时，AI 按钮可点击；具体是否支持 prompt 模式由后端验证并返回错误
-  const canAiGenerate = !!project.selected_agent;
+  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可用
+  const canAiGenerate = capabilities.canGenerateCommitMessage && !!project.selectedAgent;
 
   const handleAiGenerate = useCallback(async () => {
-    if (!project.selected_agent) return;
+    if (!capabilities.canGenerateCommitMessage || !project.selectedAgent) return;
     const files = Array.from(selectedFiles);
     if (files.length === 0) {
       onShowToast?.("No files selected. Please select files to generate commit message.", "error");
@@ -83,25 +88,18 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
     setAiGenerating(true);
     try {
-      const generated = await invoke<string>("generate_commit_message_command", {
-        projectId: project.id,
-        agentId: project.selected_agent,
-        agentCommandOverride: agentCommandOverrides?.[project.selected_agent] ?? null,
-        filePaths: files,
-      });
+      const generated = await commands.generateCommitMessage(files);
       setCommitMessage(generated.trim());
     } catch (e: unknown) {
       onShowToast?.(String(e), "error");
     } finally {
       setAiGenerating(false);
     }
-  }, [project.id, project.selected_agent, selectedFiles, agentCommandOverrides, onShowToast]);
+  }, [capabilities.canGenerateCommitMessage, project.selectedAgent, selectedFiles, commands, onShowToast]);
 
   const refreshAheadBehind = async () => {
     try {
-      const ab = await invoke<AheadBehind>("get_ahead_behind_command", {
-        projectId: project.id,
-      });
+      const ab = await commands.getAheadBehind();
       setAheadBehind(ab);
     } catch {
       // repo may not have remote configured
@@ -127,8 +125,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     async (path: string) => {
       setLoading(true);
       try {
-        await invoke("discard_file_command", { projectId: project.id, filePath: path });
-        onRefreshGit(project.id);
+        await commands.discardFile(path);
+        await onRefreshGit();
         setSelectedFiles((prev) => {
           const next = new Set(prev);
           next.delete(path);
@@ -141,15 +139,15 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [project.id, onRefreshGit, onShowToast]
+    [commands, onRefreshGit, onShowToast]
   );
 
   const handleStageFile = useCallback(
     async (path: string) => {
       setLoading(true);
       try {
-        await invoke("stage_files_command", { projectId: project.id, filePaths: [path] });
-        onRefreshGit(project.id);
+        await commands.stageFiles([path]);
+        await onRefreshGit();
         onShowToast?.("Staged file", "info");
       } catch (e: unknown) {
         onShowToast?.(String(e), "error");
@@ -157,7 +155,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [project.id, onRefreshGit, onShowToast]
+    [commands, onRefreshGit, onShowToast]
   );
 
   const handleStageAllUntracked = useCallback(
@@ -168,8 +166,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       if (untrackedPaths.length === 0) return;
       setLoading(true);
       try {
-        await invoke("stage_files_command", { projectId: project.id, filePaths: untrackedPaths });
-        onRefreshGit(project.id);
+        await commands.stageFiles(untrackedPaths);
+        await onRefreshGit();
         onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, "info");
       } catch (e: unknown) {
         onShowToast?.(String(e), "error");
@@ -177,7 +175,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [changedFiles, project.id, onRefreshGit, onShowToast]
+    [changedFiles, commands, onRefreshGit, onShowToast]
   );
 
   const handleCommit = useCallback(
@@ -189,12 +187,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       }
       setLoading(true);
       try {
-        const result = await invoke<CommitResult>("commit_files_command", {
-          projectId: project.id,
-          filePaths: files,
-          message,
-        });
-        onRefreshGit(project.id);
+        const result = await commands.commitFiles(files, message) as CommitResult;
+        await onRefreshGit();
         setSelectedFiles(new Set());
         setCommitMessage("");
         onShowToast?.(
@@ -207,7 +201,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [selectedFiles, project.id, onRefreshGit, onShowToast]
+    [selectedFiles, commands, onRefreshGit, onShowToast]
   );
 
   const handleCommitAndPush = useCallback(
@@ -219,16 +213,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       }
       setLoading(true);
       try {
-        await invoke("commit_files_command", {
-          projectId: project.id,
-          filePaths: files,
-          message,
-        });
-        await invoke("push_command", {
-          projectId: project.id,
-          setUpstream: false,
-        });
-        onRefreshGit(project.id);
+        await commands.commitFiles(files, message);
+        await commands.push(false);
+        await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
         setCommitMessage("");
@@ -239,13 +226,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [selectedFiles, project.id, onRefreshGit, onShowToast]
+    [selectedFiles, commands, onRefreshGit, onShowToast]
   );
 
   const handleFetch = useCallback(async () => {
     setLoading(true);
     try {
-      await invoke("fetch_command", { projectId: project.id });
+      await commands.fetch();
       refreshAheadBehind();
       onShowToast?.("Fetched successfully", "info");
     } catch (e: unknown) {
@@ -253,13 +240,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [project.id, onShowToast]);
+  }, [commands, onShowToast]);
 
   const handlePull = useCallback(async () => {
     setLoading(true);
     try {
-      await invoke("pull_command", { projectId: project.id });
-      onRefreshGit(project.id);
+      await commands.pull();
+      await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.("Pulled successfully", "info");
     } catch (e: unknown) {
@@ -267,13 +254,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [project.id, onRefreshGit, onShowToast]);
+  }, [commands, onRefreshGit, onShowToast]);
 
   const handlePush = useCallback(async () => {
     setLoading(true);
     try {
-      await invoke("push_command", { projectId: project.id, setUpstream: false });
-      onRefreshGit(project.id);
+      await commands.push(false);
+      await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.("Pushed successfully", "info");
     } catch (e: unknown) {
@@ -281,7 +268,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [project.id, onRefreshGit, onShowToast]);
+  }, [commands, onRefreshGit, onShowToast]);
 
   const handleNewBranch = useCallback(() => {
     if (onOpenDialog) {
@@ -290,7 +277,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       setDialog({
         type: "new-branch",
         projectId: project.id,
-        branches: project.git_info?.branches ?? [],
+        branches: project.gitInfo?.branches ?? [],
         projectPath: project.path,
       });
     }
@@ -303,7 +290,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       setDialog({
         type: "new-worktree",
         projectId: project.id,
-        branches: project.git_info?.branches ?? [],
+        branches: project.gitInfo?.branches ?? [],
         projectPath: project.path,
       });
     }
@@ -311,16 +298,21 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
   const handleCheckoutBranch = useCallback(async (branchName: string) => {
     try {
-      await invoke("checkout_branch", { projectId: project.id, branchName });
-      onRefreshGit(project.id);
+      await commands.checkoutBranch(branchName);
+      await onRefreshGit();
     } catch (e: unknown) {
       onShowToast?.(String(e), "error");
     }
-  }, [project.id, onRefreshGit, onShowToast]);
+  }, [commands, onRefreshGit, onShowToast]);
 
   const handleDialogClose = useCallback(() => {
     setDialog(null);
   }, []);
+
+  // GitDialog onRefreshGit shim: local dialogs pass projectId, but we use onRefreshGit() directly
+  const handleDialogRefreshGit = useCallback((_projectId: string) => {
+    onRefreshGit().catch(console.error);
+  }, [onRefreshGit]);
 
   return (
     <div className="flex flex-col h-full gap-0.5 p-1.5">
@@ -328,18 +320,18 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         <GitDialog
           dialog={dialog}
           onClose={handleDialogClose}
-          onRefreshGit={onRefreshGit}
+          onRefreshGit={handleDialogRefreshGit}
         />
       )}
       <BranchInfo
-        gitInfo={project.git_info ?? null}
+        gitInfo={project.gitInfo ?? null}
         aheadBehind={aheadBehind}
         loading={loading}
         onFetch={handleFetch}
         onPull={handlePull}
         onPush={handlePush}
         onRefresh={() => {
-          onRefreshGit(project.id);
+          onRefreshGit().catch(console.error);
           refreshAheadBehind();
         }}
         onNewBranch={handleNewBranch}
@@ -355,7 +347,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           onDiscardFile={handleDiscardFile}
           onStageFile={handleStageFile}
           onStageAllUntracked={handleStageAllUntracked}
-          onFileSelect={(path) => onSelectFile?.(project.id, path)}
+          onFileSelect={(path) => onSelectFile?.(path)}
           loading={loading}
         />
       </div>
@@ -373,18 +365,20 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onMessageChange={setCommitMessage}
         onCommit={handleCommit}
         onCommitAndPush={handleCommitAndPush}
-        onAiGenerate={handleAiGenerate}
+        onAiGenerate={capabilities.canGenerateCommitMessage ? handleAiGenerate : undefined}
         canAiGenerate={canAiGenerate}
         aiGenerating={aiGenerating}
         loading={loading}
         textareaHeight={textareaHeight}
       />
 
-      <PullRequestsPanel
-        projectId={project.id}
-        onShowToast={onShowToast}
-        onRefreshGit={onRefreshGit}
-      />
+      {capabilities.canManagePRs && (
+        <PullRequestsPanel
+          projectId={project.id}
+          onShowToast={onShowToast}
+          onRefreshGit={handleDialogRefreshGit}
+        />
+      )}
     </div>
   );
 };
