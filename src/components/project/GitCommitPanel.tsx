@@ -111,6 +111,42 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     [project.id, onRefreshGit, onShowToast]
   );
 
+  const handleStageFile = useCallback(
+    async (path: string) => {
+      setLoading(true);
+      try {
+        await invoke("stage_files_command", { projectId: project.id, filePaths: [path] });
+        onRefreshGit(project.id);
+        onShowToast?.("Staged file", "info");
+      } catch (e: unknown) {
+        onShowToast?.(String(e), "error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [project.id, onRefreshGit, onShowToast]
+  );
+
+  const handleStageAllUntracked = useCallback(
+    async () => {
+      const untrackedPaths = changedFiles
+        .filter((f) => f.status === "Untracked")
+        .map((f) => f.path);
+      if (untrackedPaths.length === 0) return;
+      setLoading(true);
+      try {
+        await invoke("stage_files_command", { projectId: project.id, filePaths: untrackedPaths });
+        onRefreshGit(project.id);
+        onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, "info");
+      } catch (e: unknown) {
+        onShowToast?.(String(e), "error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [changedFiles, project.id, onRefreshGit, onShowToast]
+  );
+
   const handleCommit = useCallback(
     async (message: string) => {
       const files = Array.from(selectedFiles);
@@ -282,6 +318,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}
           onDiscardFile={handleDiscardFile}
+          onStageFile={handleStageFile}
+          onStageAllUntracked={handleStageAllUntracked}
           onFileSelect={(path) => onSelectFile?.(project.id, path)}
           loading={loading}
         />
