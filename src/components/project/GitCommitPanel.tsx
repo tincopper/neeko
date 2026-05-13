@@ -196,6 +196,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       try {
         const result = await commands.commitFiles(files, message) as CommitResult;
         await onRefreshGit();
+        refreshAheadBehind();
         setSelectedFiles(new Set());
         setCommitMessage("");
         onShowToast?.(
@@ -208,7 +209,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [selectedFiles, commands, onRefreshGit, onShowToast]
+    [selectedFiles, commands, onRefreshGit, refreshAheadBehind, onShowToast]
   );
 
   const handleCommitAndPush = useCallback(
