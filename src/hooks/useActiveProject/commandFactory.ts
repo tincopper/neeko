@@ -122,8 +122,17 @@ export function createLocalCommands(projectId: string): ProjectCommands {
     },
 
     // ── AI ────────────────────────────────────────────────────────────────
-    generateCommitMessage(filePaths: string[]): Promise<string> {
-      return invoke<string>("generate_commit_message_command", { projectId, filePaths });
+    generateCommitMessage(
+      agentId: string,
+      filePaths: string[],
+      agentCommandOverride?: string | null,
+    ): Promise<string> {
+      return invoke<string>("generate_commit_message_command", {
+        projectId,
+        agentId,
+        agentCommandOverride: agentCommandOverride ?? null,
+        filePaths,
+      });
     },
   };
 }
@@ -273,8 +282,18 @@ export function createWslCommands(distro: string, projectPath: string): ProjectC
     // ── AI ────────────────────────────────────────────────────────────────
     // canGenerateCommitMessage=false for WSL, but keep consistent signature
     // wsl_generate_commit_message — 占位（Step 4）
-    generateCommitMessage(filePaths: string[]): Promise<string> {
-      return invoke<string>("wsl_generate_commit_message", { distro, projectPath, filePaths });
+    generateCommitMessage(
+      agentId: string,
+      filePaths: string[],
+      agentCommandOverride?: string | null,
+    ): Promise<string> {
+      return invoke<string>("wsl_generate_commit_message", {
+        distro,
+        projectPath,
+        agentId,
+        agentCommandOverride: agentCommandOverride ?? null,
+        filePaths,
+      });
     },
   };
 }
@@ -440,10 +459,16 @@ export function createRemoteCommands(
     // ── AI ────────────────────────────────────────────────────────────────
     // canGenerateCommitMessage=false for remote, but keep consistent signature
     // remote_generate_commit_message — 占位（Step 4）
-    generateCommitMessage(filePaths: string[]): Promise<string> {
+    generateCommitMessage(
+      agentId: string,
+      filePaths: string[],
+      agentCommandOverride?: string | null,
+    ): Promise<string> {
       return invoke<string>("remote_generate_commit_message", {
         ...conn,
         projectPath,
+        agentId,
+        agentCommandOverride: agentCommandOverride ?? null,
         filePaths,
       });
     },
