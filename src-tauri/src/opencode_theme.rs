@@ -187,9 +187,8 @@ pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
 
 /// WSL 项目终端创建前调用
 /// 通过 wsl.exe 在 WSL 内部写入 .opencode/tui.json
-pub fn write_wsl_tui_config(distro: &str, project_path: &str) -> Result<()> {
-    let neeko_theme = get_current_theme(&read_neeko_config());
-    let theme_name = map_theme_name(&neeko_theme);
+pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str) -> Result<()> {
+    let theme_name = map_theme_name(neeko_theme);
     let opencode_dir = format!("{}/.opencode", project_path);
     let tui_path = format!("{}/tui.json", opencode_dir);
     let backup_path = format!("{}/tui.json.neeko.bak", opencode_dir);
@@ -215,10 +214,23 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str) -> Result<()> {
         ),
     );
 
+    // 读取并合并已有 tui.json（与本地版本行为一致）
+    let merged_content = match wsl::exec(distro, &format!("cat {}", shell_escape(&tui_path))) {
+        Ok(raw) => {
+            let mut config: serde_json::Value =
+                serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = config.as_object_mut() {
+                obj.insert("theme".to_string(), json!(theme_name));
+            }
+            serde_json::to_string_pretty(&config)?
+        }
+        Err(_) => {
+            serde_json::to_string_pretty(&json!({ "theme": theme_name }))?
+        }
+    };
+
     // 写入 tui.json
-    let config = json!({ "theme": theme_name });
-    let content = serde_json::to_string_pretty(&config)?;
-    let encoded = base64_encode(&content);
+    let encoded = base64_encode(&merged_content);
     wsl::exec(
         distro,
         &format!(
@@ -229,19 +241,11 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str) -> Result<()> {
     )?;
 
     log::info!(
-        "[OpenCodeTheme] Written WSL tui.json to {} with theme={}",
+        "[OpenCodeTheme] Written WSL tui.json to {} with theme={} (merged)",
         tui_path,
         theme_name
     );
     Ok(())
-}
-
-/// 从 ~/.neeko/config.json 读取当前主题配置
-fn read_neeko_config() -> serde_json::Value {
-    let home = dirs::home_dir().unwrap_or_default();
-    let config_path = home.join(".neeko").join("config.json");
-    let content = std::fs::read_to_string(&config_path).unwrap_or_else(|_| "{}".to_string());
-    serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
 }
 
 /// 从 ~/.neeko/config.json 读取当前主题
