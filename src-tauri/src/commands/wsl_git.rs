@@ -1,6 +1,9 @@
 use crate::models::*;
 use crate::AppError;
 
+/// 文件树默认递归深度
+const DEFAULT_TREE_DEPTH: u32 = 4;
+
 #[tauri::command]
 pub fn refresh_wsl_git_info(distro: String, project_path: String) -> Result<GitInfo, AppError> {
     #[cfg(target_os = "windows")]
@@ -602,7 +605,7 @@ pub fn wsl_read_dir_tree(
 ) -> Result<Vec<FileNode>, AppError> {
     #[cfg(target_os = "windows")]
     {
-        let depth = max_depth.unwrap_or(4);
+        let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
         crate::git::wsl_read_dir_tree(&distro, &root_path, sub_path.as_deref(), depth)
             .map_err(AppError::from)
     }

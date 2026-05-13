@@ -1,6 +1,9 @@
 use crate::models::*;
 use crate::AppError;
 
+/// 文件树默认递归深度
+const DEFAULT_TREE_DEPTH: u32 = 4;
+
 #[tauri::command]
 pub async fn refresh_remote_git_info(
     host: String,
@@ -557,7 +560,7 @@ pub async fn remote_read_dir_tree(
     sub_path: Option<String>,
     max_depth: Option<u32>,
 ) -> Result<Vec<FileNode>, AppError> {
-    let depth = max_depth.unwrap_or(4);
+    let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
     crate::git::remote::remote_read_dir_tree_fn(
         &host,
         port,

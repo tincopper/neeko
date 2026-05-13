@@ -16,6 +16,9 @@ const EXCLUDED_DIRS: &[&str] = &[
     ".vscode",
 ];
 
+/// 文件树默认递归深度
+const DEFAULT_TREE_DEPTH: u32 = 4;
+
 /// Maximum file size for editing (512 KB)
 const MAX_EDIT_SIZE: u64 = 512 * 1024;
 
@@ -28,7 +31,7 @@ pub fn read_dir_tree(
     max_depth: Option<u32>,
     state: State<AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
-    let depth = max_depth.unwrap_or(4);
+    let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
 
     let (target_root, base_root) = if let Some(ref rp) = root_path {
         // Worktree mode: use the provided path directly as root
@@ -60,7 +63,7 @@ pub fn read_dir_tree(
         let canonical = project_path
             .canonicalize()
             .map_err(|e| AppError::File(format!("Invalid project path: {}", e)))?;
-        (canonical, project_path)
+        (canonical.clone(), canonical)
     };
 
     let target_path = match sub_path {
@@ -108,12 +111,12 @@ fn read_dir_recursive(
             .map_err(|e| AppError::File(e.to_string()))?;
         let full_path = entry.path();
 
-        // Calculate relative path from project root
+        // Calculate relative path from project root，统一使用正斜杠（兼容 Windows）
         let relative_path = full_path
             .strip_prefix(project_root)
             .map_err(|e| AppError::File(e.to_string()))?
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
 
         if file_type.is_dir() {
             let children = read_dir_recursive(&full_path, project_root, depth - 1)?;

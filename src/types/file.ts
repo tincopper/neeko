@@ -1,3 +1,6 @@
+/** 文件树默认递归深度（每次加载的最大层数） */
+export const DEFAULT_TREE_DEPTH = 4;
+
 export interface FileNode {
   name: string;
   path: string;
