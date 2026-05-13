@@ -3,6 +3,7 @@ import { FileTree, buildTree } from "../files";
 import {
   BranchIcon,
   ChevronRightIcon,
+  CloseIcon,
   FolderGitIcon,
   TerminalIcon,
   TrashIcon,
@@ -240,9 +241,19 @@ const ProjectBody: React.FC<ProjectBodyProps> = React.memo(
                   <BranchIcon size={11} /> {confirmDelete.branch}
                 </span>
               </div>
-              <div className="modal-actions">
-                <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
-                <button className="confirm-btn confirm-btn-danger" onClick={performRemove}>
+              <div className="flex justify-end gap-3 mt-5">
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] bg-bg-tertiary border border-border rounded-md text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
+                  onClick={() => setConfirmDelete(null)}
+                >
+                  <CloseIcon size={14} />
+                  Cancel
+                </button>
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] bg-accent-red border-none rounded-md text-white font-medium hover:brightness-110 transition-colors cursor-pointer"
+                  onClick={performRemove}
+                >
+                  <TrashIcon size={13} />
                   {confirmDelete.isDirty ? "Force Remove" : "Remove"}
                 </button>
               </div>
