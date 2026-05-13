@@ -664,6 +664,121 @@ pub async fn remote_write_file_content(
     Ok(())
 }
 
+/// Remote/SSH 场景下通过 agent CLI 生成 commit message。
+/// Agent 在远程服务器上执行，自行分析变更，不传入 diff 内容。
+#[tauri::command]
+pub async fn remote_generate_commit_message(
+    host: String,
+    port: u16,
+    username: String,
+    auth: AuthMethod,
+    project_path: String,
+    agent_id: String,
+    agent_command_override: Option<String>,
+    file_paths: Vec<String>,
+    state: tauri::State<'_, crate::AppStateWrapper>,
+) -> Result<String, AppError> {
+    use crate::commands::ai_commit;
+    use crate::utils::command::ssh;
+    let _ = agent_command_override; // WSL/SSH 不使用宿主机 override
+
+    // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
+    let (agent_cmd, prompt_args, post_prompt_args) =
+        ai_commit::resolve_agent_for_remote(&state, &agent_id);
+
+    // 2. 构建 prompt
+    let prompt = ai_commit::build_simple_commit_prompt(&file_paths);
+
+    // 3. 构建命令字符串
+    // Remote: 直接使用 selected_agent 原值作为命令（路径或命令名）
+    let sp = ssh::safe_path(&project_path);
+
+    let post_args_str = post_prompt_args.join(" ");
+
+    // 判断 file mode：opencode 等 agent 需要通过 -f 传入 prompt 文件
+    let uses_file_mode = prompt_args.last().map(|a| a == "-f").unwrap_or(false);
+
+    let actual_cmd = if uses_file_mode {
+        // file mode: 通过 heredoc 写入临时文件，执行 agent，然后清理
+        let prompt_args_without_f = prompt_args[..prompt_args.len() - 1].join(" ");
+        let short_msg = "Output ONLY the raw commit message for the staged changes. No explanation. No quotes. No markdown. Just the commit message text.";
+        format!(
+            "cd '{sp}' && cat > /tmp/.neeko_commit_prompt <<'NEEKO_EOF'\n{prompt}\nNEEKO_EOF\n{agent_cmd} {prompt_args} '{short_msg}' -f /tmp/.neeko_commit_prompt {post_args} && rm -f /tmp/.neeko_commit_prompt",
+            sp = sp,
+            prompt = prompt,
+            agent_cmd = agent_cmd,
+            prompt_args = prompt_args_without_f,
+            short_msg = short_msg,
+            post_args = post_args_str,
+        )
+    } else {
+        // 普通模式: inline prompt
+        let prompt_args_str = prompt_args.join(" ");
+        let escaped_prompt = prompt.replace('\'', "'\\''");
+        format!(
+            "cd '{sp}' && {agent_cmd} {prompt_args} '{escaped_prompt}' {post_args}",
+            sp = sp,
+            agent_cmd = agent_cmd,
+            prompt_args = prompt_args_str,
+            escaped_prompt = escaped_prompt,
+            post_args = post_args_str,
+        )
+    };
+
+    log::info!(
+        "[AI commit Remote] agent_cmd='{}' uses_file_mode={} prompt_args={:?} post_prompt_args={:?}",
+        agent_cmd, uses_file_mode, prompt_args, post_prompt_args
+    );
+    log::info!(
+        "[AI commit Remote] actual_cmd (first 500 chars): {}",
+        &actual_cmd[..actual_cmd.len().min(500)]
+    );
+
+    // 注入环境加载前缀，bash -ic 交互模式绕过 .bashrc 的 non-interactive guard
+    let env_prefix = r#"source ~/.profile 2>/dev/null"#;
+    let full_cmd = format!(
+        "bash -ic <<'NEEKO_BASH'\n{}; {}\nNEEKO_BASH",
+        env_prefix, actual_cmd
+    );
+
+    log::info!(
+        "[AI commit Remote] host={}:{} full_cmd_len={}",
+        host,
+        port,
+        full_cmd.len()
+    );
+
+    // 5. 通过 SSH 执行
+    let output = match ssh::exec_command(&host, port, &username, &auth, &full_cmd).await {
+        Ok(o) => {
+            log::info!("[AI commit Remote] success, stdout_len={}", o.len());
+            if !o.is_empty() {
+                log::info!(
+                    "[AI commit Remote] stdout (first 500 chars): {}",
+                    &o[..o.len().min(500)]
+                );
+            }
+            o
+        }
+        Err(e) => {
+            log::error!("[AI commit Remote] exec failed: {}", e);
+            return Err(AppError::InvalidInput(format!(
+                "Failed to run agent on remote: {}",
+                e
+            )));
+        }
+    };
+
+    // 6. 清理输出
+    let message = ai_commit::clean_ai_output(&output);
+    if message.is_empty() {
+        return Err(AppError::InvalidInput(
+            "Agent returned an empty response.".to_string(),
+        ));
+    }
+    Ok(message)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

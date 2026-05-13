@@ -224,9 +224,7 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str)
             }
             serde_json::to_string_pretty(&config)?
         }
-        Err(_) => {
-            serde_json::to_string_pretty(&json!({ "theme": theme_name }))?
-        }
+        Err(_) => serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
     };
 
     // 写入 tui.json

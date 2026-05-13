@@ -49,9 +49,7 @@ export function getCapabilities(type: ProjectType): ProjectCapabilities {
         canBrowseFiles: true,
         // WSL 项目不支持文件编辑（写入）
         canEditFiles: false,
-        // WSL 项目不支持 AI commit message 生成
-        canGenerateCommitMessage: false,
-        // WSL 项目不支持 PR 管理
+        canGenerateCommitMessage: true,
         canManagePRs: false,
       };
 
@@ -70,9 +68,7 @@ export function getCapabilities(type: ProjectType): ProjectCapabilities {
         canBrowseFiles: true,
         // Remote 项目不支持文件编辑（写入）
         canEditFiles: false,
-        // Remote 项目不支持 AI commit message 生成
-        canGenerateCommitMessage: false,
-        // Remote 项目不支持 PR 管理
+        canGenerateCommitMessage: true,
         canManagePRs: false,
       };
   }

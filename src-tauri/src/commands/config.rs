@@ -104,10 +104,7 @@ pub fn load_vcs_settings_command(
 }
 
 #[tauri::command]
-pub fn sync_opencode_theme(
-    theme: String,
-    targets: ProjectThemeTargets,
-) -> Result<(), AppError> {
+pub fn sync_opencode_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
     for path in &targets.local_paths {
         if let Err(e) = crate::opencode_theme::write_project_tui_config(path, &theme) {
             log::warn!(
@@ -118,7 +115,9 @@ pub fn sync_opencode_theme(
         }
     }
     for target in &targets.wsl {
-        if let Err(e) = crate::opencode_theme::write_wsl_tui_config(&target.distro, &target.path, &theme) {
+        if let Err(e) =
+            crate::opencode_theme::write_wsl_tui_config(&target.distro, &target.path, &theme)
+        {
             log::warn!(
                 "[OpenCodeTheme] Failed to sync tui.json for WSL project {} ({}): {}",
                 target.path,

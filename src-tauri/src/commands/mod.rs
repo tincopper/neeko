@@ -1,4 +1,5 @@
 mod agent;
+mod ai_commit;
 mod config;
 mod file;
 mod git;
@@ -11,6 +12,7 @@ mod wsl;
 mod wsl_git;
 
 pub use agent::*;
+pub use ai_commit::*;
 pub use config::*;
 pub use file::*;
 pub use git::*;
@@ -143,6 +145,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::wsl_read_dir_tree,
             $crate::commands::wsl_read_file_content,
             $crate::commands::wsl_write_file_content,
+            $crate::commands::wsl_generate_commit_message,
             // --- Remote ---
             $crate::commands::create_remote_terminal_session,
             $crate::commands::close_remote_terminal_session,
@@ -180,6 +183,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::remote_read_dir_tree,
             $crate::commands::remote_read_file_content,
             $crate::commands::remote_write_file_content,
+            $crate::commands::remote_generate_commit_message,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,

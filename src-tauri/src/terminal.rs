@@ -119,7 +119,11 @@ impl TerminalManager {
         if let Err(e) = install_wsl_theme_files(distro) {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = write_wsl_tui_config(distro, project_path, &read_neeko_theme().unwrap_or_else(|| "dark".to_string())) {
+        if let Err(e) = write_wsl_tui_config(
+            distro,
+            project_path,
+            &read_neeko_theme().unwrap_or_else(|| "dark".to_string()),
+        ) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
         }
 
