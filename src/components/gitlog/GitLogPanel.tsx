@@ -8,12 +8,13 @@ import LogToolbar from "./LogToolbar";
 import CommitList from "./CommitList";
 import CommitDetailPanel from "./CommitDetailPanel";
 import type { CommitMenuAction } from "./types";
+import type { DiffSource } from "../diff/types";
 
 const MIN_LEFT_WIDTH = 300;
 const MAX_LEFT_WIDTH_RATIO = 0.7;
 
 const GitLogPanel: React.FC = () => {
-  const { project, commands, capabilities } = useActiveProject();
+  const { project, commands, capabilities, connectionContext } = useActiveProject();
   const { showToast } = useAppContext();
 
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
@@ -109,33 +110,63 @@ const GitLogPanel: React.FC = () => {
 
   const handleOpenDiff = useCallback(
     (filePath: string) => {
-      if (!project || !selectedHash) return;
-      // Commit diff tab is only supported for local projects.
-      // For WSL/Remote, the DiffSource "commit" type does not have a variant
-      // that carries wsl/remote connection params, so we skip opening the tab.
-      if (project.type !== "local") return;
+      if (!project || !selectedHash || !connectionContext) return;
 
+      let diffSource: DiffSource;
+      switch (connectionContext.type) {
+        case "local":
+          diffSource = {
+            type: "commit",
+            projectId: connectionContext.projectId,
+            commitHash: selectedHash,
+          };
+          break;
+        case "wsl":
+          diffSource = {
+            type: "wsl-commit",
+            distro: connectionContext.distro,
+            projectPath: connectionContext.projectPath,
+            commitHash: selectedHash,
+          };
+          break;
+        case "remote":
+          diffSource = {
+            type: "remote-commit",
+            host: connectionContext.host,
+            port: connectionContext.port,
+            username: connectionContext.username,
+            auth: connectionContext.auth,
+            projectPath: connectionContext.projectPath,
+            commitHash: selectedHash,
+          };
+          break;
+      }
+
+      // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
+      // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path）
       const appStore = useAppStore.getState();
+      const tabKey =
+        appStore.activeProjectId
+        ?? appStore.activeWslProject?.project.id
+        ?? appStore.activeRemoteProject?.project.id
+        ?? project.id;
+
       const tabId = `diff_${selectedHash.slice(0, 7)}_${filePath.replace(/[/\\]/g, "_")}`;
-      appStore.addTab(project.id, {
+      appStore.addTab(tabKey, {
         id: tabId,
-        projectId: project.id,
+        projectId: tabKey,
         title: filePath.split(/[/\\]/).pop() ?? filePath,
         order: 200,
         data: {
           kind: "diff",
           filePath,
           fileName: filePath.split(/[/\\]/).pop() ?? filePath,
-          diffSource: {
-            type: "commit",
-            projectId: project.id,
-            commitHash: selectedHash,
-          },
+          diffSource,
         },
       });
-      appStore.activateTab(project.id, tabId);
+      appStore.activateTab(tabKey, tabId);
     },
-    [project, selectedHash],
+    [project, selectedHash, connectionContext],
   );
 
   if (!project) {
