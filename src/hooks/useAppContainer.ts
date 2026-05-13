@@ -579,6 +579,7 @@ export function useAppContainer(): UseAppContainerResult {
     onFileSave: fileView.saveFile,
     onFileContentChange: fileView.updateTabContent,
     onLoadFileTree: fileView.loadFileTree,
+    onExpandDir: fileView.expandSubTree,
   };
 
   const wslValue = {

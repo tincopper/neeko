@@ -8,6 +8,8 @@ export interface FileActionsContextValue {
   onFileSave: (content: string) => Promise<boolean>;
   onFileContentChange: (tabId: string, content: string) => void;
   onLoadFileTree: (projectId: string, worktreePath?: string) => void;
+  /** 懒加载：按需加载超过初始深度的子目录 */
+  onExpandDir: (dirPath: string) => Promise<void>;
 }
 
 const FileActionsContext = createContext<FileActionsContextValue | null>(null);

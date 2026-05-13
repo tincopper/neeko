@@ -1,9 +1,25 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab, FileTabData } from "../types";
+import { DEFAULT_TREE_DEPTH } from "../types/file";
 import type { ProjectCommands } from "../types/activeProject";
 import { useAppStore } from "../store/appStore";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
+
+/**
+ * 将 newChildren 合并到 fileTree 中路径为 dirPath 的节点
+ */
+function mergeSubTree(tree: FileNode[], dirPath: string, newChildren: FileNode[]): FileNode[] {
+  return tree.map((node) => {
+    if (node.path === dirPath) {
+      return { ...node, children: newChildren };
+    }
+    if (node.is_dir && node.children.length > 0 && dirPath.startsWith(node.path + "/")) {
+      return { ...node, children: mergeSubTree(node.children, dirPath, newChildren) };
+    }
+    return node;
+  });
+}
 
 /**
  * Generate a unique tab ID from project ID and file path
@@ -113,14 +129,14 @@ export function useFileView(
       let tree: FileNode[];
       if (cmds) {
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
-        tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, 4);
+        tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
       } else {
         // Local 模式：直接 invoke
         tree = await invoke<FileNode[]>("read_dir_tree", {
           projectId,
           rootPath: worktreePath ?? null,
           subPath: null,
-          maxDepth: 4,
+          maxDepth: DEFAULT_TREE_DEPTH,
         });
       }
       useAppStore.setState({
@@ -134,6 +150,39 @@ export function useFileView(
         fileViewLoading: false,
       });
     }
+  }, []);
+
+  /**
+   * 懒加载子目录：展开超过初始深度的目录时，按需加载该目录的子树
+   */
+  const expandSubTree = useCallback(async (dirPath: string) => {
+    const cmds = externalCommandsRef.current;
+    const state = useAppStore.getState();
+    const projectId =
+      state.activeProjectId ??
+      state.activeWslProject?.project.id ??
+      state.activeRemoteProject?.project.id ??
+      null;
+    if (!projectId) return;
+    const rootPath = worktreePathRef.current ?? undefined;
+
+    let subChildren: FileNode[];
+    if (cmds) {
+      // WSL/Remote 模式
+      subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
+    } else {
+      // Local 模式
+      subChildren = await invoke<FileNode[]>("read_dir_tree", {
+        projectId,
+        rootPath: rootPath ?? null,
+        subPath: dirPath,
+        maxDepth: DEFAULT_TREE_DEPTH,
+      });
+    }
+
+    const currentTree = useAppStore.getState().fileTree;
+    const merged = mergeSubTree(currentTree, dirPath, subChildren);
+    useAppStore.setState({ fileTree: merged });
   }, []);
 
   /**
@@ -313,6 +362,7 @@ export function useFileView(
     isLoading: fileTreeLoading,
     error,
     loadFileTree,
+    expandSubTree,
     openFile,
     closeTab,
     activateTab,
