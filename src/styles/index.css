@@ -122,9 +122,6 @@
   @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .app-toast { animation: toast-in 0.18s ease; }
 
-  /* Danger button */
-  .confirm-btn-danger { background: var(--accent-red) !important; }
-  .confirm-btn-danger:hover { filter: brightness(1.1); }
 
   /* Agent bar button */
   .agent-bar-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: all 0.15s; }

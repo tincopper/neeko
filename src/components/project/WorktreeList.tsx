@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Worktree, FileChange } from "../../types";
 import { FileTree, buildTree } from "../files";
-import { BranchIcon, ChevronRightIcon, TrashIcon, FolderGitIcon } from "../icons";
+import { BranchIcon, ChevronRightIcon, CloseIcon, TrashIcon, FolderGitIcon } from "../icons";
 import { terminalCache, destroyTerminalCache } from "../terminal";
 import { cn } from "../../utils/cn";
 import { useAppStore } from "../../store/appStore";
@@ -249,9 +249,19 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
               <span className="text-text-muted break-all">{confirmDelete.path}</span>
               <span className="flex items-center gap-1 text-accent-green"><BranchIcon size={11} /> {confirmDelete.branch}</span>
             </div>
-            <div className="modal-actions">
-              <button className="cancel-btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
-              <button className="confirm-btn confirm-btn-danger" onClick={() => performRemove(confirmDelete.path, confirmDelete.branch)}>
+            <div className="flex justify-end gap-3 mt-5">
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] bg-bg-tertiary border border-border rounded-md text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
+                onClick={() => setConfirmDelete(null)}
+              >
+                <CloseIcon size={14} />
+                Cancel
+              </button>
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] bg-accent-red border-none rounded-md text-white font-medium hover:brightness-110 transition-colors cursor-pointer"
+                onClick={() => performRemove(confirmDelete.path, confirmDelete.branch)}
+              >
+                <TrashIcon size={13} />
                 {confirmDelete.isDirty ? "Force Remove" : "Remove"}
               </button>
             </div>
