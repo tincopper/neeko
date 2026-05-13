@@ -76,6 +76,7 @@ impl TerminalManager {
 
         let mut cmd = build_local_shell_cmd(&shell_override);
         cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
         #[cfg(unix)]
         {
             cmd.env("LANG", "en_US.UTF-8");
@@ -118,7 +119,7 @@ impl TerminalManager {
         if let Err(e) = install_wsl_theme_files(distro) {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = write_wsl_tui_config(distro, project_path) {
+        if let Err(e) = write_wsl_tui_config(distro, project_path, &read_neeko_theme().unwrap_or_else(|| "dark".to_string())) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
         }
 
@@ -130,9 +131,15 @@ impl TerminalManager {
         cmd.arg(distro);
         cmd.arg("--cd");
         cmd.arg(project_path);
+        // 通过 bash -c + exec 注入 COLORTERM=truecolor，确保变量在 WSL 内部生效。
+        // wsl.exe 的 cmd.env() 不会将 Windows 侧变量传递到 Linux shell，
+        // WSLENV 方式会覆盖用户已有配置，所以改用包装 bash 启动。
+        // exec "$SHELL" -l 替换为用户默认 login shell，行为与直接启动一致。
+        cmd.arg("--");
+        cmd.arg("bash");
+        cmd.arg("-c");
+        cmd.arg("export COLORTERM=truecolor; exec \"${SHELL:-bash}\" -l");
         cmd.env("TERM", "xterm-256color");
-        cmd.env("LANG", "en_US.UTF-8");
-        cmd.env("LC_ALL", "en_US.UTF-8");
         cmd.env("WSL_UTF8", "1");
 
         let child = pair.slave.spawn_command(cmd)?;

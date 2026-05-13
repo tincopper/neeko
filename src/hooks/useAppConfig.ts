@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../types";
 import { updateAllTerminalThemes } from "../components/terminal";
+import { useAppStore } from "../store/appStore";
 
 const DEFAULT_CONFIG: AppConfig = {
    theme: "dark",
@@ -46,12 +47,27 @@ export function useAppConfig() {
       );
    }, [config.terminalFontSize]);
 
-   // 同步主题到 data-theme 属性
+   // 同步主题到 data-theme 属性，并更新 OpenCode tui.json
    useEffect(() => {
       document.documentElement.setAttribute("data-theme", config.theme);
       requestAnimationFrame(() => {
          updateAllTerminalThemes();
       });
+
+      // 同步所有项目的 OpenCode tui.json 主题配置
+      const { projects, wslEntries } = useAppStore.getState();
+      const localPaths = projects.map((p) => p.path);
+      const wsl = wslEntries.flatMap((e) =>
+         e.projects.map((p) => ({ distro: e.distro, path: p.path })),
+      );
+      if (localPaths.length > 0 || wsl.length > 0) {
+         invoke("sync_opencode_theme", {
+            theme: config.theme,
+            targets: { local_paths: localPaths, wsl },
+         }).catch((e) => {
+            console.error("[App] Failed to sync OpenCode theme:", e);
+         });
+      }
    }, [config.theme]);
 
    // 持久化保存配置

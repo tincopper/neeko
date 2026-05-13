@@ -3,6 +3,20 @@ use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+#[derive(serde::Deserialize)]
+pub struct WslProjectThemeTarget {
+    pub distro: String,
+    pub path: String,
+}
+
+#[derive(serde::Deserialize)]
+pub struct ProjectThemeTargets {
+    #[serde(default)]
+    pub local_paths: Vec<String>,
+    #[serde(default)]
+    pub wsl: Vec<WslProjectThemeTarget>,
+}
+
 #[tauri::command]
 pub fn save_config(
     config: serde_json::Value,
@@ -87,4 +101,31 @@ pub fn load_vcs_settings_command(
         .storage_manager
         .load_vcs_settings(&project_id)
         .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub fn sync_opencode_theme(
+    theme: String,
+    targets: ProjectThemeTargets,
+) -> Result<(), AppError> {
+    for path in &targets.local_paths {
+        if let Err(e) = crate::opencode_theme::write_project_tui_config(path, &theme) {
+            log::warn!(
+                "[OpenCodeTheme] Failed to sync tui.json for local project {}: {}",
+                path,
+                e
+            );
+        }
+    }
+    for target in &targets.wsl {
+        if let Err(e) = crate::opencode_theme::write_wsl_tui_config(&target.distro, &target.path, &theme) {
+            log::warn!(
+                "[OpenCodeTheme] Failed to sync tui.json for WSL project {} ({}): {}",
+                target.path,
+                target.distro,
+                e
+            );
+        }
+    }
+    Ok(())
 }

@@ -1,0 +1,46 @@
+{
+  "repoUrl": "https://github.com/tincopper/neeko",
+  "createdAt": 1778636244330,
+  "achievedLevel": 2,
+  "overallPassPercent": 29.31,
+  "checksNeededForNextLevel": 7,
+  "levelBreakdowns": [
+    {
+      "level": 1,
+      "checksPassed": 300,
+      "checksTotal": 700,
+      "percentComplete": 42.857142857142854,
+      "isUnlocked": true
+    },
+    {
+      "level": 2,
+      "checksPassed": 700,
+      "checksTotal": 2000,
+      "percentComplete": 35,
+      "isUnlocked": true
+    },
+    {
+      "level": 3,
+      "checksPassed": 700,
+      "checksTotal": 2100,
+      "percentComplete": 33.33333333333333,
+      "isUnlocked": true
+    },
+    {
+      "level": 4,
+      "checksPassed": 0,
+      "checksTotal": 800,
+      "percentComplete": 0,
+      "isUnlocked": true
+    },
+    {
+      "level": 5,
+      "checksPassed": 0,
+      "checksTotal": 200,
+      "percentComplete": 0,
+      "isUnlocked": true
+    }
+  ],
+  "commitHash": "c524c953afb2433425a37f47ce7801b3b5b9506f",
+  "branch": "feature/wsl-ssh-panel-unified-context"
+}

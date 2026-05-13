@@ -114,8 +114,8 @@ impl RemoteTerminalManager {
         // 请求 shell
         channel.request_shell(true).await?;
 
-        // 切换到项目目录
-        let cd_cmd = format!("cd {}\n", project_path);
+        // 切换到项目目录并设置 COLORTERM 以启用 truecolor
+        let cd_cmd = format!("export COLORTERM=truecolor; cd {}\n", project_path);
         channel.data(cd_cmd.as_bytes()).await?;
 
         // 创建 session 对象
