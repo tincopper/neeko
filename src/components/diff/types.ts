@@ -35,7 +35,17 @@ export type DiffSource =
       projectPath: string;
     }
   | { type: "worktree"; projectId: string; worktreePath: string }
-  | { type: "commit"; projectId: string; commitHash: string };
+  | { type: "commit"; projectId: string; commitHash: string }
+  | { type: "wsl-commit"; distro: string; projectPath: string; commitHash: string }
+  | {
+      type: "remote-commit";
+      host: string;
+      port: number;
+      username: string;
+      auth: AuthMethod;
+      projectPath: string;
+      commitHash: string;
+    };
 
 export interface DiffViewProps {
   projectId?: string;

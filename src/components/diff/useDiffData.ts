@@ -41,6 +41,23 @@ export function useDiffData({ projectId, diffSource, filePath }: UseDiffDataPara
           worktreePath: diffSource.worktreePath,
           filePath,
         });
+      } else if (diffSource?.type === "wsl-commit") {
+        result = await invoke<DiffResult>("wsl_get_commit_file_diff", {
+          distro: diffSource.distro,
+          projectPath: diffSource.projectPath,
+          commitHash: diffSource.commitHash,
+          filePath,
+        });
+      } else if (diffSource?.type === "remote-commit") {
+        result = await invoke<DiffResult>("remote_get_commit_file_diff", {
+          host: diffSource.host,
+          port: diffSource.port,
+          username: diffSource.username,
+          auth: diffSource.auth,
+          projectPath: diffSource.projectPath,
+          commitHash: diffSource.commitHash,
+          filePath,
+        });
       } else if (diffSource?.type === "commit") {
         result = await invoke<DiffResult>("get_commit_file_diff_command", {
           projectId: diffSource.projectId,
