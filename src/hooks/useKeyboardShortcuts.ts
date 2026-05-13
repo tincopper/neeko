@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { IS_WINDOWS } from "../utils/platform";
 import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCacheKey } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
+import { buildWorktreeTabKey } from "../utils/tabKey";
 import type { WSLProject, RemoteProject } from "../types";
 import {
   resolveBindings,
@@ -42,6 +43,14 @@ export function useKeyboardShortcuts({
     const handleKeyDown = (e: KeyboardEvent) => {
       const el = document.querySelector("[data-modal]");
       if (el) return;
+
+      // Ctrl+Tab / Ctrl+Shift+Tab: 切换 Tab（硬编码，不走 registry）
+      if (e.ctrlKey && e.key === "Tab") {
+        e.preventDefault();
+        const direction = e.shiftKey ? -1 : 1;
+        cycleTab(direction);
+        return;
+      }
 
       const snapshot = useAppStore.getState();
 
@@ -142,6 +151,14 @@ export function useKeyboardShortcuts({
             break;
           }
 
+          case "prevTab":
+          case "nextTab": {
+            e.preventDefault();
+            const direction = action.id === "nextTab" ? 1 : -1;
+            cycleTab(direction);
+            break;
+          }
+
           case "cycleProject": {
             e.preventDefault();
             const allItems = buildProjectList(snapshot);
@@ -212,4 +229,35 @@ function switchTo(snapshot: ReturnType<typeof useAppStore.getState>, item: AllIt
   } else {
     snapshot.selectRemoteProject(item.host, item.project);
   }
+}
+
+function cycleTab(direction: 1 | -1) {
+  const snapshot = useAppStore.getState();
+
+  const currentProjectId =
+    snapshot.activeProjectId ??
+    snapshot.activeWslKey?.projectId ??
+    snapshot.activeRemoteKey?.projectId ??
+    null;
+  if (!currentProjectId) return;
+
+  const worktreePath =
+    snapshot.activeWorktreePath ??
+    snapshot.activeWslWorktreePath ??
+    snapshot.activeRemoteWorktreePath ??
+    null;
+
+  const tabKey = worktreePath
+    ? buildWorktreeTabKey(currentProjectId, worktreePath)
+    : currentProjectId;
+
+  const projectTabs = snapshot.tabs[tabKey];
+  if (!projectTabs || projectTabs.tabs.length === 0) return;
+
+  const { tabs, activeTabId } = projectTabs;
+  const currentIndex = tabs.findIndex((t) => t.id === activeTabId);
+  if (currentIndex < 0) return;
+
+  const targetIndex = (currentIndex + direction + tabs.length) % tabs.length;
+  useAppStore.getState().activateTab(tabKey, tabs[targetIndex].id);
 }
