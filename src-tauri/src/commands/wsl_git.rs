@@ -729,6 +729,161 @@ pub fn wsl_write_file_content(
     }
 }
 
+/// WSL 场景下通过 agent CLI 生成 commit message。
+/// Agent 在 WSL 内执行，自行分析变更，不传入 diff 内容。
+#[tauri::command]
+pub async fn wsl_generate_commit_message(
+    distro: String,
+    project_path: String,
+    agent_id: String,
+    agent_command_override: Option<String>,
+    file_paths: Vec<String>,
+    state: tauri::State<'_, crate::AppStateWrapper>,
+) -> Result<String, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use crate::commands::ai_commit;
+        use crate::utils::command::wsl;
+        let _ = agent_command_override; // WSL/SSH 不使用宿主机 override
+
+        // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
+        let (agent_cmd, prompt_args, post_prompt_args) =
+            ai_commit::resolve_agent_for_remote(&state, &agent_id);
+
+        // 2. 构建 prompt
+        let prompt = ai_commit::build_simple_commit_prompt(&file_paths);
+
+        // 3. 构建命令字符串
+        // WSL: 直接使用 selected_agent 原值作为命令（路径或命令名）
+        let sp = wsl::safe_path(&project_path);
+
+        let post_args_str = post_prompt_args.join(" ");
+
+        // 判断 file mode：opencode 等 agent 需要通过 -f 传入 prompt 文件
+        let uses_file_mode = prompt_args.last().map(|a| a == "-f").unwrap_or(false);
+
+        let actual_cmd = if uses_file_mode {
+            // file mode: 通过 heredoc 写入临时文件，执行 agent，然后清理
+            let prompt_args_without_f = prompt_args[..prompt_args.len() - 1].join(" ");
+            let short_msg = "Output ONLY the raw commit message for the staged changes. No explanation. No quotes. No markdown. Just the commit message text.";
+            format!(
+                "cd '{sp}' && cat > /tmp/.neeko_commit_prompt <<'NEEKO_EOF'\n{prompt}\nNEEKO_EOF\n{agent_cmd} {prompt_args} '{short_msg}' -f /tmp/.neeko_commit_prompt {post_args} && rm -f /tmp/.neeko_commit_prompt",
+                sp = sp,
+                prompt = prompt,
+                agent_cmd = agent_cmd,
+                prompt_args = prompt_args_without_f,
+                short_msg = short_msg,
+                post_args = post_args_str,
+            )
+        } else {
+            // 普通模式: inline prompt
+            let prompt_args_str = prompt_args.join(" ");
+            let escaped_prompt = prompt.replace('\'', "'\\''");
+            format!(
+                "cd '{sp}' && {agent_cmd} {prompt_args} '{escaped_prompt}' {post_args}",
+                sp = sp,
+                agent_cmd = agent_cmd,
+                prompt_args = prompt_args_str,
+                escaped_prompt = escaped_prompt,
+                post_args = post_args_str,
+            )
+        };
+
+        // 注入环境加载前缀，source ~/.profile 加载用户路径（.cargo/bin 等）
+        let actual_cmd = format!(
+            r#"source ~/.profile 2>/dev/null; {}"#,
+            actual_cmd
+        );
+
+        // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
+        let wsl_user = crate::utils::command::local::exec("wsl.exe")
+            .arg("-d")
+            .arg(&distro)
+            .arg("whoami")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_else(|_| "root".to_string());
+        log::info!("[AI commit WSL] wsl_user={}", wsl_user);
+
+        // 5. 使用 bash -ic 交互模式执行（绕过 .bashrc 的 non-interactive guard，确保 nvm 加载）
+        //    -u <user>: 确保 HOME=/home/<user>，profile 路径正确
+        //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
+        let output = {
+            let wsl_output = crate::utils::command::local::exec("wsl.exe")
+                .arg("-d")
+                .arg(&distro)
+                .arg("-u")
+                .arg(&wsl_user)
+                .arg("bash")
+                .arg("-ic")
+                .arg(&actual_cmd)
+                .env_remove("PATH")
+                .output()
+                .map_err(|e| AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e)))?;
+
+            let exit_code = wsl_output.status.code().unwrap_or(-1);
+            let stderr = String::from_utf8_lossy(&wsl_output.stderr)
+                .trim()
+                .to_string();
+            let stdout = String::from_utf8_lossy(&wsl_output.stdout)
+                .trim()
+                .to_string();
+
+            log::info!(
+                "[AI commit WSL] exit_code={} stdout_len={} stderr_len={}",
+                exit_code,
+                stdout.len(),
+                stderr.len()
+            );
+            if !stdout.is_empty() {
+                log::info!(
+                    "[AI commit WSL] stdout (first 500 chars): {}",
+                    &stdout[..stdout.len().min(500)]
+                );
+            }
+            if !stderr.is_empty() {
+                log::warn!(
+                    "[AI commit WSL] stderr (first 500 chars): {}",
+                    &stderr[..stderr.len().min(500)]
+                );
+            }
+
+            if !wsl_output.status.success() {
+                let msg = if !stderr.is_empty() { stderr } else { stdout };
+                return Err(AppError::InvalidInput(format!(
+                    "Failed to run agent in WSL: {}",
+                    msg
+                )));
+            }
+            String::from_utf8_lossy(&wsl_output.stdout).to_string()
+        };
+
+        // 6. 清理输出
+        let message = ai_commit::clean_ai_output(&output);
+        if message.is_empty() {
+            return Err(AppError::InvalidInput(
+                "Agent returned an empty response.".to_string(),
+            ));
+        }
+        Ok(message)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (
+            distro,
+            project_path,
+            agent_id,
+            agent_command_override,
+            file_paths,
+            state,
+        );
+        Err(AppError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Test scaffolding - these tests document expected behavior
