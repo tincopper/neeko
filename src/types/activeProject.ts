@@ -230,7 +230,11 @@ export interface ProjectCommands {
    * 根据暂存文件生成 AI commit message
    * （capability canGenerateCommitMessage 为 false 时不应调用）
    */
-  generateCommitMessage(filePaths: string[]): Promise<string>;
+  generateCommitMessage(
+    agentId: string,
+    filePaths: string[],
+    agentCommandOverride?: string | null,
+  ): Promise<string>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

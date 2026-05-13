@@ -244,9 +244,11 @@ describe("createLocalCommands", () => {
   });
 
   it("generateCommitMessage should call generate_commit_message_command with filePaths", async () => {
-    await commands.generateCommitMessage(["src/foo.ts", "src/bar.ts"]);
+    await commands.generateCommitMessage("opencode", ["src/foo.ts", "src/bar.ts"], null);
     expect(mockInvoke).toHaveBeenCalledWith("generate_commit_message_command", {
       projectId,
+      agentId: "opencode",
+      agentCommandOverride: null,
       filePaths: ["src/foo.ts", "src/bar.ts"],
     });
   });
@@ -460,10 +462,12 @@ describe("createWslCommands", () => {
   });
 
   it("generateCommitMessage should call wsl_generate_commit_message", async () => {
-    await commands.generateCommitMessage(["src/foo.ts"]);
+    await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
     expect(mockInvoke).toHaveBeenCalledWith("wsl_generate_commit_message", {
       distro,
       projectPath,
+      agentId: "opencode",
+      agentCommandOverride: null,
       filePaths: ["src/foo.ts"],
     });
   });
@@ -692,10 +696,12 @@ describe("createRemoteCommands", () => {
   });
 
   it("generateCommitMessage should call remote_generate_commit_message", async () => {
-    await commands.generateCommitMessage(["src/foo.ts"]);
+    await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
     expect(mockInvoke).toHaveBeenCalledWith("remote_generate_commit_message", {
       ...conn,
       projectPath,
+      agentId: "opencode",
+      agentCommandOverride: null,
       filePaths: ["src/foo.ts"],
     });
   });

@@ -5,6 +5,7 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from "../../types/activeProject";
+import { useAppContext } from "../../contexts";
 import BranchInfo from "./BranchInfo";
 import ChangesList from "./ChangesList";
 import CommitForm from "./CommitForm";
@@ -40,6 +41,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   // AI 生成 commit message 相关状态
   const [commitMessage, setCommitMessage] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
+  const { config } = useAppContext();
 
   const changedFiles = project.gitInfo?.changed_files ?? [];
 
@@ -88,14 +90,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
     setAiGenerating(true);
     try {
-      const generated = await commands.generateCommitMessage(files);
+      const agentCommandOverride = config.agentCommandOverrides?.[project.selectedAgent] ?? null;
+      const generated = await commands.generateCommitMessage(
+        project.selectedAgent,
+        files,
+        agentCommandOverride,
+      );
       setCommitMessage(generated.trim());
     } catch (e: unknown) {
       onShowToast?.(String(e), "error");
     } finally {
       setAiGenerating(false);
     }
-  }, [capabilities.canGenerateCommitMessage, project.selectedAgent, selectedFiles, commands, onShowToast]);
+  }, [capabilities.canGenerateCommitMessage, project.selectedAgent, selectedFiles, commands, config.agentCommandOverrides, onShowToast]);
 
   const refreshAheadBehind = async () => {
     try {
