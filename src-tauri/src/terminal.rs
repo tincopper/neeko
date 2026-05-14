@@ -57,6 +57,7 @@ impl TerminalManager {
         rows: u16,
         shell_override: Option<String>,
         working_dir: Option<String>,
+        command: Option<String>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -74,7 +75,26 @@ impl TerminalManager {
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
-        let mut cmd = build_local_shell_cmd(&shell_override);
+        let mut cmd = if let Some(ref task_command) = command {
+            // Task mode: spawn the command directly so process exit == PTY close
+            log_info(&format!("[PTY] Task command mode: {}", task_command));
+            #[cfg(target_os = "windows")]
+            {
+                let mut c = CommandBuilder::new("cmd");
+                c.args(["/c", task_command]);
+                c
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut c = CommandBuilder::new("sh");
+                c.args(["-c", task_command]);
+                c
+            }
+        } else {
+            // Normal shell mode (existing behaviour)
+            build_local_shell_cmd(&shell_override)
+        };
+
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         #[cfg(unix)]
@@ -126,7 +146,8 @@ impl TerminalManager {
         if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
         }
-        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme) {
+        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme)
+        {
             log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
         }
 

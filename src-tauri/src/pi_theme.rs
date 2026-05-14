@@ -138,10 +138,7 @@ pub fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
         }
     }
 
-    log::info!(
-        "[PiTheme] Installed WSL theme files for distro={}",
-        distro
-    );
+    log::info!("[PiTheme] Installed WSL theme files for distro={}", distro);
     Ok(())
 }
 
@@ -175,18 +172,17 @@ pub fn write_wsl_pi_settings(distro: &str, project_path: &str, neeko_theme: &str
     );
 
     // 读取并合并已有 settings.json
-    let merged_content =
-        match wsl::exec(distro, &format!("cat {}", shell_escape(&settings_path))) {
-            Ok(raw) => {
-                let mut config: serde_json::Value =
-                    serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
-                if let Some(obj) = config.as_object_mut() {
-                    obj.insert("theme".to_string(), json!(theme_name));
-                }
-                serde_json::to_string_pretty(&config)?
+    let merged_content = match wsl::exec(distro, &format!("cat {}", shell_escape(&settings_path))) {
+        Ok(raw) => {
+            let mut config: serde_json::Value =
+                serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = config.as_object_mut() {
+                obj.insert("theme".to_string(), json!(theme_name));
             }
-            Err(_) => serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
-        };
+            serde_json::to_string_pretty(&config)?
+        }
+        Err(_) => serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
+    };
 
     // 写入 settings.json
     let encoded = base64_encode(&merged_content);

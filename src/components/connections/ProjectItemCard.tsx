@@ -6,7 +6,7 @@ import {
    CloseTerminalIcon,
 } from "../icons";
 import ProjectBody from "./ProjectBody";
-import { getAvatarStyle } from "./utils";
+import { getAvatarStyle, getProjectInitials } from "./utils";
 import type { ProjectItemCardProps } from "./types";
 
 const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
@@ -131,7 +131,7 @@ const ProjectItemCard: React.FC<ProjectItemCardProps> = React.memo(
                      setCollapsed((v) => !v);
                   }}
                >
-                  {project.name.charAt(0).toUpperCase()}
+                  {getProjectInitials(project.name)}
                </span>
                <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
                   <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">

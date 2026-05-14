@@ -26,6 +26,8 @@ export async function createTerminalForProject(
   fontFamily: string,
   backendProjectId: string,
   _agentCommandOverrides?: Record<string, string>,
+  taskCommand?: string,
+  taskConfigId?: string,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -79,6 +81,7 @@ export async function createTerminalForProject(
         rows: initRows,
         shell: shell || null,
         workingDir: projectPath || null,
+        command: taskCommand || null,
       },
     );
 
@@ -88,6 +91,12 @@ export async function createTerminalForProject(
     term.write(
       `\x1b[32m[Terminal] Connected (PID: ${session.pid})\x1b[0m\r\n\r\n`,
     );
+
+    // If this is a task terminal, write back the PTY session ID to taskStore
+    if (taskConfigId) {
+      const { useTaskStore } = await import("../../store/taskStore");
+      useTaskStore.getState().setPtySessionId(sid);
+    }
 
     const unlistenOutput = await listen<number[]>(
       `terminal-output-${sid}`,
@@ -104,6 +113,25 @@ export async function createTerminalForProject(
     const unlistenClosed = await listen<null>(`terminal-closed-${sid}`, async () => {
       log(`Session ${sid} closed by backend`);
       unlistenClosed();
+
+      if (taskConfigId) {
+        // Task terminal: process exited naturally.
+        // - Notify taskStore so the Play button returns to idle.
+        // - Keep the cache alive so the output stays visible on screen.
+        // - Do NOT destroy cache or trigger rebuild (prevents flicker/re-execute).
+        const { useTaskStore } = await import("../../store/taskStore");
+        const ts = useTaskStore.getState();
+        if (ts.taskState.ptySessionId === sid) {
+          ts.markIdle();
+        }
+        // Show a dim completion marker at the bottom of the terminal output
+        term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
+        // Clear sessionId so resize/input calls no-op gracefully
+        cache.sessionId = null;
+        return;
+      }
+
+      // Normal (non-task) terminal: existing behavior — destroy and rebuild
       const wasExecuted = executedAgentKeys.has(cacheKey);
       destroyTerminalCache(cacheKey);
       if (wasExecuted) {

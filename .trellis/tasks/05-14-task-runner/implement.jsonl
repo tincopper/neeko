@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "src/components/layout/TitleBar.tsx", "reason": "TitleBar layout - move project name left, add TaskRunButton"}
+{"file": "src-tauri/src/terminal.rs", "reason": "Reference PTY session management for task execution"}
+{"file": "src-tauri/src/commands/mod.rs", "reason": "Command registration via neeko_invoke_handler macro"}
+{"file": "src-tauri/src/app_state.rs", "reason": "AppStateWrapper for state injection"}
+{"file": "src/store/appStore.ts", "reason": "Reference store pattern for taskStore"}
+{"file": "src/types/agent.ts", "reason": "Reference type pattern for task types"}

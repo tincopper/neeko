@@ -9,6 +9,10 @@ export interface TerminalTabData {
   kind: "terminal";
   agentId: string | null;
   status: "Idle" | "Running" | "Failed";
+  /** If set, the terminal spawns this command directly (task mode) instead of a shell */
+  taskCommand?: string;
+  /** Config ID of the associated task — used to notify taskStore on process exit */
+  taskConfigId?: string;
 }
 
 /** 文件 Tab 数据 */

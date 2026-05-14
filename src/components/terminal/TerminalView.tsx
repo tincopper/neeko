@@ -41,6 +41,14 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    const agentCommandOverride = config.agentCommandOverrides?.[
       tabAgentId ?? projectSelectedAgent ?? ""
    ];
+   // Task terminal fields — read from the full Tab in appStore (TerminalTab is legacy, lacks .data)
+   const fullTabData = useAppStore((s) => {
+      if (!projectId || !activeTabId) return null;
+      const pt = s.tabs[projectId];
+      return pt?.tabs.find((t) => t.id === activeTabId)?.data ?? null;
+   });
+   const taskCommand = fullTabData?.kind === "terminal" ? (fullTabData.taskCommand ?? null) : null;
+   const taskConfigId = fullTabData?.kind === "terminal" ? (fullTabData.taskConfigId ?? null) : null;
 
    const handleTabStatusChange = useCallback(
       (status: "Idle" | "Running" | "Failed") => {
@@ -140,6 +148,8 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             config.fontFamily,
             projectId,
             undefined,
+            taskCommand ?? undefined,
+            taskConfigId ?? undefined,
          ).then((cache) => {
             if (currentCacheKeyRef.current !== cacheKey) {
                return;

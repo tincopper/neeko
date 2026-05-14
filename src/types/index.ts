@@ -9,4 +9,5 @@ export * from "./session";
 export * from "./skill";
 export * from "./split";
 export * from "./tab";
+export * from "./task";
 export * from "./terminal";
