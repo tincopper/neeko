@@ -228,14 +228,13 @@ pub fn preview_git_install(
     subpath: Option<&str>,
 ) -> Result<String> {
     use git2::Repository;
-    use std::process::Command;
 
     let temp_dir = tempfile::tempdir_in(central_repo::skills_dir())?;
     let clone_path = temp_dir.path().to_path_buf();
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = Command::new("git")
+    let git_clone_result = crate::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -251,7 +250,7 @@ pub fn preview_git_install(
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             // Try 'master' branch if 'main' fails
-            Command::new("git")
+            crate::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -387,14 +386,13 @@ pub fn install_from_git(
     name: Option<&str>,
 ) -> Result<InstallResult> {
     use git2::Repository;
-    use std::process::Command;
 
     let temp_dir = tempfile::tempdir_in(central_repo::skills_dir())?;
     let clone_path = temp_dir.path().to_path_buf();
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = Command::new("git")
+    let git_clone_result = crate::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -409,7 +407,7 @@ pub fn install_from_git(
     let _repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            Command::new("git")
+            crate::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -457,13 +455,12 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
 
     // Clone to temp and compare
     use git2::Repository;
-    use std::process::Command;
 
     let temp_dir = tempfile::tempdir_in(central_repo::skills_dir())?;
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = Command::new("git")
+    let git_clone_result = crate::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -478,7 +475,7 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            Command::new("git")
+            crate::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -528,13 +525,12 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
 
     // Get new revision
     use git2::Repository;
-    use std::process::Command;
 
     let temp_dir = tempfile::tempdir_in(central_repo::skills_dir())?;
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = Command::new("git")
+    let git_clone_result = crate::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -549,7 +545,7 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            Command::new("git")
+            crate::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",

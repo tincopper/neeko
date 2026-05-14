@@ -570,7 +570,7 @@ fn resolve_command_path(command: &str, path_env: &str) -> String {
     #[cfg(target_os = "windows")]
     {
         // where.exe 支持 /F（带引号）和按 PATHEXT 顺序查找 .exe/.cmd/.bat
-        let output = std::process::Command::new("where.exe")
+        let output = crate::utils::command::local::exec("where.exe")
             .arg(command)
             .env("PATH", path_env)
             .output();
@@ -671,7 +671,7 @@ fn resolve_full_path() -> String {
 #[cfg(target_os = "windows")]
 fn read_registry_path_windows() -> String {
     // 通过 reg.exe 读取用户级 PATH（HKCU\Environment）
-    let output = std::process::Command::new("reg")
+    let output = crate::utils::command::local::exec("reg")
         .args(["query", "HKCU\\Environment", "/v", "PATH"])
         .output();
 
@@ -709,7 +709,7 @@ fn expand_env_vars_windows(s: &str) -> String {
         return result;
     }
     // 用 cmd /C echo 展开（最简单可靠的方式）
-    let output = std::process::Command::new("cmd.exe")
+    let output = crate::utils::command::local::exec("cmd.exe")
         .args(["/C", &format!("echo {}", s)])
         .output();
     if let Ok(o) = output {
