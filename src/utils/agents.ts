@@ -4,6 +4,7 @@ import geminiIcon from "../assets/agents/gemini.png";
 import codexIcon from "../assets/agents/codex.png";
 import qoderIcon from "../assets/agents/qoder.svg";
 import codebuddyIcon from "../assets/agents/codebuddy.svg";
+import piIcon from "../assets/agents/pi.svg";
 import cliIcon from "../assets/agents/cli.svg";
 
 const AGENT_ICONS: Record<string, string> = {
@@ -13,6 +14,7 @@ const AGENT_ICONS: Record<string, string> = {
   "codex.png": codexIcon,
   "qoder.svg": qoderIcon,
   "codebuddy.svg": codebuddyIcon,
+  "pi.svg": piIcon,
   "cli.svg": cliIcon,
 };
 

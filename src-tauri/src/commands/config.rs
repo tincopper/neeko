@@ -104,7 +104,8 @@ pub fn load_vcs_settings_command(
 }
 
 #[tauri::command]
-pub fn sync_opencode_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
+pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
+    // === OpenCode 主题同步 ===
     for path in &targets.local_paths {
         if let Err(e) = crate::opencode_theme::write_project_tui_config(path, &theme) {
             log::warn!(
@@ -126,5 +127,28 @@ pub fn sync_opencode_theme(theme: String, targets: ProjectThemeTargets) -> Resul
             );
         }
     }
+
+    // === Pi 主题同步 ===
+    for path in &targets.local_paths {
+        if let Err(e) = crate::pi_theme::write_project_pi_settings(path, &theme) {
+            log::warn!(
+                "[PiTheme] Failed to sync settings.json for local project {}: {}",
+                path,
+                e
+            );
+        }
+    }
+    for target in &targets.wsl {
+        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(&target.distro, &target.path, &theme)
+        {
+            log::warn!(
+                "[PiTheme] Failed to sync settings.json for WSL project {} ({}): {}",
+                target.path,
+                target.distro,
+                e
+            );
+        }
+    }
+
     Ok(())
 }

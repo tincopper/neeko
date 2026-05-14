@@ -12,6 +12,13 @@ use uuid::Uuid;
 
 // ─── 数据结构 ───────────────────────────────────────────────────────
 
+/// Payload emitted with the `terminal-closed-{id}` event.
+/// `exit_code` is the raw process exit code (0 = success).
+#[derive(Clone, serde::Serialize)]
+struct TerminalClosedPayload {
+    exit_code: i32,
+}
+
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
@@ -57,6 +64,7 @@ impl TerminalManager {
         rows: u16,
         shell_override: Option<String>,
         working_dir: Option<String>,
+        command: Option<String>,
         app_handle: tauri::AppHandle,
     ) -> Result<TerminalSession> {
         let id = Uuid::new_v4().to_string();
@@ -74,7 +82,26 @@ impl TerminalManager {
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
-        let mut cmd = build_local_shell_cmd(&shell_override);
+        let mut cmd = if let Some(ref task_command) = command {
+            // Task mode: spawn the command directly so process exit == PTY close
+            log_info(&format!("[PTY] Task command mode: {}", task_command));
+            #[cfg(target_os = "windows")]
+            {
+                let mut c = CommandBuilder::new("cmd");
+                c.args(["/c", task_command]);
+                c
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut c = CommandBuilder::new("sh");
+                c.args(["-c", task_command]);
+                c
+            }
+        } else {
+            // Normal shell mode (existing behaviour)
+            build_local_shell_cmd(&shell_override)
+        };
+
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         #[cfg(unix)]
@@ -115,16 +142,20 @@ impl TerminalManager {
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
 
-        // 安装 WSL 主题文件并写入项目级 TUI 配置（主题同步）
+        // 安装 WSL 主题文件并写入项目级配置（OpenCode + Pi 主题同步）
         if let Err(e) = install_wsl_theme_files(distro) {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = write_wsl_tui_config(
-            distro,
-            project_path,
-            &read_neeko_theme().unwrap_or_else(|| "dark".to_string()),
-        ) {
+        if let Err(e) = crate::pi_theme::install_wsl_pi_theme_files(distro) {
+            log::warn!("[WSL] Failed to install Pi theme files: {}", e);
+        }
+        let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
+        if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+        }
+        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme)
+        {
+            log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
         }
 
         let pair = create_pty(cols, rows)?;
@@ -353,14 +384,15 @@ fn spawn_watcher_thread(
             ));
 
             loop {
-                let exited = {
+                // Returns Some(exit_code) when the child has exited, None when still running.
+                let exit_code: Option<i32> = {
                     match watch_pty_handles.lock() {
                         Ok(mut handles) => {
                             if let Some(handle) = handles.get_mut(&watch_id) {
                                 match handle.child.try_wait() {
-                                    Ok(Some(_)) => true,
-                                    Ok(None) => false,
-                                    Err(_) => true,
+                                    Ok(Some(status)) => Some(status.exit_code() as i32),
+                                    Ok(None) => None,
+                                    Err(_) => Some(1), // treat poll error as failure
                                 }
                             } else {
                                 log_info(&format!(
@@ -375,11 +407,12 @@ fn spawn_watcher_thread(
                     }
                 };
 
-                if exited {
+                if let Some(code) = exit_code {
                     log_info(&format!(
-                        "{}-WATCHER Child exited for {}, cleaning up",
+                        "{}-WATCHER Child exited for {} with code {}, cleaning up",
                         prefix_w,
-                        &watch_id[..8]
+                        &watch_id[..8],
+                        code
                     ));
                     if let Ok(mut handles) = watch_pty_handles.lock() {
                         if let Some(handle) = handles.remove(&watch_id) {
@@ -392,7 +425,7 @@ fn spawn_watcher_thread(
                         sessions.remove(&watch_id);
                     }
                     let close_event = format!("terminal-closed-{}", watch_id);
-                    if let Err(e) = watch_handle.emit(&close_event, ()) {
+                    if let Err(e) = watch_handle.emit(&close_event, TerminalClosedPayload { exit_code: code }) {
                         log_error(&format!(
                             "{}-WATCHER Failed to emit close event: {}",
                             prefix_w, e
@@ -636,7 +669,7 @@ fn log_error(msg: &str) {
     log::error!("{}", msg);
 }
 
-/// 读取 Neeko 配置并写入 OpenCode 项目级 TUI 配置
+/// 读取 Neeko 配置并写入 OpenCode + Pi 项目级配置
 /// 静默执行，失败不影响终端创建
 fn write_opencode_tui_config(project_path: &str) {
     let theme = match read_neeko_theme() {
@@ -645,6 +678,9 @@ fn write_opencode_tui_config(project_path: &str) {
     };
     if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
         log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
+    }
+    if let Err(e) = crate::pi_theme::write_project_pi_settings(project_path, &theme) {
+        log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
     }
 }
 

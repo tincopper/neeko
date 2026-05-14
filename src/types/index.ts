@@ -1,6 +1,7 @@
 export * from "./agent";
 export * from "./app";
 export * from "./connection";
+export * from "./editorGroup";
 export * from "./file";
 export * from "./git";
 export * from "./project";
@@ -8,4 +9,5 @@ export * from "./session";
 export * from "./skill";
 export * from "./split";
 export * from "./tab";
+export * from "./task";
 export * from "./terminal";
