@@ -98,6 +98,44 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
   };
 }
 
+/**
+ * Intercept Ctrl+Enter and Alt+Enter, sending a newline character (\n, LF)
+ * to the PTY instead of the default carriage return (\r) that xterm.js would
+ * emit for a plain Enter. This allows CLI programs (e.g. Pi Agent) that treat
+ * \n as "insert a new line" and \r as "execute" to support multi-line input.
+ *
+ * Returns a cleanup function that removes the handler.
+ */
+function setupNewlineEnterHandler(
+  term: Terminal,
+  sendInput: (text: string) => void,
+): () => void {
+  // attachCustomKeyEventHandler returns boolean:
+  //   true  → let xterm.js process the key normally
+  //   false → suppress xterm.js default handling
+  term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    if (event.type !== "keydown" || event.key !== "Enter") {
+      return true;
+    }
+
+    const ctrl = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+    const alt = event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey;
+
+    if (ctrl || alt) {
+      sendInput("\n");
+      return false;
+    }
+    return true;
+  });
+
+  // xterm.js does not expose a direct "detach" API for
+  // attachCustomKeyEventHandler — the handler is replaced on each call.
+  // We install a pass-through handler on dispose to neutralise our hook.
+  return () => {
+    term.attachCustomKeyEventHandler(() => true);
+  };
+}
+
 export function setupTerminalInput({
   term,
   sendInput,
@@ -109,9 +147,11 @@ export function setupTerminalInput({
     sendInput(data);
   });
   const disposeImeFallback = setupImeShiftSymbolFallback(term);
+  const disposeCtrlEnter = setupNewlineEnterHandler(term, sendInput);
 
   return {
     dispose: () => {
+      disposeCtrlEnter();
       disposeImeFallback();
       disposable.dispose();
     },

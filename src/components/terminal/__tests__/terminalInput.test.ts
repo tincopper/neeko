@@ -4,9 +4,12 @@ import { setupTerminalInput } from "../terminalInput";
 
 type DataHandler = (data: string) => void;
 
+type CustomKeyHandler = (event: KeyboardEvent) => boolean;
+
 class MockTerminal {
   readonly textarea = document.createElement("textarea");
   private dataHandler: DataHandler | null = null;
+  private customKeyHandler: CustomKeyHandler | null = null;
 
   onData(handler: DataHandler) {
     this.dataHandler = handler;
@@ -17,8 +20,17 @@ class MockTerminal {
     };
   }
 
+  attachCustomKeyEventHandler(handler: CustomKeyHandler) {
+    this.customKeyHandler = handler;
+  }
+
   emitData(data: string) {
     this.dataHandler?.(data);
+  }
+
+  /** Simulate a key event through the custom key handler. Returns the handler result. */
+  simulateKeyEvent(event: KeyboardEvent): boolean {
+    return this.customKeyHandler?.(event) ?? true;
   }
 }
 
@@ -186,5 +198,156 @@ describe("setupTerminalInput", () => {
     term.textarea.dispatchEvent(createInputEvent("?"));
 
     expect(inputEvents).toHaveLength(0);
+  });
+
+  it("Ctrl+Enter 发送换行符 \\n 并阻止默认处理", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+      }),
+    );
+
+    expect(handled).toBe(false);
+    expect(sendInput).toHaveBeenCalledWith("\n");
+  });
+
+  it("Alt+Enter 发送换行符 \\n 并阻止默认处理", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        altKey: true,
+      }),
+    );
+
+    expect(handled).toBe(false);
+    expect(sendInput).toHaveBeenCalledWith("\n");
+  });
+
+  it("Alt+Shift+Enter 不被拦截，只处理纯 Alt+Enter", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        altKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("普通 Enter 不被拦截，由 xterm 正常处理", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("Ctrl+Shift+Enter 不被拦截，只处理纯 Ctrl+Enter", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+        shiftKey: true,
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("keyup 事件中的 Ctrl+Enter 不触发发送", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keyup", {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+      }),
+    );
+
+    expect(handled).toBe(true);
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  it("dispose 后 Ctrl+Enter 不再拦截", () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    const controller = setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    controller.dispose();
+
+    const handled = term.simulateKeyEvent(
+      createKeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
+      }),
+    );
+
+    // After dispose, the pass-through handler returns true (no interception)
+    expect(handled).toBe(true);
+    expect(sendInput).not.toHaveBeenCalled();
   });
 });
