@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "./appStore";
+import { destroyTerminalCache } from "../components/terminal/terminalCache";
 import type { Tab } from "../types/tab";
 import type { TaskConfig, TaskState } from "../types/task";
 
@@ -91,12 +92,67 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     }
 
     const tabKey = activeProject.id;
+    const existingTabs = appState.tabs[tabKey];
+
+    // ── Guard 1: same task already Running → just jump to its tab ────────
+    if (existingTabs) {
+      const runningTab = existingTabs.tabs.find(
+        (t) =>
+          t.data.kind === "terminal" &&
+          t.data.taskConfigId === configId &&
+          t.data.status === "Running",
+      );
+      if (runningTab) {
+        appState.activateTab(tabKey, runningTab.id);
+        set({ selectedConfigId: configId });
+        return;
+      }
+    }
+
+    // ── Guard 2: same task finished (Failed / Idle) → reuse tab ──────────
+    if (existingTabs) {
+      const finishedTab = existingTabs.tabs.find(
+        (t) =>
+          t.data.kind === "terminal" &&
+          t.data.taskConfigId === configId &&
+          (t.data.status === "Failed" || t.data.status === "Idle"),
+      );
+      if (finishedTab) {
+        // Destroy the stale terminal cache so TerminalView creates a fresh session.
+        // Cache key format: "projectId:tabId:paneId" (paneId defaults to "p1").
+        const staleCacheKey = `${tabKey}:${finishedTab.id}:p1`;
+        destroyTerminalCache(staleCacheKey);
+
+        // Bump rebuildKey so TerminalView's useEffect re-runs and creates a
+        // clean terminal (empty output), then reset status to Running.
+        const currentRebuildKey =
+          finishedTab.data.kind === "terminal"
+            ? (finishedTab.data.rebuildKey ?? 0)
+            : 0;
+        appState.updateTab(tabKey, finishedTab.id, {
+          status: "Running",
+          rebuildKey: currentRebuildKey + 1,
+        });
+        appState.activateTab(tabKey, finishedTab.id);
+
+        set({
+          taskState: {
+            status: "running",
+            activeConfigId: configId,
+            sessionId: finishedTab.id,
+            ptySessionId: null,
+          },
+          selectedConfigId: configId,
+        });
+        return;
+      }
+    }
+
+    // ── Normal path: no existing tab → create a new one ──────────────────
     const taskName =
       get().configs.find((c) => c.id === configId)?.name ?? command;
 
     const tabId = `task_${crypto.randomUUID()}`;
-
-    const existingTabs = appState.tabs[tabKey];
     const order = existingTabs?.tabs.length ?? 0;
 
     const tab: Tab = {
@@ -110,6 +166,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
         status: "Running",
         taskCommand: command,
         taskConfigId: configId,
+        rebuildKey: 1,
       },
     };
 

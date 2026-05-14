@@ -12,6 +12,13 @@ use uuid::Uuid;
 
 // ─── 数据结构 ───────────────────────────────────────────────────────
 
+/// Payload emitted with the `terminal-closed-{id}` event.
+/// `exit_code` is the raw process exit code (0 = success).
+#[derive(Clone, serde::Serialize)]
+struct TerminalClosedPayload {
+    exit_code: i32,
+}
+
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
@@ -377,14 +384,15 @@ fn spawn_watcher_thread(
             ));
 
             loop {
-                let exited = {
+                // Returns Some(exit_code) when the child has exited, None when still running.
+                let exit_code: Option<i32> = {
                     match watch_pty_handles.lock() {
                         Ok(mut handles) => {
                             if let Some(handle) = handles.get_mut(&watch_id) {
                                 match handle.child.try_wait() {
-                                    Ok(Some(_)) => true,
-                                    Ok(None) => false,
-                                    Err(_) => true,
+                                    Ok(Some(status)) => Some(status.exit_code() as i32),
+                                    Ok(None) => None,
+                                    Err(_) => Some(1), // treat poll error as failure
                                 }
                             } else {
                                 log_info(&format!(
@@ -399,11 +407,12 @@ fn spawn_watcher_thread(
                     }
                 };
 
-                if exited {
+                if let Some(code) = exit_code {
                     log_info(&format!(
-                        "{}-WATCHER Child exited for {}, cleaning up",
+                        "{}-WATCHER Child exited for {} with code {}, cleaning up",
                         prefix_w,
-                        &watch_id[..8]
+                        &watch_id[..8],
+                        code
                     ));
                     if let Ok(mut handles) = watch_pty_handles.lock() {
                         if let Some(handle) = handles.remove(&watch_id) {
@@ -416,7 +425,7 @@ fn spawn_watcher_thread(
                         sessions.remove(&watch_id);
                     }
                     let close_event = format!("terminal-closed-{}", watch_id);
-                    if let Err(e) = watch_handle.emit(&close_event, ()) {
+                    if let Err(e) = watch_handle.emit(&close_event, TerminalClosedPayload { exit_code: code }) {
                         log_error(&format!(
                             "{}-WATCHER Failed to emit close event: {}",
                             prefix_w, e

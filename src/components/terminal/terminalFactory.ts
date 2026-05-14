@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
+import { useAppStore } from "../../store/appStore";
 import {
   terminalCache,
   destroyTerminalCache,
@@ -110,13 +111,15 @@ export async function createTerminalForProject(
     );
     cache.unlistenOutput = unlistenOutput;
 
-    const unlistenClosed = await listen<null>(`terminal-closed-${sid}`, async () => {
-      log(`Session ${sid} closed by backend`);
+    const unlistenClosed = await listen<{ exit_code: number }>(`terminal-closed-${sid}`, async (event) => {
+      const exitCode = event.payload?.exit_code ?? -1;
+      log(`Session ${sid} closed by backend (exit_code=${exitCode})`);
       unlistenClosed();
 
       if (taskConfigId) {
         // Task terminal: process exited naturally.
         // - Notify taskStore so the Play button returns to idle.
+        // - Update the tab status to Idle (success) or Failed (non-zero exit).
         // - Keep the cache alive so the output stays visible on screen.
         // - Do NOT destroy cache or trigger rebuild (prevents flicker/re-execute).
         const { useTaskStore } = await import("../../store/taskStore");
@@ -124,8 +127,33 @@ export async function createTerminalForProject(
         if (ts.taskState.ptySessionId === sid) {
           ts.markIdle();
         }
+
+        // Reflect success/failure in the tab so the UI can show the right indicator
+        // and so taskStore.runTask() can decide whether to reuse the tab.
+        const appState = useAppStore.getState();
+        const activeProject = appState.activeProject;
+        if (activeProject) {
+          const tabKey = activeProject.id;
+          const pt = appState.tabs[tabKey];
+          const tab = pt?.tabs.find(
+            (t) =>
+              t.data.kind === "terminal" &&
+              t.data.taskConfigId === taskConfigId &&
+              t.data.status === "Running",
+          );
+          if (tab) {
+            appState.updateTab(tabKey, tab.id, {
+              status: exitCode === 0 ? "Idle" : "Failed",
+            });
+          }
+        }
+
         // Show a dim completion marker at the bottom of the terminal output
-        term.write("\r\n\x1b[90m[Process exited]\x1b[0m\r\n");
+        const exitLabel =
+          exitCode === 0
+            ? "\r\n\x1b[90m[Process exited with code 0]\x1b[0m\r\n"
+            : `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`;
+        term.write(exitLabel);
         // Clear sessionId so resize/input calls no-op gracefully
         cache.sessionId = null;
         return;

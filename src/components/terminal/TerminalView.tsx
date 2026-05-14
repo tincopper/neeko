@@ -7,6 +7,7 @@ import type { AgentConfig } from "../../types";
 import { useAppStore } from "../../store/appStore";
 import {
    terminalCache,
+   destroyTerminalCache,
    terminalRebuildCallbacks,
    terminalWrapperRefs,
    executedAgentKeys,
@@ -49,6 +50,9 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    });
    const taskCommand = fullTabData?.kind === "terminal" ? (fullTabData.taskCommand ?? null) : null;
    const taskConfigId = fullTabData?.kind === "terminal" ? (fullTabData.taskConfigId ?? null) : null;
+   // Incremented by taskStore.runTask() when reusing a finished task tab.
+   // Including it in the main useEffect dep triggers a clean terminal rebuild.
+   const taskRebuildKey = fullTabData?.kind === "terminal" ? (fullTabData.rebuildKey ?? 0) : 0;
 
    const handleTabStatusChange = useCallback(
       (status: "Idle" | "Running" | "Failed") => {
@@ -131,6 +135,16 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
       };
 
       detachAll();
+
+      // When a task tab is reused (rebuildKey bumped by taskStore), the old
+      // terminal session has already been destroyed. If the cache still exists
+      // but its sessionId is null it means the process exited and we're
+      // rerunning — destroy it so we fall through to create a fresh terminal.
+      const staleCache = terminalCache.get(cacheKey);
+      if (staleCache && staleCache.sessionId === null && taskCommand) {
+         log(`Stale task cache detected for ${cacheKey}, destroying for clean rebuild`);
+         destroyTerminalCache(cacheKey);
+      }
 
       const existingCache = terminalCache.get(cacheKey);
       if (existingCache) {
@@ -255,6 +269,8 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
       projectPath,
       projectName,
       rebuildCount,
+      taskCommand,
+      taskRebuildKey,
       config.terminalFontSize,
       config.shell,
       config.fontFamily,
