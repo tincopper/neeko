@@ -43,7 +43,7 @@ function TitleBar({
 
    return (
       <div
-         className="titlebar flex items-center h-9 shrink-0 select-none"
+         className={`titlebar flex items-center h-9 shrink-0 select-none ${IS_MACOS ? 'pl-[72px]' : ''}`}
          data-tauri-drag-region
       >
          <div className="relative shrink-0 px-2 py-1 flex items-center gap-1" data-tauri-drag-region>
