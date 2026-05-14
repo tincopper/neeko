@@ -28,7 +28,7 @@ fn opencode_themes_dir() -> Result<std::path::PathBuf> {
 }
 
 /// 简单的 shell 转义
-fn shell_escape(s: &str) -> String {
+pub(crate) fn shell_escape(s: &str) -> String {
     if s.is_empty() {
         return "''".to_string();
     }
@@ -37,7 +37,7 @@ fn shell_escape(s: &str) -> String {
 }
 
 /// base64 编码
-fn base64_encode(input: &str) -> String {
+pub(crate) fn base64_encode(input: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = input.as_bytes();
     let mut result = String::new();

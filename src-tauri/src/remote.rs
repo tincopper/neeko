@@ -417,7 +417,7 @@ fn log_error(msg: &str) {
     log::error!("{}", msg);
 }
 
-/// 安装远程 OpenCode 主题文件和项目 TUI 配置
+/// 安装远程 OpenCode + Pi 主题文件和项目配置
 /// 每个操作使用独立的 channel（SSH channel 只能 exec 一次）
 async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, project_path: &str) {
     let theme = match read_neeko_theme() {
@@ -425,12 +425,12 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
         None => return,
     };
 
-    // channel 1: 安装主题文件到 ~/.config/opencode/themes/
+    // channel 1: 安装 OpenCode 主题文件到 ~/.config/opencode/themes/
     match session.channel_open_session().await {
         Ok(mut ch) => {
             if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut ch).await {
                 log_warn(&format!(
-                    "[SSH] Failed to install remote theme files: {}",
+                    "[SSH] Failed to install remote OpenCode theme files: {}",
                     e
                 ));
             }
@@ -438,13 +438,32 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
         }
         Err(e) => {
             log_warn(&format!(
-                "[SSH] Failed to open channel for theme install: {}",
+                "[SSH] Failed to open channel for OpenCode theme install: {}",
                 e
             ));
         }
     }
 
-    // channel 2: 写入项目 TUI 配置
+    // channel 2: 安装 Pi 主题文件到 ~/.pi/agent/themes/
+    match session.channel_open_session().await {
+        Ok(mut ch) => {
+            if let Err(e) = crate::pi_theme::install_remote_pi_theme_files(&mut ch).await {
+                log_warn(&format!(
+                    "[SSH] Failed to install remote Pi theme files: {}",
+                    e
+                ));
+            }
+            let _ = ch.close().await;
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "[SSH] Failed to open channel for Pi theme install: {}",
+                e
+            ));
+        }
+    }
+
+    // channel 3: 写入 OpenCode 项目 TUI 配置
     match session.channel_open_session().await {
         Ok(mut ch) => {
             if let Err(e) =
@@ -456,6 +475,24 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
         }
         Err(e) => {
             log_warn(&format!("[SSH] Failed to open channel for tui.json: {}", e));
+        }
+    }
+
+    // channel 4: 写入 Pi 项目 settings.json
+    match session.channel_open_session().await {
+        Ok(mut ch) => {
+            if let Err(e) =
+                crate::pi_theme::write_remote_pi_settings(&mut ch, project_path, &theme).await
+            {
+                log_warn(&format!("[SSH] Failed to write remote Pi settings.json: {}", e));
+            }
+            let _ = ch.close().await;
+        }
+        Err(e) => {
+            log_warn(&format!(
+                "[SSH] Failed to open channel for Pi settings.json: {}",
+                e
+            ));
         }
     }
 }

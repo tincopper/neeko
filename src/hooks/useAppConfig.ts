@@ -61,11 +61,11 @@ export function useAppConfig() {
          e.projects.map((p) => ({ distro: e.distro, path: p.path })),
       );
       if (localPaths.length > 0 || wsl.length > 0) {
-         invoke("sync_opencode_theme", {
+         invoke("sync_agent_theme", {
             theme: config.theme,
             targets: { local_paths: localPaths, wsl },
          }).catch((e) => {
-            console.error("[App] Failed to sync OpenCode theme:", e);
+            console.error("[App] Failed to sync agent theme:", e);
          });
       }
    }, [config.theme]);

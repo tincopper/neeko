@@ -32,6 +32,11 @@ pub fn run() {
         log::warn!("Failed to install OpenCode theme files: {e}");
     }
 
+    // Install Pi theme files to ~/.pi/agent/themes/
+    if let Err(e) = crate::pi_theme::install_pi_theme_files() {
+        log::warn!("Failed to install Pi theme files: {e}");
+    }
+
     // Unix: resolve full PATH from user's login shell to fix GUI app Agent detection issues
     #[cfg(unix)]
     {
