@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type AppProviders from "../AppProviders";
 import type AppModals from "../AppModals";
@@ -182,6 +182,48 @@ export function useAppContainer(): UseAppContainerResult {
 
   const activeContext = useActiveProject();
   const fileView = useFileView(activeContext.commands, activeContext.worktreePath);
+
+  // ── TitleBar branch switching ─────────────────────────────────────────────
+  const [isBranchSwitching, setIsBranchSwitching] = useState(false);
+
+  /** Unified git refresh for the currently active project (local / WSL / remote). */
+  const handleTitleBarRefreshGit = useCallback(async () => {
+    if (activeProject) {
+      await handleRefreshGit(activeProject.id);
+    } else if (activeWslProject) {
+      await wslActions.handleRefreshWslGit(
+        activeWslProject.distro,
+        activeWslProject.project.id,
+        activeWslProject.project.path,
+      );
+    } else if (activeRemoteProject) {
+      await remoteActions.handleRefreshRemoteGit(
+        activeRemoteProject.entry.id,
+        activeRemoteProject.project.id,
+        activeRemoteProject.project.path,
+      );
+    }
+  }, [
+    activeProject,
+    activeWslProject,
+    activeRemoteProject,
+    handleRefreshGit,
+    wslActions,
+    remoteActions,
+  ]);
+
+  const handleTitleBarCheckoutBranch = useCallback(async (branchName: string) => {
+    if (!activeContext.commands) return;
+    setIsBranchSwitching(true);
+    try {
+      await activeContext.commands.checkoutBranch(branchName);
+      await handleTitleBarRefreshGit();
+    } catch (e: unknown) {
+      showToast(String(e), "error");
+    } finally {
+      setIsBranchSwitching(false);
+    }
+  }, [activeContext.commands, handleTitleBarRefreshGit, showToast]);
 
   // Close settings tab in __app__ space if open (from no-project state)
   const closeAppSettingsTab = useCallback(() => {
@@ -642,6 +684,12 @@ export function useAppContainer(): UseAppContainerResult {
     onAgentClick: handleAgentClick,
   };
 
+  const titleBarBranches =
+    activeProject?.git_info?.branches ??
+    activeWslProject?.project.git_info?.branches ??
+    activeRemoteProject?.project.git_info?.branches ??
+    [];
+
   const titleBarProps: TitleBarProps = {
     activeProject,
     activeWslProject,
@@ -649,6 +697,10 @@ export function useAppContainer(): UseAppContainerResult {
     activeWorktreeBranch,
     activeWslWorktreeBranch: wslActions.wslActiveWtBranch,
     activeRemoteWorktreeBranch: remoteActions.remoteActiveWtBranch,
+    branches: titleBarBranches,
+    isBranchSwitching,
+    onCheckoutBranch: handleTitleBarCheckoutBranch,
+    onRefreshGit: handleTitleBarRefreshGit,
   };
 
   const appProvidersProps: AppProvidersProps = {
