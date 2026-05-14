@@ -790,10 +790,7 @@ pub async fn wsl_generate_commit_message(
         };
 
         // 注入环境加载前缀，source ~/.profile 加载用户路径（.cargo/bin 等）
-        let actual_cmd = format!(
-            r#"source ~/.profile 2>/dev/null; {}"#,
-            actual_cmd
-        );
+        let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
 
         // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
         let wsl_user = crate::utils::command::local::exec("wsl.exe")
