@@ -20,14 +20,15 @@
     },
     "windows": [
       {
-        "title": "Neeko",
+        "title": "",
         "width": 1200,
         "height": 800,
         "resizable": true,
         "fullscreen": false,
         "maximized": true,
-        "decorations": false,
-        "transparent": false
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay"
       }
     ]
   },
