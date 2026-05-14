@@ -12,6 +12,7 @@ import type { ContextMenuItem } from "../project/ContextMenu";
 import SettingsPanel from "../SettingsPanel";
 import type { AgentConfig, AppConfig, EditorGroupId, Tab } from "../../types";
 import { cn } from "../../utils/cn";
+import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
 
 interface EditorGroupPaneProps {
   groupId: EditorGroupId;
@@ -64,6 +65,7 @@ function EditorGroupPane({
   wslProject,
   layoutId,
 }: EditorGroupPaneProps) {
+  const globalEditorCtx = useEditorContext();
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
 
@@ -159,7 +161,16 @@ function EditorGroupPane({
     [],
   );
 
+  const localEditorCtx = useMemo(() => ({
+    ...globalEditorCtx,
+    activeTabId,
+    onActivateTab,
+    onCloseTab,
+    onAddTab: onAddTerminalTab,
+  }), [globalEditorCtx, activeTabId, onActivateTab, onCloseTab, onAddTerminalTab]);
+
   return (
+    <EditorProvider value={localEditorCtx}>
     <div
       className={cn(
         "flex-1 flex flex-col overflow-hidden min-h-0",
@@ -321,6 +332,7 @@ function EditorGroupPane({
         />
       )}
     </div>
+    </EditorProvider>
   );
 }
 

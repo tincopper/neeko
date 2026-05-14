@@ -211,7 +211,9 @@ export const useAppStore = create<AppStoreState>((set) => ({
           ...layout.groups,
           [activeGroupId]: {
             ...layout.groups[activeGroupId],
-            tabIds: [...layout.groups[activeGroupId].tabIds, tab.id],
+            tabIds: layout.groups[activeGroupId].tabIds.includes(tab.id)
+              ? layout.groups[activeGroupId].tabIds
+              : [...layout.groups[activeGroupId].tabIds, tab.id],
             activeTabId: tab.id,
           },
         },
@@ -385,7 +387,9 @@ export const useAppStore = create<AppStoreState>((set) => ({
 
       const newLeftIds = layout.groups.left.tabIds.filter(id => id !== tabId);
       const newRightIds = layout.isSplit
-        ? [...layout.groups.right.tabIds, tabId]
+        ? (layout.groups.right.tabIds.includes(tabId)
+          ? layout.groups.right.tabIds
+          : [...layout.groups.right.tabIds, tabId])
         : [tabId];
 
       const newLayout: EditorSplitLayout = {
