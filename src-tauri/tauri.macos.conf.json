@@ -15,5 +15,15 @@
         }
       }
     }
+  },
+  "app": {
+    "windows": [
+      {
+        "decorations": true,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "title": ""
+      }
+    ]
   }
 }
