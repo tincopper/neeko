@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -93,12 +93,27 @@ function EditorGroupLayout({
   const leftPanelId = `left-${tabKey}`;
   const rightPanelId = `right-${tabKey}`;
 
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleLayoutChange = useCallback((layout: Record<string, number>) => {
     const leftPercent = layout[leftPanelId];
-    if (leftPercent !== undefined) {
-      setSplitRatio(leftPercent / 100);
+    if (leftPercent === undefined) return;
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
     }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      setSplitRatio(leftPercent / 100);
+    }, 150);
   }, [setSplitRatio, leftPanelId]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const ratioPercent = Math.round(layout.ratio * 100);
 
@@ -139,63 +154,73 @@ function EditorGroupLayout({
   }
 
   return (
-    <ResizablePanelGroup orientation="horizontal" id={`editor-split-${tabKey}`} defaultLayout={defaultLayout} onLayoutChanged={handleLayoutChange}>
-      <ResizablePanel id={leftPanelId} minSize={30}>
-        <EditorGroupPane
-          groupId="left"
-          tabKey={tabKey}
-          tabs={leftTabs}
-          activeTabId={leftActiveTabId}
-          isFocused={activeGroupId === "left"}
-          onActivateTab={handleActivateTab}
-          onCloseTab={handleCloseTab}
-          onAddTerminalTab={onAddTerminalTab}
-          onSplitRight={splitRight}
-          onMoveToRight={moveToRight}
-          onMoveToLeft={moveToLeft}
-          onFocusGroup={() => setActiveGroup("left")}
-          agents={agents}
-          compactMode={compactMode}
-          showAgentBar={showAgentBar}
-          hiddenAgentIds={hiddenAgentIds}
-          onToggleHiddenAgent={onToggleHiddenAgent}
-          onAgentClick={onAgentClick}
-          onCloseOtherTabs={handleCloseOtherTabs}
-          onCloseAllTabs={handleCloseAllTabs}
-          config={config}
-          showToast={showToast}
-          wslProject={wslProject}
-          layoutId={leftLayoutId}
-        />
+    <ResizablePanelGroup
+      orientation="horizontal"
+      id={`editor-split-${tabKey}`}
+      defaultLayout={defaultLayout}
+      onLayoutChanged={handleLayoutChange}
+      className="flex-1 rounded-lg bg-bg-primary"
+    >
+      <ResizablePanel id={leftPanelId} minSize={30} className="py-0.5 pr-0.5">
+        <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
+          <EditorGroupPane
+            groupId="left"
+            tabKey={tabKey}
+            tabs={leftTabs}
+            activeTabId={leftActiveTabId}
+            isFocused={activeGroupId === "left"}
+            onActivateTab={handleActivateTab}
+            onCloseTab={handleCloseTab}
+            onAddTerminalTab={onAddTerminalTab}
+            onSplitRight={splitRight}
+            onMoveToRight={moveToRight}
+            onMoveToLeft={moveToLeft}
+            onFocusGroup={() => setActiveGroup("left")}
+            agents={agents}
+            compactMode={compactMode}
+            showAgentBar={showAgentBar}
+            hiddenAgentIds={hiddenAgentIds}
+            onToggleHiddenAgent={onToggleHiddenAgent}
+            onAgentClick={onAgentClick}
+            onCloseOtherTabs={handleCloseOtherTabs}
+            onCloseAllTabs={handleCloseAllTabs}
+            config={config}
+            showToast={showToast}
+            wslProject={wslProject}
+            layoutId={leftLayoutId}
+          />
+        </div>
       </ResizablePanel>
-      <ResizableHandle id="editor-split-handle" className="w-px bg-[var(--border-color)]" />
-      <ResizablePanel id={rightPanelId} minSize={30}>
-        <EditorGroupPane
-          groupId="right"
-          tabKey={tabKey}
-          tabs={rightTabs}
-          activeTabId={rightActiveTabId}
-          isFocused={activeGroupId === "right"}
-          onActivateTab={handleActivateTab}
-          onCloseTab={handleCloseTab}
-          onAddTerminalTab={onAddTerminalTab}
-          onSplitRight={splitRight}
-          onMoveToRight={moveToRight}
-          onMoveToLeft={moveToLeft}
-          onFocusGroup={() => setActiveGroup("right")}
-          agents={agents}
-          compactMode={compactMode}
-          showAgentBar={showAgentBar}
-          hiddenAgentIds={hiddenAgentIds}
-          onToggleHiddenAgent={onToggleHiddenAgent}
-          onAgentClick={onAgentClick}
-          onCloseOtherTabs={handleCloseOtherTabs}
-          onCloseAllTabs={handleCloseAllTabs}
-          config={config}
-          showToast={showToast}
-          wslProject={wslProject}
-          layoutId={rightLayoutId}
-        />
+      <ResizableHandle id="editor-split-handle" />
+      <ResizablePanel id={rightPanelId} minSize={30} className="py-0.5 pl-0.5">
+        <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
+          <EditorGroupPane
+            groupId="right"
+            tabKey={tabKey}
+            tabs={rightTabs}
+            activeTabId={rightActiveTabId}
+            isFocused={activeGroupId === "right"}
+            onActivateTab={handleActivateTab}
+            onCloseTab={handleCloseTab}
+            onAddTerminalTab={onAddTerminalTab}
+            onSplitRight={splitRight}
+            onMoveToRight={moveToRight}
+            onMoveToLeft={moveToLeft}
+            onFocusGroup={() => setActiveGroup("right")}
+            agents={agents}
+            compactMode={compactMode}
+            showAgentBar={showAgentBar}
+            hiddenAgentIds={hiddenAgentIds}
+            onToggleHiddenAgent={onToggleHiddenAgent}
+            onAgentClick={onAgentClick}
+            onCloseOtherTabs={handleCloseOtherTabs}
+            onCloseAllTabs={handleCloseAllTabs}
+            config={config}
+            showToast={showToast}
+            wslProject={wslProject}
+            layoutId={rightLayoutId}
+          />
+        </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );

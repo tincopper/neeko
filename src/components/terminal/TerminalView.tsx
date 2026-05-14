@@ -10,8 +10,6 @@ import {
    terminalRebuildCallbacks,
    terminalWrapperRefs,
    executedAgentKeys,
-   pendingPtyResize,
-   setPendingPtyResize,
    terminalCacheKey,
    log,
 } from "./terminalCache";
@@ -219,15 +217,14 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             if (!c) {
                return;
             }
-            c.fitAddon.fit();
-            if (pendingPtyResize && c.sessionId) {
-               setPendingPtyResize(false);
-               invoke("resize_terminal", {
-                  sessionId: c.sessionId,
-                  cols: c.term.cols,
-                  rows: c.term.rows,
-               }).catch(() => { });
-            }
+             c.fitAddon.fit();
+             if (c.sessionId) {
+                invoke("resize_terminal", {
+                   sessionId: c.sessionId,
+                   cols: c.term.cols,
+                   rows: c.term.rows,
+                }).catch(() => { });
+             }
          });
       });
       ro.observe(wrapper);

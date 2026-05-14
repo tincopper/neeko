@@ -168,7 +168,7 @@ function MainContent() {
       && !tabs.some((t) => t.id === storeActiveTabId && (t.data.kind === "file" || t.data.kind === "gitLog" || t.data.kind === "diff"));
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0">
+      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 rounded-lg shadow-sm bg-bg-secondary">
          {/* Remote project view (special case) */}
          {showRemoteProject ? (
             <RemoteProjectView />
