@@ -22,7 +22,7 @@ const DockBar: React.FC<DockBarProps> = ({ side }) => {
   return (
     <TooltipProvider delayDuration={300}>
       <div
-        className="flex w-9 shrink-0 flex-col items-center py-2"
+        className="flex w-11 shrink-0 flex-col items-center py-2"
         role="toolbar"
         aria-label={`${side} toolbar`}
       >

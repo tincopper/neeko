@@ -109,7 +109,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
-            className="py-0.5 pr-px"
+            className="py-1 pr-0.5"
           >
             <DockZone zoneId="left" />
           </ResizablePanel>
@@ -124,7 +124,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           id="center-area"
           defaultSize="64%"
           minSize="40%"
-          className="py-0.5 px-px overflow-hidden"
+          className="py-1 px-0.5 overflow-hidden"
         >
           {children}
         </ResizablePanel>
@@ -139,7 +139,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
-            className="py-0.5 pl-px"
+            className="py-1 pl-0.5"
           >
             <DockZone zoneId="right" />
           </ResizablePanel>
