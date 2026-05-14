@@ -9,6 +9,7 @@ pub mod project;
 pub mod remote;
 pub mod skill;
 pub mod storage;
+pub mod task_runner;
 pub mod terminal;
 pub mod utils;
 pub mod watcher;

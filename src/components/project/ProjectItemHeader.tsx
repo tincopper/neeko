@@ -1,5 +1,6 @@
 import React from "react";
 import { getIdeIconByCommand } from "../../utils/idePresets";
+import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
 import {
   ChevronRightIcon,
   FolderGitIcon,
@@ -8,28 +9,6 @@ import {
 } from "../icons";
 import type { DialogType } from "./GitDialog";
 import type { Project } from "../../types";
-
-const AVATAR_COLORS = [
-  "#61afef",
-  "#98c379",
-  "#e5c07b",
-  "#e06c75",
-  "#c678dd",
-  "#56b6c2",
-  "#d19a66",
-  "#67a8e4",
-  "#abb2bf",
-  "#be5046",
-];
-
-function getAvatarStyle(name: string): React.CSSProperties {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const color = AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-  return { color, backgroundColor: `${color}26` };
-}
 
 interface ProjectItemHeaderProps {
   project: Project;
@@ -82,7 +61,7 @@ export default function ProjectItemHeader({
         className="gh-project-avatar w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase"
         style={getAvatarStyle(project.name)}
       >
-        {project.name.charAt(0).toUpperCase()}
+        {getProjectInitials(project.name)}
       </span>
       <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
         <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">

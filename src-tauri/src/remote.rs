@@ -484,7 +484,10 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
             if let Err(e) =
                 crate::pi_theme::write_remote_pi_settings(&mut ch, project_path, &theme).await
             {
-                log_warn(&format!("[SSH] Failed to write remote Pi settings.json: {}", e));
+                log_warn(&format!(
+                    "[SSH] Failed to write remote Pi settings.json: {}",
+                    e
+                ));
             }
             let _ = ch.close().await;
         }

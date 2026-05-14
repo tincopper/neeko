@@ -139,8 +139,7 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
         }
     }
     for target in &targets.wsl {
-        if let Err(e) =
-            crate::pi_theme::write_wsl_pi_settings(&target.distro, &target.path, &theme)
+        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(&target.distro, &target.path, &theme)
         {
             log::warn!(
                 "[PiTheme] Failed to sync settings.json for WSL project {} ({}): {}",

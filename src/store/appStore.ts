@@ -58,6 +58,10 @@ interface AppStoreState {
   // ── Editor group split layout ──
   editorLayout: Record<string, EditorSplitLayout>;
 
+  // ── Dock panel width tracking ──
+  leftPanelWidth: number;
+  setLeftPanelWidth: (width: number) => void;
+
   selectProject: (id: string) => void;
   selectWslProject: (distro: string, project: WSLProject) => void;
   selectRemoteProject: (host: string, project: RemoteProject) => void;
@@ -175,6 +179,11 @@ export const useAppStore = create<AppStoreState>((set) => ({
   tabs: {},
   activeTabId: null,
   editorLayout: {},
+
+  // ── Dock panel width tracking ──
+  leftPanelWidth: 0,
+  setLeftPanelWidth: (width) => set({ leftPanelWidth: width }),
+
   selectProject: noop,
   selectWslProject: noop,
   selectRemoteProject: noop,
