@@ -12,6 +12,7 @@ interface UnifiedTabBarProps {
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTerminalTab?: () => void;
+  onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
   /** 关闭其他 tab */
   onCloseOtherTabs?: (tabId: string) => void;
   /** 关闭所有 tab */
@@ -61,6 +62,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
     onActivateTab,
     onCloseTab,
     onAddTerminalTab,
+    onContextMenu,
     agents = [],
     showAgentBar = false,
     onAgentClick,
@@ -123,6 +125,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
               isActive={tab.id === activeTabId}
               onActivate={onActivateTab}
               onClose={onCloseTab}
+              onContextMenu={onContextMenu}
               agents={agents}
             />
           ))}

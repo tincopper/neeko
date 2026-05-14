@@ -11,6 +11,7 @@ interface UnifiedTabItemProps {
   isActive: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
   agents?: AgentConfig[];
 }
 
@@ -33,7 +34,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
 }
 
 const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
-  ({ tab, isActive, onActivate, onClose, agents = [] }) => {
+  ({ tab, isActive, onActivate, onClose, onContextMenu, agents = [] }) => {
     const handleClick = useCallback(() => {
       onActivate(tab.id);
     }, [tab.id, onActivate]);
@@ -44,6 +45,13 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         onClose(tab.id);
       },
       [tab.id, onClose]
+    );
+
+    const handleContextMenu = useCallback(
+      (e: React.MouseEvent) => {
+        onContextMenu?.(tab.id, e);
+      },
+      [tab.id, onContextMenu]
     );
 
     const Icon = getTabIcon(tab.data.kind);
@@ -76,6 +84,7 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
             : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
         )}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         title={tab.title}
       >
         {agentIconSrc ? (

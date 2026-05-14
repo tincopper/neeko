@@ -151,7 +151,7 @@ function AppLayout({
       </div>
     </SkillProvider>
   ) : (
-    <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
+    <div className="flex-1 flex flex-col overflow-hidden">
       <MainContent />
     </div>
   );

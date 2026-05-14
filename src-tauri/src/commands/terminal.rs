@@ -10,6 +10,7 @@ pub fn create_terminal_session(
     rows: u16,
     shell: Option<String>,
     working_dir: Option<String>,
+    command: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
@@ -18,7 +19,7 @@ pub fn create_terminal_session(
         let path = project.path.to_string_lossy().to_string();
         state
             .terminal_manager
-            .create_session(&path, cols, rows, shell, working_dir, app_handle)
+            .create_session(&path, cols, rows, shell, working_dir, command, app_handle)
             .map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(

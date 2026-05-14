@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -7,6 +7,7 @@ import {
 import DockBar from "./DockBar";
 import DockZone from "./DockZone";
 import { useDockStore } from "@/store/dockStore";
+import { useAppStore } from "@/store/appStore";
 import { dockPanelRegistry } from "@/registries/dockPanels";
 
 interface DockLayoutProps {
@@ -49,6 +50,28 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const rightExpanded = useDockStore(
     (s) => s.zones.right?.expanded ?? false,
   );
+
+  const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
+
+  const leftPanelRef = useRef<HTMLDivElement>(null);
+
+  // ResizeObserver: fires on mount (initial size) + every resize drag.
+  // Re-runs when leftExpanded toggles so the observer re-attaches after expand.
+  useEffect(() => {
+    if (!leftExpanded) {
+      setLeftPanelWidth(0);
+      return;
+    }
+    const el = leftPanelRef.current;
+    if (!el) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      setLeftPanelWidth(width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [leftExpanded, setLeftPanelWidth]);
 
   const rightPanelIds = useDockStore(
     (s) => s.zones.right?.panels ?? [],
@@ -109,7 +132,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
-            className="py-0.5 pr-px"
+            className="py-1 pr-0.5"
+            elementRef={leftPanelRef}
           >
             <DockZone zoneId="left" />
           </ResizablePanel>
@@ -124,7 +148,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           id="center-area"
           defaultSize="64%"
           minSize="40%"
-          className="py-0.5 px-px overflow-hidden"
+          className="py-1 px-0.5 overflow-hidden"
         >
           {children}
         </ResizablePanel>
@@ -139,7 +163,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             defaultSize="18%"
             minSize="12%"
             maxSize="35%"
-            className="py-0.5 pl-px"
+            className="py-1 pl-0.5"
           >
             <DockZone zoneId="right" />
           </ResizablePanel>

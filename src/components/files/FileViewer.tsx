@@ -9,6 +9,7 @@ import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
+import { useEditorContext } from "../../contexts/editor-context";
 import { useAppStore } from "../../store/appStore";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
 
@@ -74,18 +75,21 @@ function FileViewer() {
       return state.tabs[tabKey] ?? null;
    });
 
+   // Read per-group activeTabId from EditorContext (correct in split mode)
+   const { activeTabId: groupActiveTabId } = useEditorContext();
+
    // Derive the active file tab from unified Tab.data (FileTabData)
    const activeFileTab = useMemo(() => {
       if (!projectTabs) return null;
-      // Prefer the project's active tab if it's a file tab
-      let target = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
+      // Prefer the group's active tab if it's a file tab
+      let target = projectTabs.tabs.find((t) => t.id === groupActiveTabId);
       if (!target || !isFileTab(target)) {
          // Fall back to first file tab
          target = projectTabs.tabs.find(isFileTab);
       }
       if (!target || !isFileTab(target)) return null;
       return tabToFileTab(target);
-   }, [projectTabs]);
+   }, [projectTabs, groupActiveTabId]);
 
    if (!activeFileTab) {
       return (

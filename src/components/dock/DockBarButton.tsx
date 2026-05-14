@@ -101,7 +101,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
         <button
           onClick={handleClick}
           className={cn(
-             "relative w-9 h-9 flex items-center justify-center",
+             "relative w-11 h-11 flex items-center justify-center",
             "text-text-secondary hover:text-text-primary transition-colors duration-150",
             "focus:outline-none",
           )}
@@ -109,7 +109,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
         >
           <span
             className={cn(
-              "flex items-center justify-center w-7 h-7 rounded-md",
+              "flex items-center justify-center w-8 h-8 rounded-md",
               "hover:bg-bg-hover",
               isActive && "bg-bg-selected text-text-primary",
             )}

@@ -7,6 +7,7 @@ mod ide;
 mod project;
 mod remote;
 mod remote_git;
+mod task;
 mod terminal;
 mod wsl;
 mod wsl_git;
@@ -20,6 +21,7 @@ pub use ide::*;
 pub use project::*;
 pub use remote::*;
 pub use remote_git::*;
+pub use task::*;
 pub use terminal::*;
 pub use wsl::*;
 pub use wsl_git::*;
@@ -103,7 +105,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::get_config_dir,
             $crate::commands::save_config,
             $crate::commands::load_config,
-            $crate::commands::sync_opencode_theme,
+            $crate::commands::sync_agent_theme,
             $crate::commands::save_vcs_settings_command,
             $crate::commands::load_vcs_settings_command,
             $crate::commands::get_system_fonts,
@@ -184,6 +186,12 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::remote_read_file_content,
             $crate::commands::remote_write_file_content,
             $crate::commands::remote_generate_commit_message,
+            // --- Task Runner ---
+            $crate::commands::get_task_configs,
+            $crate::commands::save_task_config,
+            $crate::commands::delete_task_config,
+            $crate::commands::run_task,
+            $crate::commands::stop_task,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,

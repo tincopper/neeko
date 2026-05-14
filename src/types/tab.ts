@@ -9,6 +9,16 @@ export interface TerminalTabData {
   kind: "terminal";
   agentId: string | null;
   status: "Idle" | "Running" | "Failed";
+  /** If set, the terminal spawns this command directly (task mode) instead of a shell */
+  taskCommand?: string;
+  /** Config ID of the associated task — used to notify taskStore on process exit */
+  taskConfigId?: string;
+  /**
+   * Incremented each time a finished task tab is reused.
+   * TerminalView watches this as a useEffect dep to destroy stale cache and
+   * create a fresh terminal session (clean slate, no old output).
+   */
+  rebuildKey?: number;
 }
 
 /** 文件 Tab 数据 */

@@ -25,7 +25,7 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
    ({ onConfigChange, onClose, fullPage = false }) => {
       const { config } = useAppContext();
-      const [activeNav, setActiveNav] = useState<NavCategory>("editor");
+      const [activeNav, setActiveNav] = useState<NavCategory>("appearance");
 
       const state = useSettingsPanelState({
          config,
