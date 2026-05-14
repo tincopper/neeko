@@ -54,6 +54,16 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
       [tab.id, onContextMenu]
     );
 
+    const handleAuxClick = useCallback(
+      (e: React.MouseEvent) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          onClose(tab.id);
+        }
+      },
+      [tab.id, onClose]
+    );
+
     const Icon = getTabIcon(tab.data.kind);
 
     const data = tab.data;
@@ -84,6 +94,7 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
             : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
         )}
         onClick={handleClick}
+        onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
         title={tab.title}
       >
