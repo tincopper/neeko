@@ -115,16 +115,19 @@ impl TerminalManager {
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
 
-        // 安装 WSL 主题文件并写入项目级 TUI 配置（主题同步）
+        // 安装 WSL 主题文件并写入项目级配置（OpenCode + Pi 主题同步）
         if let Err(e) = install_wsl_theme_files(distro) {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = write_wsl_tui_config(
-            distro,
-            project_path,
-            &read_neeko_theme().unwrap_or_else(|| "dark".to_string()),
-        ) {
+        if let Err(e) = crate::pi_theme::install_wsl_pi_theme_files(distro) {
+            log::warn!("[WSL] Failed to install Pi theme files: {}", e);
+        }
+        let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
+        if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+        }
+        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme) {
+            log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
         }
 
         let pair = create_pty(cols, rows)?;
@@ -636,7 +639,7 @@ fn log_error(msg: &str) {
     log::error!("{}", msg);
 }
 
-/// 读取 Neeko 配置并写入 OpenCode 项目级 TUI 配置
+/// 读取 Neeko 配置并写入 OpenCode + Pi 项目级配置
 /// 静默执行，失败不影响终端创建
 fn write_opencode_tui_config(project_path: &str) {
     let theme = match read_neeko_theme() {
@@ -645,6 +648,9 @@ fn write_opencode_tui_config(project_path: &str) {
     };
     if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
         log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
+    }
+    if let Err(e) = crate::pi_theme::write_project_pi_settings(project_path, &theme) {
+        log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
     }
 }
 

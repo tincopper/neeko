@@ -103,7 +103,7 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::get_config_dir,
             $crate::commands::save_config,
             $crate::commands::load_config,
-            $crate::commands::sync_opencode_theme,
+            $crate::commands::sync_agent_theme,
             $crate::commands::save_vcs_settings_command,
             $crate::commands::load_vcs_settings_command,
             $crate::commands::get_system_fonts,
