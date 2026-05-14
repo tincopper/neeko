@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
@@ -66,7 +65,7 @@ pub fn clone_repo_ref(
     let temp_dir = tempfile::tempdir()?;
     let temp_path = temp_dir.path().to_path_buf();
 
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::utils::command::local::exec("git");
     cmd.args(["clone", "--depth", "1"]);
 
     if let Some(b) = branch {
@@ -110,7 +109,7 @@ pub fn clone_repo_ref(
 }
 
 pub fn get_head_revision(repo_path: &Path) -> Result<String> {
-    let output = Command::new("git")
+    let output = crate::utils::command::local::exec("git")
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_path)
         .output()
