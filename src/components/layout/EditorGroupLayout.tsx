@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -56,6 +56,7 @@ function EditorGroupLayout({
     moveToRight,
     moveToLeft,
     setActiveGroup,
+    setSplitRatio,
     activateTabInGroup,
   } = useEditorGroupLayout(tabKey);
 
@@ -89,6 +90,23 @@ function EditorGroupLayout({
   const leftLayoutId = buildLayoutId("left", leftActiveTabId);
   const rightLayoutId = buildLayoutId("right", rightActiveTabId);
 
+  const leftPanelId = `left-${tabKey}`;
+  const rightPanelId = `right-${tabKey}`;
+
+  const handleLayoutChange = useCallback((layout: Record<string, number>) => {
+    const leftPercent = layout[leftPanelId];
+    if (leftPercent !== undefined) {
+      setSplitRatio(leftPercent / 100);
+    }
+  }, [setSplitRatio, leftPanelId]);
+
+  const ratioPercent = Math.round(layout.ratio * 100);
+
+  const defaultLayout = useMemo(() => ({
+    [leftPanelId]: ratioPercent,
+    [rightPanelId]: 100 - ratioPercent,
+  }), [leftPanelId, rightPanelId, ratioPercent]);
+
   if (!isSplit) {
     return (
       <EditorGroupPane
@@ -120,11 +138,9 @@ function EditorGroupLayout({
     );
   }
 
-  const ratioPercent = Math.round(layout.ratio * 100);
-
   return (
-    <ResizablePanelGroup orientation="horizontal" id={`editor-split-${tabKey}`}>
-      <ResizablePanel defaultSize={ratioPercent} minSize={30}>
+    <ResizablePanelGroup orientation="horizontal" id={`editor-split-${tabKey}`} defaultLayout={defaultLayout} onLayoutChanged={handleLayoutChange}>
+      <ResizablePanel id={leftPanelId} minSize={30}>
         <EditorGroupPane
           groupId="left"
           tabKey={tabKey}
@@ -152,8 +168,8 @@ function EditorGroupLayout({
           layoutId={leftLayoutId}
         />
       </ResizablePanel>
-      <ResizableHandle id="editor-split-handle" withHandle />
-      <ResizablePanel minSize={30}>
+      <ResizableHandle id="editor-split-handle" className="w-px bg-[var(--border-color)]" />
+      <ResizablePanel id={rightPanelId} minSize={30}>
         <EditorGroupPane
           groupId="right"
           tabKey={tabKey}
