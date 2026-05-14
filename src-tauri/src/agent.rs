@@ -124,6 +124,19 @@ impl AgentManager {
             prompt_args: Some(vec!["--prompt".to_string()]),
             post_prompt_args: None,
         });
+
+        // pi — `pi -p "<prompt>"`
+        self.agents.push(AgentConfig {
+            id: "pi".to_string(),
+            name: "pi".to_string(),
+            command: "pi".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+            icon: Some("pi.svg".to_string()),
+            enabled: true,
+            prompt_args: Some(vec!["-p".to_string()]),
+            post_prompt_args: None,
+        });
     }
 
     pub fn get_agents(&self) -> Vec<AgentConfig> {
@@ -151,6 +164,7 @@ impl AgentManager {
             ]),
             "claude-code" => Some(vec!["--bare".to_string(), "-p".to_string()]),
             "gemini" | "qoder" | "codebuddy" => Some(vec!["--prompt".to_string()]),
+            "pi" => Some(vec!["-p".to_string()]),
             "codex" => Some(vec![]),
             _ => None,
         }
@@ -228,7 +242,7 @@ mod tests {
     #[test]
     fn should_initialize_with_six_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 6);
+        assert_eq!(manager.get_agents().len(), 7);
     }
 
     #[test]
@@ -260,7 +274,7 @@ mod tests {
             post_prompt_args: None,
         };
         manager.add_agent(custom);
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 8);
         assert!(manager.get_agent("custom").is_some());
     }
 
@@ -268,7 +282,7 @@ mod tests {
     fn should_remove_agent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), 5);
+        assert_eq!(manager.get_agents().len(), 6);
         assert!(manager.get_agent("opencode").is_none());
     }
 
@@ -276,7 +290,7 @@ mod tests {
     fn should_not_panic_when_removing_nonexistent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("nonexistent");
-        assert_eq!(manager.get_agents().len(), 6);
+        assert_eq!(manager.get_agents().len(), 7);
     }
 
     #[test]
@@ -290,6 +304,7 @@ mod tests {
         assert!(ids.contains(&"codex"));
         assert!(ids.contains(&"qoder"));
         assert!(ids.contains(&"codebuddy"));
+        assert!(ids.contains(&"pi"));
     }
 
     #[test]

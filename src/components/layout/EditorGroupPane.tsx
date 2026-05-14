@@ -13,6 +13,7 @@ import SettingsPanel from "../SettingsPanel";
 import type { AgentConfig, AppConfig, EditorGroupId, Tab } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
+import { useAppContext } from "../../contexts";
 
 interface EditorGroupPaneProps {
   groupId: EditorGroupId;
@@ -154,11 +155,13 @@ function EditorGroupPane({
     if (activeTab?.data.kind === "settings") onCloseTab(activeTab.id);
   }, [activeTab, onCloseTab]);
 
+  const { saveConfig } = useAppContext();
+
   const handleSettingsConfigChange = useCallback(
-    () => {
-      // Settings config change is handled by parent
+    (next: AppConfig) => {
+      saveConfig(next);
     },
-    [],
+    [saveConfig],
   );
 
   const localEditorCtx = useMemo(() => ({
