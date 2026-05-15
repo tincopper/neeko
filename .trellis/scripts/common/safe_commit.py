@@ -15,14 +15,19 @@ Design
 ------
 - Scripts only stage SPECIFIC product paths (journal files, index.md, the
   current task dir, the archive dir). Never the whole `.trellis/` tree.
-- If plain `git add <specific>` fails with "ignored by", retry with
-  `git add -f <specific>` — forcing only the paths the script knows it owns.
-  This is safe because the paths are narrow; it is NOT equivalent to
-  `git add -f .trellis/` (which would fan out to backups/worktrees/runtime).
-- If the -f retry also fails, print an explicit warning that includes a
-  negative example: ``Do NOT use `git add -f .trellis/` ...``
+- If plain `git add <specific>` fails with "ignored by", DO NOT retry with
+  ``-f``. The presence of `.trellis/` in `.gitignore` is treated as user
+  intent ("keep .trellis/ local-only"). The script warns and skips the
+  auto-commit; users who want auto-staging can either fix their `.gitignore`
+  or set ``session_auto_commit: false`` and manage git themselves.
+- The warning includes a negative example: ``Do NOT use `git add -f .trellis/` ...``
+  so any AI rereading the log doesn't reinvent the bug.
 
-The wider-grain forbidden command stays forbidden.
+History note: 0.5.10 introduced an automatic ``git add -f`` retry on the
+specific paths. That was reverted in 0.5.11 — auto-forcing into a tree the
+user had gitignored violates user intent even when the path list is narrow.
+The wider-grain forbidden command stays forbidden, and the narrow-grain auto
+``-f`` is gone too.
 """
 
 from __future__ import annotations
@@ -106,31 +111,61 @@ def safe_trellis_paths_to_add(repo_root: Path) -> list[str]:
     return paths
 
 
-def safe_archive_paths_to_add(repo_root: Path) -> list[str]:
+def safe_archive_paths_to_add(
+    repo_root: Path,
+    task_name: str | None = None,
+    modified_children: list[str] | None = None,
+) -> list[str]:
     """Return paths to stage after `task.py archive`.
 
-    Limited to the archive subtree (where the freshly-moved task lives) plus
-    the source task directory's parent area to capture the deletion in the
-    same commit. We pass the whole `.trellis/tasks/` path so deletions of the
-    pre-move path are tracked, but only as a SPECIFIC subpath — not the whole
-    `.trellis/` tree.
+    Scoped to ONLY the paths the archive operation actually touched:
+
+      - the archive subtree (where the freshly-moved task lives)
+      - the source task directory (for source-side deletes; caller pairs
+        this with `git rm --cached` since `git add` won't stage deletes
+        for a path that no longer exists in the working tree)
+      - any child task directories whose `task.json` was edited to drop
+        the archived parent (parent-children relationship update)
+
+    This narrow scope avoids "scope creep" — dirty changes in OTHER
+    active task dirs (parallel-window edits) are NOT bundled into the
+    archive commit. Callers handle each kind of change in its own
+    commit boundary.
+
+    Backwards-compat: with no arguments, the function walks the whole
+    `.trellis/tasks/` subtree the old way (active tasks + archive). New
+    callers should always pass `task_name`.
     """
     paths: list[str] = []
     tasks_dir = repo_root / DIR_WORKFLOW / DIR_TASKS
-    if tasks_dir.is_dir():
-        # The archive copy.
-        archive_dir = tasks_dir / DIR_ARCHIVE
+    if not tasks_dir.is_dir():
+        return paths
+
+    archive_dir = tasks_dir / DIR_ARCHIVE
+
+    if task_name is not None:
+        # Narrow scope — only paths that still exist on disk (so
+        # `git add` doesn't choke on the moved-away source). The caller
+        # handles the source-side deletes via `git rm --cached`
+        # explicitly.
         if archive_dir.is_dir():
-            paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{DIR_ARCHIVE}")
-        # Active tasks (some may have been re-touched, e.g. parent's
-        # children list). This captures the source-path deletion too because
-        # `git add` on a directory records removals.
-        for child in sorted(tasks_dir.iterdir()):
-            if not child.is_dir():
-                continue
-            if child.name == DIR_ARCHIVE:
-                continue
-            paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{child.name}")
+            paths.append(
+                f"{DIR_WORKFLOW}/{DIR_TASKS}/{DIR_ARCHIVE}"
+            )
+        for child_name in modified_children or []:
+            paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{child_name}")
+        return paths
+
+    # Legacy wide scope (no task_name): preserve old behavior so callers
+    # that have not been updated keep working.
+    if archive_dir.is_dir():
+        paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{DIR_ARCHIVE}")
+    for child in sorted(tasks_dir.iterdir()):
+        if not child.is_dir():
+            continue
+        if child.name == DIR_ARCHIVE:
+            continue
+        paths.append(f"{DIR_WORKFLOW}/{DIR_TASKS}/{child.name}")
     return paths
 
 
@@ -145,20 +180,18 @@ def _stderr_indicates_ignored(stderr: str) -> bool:
 def safe_git_add(
     paths: list[str], repo_root: Path
 ) -> tuple[bool, bool, str]:
-    """Run `git add` on specific paths, retrying with -f if .gitignore blocks.
+    """Run `git add` on specific paths; never retry with -f.
 
-    Returns (success, used_force, stderr). On success, callers should still
-    `git diff --cached` to detect whether anything was actually staged.
+    Returns ``(success, used_force, stderr)``. The ``used_force`` field is
+    kept for signature compatibility with the 0.5.10 implementation but is
+    always ``False`` — we never auto-force.
 
     Behavior:
       - No paths passed → success, no force, empty stderr.
-      - Plain `git add <paths>` succeeds → return.
-      - Plain fails with "ignored by" → retry with `git add -f <paths>`.
-      - Retry succeeds → return success with used_force=True.
-      - Retry fails → return failure; caller should print the gitignore
-        warning (see :func:`print_gitignore_warning`).
-      - Plain fails with a non-ignored error → return failure; do NOT retry
-        with -f (we only force when ignore is the cause).
+      - Plain ``git add -- <paths>`` succeeds → return success.
+      - Plain fails (any reason — ignored or otherwise) → return failure with
+        the stderr. Callers should inspect the stderr (see
+        :func:`print_gitignore_warning`) and skip the auto-commit.
     """
     if not paths:
         return True, False, ""
@@ -166,14 +199,7 @@ def safe_git_add(
     rc, _, err = run_git(["add", "--", *paths], cwd=repo_root)
     if rc == 0:
         return True, False, ""
-
-    if not _stderr_indicates_ignored(err):
-        return False, False, err
-
-    rc2, _, err2 = run_git(["add", "-f", "--", *paths], cwd=repo_root)
-    if rc2 == 0:
-        return True, True, err2 or err
-    return False, True, err2 or err
+    return False, False, err
 
 
 def print_gitignore_warning(paths: list[str]) -> None:
@@ -187,6 +213,15 @@ def print_gitignore_warning(paths: list[str]) -> None:
         "[WARN] git add failed because .trellis/ paths are ignored by your .gitignore.",
         file=sys.stderr,
     )
+    print(
+        "[WARN] Skipping auto-commit. The journal/task files were still written to disk;",
+        file=sys.stderr,
+    )
+    print(
+        "[WARN] git was not touched.",
+        file=sys.stderr,
+    )
+    print("[WARN]", file=sys.stderr)
     print(
         "[WARN] Trellis manages these specific paths and they should be tracked:",
         file=sys.stderr,
@@ -218,6 +253,27 @@ def print_gitignore_warning(paths: list[str]) -> None:
     )
     for sub in TRELLIS_IGNORED_SUBPATHS:
         print(f"[WARN]   {sub}", file=sys.stderr)
+    print("[WARN]", file=sys.stderr)
+    print(
+        "[WARN] Or, if you intentionally keep .trellis/ local-only, set in",
+        file=sys.stderr,
+    )
+    print(
+        "[WARN] .trellis/config.yaml:",
+        file=sys.stderr,
+    )
+    print(
+        "[WARN]   session_auto_commit: false",
+        file=sys.stderr,
+    )
+    print(
+        "[WARN] so the scripts skip git entirely and you can review / commit",
+        file=sys.stderr,
+    )
+    print(
+        "[WARN] manually with `git status` / `git add` / `git commit`.",
+        file=sys.stderr,
+    )
     print("[WARN]", file=sys.stderr)
     print(
         "[WARN] Do NOT use `git add -f .trellis/` — it pulls in backups, worktrees,",

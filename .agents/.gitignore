@@ -1,0 +1,13 @@
+# 忽略 .agents 下所有内容
+*
+
+# 保留 .gitignore
+!.gitignore
+
+# 保留 skills 目录
+!skills/
+!skills/shadcn/
+!skills/shadcn/**
+!skills/trellis-*/
+!skills/trellis-*/**
+!skills/grill-me/
