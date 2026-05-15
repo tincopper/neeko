@@ -259,11 +259,13 @@ impl RemoteTerminalManager {
 
     pub fn close_all_sessions(&self) {
         log_info("[SSH] Closing all sessions...");
-        if let Ok(handles) = self.ssh_handles.lock() {
-            let ids: Vec<String> = handles.keys().cloned().collect();
-            for id in ids {
-                self.close_session(&id);
-            }
+        let ids: Vec<String> = self
+            .ssh_handles
+            .lock()
+            .map(|h| h.keys().cloned().collect())
+            .unwrap_or_default();
+        for id in ids {
+            self.close_session(&id);
         }
         log_info("[SSH] All sessions closed");
     }

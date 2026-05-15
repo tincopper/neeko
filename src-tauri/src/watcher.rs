@@ -117,6 +117,3 @@ fn log_info(msg: &str) {
     log::info!("{}", msg);
 }
 
-fn log_error(msg: &str) {
-    log::error!("{}", msg);
-}
