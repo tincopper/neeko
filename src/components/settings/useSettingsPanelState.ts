@@ -116,6 +116,9 @@ export function useSettingsPanelState({
       terminalFontSize: Math.min(24, Math.max(10, size)),
     });
 
+  const setGpuAcceleration = (enabled: boolean) =>
+    onConfigChange({ ...config, terminalGpuAcceleration: enabled });
+
   const setDiffMode = (diffMode: DiffMode) =>
     onConfigChange({
       ...config,
@@ -384,6 +387,7 @@ export function useSettingsPanelState({
     setDiffMode,
     applyShell,
     applyFont,
+    setGpuAcceleration,
 
     addCustomIde,
     removeCustomIde,

@@ -8,6 +8,7 @@ import { emit } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../../types";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
 import { setupTerminalInput } from "./terminalInput";
+import { tryLoadWebgl } from "./terminalFactory";
 import {
    wslCacheKey,
    wslRebuildCallbacks,
@@ -133,6 +134,7 @@ export default React.memo(function WSLTerminalView({
 
          wrapper.appendChild(element);
          term.open(element);
+         if (config.terminalGpuAcceleration) void tryLoadWebgl(term);
          fitAddon.fit();
 
          const cache: WslTerminalCache = {

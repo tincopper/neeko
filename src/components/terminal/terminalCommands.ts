@@ -50,6 +50,7 @@ export async function switchAgentInTerminal(
   fontFamily: string,
   backendProjectId: string,
   agentCommandOverrides?: Record<string, string>,
+  gpuAcceleration?: boolean,
 ) {
   let resolvedKey = cacheKey;
   if (!terminalWrapperRefs.has(cacheKey)) {
@@ -97,8 +98,10 @@ export async function switchAgentInTerminal(
       fontFamily,
       backendProjectId,
       agentCommandOverrides,
+      undefined,
+      undefined,
+      gpuAcceleration,
     );
-
     requestAnimationFrame(() => {
       newCache.fitAddon.fit();
       if (newCache.sessionId) {

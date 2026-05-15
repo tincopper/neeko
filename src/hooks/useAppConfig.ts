@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: AppConfig = {
    agentSelectorCompactMode: false,
    hiddenAgentIds: [],
    shortcuts: {},
+   terminalGpuAcceleration: false,
 };
 
 
@@ -90,7 +91,8 @@ export function useAppConfig() {
             prev.agentSelectorShowPresetBar === next.agentSelectorShowPresetBar &&
             prev.agentSelectorCompactMode === next.agentSelectorCompactMode &&
             prev.hiddenAgentIds === next.hiddenAgentIds &&
-            prev.shortcuts === next.shortcuts
+            prev.shortcuts === next.shortcuts &&
+            prev.terminalGpuAcceleration === next.terminalGpuAcceleration
          ) return prev;
          return next;
       });
@@ -176,6 +178,10 @@ export function useAppConfig() {
                      saved.shortcuts && typeof saved.shortcuts === "object"
                         ? saved.shortcuts
                         : DEFAULT_CONFIG.shortcuts,
+                  terminalGpuAcceleration:
+                     typeof saved.terminalGpuAcceleration === "boolean"
+                        ? saved.terminalGpuAcceleration
+                        : DEFAULT_CONFIG.terminalGpuAcceleration,
                });
             }
          } catch (e) {

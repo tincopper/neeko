@@ -72,6 +72,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                      onApplyFont={state.applyFont}
                      onShellInputChange={state.setShellInput}
                      onApplyShell={state.applyShell}
+                     gpuAcceleration={config.terminalGpuAcceleration}
+                     onGpuAccelerationChange={state.setGpuAcceleration}
                   />
                );
 
