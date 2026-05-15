@@ -1,9 +1,11 @@
 mod agent;
 mod ai_commit;
+mod browser;
 mod config;
 mod file;
 mod git;
 mod ide;
+mod opener;
 mod project;
 mod remote;
 mod remote_git;
@@ -14,10 +16,12 @@ mod wsl_git;
 
 pub use agent::*;
 pub use ai_commit::*;
+pub use browser::*;
 pub use config::*;
 pub use file::*;
 pub use git::*;
 pub use ide::*;
+pub use opener::*;
 pub use project::*;
 pub use remote::*;
 pub use remote_git::*;
@@ -192,6 +196,17 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::delete_task_config,
             $crate::commands::run_task,
             $crate::commands::stop_task,
+            // --- Browser ---
+            $crate::commands::reveal_in_file_manager,
+            $crate::commands::create_browser_webview,
+            $crate::commands::browser_navigate,
+            $crate::commands::browser_set_bounds,
+            $crate::commands::browser_open_devtools,
+            $crate::commands::browser_close,
+            $crate::commands::browser_set_visible,
+            $crate::commands::browser_go_back,
+            $crate::commands::browser_go_forward,
+            $crate::commands::open_in_default_browser,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,
