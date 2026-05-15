@@ -186,6 +186,23 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   stopTask: () => {
     const { taskState } = get();
+
+    // Mark the tab as Idle before killing the PTY. When close_terminal_session
+    // is called the backend removes the handle, so the watcher thread exits via
+    // the "Handle gone" path without emitting terminal-closed — meaning the
+    // terminalFactory callback never fires and the tab status would be stuck
+    // at "Running" forever. Updating it here ensures runTask() can later
+    // detect the tab as finished and reuse it.
+    if (taskState.sessionId) {
+      const appState = useAppStore.getState();
+      const activeProject = appState.activeProject;
+      if (activeProject) {
+        appState.updateTab(activeProject.id, taskState.sessionId, {
+          status: "Idle",
+        });
+      }
+    }
+
     if (taskState.ptySessionId) {
       invoke("close_terminal_session", {
         sessionId: taskState.ptySessionId,

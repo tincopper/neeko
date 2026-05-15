@@ -80,8 +80,14 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         : null;
 
     // 状态指示器
-    const showRunningDot =
-      tab.data.kind === "terminal" && tab.data.status === "Running";
+    const terminalStatus =
+      tab.data.kind === "terminal" ? tab.data.status : null;
+    // Show a coloured dot for active task terminals:
+    //   Running → green (accent-green)  Failed → red (status-failed)
+    // Idle (normal completion) shows no dot — the task finished cleanly.
+    const showStatusDot = terminalStatus === "Running" || terminalStatus === "Failed";
+    const statusDotColor =
+      terminalStatus === "Running" ? "bg-accent-green" : "bg-status-failed";
     const showDirtyDot =
       tab.data.kind === "file" && tab.data.isDirty;
 
@@ -122,8 +128,8 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           />
         )}
 
-        {showRunningDot && (
-          <span className="w-1.5 h-1.5 rounded-full bg-status-running shrink-0" />
+        {showStatusDot && (
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDotColor}`} />
         )}
         {showDirtyDot && (
           <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />

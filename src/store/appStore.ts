@@ -105,12 +105,25 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
 
   switch (data.kind) {
     case "terminal": {
-      // `in` narrows partial to the only member that has `agentId`: Partial<TerminalTabData>
-      if (!("agentId" in partial)) return data;
+      // Accept partial if it contains any TerminalTabData-specific field.
+      // The previous "agentId" in partial check was too strict — callers that
+      // only update status/rebuildKey (no agentId key) would hit the early
+      // return and silently discard their update.
+      const isTerminalPartial =
+        "agentId" in partial ||
+        "status" in partial ||
+        "taskCommand" in partial ||
+        "taskConfigId" in partial ||
+        "rebuildKey" in partial;
+      if (!isTerminalPartial) return data;
       return {
         kind: "terminal",
         agentId: partial.agentId !== undefined ? partial.agentId : data.agentId,
         status: partial.status !== undefined ? partial.status : data.status,
+        // Preserve task-specific fields so they are never silently dropped
+        taskCommand: partial.taskCommand !== undefined ? partial.taskCommand : data.taskCommand,
+        taskConfigId: partial.taskConfigId !== undefined ? partial.taskConfigId : data.taskConfigId,
+        rebuildKey: partial.rebuildKey !== undefined ? partial.rebuildKey : data.rebuildKey,
       };
     }
     case "file": {

@@ -130,22 +130,23 @@ export async function createTerminalForProject(
 
         // Reflect success/failure in the tab so the UI can show the right indicator
         // and so taskStore.runTask() can decide whether to reuse the tab.
+        // Use the project ID captured at terminal-creation time (backendProjectId)
+        // rather than appState.activeProject — the user may have switched to a
+        // different project while the task was running, making activeProject null
+        // or pointing to the wrong project.
         const appState = useAppStore.getState();
-        const activeProject = appState.activeProject;
-        if (activeProject) {
-          const tabKey = activeProject.id;
-          const pt = appState.tabs[tabKey];
-          const tab = pt?.tabs.find(
-            (t) =>
-              t.data.kind === "terminal" &&
-              t.data.taskConfigId === taskConfigId &&
-              t.data.status === "Running",
-          );
-          if (tab) {
-            appState.updateTab(tabKey, tab.id, {
-              status: exitCode === 0 ? "Idle" : "Failed",
-            });
-          }
+        const tabKey = backendProjectId;
+        const pt = appState.tabs[tabKey];
+        const tab = pt?.tabs.find(
+          (t) =>
+            t.data.kind === "terminal" &&
+            t.data.taskConfigId === taskConfigId &&
+            t.data.status === "Running",
+        );
+        if (tab) {
+          appState.updateTab(tabKey, tab.id, {
+            status: exitCode === 0 ? "Idle" : "Failed",
+          });
         }
 
         // Show a dim completion marker at the bottom of the terminal output
