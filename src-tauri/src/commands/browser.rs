@@ -7,14 +7,17 @@ use url::Url;
 /// 固定的浏览器 webview label（单实例）
 const BROWSER_LABEL: &str = "neeko-browser-panel";
 
-/// 校验 URL scheme 是否安全（仅允许 http/https）
+/// 校验 URL scheme 是否安全（允许 http/https/file）
 fn validate_url_scheme(url: &str) -> Result<(), AppError> {
     let trimmed = url.trim();
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+    if trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("file://")
+    {
         Ok(())
     } else {
         Err(AppError::InvalidInput(format!(
-            "URL scheme not allowed (only http/https): {}",
+            "URL scheme not allowed (only http/https/file): {}",
             trimmed
         )))
     }
@@ -279,9 +282,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_url_scheme_file_rejected() {
-        let result = validate_url_scheme("file:///etc/passwd");
-        assert!(result.is_err());
+    fn test_validate_url_scheme_file_allowed() {
+        let result = validate_url_scheme("file:///C:/test.html");
+        assert!(result.is_ok());
     }
 
     #[test]

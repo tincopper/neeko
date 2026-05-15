@@ -111,7 +111,7 @@ export function setupTerminalLinks(term: Terminal, projectPath: string): void {
   try {
     (term as any).options.linkHandler = {
       activate(_event: MouseEvent, text: string, _range: any) {
-        if (text.startsWith("http://") || text.startsWith("https://")) {
+        if (text.startsWith("http://") || text.startsWith("https://") || text.startsWith("file://")) {
           openInEmbeddedBrowser(text);
         }
       },
