@@ -1,7 +1,6 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
@@ -17,6 +16,14 @@ import {
 import type { TerminalCache } from "./terminalTypes";
 import { setupTerminalInput } from "./terminalInput";
 
+/** 按需加载 WebGL 渲染器，失败时静默回退到 Canvas */
+export async function tryLoadWebgl(term: Terminal): Promise<void> {
+  try {
+    const { WebglAddon } = await import("@xterm/addon-webgl");
+    term.loadAddon(new WebglAddon());
+  } catch { /* GPU 不可用 */ }
+}
+
 export async function createTerminalForProject(
   cacheKey: string,
   projectPath: string,
@@ -30,6 +37,7 @@ export async function createTerminalForProject(
   _agentCommandOverrides?: Record<string, string>,
   taskCommand?: string,
   taskConfigId?: string,
+  gpuAcceleration?: boolean,
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
@@ -56,7 +64,7 @@ export async function createTerminalForProject(
 
   wrapper.appendChild(element);
   term.open(element);
-  try { term.loadAddon(new WebglAddon()); } catch { /* GPU 不可用,回退 Canvas */ }
+  if (gpuAcceleration) await tryLoadWebgl(term);
   fitAddon.fit();
   const initCols = term.cols;
   const initRows = term.rows;

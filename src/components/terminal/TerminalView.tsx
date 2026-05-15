@@ -164,6 +164,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             undefined,
             taskCommand ?? undefined,
             taskConfigId ?? undefined,
+            config.terminalGpuAcceleration,
          ).then((cache) => {
             if (currentCacheKeyRef.current !== cacheKey) {
                return;
