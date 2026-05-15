@@ -1,0 +1,8 @@
+{
+  "pathAccess": {
+    "allowedPaths": [
+      "/var/folders/q5/2_9zkf1d2wn2q3_lf77x6j8c0000gn/T/",
+      "/dev/"
+    ]
+  }
+}

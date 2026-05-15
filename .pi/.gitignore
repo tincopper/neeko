@@ -1,0 +1,42 @@
+# 忽略 .pi 下所有内容
+*
+
+# 保留 .gitignore
+!.gitignore
+
+# 保留 trellis agents
+!agents/
+!agents/trellis-*.md
+
+# 保留 trellis extension
+!extensions/
+!extensions/guardrails.json
+!extensions/guardrails.v0.json
+!extensions/trellis/
+!extensions/trellis/**
+
+# 保留 trellis prompts
+!prompts/
+!prompts/trellis-*.md
+
+# 保留 settings.json
+!settings.json
+
+# 保留 skills
+!skills/
+!skills/code-walkthrough/
+!skills/code-walkthrough/**
+!skills/grill-me/
+!skills/grill-me/**
+!skills/html-effectiveness/
+!skills/html-effectiveness/**
+!skills/tdd/
+!skills/tdd/**
+!skills/trellis-*/
+!skills/trellis-*/**
+!skills/ui-ux-pro-max/
+!skills/ui-ux-pro-max/**
+!skills/xterm-js/
+!skills/xterm-js/**
+!skills/zoom-out/
+!skills/zoom-out/**

@@ -10,16 +10,16 @@ build/
 .vscode/
 .idea/
 .opencode/
-.claude/
-.agents/
-.codex
+#.claude
+#.agents
+#.codex
 .superset
 .gemini
 .cursor
 *.swp
 *.swo
 .snow
-.pi
+#.pi
 .pnpm-store
 
 # OS
