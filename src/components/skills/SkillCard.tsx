@@ -85,7 +85,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                <DropdownMenuTrigger asChild>
                   <button
                      className="p-1 text-text-muted hover:text-accent rounded"
-                     title="操作菜单"
+                     title="Actions"
                   >
                      <MoreHorizontal className="h-4 w-4" />
                   </button>
@@ -96,21 +96,21 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                      onSelect={() => handleAction("edit")}
                   >
                      <Edit3 className="h-3 w-3" />
-                     编辑
+                      Edit
                   </DropdownMenuItem>
                   <DropdownMenuItem
                      className="flex items-center gap-2 cursor-pointer"
                      onSelect={() => handleAction("detail")}
                   >
                      <FileText className="h-3 w-3" />
-                     查看
+                      View
                   </DropdownMenuItem>
                   <DropdownMenuItem
                      className="flex items-center gap-2 cursor-pointer text-red-400"
                      onSelect={() => handleAction("delete")}
                   >
                      <Trash2 className="h-3 w-3" />
-                     删除
+                      Delete
                   </DropdownMenuItem>
                </DropdownMenuContent>
             </DropdownMenu>
@@ -137,7 +137,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
          {/* CardFooter: 来源 + agents 图标 + 启用状态 */}
          <CardFooter className="p-3 pt-0 items-center">
             <Badge variant="default" className="text-[10px] px-1.5 py-0">
-               {skill.source_type === "local" ? "📦 本地" : skill.source_type}
+                {skill.source_type === "local" ? "📦 Local" : skill.source_type}
             </Badge>
 
             <div className="flex items-center gap-0.5 mx-2">
@@ -152,7 +152,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                   )}
                />
                <span className="text-[10px] text-text-muted">
-                  {skill.enabled ? "已启用" : "已禁用"}
+                   {skill.enabled ? "Enabled" : "Disabled"}
                </span>
             </div>
          </CardFooter>

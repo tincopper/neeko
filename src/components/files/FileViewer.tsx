@@ -262,7 +262,7 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
                   <FileCode size={48} className="mx-auto mb-3 opacity-30" />
-                  <p>二进制文件 — 无法显示</p>
+                   <p>Binary file — cannot be displayed</p>
                   <p className="text-xs mt-1 opacity-60">{formatFileSize(tab.content.size)}</p>
                </div>
             </div>
@@ -289,7 +289,7 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
                   <FileCode size={48} className="mx-auto mb-3 opacity-30" />
-                  <p>文件过大，无法编辑（&gt; 500 KB）</p>
+                   <p>File too large to edit (&gt; 500 KB)</p>
                   <p className="text-xs mt-1 opacity-60">{formatFileSize(tab.content.size)}</p>
                </div>
             </div>

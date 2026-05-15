@@ -218,7 +218,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <p className="text-[var(--font-size)] text-text-secondary text-center">
-          请选择一个项目以浏览文件
+          Select a project to browse files
         </p>
       </div>
     );

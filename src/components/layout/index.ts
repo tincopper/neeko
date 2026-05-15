@@ -8,3 +8,4 @@ export { default as AgentIcon } from "./AgentIcon";
 export { default as UnifiedTabBar } from "./UnifiedTabBar";
 export { default as UnifiedTabItem } from "./UnifiedTabItem";
 export { default as PanelArea } from "./PanelArea";
+export { default as OpenIdeButton } from "./OpenIdeButton";
