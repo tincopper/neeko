@@ -425,7 +425,9 @@ fn spawn_watcher_thread(
                         sessions.remove(&watch_id);
                     }
                     let close_event = format!("terminal-closed-{}", watch_id);
-                    if let Err(e) = watch_handle.emit(&close_event, TerminalClosedPayload { exit_code: code }) {
+                    if let Err(e) =
+                        watch_handle.emit(&close_event, TerminalClosedPayload { exit_code: code })
+                    {
                         log_error(&format!(
                             "{}-WATCHER Failed to emit close event: {}",
                             prefix_w, e

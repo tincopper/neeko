@@ -79,11 +79,13 @@ describe("SettingsPanel", () => {
 
       it("显示当前编辑器字号", () => {
          renderPanel({ editorFontSize: 16 });
+         fireEvent.click(screen.getByRole("button", { name: "Editor" }));
          expect(screen.getByText("16px")).toBeInTheDocument();
       });
 
       it("中间值可以正常增减", () => {
          const { onConfigChange } = renderPanel({ editorFontSize: 14 });
+         fireEvent.click(screen.getByRole("button", { name: "Editor" }));
          fireEvent.click(screen.getByText("+"));
          expect(onConfigChange).toHaveBeenCalledWith(
             expect.objectContaining({ editorFontSize: 15 })
@@ -93,6 +95,7 @@ describe("SettingsPanel", () => {
       it("字号被 clamp 在 10-24 范围", () => {
          // editorFontSize=11 时减 1 应该得到 10
          const { onConfigChange } = renderPanel({ editorFontSize: 11 });
+         fireEvent.click(screen.getByRole("button", { name: "Editor" }));
          fireEvent.click(screen.getByText("\u2212"));
          expect(onConfigChange).toHaveBeenCalledWith(
             expect.objectContaining({ editorFontSize: 10 })
@@ -101,6 +104,7 @@ describe("SettingsPanel", () => {
 
       it("字号上限 clamp 到 24", () => {
          const { onConfigChange } = renderPanel({ editorFontSize: 23 });
+         fireEvent.click(screen.getByRole("button", { name: "Editor" }));
          fireEvent.click(screen.getByText("+"));
          expect(onConfigChange).toHaveBeenCalledWith(
             expect.objectContaining({ editorFontSize: 24 })
