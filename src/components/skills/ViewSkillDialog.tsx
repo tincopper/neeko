@@ -102,7 +102,11 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
             </div>
           ) : (
             <div className="p-4">
-              <MarkdownPreview content={content} theme={config.theme} />
+              <MarkdownPreview
+                content={content}
+                theme={config.theme}
+                basePath={skill?.central_path}
+              />
             </div>
           )}
         </div>

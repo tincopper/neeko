@@ -42,6 +42,7 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
 function FileViewer() {
    const { config } = useAppContext();
    const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const activeProject = useAppStore((state) => state.activeProject);
    const activeWslProject = useAppStore((state) => state.activeWslProject);
    const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
    const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
@@ -101,6 +102,11 @@ function FileViewer() {
       );
    }
 
+   const projectPath = activeProject?.path
+      ?? activeWslProject?.project.path
+      ?? activeRemoteProject?.project.path
+      ?? null;
+
    return (
       <div className="flex flex-col h-full">
          <FileEditor
@@ -109,6 +115,7 @@ function FileViewer() {
             theme={theme}
             fontFamily={fontFamily}
             fontSize={fontSize}
+            projectPath={projectPath}
             onSave={onSave}
             onContentChange={onContentChange}
          />
@@ -122,11 +129,12 @@ interface FileEditorProps {
    theme: AppTheme;
    fontFamily: string;
    fontSize: number;
+   projectPath: string | null;
    onSave: (content: string) => Promise<boolean>;
    onContentChange: (tabId: string, content: string) => void;
 }
 
-function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange }: FileEditorProps) {
+function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
    const [markdownMode, setMarkdownMode] = useState<MarkdownMode>("preview");
    const [isSaving, setIsSaving] = useState(false);
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
@@ -134,6 +142,16 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
    const isMd = isMarkdownFile(tab.filePath);
    const isHtml = isHtmlFile(tab.filePath);
    const currentContent = tab.content.content;
+
+   const basePath = useMemo(() => {
+      if (!projectPath) return undefined;
+      const root = projectPath.replace(/\\/g, "/");
+      const fileDir = tab.filePath.replace(/\\/g, "/");
+      const lastSlash = fileDir.lastIndexOf("/");
+      return lastSlash >= 0
+         ? `${root}/${fileDir.substring(0, lastSlash)}`
+         : root;
+   }, [projectPath, tab.filePath]);
 
    // Load language extension lazily
    useEffect(() => {
@@ -318,7 +336,11 @@ function FileEditor({ tab, theme, fontFamily, fontSize, onSave, onContentChange 
          <div className="flex-1 min-h-0 overflow-hidden">
             {showPreview ? (
                <div className="h-full overflow-y-auto px-6 py-4">
-                  <MarkdownPreview content={currentContent} theme={theme} />
+                  <MarkdownPreview
+                     content={currentContent}
+                     theme={theme}
+                     basePath={basePath}
+                  />
                </div>
             ) : (
                <CodeMirror
