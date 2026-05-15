@@ -3,12 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import type { AuthMethod, AgentConfig } from "../../types";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
 import { setupTerminalInput } from "./terminalInput";
+import { tryLoadWebgl } from "./terminalFactory";
 import {
   remoteCacheKey,
   remoteRebuildCallbacks,
@@ -16,7 +16,7 @@ import {
   remoteWrapperRefs,
   type RemoteTerminalCache,
 } from "./terminalCache";
-import { useEditorContext } from "../../contexts";
+import { useAppContext, useEditorContext } from "../../contexts";
 
 interface RemoteTerminalViewProps {
   entryId: string;
@@ -54,6 +54,7 @@ export default React.memo(function RemoteTerminalView({
   paneId = "p1",
   cacheKeySuffix = "",
 }: RemoteTerminalViewProps) {
+  const { config } = useAppContext();
   const { activeTabId, tabs } = useEditorContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -141,7 +142,7 @@ export default React.memo(function RemoteTerminalView({
 
       wrapper.appendChild(element);
       term.open(element);
-      try { term.loadAddon(new WebglAddon()); } catch { /* GPU 不可用,回退 Canvas */ }
+      if (config.terminalGpuAcceleration) void tryLoadWebgl(term);
       fitAddon.fit();
 
       const cache: RemoteTerminalCache = {

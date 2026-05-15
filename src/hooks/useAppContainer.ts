@@ -162,6 +162,7 @@ export function useAppContainer(): UseAppContainerResult {
       fontSize: config.terminalFontSize ?? 14,
       shell: config.shell ?? "",
       fontFamily: config.fontFamily ?? "",
+      gpuAcceleration: config.terminalGpuAcceleration ?? false,
     },
     agentCommandOverrides: config.agentCommandOverrides,
     handleOpenIde,
