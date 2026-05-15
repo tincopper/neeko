@@ -949,3 +949,38 @@ feat(git): add git log viewer with commit detail panel, fix UI consistency acros
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: Markdown 图片预览修复 + 代码质量修复
+
+**Date**: 2026-05-15
+**Task**: Markdown 图片预览修复 + 代码质量修复
+**Branch**: `main`
+
+### Summary
+
+归档 05-14-task-runner 任务；修复 rustfmt 格式问题和 SettingsPanel 测试失败；实现 markdown 图片本地路径解析（通过 Tauri asset 协议）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `047fc42` | (see git log) |
+| `75be856` | (see git log) |
+| `6273e22` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
