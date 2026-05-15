@@ -48,7 +48,7 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   }, [url]);
 
   return (
-    <div className="flex items-center gap-1 h-8 px-2 border-b border-border bg-bg-secondary shrink-0">
+    <div className="flex items-center gap-1 h-8 px-2 bg-bg-secondary shrink-0">
       {/* 后退 */}
       <button onClick={onGoBack} disabled={!url} className={BTN} title="Back">
         <ArrowLeft size={12} />
