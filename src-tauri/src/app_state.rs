@@ -14,21 +14,6 @@ pub struct AppStateWrapper {
     pub skill_store: Arc<skill::skill_store::SkillStore>,
 }
 
-impl Clone for AppStateWrapper {
-    fn clone(&self) -> Self {
-        AppStateWrapper {
-            project_manager: Mutex::new(project::ProjectManager::new()),
-            terminal_manager: self.terminal_manager.clone(),
-            remote_terminal_manager: self.remote_terminal_manager.clone(),
-            agent_manager: Mutex::new(agent::AgentManager::new()),
-            storage_manager: storage::StorageManager::new().unwrap(),
-            active_project_id: Mutex::new(None),
-            watcher_manager: self.watcher_manager.clone(),
-            skill_store: self.skill_store.clone(),
-        }
-    }
-}
-
 impl AppStateWrapper {
     pub fn shutdown_background_and_exit(&self) {
         let terminal_manager = self.terminal_manager.clone();
