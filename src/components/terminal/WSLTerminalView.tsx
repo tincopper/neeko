@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../../types";
@@ -133,6 +134,7 @@ export default React.memo(function WSLTerminalView({
 
          wrapper.appendChild(element);
          term.open(element);
+         try { term.loadAddon(new WebglAddon()); } catch { /* GPU 不可用,回退 Canvas */ }
          fitAddon.fit();
 
          const cache: WslTerminalCache = {
