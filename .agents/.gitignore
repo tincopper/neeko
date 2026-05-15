@@ -1,0 +1,26 @@
+# 忽略 .agents 下所有内容
+*
+
+# 保留 .gitignore
+!.gitignore
+
+# 保留 skills 目录
+!skills/
+!skills/code-walkthrough/
+!skills/code-walkthrough/**
+!skills/grill-me/
+!skills/grill-me/**
+!skills/html-effectiveness/
+!skills/html-effectiveness/**
+!skills/shadcn/
+!skills/shadcn/**
+!skills/tdd/
+!skills/tdd/**
+!skills/trellis-*/
+!skills/trellis-*/**
+!skills/ui-ux-pro-max/
+!skills/ui-ux-pro-max/**
+!skills/xterm-js/
+!skills/xterm-js/**
+!skills/zoom-out/
+!skills/zoom-out/**
