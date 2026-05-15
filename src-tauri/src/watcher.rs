@@ -17,14 +17,15 @@ struct WatcherHandle {
     stop_signal: Arc<AtomicBool>,
 }
 
+#[derive(Clone)]
 pub struct WatcherManager {
-    watchers: Mutex<HashMap<String, WatcherHandle>>,
+    watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
 }
 
 impl WatcherManager {
     pub fn new() -> Self {
         Self {
-            watchers: Mutex::new(HashMap::new()),
+            watchers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -100,4 +101,22 @@ impl WatcherManager {
             watchers.remove(project_id);
         }
     }
+
+    pub fn stop_all(&self) {
+        log_info("[Watcher] Stopping all watchers...");
+        if let Ok(mut watchers) = self.watchers.lock() {
+            for (_id, watcher) in watchers.drain() {
+                watcher.stop_signal.store(true, Ordering::Relaxed);
+            }
+        }
+        log_info("[Watcher] All watchers stopped");
+    }
+}
+
+fn log_info(msg: &str) {
+    log::info!("{}", msg);
+}
+
+fn log_error(msg: &str) {
+    log::error!("{}", msg);
 }
