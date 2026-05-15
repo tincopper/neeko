@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 26
-- **Last Active**: 2026-05-10
+- **Total Sessions**: 27
+- **Last Active**: 2026-05-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~951 | Active |
+| `journal-1.md` | ~986 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 27 | 2026-05-15 | Markdown 图片预览修复 + 代码质量修复 | `047fc42`, `75be856`, `6273e22` | `main` |
 | 26 | 2026-05-10 | Dock Layout Design & Git Log Viewer | `0567e22`, `b5c93eb`, `fbfbbea`, `545e1c3`, `5590d1d` | `feature/dock-layout-design` |
 | 25 | 2026-05-08 | unified tab system + fix PTY leak on project switch | `f168600`, `b801923` | `main` |
 | 24 | 2026-05-08 | 统一Tab系统 + 修复项目切换PTY泄漏 | `f168600`, `b801923` | `main` |
