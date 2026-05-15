@@ -4,7 +4,19 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import plantumlEncoder from "plantuml-encoder";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AppTheme } from "../../types";
+
+function resolveImageSrc(src: string, basePath?: string): string {
+  if (/^(https?:|data:|blob:|asset:)\/?\//i.test(src)) return src;
+  if (!basePath) return src;
+  if (/^([a-zA-Z]:[/\\]|\/)/.test(src)) {
+    return convertFileSrc(src.replace(/\\/g, "/"));
+  }
+  const normalized = src.replace(/^\.\//, "").replace(/\\/g, "/");
+  const base = basePath.replace(/\\/g, "/").replace(/\/$/, "");
+  return convertFileSrc(`${base}/${normalized}`);
+}
 
 // -- Sub-components --
 
@@ -112,9 +124,10 @@ function PlantUMLBlock({ code }: PlantUMLBlockProps) {
 interface ImageBlockProps {
   src?: string;
   alt?: string;
+  basePath?: string;
 }
 
-function ImageBlock({ src, alt }: ImageBlockProps) {
+function ImageBlock({ src, alt, basePath }: ImageBlockProps) {
   const [overlay, setOverlay] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
@@ -122,12 +135,17 @@ function ImageBlock({ src, alt }: ImageBlockProps) {
     if (e.key === "Escape") setOverlay(false);
   }, []);
 
+  const resolvedSrc = useMemo(() => {
+    if (!src) return "";
+    return resolveImageSrc(src, basePath);
+  }, [src, basePath]);
+
   const isSvg = useMemo(() => {
     if (!src) return false;
     return src.endsWith(".svg") || src.startsWith("data:image/svg");
   }, [src]);
 
-  if (!src) return null;
+  if (!resolvedSrc) return null;
 
   if (loadError) {
     return (
@@ -140,7 +158,7 @@ function ImageBlock({ src, alt }: ImageBlockProps) {
   return (
     <>
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt || ""}
         className="max-w-full rounded cursor-pointer transition-opacity hover:opacity-80"
         style={isSvg ? { width: "100%" } : undefined}
@@ -157,7 +175,7 @@ function ImageBlock({ src, alt }: ImageBlockProps) {
           aria-label="Close image preview"
         >
           <img
-            src={src}
+            src={resolvedSrc}
             alt={alt || ""}
             className="max-w-[90vw] max-h-[90vh] object-contain rounded"
           />
@@ -173,6 +191,7 @@ interface MarkdownPreviewProps {
   content: string;
   theme: AppTheme;
   className?: string;
+  basePath?: string;
 }
 
 function extractCodeText(children: React.ReactNode): string {
@@ -189,7 +208,7 @@ function extractCodeText(children: React.ReactNode): string {
   return "";
 }
 
-function MarkdownPreviewImpl({ content, theme, className }: MarkdownPreviewProps) {
+function MarkdownPreviewImpl({ content, theme, className, basePath }: MarkdownPreviewProps) {
   return (
     <div className={`markdown-preview${className ? ` ${className}` : ""}`}>
       <ReactMarkdown
@@ -225,7 +244,7 @@ function MarkdownPreviewImpl({ content, theme, className }: MarkdownPreviewProps
             );
           },
           img({ src, alt }) {
-            return <ImageBlock src={src} alt={alt} />;
+            return <ImageBlock src={src} alt={alt} basePath={basePath} />;
           },
           a({ href, children, ...props }) {
             const isExternal = href && /^(https?:)?\/\//.test(href);
