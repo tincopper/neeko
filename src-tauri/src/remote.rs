@@ -19,6 +19,7 @@ struct SSHHandle {
     app_handle: tauri::AppHandle,
 }
 
+#[derive(Clone)]
 pub struct RemoteTerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     ssh_handles: Arc<Mutex<HashMap<String, SSHHandle>>>,
@@ -254,6 +255,17 @@ impl RemoteTerminalManager {
             }
         }
         Ok(())
+    }
+
+    pub fn close_all_sessions(&self) {
+        log_info("[SSH] Closing all sessions...");
+        if let Ok(handles) = self.ssh_handles.lock() {
+            let ids: Vec<String> = handles.keys().cloned().collect();
+            for id in ids {
+                self.close_session(&id);
+            }
+        }
+        log_info("[SSH] All sessions closed");
     }
 
     pub fn close_session(&self, session_id: &str) {
