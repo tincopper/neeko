@@ -165,7 +165,7 @@ const CommitList: React.FC<CommitListProps> = ({
                            </span>
                            <button
                              className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
-                             title="复制 commit hash"
+                              title="Copy commit hash"
                              onClick={(e) => {
                                e.stopPropagation();
                                navigator.clipboard.writeText(commit.hash);
@@ -175,7 +175,7 @@ const CommitList: React.FC<CommitListProps> = ({
                            </button>
                            <button
                              className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
-                             title="更多操作"
+                              title="More actions"
                              onClick={(e) => {
                                e.stopPropagation();
                                setMenuOpen(menuOpen === commit.hash ? null : commit.hash);
@@ -266,7 +266,7 @@ const CommitList: React.FC<CommitListProps> = ({
                       className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
                       onClick={handleInputConfirm}
                       disabled={!inputValue.trim()}
-                      title="确认"
+                      title="Confirm"
                     >
                       <Check size={11} />
                     </button>
@@ -276,7 +276,7 @@ const CommitList: React.FC<CommitListProps> = ({
                         setActionState(null);
                         setInputValue("");
                       }}
-                      title="取消"
+                      title="Cancel"
                     >
                       ESC
                     </button>

@@ -40,7 +40,7 @@ function MermaidBlock({ code, theme }: MermaidBlockProps) {
       })
       .catch((err: Error) => {
         if (cancelledRef.current) return;
-        setError(err.message || "Mermaid 渲染失败");
+        setError(err.message || "Mermaid rendering failed");
       });
 
     return () => {
@@ -51,7 +51,7 @@ function MermaidBlock({ code, theme }: MermaidBlockProps) {
   if (error) {
     return (
       <div className="my-4 p-3 rounded border border-accent-red/30 bg-accent-red/10 text-accent-red text-sm">
-        Mermaid 渲染失败: {error}
+         Mermaid rendering failed: {error}
       </div>
     );
   }
@@ -84,7 +84,7 @@ function PlantUMLBlock({ code }: PlantUMLBlockProps) {
   if (!url) {
     return (
       <div className="my-4 p-3 rounded border border-accent-red/30 bg-accent-red/10 text-accent-red text-sm">
-        PlantUML 编码失败
+         PlantUML encoding failed
       </div>
     );
   }
@@ -92,7 +92,7 @@ function PlantUMLBlock({ code }: PlantUMLBlockProps) {
   if (hasError) {
     return (
       <div className="my-4 p-3 rounded border border-accent-yellow/30 bg-accent-yellow/10 text-accent-yellow text-sm">
-        PlantUML 图表加载失败
+         PlantUML diagram failed to load
       </div>
     );
   }
@@ -132,7 +132,7 @@ function ImageBlock({ src, alt }: ImageBlockProps) {
   if (loadError) {
     return (
       <span className="inline-block text-text-muted text-sm italic">
-        {alt || "图片加载失败"}
+        {alt || "Image failed to load"}
       </span>
     );
   }
@@ -154,7 +154,7 @@ function ImageBlock({ src, alt }: ImageBlockProps) {
           onKeyDown={handleKeyDown}
           role="button"
           tabIndex={0}
-          aria-label="关闭图片预览"
+          aria-label="Close image preview"
         >
           <img
             src={src}

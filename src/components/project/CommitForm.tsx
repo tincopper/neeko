@@ -54,7 +54,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
 
   const aiDisabled = loading || aiGenerating || !canAiGenerate;
   const aiTooltip = !canAiGenerate
-    ? "请先为项目选择 Agent（右键项目 > 选择 Agent）"
+    ? "Please select an Agent for the project first (right-click project > Select Agent)"
     : undefined;
 
   return (

@@ -131,7 +131,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                       <button
                         type="button"
                         className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-text-primary"
-                        title="选择文件夹"
+                        title="Select folder"
                         onClick={() => onSelectSkillPath(agent.id, agent.skillPath)}
                       >
                         <FolderIcon size={14} />
@@ -142,7 +142,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                       <button
                         type="button"
                         className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue"
-                        title="选择文件夹"
+                        title="Select folder"
                         onClick={() => onSelectSkillPath(agent.id, agent.skillPath)}
                       >
                         <FolderIcon size={14} />
@@ -152,7 +152,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                           "text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover",
                           !hasSkillPath && "italic",
                         )}
-                        title="点击编辑"
+                        title="Click to edit"
                         onClick={() =>
                           onStartEditSkillPath(
                             agent.id,

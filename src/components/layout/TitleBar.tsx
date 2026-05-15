@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from "react";
 import WindowControls from "./WindowControls";
 import TaskRunButton from "./TaskRunButton";
+import OpenIdeButton from "./OpenIdeButton";
 import TitleBarBranchSwitcher from "./TitleBarBranchSwitcher";
 import GitDialog from "../project/GitDialog";
 import type { DialogState } from "../project/GitDialog";
@@ -159,8 +160,9 @@ function TitleBar({
             {/* Center spacer (draggable) */}
             <div className="flex-1" data-tauri-drag-region />
 
-            {/* Right: TaskRunButton + WindowControls */}
+            {/* Right: OpenIdeButton + TaskRunButton + WindowControls */}
             <div className="flex items-center gap-2 shrink-0 px-2">
+               <OpenIdeButton />
                <TaskRunButton />
                {!IS_MACOS && <WindowControls />}
             </div>
