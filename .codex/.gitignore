@@ -1,0 +1,17 @@
+# 忽略 .codex 下所有内容
+*
+
+# 保留 .gitignore
+!.gitignore
+
+# 保留 trellis agents
+!agents/
+!agents/trellis-*.toml
+
+# 保留 hooks
+!hooks/
+!hooks/**
+
+# 保留配置文件
+!config.toml
+!hooks.json
