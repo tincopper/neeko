@@ -1,7 +1,7 @@
 import React from "react";
 import { PRESET_SHELLS } from "./constants";
 import { cn } from "../../utils/cn";
-import { Input } from "../ui";
+import { Input, Switch } from "../ui";
 
 interface TerminalPanelProps {
   terminalFontSize: number;
@@ -19,6 +19,8 @@ interface TerminalPanelProps {
   onApplyFont: (font: string) => void;
   onShellInputChange: (value: string) => void;
   onApplyShell: (value: string) => void;
+  gpuAcceleration: boolean;
+  onGpuAccelerationChange: (enabled: boolean) => void;
 }
 
 const TerminalPanel: React.FC<TerminalPanelProps> = ({
@@ -37,6 +39,8 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onApplyFont,
   onShellInputChange,
   onApplyShell,
+  gpuAcceleration,
+  onGpuAccelerationChange,
 }) => {
   return (
     <>
@@ -206,6 +210,22 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             }
           }}
           spellCheck={false}
+        />
+      </div>
+
+      <div className="flex items-center justify-between py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
+            GPU Acceleration
+          </div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            Use WebGL to render the terminal. May improve performance but can cause
+            issues on some systems. Takes effect on the next terminal session.
+          </div>
+        </div>
+        <Switch
+          checked={gpuAcceleration}
+          onCheckedChange={onGpuAccelerationChange}
         />
       </div>
     </>

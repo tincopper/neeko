@@ -8,6 +8,7 @@ interface TerminalSettings {
   fontSize: number;
   shell: string;
   fontFamily: string;
+  gpuAcceleration: boolean;
 }
 
 interface UseAgentActionsParams {
@@ -74,12 +75,13 @@ export function useAgentActions({
         terminal.fontFamily,
         currentActiveProject.id,
         agentCommandOverrides,
+        terminal.gpuAcceleration,
       );
       return;
     }
 
     setTimeout(() => refreshTerminal(currentActiveProject.id), 50);
-  }, [agentCommandOverrides, terminal.fontFamily, terminal.fontSize, terminal.shell]);
+  }, [agentCommandOverrides, terminal.fontFamily, terminal.fontSize, terminal.shell, terminal.gpuAcceleration]);
 
   const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) {

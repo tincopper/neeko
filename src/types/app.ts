@@ -21,4 +21,5 @@ export interface AppConfig {
   agentSelectorCompactMode: boolean;
   hiddenAgentIds: string[];
   shortcuts: Record<string, string>;
+  terminalGpuAcceleration: boolean;
 }
