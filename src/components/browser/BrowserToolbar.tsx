@@ -31,7 +31,7 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         let finalUrl = inputValue.trim();
-        if (finalUrl && !finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+        if (finalUrl && !finalUrl.startsWith("http://") && !finalUrl.startsWith("https://") && !finalUrl.startsWith("file://")) {
           finalUrl = "https://" + finalUrl;
         }
         if (finalUrl) {

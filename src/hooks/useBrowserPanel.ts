@@ -241,12 +241,25 @@ export function useBrowserPanel() {
     return () => unsubscribe();
   }, [setVisible]);
 
-  // Destroy webview on unmount
+  // On mount: sync isCreatedRef from store and restore webview visibility + bounds
+  useEffect(() => {
+    if (isCreated) {
+      isCreatedRef.current = true;
+      setVisible(true);
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        updateBounds(rect);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Hide webview on unmount instead of destroying it
   useEffect(() => {
     return () => {
-      destroy();
+      setVisible(false);
     };
-  }, [destroy]);
+  }, [setVisible]);
 
   return {
     label,
