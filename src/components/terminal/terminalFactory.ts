@@ -1,4 +1,4 @@
-import { Terminal } from "@xterm/xterm";
+﻿import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
@@ -15,13 +15,14 @@ import {
 } from "./terminalCache";
 import type { TerminalCache } from "./terminalTypes";
 import { setupTerminalInput } from "./terminalInput";
+import { setupTerminalLinks } from "./terminalLinks";
 
-/** 按需加载 WebGL 渲染器，失败时静默回退到 Canvas */
+/** 鎸夐渶鍔犺浇 WebGL 娓叉煋鍣紝澶辫触鏃堕潤榛樺洖閫€鍒?Canvas */
 export async function tryLoadWebgl(term: Terminal): Promise<void> {
   try {
     const { WebglAddon } = await import("@xterm/addon-webgl");
     term.loadAddon(new WebglAddon());
-  } catch { /* GPU 不可用 */ }
+  } catch { /* GPU 涓嶅彲鐢?*/ }
 }
 
 export async function createTerminalForProject(
@@ -66,6 +67,10 @@ export async function createTerminalForProject(
   term.open(element);
   if (gpuAcceleration) await tryLoadWebgl(term);
   fitAddon.fit();
+
+  // Setup terminal link handling (URL -> embedded browser, file paths -> file manager)
+  setupTerminalLinks(term, projectPath);
+
   const initCols = term.cols;
   const initRows = term.rows;
   log(`Initial size: ${initCols}x${initRows}`);
@@ -141,7 +146,7 @@ export async function createTerminalForProject(
         // Reflect success/failure in the tab so the UI can show the right indicator
         // and so taskStore.runTask() can decide whether to reuse the tab.
         // Use the project ID captured at terminal-creation time (backendProjectId)
-        // rather than appState.activeProject — the user may have switched to a
+        // rather than appState.activeProject 鈥?the user may have switched to a
         // different project while the task was running, making activeProject null
         // or pointing to the wrong project.
         const appState = useAppStore.getState();
@@ -170,7 +175,7 @@ export async function createTerminalForProject(
         return;
       }
 
-      // Normal (non-task) terminal: existing behavior — destroy and rebuild
+      // Normal (non-task) terminal: existing behavior 鈥?destroy and rebuild
       const wasExecuted = executedAgentKeys.has(cacheKey);
       destroyTerminalCache(cacheKey);
       if (wasExecuted) {
@@ -203,3 +208,4 @@ export async function getAgentById(agentId: string): Promise<AgentConfig | null>
     return null;
   }
 }
+

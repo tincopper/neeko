@@ -162,7 +162,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             id="right-zone"
             defaultSize="18%"
             minSize="12%"
-            maxSize="35%"
+            maxSize="80%"
             className="py-1 pl-0.5"
           >
             <DockZone zoneId="right" />
