@@ -22,8 +22,7 @@ pub fn create_handler() -> impl Fn(
 ) -> tauri::http::Response<Vec<u8>>
        + Send
        + Sync
-       + 'static
-{
+       + 'static {
     let last_prompt_emit: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     move |ctx, request| {
@@ -67,9 +66,7 @@ fn handle_prompt_submitted(
 
         if should_emit {
             let payload = serde_json::json!({ "prompt": prompt, "html": html });
-            let _ = ctx
-                .app_handle()
-                .emit("browser://prompt-submitted", payload);
+            let _ = ctx.app_handle().emit("browser://prompt-submitted", payload);
         }
     } else {
         log::warn!("[neeko://] prompt-submitted parse failed");
