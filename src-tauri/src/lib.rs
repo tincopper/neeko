@@ -11,6 +11,7 @@ pub mod skill;
 pub mod storage;
 pub mod task_runner;
 pub mod terminal;
+pub mod uri_scheme;
 pub mod utils;
 pub mod watcher;
 
