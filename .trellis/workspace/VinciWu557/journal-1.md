@@ -1466,3 +1466,36 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 38: Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关
+
+**Date**: 2026-05-16
+**Task**: Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+新增两个独立开关控制 neeko 是否写入项目级 agent 配置文件。默认关闭。Rust 后端 4 条写入路径均已门控，前端 AppearancePanel 新增 Switch 开关。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba154ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
