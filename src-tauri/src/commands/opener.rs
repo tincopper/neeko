@@ -19,9 +19,55 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-/// 在系统文件管理器中打开或 reveal 指定路径
+/// 构建在系统文件管理器中 reveal 指定路径的命令（不执行）
 /// - 文件：在文件管理器中选中该文件
 /// - 文件夹：直接打开该文件夹
+fn build_reveal_command(path: &Path) -> Option<Command> {
+    let normalized = normalize_path(&path.to_str().unwrap_or_default());
+
+    #[cfg(target_os = "windows")]
+    {
+        if path.is_dir() {
+            let mut cmd = Command::new("explorer");
+            cmd.arg(&normalized);
+            Some(cmd)
+        } else {
+            let mut cmd = Command::new("explorer");
+            cmd.arg("/select,").arg(&normalized);
+            Some(cmd)
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if path.is_dir() {
+            let mut cmd = Command::new("open");
+            cmd.arg(&normalized);
+            Some(cmd)
+        } else {
+            let mut cmd = Command::new("open");
+            cmd.arg("-R").arg(&normalized);
+            Some(cmd)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if path.is_dir() {
+            let mut cmd = Command::new("xdg-open");
+            cmd.arg(&normalized);
+            Some(cmd)
+        } else {
+            path.parent().map(|parent| {
+                let mut cmd = Command::new("xdg-open");
+                cmd.arg(parent);
+                cmd
+            })
+        }
+    }
+}
+
+/// 在系统文件管理器中打开或 reveal 指定路径
 #[tauri::command]
 pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
     let normalized = normalize_path(&path);
@@ -34,54 +80,9 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
         )));
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        if path.is_dir() {
-            Command::new("explorer")
-                .arg(&normalized)
-                .spawn()
-                .map_err(|e| AppError::Io(format!("Failed to open folder: {}", e)))?;
-        } else {
-            Command::new("explorer")
-                .arg("/select,")
-                .arg(&normalized)
-                .spawn()
-                .map_err(|e| AppError::Io(format!("Failed to reveal file: {}", e)))?;
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        if path.is_dir() {
-            Command::new("open")
-                .arg(&normalized)
-                .spawn()
-                .map_err(|e| AppError::Io(format!("Failed to open folder: {}", e)))?;
-        } else {
-            Command::new("open")
-                .arg("-R")
-                .arg(&normalized)
-                .spawn()
-                .map_err(|e| AppError::Io(format!("Failed to reveal file: {}", e)))?;
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if path.is_dir() {
-            Command::new("xdg-open")
-                .arg(&normalized)
-                .spawn()
-                .map_err(|e| AppError::Io(format!("Failed to open folder: {}", e)))?;
-        } else {
-            // xdg-open 没有 "reveal" 功能，打开父目录
-            if let Some(parent) = path.parent() {
-                Command::new("xdg-open")
-                    .arg(parent)
-                    .spawn()
-                    .map_err(|e| AppError::Io(format!("Failed to open folder: {}", e)))?;
-            }
-        }
+    if let Some(mut cmd) = build_reveal_command(path) {
+        cmd.spawn()
+            .map_err(|e| AppError::Io(format!("Failed to reveal in file manager: {}", e)))?;
     }
 
     Ok(())
@@ -135,28 +136,63 @@ mod tests {
     }
 
     #[test]
-    fn test_reveal_existing_file() {
-        // 创建临时文件
-        let temp = std::env::temp_dir().join("neeko_test_reveal_file.txt");
+    fn test_build_reveal_command_for_file() {
+        let temp = std::env::temp_dir().join("neeko_test_build_cmd_file.txt");
         fs::write(&temp, "test").unwrap();
 
-        let result = reveal_in_file_manager(temp.to_str().unwrap().to_string());
-        // 在 CI 环境中可能没有图形界面，所以这里只验证命令不报错
-        // 实际的 explorer/open 命令可能会失败，但路径验证应该通过
-        // 我们主要验证路径存在性检查通过
-        let _ = result;
+        let cmd = build_reveal_command(Path::new(temp.to_str().unwrap()));
+        assert!(cmd.is_some());
+
+        let cmd = cmd.unwrap();
+        let args: Vec<&std::ffi::OsStr> = cmd.get_args().collect();
+
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(cmd.get_program(), "explorer");
+            assert_eq!(args.len(), 2);
+            assert_eq!(args[0], "/select,");
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(cmd.get_program(), "open");
+            assert_eq!(args[0], "-R");
+        }
 
         let _ = fs::remove_file(&temp);
     }
 
     #[test]
-    fn test_reveal_existing_dir() {
-        let temp = std::env::temp_dir().join("neeko_test_reveal_dir");
+    fn test_build_reveal_command_for_dir() {
+        let temp = std::env::temp_dir().join("neeko_test_build_cmd_dir");
         let _ = fs::create_dir_all(&temp);
 
-        let result = reveal_in_file_manager(temp.to_str().unwrap().to_string());
-        let _ = result;
+        let cmd = build_reveal_command(Path::new(temp.to_str().unwrap()));
+        assert!(cmd.is_some());
+
+        let cmd = cmd.unwrap();
+        let args: Vec<&std::ffi::OsStr> = cmd.get_args().collect();
+
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(cmd.get_program(), "explorer");
+            assert_eq!(args.len(), 1);
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(cmd.get_program(), "open");
+            assert_eq!(args.len(), 1);
+        }
 
         let _ = fs::remove_dir(&temp);
+    }
+
+    #[test]
+    fn test_build_reveal_command_for_nonexistent() {
+        // build_reveal_command 不检查存在性，只构建命令
+        // 存在性检查在 reveal_in_file_manager 中完成
+        let cmd = build_reveal_command(Path::new("/nonexistent/path"));
+        assert!(cmd.is_some());
     }
 }
