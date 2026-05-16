@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Tauri命令模式、状态访问、config读写约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "anyhow Result模式、命令边界错误处理"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Rust类型安全、serde模式"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useAppConfig hook模式、useEffect依赖约定"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "设置面板组件模式、Props接口设计"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript类型模式、AppConfig类型扩展"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "Tauri IPC调用模式、invoke约定"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Rust-TS类型同步、跨层一致性"}
