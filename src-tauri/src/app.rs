@@ -135,7 +135,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 let state = window.state::<AppStateWrapper>();
-                state.terminal_manager.close_all_sessions();
+                state.shutdown_background_and_exit();
             }
         })
         .invoke_handler(crate::neeko_invoke_handler!())

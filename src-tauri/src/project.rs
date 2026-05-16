@@ -4,6 +4,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct ProjectManager {
     projects: Vec<Project>,
 }
