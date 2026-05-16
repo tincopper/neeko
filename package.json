@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && npx tsc --noEmit",
+    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && pnpm tsc --noEmit",
     "type-check": "npx tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
