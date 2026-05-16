@@ -1,26 +1,34 @@
-{
-  "id": "browser-element-picker",
-  "name": "browser-element-picker",
-  "title": "Browser Element Picker",
-  "description": "",
-  "status": "planning",
-  "dev_type": null,
-  "scope": "browser",
-  "package": null,
-  "priority": "P1",
-  "creator": "tincopper",
-  "assignee": "tincopper",
-  "createdAt": "2026-05-15",
-  "completedAt": null,
-  "branch": "feature/browser-element-picker",
-  "base_branch": "feature/terminal-links-browser",
-  "worktree_path": null,
-  "commit": null,
-  "pr_url": null,
-  "subtasks": [],
-  "children": [],
-  "parent": null,
-  "relatedFiles": [],
-  "notes": "",
-  "meta": {}
+﻿{
+    "id":  "browser-element-picker",
+    "name":  "browser-element-picker",
+    "title":  "Browser Element Picker",
+    "description":  "",
+    "status":  "completed",
+    "dev_type":  null,
+    "scope":  "browser",
+    "package":  null,
+    "priority":  "P1",
+    "creator":  "tincopper",
+    "assignee":  "tincopper",
+    "createdAt":  "2026-05-15",
+    "completedAt":  "2026-05-16",
+    "branch":  "feature/browser-element-picker",
+    "base_branch":  "feature/terminal-links-browser",
+    "worktree_path":  null,
+    "commit":  "fdd177e,e175a5f,5e97fcc",
+    "pr_url":  null,
+    "subtasks":  [
+
+                 ],
+    "children":  [
+
+                 ],
+    "parent":  null,
+    "relatedFiles":  [
+
+                     ],
+    "notes":  "",
+    "meta":  {
+
+             }
 }

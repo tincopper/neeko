@@ -1,4 +1,4 @@
-# 目录结构
+﻿# 目录结构
 
 > 后端代码在本项目中的组织方式。
 
@@ -53,6 +53,7 @@ src-tauri/
     │   ├── remote_git.rs
     │   ├── terminal.rs
     │   ├── wsl.rs
+| `browser.rs` | 内嵌浏览器面板、元素选择器 |
     │   └── wsl_git.rs
     ├── git/                  # Git 领域逻辑（git2-rs + CLI 回退）
     │   ├── local.rs
@@ -72,6 +73,7 @@ src-tauri/
     ├── remote.rs             # RemoteTerminalManager —— SSH 终端
     ├── agent.rs              # AgentManager —— AI Agent 预设/自定义管理
     ├── storage.rs            # StorageManager —— JSON 文件持久化
+    ├── uri_scheme.rs          # neeko:// custom URI scheme protocol handler
     ├── watcher.rs            # WatcherManager —— 文件系统监听
     └── logger.rs             # 自定义文件日志
 ```
@@ -96,6 +98,7 @@ pub mod skill;
 pub mod storage;
 pub mod terminal;
 pub mod utils;
+pub mod uri_scheme;
 pub mod watcher;
 
 mod app;
@@ -156,6 +159,7 @@ pub struct AppStateWrapper {
 | `project.rs` | 本地项目 CRUD |
 | `git.rs` | 本地 Git 操作 |
 | `terminal.rs` | 本地终端会话 |
+| `browser.rs` | 内嵌浏览器面板、元素选择器 |
 | `wsl.rs` / `wsl_git.rs` | WSL 终端和 Git |
 | `remote.rs` / `remote_git.rs` | SSH 远程终端和 Git |
 | `agent.rs` | Agent 管理 |
