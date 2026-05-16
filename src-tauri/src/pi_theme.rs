@@ -65,6 +65,7 @@ pub fn write_project_pi_settings(project_path: &str, neeko_theme: &str) -> Resul
     let settings_path = pi_dir.join("settings.json");
     let backup_path = pi_dir.join("settings.json.neeko.bak");
     let theme_name = map_theme_name(neeko_theme);
+    let mut wrote = false;
 
     fs::create_dir_all(&pi_dir)?;
 
@@ -84,7 +85,11 @@ pub fn write_project_pi_settings(project_path: &str, neeko_theme: &str) -> Resul
                 if let Some(obj) = config.as_object_mut() {
                     obj.insert("theme".to_string(), json!(theme_name));
                 }
-                fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+                let merged = serde_json::to_string_pretty(&config)?;
+                if merged != content {
+                    fs::write(&settings_path, merged)?;
+                    wrote = true;
+                }
             }
             Err(e) => {
                 log::warn!("[PiTheme] Failed to read settings.json: {}", e);
@@ -92,19 +97,29 @@ pub fn write_project_pi_settings(project_path: &str, neeko_theme: &str) -> Resul
                     &settings_path,
                     serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
                 )?;
+                wrote = true;
             }
         }
     } else {
         // 直接写入
         let config = json!({ "theme": theme_name });
         fs::write(&settings_path, serde_json::to_string_pretty(&config)?)?;
+        wrote = true;
     }
 
-    log::info!(
-        "[PiTheme] Written settings.json to {} with theme={}",
-        settings_path.display(),
-        theme_name
-    );
+    if wrote {
+        log::info!(
+            "[PiTheme] Written settings.json to {} with theme={}",
+            settings_path.display(),
+            theme_name
+        );
+    } else {
+        log::debug!(
+            "[PiTheme] Skip writing settings.json (unchanged): {}",
+            settings_path.display()
+        );
+    }
+
     Ok(())
 }
 

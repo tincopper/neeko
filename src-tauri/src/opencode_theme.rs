@@ -105,6 +105,7 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
     let tui_path = opencode_dir.join("tui.json");
     let backup_path = opencode_dir.join("tui.json.neeko.bak");
     let theme_name = map_theme_name(neeko_theme);
+    let mut wrote = false;
 
     fs::create_dir_all(&opencode_dir)?;
 
@@ -124,7 +125,11 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
                 if let Some(obj) = config.as_object_mut() {
                     obj.insert("theme".to_string(), json!(theme_name));
                 }
-                fs::write(&tui_path, serde_json::to_string_pretty(&config)?)?;
+                let merged = serde_json::to_string_pretty(&config)?;
+                if merged != content {
+                    fs::write(&tui_path, merged)?;
+                    wrote = true;
+                }
             }
             Err(e) => {
                 log::warn!("[OpenCodeTheme] Failed to read tui.json: {}", e);
@@ -132,19 +137,29 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
                     &tui_path,
                     serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
                 )?;
+                wrote = true;
             }
         }
     } else {
         // 直接写入
         let config = json!({ "theme": theme_name });
         fs::write(&tui_path, serde_json::to_string_pretty(&config)?)?;
+        wrote = true;
     }
 
-    log::info!(
-        "[OpenCodeTheme] Written tui.json to {} with theme={}",
-        tui_path.display(),
-        theme_name
-    );
+    if wrote {
+        log::info!(
+            "[OpenCodeTheme] Written tui.json to {} with theme={}",
+            tui_path.display(),
+            theme_name
+        );
+    } else {
+        log::debug!(
+            "[OpenCodeTheme] Skip writing tui.json (unchanged): {}",
+            tui_path.display()
+        );
+    }
+
     Ok(())
 }
 
