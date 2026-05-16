@@ -41,8 +41,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                   <AppearancePanel
                      appearanceFontSize={config.appearanceFontSize}
                      theme={config.theme}
+                     enablePiThemeSync={config.enablePiThemeSync}
+                     enableOpenCodeThemeSync={config.enableOpenCodeThemeSync}
                      onAppearanceFontSizeChange={state.setAppearanceFontSize}
                      onThemeChange={(theme) => onConfigChange({ ...config, theme })}
+                     onPiThemeSyncChange={(enabled) => onConfigChange({ ...config, enablePiThemeSync: enabled })}
+                     onOpenCodeThemeSyncChange={(enabled) => onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })}
                   />
                );
 

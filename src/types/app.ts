@@ -22,4 +22,6 @@ export interface AppConfig {
   hiddenAgentIds: string[];
   shortcuts: Record<string, string>;
   terminalGpuAcceleration: boolean;
+  enablePiThemeSync: boolean;
+  enableOpenCodeThemeSync: boolean;
 }
