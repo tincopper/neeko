@@ -1333,3 +1333,37 @@ Changed overviewRuler.width from 1 to 0 in terminalFactory.ts to disable scrollb
 ### Next Steps
 
 - None - task complete
+
+
+## Session 34: Nerd Font fallback & dev reload fix
+
+**Date**: 2026-05-16
+**Task**: Nerd Font fallback & dev reload fix
+**Branch**: `main`
+
+### Summary
+
+完成终端 Nerd Font Symbols fallback，并修复 dev 模式下打开终端触发整页刷新的问题（避免无变化写入 .pi/.opencode，Vite watch 忽略相关目录）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43846ef` | (see git log) |
+| `69f65ae` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
