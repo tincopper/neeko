@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+﻿import React, { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AgentIcon from "./AgentIcon";
 import type { AppConfig, AgentConfig } from "../../types";
+import { useDockStore } from "../../store/dockStore";
 
 type MenuMode = "none" | "main" | "terminal" | "chat" | "browser";
 
@@ -258,8 +259,14 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   }, [activeMode]);
 
   const handleSelectMode = useCallback((mode: MenuMode) => {
-    if (mode === "chat" || mode === "browser") {
+    if (mode === "chat") {
       onShowToast?.("Coming soon", "info");
+      return;
+    }
+    if (mode === "browser") {
+      // Activate Browser dock panel
+      useDockStore.getState().togglePanel("browser");
+      setIsAddMenuOpen(false);
       return;
     }
     setActiveMode(mode);
@@ -329,7 +336,6 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
           >
             <span className="add-menu-icon">🌐</span>
             <span>Browser</span>
-            <span className="menu-badge">Soon</span>
           </div>
 
           <div className="agent-menu-divider" />
