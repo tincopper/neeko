@@ -30,7 +30,7 @@ pub use terminal::*;
 pub use wsl::*;
 pub use wsl_git::*;
 
-/// 聚合所有 Tauri 命令到 invoke_handler。
+/// 聚合所有 Tauri 命令到 invoke_handler
 /// 因为 `generate_handler!` 是 proc macro，无法展开内部 macro_rules 调用，
 /// 所以必须在一个宏内以平坦列表传递所有命令路径。
 #[macro_export]
@@ -207,6 +207,8 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::browser_go_back,
             $crate::commands::browser_go_forward,
             $crate::commands::open_in_default_browser,
+            $crate::commands::browser_start_picker,
+            $crate::commands::browser_stop_picker,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,

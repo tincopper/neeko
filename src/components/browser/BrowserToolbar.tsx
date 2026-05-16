@@ -1,5 +1,5 @@
-﻿import React, { useState, useCallback, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowRight, Bug, ExternalLink, RefreshCw } from "lucide-react";
+import React, { useState, useCallback, type KeyboardEvent } from "react";
+import { ArrowLeft, ArrowRight, Bug, ExternalLink, MousePointerClick, RefreshCw } from "lucide-react";
 
 interface BrowserToolbarProps {
   url: string;
@@ -10,6 +10,8 @@ interface BrowserToolbarProps {
   onGoForward: () => void;
   onOpenExternal: () => void;
   onOpenDevTools: () => void;
+  isPicking: boolean;
+  onTogglePicker: () => void;
 }
 
 const BTN =
@@ -24,6 +26,8 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   onGoForward,
   onOpenExternal,
   onOpenDevTools,
+  isPicking,
+  onTogglePicker,
 }) => {
   const [inputValue, setInputValue] = useState(url);
 
@@ -78,6 +82,16 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
         placeholder="Enter URL..."
         className="flex-1 h-5 px-2 text-xs bg-bg-primary text-text-primary border border-border rounded focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
       />
+
+      {/* 元素选择器 */}
+      <button
+        onClick={onTogglePicker}
+        disabled={!url}
+        className={BTN + (isPicking ? ' !text-accent-blue !bg-accent-blue/10' : '')}
+        title={isPicking ? 'Stop picking' : 'Pick element'}
+      >
+        <MousePointerClick size={12} />
+      </button>
 
       {/* 在默认浏览器中打开 */}
       <button onClick={onOpenExternal} disabled={!url} className={BTN} title="Open in default browser">
