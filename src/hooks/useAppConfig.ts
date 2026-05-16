@@ -22,6 +22,8 @@ const DEFAULT_CONFIG: AppConfig = {
    hiddenAgentIds: [],
    shortcuts: {},
    terminalGpuAcceleration: false,
+   enablePiThemeSync: false,
+   enableOpenCodeThemeSync: false,
 };
 
 
@@ -92,7 +94,9 @@ export function useAppConfig() {
             prev.agentSelectorCompactMode === next.agentSelectorCompactMode &&
             prev.hiddenAgentIds === next.hiddenAgentIds &&
             prev.shortcuts === next.shortcuts &&
-            prev.terminalGpuAcceleration === next.terminalGpuAcceleration
+            prev.terminalGpuAcceleration === next.terminalGpuAcceleration &&
+            prev.enablePiThemeSync === next.enablePiThemeSync &&
+            prev.enableOpenCodeThemeSync === next.enableOpenCodeThemeSync
          ) return prev;
          return next;
       });
@@ -182,6 +186,14 @@ export function useAppConfig() {
                      typeof saved.terminalGpuAcceleration === "boolean"
                         ? saved.terminalGpuAcceleration
                         : DEFAULT_CONFIG.terminalGpuAcceleration,
+                   enablePiThemeSync:
+                      typeof saved.enablePiThemeSync === "boolean"
+                         ? saved.enablePiThemeSync
+                         : DEFAULT_CONFIG.enablePiThemeSync,
+                   enableOpenCodeThemeSync:
+                      typeof saved.enableOpenCodeThemeSync === "boolean"
+                         ? saved.enableOpenCodeThemeSync
+                         : DEFAULT_CONFIG.enableOpenCodeThemeSync,
                });
             }
          } catch (e) {
