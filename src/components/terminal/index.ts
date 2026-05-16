@@ -12,7 +12,7 @@ export {
   executedAgentKeys,
 } from "./terminalCache";
 export { createTerminalForProject } from "./terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
+export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./terminalCommands";
 export { worktreeKey } from "./worktreeTerminalKey";
 export { default as WSLTerminalView } from "./WSLTerminalView";
 export {

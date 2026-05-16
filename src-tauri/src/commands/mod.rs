@@ -1,9 +1,11 @@
 mod agent;
 mod ai_commit;
+mod browser;
 mod config;
 mod file;
 mod git;
 mod ide;
+mod opener;
 mod project;
 mod remote;
 mod remote_git;
@@ -14,10 +16,12 @@ mod wsl_git;
 
 pub use agent::*;
 pub use ai_commit::*;
+pub use browser::*;
 pub use config::*;
 pub use file::*;
 pub use git::*;
 pub use ide::*;
+pub use opener::*;
 pub use project::*;
 pub use remote::*;
 pub use remote_git::*;
@@ -26,7 +30,7 @@ pub use terminal::*;
 pub use wsl::*;
 pub use wsl_git::*;
 
-/// 聚合所有 Tauri 命令到 invoke_handler。
+/// 聚合所有 Tauri 命令到 invoke_handler
 /// 因为 `generate_handler!` 是 proc macro，无法展开内部 macro_rules 调用，
 /// 所以必须在一个宏内以平坦列表传递所有命令路径。
 #[macro_export]
@@ -192,6 +196,19 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::delete_task_config,
             $crate::commands::run_task,
             $crate::commands::stop_task,
+            // --- Browser ---
+            $crate::commands::reveal_in_file_manager,
+            $crate::commands::create_browser_webview,
+            $crate::commands::browser_navigate,
+            $crate::commands::browser_set_bounds,
+            $crate::commands::browser_open_devtools,
+            $crate::commands::browser_close,
+            $crate::commands::browser_set_visible,
+            $crate::commands::browser_go_back,
+            $crate::commands::browser_go_forward,
+            $crate::commands::open_in_default_browser,
+            $crate::commands::browser_start_picker,
+            $crate::commands::browser_stop_picker,
             // --- Skill ---
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,

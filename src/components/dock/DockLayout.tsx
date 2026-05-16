@@ -51,6 +51,12 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     (s) => s.zones.right?.expanded ?? false,
   );
 
+  const rightActivePanelId = useDockStore(
+    (s) => s.zones.right?.activePanelId ?? null,
+  );
+
+  const rightDefaultSize = rightActivePanelId === 'browser' ? '50%' : '18%';
+
   const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
 
   const leftPanelRef = useRef<HTMLDivElement>(null);
@@ -118,8 +124,9 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         )}
       </div>
 
-      {/* Resizable 3-zone main area (left dock + center editor + right dock)
-          Each panel gets island padding (p-1) to create visual gaps */}
+      {/* Nested resizable layout: left dock | (center editor + right dock)
+          Outer group isolates left from center/right so dragging the right
+          handle cannot squeeze the left panel. */}
       <ResizablePanelGroup
         orientation="horizontal"
         id="neeko-main"
@@ -143,31 +150,40 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           <ResizableHandle id="handle-left-center" withHandle />
         )}
 
-        {/* Center area: editor content (island) */}
-        <ResizablePanel
-          id="center-area"
-          defaultSize="64%"
-          minSize="40%"
-          className="py-1 px-0.5 overflow-hidden"
-        >
-          {children}
-        </ResizablePanel>
-
-        {/* Right dock zone (island) — only render when expanded and has panels */}
-        {rightVisible && (
-          <ResizableHandle id="handle-center-right" withHandle />
-        )}
-        {rightVisible && (
-          <ResizablePanel
-            id="right-zone"
-            defaultSize="18%"
-            minSize="12%"
-            maxSize="35%"
-            className="py-1 pl-0.5"
+        {/* Inner group: center editor + right dock */}
+        <ResizablePanel id="center-right-wrapper">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            id="neeko-center-right"
+            className="h-full"
           >
-            <DockZone zoneId="right" />
-          </ResizablePanel>
-        )}
+            {/* Center area: editor content (island) */}
+            <ResizablePanel
+              id="center-area"
+              defaultSize={rightVisible ? undefined : "100%"}
+              minSize="20%"
+              className="py-1 px-0.5 overflow-hidden"
+            >
+              {children}
+            </ResizablePanel>
+
+            {/* Right dock zone (island) — only render when expanded and has panels */}
+            {rightVisible && (
+              <ResizableHandle id="handle-center-right" withHandle />
+            )}
+            {rightVisible && (
+              <ResizablePanel
+                id="right-zone"
+                defaultSize={rightDefaultSize}
+                minSize="12%"
+                maxSize="80%"
+                className="py-1 pl-0.5"
+              >
+                <DockZone zoneId="right" />
+              </ResizablePanel>
+            )}
+          </ResizablePanelGroup>
+        </ResizablePanel>
       </ResizablePanelGroup>
 
       {/* Right toolbar column */}

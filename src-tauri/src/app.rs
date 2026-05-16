@@ -62,6 +62,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("neeko", crate::uri_scheme::create_handler())
         .manage(skill_store.clone())
         .manage(AppStateWrapper::new_with_skill_store(skill_store))
         .setup(|app| {
