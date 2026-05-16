@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
-- **Last Active**: 2026-05-15
+- **Total Sessions**: 35
+- **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1368 | Active |
+| `journal-1.md` | ~1402 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-05-16 | Nerd Font fallback & dev reload fix | `43846ef`, `69f65ae` | `main` |
 | 34 | 2026-05-15 | Exit cleanup optimization | `9004336` | `enhance/git_and_quit_hang` |
 | 33 | 2026-05-07 | Fix terminal overviewRuler width | `b9d296d` | `fix/git_panel` |
 | 32 | 2026-05-07 | Trellis 0.4.x → 0.5.4 迁移 | `390ea8a` | `fix/git_panel` |

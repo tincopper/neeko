@@ -17,7 +17,11 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/.pi/**",
+        "**/.opencode/**",
+      ],
     },
   },
   build: {
