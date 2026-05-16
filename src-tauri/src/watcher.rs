@@ -116,4 +116,3 @@ impl WatcherManager {
 fn log_info(msg: &str) {
     log::info!("{}", msg);
 }
-
