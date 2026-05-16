@@ -1400,3 +1400,36 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 36: Files panel: add expand chevron arrow indicator
+
+**Date**: 2026-05-16
+**Task**: Files panel: add expand chevron arrow indicator
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82c3409` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
