@@ -1433,3 +1433,36 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 37: feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭
+
+**Date**: 2026-05-16
+**Task**: feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba154eac278cbf92db57e231b2bf4ce523e5c6d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

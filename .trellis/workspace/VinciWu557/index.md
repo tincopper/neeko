@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 36
+- **Total Sessions**: 37
 - **Last Active**: 2026-05-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1435 | Active |
+| `journal-1.md` | ~1468 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 37 | 2026-05-16 | feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭 | `ba154eac278cbf92db57e231b2bf4ce523e5c6d7` | `enhance/files_git_display` |
 | 36 | 2026-05-16 | Files panel: add expand chevron arrow indicator | `82c3409` | `enhance/files_git_display` |
 | 35 | 2026-05-16 | Nerd Font fallback & dev reload fix | `43846ef`, `69f65ae` | `main` |
 | 34 | 2026-05-15 | Exit cleanup optimization | `9004336` | `enhance/git_and_quit_hang` |
