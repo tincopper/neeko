@@ -1335,7 +1335,40 @@ Changed overviewRuler.width from 1 to 0 in terminalFactory.ts to disable scrollb
 - None - task complete
 
 
-## Session 34: Nerd Font fallback & dev reload fix
+## Session 34: Exit cleanup optimization
+
+**Date**: 2026-05-15
+**Task**: Exit cleanup optimization
+**Branch**: `enhance/git_and_quit_hang`
+
+### Summary
+
+Optimized Neeko exit: moved cleanup from blocking on_window_event to background thread with parallel terminal/remote/watcher shutdown, reduced PTY graceful timeout, added process::exit(0) fallback, fixed pnpm lint OOM
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9004336` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 35: Nerd Font fallback & dev reload fix
 
 **Date**: 2026-05-16
 **Task**: Nerd Font fallback & dev reload fix

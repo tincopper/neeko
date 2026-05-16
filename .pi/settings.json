@@ -3,19 +3,20 @@
   "extensions": [
     "./extensions/trellis/index.ts"
   ],
-  "skills": [
-    "./skills"
+  "packages": [
+    {
+      "extensions": [],
+      "prompts": [],
+      "skills": [],
+      "source": "npm:pi-subagents",
+      "themes": []
+    }
   ],
   "prompts": [
     "./prompts"
   ],
-  "packages": [
-    {
-      "source": "npm:pi-subagents",
-      "extensions": [],
-      "skills": [],
-      "prompts": [],
-      "themes": []
-    }
-  ]
+  "skills": [
+    "./skills"
+  ],
+  "theme": "neeko-one-dark-pro"
 }

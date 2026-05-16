@@ -26,6 +26,7 @@ struct PtyHandle {
     app_handle: tauri::AppHandle,
 }
 
+#[derive(Clone)]
 pub struct TerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     pty_handles: Arc<Mutex<HashMap<String, PtyHandle>>>,
@@ -568,7 +569,7 @@ fn default_shell_cmd() -> CommandBuilder {
 
 // ─── 进程管理 ───────────────────────────────────────────────────────
 
-const GRACEFUL_TIMEOUT_SECS: u64 = 3;
+const GRACEFUL_TIMEOUT_SECS: u64 = 2;
 
 fn graceful_kill(child: &mut dyn Child) {
     let started_at = Instant::now();
