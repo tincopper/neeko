@@ -984,3 +984,44 @@ feat(git): add git log viewer with commit detail panel, fix UI consistency acros
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: Terminal Links Browser + Element Picker + URI Scheme Refactor
+
+**Date**: 2026-05-16
+**Task**: Terminal Links Browser + Element Picker + URI Scheme Refactor
+**Branch**: `feature/terminal-links-browser`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0da8530` | (see git log) |
+| `a93d03c` | (see git log) |
+| `89f9002` | (see git log) |
+| `5e97fcc` | (see git log) |
+| `e175a5f` | (see git log) |
+| `fdd177e` | (see git log) |
+| `e924a20` | (see git log) |
+| `e637ce4` | (see git log) |
+| `579b67a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
