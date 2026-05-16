@@ -1,0 +1,18 @@
+/* Nerd Font Symbols 图标 fallback
+ *
+ * SymbolsNerdFontMono-Regular.ttf 只包含 Nerd Font 图标字形（Private Use Area
+ * 码点），不含字母数字。通过 unicode-range 限制，浏览器仅在渲染 PUA 码点时
+ * 使用此字体，不影响普通文字渲染。
+ *
+ * 覆盖范围：
+ *   U+E000-U+F8FF     BMP Private Use Area
+ *   U+F0000-U+FFFFD   Plane 15 Supplementary PUA-A
+ *   U+100000-U+10FFFD Plane 16 Supplementary PUA-B
+ */
+@font-face {
+  font-family: "NerdFontSymbols";
+  src: url("../assets/fonts/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  unicode-range: U+E000-U+F8FF, U+F0000-U+FFFFD, U+100000-U+10FFFD;
+}
