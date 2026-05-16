@@ -6,8 +6,6 @@ export {
   destroyTerminalCache,
   destroyTerminalCachesByPrefix,
   refreshTerminal,
-  pendingPtyResize,
-  setPendingPtyResize,
   terminalWrapperRefs,
   executedAgentKeys,
 } from "./terminalCache";

@@ -214,24 +214,9 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
          });
       }
 
-      const handleResize = () => {
-         const cache = terminalCache.get(cacheKey);
-         if (!cache) {
-            return;
-         }
-         cache.fitAddon.fit();
-         if (cache.sessionId) {
-            invoke("resize_terminal", {
-               sessionId: cache.sessionId,
-               cols: cache.term.cols,
-               rows: cache.term.rows,
-            }).catch(() => { });
-         }
-      };
-
-      window.addEventListener("resize", handleResize);
-
       let resizeRafId: number | null = null;
+      let prevCols = 0;
+      let prevRows = 0;
       const ro = new ResizeObserver(() => {
          if (resizeRafId !== null) {
             cancelAnimationFrame(resizeRafId);
@@ -242,14 +227,16 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             if (!c) {
                return;
             }
-             c.fitAddon.fit();
-             if (c.sessionId) {
-                invoke("resize_terminal", {
-                   sessionId: c.sessionId,
-                   cols: c.term.cols,
-                   rows: c.term.rows,
-                }).catch(() => { });
-             }
+            c.fitAddon.fit();
+            if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
+               prevCols = c.term.cols;
+               prevRows = c.term.rows;
+               invoke("resize_terminal", {
+                  sessionId: c.sessionId,
+                  cols: c.term.cols,
+                  rows: c.term.rows,
+               }).catch(() => { });
+            }
          });
       });
       ro.observe(wrapper);
@@ -259,7 +246,6 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             cancelAnimationFrame(resizeRafId);
          }
          ro.disconnect();
-         window.removeEventListener("resize", handleResize);
          detachAll();
          terminalRebuildCallbacks.delete(cacheKey);
          terminalWrapperRefs.delete(cacheKey);
