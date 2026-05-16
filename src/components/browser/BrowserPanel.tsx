@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import { useBrowserPanel } from '../../hooks/useBrowserPanel';
+import { useAppContext } from '../../contexts/app-context';
 import BrowserToolbar from './BrowserToolbar';
 
 const BrowserPanel: React.FC = () => {
+  const { showToast } = useAppContext();
   const {
     url,
     isCreated,
@@ -16,7 +18,10 @@ const BrowserPanel: React.FC = () => {
     openDevTools,
     openExternal,
     updateBounds,
-  } = useBrowserPanel();
+    isPicking,
+    startPicker,
+    stopPicker,
+  } = useBrowserPanel({ showToast });
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
 
@@ -57,6 +62,14 @@ const BrowserPanel: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [containerRef, updateBounds]);
 
+  const handleTogglePicker = useCallback(() => {
+    if (isPicking) {
+      stopPicker();
+    } else {
+      startPicker();
+    }
+  }, [isPicking, startPicker, stopPicker]);
+
   const handleNavigate = useCallback(
     (newUrl: string) => {
       navigate(newUrl);
@@ -76,6 +89,8 @@ const BrowserPanel: React.FC = () => {
         onGoForward={goForward}
         onOpenExternal={openExternal}
         onOpenDevTools={openDevTools}
+        isPicking={isPicking}
+        onTogglePicker={handleTogglePicker}
       />
 
       {/* Webview placeholder area */}
