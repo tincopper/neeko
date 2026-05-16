@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { fileIconSrc } from "../../utils/fileIcons";
 import type { FileNode } from "../../types";
@@ -85,6 +86,11 @@ function FileTreeNode({
       >
         {node.is_dir ? (
           <>
+            <ChevronRight
+              className={`w-3.5 h-3.5 shrink-0 text-text-muted transition-transform duration-150 ${
+                isExpanded ? "rotate-90" : ""
+              }`}
+            />
             <img
               className="w-4 h-4 shrink-0 block"
               src={`/icons/${isExpanded ? "_folder_open" : "_folder"}.svg`}
@@ -99,6 +105,7 @@ function FileTreeNode({
           </>
         ) : (
           <>
+            <span className="w-3.5 h-3.5 shrink-0" />
             <img
               className="w-3.5 h-3.5 shrink-0 block opacity-70"
               src={fileIconSrc(node.name)}
