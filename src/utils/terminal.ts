@@ -7,9 +7,12 @@ export const DEFAULT_FONT_FAMILY = IS_LINUX
   : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 export function buildFontFamily(fontFamily: string): string {
-  return fontFamily
+  const base = fontFamily
     ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
     : DEFAULT_FONT_FAMILY;
+  // NerdFontSymbols 作为 PUA 码点最终 fallback（CSS @font-face 通过
+  // unicode-range 仅对图标码点生效，不影响普通文字字体选择）
+  return `${base}, 'NerdFontSymbols'`;
 }
 
 function cssVar(name: string): string {
