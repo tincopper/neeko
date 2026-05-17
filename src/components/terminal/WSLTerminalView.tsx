@@ -213,19 +213,6 @@ export default React.memo(function WSLTerminalView({
          })();
       }
 
-      const handleResize = () => {
-         const cache = wslTerminalCache.get(key);
-         if (!cache) return;
-         cache.fitAddon.fit();
-         if (cache.sessionId) {
-            invoke("resize_terminal", {
-               sessionId: cache.sessionId,
-               cols: cache.term.cols,
-               rows: cache.term.rows,
-            }).catch(() => { });
-         }
-      };
-      window.addEventListener("resize", handleResize);
       let resizeRafId: number | null = null;
       let prevCols = 0;
       let prevRows = 0;
@@ -252,7 +239,6 @@ export default React.memo(function WSLTerminalView({
       return () => {
          if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
          ro.disconnect();
-         window.removeEventListener("resize", handleResize);
          detachAll();
          wslRebuildCallbacks.delete(key);
          wslWrapperRefs.delete(key);

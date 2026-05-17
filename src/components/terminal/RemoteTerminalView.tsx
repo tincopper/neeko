@@ -224,19 +224,6 @@ export default React.memo(function RemoteTerminalView({
       })();
     }
 
-    const handleResize = () => {
-      const cache = remoteTerminalCache.get(key);
-      if (!cache) return;
-      cache.fitAddon.fit();
-      if (cache.sessionId) {
-        invoke("resize_remote_terminal", {
-          sessionId: cache.sessionId,
-          cols: cache.term.cols,
-          rows: cache.term.rows,
-        }).catch(() => {});
-      }
-    };
-    window.addEventListener("resize", handleResize);
     let resizeRafId: number | null = null;
     let prevCols = 0;
     let prevRows = 0;
@@ -263,7 +250,6 @@ export default React.memo(function RemoteTerminalView({
     return () => {
       if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
       ro.disconnect();
-      window.removeEventListener("resize", handleResize);
       detachAll();
       remoteRebuildCallbacks.delete(key);
       remoteWrapperRefs.delete(key);
