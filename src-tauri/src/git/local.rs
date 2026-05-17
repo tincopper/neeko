@@ -115,7 +115,8 @@ pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStat
         let staged = String::from_utf8_lossy(&staged_output.stdout);
         for line in staged.lines() {
             if let Some((additions, deletions, path)) = parse_numstat_line(line) {
-                if let Some(existing) = stats.iter_mut().find(|s| s.path.to_string_lossy() == path) {
+                if let Some(existing) = stats.iter_mut().find(|s| s.path.to_string_lossy() == path)
+                {
                     // 文件同时有未暂存和已暂存变更，累加
                     existing.additions += additions;
                     existing.deletions += deletions;
@@ -172,8 +173,16 @@ fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
     }
 
     // 二进制文件返回 0/0
-    let additions = if parts[0] == "-" { 0 } else { parts[0].parse().unwrap_or(0) };
-    let deletions = if parts[1] == "-" { 0 } else { parts[1].parse().unwrap_or(0) };
+    let additions = if parts[0] == "-" {
+        0
+    } else {
+        parts[0].parse().unwrap_or(0)
+    };
+    let deletions = if parts[1] == "-" {
+        0
+    } else {
+        parts[1].parse().unwrap_or(0)
+    };
     let path = parts[2].to_string();
 
     Some((additions, deletions, path))
@@ -182,7 +191,7 @@ fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
 /// 使用 wc -l 计算文件行数
 fn count_lines_with_wc(path: &Path) -> usize {
     use std::process::Command;
-    
+
     let output = Command::new("wc")
         .args(["-l", path.to_str().unwrap_or("")])
         .output();
@@ -1138,9 +1147,7 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
 /// 获取 Ahead/Behind 计数（参考 Muxy）
 /// 结果通过 cache 缓存，由 invalidate_repo_caches 在 git 操作后失效。
 pub fn get_ahead_behind(repo_path: &Path) -> Result<AheadBehind> {
-    super::cache::get_cached_ahead_behind(repo_path, || {
-        get_ahead_behind_uncached(repo_path)
-    })
+    super::cache::get_cached_ahead_behind(repo_path, || get_ahead_behind_uncached(repo_path))
 }
 
 fn get_ahead_behind_uncached(repo_path: &Path) -> Result<AheadBehind> {
