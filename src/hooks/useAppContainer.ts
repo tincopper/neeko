@@ -277,7 +277,8 @@ export function useAppContainer(): UseAppContainerResult {
       await handleSelectProject(projectId);
       const project = useAppStore.getState().activeProject;
       if (project) {
-        await fileView.loadFileTree(projectId, project.path);
+        // Fire-and-forget: 不阻塞项目切换流程，让 Commit Panel 可以立即渲染
+        fileView.loadFileTree(projectId, project.path).catch(console.error);
       }
     },
     [closeAppSettingsTab, clearWorktreeForProject, clearWslTransientState, clearRemoteTransientState, handleSelectProject, fileView],

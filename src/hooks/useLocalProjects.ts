@@ -53,7 +53,27 @@ export function useLocalProjects() {
   const loadProjects = useCallback(async () => {
     try {
       const projectList = await invoke<Project[]>("list_projects");
-      setProjects(projectList);
+      
+      // 合并逻辑：保留 store 中已有的 git_info.changed_files
+      // list_projects 返回的项目 changed_files 为空（轻量版）
+      // changed_files 由 watcher/handleRefreshGit 维护
+      setProjects((prev) => {
+        const prevMap = new Map(prev.map(p => [p.id, p]));
+        return projectList.map((newProject) => {
+          const existing = prevMap.get(newProject.id);
+          if (existing?.git_info?.changed_files && existing.git_info.changed_files.length > 0) {
+            // 保留已有的 changed_files
+            return {
+              ...newProject,
+              git_info: newProject.git_info ? {
+                ...newProject.git_info,
+                changed_files: existing.git_info.changed_files,
+              } : existing.git_info,
+            };
+          }
+          return newProject;
+        });
+      });
     } catch (error) {
       console.error("[App] Failed to load projects:", error);
     }
@@ -138,9 +158,9 @@ export function useLocalProjects() {
 
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
-    await invoke("set_active_project", { projectId });
-    await loadProjects();
-  }, [loadProjects]);
+    // fire-and-forget: 通知后端，不阻塞前端切换
+    invoke("set_active_project", { projectId }).catch(console.error);
+  }, []);
 
   const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
     if (activeProjectId !== projectId) {
