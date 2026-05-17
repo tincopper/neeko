@@ -2,6 +2,7 @@ pub mod agent;
 pub mod commands;
 pub mod error;
 pub mod git;
+pub mod git_worker;
 pub mod models;
 pub mod opencode_theme;
 pub mod pi_theme;

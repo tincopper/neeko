@@ -1,5 +1,8 @@
 use crate::models::{TerminalSession, TerminalStatus};
-use crate::opencode_theme::{install_wsl_theme_files, write_wsl_tui_config};
+use crate::opencode_theme::{
+    install_wsl_theme_files, read_enable_opencode_theme_sync, read_enable_pi_theme_sync,
+    write_wsl_tui_config,
+};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -151,12 +154,17 @@ impl TerminalManager {
             log::warn!("[WSL] Failed to install Pi theme files: {}", e);
         }
         let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
-        if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
-            log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+        if read_enable_opencode_theme_sync() {
+            if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
+                log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+            }
         }
-        if let Err(e) = crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme)
-        {
-            log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
+        if read_enable_pi_theme_sync() {
+            if let Err(e) =
+                crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme)
+            {
+                log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
+            }
         }
 
         let pair = create_pty(cols, rows)?;
@@ -679,11 +687,15 @@ fn write_opencode_tui_config(project_path: &str) {
         Some(t) => t,
         None => return,
     };
-    if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
-        log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
+    if read_enable_opencode_theme_sync() {
+        if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
+            log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
+        }
     }
-    if let Err(e) = crate::pi_theme::write_project_pi_settings(project_path, &theme) {
-        log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
+    if read_enable_pi_theme_sync() {
+        if let Err(e) = crate::pi_theme::write_project_pi_settings(project_path, &theme) {
+            log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
+        }
     }
 }
 

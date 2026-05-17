@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试规范: tempfile + 真实临时仓库模式"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试规范: Vitest + mock invoke"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "后端命令层规范: list_projects 返回值"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 规范: useAppContainer 异步模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范: store 合并 git_info 逻辑"}

@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
-import type { Project, AgentConfig, Tab } from "../types";
+import type { Project, AgentConfig, Tab, GitBranchInfo, FileChange, Worktree } from "../types";
 import { useAppStore } from "../store/appStore";
 import { applyStateAction } from "../utils/entryUpdates";
 
@@ -53,7 +53,27 @@ export function useLocalProjects() {
   const loadProjects = useCallback(async () => {
     try {
       const projectList = await invoke<Project[]>("list_projects");
-      setProjects(projectList);
+      
+      // 合并逻辑：保留 store 中已有的 git_info.changed_files
+      // list_projects 返回的项目 changed_files 为空（轻量版）
+      // changed_files 由 watcher/handleRefreshGit 维护
+      setProjects((prev) => {
+        const prevMap = new Map(prev.map(p => [p.id, p]));
+        return projectList.map((newProject) => {
+          const existing = prevMap.get(newProject.id);
+          if (existing?.git_info?.changed_files && existing.git_info.changed_files.length > 0) {
+            // 保留已有的 changed_files
+            return {
+              ...newProject,
+              git_info: newProject.git_info ? {
+                ...newProject.git_info,
+                changed_files: existing.git_info.changed_files,
+              } : existing.git_info,
+            };
+          }
+          return newProject;
+        });
+      });
     } catch (error) {
       console.error("[App] Failed to load projects:", error);
     }
@@ -138,9 +158,9 @@ export function useLocalProjects() {
 
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
-    await invoke("set_active_project", { projectId });
-    await loadProjects();
-  }, [loadProjects]);
+    // fire-and-forget: 通知后端，不阻塞前端切换
+    invoke("set_active_project", { projectId }).catch(console.error);
+  }, []);
 
   const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
     if (activeProjectId !== projectId) {
@@ -176,13 +196,46 @@ export function useLocalProjects() {
   }, [activeProjectId]);
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
+    const defaultGitInfo = {
+      current_branch: "",
+      branches: [] as string[],
+      worktrees: [] as Worktree[],
+      changed_files: [] as FileChange[],
+      is_clean: true,
+    };
+
+    const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
+      useAppStore.setState((state) => {
+        const nextProjects = state.projects.map((p) => {
+          if (p.id !== projectId) return p;
+          return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
+        });
+        return {
+          projects: nextProjects,
+          activeProject: state.activeProjectId === projectId
+            ? nextProjects.find(p => p.id === projectId) ?? state.activeProject
+            : state.activeProject,
+        };
+      });
+    };
+
     try {
-      await invoke("refresh_git_info", { projectId });
-      await loadProjects();
+      const changedFiles = await invoke<FileChange[]>("get_worktree_changed_files", { projectId, worktreePath: "" });
+      updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+
+      invoke<GitBranchInfo>("get_git_branch_info_command", { projectId })
+        .then((branchInfo) => {
+          updateProjectGitInfo({
+            current_branch: branchInfo.current_branch,
+            branches: branchInfo.branches,
+            worktrees: branchInfo.worktrees,
+          });
+        })
+        .catch((error) => console.error("Failed to refresh git branch info:", error));
     } catch (error) {
       console.error("Failed to refresh git info:", error);
     }
-  }, [loadProjects]);
+  }, []);
 
   const handleOpenIde = useCallback(async (project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) return;

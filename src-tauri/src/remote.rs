@@ -478,38 +478,43 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
     }
 
     // channel 3: 写入 OpenCode 项目 TUI 配置
-    match session.channel_open_session().await {
-        Ok(mut ch) => {
-            if let Err(e) =
-                crate::opencode_theme::write_remote_tui_config(&mut ch, project_path, &theme).await
-            {
-                log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
+    if crate::opencode_theme::read_enable_opencode_theme_sync() {
+        match session.channel_open_session().await {
+            Ok(mut ch) => {
+                if let Err(e) =
+                    crate::opencode_theme::write_remote_tui_config(&mut ch, project_path, &theme)
+                        .await
+                {
+                    log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
+                }
+                let _ = ch.close().await;
             }
-            let _ = ch.close().await;
-        }
-        Err(e) => {
-            log_warn(&format!("[SSH] Failed to open channel for tui.json: {}", e));
+            Err(e) => {
+                log_warn(&format!("[SSH] Failed to open channel for tui.json: {}", e));
+            }
         }
     }
 
     // channel 4: 写入 Pi 项目 settings.json
-    match session.channel_open_session().await {
-        Ok(mut ch) => {
-            if let Err(e) =
-                crate::pi_theme::write_remote_pi_settings(&mut ch, project_path, &theme).await
-            {
+    if crate::opencode_theme::read_enable_pi_theme_sync() {
+        match session.channel_open_session().await {
+            Ok(mut ch) => {
+                if let Err(e) =
+                    crate::pi_theme::write_remote_pi_settings(&mut ch, project_path, &theme).await
+                {
+                    log_warn(&format!(
+                        "[SSH] Failed to write remote Pi settings.json: {}",
+                        e
+                    ));
+                }
+                let _ = ch.close().await;
+            }
+            Err(e) => {
                 log_warn(&format!(
-                    "[SSH] Failed to write remote Pi settings.json: {}",
+                    "[SSH] Failed to open channel for Pi settings.json: {}",
                     e
                 ));
             }
-            let _ = ch.close().await;
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "[SSH] Failed to open channel for Pi settings.json: {}",
-                e
-            ));
         }
     }
 }

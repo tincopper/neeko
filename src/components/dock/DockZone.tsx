@@ -42,10 +42,9 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
     );
   }
 
-  // Render active panel directly -- no tabs, no collapse
+  // 渲染所有 panel，非活跃的用 CSS hidden 隐藏。
+  // 避免切换时卸载/挂载组件导致 useState 重置、useEffect 重触发、React.lazy chunk 加载。
   const activePanelId = zone.activePanelId;
-  const activeDef = activePanelId ? dockPanelRegistry[activePanelId] : null;
-  const ActiveComponent = activeDef?.component;
 
   return (
     <div
@@ -55,17 +54,30 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
       )}
       {...dragHandlers}
     >
-      {ActiveComponent ? (
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center text-sm text-text-muted">
-              Loading {activeDef.title}...
-            </div>
-          }
-        >
-          <ActiveComponent />
-        </Suspense>
-      ) : (
+      {zone.panels.map((panelId) => {
+        const def = dockPanelRegistry[panelId];
+        if (!def?.component) return null;
+        const PanelComponent = def.component;
+        const isActive = panelId === activePanelId;
+
+        return (
+          <div
+            key={panelId}
+            className={cn("h-full w-full", !isActive && "hidden")}
+          >
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center text-sm text-text-muted">
+                  Loading {def.title}...
+                </div>
+              }
+            >
+              <PanelComponent />
+            </Suspense>
+          </div>
+        );
+      })}
+      {!activePanelId && (
         <div className="flex h-full items-center justify-center text-xs text-text-muted">
           No panel selected
         </div>

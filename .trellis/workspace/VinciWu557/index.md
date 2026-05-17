@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 35
-- **Last Active**: 2026-05-16
+- **Total Sessions**: 42
+- **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1402 | Active |
+| `journal-1.md` | ~1634 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,13 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 42 | 2026-05-17 | 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染 | `39891d1` | `enhance/files_git_display` |
+| 41 | 2026-05-17 | Commit Panel instant load: 10 slices optimization | `d267a1f`, `705116c` | `enhance/files_git_display` |
+| 40 | 2026-05-17 | realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff | `bfa9952` | `enhance/files_git_display` |
+| 39 | 2026-05-17 | 优化 Commit 面板加载速度 | `31689d7` | `enhance/files_git_display` |
+| 38 | 2026-05-16 | Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关 | `ba154ea` | `enhance/files_git_display` |
+| 37 | 2026-05-16 | feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭 | `ba154eac278cbf92db57e231b2bf4ce523e5c6d7` | `enhance/files_git_display` |
+| 36 | 2026-05-16 | Files panel: add expand chevron arrow indicator | `82c3409` | `enhance/files_git_display` |
 | 35 | 2026-05-16 | Nerd Font fallback & dev reload fix | `43846ef`, `69f65ae` | `main` |
 | 34 | 2026-05-15 | Exit cleanup optimization | `9004336` | `enhance/git_and_quit_hang` |
 | 33 | 2026-05-07 | Fix terminal overviewRuler width | `b9d296d` | `fix/git_panel` |

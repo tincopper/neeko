@@ -186,6 +186,73 @@ macro_rules! neeko_invoke_handler {
 
 ---
 
+## 配置驱动的功能门控
+
+当后端行为（包括非命令路径如 PTY 创建、SSH 连接）需要受用户配置开关控制时，使用以下模式：
+
+### 读取配置的辅助函数
+
+配置读取函数放在 `opencode_theme.rs` 或其他合适模块中，从 `~/.neeko/config.json` 读取布尔字段，缺失/失败默认返回 `false`：
+
+```rust
+// src-tauri/src/opencode_theme.rs
+/// 从 ~/.neeko/config.json 读取 enablePiThemeSync 字段
+/// 默认返回 false（如果读取失败或字段不存在）
+pub fn read_enable_pi_theme_sync() -> bool {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    let config_path = home.join(".neeko").join("config.json");
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let config: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    config
+        .get("enablePiThemeSync")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+```
+
+### 调用点门控
+
+在 PTY 创建、SSH 连接等非命令路径中使用：
+
+```rust
+if crate::opencode_theme::read_enable_pi_theme_sync() {
+    if let Err(e) = crate::pi_theme::write_project_pi_settings(path, &theme) {
+        log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
+    }
+}
+```
+
+### 命令内部使用
+
+命令中可以同样读取配置来门控：
+
+```rust
+#[tauri::command]
+pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
+    if crate::opencode_theme::read_enable_pi_theme_sync() {
+        // Pi 主题同步逻辑
+    }
+    Ok(())
+}
+```
+
+### 关键规则
+
+1. **默认值必须是安全选择**：`unwrap_or(false)`——字段未设置时默认为关闭
+2. **静默失败不影响主流程**：配置读取失败不报错，门控内操作失败仅 warn 日志
+3. **不与 `State<AppStateWrapper>` 耦合**：配置读取函数不依赖 Tauri state，使得在非命令路径（terminal.rs、remote.rs）也可用
+4. **前端对应 TypeScript 字段**：在 `src/types/app.ts` 的 `AppConfig` 中同时声明，由 `save_config`/`load_config` 持久化
+---
+
 ## 常见错误
 
 ### 1. 忘记将命令加入 `neeko_invoke_handler!` 清单
