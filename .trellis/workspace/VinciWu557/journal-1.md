@@ -1532,3 +1532,36 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 40: realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff
+
+**Date**: 2026-05-17
+**Task**: realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal coalescing). Added GitStatusWorker with dedicated thread running git status --porcelain --no-optional-locks, diff-aware dirty detection, and incremental diff computation. Frontend now listens to git-status-diff events for patch-based store updates instead of full replacement. Removed notify-debouncer-mini dependency.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfa9952` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
