@@ -7,7 +7,6 @@ import type {
   WSLEntrySession,
   WSLProject,
 } from "../types";
-import type { WorktreeItem } from "./useWorktreeState";
 import { useAppStore } from "../store/appStore";
 
 interface IdeProject {
@@ -25,13 +24,6 @@ export interface UseSyncToStoreParams {
   activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
   remoteAuthStore: Map<string, AuthMethod>;
   pendingAuthEntry: RemoteEntrySession | null;
-  activeWorktreePath: string | null;
-  activeWorktreeBranch: string;
-  openedWorktrees: WorktreeItem[];
-  wslOpenedWt: WorktreeItem[];
-  activeWslWorktreePath: string | null;
-  remoteOpenedWt: WorktreeItem[];
-  activeRemoteWorktreePath: string | null;
   worktreeState: Record<string, string>;
   selectProject: (id: string) => void;
   selectWslProject: (distro: string, project: WSLProject) => void;
@@ -50,13 +42,6 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     activeRemoteProject,
     remoteAuthStore,
     pendingAuthEntry,
-    activeWorktreePath,
-    activeWorktreeBranch,
-    openedWorktrees,
-    wslOpenedWt,
-    activeWslWorktreePath,
-    remoteOpenedWt,
-    activeRemoteWorktreePath,
     worktreeState,
     selectProject,
     selectWslProject,
@@ -75,13 +60,6 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
       activeRemoteProject,
       remoteAuthStore,
       pendingAuthEntry,
-      activeWorktreePath,
-      activeWorktreeBranch,
-      openedWorktrees,
-      wslOpenedWt,
-      activeWslWorktreePath,
-      remoteOpenedWt,
-      activeRemoteWorktreePath,
       worktreeState,
     });
   }, [
@@ -94,13 +72,6 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     activeRemoteProject,
     remoteAuthStore,
     pendingAuthEntry,
-    activeWorktreePath,
-    activeWorktreeBranch,
-    openedWorktrees,
-    wslOpenedWt,
-    activeWslWorktreePath,
-    remoteOpenedWt,
-    activeRemoteWorktreePath,
     worktreeState,
   ]);
 

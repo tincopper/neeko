@@ -54,7 +54,7 @@ export function useWorktreeActions({
           activeTabId: targetProjectTabs?.activeTabId ?? null,
         };
       });
-      await invoke("set_active_project", { projectId });
+      invoke("set_active_project", { projectId }).catch(console.error);
     }
 
     setActiveWorktreePath(worktreePath);

@@ -17,6 +17,11 @@ import { buildWorktreeTabKey } from "../utils/tabKey";
 const APP_SETTINGS_PROJECT_ID = "__app__";
 const SETTINGS_TAB_ID = "settings_tab";
 
+// Module-level agent install status cache — survives component remounts.
+// check_agents_installed IPC 只在 agent 列表真正变化时触发（通过 ID 比对），
+// 不会随项目切换重复执行。
+const agentInstalledCache = new Map<string, boolean>();
+
 function MainContent() {
    const { config, showToast } = useAppContext();
    const {
@@ -96,16 +101,29 @@ function MainContent() {
       useAppStore.getState().clearProjectTabs(tabKey);
    }, [tabKey]);
 
-   // Agent installed status
-   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
+   // Agent installed status — cached at module level, only checks new agents
+   // whose ID hasn't been seen yet. agentIdFingerprint ensures re-check
+   // only when the agent list identity changes, not on project switches.
+   const agentIdFingerprint = useMemo(
+      () => agents.map((a) => a.id).sort().join(','),
+      [agents],
+   );
+   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map(agentInstalledCache));
 
    useEffect(() => {
-      if (agents.length === 0) return;
-      const agentIds = agents.map((a) => a.id);
-      invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
-         .then((result) => setInstalledMap(new Map(Object.entries(result))))
+      const ids = agents.map((a) => a.id);
+      if (ids.length === 0) return;
+      const newIds = ids.filter((id) => !agentInstalledCache.has(id));
+      if (newIds.length === 0) return;
+      invoke<Record<string, boolean>>("check_agents_installed", { agentIds: newIds })
+         .then((result) => {
+            for (const [id, installed] of Object.entries(result)) {
+               agentInstalledCache.set(id, installed);
+            }
+            setInstalledMap(new Map(agentInstalledCache));
+         })
          .catch((err) => console.error("[MainContent] Failed to check agents installed:", err));
-   }, [agents]);
+   }, [agentIdFingerprint]);
 
    const handleAgentClick = useCallback(
       (agent: AgentConfig) => {

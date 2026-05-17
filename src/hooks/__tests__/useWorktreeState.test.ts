@@ -1,12 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWorktreeState } from '../../hooks/useWorktreeState';
+import { useAppStore } from '../../store/appStore';
 
 describe('useWorktreeState', () => {
   let activeProjectId: string | null;
 
   beforeEach(() => {
     activeProjectId = 'project-1';
+    // Reset Zustand store — useWorktreeState now reads/writes appStore
+    // directly instead of local useState, so cross-test pollution must be cleaned.
+    useAppStore.setState({
+      worktreeStateMap: {},
+      activeWorktreePath: null,
+      activeWorktreeBranch: '',
+      openedWorktrees: [],
+      tabs: {},
+      activeTabId: null,
+    });
   });
 
   it('初始状态为空', () => {
