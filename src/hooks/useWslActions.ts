@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useState, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -16,8 +16,8 @@ import type {
   WSLEntrySession,
 } from "../types";
 import { buildRefreshGitHandler, updateProjectInEntries } from "../utils/entryUpdates";
-import { useConnectionWorktreeState } from "./useConnectionWorktreeState";
 import type { SaveSessionFn } from "./useWslProjects";
+import type { WorktreeItem } from "./useWorktreeState";
 
 interface UseWslActionsParams {
   config: AppConfig;
@@ -51,19 +51,49 @@ export function useWslActions({
     }));
   }, []);
 
-  const worktreeState = useConnectionWorktreeState<WslDiffState>();
-  const {
-    diffState: wslDiffState,
-    setDiffState: setWslDiffState,
-    activeWorktreePath: activeWslWorktreePath,
-    setActiveWorktreePath: setActiveWslWorktreePath,
-    activeWorktreeBranch: wslActiveWtBranch,
-    setActiveWorktreeBranch: setWslActiveWtBranch,
-    openedWorktrees: wslOpenedWt,
-    setOpenedWorktrees: setWslOpenedWt,
-    openWorktreeTerminal,
-    resetConnectionState,
-  } = worktreeState;
+  // ── WSL transient worktree state ──
+  // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
+  // to avoid useState → useSyncToStore double-render and enable merged setState.
+  const activeWslWorktreePath = useAppStore((s) => s.activeWslWorktreePath);
+  const wslActiveWtBranch = useAppStore((s) => s.wslActiveWtBranch);
+  const wslOpenedWt = useAppStore((s) => s.wslOpenedWt);
+
+  // diffState stays local (typed per-connection and only consumed via context)
+  const [wslDiffState, setWslDiffState] = useState<WslDiffState | null>(null);
+
+  const setActiveWslWorktreePath = useCallback((path: string | null) => {
+    useAppStore.setState({ activeWslWorktreePath: path });
+  }, []);
+
+  const setWslActiveWtBranch = useCallback((branch: string) => {
+    useAppStore.setState({ wslActiveWtBranch: branch });
+  }, []);
+
+  const setWslOpenedWt: Dispatch<SetStateAction<WorktreeItem[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      wslOpenedWt: typeof updater === "function" ? updater(state.wslOpenedWt) : updater,
+    }));
+  }, []);
+
+  const openWorktreeTerminal = useCallback((worktreePath: string, branch: string) => {
+    setActiveWslWorktreePath(worktreePath);
+    setWslActiveWtBranch(branch);
+    setWslOpenedWt((prev) =>
+      prev.some((item) => item.path === worktreePath)
+        ? prev
+        : [...prev, { path: worktreePath, branch }],
+    );
+    setWslDiffState(null);
+  }, [setActiveWslWorktreePath, setWslActiveWtBranch, setWslOpenedWt]);
+
+  const resetWslTransientState = useCallback(() => {
+    useAppStore.setState({
+      activeWslWorktreePath: null,
+      wslActiveWtBranch: "",
+      wslOpenedWt: [],
+    });
+    setWslDiffState(null);
+  }, []);
 
   const refreshWslGit = useMemo(() => buildRefreshGitHandler<
     WSLProject,
@@ -98,9 +128,9 @@ export function useWslActions({
       activeRemoteKey: null,
       activeRemoteProject: null,
     });
-    resetConnectionState();
+    resetWslTransientState();
     void refreshWslGit(distro, project.id, project.path);
-  }, [resetConnectionState, refreshWslGit]);
+  }, [resetWslTransientState, refreshWslGit]);
 
   const handleSelectWslFile = useCallback((distro: string, projectPath: string, filePath: string) => {
     if (!activeWslProject) return;
@@ -208,6 +238,7 @@ export function useWslActions({
     setWslActiveWtBranch,
     wslOpenedWt,
     setWslOpenedWt,
+    resetWslTransientState,
     handleSelectWslProject,
     handleSelectWslFile,
     handleRefreshWslGit,

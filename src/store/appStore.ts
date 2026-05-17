@@ -43,10 +43,15 @@ interface AppStoreState {
   activeWorktreePath: string | null;
   activeWorktreeBranch: string;
   openedWorktrees: WorktreeSnapshotItem[];
-  wslOpenedWt: WorktreeSnapshotItem[];
+  // Per-project worktree state map — moved from useWorktreeState local useState
+  // to eliminate useState → useSyncToStore double-render.
+  worktreeStateMap: Record<string, { activePath: string | null; activeBranch: string; opened: WorktreeSnapshotItem[] }>;
   activeWslWorktreePath: string | null;
-  remoteOpenedWt: WorktreeSnapshotItem[];
+  wslActiveWtBranch: string;
+  wslOpenedWt: WorktreeSnapshotItem[];
   activeRemoteWorktreePath: string | null;
+  remoteActiveWtBranch: string;
+  remoteOpenedWt: WorktreeSnapshotItem[];
   worktreeState: Record<string, string>;
   fileTree: FileNode[];
   fileViewLoading: boolean;
@@ -185,10 +190,13 @@ export const useAppStore = create<AppStoreState>((set) => ({
   activeWorktreePath: null,
   activeWorktreeBranch: "",
   openedWorktrees: [],
-  wslOpenedWt: [],
+  worktreeStateMap: {},
   activeWslWorktreePath: null,
-  remoteOpenedWt: [],
+  wslActiveWtBranch: "",
+  wslOpenedWt: [],
   activeRemoteWorktreePath: null,
+  remoteActiveWtBranch: "",
+  remoteOpenedWt: [],
   worktreeState: {},
   fileTree: [],
   fileViewLoading: false,
