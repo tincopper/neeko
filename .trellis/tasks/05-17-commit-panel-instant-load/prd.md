@@ -48,11 +48,38 @@ await fileView.loadFileTree(projectId, project.path)  ← IPC #3，读文件树
 | 3 | `handleSelectProject` 不再 await `loadFileTree` | 瓶颈 2 | `useAppContainer.ts` |
 | 4 | `list_projects` 改为不返回 `changed_files`，git_info 已在 store 中维护 | 瓶颈 3 | `commands/project.rs` + `project.rs` |
 
+### 瓶颈 4: `handleSelectProject` 调 `loadProjects` 覆盖 store 中已有的 `changed_files`（数据流 bug）
+
+Slice 1-4 落地后仍然慢。根因追踪发现是 Slice 4（`list_projects` 不返回 `changed_files`）与 `handleSelectProject` 的执行顺序产生数据竞争：
+
+1. 用户点击项目 → `setActiveProjectId(id)` → store 中 `activeProject` 指向已有 `changed_files` 的项目
+2. `await loadProjects()` → `list_projects` 返回 `changed_files: []` → `setProjects` 触发 store 更新
+3. `setProjects` 内部 `activeProject = nextProjects.find(id)` → `activeProject` 被替换为 `changed_files: []` 的版本
+4. Commit Panel 渲染 → `project.gitInfo?.changed_files` = 空 → 空面板
+5. 等待 watcher `git-changed` 事件重新填充 → 1-3s 后面板才有数据
+
+同时，bootstrap 阶段也有问题：`useSessionBootstrap` 第二次 `list_projects` 返回的项目 `git_info` 存在但 `changed_files` 为空，`if (!p.git_info)` 判断跳过了这些项目，不触发 `refresh_git_info`，只能等 watcher 慢慢填充。
+
 ## 不做的事
 
 - 不改 `GitCommitPanel` 组件结构（已经是 split 渲染：文件列表 + 异步 diff stats）
 - 不改 watcher 触发链路（v1/v2 已优化）
 - 不改 WSL/Remote 路径
+
+## 决策汇总（更新）
+
+| # | 决策 | 解决瓶颈 | 改动范围 | 状态 |
+|---|------|---------|---------|------|
+| 1 | `diff stats` 改用 `git diff --numstat` 子进程 | 瓶颈 1 | `git/local.rs` | 已完成 |
+| 2 | diff stats 后端缓存 + watcher 失效 | 瓶颈 1 | `git/local.rs` + `cache.rs` | 已完成 |
+| 3 | `handleSelectProject` 不再 await `loadFileTree` | 瓶颈 2 | `useAppContainer.ts` | 已完成 |
+| 4 | `list_projects` 不返回 `changed_files` | 瓶颈 3 | `commands/project.rs` | 已完成 |
+| 5 | `handleSelectProject` 不再调 `loadProjects`，直接从 store 切换 | 瓶颈 4 | `useLocalProjects.ts` | 已完成 |
+| 6 | bootstrap 判断改为 `!p.git_info?.changed_files?.length` | 瓶颈 4 | `useSessionBootstrap.ts` | 已完成 |
+| 7 | `get_ahead_behind` 结果后端缓存 + watcher 失效 | 瓶颈 5 | `git/local.rs` + `cache.rs` | 已完成 |
+| 8 | `PullRequestsPanel` 默认折叠时不加载 PR 列表 | 瓶颈 6 | `PullRequestsPanel.tsx` | 已完成 |
+| 9 | bootstrap 改用 split 轻量路径替代全量 `refresh_git_info` | 瓶颈 7 | `useSessionBootstrap.ts` | 已完成 |
+| 10 | `DockZone` 保持所有 panel 挂载，切换用 CSS 隐藏 | 瓶颈 8 | `DockZone.tsx` | **新增** |
 
 ---
 
@@ -126,6 +153,70 @@ let output = Command::new("git")
 **改动文件**：
 - `src-tauri/src/commands/project.rs`: `list_projects` 返回前清空 `changed_files`
 - `src/hooks/useLocalProjects.ts`: `loadProjects` 合并逻辑，保留 store 中已有的 `git_info.changed_files`
+
+### Slice 5: `handleSelectProject` 不再调 `loadProjects`
+
+**问题**：`handleSelectProject` 调 `await loadProjects()` 会触发 `list_projects` IPC，返回的轻量版项目（`changed_files: []`）覆盖 store 中 watcher/handleRefreshGit 已填充的数据。而且项目列表本身在 store 中已经是完整的，切换项目不需要重新拉取。
+
+**目标行为**：`handleSelectProject` 只做两件事：1) 更新 store 中的 `activeProjectId`/`activeProject`；2) 通知后端 `set_active_project`。不再调 `loadProjects`。
+
+**行为测试（Vitest）**：
+- `select_project_preserves_changed_files` -- store 中已有 changed_files，切换项目后 changed_files 不被清空
+- `select_project_updates_active_project` -- 切换后 activeProject 指向正确的项目
+
+**改动文件**：
+- `src/hooks/useLocalProjects.ts`: `handleSelectProject` 去掉 `await loadProjects()`
+
+### Slice 6: bootstrap 判断补充 `changed_files` 空检测
+
+**问题**：`useSessionBootstrap` 用 `if (!p.git_info)` 判断是否需要刷新。但 `list_projects` 现在返回 `git_info` 存在但 `changed_files` 为空的项目，导致跳过刷新。
+
+**目标行为**：判断条件改为“`git_info` 不存在或 `changed_files` 为空”时触发刷新。
+
+**行为测试（Vitest）**：
+- `bootstrap_refreshes_project_with_empty_changed_files` -- `git_info` 存在但 `changed_files` 为空时，触发 `refresh_git_info`
+
+**改动文件**：
+- `src/hooks/useSessionBootstrap.ts`: `if (!p.git_info)` → `if (!p.git_info?.changed_files?.length)`
+
+### Slice 7: `get_ahead_behind` 后端缓存
+
+**问题**：Commit Panel 挂载时 `useEffect[project.id]` 触发 `refreshAheadBehind()`，内部调 `get_ahead_behind_command`。Rust 端串行执行 3 个 git 子进程（`git rev-parse` ×2 + `git rev-list --left-right --count`），大仓库上耗时 500ms-1s。该数据只用于 BranchInfo 组件显示 `↑2 ↓3`，与文件列表无关。
+
+**目标行为**：后端缓存 `get_ahead_behind` 结果，通过 `invalidate_repo_caches` 在 watcher/git 操作后失效。缓存命中时直接返回，无子进程开销。
+
+**改动文件**：
+- `src-tauri/src/git/cache.rs`: 新增 ahead_behind 缓存，纳入 `invalidate_repo_caches`
+- `src-tauri/src/git/local.rs`: `get_ahead_behind` 调用缓存层
+
+### Slice 8: `PullRequestsPanel` 折叠时不加载 PR 列表
+
+**问题**：`PullRequestsPanel` 挂载时无条件触发 3 个 IPC：`is_gh_installed_command` + `load_vcs_settings_command` + `list_prs_command`。其中 `list_prs_command` 调用 `gh pr list`，是网络请求，可达 1-3s。即使用户不关心 PR，每次打开 Commit Panel 都会触发。
+
+**目标行为**：`loadPRs` 仅在 `expanded === true` 时执行。折叠状态下不发起网络请求。
+
+**改动文件**：
+- `src/components/project/PullRequestsPanel.tsx`: `loadPRs` 添加 `expanded` 前置检查
+
+### Slice 9: bootstrap 改用 split 轻量路径
+
+**问题**：`useSessionBootstrap` 检测到 `changed_files` 为空时，调用重量级的 `refresh_git_info`（全量 `get_git_info`：branch 扫描 + status 扫描 + worktree 扫描），然后再调 `get_project` 取完整对象。这是两次串行 IPC + 一次重量级后端操作。
+
+**目标行为**：改用与 watcher `git-changed` 相同的 split 路径（`get_worktree_changed_files` + `get_git_branch_info_command`），直接 patch store，不再调 `refresh_git_info` 和 `get_project`。
+
+**改动文件**：
+- `src/hooks/useSessionBootstrap.ts`: bootstrap 刷新逻辑改为 split 路径
+
+### Slice 10: `DockZone` 保持所有 panel 挂载
+
+**问题**：`DockZone.tsx` 只渲染当前 `activePanelId` 对应的组件。切换时 React 卸载旧组件 + 挂载新组件：`React.lazy` chunk 加载 + 所有 `useState` 重置 + 所有 `useEffect` 重新触发。这是用户可感知的卡顿根源，与数据加载无关。
+
+`DockZoneTabs` 已用 `data-[state=inactive]:hidden` 解决了同样问题，但 `DockZone`（单 panel 模式）没有这个机制。
+
+**目标行为**：`DockZone` 同时渲染所有已注册的 panel 组件，非活跃的用 CSS `hidden` 隐藏。切换时只切 CSS 类，不卸载/挂载组件。
+
+**改动文件**：
+- `src/components/dock/DockZone.tsx`: 遍历 `zone.panels` 渲染所有组件，非活跃的加 `hidden`
 
 ---
 
