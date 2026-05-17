@@ -1499,3 +1499,36 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 39: 优化 Commit 面板加载速度
+
+**Date**: 2026-05-17
+**Task**: 优化 Commit 面板加载速度
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+拆解 diff 统计异步加载、精简 refresh 调用链、改进 watcher 轮询策略
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31689d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
