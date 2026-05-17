@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试规范: tempfile + 真实临时仓库, 测试命名约定, 测试模块位置"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试策略: 测什么 / 不测什么, 前后端测试覆盖范围"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试规范: Vitest mock invoke / listen 模式"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "线程模型与同步原语: watcher 线程改造需要遵守的并发规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层规范: Tauri command 返回类型与错误处理"}
