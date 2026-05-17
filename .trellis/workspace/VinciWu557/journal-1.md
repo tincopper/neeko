@@ -1599,3 +1599,36 @@ Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 42: 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染
+
+**Date**: 2026-05-17
+**Task**: 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+将 project/worktree 切换从 3-5 轮渲染降到单轮渲染。状态层：WSL/Remote/local 三域 transient worktree 状态全部直写 appStore，消除 useState→useSyncToStore 二次渲染。渲染层：TerminalView fit 从 3 次合并为 1 次，check_agents_installed 加缓存，首次终端创建显示骨架屏。质量：tsc 零错误，LSP 零诊断，369 前端 + 182 Rust 全过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `39891d1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
