@@ -1,10 +1,11 @@
-import { lazy } from "react";
+﻿import { lazy } from "react";
 import {
   FolderOpen,
   FileText,
   Wrench,
   GitCommitHorizontal,
   GitBranch,
+  Globe,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -29,6 +30,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   Wrench,
   GitCommitHorizontal,
   GitBranch,
+  Globe,
 };
 
 // ── Lazy-loaded panel components ──
@@ -66,6 +68,10 @@ const LazyGitCommitPanelWrapper = lazy(
     import("@/components/dock/DockPanelWrappers").then((m) => ({
       default: m.GitCommitPanelWrapper,
     })),
+);
+
+const LazyBrowserPanel = lazy(
+  () => import("@/components/browser/BrowserPanel"),
 );
 
 
@@ -123,5 +129,16 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
     defaultZone: "right",
     defaultOrder: 2,
     openAs: "tab",
+  },
+  browser: {
+    id: "browser",
+    title: "Browser",
+    icon: "Globe",
+    defaultZone: "right",
+    defaultOrder: 3,
+    component: LazyBrowserPanel as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    minPanelSize: 300,
   },
 };

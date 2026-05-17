@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { setPendingPtyResize } from "./terminalCache";
 import { useSplitLayout } from "../../hooks/useSplitLayout";
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep } from "../../types";
 
@@ -77,7 +76,6 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
         document.removeEventListener("mouseup", onMouseUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        setPendingPtyResize(true);
       };
 
       document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize";

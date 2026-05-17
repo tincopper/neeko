@@ -21,6 +21,9 @@ build/
 .snow
 #.pi
 .pnpm-store
+.kiro
+.trae
+.windsurf
 
 # OS
 .DS_Store

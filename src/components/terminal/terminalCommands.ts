@@ -3,29 +3,42 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AgentConfig } from "../../types";
 import {
   terminalCache,
+  terminalCacheKey,
   terminalWrapperRefs,
   terminalRebuildCallbacks,
   log,
 } from "./terminalCache";
 import { createTerminalForProject } from "./terminalFactory";
 
-function sendToTerminal(projectId: string, text: string) {
-  let cache = terminalCache.get(projectId);
-  if (!cache) {
+export function sendToTerminal(projectId: string, text: string, tabId?: string | null) {
+  let sessionId: string | null = null;
+
+  // When tabId is provided, build the exact cache key for precise lookup
+  if (tabId) {
+    const exactKey = terminalCacheKey(projectId, tabId);
+    sessionId = terminalCache.get(exactKey)?.sessionId ?? null;
+  }
+
+  // Fallback: exact projectId match, then prefix match
+  if (!sessionId) {
+    sessionId = terminalCache.get(projectId)?.sessionId ?? null;
+  }
+  if (!sessionId) {
     for (const [key, c] of terminalCache.entries()) {
       if (key.startsWith(`${projectId}:`)) {
-        cache = c;
+        sessionId = c.sessionId;
         break;
       }
     }
   }
-  if (!cache?.sessionId) {
-    log(`sendToTerminal: no session for ${projectId}`);
+
+  if (!sessionId) {
+    log(`sendToTerminal: no session for ${projectId}${tabId ? `:${tabId}` : ''}`);
     return;
   }
 
   const bytes = Array.from(new TextEncoder().encode(text));
-  emit(`terminal-input-${cache.sessionId}`, bytes).catch((err) => {
+  emit(`terminal-input-${sessionId}`, bytes).catch((err) => {
     log(`sendToTerminal error: ${err}`);
   });
 }

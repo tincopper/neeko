@@ -185,11 +185,6 @@ export const terminalRebuildCallbacks = backend.rebuildCallbacks;
 export const terminalWrapperRefs = backend.wrapperRefs;
 export const executedAgentKeys = backend.executedAgentKeys!;
 
-export let pendingPtyResize = false;
-export function setPendingPtyResize(v: boolean) {
-  pendingPtyResize = v;
-}
-
 export function terminalCacheKey(
   projectId: string,
   tabId?: string | null,
