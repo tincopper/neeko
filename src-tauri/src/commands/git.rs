@@ -194,6 +194,42 @@ pub fn get_worktree_changed_files(
     }
 }
 
+/// 获取变更文件的 diff 统计（仅 additions / deletions），与 get_changed_files 分离。
+/// 前端异步懒加载，避免阻塞首次渲染。
+#[tauri::command]
+pub fn get_changed_files_diff_stats_command(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<FileDiffStats>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_changed_files_diff_stats(&project.path).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+/// 获取 Git 分支信息（轻量级，不含 changed_files）
+/// 前端可异步加载，避免阻塞首次渲染。
+#[tauri::command]
+pub fn get_git_branch_info_command(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<crate::models::GitBranchInfo, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::get_git_branch_info(&project.path).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
 #[tauri::command]
 pub fn get_worktree_file_diff(
     project_id: String,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { AheadBehind, CommitResult } from "../../types";
 import type {
   UnifiedProjectView,
@@ -44,6 +45,38 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const { config } = useAppContext();
 
   const changedFiles = project.gitInfo?.changed_files ?? [];
+
+  // Diff stats 懒加载：首次渲染后异步获取 +/- 统计
+  const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({});
+
+  useEffect(() => {
+    if (changedFiles.length === 0) {
+      setDiffStats({});
+      return;
+    }
+    let cancelled = false;
+    invoke<Array<{ path: string; additions: number; deletions: number }>>(
+      "get_changed_files_diff_stats_command",
+      { projectId: project.id }
+    )
+      .then((stats) => {
+        if (cancelled) return;
+        const map: Record<string, { additions: number; deletions: number }> = {};
+        for (const s of stats) {
+          map[s.path] = { additions: s.additions, deletions: s.deletions };
+        }
+        setDiffStats(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [project.id, changedFiles.length]);
+
+  // 合并 diff stats 到文件列表
+  const changedFilesWithStats = changedFiles.map((f) => ({
+    ...f,
+    additions: diffStats[f.path]?.additions ?? f.additions,
+    deletions: diffStats[f.path]?.deletions ?? f.deletions,
+  }));
 
   const handleDividerMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -349,7 +382,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-md">
         <ChangesList
-          files={changedFiles}
+          files={changedFilesWithStats}
           selectedFiles={selectedFiles}
           onToggleFile={toggleFile}
           onDiscardFile={handleDiscardFile}

@@ -11,6 +11,12 @@ export interface Worktree {
   head: string;
 }
 
+export interface GitBranchInfo {
+  current_branch: string;
+  branches: string[];
+  worktrees: Worktree[];
+}
+
 export interface GitInfo {
   current_branch: string;
   branches: string[];
