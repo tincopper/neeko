@@ -1,4 +1,4 @@
-use crate::models::{DiffResult, PRInfo, PRListItem};
+use crate::models::{AheadBehind, DiffResult, FileDiffStats, PRInfo, PRListItem};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
@@ -133,6 +133,8 @@ impl LruCache {
 }
 
 static DIFF_CACHE: LazyLock<LruCache> = LazyLock::new(LruCache::new);
+static DIFF_STATS_CACHE: LazyLock<TtlCache<Vec<FileDiffStats>>> = LazyLock::new(TtlCache::new);
+static AHEAD_BEHIND_CACHE: LazyLock<TtlCache<AheadBehind>> = LazyLock::new(TtlCache::new);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -222,10 +224,40 @@ pub fn get_cached_diff(
     Ok(result)
 }
 
+/// Get cached diff stats or compute
+pub fn get_cached_diff_stats(
+    repo_path: &Path,
+    fetch: impl FnOnce() -> anyhow::Result<Vec<FileDiffStats>>,
+) -> anyhow::Result<Vec<FileDiffStats>> {
+    let key = repo_key_prefix(repo_path);
+    if let Some(cached) = DIFF_STATS_CACHE.get(&key) {
+        return Ok(cached);
+    }
+    let result = fetch()?;
+    DIFF_STATS_CACHE.set(key, result.clone());
+    Ok(result)
+}
+
+/// Get cached ahead/behind or compute
+pub fn get_cached_ahead_behind(
+    repo_path: &Path,
+    fetch: impl FnOnce() -> anyhow::Result<AheadBehind>,
+) -> anyhow::Result<AheadBehind> {
+    let key = repo_key_prefix(repo_path);
+    if let Some(cached) = AHEAD_BEHIND_CACHE.get(&key) {
+        return Ok(cached);
+    }
+    let result = fetch()?;
+    AHEAD_BEHIND_CACHE.set(key, result.clone());
+    Ok(result)
+}
+
 /// Invalidate all caches for a repo (called after write operations)
 pub fn invalidate_repo_caches(repo_path: &Path) {
     PR_LIST_CACHE.invalidate_repo(repo_path);
     PR_INFO_CACHE.invalidate_repo(repo_path);
     DEFAULT_BRANCH_CACHE.invalidate_repo(repo_path);
     DIFF_CACHE.invalidate_repo(repo_path);
+    DIFF_STATS_CACHE.invalidate_repo(repo_path);
+    AHEAD_BEHIND_CACHE.invalidate_repo(repo_path);
 }

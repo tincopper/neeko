@@ -29,22 +29,44 @@ export function useSessionBootstrap(deps: {
       deps.loadProjects().then(async () => {
          try {
             const projects = await invoke<Project[]>("list_projects");
+            const defaultGitInfo = {
+               current_branch: "",
+               branches: [] as string[],
+               worktrees: [] as Worktree[],
+               changed_files: [] as FileChange[],
+               is_clean: true,
+            };
+
+            const patchGitInfo = (projectId: string, patch: Partial<typeof defaultGitInfo>) => {
+               useAppStore.setState((state) => {
+                  const nextProjects = state.projects.map((proj) => {
+                     if (proj.id !== projectId) return proj;
+                     return { ...proj, git_info: { ...(proj.git_info ?? defaultGitInfo), ...patch } };
+                  });
+                  return {
+                     projects: nextProjects,
+                     activeProject: state.activeProjectId === projectId
+                        ? nextProjects.find(proj => proj.id === projectId) ?? state.activeProject
+                        : state.activeProject,
+                  };
+               });
+            };
+
             for (const p of projects) {
-               if (!p.git_info) {
-                  invoke("refresh_git_info", { projectId: p.id })
-                     .then(() => invoke<Project>("get_project", { projectId: p.id }))
-                     .then((updatedProject) => {
-                        useAppStore.setState((state) => {
-                           const nextProjects = state.projects.map((proj) =>
-                              proj.id === p.id ? updatedProject : proj
-                           );
-                           const nextActiveProject = state.activeProjectId === p.id
-                              ? updatedProject
-                              : state.activeProject;
-                           return {
-                              projects: nextProjects,
-                              activeProject: nextActiveProject,
-                           };
+               if (!p.git_info?.changed_files?.length) {
+                  // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
+                  invoke<FileChange[]>("get_worktree_changed_files", { projectId: p.id, worktreePath: "" })
+                     .then((changedFiles) => {
+                        patchGitInfo(p.id, { changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+                     })
+                     .catch(() => { });
+
+                  invoke<GitBranchInfo>("get_git_branch_info_command", { projectId: p.id })
+                     .then((branchInfo) => {
+                        patchGitInfo(p.id, {
+                           current_branch: branchInfo.current_branch,
+                           branches: branchInfo.branches,
+                           worktrees: branchInfo.worktrees,
                         });
                      })
                      .catch(() => { });
