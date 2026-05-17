@@ -1,6 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": "src-tauri/src/git/local.rs", "reason": "验证 numstat 解析 + 缓存行为"}
-{"file": "src-tauri/src/commands/project.rs", "reason": "验证 list_projects 不含 changed_files"}
-{"file": "src/hooks/useAppContainer.ts", "reason": "验证 loadFileTree 不串行"}
-{"file": "src/hooks/useLocalProjects.ts", "reason": "验证 loadProjects 保留已有 git_info"}
-{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层规范: 验证 list_projects 返回值"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 规范: 验证异步模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范: 验证 store 合并逻辑"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "测试规范: 验证测试覆盖"}
