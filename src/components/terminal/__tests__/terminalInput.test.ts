@@ -350,4 +350,94 @@ describe("setupTerminalInput", () => {
     expect(handled).toBe(true);
     expect(sendInput).not.toHaveBeenCalled();
   });
+
+  describe("IME 组字防重复", () => {
+    function fireCompositionStart(textarea: HTMLTextAreaElement) {
+      textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    }
+
+    function fireCompositionEnd(textarea: HTMLTextAreaElement, data: string) {
+      textarea.dispatchEvent(new CompositionEvent("compositionend", { data }));
+    }
+
+    it("组字期间抑制 onData 转发", () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      term.emitData("zhong");
+
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it("compositionend 手动提交文本", () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, "中");
+
+      expect(sendInput).toHaveBeenCalledWith("中");
+    });
+
+    it("compositionend 后紧随的 onData 重复被抑制", () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, "中");
+      // Input event fires synchronously after compositionend → onData("中")
+      term.emitData("中");
+
+      expect(sendInput).toHaveBeenCalledTimes(1);
+    });
+
+    it("取消 IME（空数据）不提交文本", () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, "");
+
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it("dispose 后 IME 事件不影响 sendInput", () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      const controller = setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      controller.dispose();
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, "中");
+
+      // After dispose, neither onData nor compositionend should send
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+  });
 });

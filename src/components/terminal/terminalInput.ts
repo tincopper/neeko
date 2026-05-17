@@ -143,14 +143,49 @@ export function setupTerminalInput({
   term: Terminal;
   sendInput: (text: string) => void;
 }): TerminalInputController {
+  const textarea = term.textarea;
+  let composing = false;
+  let suppressNextOnData = false;
+
+  let compositionStartHandler: (() => void) | null = null;
+  let compositionEndHandler: ((e: CompositionEvent) => void) | null = null;
+
+  if (textarea) {
+    compositionStartHandler = () => {
+      composing = true;
+    };
+
+    compositionEndHandler = (e: CompositionEvent) => {
+      composing = false;
+      if (e.data) {
+        sendInput(e.data);
+      }
+      suppressNextOnData = true;
+      setTimeout(() => {
+        suppressNextOnData = false;
+      }, 0);
+    };
+
+    textarea.addEventListener("compositionstart", compositionStartHandler);
+    textarea.addEventListener("compositionend", compositionEndHandler);
+  }
+
   const disposable = term.onData((data) => {
+    if (composing || suppressNextOnData) return;
     sendInput(data);
   });
+
   const disposeImeFallback = setupImeShiftSymbolFallback(term);
   const disposeCtrlEnter = setupNewlineEnterHandler(term, sendInput);
 
   return {
     dispose: () => {
+      composing = false;
+      suppressNextOnData = false;
+      if (textarea && compositionStartHandler && compositionEndHandler) {
+        textarea.removeEventListener("compositionstart", compositionStartHandler);
+        textarea.removeEventListener("compositionend", compositionEndHandler);
+      }
       disposeCtrlEnter();
       disposeImeFallback();
       disposable.dispose();
