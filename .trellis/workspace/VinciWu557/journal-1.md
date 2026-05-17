@@ -1565,3 +1565,37 @@ Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 41: Commit Panel instant load: 10 slices optimization
+
+**Date**: 2026-05-17
+**Task**: Commit Panel instant load: 10 slices optimization
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+从 3-5s 降到即时切换。10 个 slice：numstat 替代 git2 逐行遍历、diff stats/ahead-behind 后端缓存、handleSelectProject 不调 loadProjects、bootstrap split 轻量路径、PullRequestsPanel 折叠时不加载、DockZone 保持所有 panel 挂载用 CSS 切换。根因从数据层面追到渲染层面，最终发现 DockZone 每次切换都卸载/挂载组件是用户可感知卡顿的根源。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d267a1f` | (see git log) |
+| `705116c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

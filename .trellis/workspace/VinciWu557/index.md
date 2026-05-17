@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 40
+- **Total Sessions**: 41
 - **Last Active**: 2026-05-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1567 | Active |
+| `journal-1.md` | ~1601 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 41 | 2026-05-17 | Commit Panel instant load: 10 slices optimization | `d267a1f`, `705116c` | `enhance/files_git_display` |
 | 40 | 2026-05-17 | realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff | `bfa9952` | `enhance/files_git_display` |
 | 39 | 2026-05-17 | 优化 Commit 面板加载速度 | `31689d7` | `enhance/files_git_display` |
 | 38 | 2026-05-16 | Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关 | `ba154ea` | `enhance/files_git_display` |
