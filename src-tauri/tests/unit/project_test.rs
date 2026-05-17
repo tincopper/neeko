@@ -240,15 +240,19 @@ fn list_projects_returns_empty_changed_files() {
     std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
     let mut pm = ProjectManager::new();
-    pm.add_project(tmp.path().to_path_buf(), None, None).unwrap();
+    pm.add_project(tmp.path().to_path_buf(), None, None)
+        .unwrap();
 
     // list_projects 返回的项目 changed_files 应该为空
     let projects = pm.list_projects();
     assert_eq!(projects.len(), 1);
     let project = &projects[0];
-    
+
     // 如果 git_info 存在，changed_files 应该为空
     if let Some(ref git_info) = project.git_info {
-        assert!(git_info.changed_files.is_empty(), "Expected empty changed_files in list_projects output");
+        assert!(
+            git_info.changed_files.is_empty(),
+            "Expected empty changed_files in list_projects output"
+        );
     }
 }

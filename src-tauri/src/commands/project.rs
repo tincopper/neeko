@@ -75,13 +75,18 @@ pub fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<
 }
 
 #[tauri::command]
-pub fn refresh_git_info(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
-    state
-        .project_manager
-        .lock()
-        .map_err(AppError::from)?
+pub fn refresh_git_info(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<GitInfo, AppError> {
+    let mut manager = state.project_manager.lock().map_err(AppError::from)?;
+    manager
         .refresh_git_info(&project_id)
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    manager
+        .get_project(&project_id)
+        .and_then(|p| p.git_info.clone())
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))
 }
 
 #[tauri::command]

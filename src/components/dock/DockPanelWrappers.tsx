@@ -165,9 +165,21 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
 
   const onRefreshGit = useCallback(async () => {
-    if (!commands) return;
-    await commands.refreshGitInfo();
-  }, [commands]);
+    if (!commands || !project) return;
+    const gitInfo = await commands.refreshGitInfo();
+    useAppStore.setState((state) => {
+      const nextProjects = state.projects.map((p) =>
+        p.id === project.id ? { ...p, git_info: gitInfo } : p,
+      );
+      return {
+        projects: nextProjects,
+        activeProject:
+          state.activeProjectId === project.id
+            ? (nextProjects.find((p) => p.id === project.id) ?? state.activeProject)
+            : state.activeProject,
+      };
+    });
+  }, [commands, project]);
 
   if (!project || !commands || !capabilities) {
     return (
