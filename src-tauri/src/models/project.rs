@@ -22,6 +22,22 @@ pub struct FileChange {
     pub deletions: usize,
 }
 
+/// 文件 diff 统计信息（仅 additions / deletions，不含 diff 内容）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileDiffStats {
+    pub path: PathBuf,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
+/// Git 分支信息（轻量级，不含 changed_files）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitBranchInfo {
+    pub current_branch: String,
+    pub branches: Vec<String>,
+    pub worktrees: Vec<Worktree>,
+}
+
 /// 视图模式
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ViewMode {

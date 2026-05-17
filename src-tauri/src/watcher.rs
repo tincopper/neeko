@@ -70,16 +70,30 @@ impl WatcherManager {
             return;
         }
 
-        // 轮询线程：每 10 秒检查一次 git 状态，补检深层文件变化
+        // 轮询线程：每 3 秒用 git status --porcelain 检测变化，补检深层文件变化
         let stop = Arc::new(AtomicBool::new(false));
         let stop_clone = stop.clone();
         let app_poll = app_handle.clone();
         let pid_poll = project_id.clone();
+        let path_poll = path.clone();
         thread::spawn(move || {
             while !stop_clone.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_secs(10));
+                thread::sleep(Duration::from_secs(3));
                 if !stop_clone.load(Ordering::Relaxed) {
-                    let _ = app_poll.emit("git-changed", &pid_poll);
+                    // 快速脏检测：git status --porcelain 有输出才发事件
+                    let is_dirty = std::process::Command::new("git")
+                        .args([
+                            "-C",
+                            path_poll.to_str().unwrap_or("."),
+                            "status",
+                            "--porcelain",
+                        ])
+                        .output()
+                        .map(|o| !o.stdout.is_empty())
+                        .unwrap_or(true); // 出错时保守触发
+                    if is_dirty {
+                        let _ = app_poll.emit("git-changed", &pid_poll);
+                    }
                 }
             }
         });

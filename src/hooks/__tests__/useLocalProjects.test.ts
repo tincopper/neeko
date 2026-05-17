@@ -176,7 +176,7 @@ describe('useLocalProjects', () => {
   });
 
   it('handleRefreshGit 刷新 git 信息', async () => {
-    mockInvoke.mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue([]);
 
     const { result } = renderHook(() => useLocalProjects());
 
@@ -184,7 +184,7 @@ describe('useLocalProjects', () => {
       await result.current.handleRefreshGit('p1');
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('refresh_git_info', { projectId: 'p1' });
+    expect(mockInvoke).toHaveBeenCalledWith('get_worktree_changed_files', { projectId: 'p1', worktreePath: '' });
   });
 
   it('handleOpenIde 不做任何操作当无 IDE', async () => {
