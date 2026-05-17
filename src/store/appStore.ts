@@ -4,6 +4,7 @@ import type {
   AuthMethod,
   EditorGroupId,
   EditorSplitLayout,
+  FileChange,
   FileNode,
   Project,
   ProjectTabs,
@@ -81,6 +82,9 @@ interface AppStoreState {
   unsplit: (tabKey: string) => void;
   setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
   setSplitRatio: (tabKey: string, ratio: number) => void;
+
+  // ── Git incremental update ──
+  patchChangedFiles: (projectId: string, diff: { added: FileChange[]; removed: string[]; modified: FileChange[] }) => void;
 }
 
 const noop = () => {};
@@ -567,6 +571,55 @@ export const useAppStore = create<AppStoreState>((set) => ({
           ...state.editorLayout,
           [tabKey]: { ...layout, ratio: clamped },
         },
+      };
+    }),
+
+  // ── Git incremental update ──
+
+  patchChangedFiles: (projectId, diff) =>
+    set((state) => {
+      // 找到目标 project
+      const project = state.projects.find((p) => p.id === projectId);
+      if (!project?.git_info) return state;
+
+      const currentFiles = project.git_info.changed_files ?? [];
+
+      // 1. 移除被删除的文件
+      const removedSet = new Set(diff.removed);
+      let updatedFiles = currentFiles.filter((f) => !removedSet.has(f.path));
+
+      // 2. 更新状态变化的文件
+      const modifiedMap = new Map(diff.modified.map((f) => [f.path, f]));
+      updatedFiles = updatedFiles.map((f) => modifiedMap.get(f.path) ?? f);
+
+      // 3. 追加新增的文件
+      updatedFiles = [...updatedFiles, ...diff.added];
+
+      // 无变化时不更新
+      if (
+        diff.added.length === 0 &&
+        diff.removed.length === 0 &&
+        diff.modified.length === 0
+      ) {
+        return state;
+      }
+
+      const updatedGitInfo = {
+        ...project.git_info,
+        changed_files: updatedFiles,
+        is_clean: updatedFiles.length === 0,
+      };
+
+      const nextProjects = state.projects.map((p) =>
+        p.id === projectId ? { ...p, git_info: updatedGitInfo } : p
+      );
+
+      return {
+        projects: nextProjects,
+        activeProject:
+          state.activeProjectId === projectId
+            ? nextProjects.find((p) => p.id === projectId) ?? state.activeProject
+            : state.activeProject,
       };
     }),
 }));

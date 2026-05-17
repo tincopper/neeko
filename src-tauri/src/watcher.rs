@@ -1,25 +1,85 @@
-use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
+use crate::git_worker::{GitStatusDiff, GitStatusWorker};
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
-    thread,
-    time::Duration,
 };
 use tauri::{AppHandle, Emitter};
 
-#[allow(dead_code)]
+/// Throttle 调度器：收到信号后立即触发一次回调，
+/// 执行期间的信号合并，执行完成后若有排队则再触发一次。
+struct ThrottleScheduler {
+    tx: mpsc::Sender<()>,
+}
+
+impl ThrottleScheduler {
+    fn new(callback: impl Fn() + Send + 'static) -> Self {
+        let (tx, rx) = mpsc::channel::<()>();
+
+        std::thread::Builder::new()
+            .name("throttle-scheduler".to_string())
+            .spawn(move || {
+                loop {
+                    // 阻塞等待第一个信号
+                    match rx.recv() {
+                        Ok(()) => {}
+                        Err(_) => break, // channel 关闭
+                    }
+
+                    // 立即触发回调
+                    callback();
+
+                    // 处理完成后，检查是否有排队的信号
+                    // 如果有，立即再触发一次（合并了处理期间的所有事件）
+                    while rx.try_recv().is_ok() {
+                        callback();
+                    }
+                }
+            })
+            .expect("Failed to spawn throttle scheduler thread");
+
+        Self { tx }
+    }
+
+    /// 克隆发送端（用于传递给 notify watcher 闭包）
+    fn sender(&self) -> mpsc::Sender<()> {
+        self.tx.clone()
+    }
+}
+
 struct WatcherHandle {
-    debouncer: notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::RecommendedWatcher>,
+    _watcher: RecommendedWatcher,
+    _scheduler: ThrottleScheduler,
+    // worker clone 保持 alive，与 scheduler 回调中的 clone 共享同一个 worker 线程
+    _worker: GitStatusWorker,
     stop_signal: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
 pub struct WatcherManager {
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
+}
+
+/// 判断路径是否应该被忽略（.git / node_modules / target / .DS_Store 等）
+fn should_ignore_path(path: &Path) -> bool {
+    for component in path.components() {
+        if let std::path::Component::Normal(name) = component {
+            let name_str = name.to_string_lossy();
+            if name_str == ".git"
+                || name_str == "node_modules"
+                || name_str == "target"
+                || name_str == ".DS_Store"
+                || name_str.starts_with('.')
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 impl WatcherManager {
@@ -30,79 +90,72 @@ impl WatcherManager {
     }
 
     pub fn watch(&self, project_id: String, path: PathBuf, app_handle: AppHandle) {
-        let pid = project_id.clone();
-        let app = app_handle.clone();
-        let git_dir = path.join(".git");
+        let pid_for_legacy = project_id.clone();
+        let app_for_diff = app_handle.clone();
+        let app_for_legacy = app_handle.clone();
 
-        // 800ms 去抖，保存时往往触发多次写事件
-        let debouncer = new_debouncer(
-            Duration::from_millis(800),
-            move |res: DebounceEventResult| {
-                let events = match res {
-                    Ok(evts) => evts,
+        // 1. 创建 GitStatusWorker -- 有变化时发增量 diff 事件
+        let pid_emit = project_id.clone();
+        let worker = GitStatusWorker::start(path.clone(), move |mut diff: GitStatusDiff| {
+            diff.project_id = pid_emit.clone();
+            // 增量 diff 事件
+            let _ = app_for_diff.emit("git-status-diff", &diff);
+            // 同时发 git-changed 作为 fallback（兼容旧监听）
+            let _ = app_for_legacy.emit("git-changed", &pid_for_legacy);
+        });
+
+        // 2. 创建 ThrottleScheduler -- 合并 notify 事件，驱动 worker.check()
+        // worker.clone() 给 scheduler 回调，原始 worker 存入 WatcherHandle 保持 alive
+        let worker_clone = worker.clone();
+        let scheduler = ThrottleScheduler::new(move || {
+            worker_clone.check();
+        });
+
+        // 3. 创建 notify watcher -- 递归监听 + 路径过滤
+        // 从 scheduler 克隆 Sender 传给 notify 闭包
+        let scheduler_tx = scheduler.sender();
+        let notify_result = RecommendedWatcher::new(
+            move |result: Result<Event, notify::Error>| {
+                let event = match result {
+                    Ok(ev) => ev,
                     Err(_) => return,
                 };
 
-                // 非递归监听根目录，只需过滤掉 .git 目录内部的变化
-                let relevant = events.iter().any(|e| !e.path.starts_with(&git_dir));
+                // 过滤掉 .git / node_modules / target 等目录内的变化
+                let relevant = event.paths.iter().any(|p| !should_ignore_path(p));
 
                 if relevant {
-                    let _ = app.emit("git-changed", &pid);
+                    let _ = scheduler_tx.send(());
                 }
             },
+            Config::default(),
         );
 
-        let mut debouncer = match debouncer {
-            Ok(d) => d,
+        let mut watcher = match notify_result {
+            Ok(w) => w,
             Err(e) => {
-                eprintln!("[Watcher] debouncer error for {}: {}", path.display(), e);
+                eprintln!("[Watcher] create error for {}: {}", path.display(), e);
                 return;
             }
         };
 
-        // 非递归监听：只监听项目根目录的直接子条目变化
-        // 避免监控 node_modules、target 等大型目录树导致性能问题
-        if let Err(e) = debouncer
-            .watcher()
-            .watch(&path, RecursiveMode::NonRecursive)
-        {
+        // 递归监听：捕获深层文件变化（src/nested/file.rs 等）
+        // 通过 should_ignore_path 过滤掉不需要的目录
+        if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
             eprintln!("[Watcher] watch error for {}: {}", path.display(), e);
             return;
         }
 
-        // 轮询线程：每 3 秒用 git status --porcelain 检测变化，补检深层文件变化
+        // 停止信号
         let stop = Arc::new(AtomicBool::new(false));
-        let stop_clone = stop.clone();
-        let app_poll = app_handle.clone();
-        let pid_poll = project_id.clone();
-        let path_poll = path.clone();
-        thread::spawn(move || {
-            while !stop_clone.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_secs(3));
-                if !stop_clone.load(Ordering::Relaxed) {
-                    // 快速脏检测：git status --porcelain 有输出才发事件
-                    let is_dirty = std::process::Command::new("git")
-                        .args([
-                            "-C",
-                            path_poll.to_str().unwrap_or("."),
-                            "status",
-                            "--porcelain",
-                        ])
-                        .output()
-                        .map(|o| !o.stdout.is_empty())
-                        .unwrap_or(true); // 出错时保守触发
-                    if is_dirty {
-                        let _ = app_poll.emit("git-changed", &pid_poll);
-                    }
-                }
-            }
-        });
 
         if let Ok(mut watchers) = self.watchers.lock() {
             watchers.insert(
                 project_id,
                 WatcherHandle {
-                    debouncer,
+                    _watcher: watcher,
+                    _scheduler: scheduler,
+                    _worker: worker,
                     stop_signal: stop,
                 },
             );
@@ -110,7 +163,6 @@ impl WatcherManager {
     }
 
     pub fn unwatch(&self, project_id: &str) {
-        // 移除时 stop_signal 被 drop，轮询线程下次检查时退出
         if let Ok(mut watchers) = self.watchers.lock() {
             watchers.remove(project_id);
         }

@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project } from "../types";
+import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project, FileChange, GitBranchInfo, Worktree, GitStatusDiff } from "../types";
 import { useAppStore } from "../store/appStore";
+
+/** 将后端 git status 字符串映射为前端 FileChange.status */
+function mapGitStatus(status: string): FileChange["status"] {
+   switch (status) {
+      case "Untracked": return "Untracked";
+      case "Added": return "Added";
+      case "Deleted": return "Deleted";
+      case "Renamed": return "Renamed";
+      default: return "Modified";
+   }
+}
 
 export function useSessionBootstrap(deps: {
    loadProjects: () => Promise<void>;
@@ -60,27 +71,74 @@ export function useSessionBootstrap(deps: {
 
       const unlistenPromise = listen<string>("git-changed", (event) => {
          const projectId = event.payload;
-         invoke("refresh_git_info", { projectId })
-            .then(() => invoke<Project>("get_project", { projectId }))
-            .then((updatedProject) => {
-               useAppStore.setState((state) => {
-                  const nextProjects = state.projects.map((p) =>
-                     p.id === projectId ? updatedProject : p
-                  );
-                  const nextActiveProject = state.activeProjectId === projectId
-                     ? updatedProject
-                     : state.activeProject;
-                  return {
-                     projects: nextProjects,
-                     activeProject: nextActiveProject,
-                  };
+
+         // split 轻量路径：分别获取 changed_files 和 branch_info，避免全量 refresh_git_info
+         const defaultGitInfo = {
+            current_branch: "",
+            branches: [] as string[],
+            worktrees: [] as Worktree[],
+            changed_files: [] as FileChange[],
+            is_clean: true,
+         };
+
+         const updateGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
+            useAppStore.setState((state) => {
+               const nextProjects = state.projects.map((p) => {
+                  if (p.id !== projectId) return p;
+                  return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
+               });
+               return {
+                  projects: nextProjects,
+                  activeProject: state.activeProjectId === projectId
+                     ? nextProjects.find(p => p.id === projectId) ?? state.activeProject
+                     : state.activeProject,
+               };
+            });
+         };
+
+         // 1. 获取变更文件列表（轻量）
+         invoke<FileChange[]>("get_worktree_changed_files", { projectId, worktreePath: "" })
+            .then((changedFiles) => {
+               updateGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+            })
+            .catch((e) => console.error("[SessionBootstrap] get_worktree_changed_files failed:", e));
+
+         // 2. 获取分支信息（异步，不阻塞文件列表更新）
+         invoke<GitBranchInfo>("get_git_branch_info_command", { projectId })
+            .then((branchInfo) => {
+               updateGitInfo({
+                  current_branch: branchInfo.current_branch,
+                  branches: branchInfo.branches,
+                  worktrees: branchInfo.worktrees,
                });
             })
-            .catch((e) => console.error("[SessionBootstrap] git-changed update failed:", e));
+            .catch((e) => console.error("[SessionBootstrap] get_git_branch_info_command failed:", e));
+      });
+
+      // 增量 diff 事件：直接 patch store，无需重新请求后端
+      const unlistenDiffPromise = listen<GitStatusDiff>("git-status-diff", (event) => {
+         const diff = event.payload;
+         if (!diff.project_id) return;
+         useAppStore.getState().patchChangedFiles(diff.project_id, {
+            added: diff.added.map((f) => ({
+               path: f.path,
+               status: mapGitStatus(f.status),
+               additions: 0,
+               deletions: 0,
+            })),
+            removed: diff.removed,
+            modified: diff.modified.map((f) => ({
+               path: f.path,
+               status: mapGitStatus(f.status),
+               additions: 0,
+               deletions: 0,
+            })),
+         });
       });
 
       return () => {
          unlistenPromise.then((unlisten) => unlisten());
+         unlistenDiffPromise.then((unlisten) => unlisten());
       };
    }, []);
 
