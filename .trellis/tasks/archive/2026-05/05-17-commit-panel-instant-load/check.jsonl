@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层规范: 验证 list_projects 返回值"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 规范: 验证异步模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范: 验证 store 合并逻辑"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "测试规范: 验证测试覆盖"}

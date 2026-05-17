@@ -1,19 +1,28 @@
 import React from "react";
 import type { AppTheme } from "../../types";
 import { cn } from "../../utils/cn";
+import { Switch } from "../ui";
 
 interface AppearancePanelProps {
   appearanceFontSize: number;
   theme: AppTheme;
+  enablePiThemeSync: boolean;
+  enableOpenCodeThemeSync: boolean;
   onAppearanceFontSizeChange: (size: number) => void;
   onThemeChange: (theme: AppTheme) => void;
+  onPiThemeSyncChange: (enabled: boolean) => void;
+  onOpenCodeThemeSyncChange: (enabled: boolean) => void;
 }
 
 const AppearancePanel: React.FC<AppearancePanelProps> = ({
   appearanceFontSize,
   theme,
+  enablePiThemeSync,
+  enableOpenCodeThemeSync,
   onAppearanceFontSizeChange,
   onThemeChange,
+  onPiThemeSyncChange,
+  onOpenCodeThemeSyncChange,
 }) => {
   return (
     <div className="flex flex-col">
@@ -103,6 +112,38 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           </div>
           <span className="text-sm text-text-primary">Light</span>
         </button>
+      </div>
+
+      {/* Pi Theme Sync Toggle */}
+      <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
+            Sync Pi Theme
+          </div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            Automatically write .pi/settings.json theme to project directories.
+          </div>
+        </div>
+        <Switch
+          checked={enablePiThemeSync}
+          onCheckedChange={onPiThemeSyncChange}
+        />
+      </div>
+
+      {/* OpenCode Theme Sync Toggle */}
+      <div className="flex items-center justify-between py-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
+            Sync OpenCode Theme
+          </div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            Automatically write .opencode/tui.json theme to project directories.
+          </div>
+        </div>
+        <Switch
+          checked={enableOpenCodeThemeSync}
+          onCheckedChange={onOpenCodeThemeSyncChange}
+        />
       </div>
     </div>
   );

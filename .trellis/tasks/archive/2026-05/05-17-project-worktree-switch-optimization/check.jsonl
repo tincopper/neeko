@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Post-implementation quality verification: lint, type-check, test pass, no regression"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify refactored store conforms to Zustand conventions, no stale closures"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Verify refactored hooks follow composition and callback rules"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify cross-layer data flow: store -> hooks -> components -> terminals intact after refactor"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Ensure test mock strategies updated for moved state fields"}

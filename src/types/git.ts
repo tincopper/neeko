@@ -11,6 +11,12 @@ export interface Worktree {
   head: string;
 }
 
+export interface GitBranchInfo {
+  current_branch: string;
+  branches: string[];
+  worktrees: Worktree[];
+}
+
 export interface GitInfo {
   current_branch: string;
   branches: string[];
@@ -117,4 +123,17 @@ export interface PRInfo {
 export interface PRMergeResult {
   success: boolean;
   message: string;
+}
+
+/** 后端 git-status-diff 事件 payload（增量更新） */
+export interface GitStatusFile {
+  path: string;
+  status: string;
+}
+
+export interface GitStatusDiff {
+  project_id: string;
+  added: GitStatusFile[];
+  removed: string[];
+  modified: GitStatusFile[];
 }

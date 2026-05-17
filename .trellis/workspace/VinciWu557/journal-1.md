@@ -1400,3 +1400,235 @@ Optimized Neeko exit: moved cleanup from blocking on_window_event to background 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 36: Files panel: add expand chevron arrow indicator
+
+**Date**: 2026-05-16
+**Task**: Files panel: add expand chevron arrow indicator
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82c3409` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 37: feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭
+
+**Date**: 2026-05-16
+**Task**: feat: Pi/OpenCode theme sync 可配置化 — 新增 enablePiThemeSync / enableOpenCodeThemeSync 开关，默认关闭
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba154eac278cbf92db57e231b2bf4ce523e5c6d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 38: Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关
+
+**Date**: 2026-05-16
+**Task**: Pi/OpenCode theme sync 可配置化 — 完成实施，新增 enablePiThemeSync / enableOpenCodeThemeSync 开关
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+新增两个独立开关控制 neeko 是否写入项目级 agent 配置文件。默认关闭。Rust 后端 4 条写入路径均已门控，前端 AppearancePanel 新增 Switch 开关。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba154ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 39: 优化 Commit 面板加载速度
+
+**Date**: 2026-05-17
+**Task**: 优化 Commit 面板加载速度
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+拆解 diff 统计异步加载、精简 refresh 调用链、改进 watcher 轮询策略
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31689d7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 40: realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff
+
+**Date**: 2026-05-17
+**Task**: realtime-git-watcher v1+v2: throttle scheduler, git status worker, incremental diff
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal coalescing). Added GitStatusWorker with dedicated thread running git status --porcelain --no-optional-locks, diff-aware dirty detection, and incremental diff computation. Frontend now listens to git-status-diff events for patch-based store updates instead of full replacement. Removed notify-debouncer-mini dependency.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfa9952` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 41: Commit Panel instant load: 10 slices optimization
+
+**Date**: 2026-05-17
+**Task**: Commit Panel instant load: 10 slices optimization
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+从 3-5s 降到即时切换。10 个 slice：numstat 替代 git2 逐行遍历、diff stats/ahead-behind 后端缓存、handleSelectProject 不调 loadProjects、bootstrap split 轻量路径、PullRequestsPanel 折叠时不加载、DockZone 保持所有 panel 挂载用 CSS 切换。根因从数据层面追到渲染层面，最终发现 DockZone 每次切换都卸载/挂载组件是用户可感知卡顿的根源。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d267a1f` | (see git log) |
+| `705116c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 42: 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染
+
+**Date**: 2026-05-17
+**Task**: 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染
+**Branch**: `enhance/files_git_display`
+
+### Summary
+
+将 project/worktree 切换从 3-5 轮渲染降到单轮渲染。状态层：WSL/Remote/local 三域 transient worktree 状态全部直写 appStore，消除 useState→useSyncToStore 二次渲染。渲染层：TerminalView fit 从 3 次合并为 1 次，check_agents_installed 加缓存，首次终端创建显示骨架屏。质量：tsc 零错误，LSP 零诊断，369 前端 + 182 Rust 全过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `39891d1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

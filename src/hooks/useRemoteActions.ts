@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useState, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -16,8 +16,8 @@ import type {
   RemoteProject,
 } from "../types";
 import { buildRefreshGitHandler, updateProjectInEntries } from "../utils/entryUpdates";
-import { useConnectionWorktreeState } from "./useConnectionWorktreeState";
 import type { SaveSessionFn } from "./useWslProjects";
+import type { WorktreeItem } from "./useWorktreeState";
 
 interface UseRemoteActionsParams {
   config: AppConfig;
@@ -59,19 +59,49 @@ export function useRemoteActions({
     }));
   }, []);
 
-  const worktreeState = useConnectionWorktreeState<RemoteDiffState>();
-  const {
-    diffState: remoteDiffState,
-    setDiffState: setRemoteDiffState,
-    activeWorktreePath: activeRemoteWorktreePath,
-    setActiveWorktreePath: setActiveRemoteWorktreePath,
-    activeWorktreeBranch: remoteActiveWtBranch,
-    setActiveWorktreeBranch: setRemoteActiveWtBranch,
-    openedWorktrees: remoteOpenedWt,
-    setOpenedWorktrees: setRemoteOpenedWt,
-    openWorktreeTerminal,
-    resetConnectionState,
-  } = worktreeState;
+  // ── Remote transient worktree state ──
+  // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
+  // to avoid useState → useSyncToStore double-render and enable merged setState.
+  const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
+  const remoteActiveWtBranch = useAppStore((s) => s.remoteActiveWtBranch);
+  const remoteOpenedWt = useAppStore((s) => s.remoteOpenedWt);
+
+  // diffState stays local (typed per-connection and only consumed via context)
+  const [remoteDiffState, setRemoteDiffState] = useState<RemoteDiffState | null>(null);
+
+  const setActiveRemoteWorktreePath = useCallback((path: string | null) => {
+    useAppStore.setState({ activeRemoteWorktreePath: path });
+  }, []);
+
+  const setRemoteActiveWtBranch = useCallback((branch: string) => {
+    useAppStore.setState({ remoteActiveWtBranch: branch });
+  }, []);
+
+  const setRemoteOpenedWt: Dispatch<SetStateAction<WorktreeItem[]>> = useCallback((updater) => {
+    useAppStore.setState((state) => ({
+      remoteOpenedWt: typeof updater === "function" ? updater(state.remoteOpenedWt) : updater,
+    }));
+  }, []);
+
+  const openWorktreeTerminal = useCallback((worktreePath: string, branch: string) => {
+    setActiveRemoteWorktreePath(worktreePath);
+    setRemoteActiveWtBranch(branch);
+    setRemoteOpenedWt((prev) =>
+      prev.some((item) => item.path === worktreePath)
+        ? prev
+        : [...prev, { path: worktreePath, branch }],
+    );
+    setRemoteDiffState(null);
+  }, [setActiveRemoteWorktreePath, setRemoteActiveWtBranch, setRemoteOpenedWt]);
+
+  const resetRemoteTransientState = useCallback(() => {
+    useAppStore.setState({
+      activeRemoteWorktreePath: null,
+      remoteActiveWtBranch: "",
+      remoteOpenedWt: [],
+    });
+    setRemoteDiffState(null);
+  }, []);
 
   const invokeRemoteGit = useCallback(
     async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
@@ -128,7 +158,7 @@ export function useRemoteActions({
       activeWslProject: null,
       activeRemoteKey: { host, projectId: project.id },
     });
-    resetConnectionState();
+    resetRemoteTransientState();
 
     const entry = remoteEntries.find((item) => item.host === host);
     if (!entry) {
@@ -140,7 +170,7 @@ export function useRemoteActions({
     if (remoteAuthStore.has(entry.id)) {
       void refreshRemoteGit(entry.id, project.id, project.path);
     }
-  }, [remoteEntries, remoteAuthStore, resetConnectionState, setActiveRemoteProject, refreshRemoteGit]);
+  }, [remoteEntries, remoteAuthStore, resetRemoteTransientState, setActiveRemoteProject, refreshRemoteGit]);
 
   const handleSelectRemoteFile = useCallback((
     entryId: string,
@@ -248,6 +278,7 @@ export function useRemoteActions({
     setRemoteActiveWtBranch,
     remoteOpenedWt,
     setRemoteOpenedWt,
+    resetRemoteTransientState,
     invokeRemoteGit,
     handleSelectRemoteProject,
     handleSelectRemoteFile,

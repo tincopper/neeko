@@ -117,7 +117,18 @@ impl ProjectManager {
     }
 
     pub fn list_projects(&self) -> Vec<Project> {
-        self.projects.clone()
+        // 返回轻量版项目数据，changed_files 置空
+        // changed_files 由 watcher/handleRefreshGit 维护，不需要在 list_projects 中返回
+        self.projects
+            .iter()
+            .map(|p| {
+                let mut project = p.clone();
+                if let Some(ref mut git_info) = project.git_info {
+                    git_info.changed_files.clear();
+                }
+                project
+            })
+            .collect()
     }
 
     pub fn refresh_git_info(&mut self, project_id: &str) -> Result<()> {

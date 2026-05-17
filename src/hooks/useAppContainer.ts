@@ -68,7 +68,6 @@ export function useAppContainer(): UseAppContainerResult {
     handleAddProject,
     handleConfirmAddProject,
     handleRemoveProject,
-    handleSelectProject,
     handleSelectFile,
     handleRefreshGit,
     handleOpenIde,
@@ -120,12 +119,10 @@ export function useAppContainer(): UseAppContainerResult {
   const {
     activeWorktreePath,
     activeWorktreeBranch,
-    openedWorktrees,
     updateWtPath,
     setActiveWorktreePath,
     setActiveWorktreeBranch,
     setOpenedWorktrees,
-    clearWorktreeForProject,
   } = useWorktreeState(activeProjectId);
 
   useEffect(() => {
@@ -237,84 +234,92 @@ export function useAppContainer(): UseAppContainerResult {
     }
   }, []);
 
-  const clearWslTransientState = useCallback(() => {
-    wslActions.setWslDiffState(null);
-    wslActions.setActiveWslWorktreePath(null);
-    wslActions.setWslActiveWtBranch("");
-    wslActions.setWslOpenedWt([]);
-  }, [
-    wslActions.setWslDiffState,
-    wslActions.setActiveWslWorktreePath,
-    wslActions.setWslActiveWtBranch,
-    wslActions.setWslOpenedWt,
-  ]);
-
-  const clearRemoteTransientState = useCallback(() => {
-    remoteActions.setRemoteDiffState(null);
-    remoteActions.setActiveRemoteWorktreePath(null);
-    remoteActions.setRemoteActiveWtBranch("");
-    remoteActions.setRemoteOpenedWt([]);
-  }, [
-    remoteActions.setRemoteDiffState,
-    remoteActions.setActiveRemoteWorktreePath,
-    remoteActions.setRemoteActiveWtBranch,
-    remoteActions.setRemoteOpenedWt,
-  ]);
+  // clearWslTransientState and clearRemoteTransientState removed.
+  // WSL/Remote transient worktree state (path / branch / openedWt) now lives
+  // in appStore directly — clearing happens via resetWslTransientState /
+  // resetRemoteTransientState or inline in handleSelectProjectWithClear.
 
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
       closeAppSettingsTab();
-      clearWorktreeForProject(projectId);
-      // 清除 WSL/Remote 活跃状态，保证 useActiveProject 优先级正确返回 local context
-      useAppStore.setState({
-        activeWslKey: null,
-        activeWslProject: null,
-        activeRemoteKey: null,
-        activeRemoteProject: null,
+
+      // Clear WSL/Remote diffState (local useState, batched by React 18 with the
+      // appStore.setState below)
+      wslActions.setWslDiffState(null);
+      remoteActions.setRemoteDiffState(null);
+
+      // ONE appStore.setState: inline clearWorktreeForProject + clear
+      // WSL/Remote active + transient worktree + set new active project.
+      useAppStore.setState((state) => {
+        const targetProjectTabs = state.tabs[projectId];
+        // Inline clearWorktreeForProject logic — avoid extra Zustand store update
+        const wtCur = state.worktreeStateMap[projectId];
+        const nextWtMap = (wtCur && wtCur.activePath !== null)
+          ? { ...state.worktreeStateMap, [projectId]: { ...wtCur, activePath: null, activeBranch: "" } }
+          : state.worktreeStateMap;
+        return {
+          worktreeStateMap: nextWtMap,
+          activeWslKey: null,
+          activeWslProject: null,
+          activeRemoteKey: null,
+          activeRemoteProject: null,
+          activeWslWorktreePath: null,
+          wslActiveWtBranch: "",
+          wslOpenedWt: [],
+          activeRemoteWorktreePath: null,
+          remoteActiveWtBranch: "",
+          remoteOpenedWt: [],
+          activeProjectId: projectId,
+          activeProject: state.projects.find((p) => p.id === projectId) ?? null,
+          activeTabId: targetProjectTabs?.activeTabId ?? null,
+        };
       });
-      clearWslTransientState();
-      clearRemoteTransientState();
-      await handleSelectProject(projectId);
+
+      // Fire-and-forget backend notification
+      invoke("set_active_project", { projectId }).catch(console.error);
+
       const project = useAppStore.getState().activeProject;
       if (project) {
-        await fileView.loadFileTree(projectId, project.path);
+        // Fire-and-forget: 不阻塞项目切换流程，让 Commit Panel 可以立即渲染
+        fileView.loadFileTree(projectId, project.path).catch(console.error);
       }
     },
-    [closeAppSettingsTab, clearWorktreeForProject, clearWslTransientState, clearRemoteTransientState, handleSelectProject, fileView],
+    [closeAppSettingsTab,
+      wslActions.setWslDiffState, remoteActions.setRemoteDiffState, fileView],
   );
 
   const handleSelectWslProjectWithSync = useCallback(
     (distro: string, project: WSLProject) => {
       closeAppSettingsTab();
-      clearRemoteTransientState();
+      remoteActions.resetRemoteTransientState();
       wslActions.handleSelectWslProject(distro, project);
     },
-    [closeAppSettingsTab, clearRemoteTransientState, wslActions.handleSelectWslProject],
+    [closeAppSettingsTab, remoteActions.resetRemoteTransientState, wslActions.handleSelectWslProject],
   );
 
   const handleOpenWslWorktreeTerminalWithSync = useCallback(
     (distro: string, worktreePath: string, branch: string) => {
-      clearRemoteTransientState();
+      remoteActions.resetRemoteTransientState();
       wslActions.handleOpenWslWorktreeTerminal(distro, worktreePath, branch);
     },
-    [clearRemoteTransientState, wslActions.handleOpenWslWorktreeTerminal],
+    [remoteActions.resetRemoteTransientState, wslActions.handleOpenWslWorktreeTerminal],
   );
 
   const handleSelectRemoteProjectWithSync = useCallback(
     (host: string, project: RemoteProject) => {
       closeAppSettingsTab();
-      clearWslTransientState();
+      wslActions.resetWslTransientState();
       remoteActions.handleSelectRemoteProject(host, project);
     },
-    [closeAppSettingsTab, clearWslTransientState, remoteActions.handleSelectRemoteProject],
+    [closeAppSettingsTab, wslActions.resetWslTransientState, remoteActions.handleSelectRemoteProject],
   );
 
   const handleOpenRemoteWorktreeTerminalWithSync = useCallback(
     (entryId: string, worktreePath: string, branch: string) => {
-      clearWslTransientState();
+      wslActions.resetWslTransientState();
       remoteActions.handleOpenRemoteWorktreeTerminal(entryId, worktreePath, branch);
     },
-    [clearWslTransientState, remoteActions.handleOpenRemoteWorktreeTerminal],
+    [wslActions.resetWslTransientState, remoteActions.handleOpenRemoteWorktreeTerminal],
   );
 
   const {
@@ -336,12 +341,9 @@ export function useAppContainer(): UseAppContainerResult {
     ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
     : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
-  // Restore activeTabId when switching tab spaces (project ↔ worktree)
-  useEffect(() => {
-    if (!tabKey) return;
-    const projectTabs = useAppStore.getState().tabs[tabKey];
-    useAppStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
-  }, [tabKey]);
+  // activeTabId 恢复已内联到 setActiveProjectId（useLocalProjects）和
+  // setActiveWorktreePath（useWorktreeState）中，与项目/worktree 切换在同一
+  // 个 appStore.setState 内完成，不再需要 useEffect 额外渲染。
 
   useEffect(() => {
     if (!tabKey) return;
@@ -529,13 +531,6 @@ export function useAppContainer(): UseAppContainerResult {
     activeRemoteProject,
     remoteAuthStore,
     pendingAuthEntry,
-    activeWorktreePath,
-    activeWorktreeBranch,
-    openedWorktrees,
-    wslOpenedWt: wslActions.wslOpenedWt,
-    activeWslWorktreePath: wslActions.activeWslWorktreePath,
-    remoteOpenedWt: remoteActions.remoteOpenedWt,
-    activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
     worktreeState: session.worktreeState,
     selectProject: handleSelectProjectWithClear,
     selectWslProject: handleSelectWslProjectWithSync,

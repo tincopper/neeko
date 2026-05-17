@@ -261,6 +261,50 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str)
     Ok(())
 }
 
+/// 从 ~/.neeko/config.json 读取 enable_pi_theme_sync 字段
+/// 默认返回 false（如果读取失败或字段不存在）
+pub fn read_enable_pi_theme_sync() -> bool {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    let config_path = home.join(".neeko").join("config.json");
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let config: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    config
+        .get("enablePiThemeSync")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// 从 ~/.neeko/config.json 读取 enable_open_code_theme_sync 字段
+/// 默认返回 false（如果读取失败或字段不存在）
+pub fn read_enable_opencode_theme_sync() -> bool {
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return false,
+    };
+    let config_path = home.join(".neeko").join("config.json");
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let config: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    config
+        .get("enableOpenCodeThemeSync")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// 从 ~/.neeko/config.json 读取当前主题
 /// 如果读取失败或值无效，返回 "dark"
 pub fn get_current_theme(config_json: &serde_json::Value) -> String {

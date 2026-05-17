@@ -1,6 +1,6 @@
 use crate::models::{
     CommitDetail, CommitEntry, CommitFileChange, DiffHunk, DiffLine, DiffResult, FileChange,
-    FileStatus, GitInfo, Worktree,
+    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
 };
 use crate::utils::command::local::exec;
 use anyhow::{Context, Result};
@@ -12,38 +12,15 @@ use super::invalidate_repo_caches;
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
-    // 获取当前分支
-    let head = repo.head()?;
-    let current_branch = if head.is_branch() {
-        head.shorthand().unwrap_or("HEAD").to_string()
-    } else {
-        "HEAD (detached)".to_string()
-    };
-
-    // 只获取本地分支
-    let branches = repo.branches(Some(git2::BranchType::Local))?;
-    let mut branch_names = Vec::new();
-    for branch_result in branches {
-        if let Ok((branch, _)) = branch_result {
-            if let Some(name) = branch.name()? {
-                branch_names.push(name.to_string());
-            }
-        }
-    }
-
-    // 获取变更文件
+    // 复用已打开的 Repository，避免重复 open
+    let branch_info = get_git_branch_info_from_repo(&repo)?;
     let changed_files = get_changed_files(&repo)?;
-
-    // 判断是否干净
     let is_clean = changed_files.is_empty();
 
-    // 获取 worktrees
-    let worktrees = get_worktrees(&repo)?;
-
     Ok(GitInfo {
-        current_branch,
-        branches: branch_names,
-        worktrees,
+        current_branch: branch_info.current_branch,
+        branches: branch_info.branches,
+        worktrees: branch_info.worktrees,
         changed_files,
         is_clean,
     })
@@ -96,89 +73,137 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
         }
     }
 
-    // Single combined diff to get per-file stats
-    if !files.is_empty() {
-        let mut diff_opts = git2::DiffOptions::new();
-        let old_tree = repo
-            .head()
-            .ok()
-            .and_then(|h| h.peel_to_commit().ok())
-            .and_then(|c| c.tree().ok());
+    Ok(files)
+}
 
-        let diff = match &old_tree {
-            Some(tree) => repo
-                .diff_tree_to_workdir_with_index(Some(tree), Some(&mut diff_opts))
-                .or_else(|_| repo.diff_index_to_workdir(None, Some(&mut diff_opts))),
-            None => repo
-                .diff_index_to_workdir(None, Some(&mut diff_opts))
-                .or_else(|_| repo.diff_tree_to_workdir_with_index(None, Some(&mut diff_opts))),
-        };
+/// 获取变更文件的 diff 统计（仅 additions / deletions，不含 diff 内容）。
+/// 与 get_changed_files 分离，由前端异步懒加载。
+/// 使用 git diff --numstat 子进程替代 git2 逐行遍历，性能大幅提升。
+pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStats>> {
+    // 使用缓存
+    super::cache::get_cached_diff_stats(repo_path, || {
+        // 1. 使用 git diff --numstat 获取已跟踪文件的 diff 统计
+        let unstaged_output = exec("git")
+            .args(["diff", "--numstat"])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git diff --numstat")?;
 
-        if let Ok(diff) = diff {
-            use std::cell::RefCell;
-            let file_stats: RefCell<Vec<(String, usize, usize)>> = RefCell::new(Vec::new());
-            let _ = diff.foreach(
-                &mut |delta, _| {
-                    if let Some(path) = delta.new_file().path() {
-                        file_stats
-                            .borrow_mut()
-                            .push((path.to_string_lossy().to_string(), 0, 0));
-                    }
-                    true
-                },
-                None,
-                None,
-                Some(&mut |_delta, _hunk, line| {
-                    let origin = line.origin();
-                    if origin == '+' || origin == '-' {
-                        let mut stats = file_stats.borrow_mut();
-                        if let Some(last) = stats.last_mut() {
-                            if origin == '+' {
-                                last.1 += 1;
-                            } else {
-                                last.2 += 1;
-                            }
-                        }
-                    }
-                    true
-                }),
-            );
+        let staged_output = exec("git")
+            .args(["diff", "--cached", "--numstat"])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git diff --cached --numstat")?;
 
-            let stats = file_stats.into_inner();
-            for file in &mut files {
-                let path_str = file.path.to_string_lossy().replace('\\', "/");
-                if let Some((_, a, d)) = stats.iter().find(|(p, _, _)| {
-                    let normalized = p.replace('\\', "/");
-                    normalized == path_str
-                        || normalized.ends_with(&path_str)
-                        || path_str.ends_with(&normalized)
-                }) {
-                    file.additions = *a;
-                    file.deletions = *d;
+        let mut stats: Vec<FileDiffStats> = Vec::new();
+        let mut tracked_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        // 解析未暂存的 diff
+        let unstaged = String::from_utf8_lossy(&unstaged_output.stdout);
+        for line in unstaged.lines() {
+            if let Some((additions, deletions, path)) = parse_numstat_line(line) {
+                tracked_paths.insert(path.clone());
+                stats.push(FileDiffStats {
+                    path: PathBuf::from(&path),
+                    additions,
+                    deletions,
+                });
+            }
+        }
+
+        // 解析已暂存的 diff（合并到同一结果）
+        let staged = String::from_utf8_lossy(&staged_output.stdout);
+        for line in staged.lines() {
+            if let Some((additions, deletions, path)) = parse_numstat_line(line) {
+                if let Some(existing) = stats.iter_mut().find(|s| s.path.to_string_lossy() == path) {
+                    // 文件同时有未暂存和已暂存变更，累加
+                    existing.additions += additions;
+                    existing.deletions += deletions;
+                } else {
+                    tracked_paths.insert(path.clone());
+                    stats.push(FileDiffStats {
+                        path: PathBuf::from(&path),
+                        additions,
+                        deletions,
+                    });
                 }
             }
         }
 
-        // Handle untracked/added files not in diff (count their lines as additions)
-        if let Some(workdir) = repo.workdir() {
-            for file in &mut files {
-                if (file.status == FileStatus::Added || file.status == FileStatus::Untracked)
-                    && file.additions == 0
-                    && file.deletions == 0
-                {
-                    let full_path = workdir.join(&file.path);
-                    if full_path.exists() && full_path.is_file() {
-                        if let Ok(content) = std::fs::read_to_string(&full_path) {
-                            let line_count = content.lines().count();
-                            file.additions = line_count;
-                        }
-                    }
-                }
+        // 2. 处理未跟踪文件（使用 git ls-files --others 获取列表，wc -l 计数）
+        let untracked_output = exec("git")
+            .args(["ls-files", "--others", "--exclude-standard"])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run git ls-files --others")?;
+
+        let untracked_files = String::from_utf8_lossy(&untracked_output.stdout);
+        for file_path in untracked_files.lines() {
+            let file_path = file_path.trim();
+            if file_path.is_empty() || tracked_paths.contains(file_path) {
+                continue;
             }
+
+            let full_path = repo_path.join(file_path);
+            if !full_path.exists() || !full_path.is_file() {
+                continue;
+            }
+
+            // 使用 wc -l 计算行数（比 read_to_string 更高效）
+            let line_count = count_lines_with_wc(&full_path);
+            stats.push(FileDiffStats {
+                path: PathBuf::from(file_path),
+                additions: line_count,
+                deletions: 0,
+            });
         }
+
+        Ok(stats)
+    })
+}
+
+/// 解析 git diff --numstat 的单行输出
+/// 格式: "additions\tdeletions\tpath"
+/// 二进制文件格式: "-\t-\tpath"
+fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
+    let parts: Vec<&str> = line.splitn(3, '\t').collect();
+    if parts.len() < 3 {
+        return None;
     }
 
-    Ok(files)
+    // 二进制文件返回 0/0
+    let additions = if parts[0] == "-" { 0 } else { parts[0].parse().unwrap_or(0) };
+    let deletions = if parts[1] == "-" { 0 } else { parts[1].parse().unwrap_or(0) };
+    let path = parts[2].to_string();
+
+    Some((additions, deletions, path))
+}
+
+/// 使用 wc -l 计算文件行数
+fn count_lines_with_wc(path: &Path) -> usize {
+    use std::process::Command;
+    
+    let output = Command::new("wc")
+        .args(["-l", path.to_str().unwrap_or("")])
+        .output();
+
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // wc -l 输出格式: "  123 path"
+            stdout
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0)
+        }
+        Err(_) => {
+            // fallback: 使用 std::fs::read_to_string
+            std::fs::read_to_string(path)
+                .map(|c| c.lines().count())
+                .unwrap_or(0)
+        }
+    }
 }
 
 fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
@@ -402,6 +427,43 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
 pub fn get_changed_files_for_path(repo_path: &Path) -> Result<Vec<FileChange>> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
     get_changed_files(&repo)
+}
+
+/// 获取 Git 分支信息（轻量级，不含 changed_files）
+pub fn get_git_branch_info(repo_path: &Path) -> Result<GitBranchInfo> {
+    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    get_git_branch_info_from_repo(&repo)
+}
+
+/// 内部版本：接受已打开的 &Repository，避免重复 open
+fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo> {
+    // 获取当前分支
+    let head = repo.head()?;
+    let current_branch = if head.is_branch() {
+        head.shorthand().unwrap_or("HEAD").to_string()
+    } else {
+        "HEAD (detached)".to_string()
+    };
+
+    // 只获取本地分支
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    let mut branch_names = Vec::new();
+    for branch_result in branches {
+        if let Ok((branch, _)) = branch_result {
+            if let Some(name) = branch.name()? {
+                branch_names.push(name.to_string());
+            }
+        }
+    }
+
+    // 获取 worktrees
+    let worktrees = get_worktrees(repo)?;
+
+    Ok(GitBranchInfo {
+        current_branch,
+        branches: branch_names,
+        worktrees,
+    })
 }
 
 /// 获取指定路径（worktree 或项目路径）中某文件的 diff
@@ -1074,7 +1136,14 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
 }
 
 /// 获取 Ahead/Behind 计数（参考 Muxy）
+/// 结果通过 cache 缓存，由 invalidate_repo_caches 在 git 操作后失效。
 pub fn get_ahead_behind(repo_path: &Path) -> Result<AheadBehind> {
+    super::cache::get_cached_ahead_behind(repo_path, || {
+        get_ahead_behind_uncached(repo_path)
+    })
+}
+
+fn get_ahead_behind_uncached(repo_path: &Path) -> Result<AheadBehind> {
     let branch = get_current_branch_via_cli(repo_path)?;
     if !check_upstream(repo_path, &branch)? {
         return Ok(AheadBehind {

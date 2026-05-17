@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand state architecture conventions, store organization rules, useSyncToStore pattern"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook composition rules, callback conventions, hook dependency patterns"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality gate: lint, type-check, test, rendering invariants"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "User interaction patterns and callback chain design rules"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Shared thinking guide for reuse decisions when extracting transient state to store"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Mock patterns when refactoring hooks that call appStore.setState"}

@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端代码质量检查规范"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "验证线程安全: 跨 await 持有锁, Arc 克隆, stop signal"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端代码质量检查规范"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "验证测试覆盖率是否符合策略"}

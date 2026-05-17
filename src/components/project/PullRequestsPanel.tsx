@@ -63,7 +63,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   }, [autoSync, expanded, projectId]);
 
   const loadPRs = useCallback(async () => {
-    if (!ghInstalled) return;
+    if (!ghInstalled || !expanded) return;
     setLoading(true);
     try {
       const prs = await invoke<PRListItem[]>("list_prs_command", {
@@ -77,7 +77,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, filter, ghInstalled]);
+  }, [projectId, filter, ghInstalled, expanded]);
 
   useEffect(() => {
     loadPRs();

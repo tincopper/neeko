@@ -26,6 +26,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
 
    const wrapperRef = useRef<HTMLDivElement>(null);
    const currentCacheKeyRef = useRef<string | null>(null);
+   const loadingElRef = useRef<HTMLDivElement | null>(null);
    const [rebuildCount, setRebuildCount] = useState(0);
 
    // Use prop if provided, otherwise read from store (worktree selected via sidebar)
@@ -78,7 +79,6 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
       if (cache) {
          cache.term.options.fontSize = config.terminalFontSize;
          cache.term.options.fontFamily = buildFontFamily(config.fontFamily);
-         cache.fitAddon.fit();
       }
    }, [projectId, cacheKey, config.terminalFontSize, config.fontFamily]);
 
@@ -151,6 +151,11 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
          log(`Reattaching existing terminal for ${projectName} (${cacheKey})`);
          attach(existingCache);
       } else {
+         const loadingEl = document.createElement("div");
+         loadingEl.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--terminal-foreground,#abb2bf);font-size:14px;opacity:0.6";
+         loadingEl.textContent = "Connecting...";
+         loadingElRef.current = loadingEl;
+         wrapper.appendChild(loadingEl);
          createTerminalForProject(
             cacheKey,
             projectPath,
@@ -166,6 +171,10 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
             taskConfigId ?? undefined,
             config.terminalGpuAcceleration,
          ).then((cache) => {
+            if (loadingElRef.current) {
+               loadingElRef.current.remove();
+               loadingElRef.current = null;
+            }
             if (currentCacheKeyRef.current !== cacheKey) {
                return;
             }
@@ -214,10 +223,32 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
          });
       }
 
+      const handleResize = () => {
+         const cache = terminalCache.get(cacheKey);
+         if (!cache) {
+            return;
+         }
+         cache.fitAddon.fit();
+         if (cache.sessionId) {
+            invoke("resize_terminal", {
+               sessionId: cache.sessionId,
+               cols: cache.term.cols,
+               rows: cache.term.rows,
+            }).catch(() => { });
+         }
+      };
+
+      window.addEventListener("resize", handleResize);
+
+      let roSkipFirst = true;
       let resizeRafId: number | null = null;
       let prevCols = 0;
       let prevRows = 0;
       const ro = new ResizeObserver(() => {
+         if (roSkipFirst) {
+            roSkipFirst = false;
+            return;
+         }
          if (resizeRafId !== null) {
             cancelAnimationFrame(resizeRafId);
          }
@@ -242,6 +273,10 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
       ro.observe(wrapper);
 
       return () => {
+         if (loadingElRef.current) {
+            loadingElRef.current.remove();
+            loadingElRef.current = null;
+         }
          if (resizeRafId !== null) {
             cancelAnimationFrame(resizeRafId);
          }
@@ -310,7 +345,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    return (
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
          <div
-            className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
+            className="terminal-wrapper relative flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
             style={{ backgroundColor: "var(--terminal-bg)" }}
             ref={wrapperRef}
          />

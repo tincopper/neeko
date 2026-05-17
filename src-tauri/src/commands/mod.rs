@@ -60,6 +60,8 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::is_worktree_dirty,
             $crate::commands::delete_branch,
             $crate::commands::get_worktree_changed_files,
+            $crate::commands::get_changed_files_diff_stats_command,
+            $crate::commands::get_git_branch_info_command,
             $crate::commands::get_worktree_file_diff,
             $crate::commands::stage_files_command,
             $crate::commands::unstage_files_command,

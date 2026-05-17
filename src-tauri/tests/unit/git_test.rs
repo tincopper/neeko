@@ -212,6 +212,81 @@ fn get_file_diff_on_new_file() {
     assert!(all_added);
 }
 
+// --- get_changed_files_diff_stats (numstat) ---
+
+#[test]
+fn diff_stats_detects_modified_file() {
+    let (tmp, _repo) = create_test_repo();
+    
+    // 修改已跟踪文件，增加 1 行，删除 1 行
+    std::fs::write(tmp.path().join("README.md"), "# Modified\nNew line\n").unwrap();
+    
+    let stats = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0].path, PathBuf::from("README.md"));
+    // additions 应该 >= 1（新增的 "New line"），deletions 应该 >= 1（删除的旧内容）
+    assert!(stats[0].additions >= 1, "Expected additions >= 1, got {}", stats[0].additions);
+    assert!(stats[0].deletions >= 1, "Expected deletions >= 1, got {}", stats[0].deletions);
+}
+
+#[test]
+fn diff_stats_detects_untracked_file() {
+    let (tmp, _repo) = create_test_repo();
+    
+    // 新建未跟踪文件
+    std::fs::write(tmp.path().join("new_file.txt"), "line1\nline2\nline3\n").unwrap();
+    
+    let stats = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(stats[0].path, PathBuf::from("new_file.txt"));
+    assert_eq!(stats[0].additions, 3);
+    assert_eq!(stats[0].deletions, 0);
+}
+
+#[test]
+fn diff_stats_empty_on_clean_repo() {
+    let (tmp, _repo) = create_test_repo();
+    
+    let stats = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    assert!(stats.is_empty());
+}
+
+#[test]
+fn diff_stats_cache_returns_same_result() {
+    let (tmp, _repo) = create_test_repo();
+    std::fs::write(tmp.path().join("README.md"), "# Modified\nNew line\n").unwrap();
+    
+    // 第一次调用
+    let stats1 = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    
+    // 第二次调用应该返回缓存结果
+    let stats2 = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    
+    assert_eq!(stats1.len(), stats2.len());
+    assert_eq!(stats1[0].additions, stats2[0].additions);
+    assert_eq!(stats1[0].deletions, stats2[0].deletions);
+}
+
+#[test]
+fn diff_stats_cache_invalidated_on_change() {
+    let (tmp, _repo) = create_test_repo();
+    std::fs::write(tmp.path().join("README.md"), "# Modified\nNew line\n").unwrap();
+    
+    // 第一次调用
+    let stats1 = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    assert_eq!(stats1.len(), 1);
+    
+    // 修改文件，使缓存失效
+    git::invalidate_repo_caches(tmp.path());
+    
+    // 添加新文件
+    std::fs::write(tmp.path().join("new_file.txt"), "new content\n").unwrap();
+    
+    // 第二次调用应该返回新结果
+    let stats2 = git::get_changed_files_diff_stats(tmp.path()).unwrap();
+    assert!(stats2.len() >= 2, "Expected >= 2 files after adding new file, got {}", stats2.len());
+}
+
 // --- rename_branch ---
 
 #[test]
