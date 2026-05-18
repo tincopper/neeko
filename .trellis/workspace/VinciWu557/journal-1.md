@@ -1665,3 +1665,37 @@ Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 44: Settings: Project panel + built-in agents backend single source
+
+**Date**: 2026-05-18
+**Task**: Settings: Project panel + built-in agents backend single source
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+Settings 左侧导航增加 Projects 分组与项目级 ProjectPanel（编辑名称/路径/Agent/IDE 覆盖、管理 Tasks、移除项目）。同时把内置 agents 元数据收敛到后端单源：AgentConfig 增加 is_builtin/default_skill_path 字段，前端废弃 BUILTIN_AGENTS 常量改走 list_agents 过滤；修复设置面板与后端漂移（补回 pi、qoder 默认命令显示修正为 qodercli）；add_agent 命令与 customAgents 持久化加载路径双重防御清零信任字段。沉淀两条 spec：信任标识字段与防御层（type-safety.md）、前端硬编码列表与后端注册表漂移（cross-layer-thinking-guide.md）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43da4b9` | (see git log) |
+| `9785fc2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

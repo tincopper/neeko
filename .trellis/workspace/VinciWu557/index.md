@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 43
+- **Total Sessions**: 44
 - **Last Active**: 2026-05-18
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1667 | Active |
+| `journal-1.md` | ~1701 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 44 | 2026-05-18 | Settings: Project panel + built-in agents backend single source | `43da4b9`, `9785fc2` | `enhance/setting_panel` |
 | 43 | 2026-05-18 | Settings Panel App-Level View | `e89661b` | `enhance/setting_panel` |
 | 42 | 2026-05-17 | 项目/worktree 切换性能优化 — 多轮渲染→单轮渲染 | `39891d1` | `enhance/files_git_display` |
 | 41 | 2026-05-17 | Commit Panel instant load: 10 slices optimization | `d267a1f`, `705116c` | `enhance/files_git_display` |
