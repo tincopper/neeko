@@ -58,6 +58,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 
   const rightPanelSizes = useDockStore((s) => s.rightPanelSizes);
   const setRightPanelSize = useDockStore((s) => s.setRightPanelSize);
+  const leftPanelSize = useDockStore((s) => s.leftPanelSize);
+  const setLeftPanelSize = useDockStore((s) => s.setLeftPanelSize);
 
   const rightPanelIds = useDockStore(
     (s) => s.zones.right?.panels ?? [],
@@ -95,7 +97,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     panel.resize(`${targetSize}%`);
   }, [rightActivePanelId, rightVisible, getRightPanelSize, rightPanelRef]);
 
-  // Save current size on resize (fires during drag and programmatic resize)
+  // Save right panel size on resize
   const handleRightPanelResize = useCallback(
     (panelSize: PanelSize) => {
       if (rightActivePanelId) {
@@ -103,6 +105,19 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       }
     },
     [rightActivePanelId, setRightPanelSize],
+  );
+
+  // Save left panel size on resize (debounced to avoid thrashing the store on every drag frame)
+  const leftPanelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleLeftPanelResize = useCallback(
+    (panelSize: PanelSize) => {
+      if (leftPanelSaveTimerRef.current !== null) clearTimeout(leftPanelSaveTimerRef.current);
+      leftPanelSaveTimerRef.current = setTimeout(() => {
+        leftPanelSaveTimerRef.current = null;
+        setLeftPanelSize(panelSize.asPercentage);
+      }, 150);
+    },
+    [setLeftPanelSize],
   );
 
   const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
@@ -170,19 +185,21 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           Outer group isolates left from center/right so dragging the right
           handle cannot squeeze the left panel. */}
       <ResizablePanelGroup
+        key={leftExpanded ? "main-2" : "main-1"}
         orientation="horizontal"
-        id="neeko-main"
+        id={leftExpanded ? "neeko-main-2" : "neeko-main-1"}
         className="flex-1"
       >
         {/* Left dock zone (island) */}
         {leftExpanded && (
           <ResizablePanel
             id="left-zone"
-            defaultSize="18%"
+            defaultSize={`${leftPanelSize}%`}
             minSize="12%"
             maxSize="35%"
             className="py-1 pr-0.5"
             elementRef={leftPanelRef}
+            onResize={handleLeftPanelResize}
           >
             <DockZone zoneId="left" />
           </ResizablePanel>
@@ -197,7 +214,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           <ResizablePanelGroup
             key={rightVisible ? "cr-2" : "cr-1"}
             orientation="horizontal"
-            id="neeko-center-right"
+            id={rightVisible ? "neeko-center-right-2" : "neeko-center-right-1"}
             className="h-full"
           >
             {/* Center area: editor content (island) */}
