@@ -4,6 +4,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
+import { usePanelRef, type PanelSize } from "react-resizable-panels";
 import DockBar from "./DockBar";
 import DockZone from "./DockZone";
 import { useDockStore } from "@/store/dockStore";
@@ -55,7 +56,71 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     (s) => s.zones.right?.activePanelId ?? null,
   );
 
-  const rightDefaultSize = rightActivePanelId === 'browser' ? '50%' : '18%';
+  const rightPanelSizes = useDockStore((s) => s.rightPanelSizes);
+  const setRightPanelSize = useDockStore((s) => s.setRightPanelSize);
+
+  const rightPanelIds = useDockStore(
+    (s) => s.zones.right?.panels ?? [],
+  );
+
+  const rightVisible = rightPanelIds.length > 0 && rightExpanded;
+
+  /** Resolve target zone width for a given panel: store value → registry default → 18% */
+  const getRightPanelSize = useCallback(
+    (panelId: string | null): number => {
+      if (!panelId) return 18;
+      if (rightPanelSizes[panelId] != null) return rightPanelSizes[panelId];
+      const def = dockPanelRegistry[panelId];
+      return def?.defaultZoneSize ?? 18;
+    },
+    [rightPanelSizes],
+  );
+
+  // -- Right panel imperative resize with animation --
+  const rightPanelRef = usePanelRef();
+  const rightPanelElementRef = useRef<HTMLDivElement>(null);
+  const prevRightPanelIdRef = useRef<string | null>(rightActivePanelId);
+
+  const TRANSITION_DURATION = 200; // ms
+
+  // Animate right zone to target size when active panel changes
+  useEffect(() => {
+    const prev = prevRightPanelIdRef.current;
+    prevRightPanelIdRef.current = rightActivePanelId;
+
+    // Skip on initial mount or when panel hasn't changed
+    if (prev === rightActivePanelId) return;
+    if (!rightVisible) return;
+
+    const panel = rightPanelRef.current;
+    const el = rightPanelElementRef.current;
+    if (!panel || !el) return;
+
+    const targetSize = getRightPanelSize(rightActivePanelId);
+
+    // Apply CSS transition for smooth animation
+    el.style.transition = `flex-grow ${TRANSITION_DURATION}ms ease`;
+
+    // Programmatically resize to the target panel's remembered/default width
+    panel.resize(`${targetSize}%`);
+
+    // Remove transition after animation to avoid interfering with manual drag
+    const timer = setTimeout(() => {
+      el.style.transition = "";
+    }, TRANSITION_DURATION);
+
+    return () => clearTimeout(timer);
+  }, [rightActivePanelId, rightVisible, getRightPanelSize, rightPanelRef]);
+
+  // Save current size on resize (fires during drag and programmatic resize)
+  const handleRightPanelResize = useCallback(
+    (panelSize: PanelSize) => {
+      if (rightActivePanelId) {
+        setRightPanelSize(rightActivePanelId, panelSize.asPercentage);
+      }
+    },
+    [rightActivePanelId, setRightPanelSize],
+  );
 
   const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
 
@@ -78,12 +143,6 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     observer.observe(el);
     return () => observer.disconnect();
   }, [leftExpanded, setLeftPanelWidth]);
-
-  const rightPanelIds = useDockStore(
-    (s) => s.zones.right?.panels ?? [],
-  );
-
-  const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
   // -- Keyboard shortcuts (Ctrl+1..2 -> toggle left panel) --
   const handleKeyDown = useCallback(
@@ -174,10 +233,13 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             {rightVisible && (
               <ResizablePanel
                 id="right-zone"
-                defaultSize={rightDefaultSize}
+                defaultSize={`${getRightPanelSize(rightActivePanelId)}%`}
                 minSize="12%"
                 maxSize="80%"
                 className="py-1 pl-0.5"
+                panelRef={rightPanelRef}
+                elementRef={rightPanelElementRef}
+                onResize={handleRightPanelResize}
               >
                 <DockZone zoneId="right" />
               </ResizablePanel>
