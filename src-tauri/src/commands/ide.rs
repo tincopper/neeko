@@ -45,9 +45,40 @@ pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppErro
     cmd.args(&extra_args);
     cmd.arg(&project_path);
 
-    cmd.spawn()
-        .map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
-    Ok(())
+    match cmd.spawn() {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            // macOS fallback：用户从 .dmg 装的 GUI 应用（GoLand/IntelliJ 等）
+            // 没生成 Toolbox shell shim 时，裸命令不在 PATH。
+            // 走 LaunchServices `open -a <app>` 按 app name 查找 /Applications/*.app。
+            #[cfg(target_os = "macos")]
+            if err.kind() == std::io::ErrorKind::NotFound && !exe.contains('/') {
+                return open_via_launch_services(&exe, &extra_args, &project_path);
+            }
+            Err(format!("Failed to launch '{}': {}", exe, err).into())
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn open_via_launch_services(
+    app_name: &str,
+    extra_args: &[String],
+    project_path: &str,
+) -> Result<(), AppError> {
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg("-a").arg(app_name).arg(project_path);
+    if !extra_args.is_empty() {
+        cmd.arg("--args");
+        cmd.args(extra_args);
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| {
+        format!(
+            "Failed to launch '{}' via LaunchServices: {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
+            app_name, e
+        )
+        .into()
+    })
 }
 
 fn split_command(s: &str) -> Vec<String> {
@@ -153,6 +184,7 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+        use std::process::Command;
 
         Command::new(exe)
             .args(args)
