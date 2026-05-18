@@ -588,9 +588,27 @@ export const useAppStore = create<AppStoreState>((set) => ({
     set((state) => {
       // 找到目标 project
       const project = state.projects.find((p) => p.id === projectId);
-      if (!project?.git_info) return state;
+      if (!project) return state;
 
-      const currentFiles = project.git_info.changed_files ?? [];
+      // 无变化时不更新（放在最前避免不必要的对象构造）
+      if (
+        diff.added.length === 0 &&
+        diff.removed.length === 0 &&
+        diff.modified.length === 0
+      ) {
+        return state;
+      }
+
+      // git_info 可能为 null（session 恢复时懒加载），此时用默认值兜底
+      const gitInfo = project.git_info ?? {
+        current_branch: "",
+        branches: [] as string[],
+        worktrees: [] as import("../types").Worktree[],
+        changed_files: [] as import("../types").FileChange[],
+        is_clean: true,
+      };
+
+      const currentFiles = gitInfo.changed_files ?? [];
 
       // 1. 移除被删除的文件
       const removedSet = new Set(diff.removed);
@@ -603,17 +621,8 @@ export const useAppStore = create<AppStoreState>((set) => ({
       // 3. 追加新增的文件
       updatedFiles = [...updatedFiles, ...diff.added];
 
-      // 无变化时不更新
-      if (
-        diff.added.length === 0 &&
-        diff.removed.length === 0 &&
-        diff.modified.length === 0
-      ) {
-        return state;
-      }
-
       const updatedGitInfo = {
-        ...project.git_info,
+        ...gitInfo,
         changed_files: updatedFiles,
         is_clean: updatedFiles.length === 0,
       };

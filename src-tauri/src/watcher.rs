@@ -7,6 +7,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
     },
+    time::Duration,
 };
 use tauri::{AppHandle, Emitter};
 
@@ -61,6 +62,8 @@ struct WatcherHandle {
     // worker clone 保持 alive，与 scheduler 回调中的 clone 共享同一个 worker 线程
     _worker: GitStatusWorker,
     stop_signal: Arc<AtomicBool>,
+    // 心跳线程：定期触发 git status 作为 notify 事件丢失时的兜底
+    _heartbeat: std::thread::JoinHandle<()>,
 }
 
 #[derive(Clone)]
@@ -77,7 +80,6 @@ fn should_ignore_path(path: &Path) -> bool {
                 || name_str == "node_modules"
                 || name_str == "target"
                 || name_str == ".DS_Store"
-                || name_str.starts_with('.')
             {
                 return true;
             }
@@ -118,15 +120,26 @@ impl WatcherManager {
         // 3. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包
         let scheduler_tx = scheduler.sender();
+        let pid_log = project_id.clone();
         let notify_result = RecommendedWatcher::new(
             move |result: Result<Event, notify::Error>| {
                 let event = match result {
                     Ok(ev) => ev,
-                    Err(_) => return,
+                    Err(e) => {
+                        log::warn!("[Watcher:{}] notify error: {}", pid_log, e);
+                        return;
+                    }
                 };
 
-                // 过滤掉 .git / node_modules / target 等目录内的变化
+                // 过滤掉 .git / node_modules / target 等目录内的变更
                 let relevant = event.paths.iter().any(|p| !should_ignore_path(p));
+                log::debug!(
+                    "[Watcher:{}] FS event {:?}, paths={:?}, relevant={}",
+                    pid_log,
+                    event.kind,
+                    event.paths,
+                    relevant
+                );
 
                 if relevant {
                     let _ = scheduler_tx.send(());
@@ -150,8 +163,37 @@ impl WatcherManager {
             return;
         }
 
-        // 停止信号
+        log::info!(
+            "[Watcher] Started watching project {} at {}",
+            project_id,
+            path.display()
+        );
+
+        // 停止信号（供心跳线程使用）
         let stop = Arc::new(AtomicBool::new(false));
+
+        // 立即触发一次 git status 检查，获取初始状态
+        worker.check();
+
+        // 4. 启动心跳线程：每 30s 主动触发一次 git status 检查
+        // 作为 notify 在 Windows 下可能丢失事件时的兜底机制
+        let heartbeat_worker = worker.clone();
+        let heartbeat_stop = stop.clone();
+        let heartbeat_pid = project_id.clone();
+        let heartbeat = std::thread::Builder::new()
+            .name(format!("git-heartbeat-{}", project_id))
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(Duration::from_secs(30));
+                    if heartbeat_stop.load(Ordering::Relaxed) {
+                        log::debug!("[Watcher] Heartbeat stopping for {}", heartbeat_pid);
+                        break;
+                    }
+                    log::debug!("[Watcher] Heartbeat check for {}", heartbeat_pid);
+                    heartbeat_worker.check();
+                }
+            })
+            .expect("Failed to spawn heartbeat thread");
 
         if let Ok(mut watchers) = self.watchers.lock() {
             watchers.insert(
@@ -161,6 +203,7 @@ impl WatcherManager {
                     _scheduler: scheduler,
                     _worker: worker,
                     stop_signal: stop,
+                    _heartbeat: heartbeat,
                 },
             );
         }
@@ -168,21 +211,19 @@ impl WatcherManager {
 
     pub fn unwatch(&self, project_id: &str) {
         if let Ok(mut watchers) = self.watchers.lock() {
-            watchers.remove(project_id);
+            if let Some(handle) = watchers.remove(project_id) {
+                handle.stop_signal.store(true, Ordering::Relaxed);
+            }
         }
     }
 
     pub fn stop_all(&self) {
-        log_info("[Watcher] Stopping all watchers...");
+        log::info!("[Watcher] Stopping all watchers...");
         if let Ok(mut watchers) = self.watchers.lock() {
             for (_id, watcher) in watchers.drain() {
                 watcher.stop_signal.store(true, Ordering::Relaxed);
             }
         }
-        log_info("[Watcher] All watchers stopped");
+        log::info!("[Watcher] All watchers stopped");
     }
-}
-
-fn log_info(msg: &str) {
-    log::info!("{}", msg);
 }
