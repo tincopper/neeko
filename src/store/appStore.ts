@@ -89,6 +89,11 @@ interface AppStoreState {
   setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
   setSplitRatio: (tabKey: string, ratio: number) => void;
 
+  // ── Pin tab actions ──
+  pinTab: (tabKey: string, tabId: string) => void;
+  unpinTab: (tabKey: string) => void;
+  setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
+
   // ── Git incremental update ──
   patchChangedFiles: (projectId: string, diff: { added: FileChange[]; removed: string[]; modified: FileChange[] }) => void;
 }
@@ -186,6 +191,65 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
   }
 }
 
+// ── Pin layout helpers ──
+
+/**
+ * Move a previously-pinned tab back into the front of the left group.
+ * Returns the layout unchanged if prevPinnedId is null or matches tabId.
+ */
+function clearPreviousPin(
+  layout: EditorSplitLayout,
+  prevPinnedId: string | null,
+  newTabId: string,
+): EditorSplitLayout {
+  if (!prevPinnedId || prevPinnedId === newTabId) return layout;
+  const leftIds = [prevPinnedId, ...layout.groups.left.tabIds.filter((id) => id !== prevPinnedId)];
+  return {
+    ...layout,
+    pinnedTabId: null,
+    groups: {
+      ...layout.groups,
+      left: {
+        tabIds: leftIds,
+        activeTabId: layout.groups.left.activeTabId ?? prevPinnedId,
+      },
+    },
+  };
+}
+
+/**
+ * Remove tabId from left/right groups and set it as the new pinnedTabId.
+ * Auto-unsplits if the right group becomes empty.
+ */
+function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
+  const newLeftIds  = layout.groups.left.tabIds.filter((id) => id !== tabId);
+  const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
+  const stillSplit  = layout.isSplit && newRightIds.length > 0;
+
+  return {
+    ...layout,
+    isSplit: stillSplit,
+    activeGroupId: stillSplit ? layout.activeGroupId : "left",
+    pinnedTabId: tabId,
+    groups: {
+      left: {
+        tabIds: newLeftIds,
+        activeTabId:
+          layout.groups.left.activeTabId === tabId
+            ? (newLeftIds.length > 0 ? newLeftIds[newLeftIds.length - 1] : null)
+            : layout.groups.left.activeTabId,
+      },
+      right: {
+        tabIds: newRightIds,
+        activeTabId:
+          layout.groups.right.activeTabId === tabId
+            ? (newRightIds.length > 0 ? newRightIds[newRightIds.length - 1] : null)
+            : layout.groups.right.activeTabId,
+      },
+    },
+  };
+}
+
 export const useAppStore = create<AppStoreState>((set) => ({
   projects: [],
   activeProjectId: null,
@@ -279,6 +343,9 @@ export const useAppStore = create<AppStoreState>((set) => ({
 
       const idx = existing.tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return state;
+
+      // Pinned tabs cannot be closed directly — must unpin first
+      if (state.editorLayout[projectId]?.pinnedTabId === tabId) return state;
 
       const remaining = existing.tabs.filter((t) => t.id !== tabId);
       let newActiveId: string | null = existing.activeTabId;
@@ -590,6 +657,72 @@ export const useAppStore = create<AppStoreState>((set) => ({
         editorLayout: {
           ...state.editorLayout,
           [tabKey]: { ...layout, ratio: clamped },
+        },
+      };
+    }),
+
+  // ── Pin tab actions ──
+
+  pinTab: (tabKey, tabId) =>
+    set((state) => {
+      const projectTabs = state.tabs[tabKey];
+      if (!projectTabs) return state;
+      if (!projectTabs.tabs.some((t) => t.id === tabId)) return state;
+
+      const layout = ensureLayout(
+        state.editorLayout,
+        tabKey,
+        projectTabs.tabs.map((t) => t.id),
+        projectTabs.activeTabId,
+      );
+
+      const newLayout = applyPin(
+        clearPreviousPin(layout, layout.pinnedTabId, tabId),
+        tabId,
+      );
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
+      };
+    }),
+
+  unpinTab: (tabKey) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout || !layout.pinnedTabId) return state;
+
+      const pinnedId = layout.pinnedTabId;
+
+      // Insert at front of left group
+      const leftIds = [pinnedId, ...layout.groups.left.tabIds.filter((id) => id !== pinnedId)];
+
+      const newLayout: EditorSplitLayout = {
+        ...layout,
+        pinnedTabId: null,
+        groups: {
+          ...layout.groups,
+          left: {
+            tabIds: leftIds,
+            activeTabId: layout.groups.left.activeTabId ?? pinnedId,
+          },
+        },
+      };
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
+      };
+    }),
+
+  setPinnedPanelRatio: (tabKey, ratio) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout) return state;
+
+      const clamped = Math.max(0.1, Math.min(0.75, ratio));
+      return {
+        editorLayout: {
+          ...state.editorLayout,
+          [tabKey]: { ...layout, pinnedPanelRatio: clamped },
         },
       };
     }),
