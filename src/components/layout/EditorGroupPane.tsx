@@ -26,7 +26,7 @@ interface EditorGroupPaneProps {
   isFocused: boolean;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onAddTerminalTab: () => void;
+  onAddTerminalTab?: () => void;
   onSplitRight: (tabId: string) => void;
   onMoveToRight: (tabId: string) => void;
   onMoveToLeft: (tabId: string) => void;
@@ -194,7 +194,7 @@ function EditorGroupPane({
     activeTabId,
     onActivateTab,
     onCloseTab,
-    onAddTab: onAddTerminalTab,
+    onAddTab: onAddTerminalTab ?? (() => {}),
   }), [globalEditorCtx, activeTabId, onActivateTab, onCloseTab, onAddTerminalTab]);
 
   return (
