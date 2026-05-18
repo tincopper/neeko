@@ -1632,3 +1632,36 @@ Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 43: Settings Panel App-Level View
+
+**Date**: 2026-05-18
+**Task**: Settings Panel App-Level View
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+将 Settings Panel 从 EditorGroupPane 的 Tab 提升为 App-Level View，新建 appViewStore 驱动三路视图切换，实现全屏两栏布局，完全移除旧 settings tab 机制
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e89661b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
