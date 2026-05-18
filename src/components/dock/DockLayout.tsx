@@ -76,40 +76,23 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     [rightPanelSizes],
   );
 
-  // -- Right panel imperative resize with animation --
+  // -- Right panel imperative resize (no animation — transition caused drag lag) --
   const rightPanelRef = usePanelRef();
-  const rightPanelElementRef = useRef<HTMLDivElement>(null);
   const prevRightPanelIdRef = useRef<string | null>(rightActivePanelId);
 
-  const TRANSITION_DURATION = 200; // ms
-
-  // Animate right zone to target size when active panel changes
+  // Resize right zone to target size when active panel changes (instant, no CSS transition)
   useEffect(() => {
     const prev = prevRightPanelIdRef.current;
     prevRightPanelIdRef.current = rightActivePanelId;
 
-    // Skip on initial mount or when panel hasn't changed
     if (prev === rightActivePanelId) return;
     if (!rightVisible) return;
 
     const panel = rightPanelRef.current;
-    const el = rightPanelElementRef.current;
-    if (!panel || !el) return;
+    if (!panel) return;
 
     const targetSize = getRightPanelSize(rightActivePanelId);
-
-    // Apply CSS transition for smooth animation
-    el.style.transition = `flex-grow ${TRANSITION_DURATION}ms ease`;
-
-    // Programmatically resize to the target panel's remembered/default width
     panel.resize(`${targetSize}%`);
-
-    // Remove transition after animation to avoid interfering with manual drag
-    const timer = setTimeout(() => {
-      el.style.transition = "";
-    }, TRANSITION_DURATION);
-
-    return () => clearTimeout(timer);
   }, [rightActivePanelId, rightVisible, getRightPanelSize, rightPanelRef]);
 
   // Save current size on resize (fires during drag and programmatic resize)
@@ -239,7 +222,6 @@ const DockLayout: React.FC<DockLayoutProps> = ({
                 maxSize="80%"
                 className="py-1 pl-0.5"
                 panelRef={rightPanelRef}
-                elementRef={rightPanelElementRef}
                 onResize={handleRightPanelResize}
               >
                 <DockZone zoneId="right" />
