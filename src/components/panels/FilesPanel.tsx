@@ -1,6 +1,7 @@
 import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "lucide-react";
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { fileIconSrc } from "../../utils/fileIcons";
+import { resolveAbsolutePath } from "../../utils/browserUtils";
 import type { FileNode } from "../../types";
 import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
 import type { ProjectType } from "../../types/project";
@@ -279,21 +280,20 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
     items.push({
       label: "Copy Path",
       icon: Copy,
-      action: () => { navigator.clipboard.writeText(node.path); },
+      action: () => {
+        const absPath = projectPath
+          ? resolveAbsolutePath(projectPath, node.path)
+          : node.path;
+        navigator.clipboard.writeText(absPath);
+      },
     });
 
     if (projectPath) {
       items.push({
         label: "Copy Relative Path",
         icon: ClipboardCopy,
-        action: () => {
-          const normalizedNodePath = node.path.replace(/\\/g, "/");
-          const normalizedProjectPath = projectPath.replace(/\\/g, "/");
-          const relative = normalizedNodePath.startsWith(normalizedProjectPath)
-            ? normalizedNodePath.slice(normalizedProjectPath.length).replace(/^\//, "")
-            : node.path;
-          navigator.clipboard.writeText(relative);
-        },
+        // node.path 已经是相对于项目根的相对路径，直接复制
+        action: () => { navigator.clipboard.writeText(node.path); },
       });
     }
 
