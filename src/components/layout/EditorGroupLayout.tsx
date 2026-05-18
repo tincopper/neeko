@@ -238,6 +238,30 @@ function EditorGroupLayout({
     );
   }
 
+  // ── Case A2: pin only, no other tabs — pin pane fills the entire area ──
+  // Avoids rendering an empty left panel beside the pinned panel.
+  if (hasPinned && !isSplit && leftTabs.length === 0) {
+    return (
+      <EditorGroupPane
+        {...sharedPaneProps}
+        groupId="pinned"
+        tabs={pinnedTab ? [pinnedTab] : []}
+        activeTabId={pinnedTab?.id ?? null}
+        isFocused={false}
+        onFocusGroup={() => {}}
+        layoutId={pinnedLayoutId}
+        onAddTerminalTab={undefined}
+        onSplitRight={() => {}}
+        onMoveToRight={() => {}}
+        onMoveToLeft={() => {}}
+        onCloseTab={() => {}}
+        onCloseOtherTabs={undefined}
+        onCloseAllTabs={undefined}
+        contextMenuExtras={pinnedContextMenuExtras}
+      />
+    );
+  }
+
   // ── Cases B / C / D — single ResizablePanelGroup, 2 or 3 panels ──
   return (
     <ResizablePanelGroup
@@ -265,7 +289,8 @@ function EditorGroupLayout({
                 isFocused={false}
                 onFocusGroup={() => {}}
                 layoutId={pinnedLayoutId}
-                // Pin panel: no split/move/close operations — only Unpin
+                // Pin panel: no split/move/close/add operations — only Unpin
+                onAddTerminalTab={undefined}
                 onSplitRight={() => {}}
                 onMoveToRight={() => {}}
                 onMoveToLeft={() => {}}

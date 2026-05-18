@@ -389,11 +389,25 @@ export const useAppStore = create<AppStoreState>((set) => ({
           },
         };
 
+        // Right group emptied → collapse split, left stays
         if (newLayout.isSplit && newLayout.groups.right.tabIds.length === 0) {
           newLayout = {
             ...newLayout,
             isSplit: false,
             activeGroupId: "left",
+          };
+        }
+
+        // Left group emptied → promote right group to left, collapse split
+        if (newLayout.isSplit && newLayout.groups.left.tabIds.length === 0) {
+          newLayout = {
+            ...newLayout,
+            isSplit: false,
+            activeGroupId: "left",
+            groups: {
+              left: newLayout.groups.right,
+              right: { tabIds: [], activeTabId: null },
+            },
           };
         }
 

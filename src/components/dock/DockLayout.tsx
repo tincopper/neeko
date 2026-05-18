@@ -212,6 +212,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         {/* Inner group: center editor + right dock */}
         <ResizablePanel id="center-right-wrapper">
           <ResizablePanelGroup
+            key={rightVisible ? "cr-2" : "cr-1"}
             orientation="horizontal"
             id="neeko-center-right"
             className="h-full"
