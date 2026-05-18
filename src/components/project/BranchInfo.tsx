@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import type { GitInfo, AheadBehind } from "../../types";
 import { BranchIcon, PlusIcon } from "../icons";
-import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2 } from "lucide-react";
+import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "lucide-react";
 import BranchDropdownContent from "../shared/BranchDropdownContent";
 
 interface BranchInfoProps {
@@ -131,7 +131,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
           onClick={onFetch}
           disabled={loading}
         >
-          <RefreshCw size={13} />
+          <CloudDownload size={13} />
         </button>
         <button
           className="p-1 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100"
