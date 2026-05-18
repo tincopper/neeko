@@ -92,6 +92,14 @@ const STATUS_BADGE: Record<FileChange["status"], { label: string; variant: "modi
   Untracked: { label: "U", variant: "default" },
 };
 
+const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
+  Modified: "text-accent-yellow",
+  Added:    "text-accent-green",
+  Deleted:  "text-accent-red",
+  Renamed:  "text-accent-yellow",
+  Untracked:"text-accent-blue",
+};
+
 interface FileTreeProps {
   nodes: TreeNode[];
   projectId: string;
@@ -171,7 +179,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
               width={16}
               height={16}
             />
-            <span className="flex-1 text-text-secondary truncate group-hover:text-text-primary">{node.name}</span>
+            <span className={`flex-1 truncate group-hover:text-text-primary ${STATUS_TEXT_COLOR[file.status]}`}>{node.name}</span>
             <Badge variant={badge.variant}>{badge.label}</Badge>
           </div>
         );
