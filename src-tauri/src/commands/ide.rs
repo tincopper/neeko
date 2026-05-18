@@ -154,7 +154,7 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     {
         use std::os::unix::process::CommandExt;
 
-        Command::new(exe)
+        local::exec(exe)
             .args(args)
             .process_group(0)
             .spawn()
