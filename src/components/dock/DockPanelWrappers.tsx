@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   useFileActionsContext,
   useAppContext,
@@ -11,6 +12,7 @@ import { SkillsPanel } from "@/components/skills";
 import { GitCommitPanel } from "@/components/project";
 import { useActiveProject } from "@/hooks/useActiveProject";
 import { buildDiffSource } from "@/utils/diffSource";
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
 import type { Tab, FileNode } from "@/types";
 
@@ -137,6 +139,22 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     }
   }, [project?.type, commands, fileRootPath, onExpandDir]);
 
+  // 在 Browser Panel 中打开 HTML 文件（仅本地项目）
+  // filePath 是相对于项目根的路径，需要拼接为绝对路径
+  const handleOpenInBrowser = useCallback((filePath: string) => {
+    if (project?.type === "local" && projectPath) {
+      openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, filePath));
+    }
+  }, [project?.type, projectPath]);
+
+  // 在系统文件管理器中显示文件（确保传绝对路径）
+  const handleRevealInExplorer = useCallback((filePath: string) => {
+    const absPath = projectPath ? resolveAbsolutePath(projectPath, filePath) : filePath;
+    invoke("reveal_in_file_manager", { path: absPath }).catch((err) => {
+      console.error("[FilesPanelWrapper] Failed to reveal in file manager:", err);
+    });
+  }, [projectPath]);
+
   return (
     <FilesPanel
       projectName={projectName}
@@ -147,6 +165,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       onSelectFile={onFileSelect}
       onRefresh={handleRefresh}
       onExpandDir={handleExpandDir}
+      projectType={project?.type ?? null}
+      onOpenInBrowser={handleOpenInBrowser}
+      onRevealInExplorer={handleRevealInExplorer}
     />
   );
 });

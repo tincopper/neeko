@@ -50,7 +50,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // Create webview via Rust side (supports on_navigation + on_page_load handlers)
   const createWebview = useCallback(
     async (initialUrl: string) => {
-      if (isCreatedRef.current || isCreatingRef.current) return;
+      if (isCreatedRef.current || isCreatingRef.current) {
+        return;
+      }
       isCreatingRef.current = true;
 
       try {
@@ -73,6 +75,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         isCreatedRef.current = true;
         setLabel(BROWSER_WEBVIEW_LABEL);
         setCreated(true);
+
+        // Ensure the webview is visible. A concurrent mount-time effect may have
+        // issued browser_set_visible(false) to clean up a post-refresh orphan;
+        // issuing set_visible(true) here guarantees the newly-created webview is
+        // always shown regardless of IPC arrival order.
+        await invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: true });
 
         // Sync bounds immediately after creation
         if (containerRef.current) {
@@ -135,6 +143,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // Stable ref so arm/listener can call refresh without re-subscribing
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+
+  // Stable ref for navigate — prevents the store subscription below from
+  // re-subscribing every time navigate's useCallback dependencies change,
+  // which could cause duplicate navigation on the same url update.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   /** Arm auto-refresh: wait for git-changed or timeout, then refresh the webview */
   const armAutoRefresh = useCallback(() => {
@@ -404,6 +418,24 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     return () => clearInterval(id);
   }, [isPicking, reinjectPicker]);
 
+  // Listen for external navigateTo() calls when the panel is already mounted.
+  // navigateTo() sets url + isLoading=true in the store but cannot call
+  // navigate() directly (it lives outside React). This subscription detects
+  // a url change combined with isLoading=true and drives the actual navigation.
+  // No loop risk: navigate() internally calls setUrl() with the same value,
+  // so state.url !== prev.url is false on that update and the callback skips.
+  // Uses navigateRef ([] deps) so the subscription is created once and always
+  // calls the latest navigate without risk of double-subscription.
+  useEffect(() => {
+    const unsubscribe = useBrowserStore.subscribe((state, prev) => {
+      if (state.url && state.isLoading && state.url !== prev.url) {
+        navigateRef.current(state.url);
+      }
+    });
+    return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Listen to dock panel changes, control webview visibility
   useEffect(() => {
     const unsubscribe = useDockStore.subscribe((state) => {
@@ -415,7 +447,18 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     return () => unsubscribe();
   }, [setVisible]);
 
-  // On mount: sync isCreatedRef from store and restore webview visibility + bounds
+  // On mount: two responsibilities:
+  //
+  // 1. Restore: if isCreated is true (tab-switch back to browser), sync the
+  //    ref and restore visibility + bounds.
+  //
+  // 2. Navigate: if the store already has a url with isLoading=true it means
+  //    navigateTo() was called externally (e.g. Open in Browser) before this
+  //    component mounted. Execute the navigation now that we have a live hook.
+  //
+  // 3. Orphan cleanup: if neither applies, hide any webview that may have
+  //    survived a page refresh (isCreated is false in store but native webview
+  //    still exists from the previous session).
   useEffect(() => {
     if (isCreated) {
       isCreatedRef.current = true;
@@ -424,8 +467,29 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         const rect = containerRef.current.getBoundingClientRect();
         updateBounds(rect);
       }
+    } else {
+      // Read directly from store snapshot to avoid stale closure
+      const { url: pendingUrl, isLoading: pendingLoading } = useBrowserStore.getState();
+      if (pendingUrl && pendingLoading) {
+        // navigateTo() was called before we mounted — execute the navigation now
+        navigate(pendingUrl);
+      } else {
+        // No pending navigation — hide any orphaned webview from a prior session
+        invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: false }).catch(() => {});
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Before the page unloads (refresh / navigation), attempt to close the child
+  // webview so it doesn't become an orphan. The async invoke may not complete
+  // in time, but the mount-time safety-net above covers that case.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      invoke('browser_close', { label: BROWSER_WEBVIEW_LABEL }).catch(() => {});
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
   // Hide webview on unmount instead of destroying it; clean up auto-refresh timer
