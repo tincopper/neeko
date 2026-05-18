@@ -33,7 +33,8 @@ fn build_reveal_command(path: &Path) -> Option<Command> {
             Some(cmd)
         } else {
             let mut cmd = Command::new("explorer");
-            cmd.arg("/select,").arg(&normalized);
+            // /select, 与路径必须合并为单一参数，分开传递 explorer 无法识别
+            cmd.arg(format!("/select,{}", normalized));
             Some(cmd)
         }
     }
@@ -149,8 +150,8 @@ mod tests {
         #[cfg(target_os = "windows")]
         {
             assert_eq!(cmd.get_program(), "explorer");
-            assert_eq!(args.len(), 2);
-            assert_eq!(args[0], "/select,");
+            assert_eq!(args.len(), 1);
+            assert!(args[0].to_string_lossy().starts_with("/select,"));
         }
 
         #[cfg(target_os = "macos")]
