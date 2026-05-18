@@ -12,8 +12,11 @@ import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useEditorContext } from "../../contexts/editor-context";
 import { useAppStore } from "../../store/appStore";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
+import { useActiveProject } from "../../hooks/useActiveProject";
+import InlineHtmlPreview from "./InlineHtmlPreview";
 
-type MarkdownMode = "preview" | "source";
+type PreviewMode = "preview" | "source";
 
 /** 检查文件是否为 HTML 文件 */
 function isHtmlFile(filePath: string): boolean {
@@ -135,7 +138,7 @@ interface FileEditorProps {
 }
 
 function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
-   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>("preview");
+   const [previewMode, setPreviewMode] = useState<PreviewMode>("preview");
    const [isSaving, setIsSaving] = useState(false);
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
 
@@ -145,12 +148,11 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
 
    const basePath = useMemo(() => {
       if (!projectPath) return undefined;
-      const root = projectPath.replace(/\\/g, "/");
-      const fileDir = tab.filePath.replace(/\\/g, "/");
-      const lastSlash = fileDir.lastIndexOf("/");
-      return lastSlash >= 0
-         ? `${root}/${fileDir.substring(0, lastSlash)}`
-         : root;
+      // resolveAbsolutePath handles both relative and absolute filePaths correctly,
+      // avoiding the double-root bug (e.g. "E:/ws/C:/project") when filePath is absolute.
+      const absFilePath = resolveAbsolutePath(projectPath, tab.filePath);
+      const lastSlash = absFilePath.lastIndexOf("/");
+      return lastSlash >= 0 ? absFilePath.substring(0, lastSlash) : projectPath.replace(/\\/g, "/");
    }, [projectPath, tab.filePath]);
 
    // Load language extension lazily
@@ -174,39 +176,15 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
       setIsSaving(false);
    }, [currentContent, onSave]);
 
-   // 打开 HTML 预览 Tab
-   const handleOpenHtmlPreview = useCallback(() => {
-      const activeProjectId = useAppStore.getState().activeProjectId;
-      if (!activeProjectId) return;
+   // 获取项目类型信息（用于判断是否显示 Open in Browser）
+   const { project } = useActiveProject();
+   const isLocalProject = project?.type === "local";
 
-      // 使用固定的 Tab ID 进行去重
-      const previewTabId = `${activeProjectId}:preview:${tab.filePath}`;
-
-      // 检查是否已存在该预览 Tab
-      const existingTabs = useAppStore.getState().tabs[activeProjectId];
-      const existingPreview = existingTabs?.tabs.find((t) => t.id === previewTabId);
-
-      if (existingPreview) {
-         // 如果已存在，直接激活
-         useAppStore.getState().activateTab(activeProjectId, previewTabId);
-         return;
-      }
-
-      // 创建新的 html-preview Tab
-      const previewTab: Tab = {
-         id: previewTabId,
-         projectId: activeProjectId,
-         title: `Preview: ${tab.fileName}`,
-         order: existingTabs?.tabs.length ?? 0,
-         data: {
-            kind: "html-preview",
-            filePath: tab.filePath,
-            fileName: tab.fileName,
-         },
-      };
-
-      useAppStore.getState().addTab(activeProjectId, previewTab);
-   }, [tab.filePath, tab.fileName]);
+   // 在 Browser Panel 中打开 HTML 文件
+   const handleOpenInBrowser = useCallback(() => {
+      if (!projectPath || !isLocalProject) return;
+      openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
+   }, [tab.filePath, projectPath, isLocalProject]);
 
    // Ctrl+S handler
    const saveKeymap = useMemo(() => keymap.of([{
@@ -271,11 +249,10 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
                canEdit={false}
                isMd={false}
                isHtml={false}
-               markdownMode="preview"
+               previewMode="preview"
                isSaving={false}
                onSave={() => { }}
-               onToggleMarkdown={() => { }}
-               onOpenHtmlPreview={() => { }}
+               onTogglePreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -298,11 +275,10 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
                canEdit={false}
                isMd={false}
                isHtml={false}
-               markdownMode="preview"
+               previewMode="preview"
                isSaving={false}
                onSave={() => { }}
-               onToggleMarkdown={() => { }}
-               onOpenHtmlPreview={() => { }}
+               onTogglePreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -315,8 +291,8 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
       );
    }
 
-   // Markdown preview mode
-   const showPreview = isMd && markdownMode === "preview";
+   // Markdown / HTML preview mode
+   const showPreview = (isMd || isHtml) && previewMode === "preview";
 
    return (
       <div className="flex-1 flex flex-col min-h-0">
@@ -326,22 +302,31 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
             canEdit={canEdit}
             isMd={isMd}
             isHtml={isHtml}
-            markdownMode={markdownMode}
+            previewMode={previewMode}
             isSaving={isSaving}
             onSave={handleSave}
-            onToggleMarkdown={() => setMarkdownMode((m) => (m === "preview" ? "source" : "preview"))}
-            onOpenHtmlPreview={handleOpenHtmlPreview}
+            onTogglePreview={() => setPreviewMode((m) => (m === "preview" ? "source" : "preview"))}
+            onOpenInBrowser={handleOpenInBrowser}
+            isLocalProject={isLocalProject}
          />
 
          <div className="flex-1 min-h-0 overflow-hidden">
             {showPreview ? (
-               <div className="h-full overflow-y-auto px-6 py-4">
-                  <MarkdownPreview
+               isMd ? (
+                  <div className="h-full overflow-y-auto px-6 py-4">
+                     <MarkdownPreview
+                        content={currentContent}
+                        theme={theme}
+                        basePath={basePath}
+                     />
+                  </div>
+               ) : (
+                  <InlineHtmlPreview
                      content={currentContent}
-                     theme={theme}
                      basePath={basePath}
+                     fileName={tab.fileName}
                   />
-               </div>
+               )
             ) : (
                <CodeMirror
                   value={currentContent}
@@ -367,11 +352,12 @@ interface EditorHeaderProps {
    canEdit: boolean;
    isMd: boolean;
    isHtml: boolean;
-   markdownMode: MarkdownMode;
+   previewMode: PreviewMode;
    isSaving: boolean;
    onSave: () => void;
-   onToggleMarkdown: () => void;
-   onOpenHtmlPreview: () => void;
+   onTogglePreview: () => void;
+   onOpenInBrowser?: () => void;
+   isLocalProject?: boolean;
 }
 
 function EditorHeader({
@@ -380,11 +366,12 @@ function EditorHeader({
    canEdit,
    isMd,
    isHtml,
-   markdownMode,
+   previewMode,
    isSaving,
    onSave,
-   onToggleMarkdown,
-   onOpenHtmlPreview,
+   onTogglePreview,
+   onOpenInBrowser,
+   isLocalProject,
 }: EditorHeaderProps) {
    return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
@@ -403,14 +390,14 @@ function EditorHeader({
 
          {/* Actions */}
          <div className="flex items-center gap-1 shrink-0">
-            {/* Markdown toggle */}
-            {isMd && (
+            {/* Markdown / HTML preview toggle */}
+            {(isMd || isHtml) && (
                <button
                   className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-                  onClick={onToggleMarkdown}
-                  title={markdownMode === "preview" ? "Switch to source" : "Switch to preview"}
+                  onClick={onTogglePreview}
+                  title={previewMode === "preview" ? "Switch to source" : "Switch to preview"}
                >
-                  {markdownMode === "preview" ? (
+                  {previewMode === "preview" ? (
                      <span className="flex items-center gap-1"><FileCode size={12} /> Source</span>
                   ) : (
                      <span className="flex items-center gap-1"><Eye size={12} /> Preview</span>
@@ -418,14 +405,14 @@ function EditorHeader({
                </button>
             )}
 
-            {/* HTML Preview button */}
-            {isHtml && (
+            {/* HTML: Open in Browser Panel */}
+            {isHtml && isLocalProject && (
                <button
-                  className="px-2 py-1 text-[var(--font-size)] rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
-                  onClick={onOpenHtmlPreview}
-                  title="Open HTML preview"
+                  className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                  onClick={onOpenInBrowser}
+                  title="Open in Browser Panel"
                >
-                  <Globe size={12} /> Preview
+                  <Globe size={12} /> Browser
                </button>
             )}
 
