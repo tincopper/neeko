@@ -33,9 +33,13 @@ impl ThrottleScheduler {
                     // 立即触发回调
                     callback();
 
-                    // 处理完成后，检查是否有排队的信号
-                    // 如果有，立即再触发一次（合并了处理期间的所有事件）
+                    // 处理完成后，drain 掉执行期间积压的所有信号
+                    // 若有积压，合并为一次回调（节流语义）；若无则进入下一轮等待
+                    let mut has_pending = false;
                     while rx.try_recv().is_ok() {
+                        has_pending = true;
+                    }
+                    if has_pending {
                         callback();
                     }
                 }
@@ -134,7 +138,7 @@ impl WatcherManager {
         let mut watcher = match notify_result {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("[Watcher] create error for {}: {}", path.display(), e);
+                log::warn!("[Watcher] create error for {}: {}", path.display(), e);
                 return;
             }
         };
@@ -142,7 +146,7 @@ impl WatcherManager {
         // 递归监听：捕获深层文件变化（src/nested/file.rs 等）
         // 通过 should_ignore_path 过滤掉不需要的目录
         if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
-            eprintln!("[Watcher] watch error for {}: {}", path.display(), e);
+            log::warn!("[Watcher] watch error for {}: {}", path.display(), e);
             return;
         }
 
