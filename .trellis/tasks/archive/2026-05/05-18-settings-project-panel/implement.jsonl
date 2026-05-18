@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "ProjectPanel 组件设计规范：memo、props 模式、barrel export"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "appStore/taskStore 交互、zustand 使用规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useCallback/useMemo 使用、hook 返回值稳定性"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "NavCategory 扩展、TaskConfig 类型引用"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 rename_project/change_project_path 命令规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Tauri 命令错误处理模式"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "表单保存交互、危险操作确认模式"}
