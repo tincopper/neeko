@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useCallback } from "react";
-import { ArrowLeft, Search } from "lucide-react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { ArrowLeft, Search, FolderOpen } from "lucide-react";
 import { useAppViewStore } from "../../store/appViewStore";
+import { useAppStore } from "../../store/appStore";
 import { useAppContext } from "../../contexts";
 import { cn } from "../../utils/cn";
-import { NAV_ITEMS, type NavCategory } from "./constants";
+import { NAV_ITEMS, type SettingsNavId } from "./constants";
 import { useSettingsPanelState } from "./useSettingsPanelState";
 import AppearancePanel from "./AppearancePanel";
 import EditorPanel from "./EditorPanel";
@@ -12,13 +14,33 @@ import AgentsPanel from "./AgentsPanel";
 import IdePanel from "./IdePanel";
 import GitPanel from "./GitPanel";
 import ShortcutPanel from "./ShortcutPanel";
-import type { AppConfig } from "../../types";
+import ProjectPanel from "./ProjectPanel";
+import type { AgentConfig, AppConfig } from "../../types";
 
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);
   const { config, saveConfig } = useAppContext();
-  const [activeNav, setActiveNav] = useState<NavCategory>("appearance");
+  const projects = useAppStore((s) => s.projects);
+  const [activeNav, setActiveNav] = useState<SettingsNavId>("appearance");
   const [searchQuery, setSearchQuery] = useState("");
+  const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const all = await invoke<AgentConfig[]>("list_agents");
+        if (alive) {
+          setBuiltinAgents(all.filter((a) => a.is_builtin === true));
+        }
+      } catch (e) {
+        console.error("[SettingsView] Failed to list agents:", e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleBack = useCallback(() => {
     setAppView("normal");
@@ -34,6 +56,7 @@ function SettingsView() {
   const state = useSettingsPanelState({
     config,
     activeNav,
+    builtinAgents,
     onConfigChange,
     onClose: handleBack,
   });
@@ -44,7 +67,22 @@ function SettingsView() {
     return NAV_ITEMS.filter((item) => item.label.toLowerCase().includes(query));
   }, [searchQuery]);
 
+  const handleProjectRemoved = useCallback(() => {
+    setActiveNav("appearance");
+  }, []);
+
   const renderPanel = () => {
+    if (activeNav.startsWith("project:")) {
+      const projectId = activeNav.slice(8);
+      return (
+        <ProjectPanel
+          projectId={projectId}
+          customIdes={config.customIdes}
+          onProjectRemoved={handleProjectRemoved}
+        />
+      );
+    }
+
     switch (activeNav) {
       case "appearance":
         return (
@@ -95,6 +133,7 @@ function SettingsView() {
         return (
           <AgentsPanel
             config={config}
+            builtinAgents={builtinAgents}
             editingPresetId={state.editingPresetId}
             editingValue={state.editingValue}
             skillPathEditingAgentId={state.skillPathEditingAgentId}
@@ -227,6 +266,50 @@ function SettingsView() {
                 <span className="font-medium">{item.label}</span>
               </button>
             ))}
+
+            {/* Projects section */}
+            {projects.length > 0 && (
+              <>
+                <div className="h-px bg-border mx-1.5 my-2" />
+                <div className="px-3 py-1 text-[0.72em] font-semibold text-text-muted uppercase tracking-wider">
+                  Projects
+                </div>
+                {projects.map((p) => {
+                  const navId: SettingsNavId = `project:${p.id}`;
+                  return (
+                    <button
+                      key={p.id}
+                      className={cn(
+                        "flex items-center gap-2.5 py-2 px-3 pl-5 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary",
+                        activeNav === navId && "!bg-accent-blue !text-[var(--text-on-accent)]",
+                      )}
+                      onClick={() => setActiveNav(navId)}
+                    >
+                      <FolderOpen
+                        size={14}
+                        className={cn(
+                          "shrink-0 text-text-muted",
+                          activeNav === navId && "!text-[var(--text-on-accent)]",
+                        )}
+                      />
+                      <span className="font-medium truncate">{p.name}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {projects.length === 0 && (
+              <>
+                <div className="h-px bg-border mx-1.5 my-2" />
+                <div className="px-3 py-1 text-[0.72em] font-semibold text-text-muted uppercase tracking-wider">
+                  Projects
+                </div>
+                <div className="px-3 py-4 text-[0.79em] text-text-muted text-center">
+                  No projects added yet.
+                </div>
+              </>
+            )}
           </div>
         </nav>
 

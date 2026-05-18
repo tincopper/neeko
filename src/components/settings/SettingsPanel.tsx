@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAppContext } from "../../contexts";
 import { cn } from "../../utils/cn";
-import type { AppConfig, DiffMode } from "../../types";
+import type { AgentConfig, AppConfig, DiffMode } from "../../types";
 import { CloseIcon } from "../icons";
 import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from "./constants";
 import { useSettingsPanelState } from "./useSettingsPanelState";
@@ -26,10 +27,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
    ({ onConfigChange, onClose, fullPage = false }) => {
       const { config } = useAppContext();
       const [activeNav, setActiveNav] = useState<NavCategory>("appearance");
+      const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
+
+      useEffect(() => {
+         let alive = true;
+         (async () => {
+            try {
+               const all = await invoke<AgentConfig[]>("list_agents");
+               if (alive) {
+                  setBuiltinAgents(all.filter((a) => a.is_builtin === true));
+               }
+            } catch (e) {
+               console.error("[SettingsPanel] Failed to list agents:", e);
+            }
+         })();
+         return () => {
+            alive = false;
+         };
+      }, []);
 
       const state = useSettingsPanelState({
          config,
          activeNav,
+         builtinAgents,
          onConfigChange,
          onClose,
       });
@@ -85,6 +105,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                return (
                   <AgentsPanel
                      config={config}
+                     builtinAgents={builtinAgents}
                      editingPresetId={state.editingPresetId}
                      editingValue={state.editingValue}
                      skillPathEditingAgentId={state.skillPathEditingAgentId}

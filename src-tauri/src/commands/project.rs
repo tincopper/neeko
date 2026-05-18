@@ -136,6 +136,52 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
 }
 
 #[tauri::command]
+pub fn rename_project(
+    project_id: String,
+    new_name: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+    pm.rename_project(&project_id, &new_name);
+    let projects = pm.list_projects();
+    drop(pm);
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects, None, None, None);
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(|e| AppError::Storage(e.to_string()))
+}
+
+#[tauri::command]
+pub fn change_project_path(
+    project_id: String,
+    new_path: String,
+    state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), AppError> {
+    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+    pm.change_path(&project_id, &new_path);
+    pm.refresh_git_info(&project_id).map_err(AppError::from)?;
+    let projects = pm.list_projects();
+    drop(pm);
+
+    state.watcher_manager.unwatch(&project_id);
+    state
+        .watcher_manager
+        .watch(project_id, PathBuf::from(new_path), app_handle);
+
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects, None, None, None);
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(|e| AppError::Storage(e.to_string()))
+}
+
+#[tauri::command]
 pub fn reorder_projects(
     ordered_ids: Vec<String>,
     state: State<AppStateWrapper>,

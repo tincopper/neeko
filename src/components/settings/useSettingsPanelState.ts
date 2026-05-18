@@ -5,15 +5,15 @@ import type { AgentConfig, AppConfig, DiffMode } from "../../types";
 import { IDE_PRESETS, getIdeCommand } from "../../utils/idePresets";
 import type { IdePreset } from "../../utils/idePresets";
 import {
-  BUILTIN_AGENTS,
   BUILTIN_FONTS,
   PRESET_SHELLS,
-  type NavCategory,
+  type SettingsNavId,
 } from "./constants";
 
 interface UseSettingsPanelStateParams {
   config: AppConfig;
-  activeNav: NavCategory;
+  activeNav: SettingsNavId;
+  builtinAgents: AgentConfig[];
   onConfigChange: (next: AppConfig) => void;
   onClose: () => void;
 }
@@ -21,6 +21,7 @@ interface UseSettingsPanelStateParams {
 export function useSettingsPanelState({
   config,
   activeNav,
+  builtinAgents,
   onConfigChange,
   onClose,
 }: UseSettingsPanelStateParams) {
@@ -240,7 +241,7 @@ export function useSettingsPanelState({
 
   const saveAgentOverride = (agentId: string) => {
     const trimmed = editingValue.trim();
-    const agent = BUILTIN_AGENTS.find((item) => item.id === agentId);
+    const agent = builtinAgents.find((item) => item.id === agentId);
     const defaultCmd = agent?.command ?? "";
     const overrides = { ...(config.agentCommandOverrides || {}) };
     if (trimmed && trimmed !== defaultCmd) {

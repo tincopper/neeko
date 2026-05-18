@@ -49,6 +49,8 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::set_view_terminal,
             $crate::commands::set_view_diff,
             $crate::commands::set_project_collapsed,
+            $crate::commands::rename_project,
+            $crate::commands::change_project_path,
             $crate::commands::reorder_projects,
             $crate::commands::checkout_branch,
             $crate::commands::create_branch,

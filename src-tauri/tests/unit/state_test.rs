@@ -163,6 +163,8 @@ fn agent_config_serde_roundtrip() {
         enabled: true,
         prompt_args: None,
         post_prompt_args: None,
+        is_builtin: false,
+        default_skill_path: None,
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();

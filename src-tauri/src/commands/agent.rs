@@ -25,7 +25,10 @@ pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<Agen
 }
 
 #[tauri::command]
-pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
+    // 防御：用户自定义 agent 永远不能伪造 is_builtin / default_skill_path
+    agent.is_builtin = false;
+    agent.default_skill_path = None;
     state
         .agent_manager
         .lock()
