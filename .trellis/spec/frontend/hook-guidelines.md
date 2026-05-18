@@ -202,6 +202,54 @@ useAppStore.setState({ fileTabs: nextTabs, activeFileTabId: nextId });
 
 ---
 
+## 跨域 active-切换 lazy invoke 模式
+
+当某项数据需要 per-active-target、按需获取（不批量预热），且三域（local / WSL / SSH）各有独立 active 概念时，用三个并列 effect 分别响应各自的 active 变化、写入同一张共用切片。
+
+**实例**：`useAheadBehindSync`（`src/hooks/useAheadBehindSync.ts`）
+- 一份 hook 同时挂三个 `useEffect`：分别监听 `useAppStore.activeProjectId`、`activeWslProject`、`activeRemoteProject`
+- 每个 effect 在切换时单次 invoke 对应后端命令（`get_ahead_behind_command` / `wsl_get_ahead_behind` / `remote_get_ahead_behind`）
+- 结果统一写到 `aheadBehind: Record<key, AheadBehind>`，key 由 `aheadBehindKey()` 派生（参见 `state-management.md` 跨域共用切片场景）
+
+**契约**：
+1. effect 仅在 active 切换时触发，不批量预热（避免 SSH 网络抖动放大成本）
+2. 失败路径调用 `setAheadBehind(key, null)`，让消费侧不渲染陈旧 chip
+3. 三个 effect 互不依赖；不要合并成一个"超级 effect" + 大型 switch
+4. hook 在跨域容器（如 `ProjectsPanel`）顶层调用一次即可，禁止在每个 ProjectGroup 内重复挂载
+
+**反模式**：在 `useLocalProjects` / `useWslProjects` / `useRemoteProjects` 各自 invoke + 自己持状态——三处 staleness 难以统一。
+
+**好坏对照**：
+
+```tsx
+// Wrong —— 在每个领域 hook 里各自维护 ahead/behind
+function useLocalProjects() {
+  const [aheadBehind, setAheadBehind] = useState<Record<string, AheadBehind>>({});
+}
+function useWslProjects() {
+  const [aheadBehind, setAheadBehind] = useState<Record<string, AheadBehind>>({});
+}
+// 消费侧从 3 处来源取数据，永远不一致
+```
+
+```tsx
+// Correct —— 一份编排 hook + 共用切片
+function useAheadBehindSync() {
+  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const activeWslProject = useAppStore((s) => s.activeWslProject);
+  const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
+
+  useEffect(() => { /* local invoke + setAheadBehind */ }, [activeProjectId]);
+  useEffect(() => { /* wsl invoke + setAheadBehind */ }, [activeWslProject]);
+  useEffect(() => { /* remote invoke + setAheadBehind */ }, [activeRemoteProject]);
+}
+
+// ProjectsPanel.tsx 顶层一次调用
+useAheadBehindSync();
+```
+
+---
+
 ## 数据获取
 
 ### 所有数据通过 Tauri IPC 传输
