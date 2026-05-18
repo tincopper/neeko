@@ -15,6 +15,7 @@ import type {
   WSLEntrySession,
   WSLProject,
 } from "../types";
+import type { FileTabData } from "../types/tab";
 import { createDefaultEditorLayout } from "../types/editorGroup";
 
 export interface WorktreeSnapshotItem {
@@ -136,14 +137,25 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
     case "file": {
-      // `in` narrows partial to the only member that has `content`: Partial<FileTabData>
-      if (!("content" in partial)) return data;
+      // Accept any partial that touches at least one FileTabData-specific field.
+      // Use `content` as the primary discriminant for backwards-compat, but also
+      // accept isDirty-only or externallyModified-only updates via explicit cast.
+      const isFilePartial =
+        "content" in partial ||
+        "isDirty" in partial ||
+        "filePath" in partial ||
+        "fileName" in partial ||
+        "externallyModified" in partial;
+      if (!isFilePartial) return data;
+      // Cast to Partial<FileTabData> — safe because we just checked the fields above
+      const fp = partial as Partial<FileTabData>;
       return {
         kind: "file",
-        filePath: partial.filePath !== undefined ? partial.filePath : data.filePath,
-        fileName: partial.fileName !== undefined ? partial.fileName : data.fileName,
-        content: partial.content !== undefined ? partial.content : data.content,
-        isDirty: partial.isDirty !== undefined ? partial.isDirty : data.isDirty,
+        filePath: fp.filePath !== undefined ? fp.filePath : data.filePath,
+        fileName: fp.fileName !== undefined ? fp.fileName : data.fileName,
+        content: fp.content !== undefined ? fp.content : data.content,
+        isDirty: fp.isDirty !== undefined ? fp.isDirty : data.isDirty,
+        externallyModified: "externallyModified" in partial ? fp.externallyModified : data.externallyModified,
       };
     }
     case "diff": {

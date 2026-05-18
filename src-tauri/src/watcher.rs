@@ -7,9 +7,22 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
+
+// ── 文件变更事件 ──────────────────────────────────────────────────────────────
+
+/// 文件内容变更事件 payload，发送给前端用于刷新已打开的 tab
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileChangedEvent {
+    /// 项目 ID
+    pub project_id: String,
+    /// 相对于项目根目录的变更文件路径列表（使用 `/` 分隔符）
+    pub paths: Vec<String>,
+}
+
+// ── Throttle 调度器 ───────────────────────────────────────────────────────────
 
 /// Throttle 调度器：收到信号后立即触发一次回调，
 /// 执行期间的信号合并，执行完成后若有排队则再触发一次。
@@ -56,11 +69,94 @@ impl ThrottleScheduler {
     }
 }
 
+// ── Debounce sender：收集路径，200ms 无新事件后一次性 emit ────────────────────
+
+/// 通过独立 channel 向 debounce 线程发送变更路径
+struct DebounceSender {
+    tx: mpsc::Sender<PathBuf>,
+}
+
+impl DebounceSender {
+    fn new(
+        project_id: String,
+        project_root: PathBuf,
+        app_handle: AppHandle,
+    ) -> Self {
+        let (tx, rx) = mpsc::channel::<PathBuf>();
+
+        std::thread::Builder::new()
+            .name(format!("file-debounce-{}", project_id))
+            .spawn(move || {
+                // 收集路径的缓冲区，key 为相对路径字符串（去重）
+                let mut buffer: Vec<String> = Vec::new();
+                let mut deadline: Option<Instant> = None;
+
+                loop {
+                    // 计算 recv_timeout 时间：若有待发送内容则等到 deadline，否则无限等待
+                    let result = if let Some(dl) = deadline {
+                        let now = Instant::now();
+                        if now >= dl {
+                            // deadline 已过，立即发送
+                            Err(mpsc::RecvTimeoutError::Timeout)
+                        } else {
+                            rx.recv_timeout(dl - now)
+                        }
+                    } else {
+                        rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected)
+                    };
+
+                    match result {
+                        Ok(abs_path) => {
+                            // 转为相对路径（用 / 分隔符）
+                            let rel = abs_path
+                                .strip_prefix(&project_root)
+                                .unwrap_or(&abs_path)
+                                .to_string_lossy()
+                                .replace('\\', "/");
+                            if !buffer.contains(&rel) {
+                                buffer.push(rel);
+                            }
+                            // 重置 deadline（滑动窗口）
+                            deadline = Some(Instant::now() + Duration::from_millis(200));
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            // deadline 到期，flush
+                            if !buffer.is_empty() {
+                                let event = FileChangedEvent {
+                                    project_id: project_id.clone(),
+                                    paths: std::mem::take(&mut buffer),
+                                };
+                                log::debug!(
+                                    "[FileDebounce:{}] Emitting file-changed for {} paths",
+                                    project_id,
+                                    event.paths.len()
+                                );
+                                let _ = app_handle.emit("file-changed", &event);
+                            }
+                            deadline = None;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            // channel 关闭，退出
+                            break;
+                        }
+                    }
+                }
+            })
+            .expect("Failed to spawn file-debounce thread");
+
+        Self { tx }
+    }
+}
+
+// ── WatcherHandle & WatcherManager ───────────────────────────────────────────
+
 struct WatcherHandle {
     _watcher: RecommendedWatcher,
     _scheduler: ThrottleScheduler,
     // worker clone 保持 alive，与 scheduler 回调中的 clone 共享同一个 worker 线程
     _worker: GitStatusWorker,
+    // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）
+    _debounce: DebounceSender,
     stop_signal: Arc<AtomicBool>,
     // 心跳线程：定期触发 git status 作为 notify 事件丢失时的兜底
     _heartbeat: std::thread::JoinHandle<()>,
@@ -117,9 +213,17 @@ impl WatcherManager {
             worker_clone.check();
         });
 
-        // 3. 创建 notify watcher -- 递归监听 + 路径过滤
+        // 3. 创建 file-changed debounce sender
+        let debounce = DebounceSender::new(
+            project_id.clone(),
+            path.clone(),
+            app_handle.clone(),
+        );
+
+        // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包
         let scheduler_tx = scheduler.sender();
+        let debounce_tx_for_notify = debounce.tx.clone();
         let pid_log = project_id.clone();
         let notify_result = RecommendedWatcher::new(
             move |result: Result<Event, notify::Error>| {
@@ -132,7 +236,14 @@ impl WatcherManager {
                 };
 
                 // 过滤掉 .git / node_modules / target 等目录内的变更
-                let relevant = event.paths.iter().any(|p| !should_ignore_path(p));
+                let relevant_paths: Vec<PathBuf> = event
+                    .paths
+                    .iter()
+                    .filter(|p| !should_ignore_path(p))
+                    .cloned()
+                    .collect();
+
+                let relevant = !relevant_paths.is_empty();
                 log::debug!(
                     "[Watcher:{}] FS event {:?}, paths={:?}, relevant={}",
                     pid_log,
@@ -142,7 +253,12 @@ impl WatcherManager {
                 );
 
                 if relevant {
+                    // 驱动 git worker
                     let _ = scheduler_tx.send(());
+                    // 发送变更路径给 debounce sender（用于文件 tab 刷新）
+                    for p in relevant_paths {
+                        let _ = debounce_tx_for_notify.send(p);
+                    }
                 }
             },
             Config::default(),
@@ -175,7 +291,7 @@ impl WatcherManager {
         // 立即触发一次 git status 检查，获取初始状态
         worker.check();
 
-        // 4. 启动心跳线程：每 30s 主动触发一次 git status 检查
+        // 5. 启动心跳线程：每 30s 主动触发一次 git status 检查
         // 作为 notify 在 Windows 下可能丢失事件时的兜底机制
         let heartbeat_worker = worker.clone();
         let heartbeat_stop = stop.clone();
@@ -202,6 +318,7 @@ impl WatcherManager {
                     _watcher: watcher,
                     _scheduler: scheduler,
                     _worker: worker,
+                    _debounce: debounce,
                     stop_signal: stop,
                     _heartbeat: heartbeat,
                 },

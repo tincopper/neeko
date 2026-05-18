@@ -7,7 +7,7 @@ import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } 
 import { Eye, Save, FileCode, Globe } from "lucide-react";
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
-import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
+import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useEditorContext } from "../../contexts/editor-context";
 import { useAppStore } from "../../store/appStore";
@@ -15,6 +15,7 @@ import { buildWorktreeTabKey } from "../../utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
 import { useActiveProject } from "../../hooks/useActiveProject";
 import InlineHtmlPreview from "./InlineHtmlPreview";
+import { invoke } from "@tauri-apps/api/core";
 
 type PreviewMode = "preview" | "source";
 
@@ -83,7 +84,7 @@ function FileViewer() {
    const { activeTabId: groupActiveTabId } = useEditorContext();
 
    // Derive the active file tab from unified Tab.data (FileTabData)
-   const activeFileTab = useMemo(() => {
+   const activeFileTabInfo = useMemo(() => {
       if (!projectTabs) return null;
       // Prefer the group's active tab if it's a file tab
       let target = projectTabs.tabs.find((t) => t.id === groupActiveTabId);
@@ -92,10 +93,14 @@ function FileViewer() {
          target = projectTabs.tabs.find(isFileTab);
       }
       if (!target || !isFileTab(target)) return null;
-      return tabToFileTab(target);
+      return {
+         fileTab: tabToFileTab(target),
+         tabId: target.id,
+         externallyModified: target.data.externallyModified ?? false,
+      };
    }, [projectTabs, groupActiveTabId]);
 
-   if (!activeFileTab) {
+   if (!activeFileTabInfo) {
       return (
          <div className="flex flex-col h-full items-center justify-center text-text-secondary">
             <FileCode size={48} className="mb-3 opacity-30" />
@@ -104,6 +109,8 @@ function FileViewer() {
          </div>
       );
    }
+
+   const { fileTab: activeFileTab, tabId: activeTabId, externallyModified } = activeFileTabInfo;
 
    const projectPath = activeProject?.path
       ?? activeWslProject?.project.path
@@ -115,6 +122,9 @@ function FileViewer() {
          <FileEditor
             key={activeFileTab.id}
             tab={activeFileTab}
+            tabKey={tabKey ?? ""}
+            tabId={activeTabId}
+            externallyModified={externallyModified}
             theme={theme}
             fontFamily={fontFamily}
             fontSize={fontSize}
@@ -129,6 +139,9 @@ function FileViewer() {
 // Internal editor component for a single file tab
 interface FileEditorProps {
    tab: FileTab;
+   tabKey: string;
+   tabId: string;
+   externallyModified: boolean;
    theme: AppTheme;
    fontFamily: string;
    fontSize: number;
@@ -137,10 +150,37 @@ interface FileEditorProps {
    onContentChange: (tabId: string, content: string) => void;
 }
 
-function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
+function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
    const [previewMode, setPreviewMode] = useState<PreviewMode>("preview");
    const [isSaving, setIsSaving] = useState(false);
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
+
+   // 处理外部文件修改：重新加载
+   const handleReload = useCallback(async () => {
+      try {
+         const content = await invoke<FileContent>("read_file_content", {
+            projectId: tab.projectId,
+            filePath: tab.filePath,
+            rootPath: undefined,
+         });
+         useAppStore.getState().updateTab(tabKey, tabId, {
+            kind: "file",
+            content,
+            isDirty: false,
+            externallyModified: false,
+         });
+      } catch (e) {
+         console.error("[FileEditor] Failed to reload file:", e);
+      }
+   }, [tab.projectId, tab.filePath, tabKey, tabId]);
+
+   // 处理外部文件修改：保留当前编辑
+   const handleKeepEdits = useCallback(() => {
+      useAppStore.getState().updateTab(tabKey, tabId, {
+         kind: "file",
+         externallyModified: false,
+      });
+   }, [tabKey, tabId]);
 
    const isMd = isMarkdownFile(tab.filePath);
    const isHtml = isHtmlFile(tab.filePath);
@@ -296,6 +336,35 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
 
    return (
       <div className="flex-1 flex flex-col min-h-0">
+         {/* 外部文件修改 Modal */}
+         {externallyModified && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+               <div className="bg-bg-primary border border-border rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
+                  <h3 className="text-sm font-semibold text-text-primary mb-2">文件已在外部修改</h3>
+                  <p className="text-sm text-text-secondary mb-1">
+                     <span className="font-medium text-text-primary">{tab.fileName}</span> 已被外部程序修改。
+                  </p>
+                  <p className="text-sm text-text-secondary mb-5">
+                     是否重新加载？你当前的编辑将会丢失。
+                  </p>
+                  <div className="flex justify-end gap-2">
+                     <button
+                        className="px-3 py-1.5 text-sm rounded border border-border text-text-secondary hover:bg-bg-hover transition-colors"
+                        onClick={handleKeepEdits}
+                     >
+                        保留当前编辑
+                     </button>
+                     <button
+                        className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent/90 transition-colors"
+                        onClick={handleReload}
+                     >
+                        重新加载
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
+
          <EditorHeader
             pathSegments={pathSegments}
             isDirty={tab.isDirty}
