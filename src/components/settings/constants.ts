@@ -1,5 +1,4 @@
 import React from "react";
-import type { AgentConfig } from "../../types";
 import {
   AppearanceIcon,
   CodeIcon,
@@ -18,6 +17,8 @@ export type NavCategory =
   | "git"
   | "shortcuts"
   | "appearance";
+
+export type SettingsNavId = NavCategory | `project:${string}`;
 
 export interface NavItem {
   id: NavCategory;
@@ -93,67 +94,3 @@ export const PRESET_SHELLS: { label: string; value: string }[] =
         { label: "sh", value: "/bin/sh" },
       ];
 
-export const BUILTIN_AGENTS: Array<
-  AgentConfig & { defaultSkillPath: string | null }
-> = [
-  {
-    id: "opencode",
-    name: "opencode",
-    command: "opencode",
-    args: [],
-    env: {},
-    icon: "opencode.png",
-    enabled: true,
-    defaultSkillPath: "~/.agents/skills",
-  },
-  {
-    id: "claude-code",
-    name: "claude-code",
-    command: "claude",
-    args: [],
-    env: {},
-    icon: "claude-code.png",
-    enabled: true,
-    defaultSkillPath: "~/.claude/skills",
-  },
-  {
-    id: "gemini",
-    name: "gemini",
-    command: "gemini",
-    args: [],
-    env: {},
-    icon: "gemini.png",
-    enabled: true,
-    defaultSkillPath: "~/.gemini/skills",
-  },
-  {
-    id: "codex",
-    name: "codex",
-    command: "codex",
-    args: [],
-    env: {},
-    icon: "codex.png",
-    enabled: true,
-    defaultSkillPath: "~/.codex/skills",
-  },
-  {
-    id: "qoder",
-    name: "qoder",
-    command: "qoder",
-    args: [],
-    env: {},
-    icon: "qoder.svg",
-    enabled: true,
-    defaultSkillPath: "~/.qoder/skills",
-  },
-  {
-    id: "codebuddy",
-    name: "codebuddy",
-    command: "codebuddy",
-    args: [],
-    env: {},
-    icon: "codebuddy.svg",
-    enabled: true,
-    defaultSkillPath: "~/.codebuddy/skills",
-  },
-];

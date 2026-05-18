@@ -58,6 +58,8 @@ impl AgentManager {
                 "-f".to_string(),
             ]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.agents/skills".to_string()),
         });
 
         // claude code — `claude --bare -p "<prompt>" --dangerously-skip-permissions`
@@ -71,6 +73,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec!["--bare".to_string(), "-p".to_string()]),
             post_prompt_args: Some(vec!["--dangerously-skip-permissions".to_string()]),
+            is_builtin: true,
+            default_skill_path: Some("~/.claude/skills".to_string()),
         });
 
         // gemini — `gemini --prompt "<prompt>"`
@@ -84,6 +88,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec!["--prompt".to_string()]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.gemini/skills".to_string()),
         });
 
         // codex — `codex "<prompt>"` (prompt 作为直接位置参数，无前置 flag)
@@ -97,6 +103,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec![]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.codex/skills".to_string()),
         });
 
         // qoder — `qodercli --prompt "<prompt>"`
@@ -110,6 +118,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec!["--prompt".to_string()]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.qoder/skills".to_string()),
         });
 
         // codebuddy — `codebuddy --prompt "<prompt>"`
@@ -123,6 +133,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec!["--prompt".to_string()]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.codebuddy/skills".to_string()),
         });
 
         // pi — `pi -p "<prompt>"`
@@ -136,6 +148,8 @@ impl AgentManager {
             enabled: true,
             prompt_args: Some(vec!["-p".to_string()]),
             post_prompt_args: None,
+            is_builtin: true,
+            default_skill_path: Some("~/.pi/skills".to_string()),
         });
     }
 
@@ -240,9 +254,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_six_presets() {
+    fn should_initialize_with_seven_presets() {
         let manager = AgentManager::new();
         assert_eq!(manager.get_agents().len(), 7);
+    }
+
+    #[test]
+    fn should_mark_all_default_agents_as_builtin_with_skill_path() {
+        let manager = AgentManager::new();
+        for agent in manager.get_agents() {
+            assert!(
+                agent.is_builtin,
+                "default agent {} should be marked is_builtin",
+                agent.id
+            );
+            assert!(
+                agent.default_skill_path.is_some(),
+                "default agent {} should have default_skill_path",
+                agent.id
+            );
+        }
     }
 
     #[test]
@@ -272,6 +303,8 @@ mod tests {
             enabled: true,
             prompt_args: None,
             post_prompt_args: None,
+            is_builtin: false,
+            default_skill_path: None,
         };
         manager.add_agent(custom);
         assert_eq!(manager.get_agents().len(), 8);
