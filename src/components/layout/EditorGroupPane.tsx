@@ -16,10 +16,13 @@ import { useEditorContext, EditorProvider } from "../../contexts/editor-context"
 import { useAppContext } from "../../contexts";
 
 interface EditorGroupPaneProps {
-  groupId: EditorGroupId;
+  /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
+  groupId: EditorGroupId | "pinned";
   tabKey: string;
   tabs: Tab[];
   activeTabId: string | null;
+  /** The currently-pinned tab id — forwarded to UnifiedTabBar to render the pin indicator. */
+  pinnedTabId?: string | null;
   isFocused: boolean;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
@@ -40,12 +43,19 @@ interface EditorGroupPaneProps {
   showToast: (msg: string, type?: "info" | "error") => void;
   wslProject?: { distro: string; project: { id: string } } | null;
   layoutId: string;
+  /**
+   * Extra context-menu items injected by the parent layout.
+   * Rendered after the built-in split/move items, separated by a divider.
+   * This keeps pin logic (and any future layout-level actions) out of EditorGroupPane.
+   */
+  contextMenuExtras?: (tabId: string) => import("../project/ContextMenu").ContextMenuItem[];
 }
 
 function EditorGroupPane({
   groupId,
   tabs,
   activeTabId,
+  pinnedTabId = null,
   isFocused,
   onActivateTab,
   onCloseTab,
@@ -65,6 +75,7 @@ function EditorGroupPane({
   showToast,
   wslProject,
   layoutId,
+  contextMenuExtras,
 }: EditorGroupPaneProps) {
   const globalEditorCtx = useEditorContext();
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) ?? null, [tabs, activeTabId]);
@@ -130,7 +141,15 @@ function EditorGroupPane({
   const contextMenuItems: ContextMenuItem[] = useMemo(() => {
     if (!contextMenu) return [];
     const { tabId } = contextMenu;
+
     const isInRight = groupId === "right";
+    const isPinnedGroup = groupId === "pinned";
+
+    // Pin panel: delegate entirely to extras (Layout provides Unpin)
+    if (isPinnedGroup) {
+      return contextMenuExtras?.(tabId) ?? [];
+    }
+
     const items: ContextMenuItem[] = [
       { label: "Close", action: () => onCloseTab(tabId) },
     ];
@@ -147,8 +166,14 @@ function EditorGroupPane({
     } else {
       items.push({ label: "Move to Left", action: () => onMoveToLeft(tabId) });
     }
+    // Layout-injected extras (e.g. Pin Tab)
+    const extras = contextMenuExtras?.(tabId);
+    if (extras && extras.length > 0) {
+      items.push({ separator: true } as ContextMenuItem);
+      items.push(...extras);
+    }
     return items;
-  }, [contextMenu, groupId, onCloseTab, onCloseOtherTabs, onCloseAllTabs, onSplitRight, onMoveToRight, onMoveToLeft]);
+  }, [contextMenu, groupId, onCloseTab, onCloseOtherTabs, onCloseAllTabs, onSplitRight, onMoveToRight, onMoveToLeft, contextMenuExtras]);
 
   // Settings tab close
   const handleCloseSettingsTab = useCallback(() => {
@@ -189,6 +214,7 @@ function EditorGroupPane({
               <UnifiedTabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
+                pinnedTabId={pinnedTabId}
                 onActivateTab={onActivateTab}
                 onCloseTab={onCloseTab}
                 onAddTerminalTab={onAddTerminalTab}
