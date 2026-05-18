@@ -1,18 +1,23 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Worktree, FileChange } from "../../types";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import type { FileChange, Worktree } from "../../types";
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "../icons";
-import { terminalCache, destroyTerminalCache } from "../terminal";
 import { cn } from "../../utils/cn";
-import { useAppStore } from "../../store/appStore";
-import SessionChips from "./SessionChips";
+import { SessionChips } from "../project";
 
-interface WorktreeListProps {
+interface ConnectionWorktreeListProps {
   worktrees: Worktree[];
-  projectId: string;
-  onOpenWorktreeTerminal?: (projectId: string, path: string, branch: string) => void;
-  onRefreshGit: (projectId: string) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  /** 当前激活的 worktree 路径（来自 connection-specific store 字段） */
+  activeWorktreePath: string | null;
+  /** 点击 worktree 行：触发外部 onOpenWorktreeTerminal */
+  onOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
+  /** 双击 worktree label：开始重命名（提交 newName 由父级处理） */
+  onCommitRenameWorktree: (oldPath: string, newName: string) => void;
+  /** 删除 worktree（含分支） */
+  onRemoveWorktree: (worktreePath: string, branch: string) => void;
+  /** 懒加载 worktree changed_files（用于 +A -D chip） */
+  onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
+  /** 检查 worktree 是否 dirty */
+  onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
 }
 
 interface ChangeStat {
@@ -20,12 +25,14 @@ interface ChangeStat {
   del: number;
 }
 
-const WorktreeList: React.FC<WorktreeListProps> = ({
+const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
   worktrees,
-  projectId,
+  activeWorktreePath,
   onOpenWorktreeTerminal,
-  onRefreshGit,
-  onShowToast,
+  onCommitRenameWorktree,
+  onRemoveWorktree,
+  onGetWorktreeChangedFiles,
+  onIsWorktreeDirty,
 }) => {
   const [changeStats, setChangeStats] = useState<Record<string, ChangeStat>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -33,9 +40,6 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
-
-  const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
   useEffect(() => {
     if (renaming !== null && renameInputRef.current) {
@@ -44,16 +48,13 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     }
   }, [renaming]);
 
-  // Worktree changes 仅用于 +A -D chip 聚合，懒加载一次。
-  // 不再展开 FileTree（移到 DiffView）。
+  // 懒加载 worktree changed_files 用于 +A -D chip 聚合。
   useEffect(() => {
+    if (!onGetWorktreeChangedFiles) return;
     let cancelled = false;
-    for (const wt of filteredWorktrees) {
+    for (const wt of worktrees) {
       if (changeStats[wt.path]) continue;
-      invoke<FileChange[]>("get_worktree_changed_files", {
-        projectId,
-        worktreePath: wt.path,
-      })
+      onGetWorktreeChangedFiles(wt.path)
         .then((files) => {
           if (cancelled) return;
           const add = files.reduce((s, f) => s + f.additions, 0);
@@ -68,47 +69,29 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     return () => {
       cancelled = true;
     };
-    // intentionally rerun on worktrees identity / projectId
-  }, [filteredWorktrees, projectId, changeStats]);
+  }, [worktrees, onGetWorktreeChangedFiles, changeStats]);
 
   const handleRemove = useCallback(async (worktreePath: string, branch: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const isDirty = await invoke<boolean>("is_worktree_dirty", { projectId, worktreePath });
-      setConfirmDelete({ path: worktreePath, branch, isDirty });
-    } catch {
+    if (onIsWorktreeDirty) {
+      try {
+        const isDirty = await onIsWorktreeDirty(worktreePath);
+        setConfirmDelete({ path: worktreePath, branch, isDirty });
+      } catch {
+        setConfirmDelete({ path: worktreePath, branch, isDirty: false });
+      }
+    } else {
       setConfirmDelete({ path: worktreePath, branch, isDirty: false });
     }
-  }, [projectId]);
+  }, [onIsWorktreeDirty]);
 
-  const performRemove = useCallback(async (worktreePath: string, branch: string) => {
+  const performRemove = useCallback((worktreePath: string, branch: string) => {
     setConfirmDelete(null);
     setDeleting(worktreePath);
-    try {
-      const wtCacheKey = `${projectId}:wt:${worktreePath}`;
-      const wtCache = terminalCache.get(wtCacheKey);
-      if (wtCache?.sessionId) {
-        await invoke("close_terminal_session", { sessionId: wtCache.sessionId }).catch(() => {});
-      }
-      destroyTerminalCache(wtCacheKey);
-      await invoke("remove_worktree", { projectId, worktreePath });
-      let branchError: string | null = null;
-      try {
-        await invoke("delete_branch", { projectId, branchName: branch });
-      } catch (e: unknown) {
-        branchError = String(e);
-      }
-      await new Promise((r) => setTimeout(r, 450));
-      onRefreshGit(projectId);
-      if (branchError) {
-        onShowToast?.(`Branch "${branch}" could not be deleted: ${branchError}`, "error");
-      }
-    } catch (e: unknown) {
-      onShowToast?.(`Failed to remove worktree: ${String(e)}`, "error");
-    } finally {
-      setDeleting(null);
-    }
-  }, [projectId, onRefreshGit, onShowToast]);
+    onRemoveWorktree(worktreePath, branch);
+    // Connection backends are async; let parent refresh trigger re-render. Reset spinner safety.
+    setTimeout(() => setDeleting(null), 800);
+  }, [onRemoveWorktree]);
 
   const startRename = useCallback((worktreePath: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -116,7 +99,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     setRenameValue(worktreePath.split(/[\\/]/).pop() ?? worktreePath);
   }, []);
 
-  const commitRename = useCallback(async () => {
+  const commitRename = useCallback(() => {
     const oldPath = renaming;
     if (!oldPath) return;
     const newName = renameValue.trim();
@@ -124,24 +107,19 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     if (!newName) return;
     const oldDirName = oldPath.split(/[\\/]/).pop() ?? "";
     if (newName === oldDirName) return;
-    try {
-      await invoke("rename_worktree", { projectId, worktreePath: oldPath, newName });
-      onRefreshGit(projectId);
-    } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
-    }
-  }, [renaming, renameValue, projectId, onRefreshGit, onShowToast]);
+    onCommitRenameWorktree(oldPath, newName);
+  }, [renaming, renameValue, onCommitRenameWorktree]);
 
   const cancelRename = useCallback(() => {
     setRenaming(null);
     setRenameValue("");
   }, []);
 
-  if (filteredWorktrees.length === 0) return null;
+  if (worktrees.length === 0) return null;
 
   return (
     <>
-      {filteredWorktrees.map((wt) => {
+      {worktrees.map((wt) => {
         const stats = changeStats[wt.path];
         const isRenaming = renaming === wt.path;
         const isDeleting = deleting === wt.path;
@@ -159,7 +137,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               if (isRenaming || isDeleting) return;
-              onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
+              onOpenWorktreeTerminal(wt.path, wt.branch);
             }}
             title={`${wt.path}\nClick to open terminal`}
           >
@@ -269,4 +247,4 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   );
 };
 
-export default React.memo(WorktreeList);
+export default React.memo(ConnectionWorktreeList);

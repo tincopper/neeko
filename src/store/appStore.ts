@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ActiveRemoteKey, ActiveWslKey } from "../components/connections/types";
 import type {
+  AheadBehind,
   AuthMethod,
   EditorGroupId,
   EditorSplitLayout,
@@ -67,6 +68,11 @@ interface AppStoreState {
   // ── Dock panel width tracking ──
   leftPanelWidth: number;
   setLeftPanelWidth: (width: number) => void;
+
+  // ── Ahead/behind by composite key (`${kind}:${entryId}:${projectId}`).
+  //    Lazy: filled when project becomes active. ──
+  aheadBehind: Record<string, AheadBehind>;
+  setAheadBehind: (key: string, info: AheadBehind | null) => void;
 
   selectProject: (id: string) => void;
   selectWslProject: (distro: string, project: WSLProject) => void;
@@ -205,6 +211,22 @@ export const useAppStore = create<AppStoreState>((set) => ({
   // ── Dock panel width tracking ──
   leftPanelWidth: 0,
   setLeftPanelWidth: (width) => set({ leftPanelWidth: width }),
+
+  // ── Ahead/behind ──
+  aheadBehind: {},
+  setAheadBehind: (key, info) =>
+    set((state) => {
+      if (info === null) {
+        if (!(key in state.aheadBehind)) return state;
+        const { [key]: _, ...rest } = state.aheadBehind;
+        return { aheadBehind: rest };
+      }
+      const current = state.aheadBehind[key];
+      if (current && current.ahead === info.ahead && current.behind === info.behind) {
+        return state;
+      }
+      return { aheadBehind: { ...state.aheadBehind, [key]: info } };
+    }),
 
   selectProject: noop,
   selectWslProject: noop,

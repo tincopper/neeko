@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IS_WINDOWS } from "../../utils/platform";
 import {
@@ -12,6 +12,7 @@ import GitDialog, { DialogState } from "../project/GitDialog";
 import CommitDialog from "../project/CommitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
 import { useAppStore } from "../../store/appStore";
+import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
@@ -32,13 +33,10 @@ const ProjectsPanel: React.FC = () => {
    const {
       wslEntries,
       activeWslKey,
-      wslOpenSessions,
       onSelectWslProject,
-      onCloseWslProject,
       onRemoveWslProject,
       onRemoveWslEntry,
       onAddWslProject,
-      onSelectWslFile,
       onRefreshWslGit,
       onOpenWslIde,
       onOpenWslWorktreeTerminal,
@@ -47,13 +45,10 @@ const ProjectsPanel: React.FC = () => {
    const {
       remoteEntries,
       activeRemoteKey,
-      remoteOpenSessions,
       onSelectRemoteProject,
-      onCloseRemoteProject,
       onRemoveRemoteProject,
       onRemoveRemoteEntry,
       onAddRemoteProject,
-      onSelectRemoteFile,
       onRefreshRemoteGit,
       onOpenRemoteIde,
       onOpenRemoteWorktreeTerminal,
@@ -64,6 +59,8 @@ const ProjectsPanel: React.FC = () => {
    const [dialog, setDialog] = useState<DialogState | null>(null);
    const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
    const [remoteHomeDir, setRemoteHomeDir] = useState<string>("");
+
+   useAheadBehindSync();
 
    useEffect(() => {
       if (!dialog || dialog.type !== "new-worktree" || dialog.source?.type !== "remote" || !dialog.source.entryId || !invokeRemoteGit) {
@@ -102,6 +99,33 @@ const ProjectsPanel: React.FC = () => {
       (IS_WINDOWS ? wslEntries.length === 0 : true) &&
       remoteEntries.length === 0;
 
+   /**
+    * isLast 派生：整个 ProjectsPanel 中位于绝对末尾的项目卡才不画 hairline。
+    * 顺序：local 项目 → WSL section（按 entry，按 project）→ Remote section（按 entry，按 project）。
+    */
+   const lastCardId = useMemo<{ kind: "local" | "wsl" | "remote"; entryId?: string; projectId: string } | null>(() => {
+      const wslEnabled = IS_WINDOWS;
+      // Reverse search: remote → wsl → local
+      for (let i = remoteEntries.length - 1; i >= 0; i--) {
+         const entry = remoteEntries[i];
+         if (entry.projects.length > 0) {
+            return { kind: "remote", entryId: entry.id, projectId: entry.projects[entry.projects.length - 1].id };
+         }
+      }
+      if (wslEnabled) {
+         for (let i = wslEntries.length - 1; i >= 0; i--) {
+            const entry = wslEntries[i];
+            if (entry.projects.length > 0) {
+               return { kind: "wsl", entryId: entry.id, projectId: entry.projects[entry.projects.length - 1].id };
+            }
+         }
+      }
+      if (projects.length > 0) {
+         return { kind: "local", projectId: projects[projects.length - 1].id };
+      }
+      return null;
+   }, [projects, wslEntries, remoteEntries]);
+
    return (
       <>
          <div className="flex flex-col flex-1">
@@ -109,11 +133,15 @@ const ProjectsPanel: React.FC = () => {
                <div className="no-projects p-5 text-center text-text-muted text-[0.86em]">No projects added</div>
             ) : (
                <>
-                  {projects.map((project) => (
+                  {projects.map((project) => {
+                     const isLast =
+                        lastCardId?.kind === "local" && lastCardId.projectId === project.id;
+                     return (
                      <ProjectItem
                         key={project.id}
                         project={project}
                         isActive={activeProjectId === project.id}
+                        isLast={isLast}
                         actions={{
                            onSelectProject,
                            onRemoveProject,
@@ -138,7 +166,8 @@ const ProjectsPanel: React.FC = () => {
                            config,
                         }}
                      />
-                  ))}
+                     );
+                  })}
 
                   {IS_WINDOWS &&
                      wslEntries.map((entry) => (
@@ -146,13 +175,15 @@ const ProjectsPanel: React.FC = () => {
                            key={entry.id}
                            entry={entry}
                            activeKey={activeWslKey}
-                           openSessions={wslOpenSessions}
+                           lastProjectId={
+                              lastCardId?.kind === "wsl" && lastCardId.entryId === entry.id
+                                 ? lastCardId.projectId
+                                 : null
+                           }
                            onSelectProject={onSelectWslProject}
-                           onCloseProject={onCloseWslProject}
                            onRemoveProject={onRemoveWslProject}
                            onRemoveEntry={onRemoveWslEntry}
                            onAddProject={onAddWslProject}
-                           onSelectFile={onSelectWslFile}
                            onOpenIde={onOpenWslIde}
                            onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
                            ideCommandOverrides={ideCommandOverrides}
@@ -186,13 +217,15 @@ const ProjectsPanel: React.FC = () => {
                         key={entry.id}
                         entry={entry}
                         activeKey={activeRemoteKey}
-                        openSessions={remoteOpenSessions}
+                        lastProjectId={
+                           lastCardId?.kind === "remote" && lastCardId.entryId === entry.id
+                              ? lastCardId.projectId
+                              : null
+                        }
                         onSelectProject={onSelectRemoteProject}
-                        onCloseProject={onCloseRemoteProject}
                         onRemoveProject={onRemoveRemoteProject}
                         onRemoveEntry={onRemoveRemoteEntry}
                         onAddProject={onAddRemoteProject}
-                        onSelectFile={onSelectRemoteFile}
                         onOpenIde={onOpenRemoteIde}
                         onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
                         invokeRemoteGit={invokeRemoteGit}
