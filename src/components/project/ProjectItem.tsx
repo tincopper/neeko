@@ -1,18 +1,28 @@
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { MoreVerticalIcon } from "../icons";
 import type { DialogType } from "./GitDialog";
 import ContextMenu from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
-import ProjectItemHeader from "./ProjectItemHeader";
+import ProjectGroup from "./ProjectGroup";
 import ProjectGitSection from "./ProjectGitSection";
+import ProjectGitMenu from "./ProjectGitMenu";
 import DraggableProjectItem from "./DraggableProjectItem";
 import { useProjectItemDrag } from "./useProjectItemDrag";
 import { useProjectItemMenu } from "./useProjectItemMenu";
+import { getIdeIconByCommand } from "../../utils/idePresets";
+import { useAppStore } from "../../store/appStore";
 import type { ProjectItemProps } from "./projectItemTypes";
 
-const ProjectItem: React.FC<ProjectItemProps> = ({
+interface ProjectItemViewExtras {
+  /** 当前项目卡是否处于项目列表的最后一个（决定是否画 hairline） */
+  isLast?: boolean;
+}
+
+const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
   project,
   isActive,
+  isLast,
   actions,
   viewConfig,
 }) => {
@@ -26,7 +36,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     onPull,
     onOpenIde,
     onOpenWorktreeTerminal,
-    onSelectWorktreeFile,
     onOpenSettings,
     onRefresh,
     onShowToast,
@@ -38,8 +47,14 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
   const agents = viewConfig?.agents;
   const config = viewConfig?.config;
 
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
+
+  const projects = useAppStore((s) => s.projects);
+  const shortcut = useMemo(() => {
+    const idx = projects.findIndex((p) => p.id === project.id);
+    if (idx < 0 || idx >= 9) return undefined;
+    return `Ctrl+${idx + 1}`;
+  }, [projects, project.id]);
 
   const {
     isDragging,
@@ -86,20 +101,6 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (!gitMenuOpen) {
-      return;
-    }
-    const close = () => setGitMenuOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [gitMenuOpen, setGitMenuOpen]);
-
-  const toggleSection = (key: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
   const openDialog = (type: DialogType, e: React.MouseEvent) => {
     e.stopPropagation();
     onOpenDialog({
@@ -109,6 +110,12 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       ...(type === "new-worktree" ? { projectPath: project.path } : {}),
     });
   };
+
+  const sessionCount = 1 + (project.git_info?.worktrees.length ?? 0);
+  const hasGitActions = !!(onCommit || (project.git_info && (onPush || onPull)));
+  const ideIconSrc = project.selected_ide
+    ? getIdeIconByCommand(project.selected_ide, ideCommandOverrides)
+    : undefined;
 
   return (
     <DraggableProjectItem
@@ -121,43 +128,59 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
-      className="gh-project"
     >
-      <ProjectItemHeader
-        project={project}
+      <ProjectGroup
+        name={project.name}
+        sessionCount={sessionCount}
+        expanded={!projectCollapsed}
         isActive={isActive}
-        projectCollapsed={projectCollapsed}
-        gitMenuOpen={gitMenuOpen}
-        setGitMenuOpen={setGitMenuOpen}
-        ideCommandOverrides={ideCommandOverrides}
+        isLast={isLast}
+        ideIconSrc={ideIconSrc}
+        forceShowActions={gitMenuOpen}
         actions={{
-          onToggleCollapsed: () => void toggleCollapsed(),
+          onToggle: () => void toggleCollapsed(),
           onContextMenu: handleContextMenu,
-          onOpenIde,
-          onOpenDialog: openDialog,
-          onRemoveProject,
-          onCommit,
-          onPush,
-          onPull,
+          onAddWorktree: project.git_info
+            ? () =>
+                onOpenDialog({
+                  type: "new-worktree",
+                  projectId: project.id,
+                  branches: project.git_info?.branches ?? [],
+                  projectPath: project.path,
+                })
+            : undefined,
+          onOpenIde: project.selected_ide && onOpenIde
+            ? () => onOpenIde(project.id)
+            : undefined,
+          onRemove: () => onRemoveProject(project.id),
         }}
-      />
-
-      {!projectCollapsed && (
+        headerExtra={
+          hasGitActions ? (
+            <ProjectGitMenu
+              project={project}
+              open={gitMenuOpen}
+              setOpen={setGitMenuOpen}
+              trigger={<MoreVerticalIcon size={13} />}
+              onCommit={onCommit}
+              onPush={onPush}
+              onPull={onPull}
+              onOpenDialog={openDialog}
+            />
+          ) : null
+        }
+      >
         <ProjectGitSection
           project={project}
           isActive={isActive}
-          expandedSections={expandedSections}
+          shortcut={shortcut}
           actions={{
-            onToggleSection: toggleSection,
             onSelectProject,
             onRefreshGit,
-            onOpenDialog: openDialog,
             onOpenWorktreeTerminal,
-            onSelectWorktreeFile,
             onShowToast,
           }}
         />
-      )}
+      </ProjectGroup>
 
       {contextMenu && (
         <ContextMenu

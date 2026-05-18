@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [unreleased]
+
+### 🎨 Styling
+
+- ProjectsPanel 视觉重设计：Local / WSL / SSH 三端统一为 V1 Reference Faithful 风格（字母色块头像、双行 session、行尾 ↑N / +A -D / ⌘N chip、WSL/SSH 外层 lightweight section header）；下线侧边栏内嵌的 Worktree Changes 文件树（变更明细仍走 DiffView）
+
 ## [1.0.4] - 2026-04-11
 
 ### 🚀 Features
