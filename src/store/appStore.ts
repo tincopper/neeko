@@ -157,9 +157,6 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         initialMode: partial.initialMode !== undefined ? partial.initialMode : data.initialMode,
       };
     }
-    case "settings": {
-      return { kind: "settings" };
-    }
     case "gitLog": {
       return { kind: "gitLog" };
     }
