@@ -186,3 +186,47 @@ export function setupTerminalInput({ term, sendInput }: { term: Terminal; sendIn
 1. 对第三方输入组件（xterm、编辑器、WebView）要先确认“谁拥有输入状态机”，避免重复建模。
 2. 遇到 IME bug 时优先减少自定义干预层，而不是叠加更多事件补丁。
 3. 涉及 `composition*` + `setTimeout(0)` 的路径应默认按“异步竞争”问题看待。
+
+---
+
+### Bug 4：前端硬编码列表与后端注册表漂移
+
+**场景**：设置面板"Built-in Agents"区块从前端常量 `BUILTIN_AGENTS` 渲染，与后端 `agent.rs::add_default_agents` 注册的真实列表分叉：
+- 后端 7 个内置 agent（`opencode/claude-code/gemini/codex/qoder/codebuddy/pi`）
+- 前端常量只有 6 个（缺 `pi`），且 `qoder` 的默认 command 在前端写成 `qoder`，后端实际是 `qodercli`
+
+用户每次新增/重命名内置 agent 都要手工同步两边，漂移只是时间问题。
+
+**问题链路**：
+```
+后端 add_default_agents 增加 pi → 前端 BUILTIN_AGENTS 常量没人改 → 设置面板缺一项
+后端 qoder.command 改成 qodercli → 前端常量保留旧值 → 设置面板显示的"默认命令"与实际执行不一致
+```
+
+**根因**：把"内置注册表"这种**单一权威来源**复制了一份在前端，没有用 IPC 拉取。当一份内容存在两个 source-of-truth，迟早漂移。
+
+**教训**：
+1. **凡是后端已有注册表（agents、IDE 预设、shell 预设...），前端必须 fetch，不得维护并行的硬编码列表。**
+2. 如果某些纯展示元数据（如默认 skill 路径、icon 文件名）确实只对前端有意义，**也应放进后端 struct + serde 字段**而不是另起一份前端常量；通过加 `is_builtin: bool` 这类区分字段让前端按需过滤。
+3. 类型字段加在后端时同步给 `src/types/agent.ts`，并保持 snake_case（与项目其他字段一致，参见 `backend/type-safety.md`）。
+4. 改完后用 `cargo test` + `pnpm test` 双跑，确认前端测试中 `expect(invoke).toHaveBeenCalledWith('list_agents')` 一类断言仍生效。
+
+**正确模式**：
+```typescript
+// ✅ 前端只 fetch，不硬编码
+const [builtins, setBuiltins] = useState<AgentConfig[]>([]);
+useEffect(() => {
+  invoke<AgentConfig[]>("list_agents")
+    .then((list) => setBuiltins(list.filter((a) => a.is_builtin === true)));
+}, []);
+```
+
+```typescript
+// ❌ 错误：前端维护并行常量
+export const BUILTIN_AGENTS = [
+  { id: "opencode", name: "opencode", command: "opencode", ... },
+  // ...每次后端改都得记得改这里
+];
+```
+
+**配套防御**：信任字段（`is_builtin`、`default_skill_path`）必须在后端所有入口清零，详见 [backend/type-safety.md → 信任标识字段与防御层](../backend/type-safety.md#信任标识字段与防御层)。
