@@ -21,15 +21,15 @@ import { useRemoteAuthActions } from "./useRemoteAuthActions";
 import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
 import { useAppStore } from "../store/appStore";
+import { useAppViewStore } from "../store/appViewStore";
 import { useFileView } from "./useFileView";
 import { useActiveProject } from "./useActiveProject";
 import { useSyncToStore } from "./useSyncToStore";
-import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, Tab, WSLEntrySession, WSLProject } from "../types";
+import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
-const SETTINGS_TAB_ID = "settings_tab";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -223,14 +223,10 @@ export function useAppContainer(): UseAppContainerResult {
     }
   }, [activeContext.commands, handleTitleBarRefreshGit, showToast]);
 
-  // Close settings tab in __app__ space if open (from no-project state)
-  const closeAppSettingsTab = useCallback(() => {
-    const appTabs = useAppStore.getState().tabs[APP_SETTINGS_PROJECT_ID];
-    if (appTabs) {
-      const settingsTab = appTabs.tabs.find((t) => t.data.kind === "settings");
-      if (settingsTab) {
-        useAppStore.getState().closeTab(APP_SETTINGS_PROJECT_ID, settingsTab.id);
-      }
+  // Close settings view if open (when switching projects)
+  const closeSettingsView = useCallback(() => {
+    if (useAppViewStore.getState().appView === "settings") {
+      useAppViewStore.getState().setAppView("normal");
     }
   }, []);
 
@@ -241,7 +237,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
-      closeAppSettingsTab();
+      closeSettingsView();
 
       // Clear WSL/Remote diffState (local useState, batched by React 18 with the
       // appStore.setState below)
@@ -284,17 +280,17 @@ export function useAppContainer(): UseAppContainerResult {
         fileView.loadFileTree(projectId, project.path).catch(console.error);
       }
     },
-    [closeAppSettingsTab,
+    [closeSettingsView,
       wslActions.setWslDiffState, remoteActions.setRemoteDiffState, fileView],
   );
 
   const handleSelectWslProjectWithSync = useCallback(
     (distro: string, project: WSLProject) => {
-      closeAppSettingsTab();
+      closeSettingsView();
       remoteActions.resetRemoteTransientState();
       wslActions.handleSelectWslProject(distro, project);
     },
-    [closeAppSettingsTab, remoteActions.resetRemoteTransientState, wslActions.handleSelectWslProject],
+    [closeSettingsView, remoteActions.resetRemoteTransientState, wslActions.handleSelectWslProject],
   );
 
   const handleOpenWslWorktreeTerminalWithSync = useCallback(
@@ -307,11 +303,11 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleSelectRemoteProjectWithSync = useCallback(
     (host: string, project: RemoteProject) => {
-      closeAppSettingsTab();
+      closeSettingsView();
       wslActions.resetWslTransientState();
       remoteActions.handleSelectRemoteProject(host, project);
     },
-    [closeAppSettingsTab, wslActions.resetWslTransientState, remoteActions.handleSelectRemoteProject],
+    [closeSettingsView, wslActions.resetWslTransientState, remoteActions.handleSelectRemoteProject],
   );
 
   const handleOpenRemoteWorktreeTerminalWithSync = useCallback(
@@ -336,7 +332,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   // Tab key: composite when worktree is active, plain projectId otherwise
   // Each worktree gets its own independent tab space (like a separate project)
-  // Fallback to __app__ when no project is selected (e.g. settings tab before project load)
+  // Fallback to __app__ when no project is selected (e.g. before project load)
   const tabKey = activeWorktreePath && currentProjectId
     ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
     : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
@@ -348,7 +344,7 @@ export function useAppContainer(): UseAppContainerResult {
   useEffect(() => {
     if (!tabKey) return;
 
-    // __app__ space: only used for settings tab, no default terminal needed
+    // __app__ space: no default terminal needed
     if (tabKey === APP_SETTINGS_PROJECT_ID) return;
 
     // Local 项目（非 worktree）：不自动创建 tab，让 ProjectGuidePage 引导用户
@@ -442,36 +438,13 @@ export function useAppContainer(): UseAppContainerResult {
   }, [remoteActions.setRemoteDiffState]);
 
   const handleToggleSettings = useCallback(() => {
-    const state = useAppStore.getState();
-    // Find settings tab across all projects
-    let targetProject: string | null = null;
-    let settingsTabId: string | null = null;
-    for (const [projectId, pt] of Object.entries(state.tabs)) {
-      const found = pt.tabs.find((t) => t.data.kind === "settings");
-      if (found) {
-        targetProject = projectId;
-        settingsTabId = found.id;
-        break;
-      }
-    }
-
-    if (targetProject && settingsTabId) {
-      state.closeTab(targetProject, settingsTabId);
+    const currentView = useAppViewStore.getState().appView;
+    if (currentView === "settings") {
+      useAppViewStore.getState().setAppView("normal");
     } else {
-      // Add to current project, or fallback to __app__
-      const projectId = currentProjectId ?? APP_SETTINGS_PROJECT_ID;
-      const existingTabs = state.tabs[projectId];
-      const tab: Tab = {
-        id: SETTINGS_TAB_ID,
-        projectId,
-        title: "Settings",
-        order: existingTabs?.tabs.length ?? 0,
-        data: { kind: "settings" },
-      };
-      state.addTab(projectId, tab);
-      state.activateTab(projectId, SETTINGS_TAB_ID);
+      useAppViewStore.getState().setAppView("settings");
     }
-  }, [currentProjectId]);
+  }, []);
 
   const handleAddWslClick = useCallback(() => {
     setWslDialogOpen(true);

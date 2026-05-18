@@ -9,11 +9,9 @@ import UnifiedTabBar from "./UnifiedTabBar";
 import AgentIcon from "./AgentIcon";
 import ContextMenu from "../project/ContextMenu";
 import type { ContextMenuItem } from "../project/ContextMenu";
-import SettingsPanel from "../SettingsPanel";
 import type { AgentConfig, AppConfig, EditorGroupId, Tab } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
-import { useAppContext } from "../../contexts";
 
 interface EditorGroupPaneProps {
   groupId: EditorGroupId;
@@ -150,20 +148,6 @@ function EditorGroupPane({
     return items;
   }, [contextMenu, groupId, onCloseTab, onCloseOtherTabs, onCloseAllTabs, onSplitRight, onMoveToRight, onMoveToLeft]);
 
-  // Settings tab close
-  const handleCloseSettingsTab = useCallback(() => {
-    if (activeTab?.data.kind === "settings") onCloseTab(activeTab.id);
-  }, [activeTab, onCloseTab]);
-
-  const { saveConfig } = useAppContext();
-
-  const handleSettingsConfigChange = useCallback(
-    (next: AppConfig) => {
-      saveConfig(next);
-    },
-    [saveConfig],
-  );
-
   const localEditorCtx = useMemo(() => ({
     ...globalEditorCtx,
     activeTabId,
@@ -268,62 +252,52 @@ function EditorGroupPane({
 
       {/* Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {activeTab?.data.kind === "settings" ? (
-          <SettingsPanel
-            fullPage
-            onConfigChange={handleSettingsConfigChange}
-            onClose={handleCloseSettingsTab}
-          />
-        ) : (
-          <>
-            {activeTab?.data.kind === "terminal" && (
-              <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
-                <SplitLayout
-                  layoutId={layoutId}
-                  renderPane={(paneId) =>
-                    wslProject ? (
-                      <WSLTerminalView paneId={paneId} />
-                    ) : (
-                      <TerminalView paneId={paneId} />
-                    )
-                  }
-                  onSplitStateChange={handleSplitStateChange}
-                  onSplitHorizontal={handleSetSplitHorizontal}
-                  onSplitVertical={handleSetSplitVertical}
-                  onClosePane={handleSetClosePane}
-                />
-              </div>
-            )}
-
-            {activeTab?.data.kind === "diff" && (
-              <DiffView
-                diffSource={activeTab.data.diffSource}
-                filePath={activeTab.data.filePath}
-                initialMode={config.diffMode}
-                onBack={() => onCloseTab(activeTab.id)}
-              />
-            )}
-
-            {activeTab?.data.kind === "file" && <FileViewer />}
-
-            {activeTab?.data.kind === "html-preview" && (
-              <HtmlPreview
-                projectId={activeTab.projectId}
-                filePath={activeTab.data.filePath}
-                fileName={activeTab.data.fileName}
-              />
-            )}
-
-            <div
-              className={cn(
-                "flex-1 min-h-0",
-                activeTab?.data.kind === "gitLog" ? "flex flex-col" : "hidden",
-              )}
-            >
-              <GitLogPanel />
-            </div>
-          </>
+        {activeTab?.data.kind === "terminal" && (
+          <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
+            <SplitLayout
+              layoutId={layoutId}
+              renderPane={(paneId) =>
+                wslProject ? (
+                  <WSLTerminalView paneId={paneId} />
+                ) : (
+                  <TerminalView paneId={paneId} />
+                )
+              }
+              onSplitStateChange={handleSplitStateChange}
+              onSplitHorizontal={handleSetSplitHorizontal}
+              onSplitVertical={handleSetSplitVertical}
+              onClosePane={handleSetClosePane}
+            />
+          </div>
         )}
+
+        {activeTab?.data.kind === "diff" && (
+          <DiffView
+            diffSource={activeTab.data.diffSource}
+            filePath={activeTab.data.filePath}
+            initialMode={config.diffMode}
+            onBack={() => onCloseTab(activeTab.id)}
+          />
+        )}
+
+        {activeTab?.data.kind === "file" && <FileViewer />}
+
+        {activeTab?.data.kind === "html-preview" && (
+          <HtmlPreview
+            projectId={activeTab.projectId}
+            filePath={activeTab.data.filePath}
+            fileName={activeTab.data.fileName}
+          />
+        )}
+
+        <div
+          className={cn(
+            "flex-1 min-h-0",
+            activeTab?.data.kind === "gitLog" ? "flex flex-col" : "hidden",
+          )}
+        >
+          <GitLogPanel />
+        </div>
       </div>
 
       {/* Context Menu */}

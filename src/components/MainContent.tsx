@@ -12,10 +12,10 @@ import {
 } from "../contexts";
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
+import { useAppViewStore } from "../store/appViewStore";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
-const SETTINGS_TAB_ID = "settings_tab";
 
 // Module-level agent install status cache — survives component remounts.
 // check_agents_installed IPC 只在 agent 列表真正变化时触发（通过 ID 比对），
@@ -159,18 +159,8 @@ function MainContent() {
    }, [activeProject, onOpenIde]);
 
    const handleGuideOpenSettings = useCallback(() => {
-      if (!currentProjectId) return;
-      const existingTabs = useAppStore.getState().tabs[currentProjectId];
-      const tab: Tab = {
-         id: SETTINGS_TAB_ID,
-         projectId: currentProjectId,
-         title: "Settings",
-         order: existingTabs?.tabs.length ?? 0,
-         data: { kind: "settings" },
-      };
-      useAppStore.getState().addTab(currentProjectId, tab);
-      useAppStore.getState().activateTab(currentProjectId, SETTINGS_TAB_ID);
-   }, [currentProjectId]);
+      useAppViewStore.getState().setAppView("settings");
+   }, []);
 
    const buildLayoutId = useCallback((groupId: string, tabId: string | null) => {
       const base = activeProject
