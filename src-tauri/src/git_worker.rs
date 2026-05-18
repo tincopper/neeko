@@ -1,4 +1,5 @@
-use std::{path::PathBuf, process::Command, sync::mpsc, thread};
+use crate::utils::command::local;
+use std::{path::PathBuf, sync::mpsc, thread};
 
 /// 增量状态差异：与上次 git status 对比后的变化
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -96,7 +97,7 @@ fn worker_loop(
 
 /// 执行 git status --porcelain --no-optional-locks
 fn git_status_porcelain(repo_path: &PathBuf) -> String {
-    Command::new("git")
+    local::exec("git")
         .args([
             "-C",
             repo_path.to_str().unwrap_or("."),

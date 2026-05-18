@@ -1,5 +1,5 @@
+use crate::utils::command::local;
 use crate::AppError;
-use std::process::Command;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};
 use url::Url;
@@ -232,7 +232,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
+        local::exec("cmd")
             .args(["/c", "start", "", &url])
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
@@ -240,7 +240,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
+        local::exec("open")
             .arg(&url)
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
@@ -248,7 +248,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open")
+        local::exec("xdg-open")
             .arg(&url)
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;

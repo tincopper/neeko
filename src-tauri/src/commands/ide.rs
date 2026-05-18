@@ -1,3 +1,4 @@
+use crate::utils::command::local;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
@@ -14,8 +15,6 @@ pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<App
 
 #[tauri::command]
 pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppError> {
-    use std::process::Command;
-
     let trimmed = ide_command.trim();
     if trimmed.is_empty() {
         return Err("No IDE configured for this project".into());
@@ -38,17 +37,13 @@ pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppErro
         }
     };
 
-    let mut cmd = Command::new(&exe);
+    #[cfg(windows)]
+    let mut cmd = local::exec_detached(&exe);
+    #[cfg(not(windows))]
+    let mut cmd = local::exec(&exe);
+
     cmd.args(&extra_args);
     cmd.arg(&project_path);
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
-    }
 
     cmd.spawn()
         .map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
@@ -136,22 +131,15 @@ fn open_remote_ide_impl(
 }
 
 fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
-    use std::process::Command;
-
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-
         let full_command = std::iter::once(exe.to_string())
             .chain(args.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ");
 
-        Command::new("cmd.exe")
+        local::exec_detached("cmd.exe")
             .args(["/C", &full_command])
-            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
             .spawn()
             .map_err(|e| {
                 anyhow::anyhow!(
