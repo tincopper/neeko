@@ -3,6 +3,7 @@ import {
   getIdeIconSrc,
   getIdeCommand,
   getIdeIconByCommand,
+  getMacAppNameByCommand,
   IDE_PRESETS,
 } from '../../utils/idePresets';
 
@@ -89,5 +90,43 @@ describe('IDE_PRESETS', () => {
       expect(preset.command.linux).toBeTruthy();
       expect(preset.icon).toBeTruthy();
     }
+  });
+});
+
+describe('getMacAppNameByCommand', () => {
+  it('null/undefined/空字符串返回 null', () => {
+    expect(getMacAppNameByCommand(null)).toBeNull();
+    expect(getMacAppNameByCommand(undefined)).toBeNull();
+    expect(getMacAppNameByCommand('')).toBeNull();
+  });
+
+  it('IntelliJ IDEA 的 macos 命令 idea 反查到正确的 bundle name', () => {
+    expect(getMacAppNameByCommand('idea')).toBe('IntelliJ IDEA');
+  });
+
+  it('VS Code 的命令 code 反查到 Visual Studio Code', () => {
+    expect(getMacAppNameByCommand('code')).toBe('Visual Studio Code');
+  });
+
+  it('GoLand / PyCharm / RustRover / Zed / Cursor 都能反查', () => {
+    expect(getMacAppNameByCommand('goland')).toBe('GoLand');
+    expect(getMacAppNameByCommand('pycharm')).toBe('PyCharm');
+    expect(getMacAppNameByCommand('rustrover')).toBe('RustRover');
+    expect(getMacAppNameByCommand('zed')).toBe('Zed');
+    expect(getMacAppNameByCommand('cursor')).toBe('Cursor');
+  });
+
+  it('Windows / Linux 命令也能反查到 macAppName（同 preset）', () => {
+    expect(getMacAppNameByCommand('idea64.exe')).toBe('IntelliJ IDEA');
+    expect(getMacAppNameByCommand('idea.sh')).toBe('IntelliJ IDEA');
+  });
+
+  it('未知命令返回 null', () => {
+    expect(getMacAppNameByCommand('my-custom-ide')).toBeNull();
+    expect(getMacAppNameByCommand('/usr/local/bin/idea')).toBeNull();
+  });
+
+  it('overrides 命中时返回对应预设的 macAppName', () => {
+    expect(getMacAppNameByCommand('my-idea-shim', { idea: 'my-idea-shim' })).toBe('IntelliJ IDEA');
   });
 });
