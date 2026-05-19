@@ -256,6 +256,8 @@ export function useAppContainer(): UseAppContainerResult {
           : state.worktreeStateMap;
         return {
           worktreeStateMap: nextWtMap,
+          activeWorktreePath: null,
+          activeWorktreeBranch: "",
           activeWslKey: null,
           activeWslProject: null,
           activeRemoteKey: null,
