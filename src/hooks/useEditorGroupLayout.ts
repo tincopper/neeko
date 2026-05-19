@@ -19,6 +19,12 @@ export interface EditorGroupLayoutResult {
   setSplitRatio: (ratio: number) => void;
   activateTabInGroup: (tabId: string) => void;
   getTabGroupId: (tabId: string) => EditorGroupId | null;
+  // ── Pin ──
+  pinnedTab: Tab | null;
+  pinnedPanelRatio: number;
+  pinTab: (tabId: string) => void;
+  unpinTab: () => void;
+  setPinnedPanelRatio: (ratio: number) => void;
 }
 
 export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
@@ -31,6 +37,9 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
   const storeSetActiveGroup = useAppStore((s) => s.setActiveGroup);
   const storeSetSplitRatio = useAppStore((s) => s.setSplitRatio);
   const storeActivateTab = useAppStore((s) => s.activateTab);
+  const storePinTab = useAppStore((s) => s.pinTab);
+  const storeUnpinTab = useAppStore((s) => s.unpinTab);
+  const storeSetPinnedPanelRatio = useAppStore((s) => s.setPinnedPanelRatio);
 
   const layout: EditorSplitLayout = useMemo(() => {
     if (rawLayout) return rawLayout;
@@ -73,6 +82,29 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     [layout],
   );
 
+  const pinTab = useCallback(
+    (tabId: string) => storePinTab(tabKey, tabId),
+    [storePinTab, tabKey],
+  );
+
+  const unpinTab = useCallback(
+    () => storeUnpinTab(tabKey),
+    [storeUnpinTab, tabKey],
+  );
+
+  const setPinnedPanelRatio = useCallback(
+    (ratio: number) => storeSetPinnedPanelRatio(tabKey, ratio),
+    [storeSetPinnedPanelRatio, tabKey],
+  );
+
+  const pinnedTab = useMemo(() => {
+    const pinnedId = layout.pinnedTabId;
+    if (!pinnedId) return null;
+    return tabsById.get(pinnedId) ?? null;
+  }, [layout.pinnedTabId, tabsById]);
+
+  const pinnedPanelRatio = layout.pinnedPanelRatio ?? 0.35;
+
   return {
     layout,
     isSplit: layout.isSplit,
@@ -89,5 +121,10 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     setSplitRatio,
     activateTabInGroup,
     getTabGroupId,
+    pinnedTab,
+    pinnedPanelRatio,
+    pinTab,
+    unpinTab,
+    setPinnedPanelRatio,
   };
 }

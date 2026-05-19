@@ -9,6 +9,8 @@ import type { AgentConfig } from "../../types";
 interface UnifiedTabBarProps {
   tabs: Tab[];
   activeTabId: string | null;
+  /** The id of the currently-pinned tab, if any. Used to render the pin indicator. */
+  pinnedTabId?: string | null;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTerminalTab?: () => void;
@@ -59,6 +61,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
   ({
     tabs,
     activeTabId,
+    pinnedTabId = null,
     onActivateTab,
     onCloseTab,
     onAddTerminalTab,
@@ -123,6 +126,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
+              isPinned={tab.id === pinnedTabId}
               onActivate={onActivateTab}
               onClose={onCloseTab}
               onContextMenu={onContextMenu}

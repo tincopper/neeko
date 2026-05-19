@@ -28,6 +28,8 @@ export interface FileTabData {
   fileName: string;
   content: FileContent;
   isDirty: boolean;
+  /** 文件已被外部修改（watcher 检测到），等待用户决策 */
+  externallyModified?: boolean;
 }
 
 /** Diff Tab 数据 */
