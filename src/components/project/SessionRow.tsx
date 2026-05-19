@@ -36,7 +36,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
     <div
       className={cn(
         "group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors",
-        isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.025]",
+        isActive ? "bg-bg-selected" : "hover:bg-bg-hover",
       )}
       onClick={onClick}
       title={title}
@@ -47,7 +47,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
           isActive ? "text-text-primary" : "text-text-muted",
         )}
         style={{
-          backgroundColor: isActive ? "rgba(255,255,255,0.04)" : "transparent",
+          backgroundColor: isActive ? "var(--bg-selected)" : "transparent",
         }}
       >
         <Icon size={16} />

@@ -102,8 +102,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
     <div className={cn("group/proj", !isLast && "border-b border-white/[0.04]")}>
       <div
         className={cn(
-          "flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-white/[0.02]",
-          isActive && "bg-white/[0.02]",
+          "flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover",
         )}
         onClick={actions.onToggle}
         onContextMenu={actions.onContextMenu}
