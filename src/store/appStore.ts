@@ -73,6 +73,7 @@ interface AppStoreState {
   selectWslProject: (distro: string, project: WSLProject) => void;
   selectRemoteProject: (host: string, project: RemoteProject) => void;
   openIde: (project: IdeProject) => void;
+  setProjectIde: (projectId: string, ideCommand: string | null) => void;
 
   // ── Tab CRUD actions ──
   addTab: (projectId: string, tab: Tab) => void;
@@ -289,6 +290,7 @@ export const useAppStore = create<AppStoreState>((set) => ({
   selectWslProject: noop,
   selectRemoteProject: noop,
   openIde: noop,
+  setProjectIde: noop,
 
   // ── Tab CRUD actions ──
 
