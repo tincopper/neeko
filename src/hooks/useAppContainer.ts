@@ -540,6 +540,7 @@ export function useAppContainer(): UseAppContainerResult {
     selectWslProject: handleSelectWslProjectWithSync,
     selectRemoteProject: handleSelectRemoteProjectWithSync,
     openIde: agentActions.handleOpenIdeCallback,
+    setProjectIde: agentActions.handleSetProjectIde,
   });
 
   useKeyboardShortcuts({

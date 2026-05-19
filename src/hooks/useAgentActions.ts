@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { refreshTerminal, switchAgentInTerminal } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
 import type { AgentConfig } from "../types";
@@ -28,6 +29,7 @@ interface UseAgentActionsResult {
     agentId: string | null,
     ideCommand: string | null,
   ) => Promise<void>;
+  handleSetProjectIde: (projectId: string, ideCommand: string | null) => void;
 }
 
 export function useAgentActions({
@@ -132,10 +134,77 @@ export function useAgentActions({
     }
   }, [saveSession]);
 
+  /**
+   * 把指定 IDE 设为某项目的默认 IDE，但不打开。
+   * 同步更新 local / wsl / remote 三种项目数组的 selected_ide，
+   * 触发 saveSession 写盘，本地项目额外 invoke set_project_ide 让后端 manager 同步。
+   */
+  const handleSetProjectIde = useCallback(
+    (projectId: string, ideCommand: string | null) => {
+      useAppStore.setState((state) => {
+        const nextProjects = state.projects.map((p) =>
+          p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
+        );
+        const nextActiveProject =
+          state.activeProject && state.activeProject.id === projectId
+            ? { ...state.activeProject, selected_ide: ideCommand }
+            : state.activeProject;
+
+        const nextWslEntries = state.wslEntries.map((entry) => ({
+          ...entry,
+          projects: entry.projects.map((p) =>
+            p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
+          ),
+        }));
+        const nextActiveWslProject =
+          state.activeWslProject && state.activeWslProject.project.id === projectId
+            ? {
+                ...state.activeWslProject,
+                project: { ...state.activeWslProject.project, selected_ide: ideCommand },
+              }
+            : state.activeWslProject;
+
+        const nextRemoteEntries = state.remoteEntries.map((entry) => ({
+          ...entry,
+          projects: entry.projects.map((p) =>
+            p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
+          ),
+        }));
+        const nextActiveRemoteProject =
+          state.activeRemoteProject && state.activeRemoteProject.project.id === projectId
+            ? {
+                ...state.activeRemoteProject,
+                project: { ...state.activeRemoteProject.project, selected_ide: ideCommand },
+              }
+            : state.activeRemoteProject;
+
+        return {
+          projects: nextProjects,
+          activeProject: nextActiveProject,
+          wslEntries: nextWslEntries,
+          activeWslProject: nextActiveWslProject,
+          remoteEntries: nextRemoteEntries,
+          activeRemoteProject: nextActiveRemoteProject,
+        };
+      });
+
+      // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错。
+      invoke("set_project_ide", { projectId, ide: ideCommand }).catch(() => {
+        // ignore: WSL/remote projects are not tracked by local project_manager
+      });
+
+      saveSession().catch((error) => {
+        console.error("Failed to save session after IDE selection:", error);
+      });
+    },
+    [saveSession],
+  );
+
   return {
     handleSelectLocalAgent,
     handleOpenIdeCallback,
     handleOpenIdeForSidebar,
     handleSaveProjectSettings,
+    handleSetProjectIde,
   };
 }
