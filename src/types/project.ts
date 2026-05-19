@@ -18,6 +18,8 @@ export interface Project {
   selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
   collapsed: boolean;
+  /** 用户指定的 avatar 颜色（hex）。`null/undefined` 表示走 DJB2 hash 兜底 */
+  avatar_color?: string | null;
 }
 
 export type TerminalEntry =

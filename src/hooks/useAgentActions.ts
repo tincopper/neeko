@@ -111,12 +111,20 @@ export function useAgentActions({
     useAppStore.setState((state) => {
       const nextProjects = state.projects.map((project) => (
         project.id === projectId
-          ? { ...project, selected_agent: agentId, selected_ide: ideCommand }
+          ? {
+              ...project,
+              selected_agent: agentId,
+              selected_ide: ideCommand,
+            }
           : project
       ));
 
       const nextActiveProject = state.activeProject && state.activeProject.id === projectId
-        ? { ...state.activeProject, selected_agent: agentId, selected_ide: ideCommand }
+        ? {
+            ...state.activeProject,
+            selected_agent: agentId,
+            selected_ide: ideCommand,
+          }
         : state.activeProject;
 
       return {

@@ -35,7 +35,10 @@ export interface ConnectionProjectCardProps {
   onRefresh?: () => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onSaveProjectSettings?: (
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
 }
@@ -56,7 +59,10 @@ export interface WSLItemProps {
   onRefresh?: (distro: string, projectId: string) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onSaveProjectSettings?: (
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }
@@ -78,7 +84,10 @@ export interface RemoteItemProps {
   onRefresh?: (entryId: string, projectId: string) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onSaveProjectSettings?: (
+    agentId: string | null,
+    ideCommand: string | null,
+  ) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
   onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }

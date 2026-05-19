@@ -26,6 +26,11 @@ interface ProjectGroupActions {
 interface ProjectGroupProps {
   /** 用于派生 avatar 与字母 */
   name: string;
+  /**
+   * 用户在 ProjectSettingsDialog 中指定的 avatar 覆盖色。
+   * `null/undefined` 表示走 name → DJB2 hash 兜底。
+   */
+  avatarColor?: string | null;
   /** 会话总数（一般 = 1 主终端 + worktrees.length） */
   sessionCount: number;
   /** 是否展开 */
@@ -79,6 +84,7 @@ const HeaderActionButton: React.FC<HeaderActionButtonProps> = ({
 
 const ProjectGroup: React.FC<ProjectGroupProps> = ({
   name,
+  avatarColor,
   sessionCount,
   expanded,
   isActive = false,
@@ -89,7 +95,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   forceShowActions = false,
   children,
 }) => {
-  const avatarStyle = getAvatarStyle(name);
+  const avatarStyle = getAvatarStyle({ name, color: avatarColor });
   const initials = getProjectInitials(name);
 
   return (

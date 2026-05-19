@@ -76,6 +76,7 @@ pub fn run() {
                             p.selected_agent.clone(),
                             p.selected_ide.clone(),
                             p.collapsed,
+                            p.avatar_color.clone(),
                         );
                     }
                 }

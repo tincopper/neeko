@@ -131,6 +131,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     >
       <ProjectGroup
         name={project.name}
+        avatarColor={project.avatar_color}
         sessionCount={sessionCount}
         expanded={!projectCollapsed}
         isActive={isActive}

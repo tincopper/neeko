@@ -9,6 +9,7 @@ pub fn add_project(
     path: String,
     agent_id: Option<String>,
     ide: Option<String>,
+    avatar_color: Option<String>,
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<Project, AppError> {
@@ -16,7 +17,7 @@ pub fn add_project(
         .project_manager
         .lock()
         .map_err(AppError::from)?
-        .add_project(PathBuf::from(path), agent_id, ide)
+        .add_project(PathBuf::from(path), agent_id, ide, avatar_color)
         .map_err(AppError::from)?;
 
     state
@@ -133,6 +134,32 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
             );
         }
     }
+}
+
+/// 设置 Local 项目的 avatar 颜色（None 表示清回 hash 默认）
+/// 同时立即持久化到 sessions.json
+#[tauri::command]
+pub fn set_project_color(
+    project_id: String,
+    color: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    {
+        let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+        pm.set_avatar_color(&project_id, color);
+    }
+    let projects = state
+        .project_manager
+        .lock()
+        .map_err(AppError::from)?
+        .list_projects();
+    let session = state
+        .storage_manager
+        .create_session_from_projects(&projects, None, None, None);
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]

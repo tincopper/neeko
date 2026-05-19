@@ -75,6 +75,10 @@ pub struct Project {
     pub selected_ide: Option<String>,
     pub active_view: ViewMode,
     pub collapsed: bool,
+    /// 用户在 ProjectSettingsDialog 中选择的 avatar 颜色（十六进制 hex 字符串，如 "#61afef"）。
+    /// `None` 表示走前端 DJB2 hash 兜底。
+    #[serde(default)]
+    pub avatar_color: Option<String>,
 }
 
 /// 文件树节点（目录树返回类型）

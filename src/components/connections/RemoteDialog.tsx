@@ -4,6 +4,7 @@ import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../types";
 import AgentIcon from "../layout/AgentIcon";
 import { useAppContext } from "../../contexts";
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../utils/idePresets";
+import { randomAvatarColor } from "../../utils/projectAvatar";
 import serverIcon from "../../assets/server.svg";
 import { cn } from "../../utils/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
@@ -243,6 +244,7 @@ export function RemoteDialog({
          entry_id: selectedServer?.id || crypto.randomUUID(),
          selected_agent: selectedAgentId,
          selected_ide: selectedIdeCommand,
+         avatar_color: randomAvatarColor(),
       };
 
       if (selectedServer) {
