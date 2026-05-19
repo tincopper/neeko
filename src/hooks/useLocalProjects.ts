@@ -6,6 +6,7 @@ import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig, Tab, GitBranchInfo, FileChange, Worktree } from "../types";
 import { useAppStore } from "../store/appStore";
 import { applyStateAction } from "../utils/entryUpdates";
+import { getMacAppNameByCommand } from "../utils/idePresets";
 
 export function useLocalProjects() {
   const projects = useAppStore((state) => state.projects);
@@ -239,15 +240,13 @@ export function useLocalProjects() {
 
   const handleOpenIde = useCallback(async (project: { id: string; selected_ide: string | null }) => {
     if (!project.selected_ide) return;
-    try {
-      const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
-      await invoke("open_ide", {
-        ideCommand: project.selected_ide,
-        projectPath,
-      });
-    } catch (e: unknown) {
-      console.error("[App] Failed to open IDE:", e);
-    }
+    const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
+    const macAppName = getMacAppNameByCommand(project.selected_ide);
+    await invoke("open_ide", {
+      ideCommand: project.selected_ide,
+      projectPath,
+      macAppName,
+    });
   }, [projects]);
 
   const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
