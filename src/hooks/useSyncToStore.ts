@@ -29,6 +29,7 @@ export interface UseSyncToStoreParams {
   selectWslProject: (distro: string, project: WSLProject) => void;
   selectRemoteProject: (host: string, project: RemoteProject) => void;
   openIde: (project: IdeProject) => void;
+  setProjectIde: (projectId: string, ideCommand: string | null) => void;
 }
 
 export function useSyncToStore(params: UseSyncToStoreParams): void {
@@ -47,6 +48,7 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
     selectWslProject,
     selectRemoteProject,
     openIde,
+    setProjectIde,
   } = params;
 
   useEffect(() => {
@@ -81,6 +83,7 @@ export function useSyncToStore(params: UseSyncToStoreParams): void {
       selectWslProject,
       selectRemoteProject,
       openIde,
+      setProjectIde,
     });
-  }, [selectProject, selectWslProject, selectRemoteProject, openIde]);
+  }, [selectProject, selectWslProject, selectRemoteProject, openIde, setProjectIde]);
 }

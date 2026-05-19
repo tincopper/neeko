@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Play } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/appStore";
 import {
@@ -14,13 +14,16 @@ import type { AppConfig } from "../../types";
  * OpenIdeButton — 标题栏中 TaskRunButton 左侧的 IDE 打开/选择按钮
  *
  * 左侧显示当前项目默认 IDE 的图标与名称，点击直接打开。
- * 右侧下拉箭头展开 IDE 列表，可临时选择其他 IDE 打开当前项目。
+ * 右侧下拉箭头展开 IDE 列表：
+ *   - 行点击 → 把该 IDE 设为当前项目默认（持久化），不打开。
+ *   - 行右侧 ▶ 按钮 → 立即打开该 IDE（不改默认）。
  */
 function OpenIdeButton() {
   const activeProject = useAppStore((s) => s.activeProject);
   const activeWslProject = useAppStore((s) => s.activeWslProject);
   const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
   const openIde = useAppStore((s) => s.openIde);
+  const setProjectIde = useAppStore((s) => s.setProjectIde);
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -95,9 +98,20 @@ function OpenIdeButton() {
     openIde({ id: projectId, selected_ide: ideCommand });
   }, [projectId, ideCommand, openIde]);
 
-  // 点击下拉中的某一项 → 打开对应的 IDE
+  // 点击下拉中的某一行 → 把该 IDE 设为当前项目默认（持久化），不打开
   const handleSelectIde = useCallback(
     (cmd: string) => {
+      if (!projectId) return;
+      setProjectIde(projectId, cmd);
+      setDropdownOpen(false);
+    },
+    [projectId, setProjectIde],
+  );
+
+  // 行右侧 ▶ 按钮 → 一次性打开该 IDE，不改默认
+  const handleRunIde = useCallback(
+    (cmd: string, e: React.MouseEvent) => {
+      e.stopPropagation();
       if (!projectId) return;
       openIde({ id: projectId, selected_ide: cmd });
       setDropdownOpen(false);
@@ -150,10 +164,11 @@ function OpenIdeButton() {
             return (
               <div
                 key={option.id}
-                className={"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors " + (isCurrent
+                className={"group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors " + (isCurrent
                     ? "bg-accent-blue/10 text-accent-blue"
                     : "hover:bg-bg-hover text-text-primary")}
                 onClick={() => handleSelectIde(option.command)}
+                title="Set as default IDE for this project"
               >
                 {option.icon ? (
                   <img
@@ -170,6 +185,15 @@ function OpenIdeButton() {
                 <span className="text-[11px] text-text-muted truncate max-w-[80px]">
                   {option.command}
                 </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleRunIde(option.command, e)}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center w-5 h-5 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover shrink-0"
+                  title="Open now without changing default"
+                  aria-label={"Open " + option.name + " now"}
+                >
+                  <Play size={11} />
+                </button>
               </div>
             );
           })}
