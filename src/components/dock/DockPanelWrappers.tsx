@@ -51,6 +51,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeFilePath = useAppStore((s) => s.activeFilePath);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
+  const changedFiles = project?.gitInfo?.changed_files;
 
   // Load file tree when this panel is the active tab in any zone
   const isActive = useDockStore((s) => {
@@ -168,6 +169,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       projectType={project?.type ?? null}
       onOpenInBrowser={handleOpenInBrowser}
       onRevealInExplorer={handleRevealInExplorer}
+      changedFiles={changedFiles}
     />
   );
 });
