@@ -1,10 +1,19 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import ProjectItemCard from "./ProjectItemCard";
-import { DraggableProjectItem } from "../project";
+import {
+  DraggableProjectItem,
+  ProjectGroup,
+  SessionRow,
+} from "../project";
 import { useProjectItemDrag } from "../project/useProjectItemDrag";
+import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
+import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
+import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
 import type { FileChange } from "../../types";
+import { getIdeIconByCommand } from "../../utils/idePresets";
+import { useAppStore } from "../../store/appStore";
+import { aheadBehindKey } from "../../utils/aheadBehindKey";
 
 const LOG_TAG: Record<string, string> = {
   wsl: "[WSL]",
@@ -17,10 +26,9 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     entryId,
     source,
     isActive,
-    hasSession,
+    isLast,
     onSelectProject,
     onRemoveProject,
-    onSelectFile,
     onOpenIde,
     onOpenWorktreeTerminal,
     ideCommandOverrides,
@@ -29,7 +37,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     agents,
     config,
     onSaveProjectSettings,
-    onShowToast,
     onDragEnd,
   }) => {
     // Extract primitives for stable useCallback dependencies
@@ -40,10 +47,37 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const remoteInvoke = source.type === "remote" ? source.invokeRemoteGit : undefined;
     const logTag = LOG_TAG[source.type] ?? "";
 
-    // connectionId: scope identifier used for most callbacks
+    // connectionId: scope identifier used for most callbacks (worktree, IDE)
     const connectionId = isWsl ? distro : remoteEntryId;
     // selectProjectId: scope identifier for onSelectProject (WSL uses distro, Remote uses host)
     const selectProjectId = isWsl ? distro : host;
+
+    // Active worktree path lives in connection-specific store fields
+    const activeWslWorktreePath = useAppStore((s) => s.activeWslWorktreePath);
+    const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
+    const activeWorktreePath = isWsl ? activeWslWorktreePath : activeRemoteWorktreePath;
+
+    // ahead/behind 仅在 active 项目时显示
+    const aheadKey = aheadBehindKey(
+      isWsl ? "wsl" : "remote",
+      isWsl ? distro : remoteEntryId,
+      project.id,
+    );
+    const aheadBehind = useAppStore((s) => s.aheadBehind[aheadKey]);
+
+    const [collapsed, setCollapsed] = useState(true);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const gitInfoLoaded = React.useRef(false);
+    const gitInfo = project.git_info;
+
+    // Auto-expand when git_info first arrives (parity with old ProjectItemCard)
+    React.useEffect(() => {
+      if (gitInfo && !gitInfoLoaded.current) {
+        gitInfoLoaded.current = true;
+        setCollapsed(false);
+      }
+    }, [gitInfo]);
 
     // Drag support
     const {
@@ -56,14 +90,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       handlePointerCancel,
     } = useProjectItemDrag({ projectId: project.id, onDragEnd });
 
-    const handleSelectFile = useCallback(
-      (fp: string) => {
-        onSelectFile?.(connectionId, project.path, fp);
-      },
-      [onSelectFile, connectionId, project.path],
-    );
-
-    const handleOpenWorktree = useCallback(
+    const handleOpenWorktreeTerminal = useCallback(
       (wtPath: string, branch: string) => {
         onOpenWorktreeTerminal?.(connectionId, wtPath, branch);
       },
@@ -118,7 +145,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     const handleOpenIde = useMemo(
       () =>
-        onOpenIde
+        onOpenIde && project.selected_ide
           ? () => onOpenIde(connectionId, project.path, project.selected_ide ?? "")
           : undefined,
       [onOpenIde, connectionId, project.path, project.selected_ide],
@@ -157,6 +184,68 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       [isWsl, distro, remoteInvoke, remoteEntryId],
     );
 
+    const handleContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({ x: e.clientX, y: e.clientY });
+    };
+
+    const buildContextMenuItems = (): ContextMenuItem[] => {
+      const items: ContextMenuItem[] = [];
+
+      if (handleOpenIde) {
+        items.push({
+          label: "Open in IDE",
+          shortcut: "Ctrl+O",
+          action: () => handleOpenIde(),
+        });
+      }
+
+      if (onRefresh) {
+        items.push({
+          label: "Refresh Terminal",
+          shortcut: "Ctrl+Alt+R",
+          action: () => onRefresh(),
+        });
+      }
+
+      items.push({ separator: true });
+
+      if (onOpenSettings && config) {
+        items.push({
+          label: "Project Settings",
+          action: () => setSettingsOpen(true),
+        });
+      }
+
+      items.push({
+        label: "Remove Project",
+        action: () => handleRemove(),
+        danger: true,
+      });
+
+      return items;
+    };
+
+    // ── derived values for ProjectGroup / SessionRow ──
+    const worktrees = gitInfo?.worktrees ?? [];
+    const sessionCount = 1 + worktrees.length;
+    const ideIconSrc = project.selected_ide
+      ? getIdeIconByCommand(project.selected_ide, ideCommandOverrides)
+      : undefined;
+
+    // local 主终端的 +A -D = project.changed_files 聚合
+    const localChanges = useMemo(() => {
+      const files = gitInfo?.changed_files ?? [];
+      if (files.length === 0) return undefined;
+      const add = files.reduce((s, f) => s + f.additions, 0);
+      const del = files.reduce((s, f) => s + f.deletions, 0);
+      if (add === 0 && del === 0) return undefined;
+      return { add, del };
+    }, [gitInfo?.changed_files]);
+
+    const localActive = isActive && !activeWorktreePath;
+
     return (
       <DraggableProjectItem
         dragId={project.id}
@@ -169,28 +258,70 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
-        <ProjectItemCard
-          project={project}
+        <ProjectGroup
+          name={project.name}
+          avatarColor={project.avatar_color}
+          sessionCount={sessionCount}
+          expanded={!collapsed}
           isActive={isActive}
-          hasSession={hasSession}
-          onSelectProject={() => onSelectProject(selectProjectId, project)}
-          onToggleCollapsed={() => {}}
-          onSelectFile={handleSelectFile}
-          onOpenWorktreeTerminal={handleOpenWorktree}
-          onCommitRenameWorktree={handleRenameWorktree}
-          onRemoveWorktree={handleRemoveWorktree}
-          onRemoveProject={handleRemove}
-          onOpenIde={handleOpenIde}
-          ideCommandOverrides={ideCommandOverrides}
-          onOpenSettings={onOpenSettings}
-          onRefresh={onRefresh}
-          agents={agents}
-          config={config}
-          onSaveProjectSettings={onSaveProjectSettings}
-          onShowToast={onShowToast}
-          onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
-          onIsWorktreeDirty={handleIsWorktreeDirty}
-        />
+          isLast={isLast}
+          ideIconSrc={ideIconSrc}
+          actions={{
+            onToggle: () => setCollapsed((v) => !v),
+            onContextMenu: handleContextMenu,
+            onOpenIde: handleOpenIde,
+            onRemove: handleRemove,
+          }}
+        >
+          <div>
+            <SessionRow
+              kind="local"
+              label="local"
+              branch={gitInfo?.current_branch}
+              isActive={localActive}
+              ahead={localActive ? aheadBehind?.ahead : undefined}
+              changes={localChanges}
+              title="Open primary terminal"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectProject(selectProjectId, project);
+              }}
+            />
+            <ConnectionWorktreeList
+              worktrees={worktrees}
+              activeWorktreePath={isActive ? activeWorktreePath : null}
+              onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
+              onCommitRenameWorktree={handleRenameWorktree}
+              onRemoveWorktree={handleRemoveWorktree}
+              onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
+              onIsWorktreeDirty={handleIsWorktreeDirty}
+            />
+          </div>
+        </ProjectGroup>
+
+        {contextMenu && (
+          <ContextMenu
+            position={contextMenu}
+            onClose={() => setContextMenu(null)}
+            items={buildContextMenuItems()}
+          />
+        )}
+
+        {settingsOpen && config && (
+          <ProjectSettingsDialog
+            projectId={project.id}
+            projectName={project.name}
+            currentAgent={project.selected_agent ?? null}
+            currentIde={project.selected_ide ?? null}
+            agents={agents ?? []}
+            config={config}
+            onClose={() => setSettingsOpen(false)}
+            onSave={(agentId, ideCmd) => {
+              onSaveProjectSettings?.(agentId, ideCmd);
+              setSettingsOpen(false);
+            }}
+          />
+        )}
       </DraggableProjectItem>
     );
   },

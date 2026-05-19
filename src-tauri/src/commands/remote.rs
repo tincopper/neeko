@@ -20,7 +20,37 @@ macro_rules! remote_commands {
         $crate::commands::remote_remove_worktree,
         $crate::commands::remote_rename_worktree,
         $crate::commands::open_remote_ide,
+        $crate::commands::remote_set_project_color,
     };
+}
+
+/// 设置 Remote (SSH) 项目的 avatar 颜色（None 表示清回 hash 默认）
+/// 修改 sessions.json 内匹配 entry_id + project_id 的记录
+#[tauri::command]
+pub fn remote_set_project_color(
+    entry_id: String,
+    project_id: String,
+    color: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let mut session = state
+        .storage_manager
+        .load_session()
+        .map_err(AppError::from)?;
+    for entry in session.remote_entries.iter_mut() {
+        if entry.id != entry_id {
+            continue;
+        }
+        for project in entry.projects.iter_mut() {
+            if project.id == project_id {
+                project.avatar_color = color.clone();
+            }
+        }
+    }
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]

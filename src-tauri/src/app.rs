@@ -76,6 +76,7 @@ pub fn run() {
                             p.selected_agent.clone(),
                             p.selected_ide.clone(),
                             p.collapsed,
+                            p.avatar_color.clone(),
                         );
                     }
                 }
@@ -98,9 +99,12 @@ pub fn run() {
                 if let Some(custom_agents) = config.get("customAgents").and_then(|v| v.as_array()) {
                     if let Ok(mut am) = state.agent_manager.lock() {
                         for agent_json in custom_agents {
-                            if let Ok(agent) =
+                            if let Ok(mut agent) =
                                 serde_json::from_value::<AgentConfig>(agent_json.clone())
                             {
+                                // customAgents 永远不是内置，且不应携带 default_skill_path
+                                agent.is_builtin = false;
+                                agent.default_skill_path = None;
                                 am.add_agent(agent);
                             }
                         }

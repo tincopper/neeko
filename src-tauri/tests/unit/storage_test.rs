@@ -34,6 +34,7 @@ fn save_and_load_session_with_projects() {
             terminal_history: vec!["hello".into()],
             last_status: TerminalStatus::Idle,
             collapsed: true,
+            avatar_color: None,
         }],
         active_project_id: Some("p1".into()),
         last_updated: String::new(),
@@ -104,6 +105,7 @@ fn create_session_from_projects() {
         selected_ide: None,
         active_view: ViewMode::Terminal,
         collapsed: false,
+        avatar_color: Some("#61afef".into()),
     }];
 
     let store = manager.create_session_from_projects(&projects, None, None, Some(300));
@@ -111,6 +113,7 @@ fn create_session_from_projects() {
     assert_eq!(store.projects[0].id, "p1");
     assert!(!store.projects[0].collapsed);
     assert_eq!(store.sidebar_width, Some(300));
+    assert_eq!(store.projects[0].avatar_color, Some("#61afef".into()));
 }
 
 #[test]

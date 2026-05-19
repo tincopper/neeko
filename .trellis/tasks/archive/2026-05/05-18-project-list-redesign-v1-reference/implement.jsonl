@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/05-18-project-list-redesign-v1-reference/research/visual-spec.md", "reason": "本任务的视觉与数据规格单页参考 (chip 优先级 / hover affordances / section header / 数据来源映射 / 实现切片)"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "新建 ProjectGroup / SessionRow / SessionChips 三个共享组件，必须遵循组件 Props / 组合规则"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "确定新组件落地位置 (src/components/project/) 与 barrel export 规则"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "新增 aheadBehind store 切片 (Record<projectId, AheadBehind>)，需符合现有 zustand 风格"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "若提取 useAheadBehind / useDerivedSessions 等 hook，遵循返回稳定引用、领域划分等约定"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "active 切换时 invoke get_ahead_behind_command / wsl_get_ahead_behind / remote_get_ahead_behind 必须遵循三端 invoke 适配模式"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "保留拖拽排序、Pointer Events、键盘快捷键交互；hover affordances 需符合现有惯例"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "新增 NormalizedSession 等类型与 Project / WSLProject / RemoteProject 派生关系，需对齐类型规范"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "本任务核心动机就是消除 Local 与 WSL/SSH 两套并行项目卡实现，必须按复用思维落地"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "三端 (Local / WSL / SSH) 数据流到统一 SessionRow 涉及跨层 normalize，需依此梳理"}

@@ -95,6 +95,12 @@ function TitleBar({
       activeRemoteProject?.project.name ??
       null;
 
+   const currentAvatarColor =
+      activeProject?.avatar_color ??
+      activeWslProject?.project.avatar_color ??
+      activeRemoteProject?.project.avatar_color ??
+      null;
+
    const currentBranch =
       activeProject?.git_info
          ? activeWorktreeBranch || activeProject.git_info.current_branch
@@ -135,7 +141,7 @@ function TitleBar({
                      <span className="flex items-center gap-1.5 shrink-0" data-tauri-drag-region>
                         <span
                            className="w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase"
-                           style={getAvatarStyle(currentProjectName)}
+                           style={getAvatarStyle({ name: currentProjectName, color: currentAvatarColor })}
                         >
                            {getProjectInitials(currentProjectName)}
                         </span>

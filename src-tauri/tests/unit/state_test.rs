@@ -106,6 +106,7 @@ fn session_store_serde_roundtrip() {
             terminal_history: vec!["line1".into()],
             last_status: TerminalStatus::Idle,
             collapsed: true,
+            avatar_color: None,
         }],
         active_project_id: Some("p1".into()),
         last_updated: "2024-01-01T00:00:00+00:00".into(),
@@ -163,12 +164,107 @@ fn agent_config_serde_roundtrip() {
         enabled: true,
         prompt_args: None,
         post_prompt_args: None,
+        is_builtin: false,
+        default_skill_path: None,
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(back.id, "test");
     assert_eq!(back.args, vec!["--flag"]);
     assert_eq!(back.env.get("KEY").unwrap(), "VAL");
+}
+
+#[test]
+fn project_session_missing_avatar_color_defaults_to_none() {
+    // 旧 sessions.json 缺 avatar_color 字段时反序列化为 None
+    let json = r#"{
+        "id": "p1",
+        "name": "test",
+        "path": "/tmp/test",
+        "selected_agent": null,
+        "selected_ide": null,
+        "terminal_history": [],
+        "last_status": "Idle"
+    }"#;
+    let session: ProjectSession = serde_json::from_str(json).unwrap();
+    assert!(session.avatar_color.is_none());
+}
+
+#[test]
+fn project_session_avatar_color_serde_roundtrip() {
+    let session = ProjectSession {
+        id: "p1".into(),
+        name: "test".into(),
+        path: PathBuf::from("/tmp/test"),
+        selected_agent: None,
+        selected_ide: None,
+        terminal_history: vec![],
+        last_status: TerminalStatus::Idle,
+        collapsed: true,
+        avatar_color: Some("#61afef".into()),
+    };
+    let json = serde_json::to_string(&session).unwrap();
+    let back: ProjectSession = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.avatar_color, Some("#61afef".into()));
+}
+
+#[test]
+fn wsl_project_session_missing_avatar_color_defaults_to_none() {
+    let json = r#"{
+        "id": "w1",
+        "name": "wsl-app",
+        "path": "/home/user/app",
+        "distro": "Ubuntu",
+        "entry_id": "e1"
+    }"#;
+    let session: WSLProjectSession = serde_json::from_str(json).unwrap();
+    assert!(session.avatar_color.is_none());
+    assert!(session.selected_agent.is_none());
+}
+
+#[test]
+fn wsl_project_session_avatar_color_serde_roundtrip() {
+    let session = WSLProjectSession {
+        id: "w1".into(),
+        name: "wsl-app".into(),
+        path: "/home/user/app".into(),
+        distro: "Ubuntu".into(),
+        entry_id: "e1".into(),
+        selected_agent: None,
+        selected_ide: None,
+        avatar_color: Some("#e06c75".into()),
+    };
+    let json = serde_json::to_string(&session).unwrap();
+    let back: WSLProjectSession = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.avatar_color, Some("#e06c75".into()));
+}
+
+#[test]
+fn remote_project_session_missing_avatar_color_defaults_to_none() {
+    let json = r#"{
+        "id": "r1",
+        "name": "remote-app",
+        "path": "/srv/app",
+        "entry_id": "e1"
+    }"#;
+    let session: RemoteProjectSession = serde_json::from_str(json).unwrap();
+    assert!(session.avatar_color.is_none());
+}
+
+#[test]
+fn remote_project_session_avatar_color_serde_roundtrip() {
+    let session = RemoteProjectSession {
+        id: "r1".into(),
+        name: "remote-app".into(),
+        path: "/srv/app".into(),
+        entry_id: "e1".into(),
+        selected_agent: None,
+        selected_ide: None,
+        avatar_color: Some("#c678dd".into()),
+    };
+    let json = serde_json::to_string(&session).unwrap();
+    let back: RemoteProjectSession = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.avatar_color, Some("#c678dd".into()));
 }
 
 #[test]

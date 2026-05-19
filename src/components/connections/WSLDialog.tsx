@@ -5,6 +5,7 @@ import AgentIcon from "../layout/AgentIcon";
 import { useAppContext } from "../../contexts";
 import { getDistroIcon } from "../../utils/distros";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
+import { randomAvatarColor } from "../../utils/projectAvatar";
 import { cn } from "../../utils/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
 import { Input } from "../ui/input";
@@ -199,6 +200,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
          entry_id: existingEntry?.id || crypto.randomUUID(),
          selected_agent: selectedAgentId,
          selected_ide: selectedIdeCommand,
+         avatar_color: randomAvatarColor(),
       };
 
       if (existingEntry) {

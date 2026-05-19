@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/05-18-project-list-redesign-v1-reference/research/visual-spec.md", "reason": "AC 比对的视觉与交互规格基线 (chip 渲染顺序 / 头部 hover 槽位 / 必须保留与必须移除的功能清单)"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码规范与禁止模式核对，包含命名、注释、性能反模式"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "确认共享组件确实被三端复用，没有引入第二套并行实现"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "类型推导链 (Project → NormalizedSession) 与 props 类型严谨性核对"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "组件 / hook 单测放置位置 (src/tests/) 与 vitest + RTL 用法核对"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "测试中 mock invoke (get_ahead_behind_*) 与 Tauri API 边界 mock 风格核对"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复盘是否真的把 Local 与 WSL/SSH 项目卡实现合并、有无残留重复"}
+{"file": ".trellis/spec/guides/investigation.md", "reason": "若发现回归 (拖拽 / Git 下拉 / IDE / Settings / Commit / worktree CRUD) 时的诊断流程"}

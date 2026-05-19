@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/05-19-project-avatar-color-customization/prd.md", "reason": "本任务需求、决策与实现计划的唯一可执行参考（含 Appearance section 视觉规格、默认色随机策略、三端 setter 对称）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "新增的 Appearance section + 圆形 swatch picker 必须遵循现有组件 Props 与 React.memo 约定，且需严格避免硬编码字体类"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Project / WSLProject / RemoteProject 加可选 avatar_color 字段，需与 Rust Option<String> 镜像一致，invoke 必须带泛型"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "三个新增 setter（set_project_color / wsl_set_project_color / remote_set_project_color）使用 invoke 适配模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "avatar_color 变更后需同步到 useAppStore.projects / wslEntries / remoteEntries；参考现有同类 set_project_agent / set_project_ide 的同步路径"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "三个新 Tauri 命令需按现有命令签名 / 错误返回 / state 获取 约定"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Project / *Session 结构体加 avatar_color: Option<String>，需 #[serde(default)]，以保证旧 sessions.json 反序列化不报错"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "setter 失败路径需返回类型化错误，与现有 setter 类似"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Rust 结构加字段同时需镜像到 TS 类型与 store；跨层 schema 同步是本任务最多锁点"}

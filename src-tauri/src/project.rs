@@ -21,6 +21,7 @@ impl ProjectManager {
         path: PathBuf,
         agent_id: Option<String>,
         ide: Option<String>,
+        avatar_color: Option<String>,
     ) -> Result<Project> {
         // 检查路径是否存在
         if !path.exists() {
@@ -57,6 +58,7 @@ impl ProjectManager {
             selected_ide: ide,
             active_view: ViewMode::Terminal,
             collapsed: true,
+            avatar_color,
         };
 
         self.projects.push(project.clone());
@@ -70,6 +72,7 @@ impl ProjectManager {
         agent_id: Option<String>,
         ide: Option<String>,
         collapsed: bool,
+        avatar_color: Option<String>,
     ) -> Result<Project> {
         if !path.exists() {
             anyhow::bail!("Project path does not exist: {}", path.display());
@@ -97,6 +100,7 @@ impl ProjectManager {
             selected_ide: ide,
             active_view: ViewMode::Terminal,
             collapsed,
+            avatar_color,
         };
         self.projects.push(project.clone());
         Ok(project)
@@ -105,6 +109,19 @@ impl ProjectManager {
     pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_ide = ide;
+        }
+    }
+
+    pub fn rename_project(&mut self, project_id: &str, new_name: &str) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.name = new_name.to_string();
+        }
+    }
+
+    pub fn change_path(&mut self, project_id: &str, new_path: &str) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.path = PathBuf::from(new_path);
+            project.git_info = None;
         }
     }
 
@@ -163,6 +180,12 @@ impl ProjectManager {
     pub fn set_collapsed(&mut self, project_id: &str, collapsed: bool) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.collapsed = collapsed;
+        }
+    }
+
+    pub fn set_avatar_color(&mut self, project_id: &str, color: Option<String>) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.avatar_color = color;
         }
     }
 

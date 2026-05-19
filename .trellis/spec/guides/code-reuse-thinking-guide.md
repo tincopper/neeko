@@ -58,6 +58,59 @@ grep -r "keyword" .
 
 **正确做法**：单一数据源，到处导入
 
+### 模式 4：跨域几乎相同的实现并行
+
+**症状**：两个文件 90%+ 重复，差异仅在调用的 IPC 命令名称或回调名。
+
+**实例**：`WorktreeList`（local，`src/components/project/WorktreeList.tsx`）与 `ConnectionWorktreeList`（wsl/ssh，`src/components/connections/ConnectionWorktreeList.tsx`），~92% 同源，差异主要在 `invoke("get_worktree_changed_files")` vs `invoke("wsl_get_worktree_changed_files")` 等命令名。
+
+**为什么发生**：
+- 早期只有 local 路径，加 wsl/ssh 时直接 fork 一份"复用不动"
+- IPC 命令名不同就当成天然分支
+- 没有 callback 接口先行抽象
+
+**正确做法**：用 callback 接口注入 IPC，让 local 与 connection 都走同一组件：
+
+```tsx
+// Bad —— 两份并行实现
+function WorktreeList({ projectId }) {
+  await invoke("get_worktree_changed_files", { projectId, ... });
+}
+function ConnectionWorktreeList({ entryId }) {
+  await invoke("wsl_get_worktree_changed_files", { entryId, ... });
+}
+```
+
+```tsx
+// Good —— callback 接口 + invoke 注入
+interface WorktreeListProps {
+  worktrees: Worktree[];
+  onGetChangedFiles(path: string): Promise<FileChange[]>;
+  onIsDirty(path: string): Promise<boolean>;
+  onRemoveWorktree(path: string): void;
+}
+
+// adapter（local）
+<WorktreeList
+  onGetChangedFiles={(p) =>
+    invoke("get_worktree_changed_files", { projectId, worktreePath: p })
+  }
+/>;
+// adapter（wsl）
+<WorktreeList
+  onGetChangedFiles={(p) =>
+    invoke("wsl_get_worktree_changed_files", { distro, worktreePath: p })
+  }
+/>;
+```
+
+**触发清单**：
+- [ ] 两个文件的 import 列表只差 1~2 行（IPC 命令）？
+- [ ] 两份的 JSX 结构几乎完全一致？
+- [ ] 改一边的视觉/交互时容易忘了改另一边？
+
+→ 提取 callback 接口、合并实现。详见 [组件指南 - 展示组件 + 数据 adapter 跨域复用模式](../frontend/component-guidelines.md#展示组件--数据-adapter-跨域复用模式)。
+
 ---
 
 ## 何时进行抽象

@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/state-management.md","reason":"appViewStore zustand store 设计需遵循状态管理规范"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"SettingsView 组件结构、memo、布局规范"}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"useAppContainer 修改 + hook 设计原则"}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"新文件放置位置"}
+{"file":".trellis/spec/frontend/interaction-patterns.md","reason":"键盘快捷键、视图切换交互模式"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"面板组件复用策略"}
+{"file":".trellis/tasks/05-18-settings-panel-app-level-view/prd.md","reason":"需求文档"}

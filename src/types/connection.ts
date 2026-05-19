@@ -9,6 +9,8 @@ export interface WSLProject {
   selected_agent: string | null;
   selected_ide: string | null;
   git_info?: GitInfo | null;
+  /** 用户指定的 avatar 颜色（hex）。`null/undefined` 表示走 DJB2 hash 兜底 */
+  avatar_color?: string | null;
 }
 
 export interface WSLEntrySession {
@@ -25,6 +27,8 @@ export interface RemoteProject {
   selected_agent: string | null;
   selected_ide: string | null;
   git_info?: GitInfo | null;
+  /** 用户指定的 avatar 颜色（hex）。`null/undefined` 表示走 DJB2 hash 兜底 */
+  avatar_color?: string | null;
 }
 
 export type AuthMethod =

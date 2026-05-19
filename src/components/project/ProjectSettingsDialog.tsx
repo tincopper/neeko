@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
 import AgentIcon from "../layout/AgentIcon";
@@ -129,7 +129,7 @@ function ProjectSettingsDialog({
           <button className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full" onClick={() => setAgentOpen((v) => !v)}>
             <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null} size={16} fallback="&#9889;" />
             <span className="font-medium">{agents.find((a) => a.id === selectedAgentId)?.name ?? "None"}</span>
-            <span className="text-xs text-text-secondary ml-auto">{agentOpen ? "\u2212" : "+"}</span>
+            <span className="text-xs text-text-secondary ml-auto">{agentOpen ? "−" : "+"}</span>
           </button>
           {agentOpen && (
             <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
@@ -159,7 +159,7 @@ function ProjectSettingsDialog({
               <img src={getIdeIconSrc(ideDisplay.icon)} className="w-[18px] h-[18px] object-contain" alt="" />
             )}
             <span className="font-medium">{ideDisplay.name}</span>
-            <span className="text-xs text-text-secondary ml-auto">{ideOpen ? "\u2212" : "+"}</span>
+            <span className="text-xs text-text-secondary ml-auto">{ideOpen ? "−" : "+"}</span>
           </button>
           {ideOpen && (
             <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">

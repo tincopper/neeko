@@ -15,7 +15,7 @@ fn add_project_from_valid_path() {
     let mut pm = ProjectManager::new();
 
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     assert_eq!(pm.list_projects().len(), 1);
@@ -26,7 +26,7 @@ fn add_project_from_valid_path() {
 #[test]
 fn add_project_nonexistent_path_fails() {
     let mut pm = ProjectManager::new();
-    let result = pm.add_project("/nonexistent/path/xyz".into(), None, None);
+    let result = pm.add_project("/nonexistent/path/xyz".into(), None, None, None);
     assert!(result.is_err());
 }
 
@@ -40,6 +40,7 @@ fn add_project_with_agent_and_ide() {
             tmp.path().to_path_buf(),
             Some("claude-code".into()),
             Some("code".into()),
+            None,
         )
         .unwrap();
 
@@ -53,7 +54,7 @@ fn add_project_default_state() {
     let mut pm = ProjectManager::new();
 
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     assert!(project.collapsed);
@@ -78,7 +79,7 @@ fn add_project_from_git_repo() {
 
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
     assert!(project.git_info.is_some());
 }
@@ -88,7 +89,7 @@ fn get_project_by_id() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     assert!(pm.get_project(&project.id).is_some());
@@ -100,7 +101,7 @@ fn remove_project() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     pm.remove_project(&project.id);
@@ -119,7 +120,7 @@ fn set_selected_agent() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     pm.set_selected_agent(&project.id, Some("opencode".into()));
@@ -141,7 +142,7 @@ fn set_selected_ide() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     pm.set_selected_ide(&project.id, Some("code".into()));
@@ -156,7 +157,7 @@ fn set_collapsed() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     assert!(project.collapsed);
@@ -165,11 +166,49 @@ fn set_collapsed() {
 }
 
 #[test]
+fn set_avatar_color() {
+    let tmp = TempDir::new().unwrap();
+    let mut pm = ProjectManager::new();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None, None)
+        .unwrap();
+
+    // 默认应为 None
+    assert!(pm.get_project(&project.id).unwrap().avatar_color.is_none());
+
+    // 设置具体颜色后读回
+    pm.set_avatar_color(&project.id, Some("#61afef".into()));
+    assert_eq!(
+        pm.get_project(&project.id).unwrap().avatar_color,
+        Some("#61afef".into())
+    );
+
+    // Reset 回 None
+    pm.set_avatar_color(&project.id, None);
+    assert!(pm.get_project(&project.id).unwrap().avatar_color.is_none());
+}
+
+#[test]
+fn add_project_persists_avatar_color() {
+    let tmp = TempDir::new().unwrap();
+    let mut pm = ProjectManager::new();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None, Some("#98c379".into()))
+        .unwrap();
+
+    assert_eq!(project.avatar_color, Some("#98c379".into()));
+    assert_eq!(
+        pm.get_project(&project.id).unwrap().avatar_color,
+        Some("#98c379".into())
+    );
+}
+
+#[test]
 fn set_view_diff() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     pm.set_view_diff(&project.id, PathBuf::from("src/main.rs"));
@@ -184,7 +223,7 @@ fn set_view_terminal() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new();
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None)
+        .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     pm.set_view_diff(&project.id, PathBuf::from("file.rs"));
@@ -207,6 +246,7 @@ fn add_project_from_session() {
             Some("gemini".into()),
             Some("vim".into()),
             false,
+            None,
         )
         .unwrap();
 
@@ -218,7 +258,14 @@ fn add_project_from_session() {
 #[test]
 fn add_project_from_session_nonexistent_path_fails() {
     let mut pm = ProjectManager::new();
-    let result = pm.add_project_from_session("id".into(), "/nonexistent".into(), None, None, true);
+    let result = pm.add_project_from_session(
+        "id".into(),
+        "/nonexistent".into(),
+        None,
+        None,
+        true,
+        None,
+    );
     assert!(result.is_err());
 }
 
@@ -240,7 +287,7 @@ fn list_projects_returns_empty_changed_files() {
     std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
     let mut pm = ProjectManager::new();
-    pm.add_project(tmp.path().to_path_buf(), None, None)
+    pm.add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
     // list_projects 返回的项目 changed_files 应该为空

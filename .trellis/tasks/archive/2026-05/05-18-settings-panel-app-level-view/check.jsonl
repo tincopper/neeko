@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/state-management.md","reason":"验证 appViewStore 是否符合状态管理规范"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"验证组件结构、性能优化"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"代码质量检查"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"类型安全检查"}
+{"file":".trellis/spec/unit-test/frontend-testing.md","reason":"测试覆盖验证"}
+{"file":".trellis/tasks/05-18-settings-panel-app-level-view/prd.md","reason":"需求验收对照"}

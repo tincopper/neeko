@@ -257,11 +257,152 @@ return (
 
 ---
 
+## 展示组件 + 数据 adapter 跨域复用模式
+
+当多个领域（local / WSL / SSH）需要同款视觉，但底层数据形态与 IPC 命令不同时，把视觉抽成纯展示组件，由各域调用方做 adapter（数据 normalize + 回调注入）。
+
+**实例**：`ProjectGroup` + `SessionRow` + `SessionChips`（`src/components/project/`）三端共用，`ProjectItem`（local，`src/components/project/ProjectItem.tsx`）与 `ConnectionProjectCard`（wsl/remote，`src/components/connections/ConnectionProjectCard.tsx`）各自做 adapter。
+
+**纯展示组件契约**：
+1. 不直接 `invoke` Tauri 命令、不读写 store
+2. 接收的 props 只有数据（值）+ 回调（函数）
+3. 回调按语义命名（`onAddWorktree` 而非 `onPlusClick`）
+4. `React.memo` 包装
+
+**adapter 调用方契约**：
+1. 数据 normalize：把领域模型映射成展示组件期望的 props（如把 `git_info.worktrees` 映射成 `SessionRow` 数组）
+2. 回调注入：把领域 IPC 包装成展示组件期望的回调（如 `onAddWorktree = () => onOpenDialog("new-worktree", ...)`）
+3. store 读写在 adapter 层完成（如 `aheadBehind` 用 `aheadBehindKey()` 查表）
+
+**反模式**：让纯展示组件 import `invoke` 或 `useAppStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
+
+**好坏对照**：
+
+```tsx
+// Wrong —— 展示组件直接读 store，硬编码 local key 形态
+const SessionRow = ({ project }) => {
+  const ahead = useAppStore((s) => s.aheadBehind[project.id]?.ahead);
+  // wsl/remote 永远 lookup 失败
+};
+```
+
+```tsx
+// Correct —— 展示组件只接收数据
+interface SessionRowProps {
+  ahead?: number;
+  changes?: { add: number; del: number };
+}
+
+// adapter（local）
+<SessionRow
+  ahead={
+    useAppStore((s) => s.aheadBehind[aheadBehindKey("local", id, id)])?.ahead
+  }
+/>;
+// adapter（wsl）
+<SessionRow
+  ahead={
+    useAppStore((s) => s.aheadBehind[aheadBehindKey("wsl", distro, id)])?.ahead
+  }
+/>;
+```
+
+---
+
+## 视觉层级：Section header vs Project header
+
+侧边栏中两类容器有显著的语义差异，对应不同的视觉强度。
+
+| 角色 | 强度 | 实例 | 关键样式 |
+|------|------|------|----------|
+| **Project header** | 强 | 单个项目卡（含 avatar + 名 + count + hover IDE/Git/Trash 槽） | `text-[var(--font-size)] font-semibold`、28×28 头像、行高 ≈ 40px |
+| **Section header** | 弱 | WSL/SSH 外层 distro/server 分组 | `text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted`、无头像、行高 ≈ 22px、hover 才显示 +/Trash |
+
+**取舍准则**：
+- 该层只是"分类容器、无独立操作"——用 section header
+- 该层是"用户主要交互目标，含独立 CRUD"——用 project header
+- 同屏避免出现两层强 header（视觉抢中心、识别成本高）
+
+**实例参考**：
+- Section header：`src/components/connections/RemoteItems.tsx` 的 `WSLItem` / `RemoteItem` 顶部
+- Project header：`src/components/project/ProjectGroup.tsx`
+
+---
+
 ## 无障碍
 
 - 装饰性图片使用 `alt=""`
 - 图标按钮使用 `title` 属性提供悬停提示
 - 加载中状态使用 `disabled` 禁用按钮
+
+---
+
+## 即时保存 vs 显式 Save：两种"项目设置"语义
+
+本仓库有两种"项目设置"入口，**语义截然不同**，新增字段时要选对位置或两者同步实现。
+
+| 入口 | 文件 | 语义 | UX |
+|------|------|------|-----|
+| **全局 Settings → Project 子面板** | `src/components/settings/ProjectPanel.tsx` | **即时保存**：每个控件 onChange 立即 `invoke` + `patchProject` 更新 store；无 Save / Cancel 按钮 | 用户改一个字段→实时落盘+实时反映；适合"调试式探索" |
+| **项目右键菜单 → Settings dialog** | `src/components/project/ProjectSettingsDialog.tsx` | **显式 Save / Cancel**：受控 state 暂存改动，Save 按钮一次性 invoke 多个 setter；Cancel 丢弃 | 用户可以试错；适合"提交式确认" |
+
+### 选择规则
+
+- **新增字段属于"反复调整、马上看效果"类型**（如颜色、Agent、IDE 选择）→ 优先放 ProjectPanel.tsx，即时保存
+- **新增字段属于"批量决策、确认提交"类型**（如同时改名 + 切 IDE + 切 Agent）→ 优先放 dialog，受控 + Save
+- **两类都需要** → 抽出共享子组件（如 `<AppearanceSwatches>`），ProjectPanel 直接渲染，Dialog 受控包一层
+
+### 即时保存模式落地（ProjectPanel）
+
+```tsx
+// src/components/settings/ProjectPanel.tsx
+const handleAvatarColorChange = useCallback(
+  (color: string | null) => {
+    invoke("set_project_color", { projectId, color });
+    patchProject({ avatar_color: color }); // store 同步，避免等下一次 listen
+  },
+  [projectId, patchProject],
+);
+```
+
+要点：
+1. **没有受控 state**：直接读 `project.avatar_color`，写入即更新 store
+2. **`patchProject` 立即同步 store**：避免依赖后端事件回流造成的 UI 滞后
+3. **invoke 不 await**：与现有 `handleAgentChange` / `handleIdeChange` 风格一致；如果失败由 toast 在 store 同步层处理
+
+### 显式 Save 模式落地（Dialog）
+
+```tsx
+// src/components/project/ProjectSettingsDialog.tsx
+const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgent);
+const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
+
+const handleSave = useCallback(async () => {
+  await invoke("set_project_agent", { projectId, agentId: selectedAgentId });
+  await invoke("set_project_ide", { projectId, ide: ideCommand });
+  onSave(selectedAgentId, ideCommand);
+  onClose();
+}, [...]);
+```
+
+要点：
+1. **受控 state 暂存所有字段**，不实时同步
+2. **Save 按钮一次性提交**多个 invoke
+3. **Cancel 直接 onClose** 即丢弃
+
+### 反模式
+
+❌ **在 ProjectPanel 里加 Save 按钮**：与既有 Agent / IDE / Tasks 即时保存模式冲突，用户体验割裂
+
+❌ **在 Dialog 里某个字段即时保存、其他字段需要 Save**：用户认知负担极高，"为什么这个字段我点了就生效，那个字段非要 Save"
+
+❌ **新增字段时同时 patch 两边但语义不一致**：参考 `avatar_color` 任务的修正——上轮把 Appearance 加到了 Dialog（错），用户期望在 Settings 子面板（对），最终 Dialog 完全还原、Appearance 只在 ProjectPanel
+
+### 检查清单
+
+- [ ] 该字段属于即时调整还是批量提交？
+- [ ] 与该入口已有字段的保存语义一致？
+- [ ] 如两边都要支持，是否抽出了共享子组件？
 
 ---
 
