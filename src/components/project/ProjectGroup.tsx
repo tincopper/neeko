@@ -87,7 +87,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   avatarColor,
   sessionCount,
   expanded,
-  isActive = false,
+  isActive: _isActive = false,
   isLast = false,
   actions,
   ideIconSrc,

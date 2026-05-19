@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   useFileActionsContext,
   useAppContext,
@@ -14,7 +15,7 @@ import { useActiveProject } from "@/hooks/useActiveProject";
 import { buildDiffSource } from "@/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
-import type { Tab, FileNode } from "@/types";
+import type { Tab, FileNode, FileTreeChangedEvent } from "@/types";
 
 /**
  * 将 newChildren 合并到 fileTree 中路径为 dirPath 的节点（WSL/Remote 懒加载使用）
@@ -105,6 +106,33 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     prevIsActiveRef.current = isActive;
     prevFileRootPathRef.current = fileRootPath;
   }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree]);
+
+  // 监听后端 file-tree-changed 事件（文件新增/删除/重命名），静默刷新目录树
+  // 静默刷新：不设 fileViewLoading，旧树保持展示直到新数据到达，避免闪烁
+  // 仅本地项目响应此事件（WSL/Remote 不经过本地 notify watcher）
+  useEffect(() => {
+    const unlistenPromise = listen<FileTreeChangedEvent>("file-tree-changed", (event) => {
+      const { project_id } = event.payload;
+      // 只响应当前活动项目的事件
+      if (!activeProjectId || project_id !== activeProjectId) return;
+      // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
+      if (!isActive || !fileRootPath) return;
+      // 静默刷新：直接 invoke，不触发 loading 状态，旧树保持可见
+      invoke<FileNode[]>("read_dir_tree", {
+        projectId: activeProjectId,
+        rootPath: fileRootPath,
+        subPath: null,
+        maxDepth: DEFAULT_TREE_DEPTH,
+      })
+        .then((tree) => {
+          useAppStore.setState({ fileTree: tree });
+        })
+        .catch(console.error);
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [activeProjectId, isActive, fileRootPath]);
 
   // WSL/Remote: use commands.readDirTree directly for refresh, bypassing
   // useFileView.loadFileTree to avoid stale ref issues.
