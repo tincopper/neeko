@@ -20,6 +20,8 @@ pub struct ProjectSession {
     pub last_status: TerminalStatus,
     #[serde(default = "default_collapsed")]
     pub collapsed: bool,
+    #[serde(default)]
+    pub avatar_color: Option<String>,
 }
 
 /// 会话存储
@@ -64,6 +66,8 @@ pub struct WSLProjectSession {
     pub selected_agent: Option<String>,
     #[serde(default)]
     pub selected_ide: Option<String>,
+    #[serde(default)]
+    pub avatar_color: Option<String>,
 }
 
 /// WSL 发行版会话（持久化用）
@@ -85,6 +89,8 @@ pub struct RemoteProjectSession {
     pub selected_agent: Option<String>,
     #[serde(default)]
     pub selected_ide: Option<String>,
+    #[serde(default)]
+    pub avatar_color: Option<String>,
 }
 
 /// SSH 服务器会话（持久化用）

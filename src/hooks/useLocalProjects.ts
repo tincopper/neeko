@@ -6,6 +6,7 @@ import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig, Tab, GitBranchInfo, FileChange, Worktree } from "../types";
 import { useAppStore } from "../store/appStore";
 import { applyStateAction } from "../utils/entryUpdates";
+import { randomAvatarColor } from "../utils/projectAvatar";
 
 export function useLocalProjects() {
   const projects = useAppStore((state) => state.projects);
@@ -116,6 +117,8 @@ export function useLocalProjects() {
         path: pendingPath,
         agentId,
         ide: ideCommand,
+        // 新建项目随机分配一个调色板内的 avatar 颜色（立即持久化）
+        avatarColor: randomAvatarColor(),
       });
       await invoke("save_session").catch(() => {});
       setProjects((prev) => [...prev, project]);

@@ -260,6 +260,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       >
         <ProjectGroup
           name={project.name}
+          avatarColor={project.avatar_color}
           sessionCount={sessionCount}
           expanded={!collapsed}
           isActive={isActive}

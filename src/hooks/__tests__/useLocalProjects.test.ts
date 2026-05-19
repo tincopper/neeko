@@ -81,11 +81,15 @@ describe('useLocalProjects', () => {
       await result.current.handleConfirmAddProject(null, null);
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('add_project', {
-      path: '/tmp/new-project',
-      agentId: null,
-      ide: null,
-    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'add_project',
+      expect.objectContaining({
+        path: '/tmp/new-project',
+        agentId: null,
+        ide: null,
+        avatarColor: expect.stringMatching(/^#[0-9a-f]{6}$/i),
+      }),
+    );
     expect(result.current.projects).toContainEqual(
       expect.objectContaining({ id: 'new-1' }),
     );

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### 🚀 Features
+
+- Project avatar 颜色支持自定义：新建项目时从 10 色调色板随机分配（取代易撞色的 DJB2 hash），用户可在全局 Settings → Project 子面板的 Appearance section 自由切换颜色或重置回默认（hash 兜底）；三端 Local / WSL / SSH schema 与后端命令均已对齐（WSL/SSH UI 入口待后续接入）
+
 ### 🎨 Styling
 
 - ProjectsPanel 视觉重设计：Local / WSL / SSH 三端统一为 V1 Reference Faithful 风格（字母色块头像、双行 session、行尾 ↑N / +A -D / ⌘N chip、WSL/SSH 外层 lightweight section header）；下线侧边栏内嵌的 Worktree Changes 文件树（变更明细仍走 DiffView）

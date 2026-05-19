@@ -159,3 +159,42 @@ describe("ProjectGroup right-click", () => {
     expect(onContextMenu).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ProjectGroup avatar color override", () => {
+  it("提供 avatarColor 时优先用作 avatar 颜色", () => {
+    const { container } = render(
+      <ProjectGroup
+        name="neeko"
+        avatarColor="#e06c75"
+        sessionCount={1}
+        expanded
+        actions={{ onToggle: vi.fn() }}
+      />,
+    );
+    const avatar = container.querySelector("[aria-hidden='true']") as HTMLElement;
+    expect(avatar).toBeTruthy();
+    expect(avatar.style.color).toBe("rgb(224, 108, 117)");
+  });
+
+  it("avatarColor 缺省时走 hash 兜底（与同名稳定一致）", () => {
+    const { container: c1 } = render(
+      <ProjectGroup
+        name="neeko"
+        sessionCount={1}
+        expanded
+        actions={{ onToggle: vi.fn() }}
+      />,
+    );
+    const { container: c2 } = render(
+      <ProjectGroup
+        name="neeko"
+        sessionCount={1}
+        expanded
+        actions={{ onToggle: vi.fn() }}
+      />,
+    );
+    const a1 = c1.querySelector("[aria-hidden='true']") as HTMLElement;
+    const a2 = c2.querySelector("[aria-hidden='true']") as HTMLElement;
+    expect(a1.style.color).toBe(a2.style.color);
+  });
+});
