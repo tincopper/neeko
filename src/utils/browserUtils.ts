@@ -30,6 +30,26 @@ export function filePathToFileUrl(filePath: string): string {
 }
 
 /**
+ * 将 file:// URL 还原为本地文件路径（规范化斜杠）
+ * Windows: file:///C:/path/file.html → C:/path/file.html
+ * Unix:    file:///path/file.html    → /path/file.html
+ * 非 file:// URL 返回 null
+ */
+export function fileUrlToFilePath(fileUrl: string): string | null {
+  if (!fileUrl.startsWith("file://")) return null;
+  // file:///C:/... or file:///path/...
+  const withoutScheme = fileUrl.slice("file://".length);
+  // Decode percent-encoded characters (e.g. %20 → space)
+  const decoded = decodeURIComponent(withoutScheme);
+  // Unix: file:///path → /path (keep leading slash)
+  // Windows: file:///C:/path → C:/path (strip leading slash before drive letter)
+  if (/^\/[A-Za-z]:/.test(decoded)) {
+    return decoded.slice(1);
+  }
+  return decoded;
+}
+
+/**
  * 在内嵌 Browser Panel 中打开本地 HTML 文件
  * 激活右侧 Browser dock panel 并导航到 file:// URL
  */

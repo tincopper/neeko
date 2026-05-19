@@ -6,6 +6,8 @@ import { useDockStore } from '../store/dockStore';
 import { useAppStore } from '../store/appStore';
 import { sendToTerminal } from '../components/terminal';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/browser/pickerUtils';
+import { fileUrlToFilePath } from '../utils/browserUtils';
+import type { FileChangedEvent } from '../types';
 
 const BROWSER_WEBVIEW_LABEL = 'neeko-browser-panel';
 
@@ -406,6 +408,51 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       if (event.payload !== activeProjectId) return;
       // Trigger refresh and disarm
       refreshRef.current();
+    }).then((fn) => {
+      if (cancelled) { fn(); } else { unlisten = fn; }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Listen: file-changed — auto-refresh browser when it has a file:// URL that matches
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    listen<FileChangedEvent>('file-changed', (event) => {
+      const { project_id, paths } = event.payload;
+      if (!paths.length) return;
+
+      // Only handle file:// URLs
+      const currentUrl = useBrowserStore.getState().url;
+      if (!currentUrl?.startsWith('file://')) return;
+
+      // Extract local file path from the browser URL
+      const browserFilePath = fileUrlToFilePath(currentUrl);
+      if (!browserFilePath) return;
+
+      // Find the project to get its root path
+      const state = useAppStore.getState();
+      const project = state.projects.find((p) => p.id === project_id);
+      if (!project) return;
+
+      // Normalize project path (forward slashes)
+      const projectRoot = project.path.replace(/\\/g, '/');
+
+      // Check if any changed path matches the currently loaded file
+      const browserFileNorm = browserFilePath.replace(/\\/g, '/');
+      const matched = paths.some((rel) => {
+        const abs = `${projectRoot}/${rel}`;
+        return abs === browserFileNorm;
+      });
+
+      if (matched) {
+        refreshRef.current();
+      }
     }).then((fn) => {
       if (cancelled) { fn(); } else { unlisten = fn; }
     });
