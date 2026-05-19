@@ -30,6 +30,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isCreatingRef = useRef(false);
   const isCreatedRef = useRef(false);
+  // Safety-net timer: if page-loaded event never fires, clear the loading state
+  // after this duration so the toolbar doesn't stay permanently disabled.
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const LOADING_TIMEOUT_MS = 30_000;
 
   const [isPicking, setIsPicking] = useState(false);
   // Keep showToast stable across renders via ref (avoids re-subscribing listeners)
@@ -105,12 +109,29 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     [setLabel, setCreated, setLoading],
   );
 
+  // Arm a safety-net timer that clears isLoading if page-loaded never fires.
+  const armLoadingTimeout = useCallback(() => {
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      loadingTimeoutRef.current = null;
+      setLoading(false);
+    }, LOADING_TIMEOUT_MS);
+  }, [setLoading]);
+
+  const disarmLoadingTimeout = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+  }, []);
+
   // Navigate to new URL
   const navigate = useCallback(
     async (newUrl: string) => {
       disarmAutoRefresh();
       setUrl(newUrl);
       setLoading(true);
+      armLoadingTimeout();
 
       if (!isCreatedRef.current) {
         await createWebview(newUrl);
@@ -121,10 +142,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url: newUrl });
       } catch (err) {
         console.error('[Browser] Failed to navigate:', err);
+        disarmLoadingTimeout();
         setLoading(false);
       }
     },
-    [setUrl, setLoading, createWebview, disarmAutoRefresh],
+    [setUrl, setLoading, createWebview, disarmAutoRefresh, armLoadingTimeout, disarmLoadingTimeout],
   );
 
   // Refresh current page
@@ -132,13 +154,15 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     if (!url || !isCreatedRef.current) return;
     disarmAutoRefresh();
     setLoading(true);
+    armLoadingTimeout();
     try {
       await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url });
     } catch (err) {
       console.error('[Browser] Failed to refresh:', err);
+      disarmLoadingTimeout();
       setLoading(false);
     }
-  }, [url, setLoading, disarmAutoRefresh]);
+  }, [url, setLoading, disarmAutoRefresh, armLoadingTimeout, disarmLoadingTimeout]);
 
   // Stable ref so arm/listener can call refresh without re-subscribing
   const refreshRef = useRef(refresh);
@@ -288,6 +312,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     let unlisten: (() => void) | null = null;
 
     listen<string>('browser://page-loaded', (event) => {
+      disarmLoadingTimeout();
       setUrl(event.payload);
       setLoading(false);
     }).then((fn) => {
@@ -436,11 +461,16 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Listen to dock panel changes, control webview visibility
+  // Listen to dock panel changes, control webview visibility.
+  // Must check both `expanded` AND `activePanelId`: when the zone is collapsed
+  // via togglePanel(), `expanded` flips to false but `activePanelId` stays as
+  // 'browser'. Without the expanded guard the native webview (an OS-level child
+  // window that ignores CSS) remains visible and intercepts all pointer events
+  // on the underlying panels.
   useEffect(() => {
     const unsubscribe = useDockStore.subscribe((state) => {
-      const activePanelId = state.zones.right?.activePanelId;
-      const isVisible = activePanelId === 'browser';
+      const zone = state.zones.right;
+      const isVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
       setVisible(isVisible);
     });
 
@@ -462,8 +492,13 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   useEffect(() => {
     if (isCreated) {
       isCreatedRef.current = true;
-      setVisible(true);
-      if (containerRef.current) {
+      // Only restore visibility if the browser panel is actually the active,
+      // expanded panel — prevents the webview appearing over other panels.
+      const dockState = useDockStore.getState();
+      const zone = dockState.zones.right;
+      const shouldBeVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
+      setVisible(shouldBeVisible);
+      if (shouldBeVisible && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         updateBounds(rect);
       }
@@ -492,13 +527,14 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
-  // Hide webview on unmount instead of destroying it; clean up auto-refresh timer
+  // Hide webview on unmount instead of destroying it; clean up timers
   useEffect(() => {
     return () => {
       disarmAutoRefresh();
+      disarmLoadingTimeout();
       setVisible(false);
     };
-  }, [setVisible, disarmAutoRefresh]);
+  }, [setVisible, disarmAutoRefresh, disarmLoadingTimeout]);
 
   return {
     label,

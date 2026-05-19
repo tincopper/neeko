@@ -77,11 +77,7 @@ struct DebounceSender {
 }
 
 impl DebounceSender {
-    fn new(
-        project_id: String,
-        project_root: PathBuf,
-        app_handle: AppHandle,
-    ) -> Self {
+    fn new(project_id: String, project_root: PathBuf, app_handle: AppHandle) -> Self {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         std::thread::Builder::new()
@@ -214,11 +210,7 @@ impl WatcherManager {
         });
 
         // 3. 创建 file-changed debounce sender
-        let debounce = DebounceSender::new(
-            project_id.clone(),
-            path.clone(),
-            app_handle.clone(),
-        );
+        let debounce = DebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
 
         // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包
@@ -298,16 +290,14 @@ impl WatcherManager {
         let heartbeat_pid = project_id.clone();
         let heartbeat = std::thread::Builder::new()
             .name(format!("git-heartbeat-{}", project_id))
-            .spawn(move || {
-                loop {
-                    std::thread::sleep(Duration::from_secs(30));
-                    if heartbeat_stop.load(Ordering::Relaxed) {
-                        log::debug!("[Watcher] Heartbeat stopping for {}", heartbeat_pid);
-                        break;
-                    }
-                    log::debug!("[Watcher] Heartbeat check for {}", heartbeat_pid);
-                    heartbeat_worker.check();
+            .spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(30));
+                if heartbeat_stop.load(Ordering::Relaxed) {
+                    log::debug!("[Watcher] Heartbeat stopping for {}", heartbeat_pid);
+                    break;
                 }
+                log::debug!("[Watcher] Heartbeat check for {}", heartbeat_pid);
+                heartbeat_worker.check();
             })
             .expect("Failed to spawn heartbeat thread");
 

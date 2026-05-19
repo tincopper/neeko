@@ -78,7 +78,10 @@ fn worker_loop(
         match signal_rx.recv() {
             Ok(()) => {}
             Err(_) => {
-                log::debug!("[GitWorker] Channel closed, worker exiting for {}", path_str);
+                log::debug!(
+                    "[GitWorker] Channel closed, worker exiting for {}",
+                    path_str
+                );
                 break;
             }
         }
@@ -126,7 +129,13 @@ fn git_status_porcelain(repo_path: &PathBuf, supports_no_optional_locks: &mut bo
 
     if *supports_no_optional_locks {
         match local::exec("git")
-            .args(["-C", path_str, "status", "--porcelain", "--no-optional-locks"])
+            .args([
+                "-C",
+                path_str,
+                "status",
+                "--porcelain",
+                "--no-optional-locks",
+            ])
             .output()
         {
             Ok(output) if output.status.success() => {

@@ -190,7 +190,9 @@ fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
 
 /// 使用 wc -l 计算文件行数
 fn count_lines_with_wc(path: &Path) -> usize {
-    let output = exec("wc").args(["-l", path.to_str().unwrap_or("")]).output();
+    let output = exec("wc")
+        .args(["-l", path.to_str().unwrap_or("")])
+        .output();
 
     match output {
         Ok(output) => {
