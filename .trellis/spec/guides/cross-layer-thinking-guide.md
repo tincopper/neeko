@@ -70,6 +70,83 @@
 
 ---
 
+## Per-Project 元数据扩展四步法
+
+在 `Project` / `WSLProject` / `RemoteProject` 三种项目模型上加一条"每个项目一份"的元数据（如 `selected_agent`、`selected_ide`、`avatar_color`），在本仓库需要走完下面四步才不会落下半截。漏掉任何一步都会出现"重启丢字段、添加项目无值、UI 无法读"等典型 bug。
+
+### 步骤 (a)：Rust struct 加字段
+
+In-memory `Project`（`src-tauri/src/models/project.rs`）+ 三处持久化 session struct（`ProjectSession` / `WSLProjectSession` / `RemoteProjectSession`，均在 `src-tauri/src/models/session.rs`）必须同时加，**所有持久化字段都加 `#[serde(default)]`** 才能保证旧 sessions.json 反序列化不报错：
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectSession {
+    // ...
+    #[serde(default)]
+    pub avatar_color: Option<String>,
+}
+```
+
+### 步骤 (b)：双向 clone 走通持久化与启动加载
+
+这一步最容易漏。本仓库的项目状态有两条数据路径：
+
+- **保存路径**：`storage::create_session_from_projects(...)` 把内存 `Project[]` 转成 `ProjectSession[]` 落盘——必须 clone 新字段
+- **加载路径**：`app.rs` / `project::add_project_from_session(...)` 把 `ProjectSession` 还原回内存 `Project`——必须读出新字段
+
+只补一边的话，"保存了但启动后丢失"或反之。
+
+### 步骤 (c)：三个对称 setter 命令
+
+写入路径不能只走整批 `save_session`：UI 一般是改一个字段就要立即落盘，整批保存会带上其他用户没动的字段。需要三个对称命令：
+
+| Setter | 写入策略 |
+|--------|---------|
+| `set_<field>` (Local) | `ProjectManager.set_<field>(id, value)` 改内存 → `StorageManager.save_session()` 落盘 |
+| `wsl_set_project_<field>` | `load_session() → 改 wsl_entries[*].projects[*].<field> → save_session()` 整批模式（无 in-memory manager） |
+| `remote_set_project_<field>` | 同 wsl，用 `remote_entries` |
+
+三个都要在 `commands/mod.rs` 的 `neeko_invoke_handler!` 注册，否则前端 `invoke` 会 404。
+
+### 步骤 (d)：前端三处 TS interface + UI
+
+- `src/types/project.ts` 加 `Project` 字段
+- `src/types/connection.ts` 加 `WSLProject` / `RemoteProject` 字段
+- store 透传：`useAppStore.projects` 系列直接消费新字段，无须额外切片
+- 渲染组件接收新字段（如 `ProjectGroup` 的 `avatarColor` prop）
+- 修改 UI 调对应 setter（`ProjectPanel.tsx` 的 `handleAvatarColorChange`）
+
+### 漏步骤的症状对照表
+
+| 漏掉哪一步 | 用户感知症状 |
+|-----------|-------------|
+| (a) 漏掉某个 session struct 的字段 | 该种项目（local / wsl / remote 之一）保存后字段丢失 |
+| (a) 漏掉 `#[serde(default)]` | 旧 sessions.json 反序列化直接 panic，应用起不来 |
+| (b) 漏掉 `create_session_from_projects` clone | 用 setter 改了字段→重启后丢失 |
+| (b) 漏掉 `add_project_from_session` 读取 | 持久化里有值但启动后内存里是 None |
+| (c) 漏掉 setter 之一 | 该种项目无法在 UI 即时改字段，必须等下次整批 save_session 顺路捎上 |
+| (c) 漏掉 `neeko_invoke_handler!` 注册 | 前端 invoke 404，编译能过 |
+| (d) 漏掉 TS interface 字段 | 前端 `project.<field>` 一直是 undefined，类型层不报错（因为是可选字段） |
+
+### 实例参考
+
+`avatar_color` 完整改动横跨：
+- 后端：`src-tauri/src/models/project.rs:67`、`src-tauri/src/models/session.rs:13`、`src-tauri/src/project.rs`、`src-tauri/src/storage.rs`、`src-tauri/src/app.rs`、`src-tauri/src/commands/{project,wsl,remote}.rs`
+- 前端：`src/types/project.ts`、`src/types/connection.ts`、`src/utils/projectAvatar.ts`、`src/components/project/ProjectGroup.tsx`、`src/components/settings/ProjectPanel.tsx`、`src/hooks/useLocalProjects.ts`、`src/components/connections/{WSLDialog,RemoteDialog}.tsx`
+
+### 检查清单
+
+- [ ] 内存 `Project` + 三处 session struct 都加了字段
+- [ ] 持久化字段都标了 `#[serde(default)]`
+- [ ] `create_session_from_projects` clone 该字段
+- [ ] `add_project_from_session` 接收并填充该字段
+- [ ] 三个对称 setter 命令实现并注册到 `neeko_invoke_handler!`
+- [ ] `src/types/project.ts` 与 `src/types/connection.ts` 同步加字段（snake_case 镜像）
+- [ ] UI 调用对应 setter
+- [ ] 写 serde 往返单测验证缺字段反序列化为 None
+
+---
+
 ## 跨层功能检查清单
 
 实现之前：
