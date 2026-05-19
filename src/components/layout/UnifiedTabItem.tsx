@@ -3,6 +3,7 @@ import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, Pin } from "lucid
 import { cn } from "../../utils/cn";
 import { getAgentIconSrc } from "../../utils/agents";
 import { fileIconSrc } from "../../utils/fileIcons";
+import { useProjectItemDrag } from "../project/useProjectItemDrag";
 import type { Tab } from "../../types/tab";
 import type { AgentConfig } from "../../types";
 
@@ -13,6 +14,9 @@ interface UnifiedTabItemProps {
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
+  onReorder?: (draggedId: string, targetId: string, position: "before" | "after") => void;
+  /** CSS selector that scopes valid drop targets to a single tab bar (set by UnifiedTabBar). */
+  dragScopeSelector?: string;
   agents?: AgentConfig[];
 }
 
@@ -33,7 +37,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
 }
 
 const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
-  ({ tab, isActive, isPinned = false, onActivate, onClose, onContextMenu, agents = [] }) => {
+  ({ tab, isActive, isPinned = false, onActivate, onClose, onContextMenu, onReorder, dragScopeSelector, agents = [] }) => {
     const handleClick = useCallback(() => {
       onActivate(tab.id);
     }, [tab.id, onActivate]);
@@ -66,6 +70,21 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
       [tab.id, isPinned, onClose]
     );
 
+    // 拖拽重排（pinned tab 不参与）
+    const dragEnabled = !isPinned && !!onReorder;
+    const handleDragEnd = useCallback(
+      (draggedId: string, targetId: string, position: "before" | "after") => {
+        onReorder?.(draggedId, targetId, position);
+      },
+      [onReorder],
+    );
+    const drag = useProjectItemDrag({
+      projectId: tab.id,
+      axis: "x",
+      scopeSelector: dragScopeSelector ?? "[data-tab-bar]",
+      onDragEnd: dragEnabled ? handleDragEnd : undefined,
+    });
+
     const Icon = getTabIcon(tab.data.kind);
 
     const data = tab.data;
@@ -93,19 +112,44 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
     const showDirtyDot =
       tab.data.kind === "file" && tab.data.isDirty;
 
+    const showDropBefore =
+      drag.dropIndicator?.targetId === tab.id && drag.dropIndicator.position === "before";
+    const showDropAfter =
+      drag.dropIndicator?.targetId === tab.id && drag.dropIndicator.position === "after";
+
     return (
       <div
+        data-drag-id={dragEnabled ? tab.id : undefined}
+        data-drag-disabled={!dragEnabled || undefined}
         className={cn(
-          "flex items-center gap-1 h-6 px-2 rounded-md cursor-pointer min-w-0 transition-colors",
+          "relative flex items-center gap-1 h-6 px-2 rounded-md cursor-pointer min-w-0 transition-colors",
           isActive
             ? "bg-bg-selected text-text-primary"
-            : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
+          drag.isDragging && "opacity-60",
         )}
+        style={
+          drag.isDragging
+            ? { transform: `translate(${drag.dragOffset.x}px, ${drag.dragOffset.y}px)`, zIndex: 5 }
+            : undefined
+        }
         onClick={handleClick}
         onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
+        onPointerDown={dragEnabled ? drag.handlePointerDown : undefined}
+        onPointerMove={dragEnabled ? drag.handlePointerMove : undefined}
+        onPointerUp={dragEnabled ? drag.handlePointerUp : undefined}
+        onPointerCancel={dragEnabled ? drag.handlePointerCancel : undefined}
         title={tab.title}
       >
+        {/* Drop indicator: 左/右竖线 */}
+        {showDropBefore && (
+          <span className="pointer-events-none absolute left-0 top-0 bottom-0 w-0.5 bg-accent rounded-full" />
+        )}
+        {showDropAfter && (
+          <span className="pointer-events-none absolute right-0 top-0 bottom-0 w-0.5 bg-accent rounded-full" />
+        )}
+
         {agentIconSrc ? (
           <img
             src={agentIconSrc}
@@ -150,6 +194,7 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
 
         {!isPinned && (
           <button
+            data-no-drag
             className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
             style={{ fontSize: "var(--terminal-font-size)" }}
             onClick={handleClose}

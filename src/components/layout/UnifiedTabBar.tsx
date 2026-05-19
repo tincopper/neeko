@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo } from "react";
+import React, { useCallback, useRef, useMemo, useId } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "../../utils/cn";
 import UnifiedTabItem from "./UnifiedTabItem";
@@ -19,6 +19,8 @@ interface UnifiedTabBarProps {
   onCloseOtherTabs?: (tabId: string) => void;
   /** 关闭所有 tab */
   onCloseAllTabs?: () => void;
+  /** 拖拽重排：dragged 落到 target 的 before/after */
+  onReorderTab?: (draggedId: string, targetId: string, position: "before" | "after") => void;
   // Agent Bar 相关（仅终端 tab 时显示）
   agents?: AgentConfig[];
   showAgentBar?: boolean;
@@ -66,6 +68,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
     onCloseTab,
     onAddTerminalTab,
     onContextMenu,
+    onReorderTab,
     agents = [],
     showAgentBar = false,
     onAgentClick,
@@ -73,6 +76,9 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
     hiddenAgentIds = [],
   }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
+    // Unique scope id per bar — split mode renders two bars; without this scope
+    // a drag from the left bar would show drop indicator on the right bar.
+    const scopeId = useId();
 
     // 鼠标滚轮横向滚动
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -118,6 +124,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
         {/* Tab 列表 */}
         <div
           ref={scrollRef}
+          data-tab-bar={scopeId}
           className="flex items-center gap-1 overflow-x-auto no-scrollbar"
           onWheel={handleWheel}
         >
@@ -130,6 +137,8 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
               onActivate={onActivateTab}
               onClose={onCloseTab}
               onContextMenu={onContextMenu}
+              onReorder={onReorderTab}
+              dragScopeSelector={`[data-tab-bar="${CSS.escape(scopeId)}"]`}
               agents={agents}
             />
           ))}

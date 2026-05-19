@@ -87,6 +87,13 @@ interface AppStoreState {
   activateTab: (projectId: string, tabId: string) => void;
   updateTab: (projectId: string, tabId: string, partial: Partial<TabData> & { title?: string }) => void;
   clearProjectTabs: (projectId: string) => void;
+  /**
+   * 在同一 group 内重排 tab 顺序（用户拖拽触发）。
+   * - dragged 与 target 必须在同一 group（left / right），否则 no-op；
+   * - pinned tab 不参与（既不能作为 dragged 也不能作为 target）；
+   * - 仅修改 layout.groups[X].tabIds，不动 state.tabs[].tabs / activeTabId。
+   */
+  reorderTab: (tabKey: string, draggedId: string, targetId: string, position: "before" | "after") => void;
 
   // ── Editor group actions ──
   splitRight: (tabKey: string, tabId: string) => void;
@@ -505,6 +512,70 @@ export const useAppStore = create<AppStoreState>((set) => ({
             tabs: existing.tabs.map((t) => (t.id === tabId ? updatedTab : t)),
           },
         },
+      };
+    }),
+
+  reorderTab: (tabKey, draggedId, targetId, position) =>
+    set((state) => {
+      if (draggedId === targetId) return state;
+
+      const layout = state.editorLayout[tabKey];
+      if (!layout) return state;
+
+      // pinned tab 不参与重排
+      if (layout.pinnedTabId === draggedId || layout.pinnedTabId === targetId) {
+        return state;
+      }
+
+      // 找出 dragged 和 target 各自所在的 group
+      const groupOf = (id: string): "left" | "right" | null => {
+        if (layout.groups.left.tabIds.includes(id)) return "left";
+        if (layout.groups.right.tabIds.includes(id)) return "right";
+        return null;
+      };
+      const draggedGroup = groupOf(draggedId);
+      const targetGroup = groupOf(targetId);
+      if (!draggedGroup || !targetGroup) return state;
+      if (draggedGroup !== targetGroup) return state; // 跨 group 不支持
+
+      const groupId = draggedGroup;
+      const oldIds = layout.groups[groupId].tabIds;
+
+      const draggedIdx = oldIds.indexOf(draggedId);
+      let targetIdx = oldIds.indexOf(targetId);
+      if (draggedIdx < 0 || targetIdx < 0) return state;
+
+      // 先移除 dragged，再依据 position 计算插入点
+      const without = oldIds.filter((id) => id !== draggedId);
+      let insertAt = without.indexOf(targetId);
+      if (insertAt < 0) return state;
+      if (position === "after") insertAt += 1;
+
+      const newIds = [
+        ...without.slice(0, insertAt),
+        draggedId,
+        ...without.slice(insertAt),
+      ];
+
+      // 顺序未变 → 不必触发 re-render
+      const unchanged =
+        newIds.length === oldIds.length &&
+        newIds.every((id, i) => id === oldIds[i]);
+      if (unchanged) return state;
+
+      const newLayout: EditorSplitLayout = {
+        ...layout,
+        groups: {
+          ...layout.groups,
+          [groupId]: {
+            ...layout.groups[groupId],
+            tabIds: newIds,
+          },
+        },
+      };
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
       };
     }),
 

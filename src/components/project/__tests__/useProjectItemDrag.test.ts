@@ -240,7 +240,7 @@ describe('useProjectItemDrag', () => {
       } as unknown as React.PointerEvent);
     });
 
-    expect(mockOnDragEnd).toHaveBeenCalledWith('p1', 'p2');
+    expect(mockOnDragEnd).toHaveBeenCalledWith('p1', 'p2', 'before');
   });
 
   it('拖拽结束时如果没有 drop target 不调用 onDragEnd', () => {

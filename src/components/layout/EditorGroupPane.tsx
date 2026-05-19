@@ -12,6 +12,7 @@ import type { ContextMenuItem } from "../project/ContextMenu";
 import type { AgentConfig, AppConfig, EditorGroupId, Tab } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
+import { useAppStore } from "../../store/appStore";
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
@@ -51,6 +52,7 @@ interface EditorGroupPaneProps {
 
 function EditorGroupPane({
   groupId,
+  tabKey,
   tabs,
   activeTabId,
   pinnedTabId = null,
@@ -136,6 +138,15 @@ function EditorGroupPane({
     onFocusGroup();
   }, [onFocusGroup]);
 
+  const reorderTab = useAppStore((s) => s.reorderTab);
+  const handleReorderTab = useCallback(
+    (draggedId: string, targetId: string, position: "before" | "after") => {
+      if (groupId === "pinned") return; // pinned 区不参与重排
+      reorderTab(tabKey, draggedId, targetId, position);
+    },
+    [reorderTab, tabKey, groupId],
+  );
+
   const contextMenuItems: ContextMenuItem[] = useMemo(() => {
     if (!contextMenu) return [];
     const { tabId } = contextMenu;
@@ -203,6 +214,7 @@ function EditorGroupPane({
                 onCloseTab={onCloseTab}
                 onAddTerminalTab={onAddTerminalTab}
                 onContextMenu={handleTabContextMenu}
+                onReorderTab={groupId === "pinned" ? undefined : handleReorderTab}
                 agents={agents}
               />
             </div>

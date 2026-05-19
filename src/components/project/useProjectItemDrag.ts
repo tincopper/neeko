@@ -17,10 +17,36 @@ export interface DropIndicator {
 
 export interface UseProjectItemDragOptions {
   projectId: string;
-  onDragEnd?: (draggedId: string, targetId: string) => void;
+  /**
+   * Layout axis. "y" (default) — vertical list, midY decides before/after.
+   * "x" — horizontal strip (e.g. tab bar), midX decides before/after.
+   */
+  axis?: "x" | "y";
+  /**
+   * Optional CSS selector that scopes which `[data-drag-id]` elements are
+   * considered drop targets. Useful when multiple drag groups coexist (tab
+   * bar + project list) on the same page. If omitted, ALL `[data-drag-id]`
+   * are eligible, matching legacy behaviour.
+   */
+  scopeSelector?: string;
+  /**
+   * Called on successful drop. Position is forwarded so consumers that care
+   * about insertion direction (tab reorder) can use it; legacy callers that
+   * only need (draggedId, targetId) can ignore the third argument.
+   */
+  onDragEnd?: (
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) => void;
 }
 
-export function useProjectItemDrag({ projectId, onDragEnd }: UseProjectItemDragOptions) {
+export function useProjectItemDrag({
+  projectId,
+  axis = "y",
+  scopeSelector,
+  onDragEnd,
+}: UseProjectItemDragOptions) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<DragOffset>({ x: 0, y: 0 });
   const [dropIndicator, setDropIndicator] = useState<DropIndicator | null>(null);
@@ -40,7 +66,8 @@ export function useProjectItemDrag({ projectId, onDragEnd }: UseProjectItemDragO
   /**
    * Find the drop target based on pointer position.
    * Uses document.elementsFromPoint to find the nearest project item
-   * and determines before/after position based on element center Y.
+   * and determines before/after position based on element center (X for
+   * horizontal axis, Y for vertical).
    */
   const findDropTarget = useCallback(
     (clientX: number, clientY: number): DropIndicator | null => {
@@ -55,18 +82,28 @@ export function useProjectItemDrag({ projectId, onDragEnd }: UseProjectItemDragO
       for (const el of elements) {
         const itemEl = el.closest("[data-drag-id]") as HTMLElement | null;
         if (!itemEl) continue;
+        // Scope: skip drop targets outside the configured scope (mixes tab bar + project list)
+        if (scopeSelector && !itemEl.closest(scopeSelector)) continue;
+        // data-drag-disabled: opt-out target (e.g. pinned tab)
+        if (itemEl.dataset.dragDisabled !== undefined) continue;
         const targetId = itemEl.dataset.dragId;
         if (!targetId || targetId === projectId) continue;
 
         const rect = itemEl.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        const position: "before" | "after" = clientY < midY ? "before" : "after";
+        let position: "before" | "after";
+        if (axis === "x") {
+          const midX = rect.left + rect.width / 2;
+          position = clientX < midX ? "before" : "after";
+        } else {
+          const midY = rect.top + rect.height / 2;
+          position = clientY < midY ? "before" : "after";
+        }
 
         return { targetId, position };
       }
       return null;
     },
-    [projectId],
+    [projectId, axis, scopeSelector],
   );
 
   const handlePointerDown = useCallback(
@@ -119,7 +156,7 @@ export function useProjectItemDrag({ projectId, onDragEnd }: UseProjectItemDragO
         // Read from ref to avoid stale closure over dropIndicator state
         const currentDrop = dropIndicatorRef.current;
         if (currentDrop && onDragEnd) {
-          onDragEnd(projectId, currentDrop.targetId);
+          onDragEnd(projectId, currentDrop.targetId, currentDrop.position);
         }
 
         // Reset drag state
