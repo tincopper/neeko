@@ -25,6 +25,12 @@ struct TerminalClosedPayload {
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
+    /// Windows only: Job Object that groups the PTY child and all of its
+    /// descendants.  Dropping this handle triggers
+    /// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, which terminates the entire
+    /// process tree (e.g. `node` spawned by `cmd /c npm run dev`).
+    #[cfg(windows)]
+    job_handle: Option<crate::utils::job_object::JobHandle>,
     input_listener_id: EventId,
     app_handle: tauri::AppHandle,
 }
@@ -292,6 +298,45 @@ fn spawn_pty_pipeline(
     let pid = child.process_id();
     log_info(&format!("{} Shell spawned, PID: {:?}", config.prefix, pid));
 
+    // Windows: create a Job Object and assign the child process to it so that
+    // the entire process tree is killed when we close the job handle.
+    // Assignment must happen immediately after spawn — before the child has a
+    // chance to fork grandchildren — to guarantee full tree coverage.
+    #[cfg(windows)]
+    let job_handle = {
+        match child.as_raw_handle() {
+            Some(raw) => match crate::utils::job_object::create_job_for_process(raw) {
+                Ok(jh) => {
+                    log_info(&format!(
+                        "{} Job Object created for PID {:?}",
+                        config.prefix, pid
+                    ));
+                    Some(jh)
+                }
+                Err(e) => {
+                    // Non-fatal: fall back to single-process TerminateProcess.
+                    log::warn!(
+                        "{} Failed to create Job Object for PID {:?}: {} — \
+                         child process tree may not be fully terminated on stop",
+                        config.prefix,
+                        pid,
+                        e
+                    );
+                    None
+                }
+            },
+            None => {
+                log::warn!(
+                    "{} Could not obtain raw handle for PID {:?} — \
+                     skipping Job Object creation",
+                    config.prefix,
+                    pid
+                );
+                None
+            }
+        }
+    };
+
     let reader = pair
         .master
         .try_clone_reader()
@@ -325,6 +370,8 @@ fn spawn_pty_pipeline(
             PtyHandle {
                 master: pair.master,
                 child,
+                #[cfg(windows)]
+                job_handle,
                 input_listener_id,
                 app_handle: app_handle.clone(),
             },
@@ -424,8 +471,17 @@ fn spawn_watcher_thread(
                         code
                     ));
                     if let Ok(mut handles) = watch_pty_handles.lock() {
-                        if let Some(handle) = handles.remove(&watch_id) {
+                        if let Some(mut handle) = handles.remove(&watch_id) {
                             handle.app_handle.unlisten(handle.input_listener_id);
+                            // On Windows: drop the Job Object before the
+                            // ConPTY master so that any surviving grandchild
+                            // processes (e.g. detached node workers) are
+                            // terminated by JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                            // before ClosePseudoConsole runs.
+                            #[cfg(windows)]
+                            {
+                                handle.job_handle.take();
+                            } // drop job first
                             drop(handle.master);
                             drop(handle.child);
                         }
@@ -504,6 +560,44 @@ fn spawn_reader_thread(
 
 fn close_pty_handle(session_id: &str, mut handle: PtyHandle) {
     handle.app_handle.unlisten(handle.input_listener_id);
+
+    #[cfg(windows)]
+    {
+        if let Some(job) = handle.job_handle.take() {
+            // Drop the Job Object FIRST — before closing the ConPTY master.
+            //
+            // Why order matters:
+            //   drop(master) calls ClosePseudoConsole which lets the Windows
+            //   console host kill cmd.exe.  Once cmd.exe is dead its children
+            //   that have already detached from the console (e.g. a node.exe
+            //   dev server using CREATE_NO_WINDOW or a fork) are no longer
+            //   reachable via console teardown.  They ARE still in the Job
+            //   Object, so dropping the Job kills them reliably — but only if
+            //   we do it before ClosePseudoConsole triggers and the tiny window
+            //   opens where detached children could theoretically survive.
+            log_info(&format!(
+                "[PTY] Killing process tree via Job Object for session {}",
+                &session_id[..8.min(session_id.len())]
+            ));
+            drop(job); // ← JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE fires here
+                       // Reap the direct child, then close the ConPTY.
+            let _ = handle.child.wait();
+            drop(handle.master);
+            log_info(&format!(
+                "[PTY] Session {} closed (Job Object path)",
+                &session_id[..8.min(session_id.len())]
+            ));
+            return;
+        }
+        // Fallback: Job Object creation failed at spawn time — use the
+        // single-process graceful_kill path below.
+        log::warn!(
+            "[PTY] No Job Object for session {} — falling back to single-process kill",
+            &session_id[..8.min(session_id.len())]
+        );
+    }
+
+    // Unix path and Windows fallback: close ConPTY first, then kill.
     drop(handle.master);
     graceful_kill(&mut *handle.child);
     log_info(&format!(
@@ -592,18 +686,36 @@ fn graceful_kill(child: &mut dyn Child) {
 
     #[cfg(unix)]
     {
-        unsafe {
-            libc::kill(pid as i32, libc::SIGTERM);
+        // portable-pty calls setsid() in the child's pre_exec hook, which
+        // makes the child the leader of a new session AND a new process group
+        // (PGID == PID).  Sending signals to -PGID therefore reaches the
+        // entire process tree (shell + any grandchildren such as node, cargo,
+        // etc.) without affecting the parent Neeko process.
+        let pgid = pid as i32;
+
+        let sigterm_result = unsafe { libc::kill(-pgid, libc::SIGTERM) };
+        if sigterm_result == 0 {
+            log_info(&format!(
+                "[PTY] Sent SIGTERM to process group {} (PID {})",
+                pgid, pid
+            ));
+        } else {
+            // ESRCH means the group is already gone — treat as success.
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(libc::ESRCH) {
+                log::warn!("[PTY] kill(-{}, SIGTERM) failed: {}", pgid, err);
+            }
+            let _ = child.wait();
+            return;
         }
-        log_info(&format!("[PTY] Sent SIGTERM to PID {}", pid));
 
         let deadline = Instant::now() + Duration::from_secs(GRACEFUL_TIMEOUT_SECS);
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => {
                     log_info(&format!(
-                        "[PTY] PID {} exited after SIGTERM in {:?}",
-                        pid,
+                        "[PTY] Process group {} exited after SIGTERM in {:?}",
+                        pgid,
                         started_at.elapsed()
                     ));
                     return;
@@ -617,17 +729,18 @@ fn graceful_kill(child: &mut dyn Child) {
                 Err(_) => return,
             }
         }
+
         log_info(&format!(
-            "[PTY] PID {} did not exit after {}s, sending SIGKILL",
-            pid, GRACEFUL_TIMEOUT_SECS
+            "[PTY] Process group {} did not exit after {}s, sending SIGKILL",
+            pgid, GRACEFUL_TIMEOUT_SECS
         ));
         unsafe {
-            libc::kill(pid as i32, libc::SIGKILL);
+            libc::kill(-pgid, libc::SIGKILL);
         }
         let _ = child.wait();
         log_info(&format!(
-            "[PTY] PID {} killed after SIGKILL in {:?}",
-            pid,
+            "[PTY] Process group {} killed after SIGKILL in {:?}",
+            pgid,
             started_at.elapsed()
         ));
     }
