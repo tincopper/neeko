@@ -280,8 +280,11 @@ export const useDockStore = create<DockStore>()(
         },
 
         setRightPanelSize: (panelId: string, size: number) => {
+          // Clamp to at least 12% (= minSize) so a collapsed/transitioning resize
+          // event can never overwrite the stored size with an unusably small value.
+          const clamped = Math.max(size, 12);
           set((state) => ({
-            rightPanelSizes: { ...state.rightPanelSizes, [panelId]: size },
+            rightPanelSizes: { ...state.rightPanelSizes, [panelId]: clamped },
           }));
         },
 
