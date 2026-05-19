@@ -1,0 +1,10 @@
+{"file": ".trellis/tasks/05-19-project-avatar-color-customization/prd.md", "reason": "AC 比对的功能与视觉规格基线（含 Appearance section、随机默认、Reset、三端对称）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码规范、命名、性能反模式核对"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Swatch picker 是否遵循组件指南（Props / memo / 字体变量）；ProjectSettingsDialog 改动有无引入硬编码字体类"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS Project / WSLProject / RemoteProject 类型与 Rust 镜像核对；avatar_color 是否一致 string | null"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 命名 / 错误处理 / clippy 静态规范"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "结构体新字段与 #[serde(default)] / Option 兼容性核对；旧 sessions.json 反序列化不能报错"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "三个新命令是否按现有 setter 模式签名"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "新增组件测试位置（src/components/__tests__/）与 vitest + RTL 用法"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust serde 往返测试 / setter 单测的写法"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "复盘 Rust struct + TS interface + store + dialog 四个点是否都改了，避免漏迁移"}
