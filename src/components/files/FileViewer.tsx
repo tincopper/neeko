@@ -7,13 +7,17 @@ import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } 
 import { Eye, Save, FileCode, Globe } from "lucide-react";
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
-import type { FileTab, AppTheme, Tab, FileTabData } from "../../types";
+import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useEditorContext } from "../../contexts/editor-context";
 import { useAppStore } from "../../store/appStore";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
+import { useActiveProject } from "../../hooks/useActiveProject";
+import InlineHtmlPreview from "./InlineHtmlPreview";
+import { invoke } from "@tauri-apps/api/core";
 
-type MarkdownMode = "preview" | "source";
+type PreviewMode = "preview" | "source";
 
 /** 检查文件是否为 HTML 文件 */
 function isHtmlFile(filePath: string): boolean {
@@ -80,7 +84,7 @@ function FileViewer() {
    const { activeTabId: groupActiveTabId } = useEditorContext();
 
    // Derive the active file tab from unified Tab.data (FileTabData)
-   const activeFileTab = useMemo(() => {
+   const activeFileTabInfo = useMemo(() => {
       if (!projectTabs) return null;
       // Prefer the group's active tab if it's a file tab
       let target = projectTabs.tabs.find((t) => t.id === groupActiveTabId);
@@ -89,10 +93,14 @@ function FileViewer() {
          target = projectTabs.tabs.find(isFileTab);
       }
       if (!target || !isFileTab(target)) return null;
-      return tabToFileTab(target);
+      return {
+         fileTab: tabToFileTab(target),
+         tabId: target.id,
+         externallyModified: target.data.externallyModified ?? false,
+      };
    }, [projectTabs, groupActiveTabId]);
 
-   if (!activeFileTab) {
+   if (!activeFileTabInfo) {
       return (
          <div className="flex flex-col h-full items-center justify-center text-text-secondary">
             <FileCode size={48} className="mb-3 opacity-30" />
@@ -101,6 +109,8 @@ function FileViewer() {
          </div>
       );
    }
+
+   const { fileTab: activeFileTab, tabId: activeTabId, externallyModified } = activeFileTabInfo;
 
    const projectPath = activeProject?.path
       ?? activeWslProject?.project.path
@@ -112,6 +122,9 @@ function FileViewer() {
          <FileEditor
             key={activeFileTab.id}
             tab={activeFileTab}
+            tabKey={tabKey ?? ""}
+            tabId={activeTabId}
+            externallyModified={externallyModified}
             theme={theme}
             fontFamily={fontFamily}
             fontSize={fontSize}
@@ -126,6 +139,9 @@ function FileViewer() {
 // Internal editor component for a single file tab
 interface FileEditorProps {
    tab: FileTab;
+   tabKey: string;
+   tabId: string;
+   externallyModified: boolean;
    theme: AppTheme;
    fontFamily: string;
    fontSize: number;
@@ -134,10 +150,37 @@ interface FileEditorProps {
    onContentChange: (tabId: string, content: string) => void;
 }
 
-function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
-   const [markdownMode, setMarkdownMode] = useState<MarkdownMode>("preview");
+function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily, fontSize, projectPath, onSave, onContentChange }: FileEditorProps) {
+   const [previewMode, setPreviewMode] = useState<PreviewMode>("preview");
    const [isSaving, setIsSaving] = useState(false);
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
+
+   // 处理外部文件修改：重新加载
+   const handleReload = useCallback(async () => {
+      try {
+         const content = await invoke<FileContent>("read_file_content", {
+            projectId: tab.projectId,
+            filePath: tab.filePath,
+            rootPath: undefined,
+         });
+         useAppStore.getState().updateTab(tabKey, tabId, {
+            kind: "file",
+            content,
+            isDirty: false,
+            externallyModified: false,
+         });
+      } catch (e) {
+         console.error("[FileEditor] Failed to reload file:", e);
+      }
+   }, [tab.projectId, tab.filePath, tabKey, tabId]);
+
+   // 处理外部文件修改：保留当前编辑
+   const handleKeepEdits = useCallback(() => {
+      useAppStore.getState().updateTab(tabKey, tabId, {
+         kind: "file",
+         externallyModified: false,
+      });
+   }, [tabKey, tabId]);
 
    const isMd = isMarkdownFile(tab.filePath);
    const isHtml = isHtmlFile(tab.filePath);
@@ -145,12 +188,11 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
 
    const basePath = useMemo(() => {
       if (!projectPath) return undefined;
-      const root = projectPath.replace(/\\/g, "/");
-      const fileDir = tab.filePath.replace(/\\/g, "/");
-      const lastSlash = fileDir.lastIndexOf("/");
-      return lastSlash >= 0
-         ? `${root}/${fileDir.substring(0, lastSlash)}`
-         : root;
+      // resolveAbsolutePath handles both relative and absolute filePaths correctly,
+      // avoiding the double-root bug (e.g. "E:/ws/C:/project") when filePath is absolute.
+      const absFilePath = resolveAbsolutePath(projectPath, tab.filePath);
+      const lastSlash = absFilePath.lastIndexOf("/");
+      return lastSlash >= 0 ? absFilePath.substring(0, lastSlash) : projectPath.replace(/\\/g, "/");
    }, [projectPath, tab.filePath]);
 
    // Load language extension lazily
@@ -174,39 +216,15 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
       setIsSaving(false);
    }, [currentContent, onSave]);
 
-   // 打开 HTML 预览 Tab
-   const handleOpenHtmlPreview = useCallback(() => {
-      const activeProjectId = useAppStore.getState().activeProjectId;
-      if (!activeProjectId) return;
+   // 获取项目类型信息（用于判断是否显示 Open in Browser）
+   const { project } = useActiveProject();
+   const isLocalProject = project?.type === "local";
 
-      // 使用固定的 Tab ID 进行去重
-      const previewTabId = `${activeProjectId}:preview:${tab.filePath}`;
-
-      // 检查是否已存在该预览 Tab
-      const existingTabs = useAppStore.getState().tabs[activeProjectId];
-      const existingPreview = existingTabs?.tabs.find((t) => t.id === previewTabId);
-
-      if (existingPreview) {
-         // 如果已存在，直接激活
-         useAppStore.getState().activateTab(activeProjectId, previewTabId);
-         return;
-      }
-
-      // 创建新的 html-preview Tab
-      const previewTab: Tab = {
-         id: previewTabId,
-         projectId: activeProjectId,
-         title: `Preview: ${tab.fileName}`,
-         order: existingTabs?.tabs.length ?? 0,
-         data: {
-            kind: "html-preview",
-            filePath: tab.filePath,
-            fileName: tab.fileName,
-         },
-      };
-
-      useAppStore.getState().addTab(activeProjectId, previewTab);
-   }, [tab.filePath, tab.fileName]);
+   // 在 Browser Panel 中打开 HTML 文件
+   const handleOpenInBrowser = useCallback(() => {
+      if (!projectPath || !isLocalProject) return;
+      openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
+   }, [tab.filePath, projectPath, isLocalProject]);
 
    // Ctrl+S handler
    const saveKeymap = useMemo(() => keymap.of([{
@@ -271,11 +289,10 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
                canEdit={false}
                isMd={false}
                isHtml={false}
-               markdownMode="preview"
+               previewMode="preview"
                isSaving={false}
                onSave={() => { }}
-               onToggleMarkdown={() => { }}
-               onOpenHtmlPreview={() => { }}
+               onTogglePreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -298,11 +315,10 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
                canEdit={false}
                isMd={false}
                isHtml={false}
-               markdownMode="preview"
+               previewMode="preview"
                isSaving={false}
                onSave={() => { }}
-               onToggleMarkdown={() => { }}
-               onOpenHtmlPreview={() => { }}
+               onTogglePreview={() => { }}
             />
             <div className="flex-1 flex items-center justify-center">
                <div className="text-center text-text-secondary">
@@ -315,33 +331,71 @@ function FileEditor({ tab, theme, fontFamily, fontSize, projectPath, onSave, onC
       );
    }
 
-   // Markdown preview mode
-   const showPreview = isMd && markdownMode === "preview";
+   // Markdown / HTML preview mode
+   const showPreview = (isMd || isHtml) && previewMode === "preview";
 
    return (
       <div className="flex-1 flex flex-col min-h-0">
+         {/* 外部文件修改 Modal */}
+         {externallyModified && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+               <div className="bg-bg-primary border border-border rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
+                  <h3 className="text-sm font-semibold text-text-primary mb-2">文件已在外部修改</h3>
+                  <p className="text-sm text-text-secondary mb-1">
+                     <span className="font-medium text-text-primary">{tab.fileName}</span> 已被外部程序修改。
+                  </p>
+                  <p className="text-sm text-text-secondary mb-5">
+                     是否重新加载？你当前的编辑将会丢失。
+                  </p>
+                  <div className="flex justify-end gap-2">
+                     <button
+                        className="px-3 py-1.5 text-sm rounded border border-border text-text-secondary hover:bg-bg-hover transition-colors"
+                        onClick={handleKeepEdits}
+                     >
+                        保留当前编辑
+                     </button>
+                     <button
+                        className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent/90 transition-colors"
+                        onClick={handleReload}
+                     >
+                        重新加载
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
+
          <EditorHeader
             pathSegments={pathSegments}
             isDirty={tab.isDirty}
             canEdit={canEdit}
             isMd={isMd}
             isHtml={isHtml}
-            markdownMode={markdownMode}
+            previewMode={previewMode}
             isSaving={isSaving}
             onSave={handleSave}
-            onToggleMarkdown={() => setMarkdownMode((m) => (m === "preview" ? "source" : "preview"))}
-            onOpenHtmlPreview={handleOpenHtmlPreview}
+            onTogglePreview={() => setPreviewMode((m) => (m === "preview" ? "source" : "preview"))}
+            onOpenInBrowser={handleOpenInBrowser}
+            isLocalProject={isLocalProject}
          />
 
          <div className="flex-1 min-h-0 overflow-hidden">
             {showPreview ? (
-               <div className="h-full overflow-y-auto px-6 py-4">
-                  <MarkdownPreview
+               isMd ? (
+                  <div className="h-full overflow-y-auto px-6 py-4">
+                     <MarkdownPreview
+                        content={currentContent}
+                        theme={theme}
+                        basePath={basePath}
+                     />
+                  </div>
+               ) : (
+                  <InlineHtmlPreview
                      content={currentContent}
-                     theme={theme}
                      basePath={basePath}
+                     fileName={tab.fileName}
                   />
-               </div>
+               )
             ) : (
                <CodeMirror
                   value={currentContent}
@@ -367,11 +421,12 @@ interface EditorHeaderProps {
    canEdit: boolean;
    isMd: boolean;
    isHtml: boolean;
-   markdownMode: MarkdownMode;
+   previewMode: PreviewMode;
    isSaving: boolean;
    onSave: () => void;
-   onToggleMarkdown: () => void;
-   onOpenHtmlPreview: () => void;
+   onTogglePreview: () => void;
+   onOpenInBrowser?: () => void;
+   isLocalProject?: boolean;
 }
 
 function EditorHeader({
@@ -380,11 +435,12 @@ function EditorHeader({
    canEdit,
    isMd,
    isHtml,
-   markdownMode,
+   previewMode,
    isSaving,
    onSave,
-   onToggleMarkdown,
-   onOpenHtmlPreview,
+   onTogglePreview,
+   onOpenInBrowser,
+   isLocalProject,
 }: EditorHeaderProps) {
    return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
@@ -403,14 +459,14 @@ function EditorHeader({
 
          {/* Actions */}
          <div className="flex items-center gap-1 shrink-0">
-            {/* Markdown toggle */}
-            {isMd && (
+            {/* Markdown / HTML preview toggle */}
+            {(isMd || isHtml) && (
                <button
                   className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-                  onClick={onToggleMarkdown}
-                  title={markdownMode === "preview" ? "Switch to source" : "Switch to preview"}
+                  onClick={onTogglePreview}
+                  title={previewMode === "preview" ? "Switch to source" : "Switch to preview"}
                >
-                  {markdownMode === "preview" ? (
+                  {previewMode === "preview" ? (
                      <span className="flex items-center gap-1"><FileCode size={12} /> Source</span>
                   ) : (
                      <span className="flex items-center gap-1"><Eye size={12} /> Preview</span>
@@ -418,14 +474,14 @@ function EditorHeader({
                </button>
             )}
 
-            {/* HTML Preview button */}
-            {isHtml && (
+            {/* HTML: Open in Browser Panel */}
+            {isHtml && isLocalProject && (
                <button
-                  className="px-2 py-1 text-[var(--font-size)] rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
-                  onClick={onOpenHtmlPreview}
-                  title="Open HTML preview"
+                  className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                  onClick={onOpenInBrowser}
+                  title="Open in Browser Panel"
                >
-                  <Globe size={12} /> Preview
+                  <Globe size={12} /> Browser
                </button>
             )}
 

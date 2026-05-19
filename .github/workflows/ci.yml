@@ -1,10 +1,15 @@
 name: CI
 
+#on:
+#  push:
+#  pull_request:
+#    branches:
+#      - main
+# 临时先只在打tag时才触发
 on:
   push:
-  pull_request:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 env:
   CARGO_TERM_COLOR: always

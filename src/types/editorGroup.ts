@@ -13,6 +13,10 @@ export interface EditorSplitLayout {
     left: EditorGroupState;
     right: EditorGroupState;
   };
+  /** 当前 pin 的 tab ID，null 表示无 pin */
+  pinnedTabId: string | null;
+  /** pin panel 占总宽度的比例，范围 [0.1, 0.75]，默认 0.35 */
+  pinnedPanelRatio: number;
 }
 
 export function createDefaultEditorLayout(): EditorSplitLayout {
@@ -24,6 +28,8 @@ export function createDefaultEditorLayout(): EditorSplitLayout {
       left: { tabIds: [], activeTabId: null },
       right: { tabIds: [], activeTabId: null },
     },
+    pinnedTabId: null,
+    pinnedPanelRatio: 0.35,
   };
 }
 

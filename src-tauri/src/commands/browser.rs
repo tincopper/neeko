@@ -1,11 +1,25 @@
+use crate::utils::command::local;
 use crate::AppError;
-use std::process::Command;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};
 use url::Url;
 
 /// 固定的浏览器 webview label（单实例）
 const BROWSER_LABEL: &str = "neeko-browser-panel";
+
+/// Base URL the injected picker script uses to notify the Rust side via
+/// `<img src=...>` requests handled by `register_uri_scheme_protocol("neeko", ...)`.
+///
+/// Tauri exposes the registered scheme via different access URLs per platform:
+/// - Windows (WebView2): `http://<scheme>.localhost/<path>`
+/// - macOS (WKWebView) / Linux (WebKitGTK): `<scheme>://localhost/<path>`
+///
+/// Hardcoding the Windows form previously broke picker -> Rust notifications
+/// (prompt-submitted / picker-cancelled / element-picked) on macOS and Linux.
+#[cfg(target_os = "windows")]
+const NOTIFY_BASE: &str = "http://neeko.localhost/";
+#[cfg(not(target_os = "windows"))]
+const NOTIFY_BASE: &str = "neeko://localhost/";
 
 /// 校验 URL scheme 是否安全（允许 http/https/file）
 fn validate_url_scheme(url: &str) -> Result<(), AppError> {
@@ -232,7 +246,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "windows")]
     {
-        Command::new("cmd")
+        local::exec("cmd")
             .args(["/c", "start", "", &url])
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
@@ -240,7 +254,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
+        local::exec("open")
             .arg(&url)
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
@@ -248,7 +262,7 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open")
+        local::exec("xdg-open")
             .arg(&url)
             .spawn()
             .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
@@ -287,7 +301,10 @@ const PICKER_SCRIPT: &str = r#"
   var skipNextClick = false;
 
   function notify(path) {
-    try { var i = new Image(); i.src = 'http://neeko.localhost/' + path; } catch(ex) {}
+    try {
+      var base = window.__NEEKO_NOTIFY_BASE__ || 'http://neeko.localhost/';
+      var i = new Image(); i.src = base + path;
+    } catch(ex) {}
   }
 
   function createTooltip() {
@@ -516,9 +533,11 @@ pub async fn browser_start_picker(
 
     let theme_json = serde_json::to_string(&theme_colors.unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
+    let notify_base_json = serde_json::to_string(NOTIFY_BASE)
+        .map_err(|e| AppError::Unknown(format!("Failed to serialize NOTIFY_BASE: {}", e)))?;
     let script = format!(
-        "window.__NEEKO_THEME__ = {};\n{}",
-        theme_json, PICKER_SCRIPT
+        "window.__NEEKO_THEME__ = {};\nwindow.__NEEKO_NOTIFY_BASE__ = {};\n{}",
+        theme_json, notify_base_json, PICKER_SCRIPT
     );
 
     webview
@@ -592,5 +611,41 @@ mod tests {
     #[test]
     fn test_browser_label_is_fixed() {
         assert_eq!(BROWSER_LABEL, "neeko-browser-panel");
+    }
+
+    #[test]
+    fn notify_base_ends_with_slash() {
+        // The picker script concatenates `base + path`, so a missing trailing
+        // slash would silently produce a malformed URL on every notify().
+        assert!(
+            NOTIFY_BASE.ends_with('/'),
+            "NOTIFY_BASE must end with '/': {}",
+            NOTIFY_BASE
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn notify_base_uses_localhost_http_form_on_windows() {
+        // WebView2 routes register_uri_scheme_protocol("neeko", ...) via
+        // http://neeko.localhost/<path>.
+        assert_eq!(NOTIFY_BASE, "http://neeko.localhost/");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn notify_base_uses_custom_scheme_off_windows() {
+        // WKWebView / WebKitGTK route register_uri_scheme_protocol via
+        // <scheme>://localhost/<path>.
+        assert_eq!(NOTIFY_BASE, "neeko://localhost/");
+    }
+
+    #[test]
+    fn notify_base_serializes_as_json_string_literal() {
+        // The injected script depends on serde_json wrapping NOTIFY_BASE in
+        // double quotes so it becomes a valid JS string literal.
+        let json = serde_json::to_string(NOTIFY_BASE).unwrap();
+        assert!(json.starts_with('"') && json.ends_with('"'));
+        assert!(json.contains(NOTIFY_BASE));
     }
 }

@@ -19,7 +19,11 @@ export interface BrowserState {
   setCreated: (created: boolean) => void;
   /** 设置加载状态 */
   setLoading: (loading: boolean) => void;
-  /** 导航到新 URL（由终端链接模块调用） */
+  /**
+   * 导航到新 URL（由外部模块调用，如终端链接、Files Panel）。
+   * 只更新 store 状态；useBrowserPanel hook 在 mount 时检测
+   * url + isLoading 组合来执行实际导航。
+   */
   navigateTo: (url: string) => void;
   /** 重置状态 */
   reset: () => void;
@@ -42,7 +46,6 @@ export const useBrowserStore = create<BrowserState>()((set) => ({
 
   navigateTo: (url) => {
     set({ url, isLoading: true });
-    // 注意：实际的 webview 创建/导航由 useBrowserPanel hook 监听 url 变化后执行
   },
 
   reset: () => set(initialState),

@@ -16,6 +16,7 @@ import type {
   WSLEntrySession,
   WSLProject,
 } from "../types";
+import type { FileTabData } from "../types/tab";
 import { createDefaultEditorLayout } from "../types/editorGroup";
 
 export interface WorktreeSnapshotItem {
@@ -78,6 +79,7 @@ interface AppStoreState {
   selectWslProject: (distro: string, project: WSLProject) => void;
   selectRemoteProject: (host: string, project: RemoteProject) => void;
   openIde: (project: IdeProject) => void;
+  setProjectIde: (projectId: string, ideCommand: string | null) => void;
 
   // ── Tab CRUD actions ──
   addTab: (projectId: string, tab: Tab) => void;
@@ -93,6 +95,11 @@ interface AppStoreState {
   unsplit: (tabKey: string) => void;
   setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
   setSplitRatio: (tabKey: string, ratio: number) => void;
+
+  // ── Pin tab actions ──
+  pinTab: (tabKey: string, tabId: string) => void;
+  unpinTab: (tabKey: string) => void;
+  setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
 
   // ── Git incremental update ──
   patchChangedFiles: (projectId: string, diff: { added: FileChange[]; removed: string[]; modified: FileChange[] }) => void;
@@ -142,14 +149,25 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
     case "file": {
-      // `in` narrows partial to the only member that has `content`: Partial<FileTabData>
-      if (!("content" in partial)) return data;
+      // Accept any partial that touches at least one FileTabData-specific field.
+      // Use `content` as the primary discriminant for backwards-compat, but also
+      // accept isDirty-only or externallyModified-only updates via explicit cast.
+      const isFilePartial =
+        "content" in partial ||
+        "isDirty" in partial ||
+        "filePath" in partial ||
+        "fileName" in partial ||
+        "externallyModified" in partial;
+      if (!isFilePartial) return data;
+      // Cast to Partial<FileTabData> — safe because we just checked the fields above
+      const fp = partial as Partial<FileTabData>;
       return {
         kind: "file",
-        filePath: partial.filePath !== undefined ? partial.filePath : data.filePath,
-        fileName: partial.fileName !== undefined ? partial.fileName : data.fileName,
-        content: partial.content !== undefined ? partial.content : data.content,
-        isDirty: partial.isDirty !== undefined ? partial.isDirty : data.isDirty,
+        filePath: fp.filePath !== undefined ? fp.filePath : data.filePath,
+        fileName: fp.fileName !== undefined ? fp.fileName : data.fileName,
+        content: fp.content !== undefined ? fp.content : data.content,
+        isDirty: fp.isDirty !== undefined ? fp.isDirty : data.isDirty,
+        externallyModified: "externallyModified" in partial ? fp.externallyModified : data.externallyModified,
       };
     }
     case "diff": {
@@ -175,6 +193,65 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
   }
+}
+
+// ── Pin layout helpers ──
+
+/**
+ * Move a previously-pinned tab back into the front of the left group.
+ * Returns the layout unchanged if prevPinnedId is null or matches tabId.
+ */
+function clearPreviousPin(
+  layout: EditorSplitLayout,
+  prevPinnedId: string | null,
+  newTabId: string,
+): EditorSplitLayout {
+  if (!prevPinnedId || prevPinnedId === newTabId) return layout;
+  const leftIds = [prevPinnedId, ...layout.groups.left.tabIds.filter((id) => id !== prevPinnedId)];
+  return {
+    ...layout,
+    pinnedTabId: null,
+    groups: {
+      ...layout.groups,
+      left: {
+        tabIds: leftIds,
+        activeTabId: layout.groups.left.activeTabId ?? prevPinnedId,
+      },
+    },
+  };
+}
+
+/**
+ * Remove tabId from left/right groups and set it as the new pinnedTabId.
+ * Auto-unsplits if the right group becomes empty.
+ */
+function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
+  const newLeftIds  = layout.groups.left.tabIds.filter((id) => id !== tabId);
+  const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
+  const stillSplit  = layout.isSplit && newRightIds.length > 0;
+
+  return {
+    ...layout,
+    isSplit: stillSplit,
+    activeGroupId: stillSplit ? layout.activeGroupId : "left",
+    pinnedTabId: tabId,
+    groups: {
+      left: {
+        tabIds: newLeftIds,
+        activeTabId:
+          layout.groups.left.activeTabId === tabId
+            ? (newLeftIds.length > 0 ? newLeftIds[newLeftIds.length - 1] : null)
+            : layout.groups.left.activeTabId,
+      },
+      right: {
+        tabIds: newRightIds,
+        activeTabId:
+          layout.groups.right.activeTabId === tabId
+            ? (newRightIds.length > 0 ? newRightIds[newRightIds.length - 1] : null)
+            : layout.groups.right.activeTabId,
+      },
+    },
+  };
 }
 
 export const useAppStore = create<AppStoreState>((set) => ({
@@ -232,6 +309,7 @@ export const useAppStore = create<AppStoreState>((set) => ({
   selectWslProject: noop,
   selectRemoteProject: noop,
   openIde: noop,
+  setProjectIde: noop,
 
   // ── Tab CRUD actions ──
 
@@ -287,6 +365,9 @@ export const useAppStore = create<AppStoreState>((set) => ({
       const idx = existing.tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return state;
 
+      // Pinned tabs cannot be closed directly — must unpin first
+      if (state.editorLayout[projectId]?.pinnedTabId === tabId) return state;
+
       const remaining = existing.tabs.filter((t) => t.id !== tabId);
       let newActiveId: string | null = existing.activeTabId;
 
@@ -329,11 +410,25 @@ export const useAppStore = create<AppStoreState>((set) => ({
           },
         };
 
+        // Right group emptied → collapse split, left stays
         if (newLayout.isSplit && newLayout.groups.right.tabIds.length === 0) {
           newLayout = {
             ...newLayout,
             isSplit: false,
             activeGroupId: "left",
+          };
+        }
+
+        // Left group emptied → promote right group to left, collapse split
+        if (newLayout.isSplit && newLayout.groups.left.tabIds.length === 0) {
+          newLayout = {
+            ...newLayout,
+            isSplit: false,
+            activeGroupId: "left",
+            groups: {
+              left: newLayout.groups.right,
+              right: { tabIds: [], activeTabId: null },
+            },
           };
         }
 
@@ -601,15 +696,99 @@ export const useAppStore = create<AppStoreState>((set) => ({
       };
     }),
 
+  // ── Pin tab actions ──
+
+  pinTab: (tabKey, tabId) =>
+    set((state) => {
+      const projectTabs = state.tabs[tabKey];
+      if (!projectTabs) return state;
+      if (!projectTabs.tabs.some((t) => t.id === tabId)) return state;
+
+      const layout = ensureLayout(
+        state.editorLayout,
+        tabKey,
+        projectTabs.tabs.map((t) => t.id),
+        projectTabs.activeTabId,
+      );
+
+      const newLayout = applyPin(
+        clearPreviousPin(layout, layout.pinnedTabId, tabId),
+        tabId,
+      );
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
+      };
+    }),
+
+  unpinTab: (tabKey) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout || !layout.pinnedTabId) return state;
+
+      const pinnedId = layout.pinnedTabId;
+
+      // Insert at front of left group
+      const leftIds = [pinnedId, ...layout.groups.left.tabIds.filter((id) => id !== pinnedId)];
+
+      const newLayout: EditorSplitLayout = {
+        ...layout,
+        pinnedTabId: null,
+        groups: {
+          ...layout.groups,
+          left: {
+            tabIds: leftIds,
+            activeTabId: layout.groups.left.activeTabId ?? pinnedId,
+          },
+        },
+      };
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
+      };
+    }),
+
+  setPinnedPanelRatio: (tabKey, ratio) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout) return state;
+
+      const clamped = Math.max(0.1, Math.min(0.75, ratio));
+      return {
+        editorLayout: {
+          ...state.editorLayout,
+          [tabKey]: { ...layout, pinnedPanelRatio: clamped },
+        },
+      };
+    }),
+
   // ── Git incremental update ──
 
   patchChangedFiles: (projectId, diff) =>
     set((state) => {
       // 找到目标 project
       const project = state.projects.find((p) => p.id === projectId);
-      if (!project?.git_info) return state;
+      if (!project) return state;
 
-      const currentFiles = project.git_info.changed_files ?? [];
+      // 无变化时不更新（放在最前避免不必要的对象构造）
+      if (
+        diff.added.length === 0 &&
+        diff.removed.length === 0 &&
+        diff.modified.length === 0
+      ) {
+        return state;
+      }
+
+      // git_info 可能为 null（session 恢复时懒加载），此时用默认值兜底
+      const gitInfo = project.git_info ?? {
+        current_branch: "",
+        branches: [] as string[],
+        worktrees: [] as import("../types").Worktree[],
+        changed_files: [] as import("../types").FileChange[],
+        is_clean: true,
+      };
+
+      const currentFiles = gitInfo.changed_files ?? [];
 
       // 1. 移除被删除的文件
       const removedSet = new Set(diff.removed);
@@ -622,17 +801,8 @@ export const useAppStore = create<AppStoreState>((set) => ({
       // 3. 追加新增的文件
       updatedFiles = [...updatedFiles, ...diff.added];
 
-      // 无变化时不更新
-      if (
-        diff.added.length === 0 &&
-        diff.removed.length === 0 &&
-        diff.modified.length === 0
-      ) {
-        return state;
-      }
-
       const updatedGitInfo = {
-        ...project.git_info,
+        ...gitInfo,
         changed_files: updatedFiles,
         is_clean: updatedFiles.length === 0,
       };

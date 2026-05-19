@@ -2935,6 +2935,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "which",
+ "windows-sys 0.52.0",
  "zip",
 ]
 

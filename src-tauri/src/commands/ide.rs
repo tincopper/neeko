@@ -1,3 +1,4 @@
+use crate::utils::command::local;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
@@ -13,9 +14,11 @@ pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<App
 }
 
 #[tauri::command]
-pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppError> {
-    use std::process::Command;
-
+pub fn open_ide(
+    ide_command: String,
+    project_path: String,
+    mac_app_name: Option<String>,
+) -> Result<(), AppError> {
     let trimmed = ide_command.trim();
     if trimmed.is_empty() {
         return Err("No IDE configured for this project".into());
@@ -38,20 +41,62 @@ pub fn open_ide(ide_command: String, project_path: String) -> Result<(), AppErro
         }
     };
 
-    let mut cmd = Command::new(&exe);
+    #[cfg(windows)]
+    let mut cmd = local::exec_detached(&exe);
+    #[cfg(not(windows))]
+    let mut cmd = local::exec(&exe);
+
     cmd.args(&extra_args);
     cmd.arg(&project_path);
 
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    match cmd.spawn() {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            // macOS fallback：用户从 .dmg 装的 GUI 应用（GoLand/IntelliJ 等）
+            // 没生成 Toolbox shell shim 时，裸命令不在 PATH。
+            // 走 LaunchServices `open -a <app>` 按 app name 查找 /Applications/*.app。
+            // 优先用前端传过来的 macAppName（CFBundleName），命中不到再 fallback 到裸命令名——
+            // 后者只对 bundle name == command 的产品（GoLand/PyCharm/Zed 等）有效，
+            // IntelliJ IDEA 这类 bundle name "IntelliJ IDEA" ≠ command "idea" 的产品必须走 macAppName。
+            #[cfg(target_os = "macos")]
+            if err.kind() == std::io::ErrorKind::NotFound && !exe.contains('/') {
+                let target = mac_app_name.as_deref().unwrap_or(&exe);
+                return open_via_launch_services(target, &extra_args, &project_path);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = mac_app_name;
+            Err(format!("Failed to launch '{}': {}", exe, err).into())
+        }
     }
+}
 
-    cmd.spawn()
-        .map_err(|e| format!("Failed to launch '{}': {}", exe, e))?;
+#[cfg(target_os = "macos")]
+fn open_via_launch_services(
+    app_name: &str,
+    extra_args: &[String],
+    project_path: &str,
+) -> Result<(), AppError> {
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg("-a").arg(app_name).arg(project_path);
+    if !extra_args.is_empty() {
+        cmd.arg("--args");
+        cmd.args(extra_args);
+    }
+    let output = cmd.output().map_err(|e| {
+        format!(
+            "Failed to launch '{}' via LaunchServices: {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
+            app_name, e
+        )
+    })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "LaunchServices could not find '{}': {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
+            app_name,
+            if stderr.is_empty() { "no such application".to_string() } else { stderr }
+        )
+        .into());
+    }
     Ok(())
 }
 
@@ -136,22 +181,15 @@ fn open_remote_ide_impl(
 }
 
 fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
-    use std::process::Command;
-
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-
         let full_command = std::iter::once(exe.to_string())
             .chain(args.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ");
 
-        Command::new("cmd.exe")
+        local::exec_detached("cmd.exe")
             .args(["/C", &full_command])
-            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
             .spawn()
             .map_err(|e| {
                 anyhow::anyhow!(
@@ -165,8 +203,9 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+        use std::process::Command;
 
-        Command::new(exe)
+        local::exec(exe)
             .args(args)
             .process_group(0)
             .spawn()

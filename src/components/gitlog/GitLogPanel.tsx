@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useAppStore } from "../../store/appStore";
 import { useAppContext } from "../../contexts";
 import { useActiveProject } from "../../hooks/useActiveProject";
@@ -66,6 +66,15 @@ const GitLogPanel: React.FC = () => {
     },
     [leftWidth],
   );
+
+  // Guard against userSelect/cursor leak when this component unmounts while a
+  // divider drag is still in progress.
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
 
   const handleAction = useCallback(
     async (hash: string, action: CommitMenuAction, value?: string) => {

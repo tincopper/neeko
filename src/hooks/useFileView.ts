@@ -166,23 +166,30 @@ export function useFileView(
     if (!projectId) return;
     const rootPath = worktreePathRef.current ?? undefined;
 
-    let subChildren: FileNode[];
-    if (cmds) {
-      // WSL/Remote 模式
-      subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
-    } else {
-      // Local 模式
-      subChildren = await invoke<FileNode[]>("read_dir_tree", {
-        projectId,
-        rootPath: rootPath ?? null,
-        subPath: dirPath,
-        maxDepth: DEFAULT_TREE_DEPTH,
-      });
-    }
+    try {
+      let subChildren: FileNode[];
+      if (cmds) {
+        // WSL/Remote 模式
+        subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
+      } else {
+        // Local 模式
+        subChildren = await invoke<FileNode[]>("read_dir_tree", {
+          projectId,
+          rootPath: rootPath ?? null,
+          subPath: dirPath,
+          maxDepth: DEFAULT_TREE_DEPTH,
+        });
+      }
 
-    const currentTree = useAppStore.getState().fileTree;
-    const merged = mergeSubTree(currentTree, dirPath, subChildren);
-    useAppStore.setState({ fileTree: merged });
+      const currentTree = useAppStore.getState().fileTree;
+      const merged = mergeSubTree(currentTree, dirPath, subChildren);
+      useAppStore.setState({ fileTree: merged });
+    } catch (e) {
+      // Re-throw so the caller (FilesPanel.handleToggleDir) can handle it;
+      // at minimum its `finally` block will clear the loading spinner.
+      console.error("[useFileView] expandSubTree failed for", dirPath, e);
+      throw e;
+    }
   }, []);
 
   /**

@@ -7,3 +7,4 @@ export * from "./fileIcons";
 export * from "./idePresets";
 export * from "./platform";
 export * from "./terminal";
+export * from "./withTimeout";
