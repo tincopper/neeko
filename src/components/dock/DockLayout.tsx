@@ -37,6 +37,11 @@ const SHORTCUT_PANEL_IDS: string[] = [
  * All dock state is managed internally via useDockStore -- zero state props needed.
  *
  * Supports keyboard shortcuts (Ctrl+1..2) for left panel toggling.
+ *
+ * IMPORTANT: Uses collapsible panels instead of key-based remount to avoid
+ * react-resizable-panels global state corruption when nested Groups remount.
+ * This fixes the bug where pinning a tab then opening a side panel caused
+ * unresponsive drag handles.
  */
 const DockLayout: React.FC<DockLayoutProps> = ({
   children,
@@ -78,9 +83,50 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     [rightPanelSizes],
   );
 
-  // -- Right panel imperative resize (no animation — transition caused drag lag) --
+  // -- Panel imperative refs for collapse/expand --
+  const leftZonePanelRef = usePanelRef();
   const rightPanelRef = usePanelRef();
   const prevRightPanelIdRef = useRef<string | null>(rightActivePanelId);
+
+  // -- Left panel: collapse/expand imperatively instead of key-based remount --
+  const leftExpandedRef = useRef(leftExpanded);
+  useEffect(() => {
+    const prev = leftExpandedRef.current;
+    leftExpandedRef.current = leftExpanded;
+    if (prev === leftExpanded) return;
+
+    const panel = leftZonePanelRef.current;
+    if (!panel) return;
+
+    if (leftExpanded) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, [leftExpanded, leftZonePanelRef]);
+
+  // -- Right panel: collapse/expand imperatively instead of key-based remount --
+  const rightVisibleRef = useRef(rightVisible);
+  useEffect(() => {
+    const prev = rightVisibleRef.current;
+    rightVisibleRef.current = rightVisible;
+    if (prev === rightVisible) return;
+
+    const panel = rightPanelRef.current;
+    if (!panel) return;
+
+    if (rightVisible) {
+      panel.expand();
+      // After expand, resize to the target size for the active panel
+      const targetSize = getRightPanelSize(rightActivePanelId);
+      // Use rAF to ensure expand has settled before resize
+      requestAnimationFrame(() => {
+        rightPanelRef.current?.resize(`${targetSize}%`);
+      });
+    } else {
+      panel.collapse();
+    }
+  }, [rightVisible, rightPanelRef, getRightPanelSize, rightActivePanelId]);
 
   // Resize right zone to target size when active panel changes (instant, no CSS transition)
   useEffect(() => {
@@ -100,7 +146,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   // Save right panel size on resize
   const handleRightPanelResize = useCallback(
     (panelSize: PanelSize) => {
-      if (rightActivePanelId) {
+      if (rightActivePanelId && panelSize.asPercentage > 0) {
         setRightPanelSize(rightActivePanelId, panelSize.asPercentage);
       }
     },
@@ -111,6 +157,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const leftPanelSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleLeftPanelResize = useCallback(
     (panelSize: PanelSize) => {
+      // Don't save collapsed state as the panel size
+      if (panelSize.asPercentage === 0) return;
       if (leftPanelSaveTimerRef.current !== null) clearTimeout(leftPanelSaveTimerRef.current);
       leftPanelSaveTimerRef.current = setTimeout(() => {
         leftPanelSaveTimerRef.current = null;
@@ -122,7 +170,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 
   const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
 
-  const leftPanelRef = useRef<HTMLDivElement>(null);
+  const leftPanelElRef = useRef<HTMLDivElement>(null);
 
   // ResizeObserver: fires on mount (initial size) + every resize drag.
   // Re-runs when leftExpanded toggles so the observer re-attaches after expand.
@@ -131,7 +179,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       setLeftPanelWidth(0);
       return;
     }
-    const el = leftPanelRef.current;
+    const el = leftPanelElRef.current;
     if (!el) return;
 
     const observer = new ResizeObserver((entries) => {
@@ -181,70 +229,65 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         )}
       </div>
 
-      {/* Nested resizable layout: left dock | (center editor + right dock)
-          Outer group isolates left from center/right so dragging the right
-          handle cannot squeeze the left panel. */}
+      {/* Resizable layout: left dock | center editor | right dock
+          Uses collapsible panels instead of key-based remount to prevent
+          react-resizable-panels internal state corruption with nested groups. */}
       <ResizablePanelGroup
-        key={leftExpanded ? "main-2" : "main-1"}
         orientation="horizontal"
-        id={leftExpanded ? "neeko-main-2" : "neeko-main-1"}
+        id="neeko-main"
         className="flex-1"
       >
-        {/* Left dock zone (island) */}
-        {leftExpanded && (
-          <ResizablePanel
-            id="left-zone"
-            defaultSize={`${leftPanelSize}%`}
-            minSize="12%"
-            maxSize="35%"
-            className="py-1 pr-0.5"
-            elementRef={leftPanelRef}
-            onResize={handleLeftPanelResize}
-          >
-            <DockZone zoneId="left" />
-          </ResizablePanel>
-        )}
+        {/* Left dock zone (island) — collapsible, not conditionally rendered */}
+        <ResizablePanel
+          id="left-zone"
+          defaultSize={leftExpanded ? `${leftPanelSize}%` : "0%"}
+          collapsible
+          collapsedSize="0%"
+          minSize="12%"
+          maxSize="35%"
+          className="py-1 pr-0.5"
+          elementRef={leftPanelElRef}
+          panelRef={leftZonePanelRef}
+          onResize={handleLeftPanelResize}
+        >
+          <DockZone zoneId="left" />
+        </ResizablePanel>
 
-        {leftExpanded && (
-          <ResizableHandle id="handle-left-center" withHandle />
-        )}
+        <ResizableHandle
+          id="handle-left-center"
+          withHandle
+          disabled={!leftExpanded}
+          className={leftExpanded ? undefined : "!w-0 !cursor-default"}
+        />
 
-        {/* Inner group: center editor + right dock */}
-        <ResizablePanel id="center-right-wrapper">
-          <ResizablePanelGroup
-            key={rightVisible ? "cr-2" : "cr-1"}
-            orientation="horizontal"
-            id={rightVisible ? "neeko-center-right-2" : "neeko-center-right-1"}
-            className="h-full"
-          >
-            {/* Center area: editor content (island) */}
-            <ResizablePanel
-              id="center-area"
-              defaultSize={rightVisible ? undefined : "100%"}
-              minSize="20%"
-              className="py-1 px-0.5 overflow-hidden"
-            >
-              {children}
-            </ResizablePanel>
+        {/* Center area: editor content (island) */}
+        <ResizablePanel
+          id="center-area"
+          minSize="20%"
+          className="py-1 px-0.5 overflow-hidden"
+        >
+          {children}
+        </ResizablePanel>
 
-            {/* Right dock zone (island) — only render when expanded and has panels */}
-            {rightVisible && (
-              <ResizableHandle id="handle-center-right" withHandle />
-            )}
-            {rightVisible && (
-              <ResizablePanel
-                id="right-zone"
-                defaultSize={`${getRightPanelSize(rightActivePanelId)}%`}
-                minSize="12%"
-                maxSize="80%"
-                className="py-1 pl-0.5"
-                panelRef={rightPanelRef}
-                onResize={handleRightPanelResize}
-              >
-                <DockZone zoneId="right" />
-              </ResizablePanel>
-            )}
-          </ResizablePanelGroup>
+        {/* Right dock zone (island) — collapsible, not conditionally rendered */}
+        <ResizableHandle
+          id="handle-center-right"
+          withHandle
+          disabled={!rightVisible}
+          className={rightVisible ? undefined : "!w-0 !cursor-default"}
+        />
+        <ResizablePanel
+          id="right-zone"
+          defaultSize={rightVisible ? `${getRightPanelSize(rightActivePanelId)}%` : "0%"}
+          collapsible
+          collapsedSize="0%"
+          minSize="12%"
+          maxSize="80%"
+          className="py-1 pl-0.5"
+          panelRef={rightPanelRef}
+          onResize={handleRightPanelResize}
+        >
+          <DockZone zoneId="right" />
         </ResizablePanel>
       </ResizablePanelGroup>
 
