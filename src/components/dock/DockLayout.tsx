@@ -72,13 +72,16 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 
   const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
-  /** Resolve target zone width for a given panel: store value → registry default → 18% */
+  /** Resolve target zone width for a given panel: store value → registry default → 18%.
+   *  Always returns at least MIN_RIGHT_ZONE_SIZE to match the panel's minSize constraint,
+   *  preventing the zone from appearing invisible after first expand. */
+  const MIN_RIGHT_ZONE_SIZE = 12; // must match ResizablePanel minSize below
   const getRightPanelSize = useCallback(
     (panelId: string | null): number => {
       if (!panelId) return 18;
-      if (rightPanelSizes[panelId] != null) return rightPanelSizes[panelId];
+      if (rightPanelSizes[panelId] != null) return Math.max(rightPanelSizes[panelId], MIN_RIGHT_ZONE_SIZE);
       const def = dockPanelRegistry[panelId];
-      return def?.defaultZoneSize ?? 18;
+      return Math.max(def?.defaultZoneSize ?? 18, MIN_RIGHT_ZONE_SIZE);
     },
     [rightPanelSizes],
   );
@@ -117,11 +120,17 @@ const DockLayout: React.FC<DockLayoutProps> = ({
 
     if (rightVisible) {
       panel.expand();
-      // After expand, resize to the target size for the active panel
+      // After expand, resize to the target size for the active panel.
+      // Use double-rAF: the first frame lets expand() settle its internal
+      // layout state; the second frame executes the resize after any
+      // concurrent EditorGroupLayout remount (triggered by pin/unpin) has
+      // also completed its first paint — preventing a race that left the
+      // panel at 0 width when opening a side panel right after pinning a tab.
       const targetSize = getRightPanelSize(rightActivePanelId);
-      // Use rAF to ensure expand has settled before resize
       requestAnimationFrame(() => {
-        rightPanelRef.current?.resize(`${targetSize}%`);
+        requestAnimationFrame(() => {
+          rightPanelRef.current?.resize(`${targetSize}%`);
+        });
       });
     } else {
       panel.collapse();
@@ -143,10 +152,11 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     panel.resize(`${targetSize}%`);
   }, [rightActivePanelId, rightVisible, getRightPanelSize, rightPanelRef]);
 
-  // Save right panel size on resize
+  // Save right panel size on resize — only persist values at or above minSize
+  // to prevent collapsed/transitioning sizes from corrupting the stored value.
   const handleRightPanelResize = useCallback(
     (panelSize: PanelSize) => {
-      if (rightActivePanelId && panelSize.asPercentage > 0) {
+      if (rightActivePanelId && panelSize.asPercentage >= MIN_RIGHT_ZONE_SIZE) {
         setRightPanelSize(rightActivePanelId, panelSize.asPercentage);
       }
     },
