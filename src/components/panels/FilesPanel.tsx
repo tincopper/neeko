@@ -230,14 +230,23 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
       setLoadingDirs((prev) => new Set(prev).add(path));
       try {
         await onExpandDir(path);
+        // 标记已加载（成功后），防止重复请求真正的空目录
+        setLoadedEmptyDirs((prev) => new Set(prev).add(path));
+      } catch (e) {
+        // Lazy-load failed: collapse the directory so the UI doesn't show an
+        // empty expanded folder. The error is logged by expandSubTree.
+        console.error("[FilesPanel] Failed to expand directory:", path, e);
+        setExpandedDirs((prev) => {
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
       } finally {
         setLoadingDirs((prev) => {
           const next = new Set(prev);
           next.delete(path);
           return next;
         });
-        // 标记已加载（无论是否有结果），防止重复请求真正的空目录
-        setLoadedEmptyDirs((prev) => new Set(prev).add(path));
       }
     } else {
       // children 已存在，或已知为真空目录：直接展开

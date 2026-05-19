@@ -36,6 +36,15 @@ export function ResizablePanel({
     setWidth((w) => Math.min(w, maxWidth));
   }, [maxWidth]);
 
+  // Guard against userSelect/cursor leak when the panel unmounts (e.g. `open`
+  // flips to false) while a resize drag is still in progress.
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
