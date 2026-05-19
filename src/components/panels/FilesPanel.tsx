@@ -1,7 +1,10 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "lucide-react";
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { fileIconSrc } from "../../utils/fileIcons";
+import { resolveAbsolutePath } from "../../utils/browserUtils";
 import type { FileNode } from "../../types";
+import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
+import type { ProjectType } from "../../types/project";
 
 interface FilesPanelProps {
   projectName: string | null;
@@ -13,6 +16,12 @@ interface FilesPanelProps {
   onRefresh: () => void;
   /** 懒加载：按需加载超过初始深度的子目录 */
   onExpandDir: (dirPath: string) => Promise<void>;
+  /** 项目类型 */
+  projectType?: ProjectType | null;
+  /** 在 Browser Panel 中打开 HTML 文件 */
+  onOpenInBrowser?: (filePath: string) => void;
+  /** 在系统文件管理器中显示 */
+  onRevealInExplorer?: (filePath: string) => void;
 }
 
 /**
@@ -49,6 +58,7 @@ interface FileTreeNodeProps {
   loadingDirs: Set<string>;
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
+  onContextMenu?: (position: { x: number; y: number }, node: FileNode) => void;
 }
 
 function FileTreeNode({
@@ -59,6 +69,7 @@ function FileTreeNode({
   loadingDirs,
   onSelectFile,
   onToggleDir,
+  onContextMenu,
 }: FileTreeNodeProps) {
   const isExpanded = expandedDirs.has(node.path);
   const isActive = activeFilePath === node.path;
@@ -72,6 +83,12 @@ function FileTreeNode({
     }
   }, [node.is_dir, node.path, onSelectFile, onToggleDir]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu?.({ x: e.clientX, y: e.clientY }, node);
+  }, [node, onContextMenu]);
+
   const indent = 4 + depth * 12;
 
   return (
@@ -82,6 +99,7 @@ function FileTreeNode({
         }`}
         style={{ paddingLeft: indent }}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         title={node.path}
       >
         {node.is_dir ? (
@@ -136,6 +154,7 @@ function FileTreeNode({
                   loadingDirs={loadingDirs}
                   onSelectFile={onSelectFile}
                   onToggleDir={onToggleDir}
+                  onContextMenu={onContextMenu}
                 />
               ))
             : !isLoadingChildren && null}
@@ -147,13 +166,18 @@ function FileTreeNode({
 
 const MemoizedFileTreeNode = React.memo(FileTreeNode);
 
-function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir }: FilesPanelProps) {
+function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer }: FilesPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   // 正在加载中的目录
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   // 已懒加载过的空目录（避免重复请求真正的空目录）
   const [loadedEmptyDirs, setLoadedEmptyDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
+  // 右键上下文菜单状态
+  const [contextMenu, setContextMenu] = useState<{
+    position: { x: number; y: number };
+    node: FileNode;
+  } | null>(null);
 
   // 刷新时清空懒加载记录
   const handleRefresh = useCallback(() => {
@@ -206,20 +230,93 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
       setLoadingDirs((prev) => new Set(prev).add(path));
       try {
         await onExpandDir(path);
+        // 标记已加载（成功后），防止重复请求真正的空目录
+        setLoadedEmptyDirs((prev) => new Set(prev).add(path));
+      } catch (e) {
+        // Lazy-load failed: collapse the directory so the UI doesn't show an
+        // empty expanded folder. The error is logged by expandSubTree.
+        console.error("[FilesPanel] Failed to expand directory:", path, e);
+        setExpandedDirs((prev) => {
+          const next = new Set(prev);
+          next.delete(path);
+          return next;
+        });
       } finally {
         setLoadingDirs((prev) => {
           const next = new Set(prev);
           next.delete(path);
           return next;
         });
-        // 标记已加载（无论是否有结果），防止重复请求真正的空目录
-        setLoadedEmptyDirs((prev) => new Set(prev).add(path));
       }
     } else {
       // children 已存在，或已知为真空目录：直接展开
       setExpandedDirs((prev) => new Set(prev).add(path));
     }
   }, [fileTree, expandedDirs, loadedEmptyDirs, onExpandDir]);
+
+  // 右键菜单处理
+  const handleContextMenu = useCallback((position: { x: number; y: number }, node: FileNode) => {
+    setContextMenu({ position, node });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // 构建上下文菜单项
+  const buildContextMenuItems = useCallback((node: FileNode): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [];
+    const isHtmlFile = !node.is_dir && /\.(html|htm)$/i.test(node.name);
+
+    if (!node.is_dir) {
+      items.push({
+        label: "Open in Editor",
+        icon: FileText,
+        action: () => onSelectFile(node.path),
+      });
+    }
+
+    if (isHtmlFile && projectType === "local" && onOpenInBrowser) {
+      items.push({
+        label: "Open in Browser",
+        icon: Globe,
+        action: () => onOpenInBrowser(node.path),
+      });
+    }
+
+    items.push({ separator: true });
+
+    items.push({
+      label: "Copy Path",
+      icon: Copy,
+      action: () => {
+        const absPath = projectPath
+          ? resolveAbsolutePath(projectPath, node.path)
+          : node.path;
+        navigator.clipboard.writeText(absPath);
+      },
+    });
+
+    if (projectPath) {
+      items.push({
+        label: "Copy Relative Path",
+        icon: ClipboardCopy,
+        // node.path 已经是相对于项目根的相对路径，直接复制
+        action: () => { navigator.clipboard.writeText(node.path); },
+      });
+    }
+
+    if (projectType === "local" && onRevealInExplorer) {
+      items.push({ separator: true });
+      items.push({
+        label: "Reveal in File Manager",
+        icon: FolderOpen,
+        action: () => onRevealInExplorer(node.path),
+      });
+    }
+
+    return items;
+  }, [projectType, projectPath, onSelectFile, onOpenInBrowser, onRevealInExplorer]);
 
   if (!projectName) {
     return (
@@ -294,10 +391,20 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
               loadingDirs={loadingDirs}
               onSelectFile={onSelectFile}
               onToggleDir={handleToggleDir}
+              onContextMenu={handleContextMenu}
             />
           ))
         )}
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          items={buildContextMenuItems(contextMenu.node)}
+          position={contextMenu.position}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }

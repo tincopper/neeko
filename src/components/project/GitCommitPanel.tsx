@@ -7,11 +7,17 @@ import type {
   ProjectCapabilities,
 } from "../../types/activeProject";
 import { useAppContext } from "../../contexts";
+import { withTimeout } from "../../utils/withTimeout";
 import BranchInfo from "./BranchInfo";
 import ChangesList from "./ChangesList";
 import CommitForm from "./CommitForm";
 import PullRequestsPanel from "./PullRequestsPanel";
 import GitDialog, { type DialogState } from "./GitDialog";
+
+// Timeout constants (ms). These protect against indefinite IPC hangs caused by
+// the Rust backend's project_manager Mutex being held by a long operation.
+const TIMEOUT_LOCAL_MS = 30_000;  // discard, stage, commit
+const TIMEOUT_NETWORK_MS = 60_000; // fetch, pull, push
 
 interface GitCommitPanelProps {
   project: UnifiedProjectView;
@@ -111,6 +117,16 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     refreshAheadBehind();
   }, [project.id]);
 
+  // Guard against userSelect/cursor leak: if this component unmounts while a
+  // divider drag is still in progress the document-level mouseup handler will
+  // never fire, leaving body styles permanently dirty.
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
   // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可用
   const canAiGenerate = capabilities.canGenerateCommitMessage && !!project.selectedAgent;
 
@@ -165,7 +181,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     async (path: string) => {
       setLoading(true);
       try {
-        await commands.discardFile(path);
+        await withTimeout(commands.discardFile(path), TIMEOUT_LOCAL_MS, "discard");
         await onRefreshGit();
         setSelectedFiles((prev) => {
           const next = new Set(prev);
@@ -186,7 +202,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     async (path: string) => {
       setLoading(true);
       try {
-        await commands.stageFiles([path]);
+        await withTimeout(commands.stageFiles([path]), TIMEOUT_LOCAL_MS, "stage");
         await onRefreshGit();
         onShowToast?.("Staged file", "info");
       } catch (e: unknown) {
@@ -206,7 +222,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       if (untrackedPaths.length === 0) return;
       setLoading(true);
       try {
-        await commands.stageFiles(untrackedPaths);
+        await withTimeout(commands.stageFiles(untrackedPaths), TIMEOUT_LOCAL_MS, "stage-all");
         await onRefreshGit();
         onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, "info");
       } catch (e: unknown) {
@@ -227,7 +243,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       }
       setLoading(true);
       try {
-        const result = await commands.commitFiles(files, message) as CommitResult;
+        const result = await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, "commit") as CommitResult;
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
@@ -254,8 +270,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       }
       setLoading(true);
       try {
-        await commands.commitFiles(files, message);
-        await commands.push(false);
+        await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, "commit");
+        await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, "push");
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
@@ -273,7 +289,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handleFetch = useCallback(async () => {
     setLoading(true);
     try {
-      await commands.fetch();
+      await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, "fetch");
       refreshAheadBehind();
       onShowToast?.("Fetched successfully", "info");
     } catch (e: unknown) {
@@ -286,7 +302,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handlePull = useCallback(async () => {
     setLoading(true);
     try {
-      await commands.pull();
+      await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, "pull");
       await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.("Pulled successfully", "info");
@@ -300,7 +316,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handlePush = useCallback(async () => {
     setLoading(true);
     try {
-      await commands.push(false);
+      await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, "push");
       await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.("Pushed successfully", "info");

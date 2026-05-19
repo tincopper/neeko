@@ -6,6 +6,8 @@ import { useDockStore } from '../store/dockStore';
 import { useAppStore } from '../store/appStore';
 import { sendToTerminal } from '../components/terminal';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/browser/pickerUtils';
+import { fileUrlToFilePath } from '../utils/browserUtils';
+import type { FileChangedEvent } from '../types';
 
 const BROWSER_WEBVIEW_LABEL = 'neeko-browser-panel';
 
@@ -30,6 +32,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isCreatingRef = useRef(false);
   const isCreatedRef = useRef(false);
+  // Safety-net timer: if page-loaded event never fires, clear the loading state
+  // after this duration so the toolbar doesn't stay permanently disabled.
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const LOADING_TIMEOUT_MS = 30_000;
 
   const [isPicking, setIsPicking] = useState(false);
   // Keep showToast stable across renders via ref (avoids re-subscribing listeners)
@@ -50,7 +56,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // Create webview via Rust side (supports on_navigation + on_page_load handlers)
   const createWebview = useCallback(
     async (initialUrl: string) => {
-      if (isCreatedRef.current || isCreatingRef.current) return;
+      if (isCreatedRef.current || isCreatingRef.current) {
+        return;
+      }
       isCreatingRef.current = true;
 
       try {
@@ -73,6 +81,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         isCreatedRef.current = true;
         setLabel(BROWSER_WEBVIEW_LABEL);
         setCreated(true);
+
+        // Ensure the webview is visible. A concurrent mount-time effect may have
+        // issued browser_set_visible(false) to clean up a post-refresh orphan;
+        // issuing set_visible(true) here guarantees the newly-created webview is
+        // always shown regardless of IPC arrival order.
+        await invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: true });
 
         // Sync bounds immediately after creation
         if (containerRef.current) {
@@ -97,12 +111,29 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     [setLabel, setCreated, setLoading],
   );
 
+  // Arm a safety-net timer that clears isLoading if page-loaded never fires.
+  const armLoadingTimeout = useCallback(() => {
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      loadingTimeoutRef.current = null;
+      setLoading(false);
+    }, LOADING_TIMEOUT_MS);
+  }, [setLoading]);
+
+  const disarmLoadingTimeout = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+  }, []);
+
   // Navigate to new URL
   const navigate = useCallback(
     async (newUrl: string) => {
       disarmAutoRefresh();
       setUrl(newUrl);
       setLoading(true);
+      armLoadingTimeout();
 
       if (!isCreatedRef.current) {
         await createWebview(newUrl);
@@ -113,10 +144,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url: newUrl });
       } catch (err) {
         console.error('[Browser] Failed to navigate:', err);
+        disarmLoadingTimeout();
         setLoading(false);
       }
     },
-    [setUrl, setLoading, createWebview, disarmAutoRefresh],
+    [setUrl, setLoading, createWebview, disarmAutoRefresh, armLoadingTimeout, disarmLoadingTimeout],
   );
 
   // Refresh current page
@@ -124,17 +156,25 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     if (!url || !isCreatedRef.current) return;
     disarmAutoRefresh();
     setLoading(true);
+    armLoadingTimeout();
     try {
       await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url });
     } catch (err) {
       console.error('[Browser] Failed to refresh:', err);
+      disarmLoadingTimeout();
       setLoading(false);
     }
-  }, [url, setLoading, disarmAutoRefresh]);
+  }, [url, setLoading, disarmAutoRefresh, armLoadingTimeout, disarmLoadingTimeout]);
 
   // Stable ref so arm/listener can call refresh without re-subscribing
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+
+  // Stable ref for navigate — prevents the store subscription below from
+  // re-subscribing every time navigate's useCallback dependencies change,
+  // which could cause duplicate navigation on the same url update.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   /** Arm auto-refresh: wait for git-changed or timeout, then refresh the webview */
   const armAutoRefresh = useCallback(() => {
@@ -274,6 +314,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     let unlisten: (() => void) | null = null;
 
     listen<string>('browser://page-loaded', (event) => {
+      disarmLoadingTimeout();
       setUrl(event.payload);
       setLoading(false);
     }).then((fn) => {
@@ -377,6 +418,51 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     };
   }, []);
 
+  // Listen: file-changed — auto-refresh browser when it has a file:// URL that matches
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    listen<FileChangedEvent>('file-changed', (event) => {
+      const { project_id, paths } = event.payload;
+      if (!paths.length) return;
+
+      // Only handle file:// URLs
+      const currentUrl = useBrowserStore.getState().url;
+      if (!currentUrl?.startsWith('file://')) return;
+
+      // Extract local file path from the browser URL
+      const browserFilePath = fileUrlToFilePath(currentUrl);
+      if (!browserFilePath) return;
+
+      // Find the project to get its root path
+      const state = useAppStore.getState();
+      const project = state.projects.find((p) => p.id === project_id);
+      if (!project) return;
+
+      // Normalize project path (forward slashes)
+      const projectRoot = project.path.replace(/\\/g, '/');
+
+      // Check if any changed path matches the currently loaded file
+      const browserFileNorm = browserFilePath.replace(/\\/g, '/');
+      const matched = paths.some((rel) => {
+        const abs = `${projectRoot}/${rel}`;
+        return abs === browserFileNorm;
+      });
+
+      if (matched) {
+        refreshRef.current();
+      }
+    }).then((fn) => {
+      if (cancelled) { fn(); } else { unlisten = fn; }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Listen: picker cancelled (Escape / ✕ / click-outside) — re-inject picker
   useEffect(() => {
     let cancelled = false;
@@ -404,37 +490,98 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     return () => clearInterval(id);
   }, [isPicking, reinjectPicker]);
 
-  // Listen to dock panel changes, control webview visibility
+  // Listen for external navigateTo() calls when the panel is already mounted.
+  // navigateTo() sets url + isLoading=true in the store but cannot call
+  // navigate() directly (it lives outside React). This subscription detects
+  // a url change combined with isLoading=true and drives the actual navigation.
+  // No loop risk: navigate() internally calls setUrl() with the same value,
+  // so state.url !== prev.url is false on that update and the callback skips.
+  // Uses navigateRef ([] deps) so the subscription is created once and always
+  // calls the latest navigate without risk of double-subscription.
+  useEffect(() => {
+    const unsubscribe = useBrowserStore.subscribe((state, prev) => {
+      if (state.url && state.isLoading && state.url !== prev.url) {
+        navigateRef.current(state.url);
+      }
+    });
+    return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen to dock panel changes, control webview visibility.
+  // Must check both `expanded` AND `activePanelId`: when the zone is collapsed
+  // via togglePanel(), `expanded` flips to false but `activePanelId` stays as
+  // 'browser'. Without the expanded guard the native webview (an OS-level child
+  // window that ignores CSS) remains visible and intercepts all pointer events
+  // on the underlying panels.
   useEffect(() => {
     const unsubscribe = useDockStore.subscribe((state) => {
-      const activePanelId = state.zones.right?.activePanelId;
-      const isVisible = activePanelId === 'browser';
+      const zone = state.zones.right;
+      const isVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
       setVisible(isVisible);
     });
 
     return () => unsubscribe();
   }, [setVisible]);
 
-  // On mount: sync isCreatedRef from store and restore webview visibility + bounds
+  // On mount: two responsibilities:
+  //
+  // 1. Restore: if isCreated is true (tab-switch back to browser), sync the
+  //    ref and restore visibility + bounds.
+  //
+  // 2. Navigate: if the store already has a url with isLoading=true it means
+  //    navigateTo() was called externally (e.g. Open in Browser) before this
+  //    component mounted. Execute the navigation now that we have a live hook.
+  //
+  // 3. Orphan cleanup: if neither applies, hide any webview that may have
+  //    survived a page refresh (isCreated is false in store but native webview
+  //    still exists from the previous session).
   useEffect(() => {
     if (isCreated) {
       isCreatedRef.current = true;
-      setVisible(true);
-      if (containerRef.current) {
+      // Only restore visibility if the browser panel is actually the active,
+      // expanded panel — prevents the webview appearing over other panels.
+      const dockState = useDockStore.getState();
+      const zone = dockState.zones.right;
+      const shouldBeVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
+      setVisible(shouldBeVisible);
+      if (shouldBeVisible && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         updateBounds(rect);
+      }
+    } else {
+      // Read directly from store snapshot to avoid stale closure
+      const { url: pendingUrl, isLoading: pendingLoading } = useBrowserStore.getState();
+      if (pendingUrl && pendingLoading) {
+        // navigateTo() was called before we mounted — execute the navigation now
+        navigate(pendingUrl);
+      } else {
+        // No pending navigation — hide any orphaned webview from a prior session
+        invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: false }).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Hide webview on unmount instead of destroying it; clean up auto-refresh timer
+  // Before the page unloads (refresh / navigation), attempt to close the child
+  // webview so it doesn't become an orphan. The async invoke may not complete
+  // in time, but the mount-time safety-net above covers that case.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      invoke('browser_close', { label: BROWSER_WEBVIEW_LABEL }).catch(() => {});
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  // Hide webview on unmount instead of destroying it; clean up timers
   useEffect(() => {
     return () => {
       disarmAutoRefresh();
+      disarmLoadingTimeout();
       setVisible(false);
     };
-  }, [setVisible, disarmAutoRefresh]);
+  }, [setVisible, disarmAutoRefresh, disarmLoadingTimeout]);
 
   return {
     label,

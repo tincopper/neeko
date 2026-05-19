@@ -110,7 +110,7 @@ export function useProjectItemMenu({
       });
     }
 
-    items.push({ label: "", separator: true, action: () => {} });
+    items.push({ separator: true });
 
     if (onOpenSettings && hasConfig) {
       items.push({

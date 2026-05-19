@@ -209,7 +209,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         });
       }
 
-      items.push({ label: "", separator: true, action: () => { } });
+      items.push({ separator: true });
 
       if (onOpenSettings && config) {
         items.push({

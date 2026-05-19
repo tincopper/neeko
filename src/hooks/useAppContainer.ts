@@ -28,6 +28,7 @@ import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { IS_WINDOWS } from "../utils/platform";
 import { buildWorktreeTabKey } from "../utils/tabKey";
+import { useFileTabRefresh } from "./useFileTabRefresh";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
@@ -464,6 +465,9 @@ export function useAppContainer(): UseAppContainerResult {
     restoreAuthFromEntries,
   });
 
+  // 监听文件系统变更事件，刷新已打开的 file tab 内容
+  useFileTabRefresh();
+
   // Refresh git info for WSL/Remote projects on startup (similar to local projects in useSessionBootstrap)
   const initialWslRemoteRefreshDone = React.useRef(false);
   useEffect(() => {
@@ -509,6 +513,7 @@ export function useAppContainer(): UseAppContainerResult {
     selectWslProject: handleSelectWslProjectWithSync,
     selectRemoteProject: handleSelectRemoteProjectWithSync,
     openIde: agentActions.handleOpenIdeCallback,
+    setProjectIde: agentActions.handleSetProjectIde,
   });
 
   useKeyboardShortcuts({

@@ -228,6 +228,7 @@ describe('useLocalProjects', () => {
     expect(mockInvoke).toHaveBeenCalledWith('open_ide', {
       ideCommand: 'code',
       projectPath: '/tmp/test',
+      macAppName: 'Visual Studio Code',
     });
   });
 

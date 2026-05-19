@@ -1,4 +1,5 @@
-use std::{path::PathBuf, process::Command, sync::mpsc, thread};
+use crate::utils::command::local;
+use std::{path::PathBuf, sync::mpsc, thread};
 
 /// 增量状态差异：与上次 git status 对比后的变化
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -66,12 +67,23 @@ fn worker_loop(
     on_change: impl Fn(GitStatusDiff),
 ) {
     let mut last_status = String::new();
+    // 首次尝试带 --no-optional-locks；若 git 版本不支持则永久回退到不带该参数
+    let mut supports_no_optional_locks = true;
+    let path_str = repo_path.display().to_string();
+
+    log::debug!("[GitWorker] Worker started for {}", path_str);
 
     loop {
         // 阻塞等待第一个信号
         match signal_rx.recv() {
             Ok(()) => {}
-            Err(_) => break, // channel 关闭，退出
+            Err(_) => {
+                log::debug!(
+                    "[GitWorker] Channel closed, worker exiting for {}",
+                    path_str
+                );
+                break;
+            }
         }
 
         // 消费队列中积压的信号（合并多次触发为一次）
@@ -79,8 +91,16 @@ fn worker_loop(
             // drain
         }
 
-        // 执行 git status --porcelain --no-optional-locks
-        let current = git_status_porcelain(&repo_path);
+        log::debug!("[GitWorker] Running git status for {}", path_str);
+
+        let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
+
+        log::debug!(
+            "[GitWorker] git status result for {}: {} bytes, changed={}",
+            path_str,
+            current.len(),
+            current != last_status
+        );
 
         if current != last_status {
             let diff = compute_status_diff(&last_status, &current);
@@ -88,25 +108,97 @@ fn worker_loop(
 
             // 只在有实际变化时通知
             if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.modified.is_empty() {
+                log::debug!(
+                    "[GitWorker] Emitting diff for {}: +{} ~{} -{}",
+                    path_str,
+                    diff.added.len(),
+                    diff.modified.len(),
+                    diff.removed.len()
+                );
                 on_change(diff);
             }
         }
     }
 }
 
-/// 执行 git status --porcelain --no-optional-locks
-fn git_status_porcelain(repo_path: &PathBuf) -> String {
-    Command::new("git")
-        .args([
-            "-C",
-            repo_path.to_str().unwrap_or("."),
-            "status",
-            "--porcelain",
-            "--no-optional-locks",
-        ])
+/// 执行 git status --porcelain
+/// 优先使用 --no-optional-locks（避免锁冲突），若当前 git 版本不支持则自动回退。
+/// supports_no_optional_locks 为 per-worker 状态，一旦检测到不支持就记住，后续直接跳过重试。
+fn git_status_porcelain(repo_path: &PathBuf, supports_no_optional_locks: &mut bool) -> String {
+    let path_str = repo_path.to_str().unwrap_or(".");
+
+    if *supports_no_optional_locks {
+        match local::exec("git")
+            .args([
+                "-C",
+                path_str,
+                "status",
+                "--porcelain",
+                "--no-optional-locks",
+            ])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                return String::from_utf8_lossy(&output.stdout).to_string();
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stderr.contains("unknown option") {
+                    // 当前 git 版本不支持该选项，永久回退
+                    log::warn!(
+                        "[GitWorker] git at {} does not support --no-optional-locks, falling back",
+                        repo_path.display()
+                    );
+                    *supports_no_optional_locks = false;
+                    // fall through to retry without the flag
+                } else {
+                    // 其他错误（权限、非 git 仓库等），直接返回空 stdout
+                    log::warn!(
+                        "[GitWorker] git status failed (exit {}) at {}: {}",
+                        output.status,
+                        repo_path.display(),
+                        stderr.trim()
+                    );
+                    return String::from_utf8_lossy(&output.stdout).to_string();
+                }
+            }
+            Err(e) => {
+                log::error!(
+                    "[GitWorker] Failed to spawn git at {}: {}",
+                    repo_path.display(),
+                    e
+                );
+                return String::new();
+            }
+        }
+    }
+
+    // Fallback：不带 --no-optional-locks
+    match local::exec("git")
+        .args(["-C", path_str, "status", "--porcelain"])
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default()
+    {
+        Ok(output) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                log::warn!(
+                    "[GitWorker] git status failed (exit {}) at {}: {}",
+                    output.status,
+                    repo_path.display(),
+                    stderr.trim()
+                );
+            }
+            String::from_utf8_lossy(&output.stdout).to_string()
+        }
+        Err(e) => {
+            log::error!(
+                "[GitWorker] Failed to spawn git at {}: {}",
+                repo_path.display(),
+                e
+            );
+            String::new()
+        }
+    }
 }
 
 /// 解析 git status --porcelain 输出，返回 (path, status) 列表

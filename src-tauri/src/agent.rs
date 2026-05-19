@@ -10,21 +10,23 @@ pub fn check_command_exists(command: &str) -> bool {
         // Windows: 直接使用系统 PATH，无需 bash
         which(command).is_ok()
     } else {
-        // Unix: 获取交互式 shell 的 PATH（覆盖 nvm/fish 等修改 PATH 的场景）
-        let output = Command::new("bash")
+        // Unix: 用用户的登录 shell（$SHELL）拿交互式 PATH，
+        // 覆盖 zsh + nvm/fnm/asdf/mise 等只在 ~/.zshrc 里改 PATH 的场景。
+        // 写死 bash 会漏掉 zsh 用户的 nvm/fnm，导致 claude/node 等明明装了却被判 not installed。
+        let shell = env::var("SHELL").unwrap_or_else(|_| "bash".to_string());
+        let interactive_path = Command::new(&shell)
             .args(["-i", "-c", "echo $PATH"])
             .output()
-            .expect("failed to execute echo $PATH process");
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|p| !p.is_empty());
 
-        let interactive_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        // 使用 which 库的 which_in 接口，手动指定在哪个 PATH 字符串里找
-        which_in(
-            command,
-            Some(interactive_path),
-            env::current_dir().unwrap().as_path(),
-        )
-        .is_ok()
+        let cwd = env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+        // 优先用交互式 shell 拿到的 PATH，失败时回退到当前进程 PATH（which）
+        match interactive_path {
+            Some(path) => which_in(command, Some(path), cwd.as_path()).is_ok(),
+            None => which(command).is_ok(),
+        }
     }
 }
 

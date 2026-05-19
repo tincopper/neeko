@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe } from "lucide-react";
+import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, Pin } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { getAgentIconSrc } from "../../utils/agents";
 import { fileIconSrc } from "../../utils/fileIcons";
@@ -9,6 +9,7 @@ import type { AgentConfig } from "../../types";
 interface UnifiedTabItemProps {
   tab: Tab;
   isActive: boolean;
+  isPinned?: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
@@ -32,7 +33,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
 }
 
 const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
-  ({ tab, isActive, onActivate, onClose, onContextMenu, agents = [] }) => {
+  ({ tab, isActive, isPinned = false, onActivate, onClose, onContextMenu, agents = [] }) => {
     const handleClick = useCallback(() => {
       onActivate(tab.id);
     }, [tab.id, onActivate]);
@@ -56,10 +57,13 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
       (e: React.MouseEvent) => {
         if (e.button === 1) {
           e.preventDefault();
-          onClose(tab.id);
+          // Pinned tabs cannot be closed via middle-click
+          if (!isPinned) {
+            onClose(tab.id);
+          }
         }
       },
-      [tab.id, onClose]
+      [tab.id, isPinned, onClose]
     );
 
     const Icon = getTabIcon(tab.data.kind);
@@ -133,6 +137,10 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
         )}
 
+        {isPinned && (
+          <Pin size={10} className="shrink-0 opacity-50" />
+        )}
+
         <span
           className="truncate"
           style={{ fontSize: "var(--terminal-font-size)" }}
@@ -140,14 +148,16 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           {tab.title}
         </span>
 
-        <button
-          className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
-          style={{ fontSize: "var(--terminal-font-size)" }}
-          onClick={handleClose}
-          title="Close tab"
-        >
-          ×
-        </button>
+        {!isPinned && (
+          <button
+            className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
+            style={{ fontSize: "var(--terminal-font-size)" }}
+            onClick={handleClose}
+            title="Close tab"
+          >
+            ×
+          </button>
+        )}
       </div>
     );
   }

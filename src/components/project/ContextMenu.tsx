@@ -2,15 +2,17 @@
 import { LucideIcon } from "lucide-react";
 import { cn } from "../../utils/cn";
 
-export interface ContextMenuItem {
-  label: string;
-  shortcut?: string;
-  action: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-  separator?: boolean;
-  icon?: LucideIcon;
-}
+export type ContextMenuItem =
+  | { separator: true }
+  | {
+      separator?: false;
+      label: string;
+      action: () => void;
+      shortcut?: string;
+      danger?: boolean;
+      disabled?: boolean;
+      icon?: LucideIcon;
+    };
 
 interface ContextMenuProps {
   items: ContextMenuItem[];
@@ -57,7 +59,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
       style={{ left: pos.left, top: pos.top }}
     >
       {items.map((item, idx) =>
-        item.separator ? (
+        item.separator === true ? (
           <div key={idx} className="gh-context-separator" />
         ) : (
           <div
