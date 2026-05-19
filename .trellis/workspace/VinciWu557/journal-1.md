@@ -1699,3 +1699,37 @@ Settings 左侧导航增加 Projects 分组与项目级 ProjectPanel（编辑名
 ### Next Steps
 
 - None - task complete
+
+
+## Session 45: ProjectsPanel V1 Reference Faithful 重设计
+
+**Date**: 2026-05-19
+**Task**: ProjectsPanel V1 Reference Faithful 重设计
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+把侧边栏 ProjectsPanel 重设计为 V1 Reference Faithful 风格（字母色块头像 + 双行 session + 行尾 ↑N / +A -D / ⌘N chip + WSL/SSH lightweight section header），Local / WSL / SSH 三端共用 ProjectGroup + SessionRow + SessionChips；新增 aheadBehind store 切片 + aheadBehindKey 复合 key + 三端 useAheadBehindSync hook（active 切换时单次 invoke）；下线 sidebar 内嵌 Worktree Changes 文件树；删除 ProjectItemHeader / ProjectItemCard / ProjectBody 等被取代的旧实现。沉淀 5 个跨域复用模式入 spec：跨域共用切片 + 复合 key、跨域 active-切换 lazy invoke、展示组件 + 数据 adapter、Section vs Project header 视觉层级、跨域几乎相同实现并行的 debt 信号。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a29148f` | (see git log) |
+| `fa75e2d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
