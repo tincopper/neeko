@@ -36,3 +36,8 @@ export interface FileChangedEvent {
   /** 相对于项目根目录的变更路径列表（使用 `/` 分隔符） */
   paths: string[];
 }
+
+/** 后端 file-tree-changed 事件 payload（文件新增/删除/重命名时发出，前端应刷新目录树） */
+export interface FileTreeChangedEvent {
+  project_id: string;
+}

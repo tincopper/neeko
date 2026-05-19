@@ -1,5 +1,5 @@
 use crate::git_worker::{GitStatusDiff, GitStatusWorker};
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -20,6 +20,13 @@ pub struct FileChangedEvent {
     pub project_id: String,
     /// 相对于项目根目录的变更文件路径列表（使用 `/` 分隔符）
     pub paths: Vec<String>,
+}
+
+/// 文件树结构变更事件 payload（文件新增/删除/重命名），前端收到后应刷新目录树
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileTreeChangedEvent {
+    /// 项目 ID
+    pub project_id: String,
 }
 
 // ── Throttle 调度器 ───────────────────────────────────────────────────────────
@@ -144,6 +151,63 @@ impl DebounceSender {
     }
 }
 
+// ── TreeChangeDebounceSender：文件树结构变更防抖（Create/Remove/Rename） ───────
+
+/// 收到信号后开启 500ms 滑动窗口，窗口内再无新信号则 emit `file-tree-changed`
+struct TreeChangeDebounceSender {
+    tx: mpsc::Sender<()>,
+}
+
+impl TreeChangeDebounceSender {
+    fn new(project_id: String, app_handle: AppHandle) -> Self {
+        let (tx, rx) = mpsc::channel::<()>();
+
+        std::thread::Builder::new()
+            .name(format!("tree-debounce-{}", project_id))
+            .spawn(move || {
+                loop {
+                    // 阻塞等待第一个结构变更信号
+                    match rx.recv() {
+                        Ok(()) => {}
+                        Err(_) => break,
+                    }
+
+                    // 开始 500ms 滑动窗口：持续收信号就重置 deadline
+                    let mut deadline = Instant::now() + Duration::from_millis(500);
+                    loop {
+                        let now = Instant::now();
+                        if now >= deadline {
+                            break;
+                        }
+                        match rx.recv_timeout(deadline - now) {
+                            Ok(()) => {
+                                // 有新信号，重置窗口
+                                deadline = Instant::now() + Duration::from_millis(500);
+                            }
+                            Err(mpsc::RecvTimeoutError::Timeout) => break,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                        }
+                    }
+
+                    // 窗口结束，emit 一次 file-tree-changed
+                    log::debug!(
+                        "[TreeDebounce:{}] Emitting file-tree-changed",
+                        project_id
+                    );
+                    let _ = app_handle.emit(
+                        "file-tree-changed",
+                        &FileTreeChangedEvent {
+                            project_id: project_id.clone(),
+                        },
+                    );
+                }
+            })
+            .expect("Failed to spawn tree-debounce thread");
+
+        Self { tx }
+    }
+}
+
 // ── WatcherHandle & WatcherManager ───────────────────────────────────────────
 
 struct WatcherHandle {
@@ -153,6 +217,8 @@ struct WatcherHandle {
     _worker: GitStatusWorker,
     // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）
     _debounce: DebounceSender,
+    // file-tree-changed debounce sender（Create/Remove/Rename 事件触发）
+    _tree_debounce: TreeChangeDebounceSender,
     stop_signal: Arc<AtomicBool>,
     // 心跳线程：定期触发 git status 作为 notify 事件丢失时的兜底
     _heartbeat: std::thread::JoinHandle<()>,
@@ -212,10 +278,15 @@ impl WatcherManager {
         // 3. 创建 file-changed debounce sender
         let debounce = DebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
 
+        // 3b. 创建 file-tree-changed debounce sender（专门处理 Create/Remove/Rename）
+        let tree_debounce =
+            TreeChangeDebounceSender::new(project_id.clone(), app_handle.clone());
+
         // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包
         let scheduler_tx = scheduler.sender();
         let debounce_tx_for_notify = debounce.tx.clone();
+        let tree_debounce_tx = tree_debounce.tx.clone();
         let pid_log = project_id.clone();
         let notify_result = RecommendedWatcher::new(
             move |result: Result<Event, notify::Error>| {
@@ -248,8 +319,16 @@ impl WatcherManager {
                     // 驱动 git worker
                     let _ = scheduler_tx.send(());
                     // 发送变更路径给 debounce sender（用于文件 tab 刷新）
-                    for p in relevant_paths {
-                        let _ = debounce_tx_for_notify.send(p);
+                    for p in &relevant_paths {
+                        let _ = debounce_tx_for_notify.send(p.clone());
+                    }
+                    // 文件树结构变更（新增/删除/重命名）时额外触发 tree-changed 防抖
+                    let is_structure_change = matches!(
+                        event.kind,
+                        EventKind::Create(_) | EventKind::Remove(_)
+                    );
+                    if is_structure_change {
+                        let _ = tree_debounce_tx.send(());
                     }
                 }
             },
@@ -309,6 +388,7 @@ impl WatcherManager {
                     _scheduler: scheduler,
                     _worker: worker,
                     _debounce: debounce,
+                    _tree_debounce: tree_debounce,
                     stop_signal: stop,
                     _heartbeat: heartbeat,
                 },
