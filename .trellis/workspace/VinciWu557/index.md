@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 45
+- **Total Sessions**: 46
 - **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1735 | Active |
+| `journal-1.md` | ~1769 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 46 | 2026-05-19 | Project avatar color customization + spec capture | `5adfe61`, `f00cf6b` | `enhance/setting_panel` |
 | 45 | 2026-05-19 | ProjectsPanel V1 Reference Faithful 重设计 | `a29148f`, `fa75e2d` | `enhance/setting_panel` |
 | 44 | 2026-05-18 | Settings: Project panel + built-in agents backend single source | `43da4b9`, `9785fc2` | `enhance/setting_panel` |
 | 43 | 2026-05-18 | Settings Panel App-Level View | `e89661b` | `enhance/setting_panel` |

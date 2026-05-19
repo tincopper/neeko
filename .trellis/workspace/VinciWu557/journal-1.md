@@ -1733,3 +1733,37 @@ Settings 左侧导航增加 Projects 分组与项目级 ProjectPanel（编辑名
 ### Next Steps
 
 - None - task complete
+
+
+## Session 46: Project avatar color customization + spec capture
+
+**Date**: 2026-05-19
+**Task**: Project avatar color customization + spec capture
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+Added per-project customizable avatar color (UI + persistence). Captured patterns for per-project metadata extension and save semantics into spec docs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5adfe61` | (see git log) |
+| `f00cf6b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
