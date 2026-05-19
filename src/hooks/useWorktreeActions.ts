@@ -36,9 +36,10 @@ export function useWorktreeActions({
     if (activeWorktreePath !== null) {
       setActiveWorktreePath(null);
       setActiveWorktreeBranch("");
+      saveWorktreeState(projectId, null);
     }
     invoke("set_view_terminal", { projectId }).catch(() => { });
-  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch]);
+  }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, saveWorktreeState]);
 
   const handleOpenWorktreeTerminal = useCallback(async (
     projectId: string,
