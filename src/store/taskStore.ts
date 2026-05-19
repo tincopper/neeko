@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "./appStore";
-import { destroyTerminalCache } from "../components/terminal/terminalCache";
+import { destroyTerminalCache, terminalCache } from "../components/terminal/terminalCache";
 import type { Tab } from "../types/tab";
 import type { TaskConfig, TaskState } from "../types/task";
 
@@ -203,10 +203,28 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       }
     }
 
-    if (taskState.ptySessionId) {
+    // Resolve which backend PTY session ID to close.
+    // `ptySessionId` is normally set by terminalFactory once the session is
+    // established, but if the user clicks Stop before the async session
+    // creation completes it may still be null.  In that case fall back to
+    // scanning the terminalCache for an entry whose key contains the tab's
+    // sessionId — the cache key format is "projectId:tabId:paneId".
+    const sessionIdToClose = taskState.ptySessionId ?? (() => {
+      if (!taskState.sessionId) return null;
+      for (const [key, entry] of terminalCache.entries()) {
+        if (key.includes(taskState.sessionId) && entry.sessionId) {
+          return entry.sessionId;
+        }
+      }
+      return null;
+    })();
+
+    if (sessionIdToClose) {
       invoke("close_terminal_session", {
-        sessionId: taskState.ptySessionId,
+        sessionId: sessionIdToClose,
       }).catch((e) => console.error("Failed to stop task:", e));
+    } else {
+      console.warn("[TaskStore] stopTask: no PTY session ID found — process may not be killed");
     }
     set({
       taskState: {
