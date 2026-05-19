@@ -5,6 +5,7 @@ import { DEFAULT_TREE_DEPTH } from "../types/file";
 import type { ProjectCommands } from "../types/activeProject";
 import { useAppStore } from "../store/appStore";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
+import { clearViewSnapshot, clearAllForTabKey } from "../utils/editorViewState";
 
 /**
  * 将 newChildren 合并到 fileTree 中路径为 dirPath 的节点
@@ -254,6 +255,7 @@ export function useFileView(
   const closeTab = useCallback((tabId: string) => {
     const tk = tabKeyRef.current;
     if (!tk) return;
+    clearViewSnapshot(tk, tabId);
     useAppStore.getState().closeTab(tk, tabId);
   }, []);
 
@@ -356,6 +358,8 @@ export function useFileView(
    * Clear file view (e.g., when switching projects)
    */
   const clearFileView = useCallback(() => {
+    const tk = tabKeyRef.current;
+    if (tk) clearAllForTabKey(tk);
     useAppStore.setState({
       fileTree: [],
       activeFilePath: null,

@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, keymap } from "@codemirror/view";
+import { EditorView, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor, keymap } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
@@ -14,6 +15,12 @@ import { useAppStore } from "../../store/appStore";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
 import { useActiveProject } from "../../hooks/useActiveProject";
+import {
+   getViewSnapshot,
+   setViewSnapshot,
+   clearViewSnapshot,
+   type SerializedSelection,
+} from "../../utils/editorViewState";
 import InlineHtmlPreview from "./InlineHtmlPreview";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -155,6 +162,10 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    const [isSaving, setIsSaving] = useState(false);
    const [langExtension, setLangExtension] = useState<import("@codemirror/state").Extension | null>(null);
 
+   // CodeMirror EditorView 引用 + 是否已恢复过位置
+   const editorViewRef = useRef<EditorView | null>(null);
+   const editorRestoredRef = useRef(false);
+
    // 处理外部文件修改：重新加载
    const handleReload = useCallback(async () => {
       try {
@@ -169,6 +180,9 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
             isDirty: false,
             externallyModified: false,
          });
+         // 文件内容已变，旧 selection 偏移可能越界，清掉以免恢复到错误位置
+         clearViewSnapshot(tabKey, tabId, "editor");
+         editorRestoredRef.current = false;
       } catch (e) {
          console.error("[FileEditor] Failed to reload file:", e);
       }
@@ -242,6 +256,91 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    // Create theme object (new reference triggers CodeMirror reconfigure)
    const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
 
+   // 把当前 EditorView 状态写回缓存
+   const saveEditorSnapshot = useCallback(() => {
+      const view = editorViewRef.current;
+      if (!view) return;
+      try {
+         const selJson = view.state.selection.toJSON() as SerializedSelection;
+         setViewSnapshot(tabKey, tabId, "editor", {
+            scrollTop: view.scrollDOM.scrollTop,
+            selection: selJson,
+         });
+      } catch {
+         // toJSON 极少失败；失败时仅落 scrollTop
+         setViewSnapshot(tabKey, tabId, "editor", {
+            scrollTop: view.scrollDOM.scrollTop,
+         });
+      }
+   }, [tabKey, tabId]);
+
+   // updateListener: selection / scroll / geometry 变化都更新一次缓存
+   const viewStateExt = useMemo(
+      () =>
+         EditorView.updateListener.of((u) => {
+            if (
+               u.selectionSet ||
+               u.geometryChanged ||
+               u.viewportChanged ||
+               u.docChanged
+            ) {
+               saveEditorSnapshot();
+            }
+         }),
+      [saveEditorSnapshot],
+   );
+
+   // CodeMirror 初始化完成后：捕获 view 引用，恢复上次的 scrollTop/selection
+   const handleCreateEditor = useCallback(
+      (view: EditorView) => {
+         editorViewRef.current = view;
+         if (editorRestoredRef.current) return;
+
+         const snap = getViewSnapshot(tabKey, tabId, "editor");
+         if (!snap) {
+            editorRestoredRef.current = true;
+            return;
+         }
+
+         // 等下一帧让 CodeMirror 完成首屏 measure 再 scroll，避免被覆盖
+         requestAnimationFrame(() => {
+            try {
+               if (snap.selection) {
+                  const docLen = view.state.doc.length;
+                  const safe = snap.selection.ranges.every(
+                     (r) => r.anchor <= docLen && r.head <= docLen,
+                  );
+                  if (safe) {
+                     view.dispatch({
+                        selection: EditorSelection.fromJSON(snap.selection),
+                        scrollIntoView: false,
+                     });
+                  }
+               }
+               const maxScroll = Math.max(
+                  0,
+                  view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight,
+               );
+               view.scrollDOM.scrollTop = Math.min(snap.scrollTop, maxScroll);
+            } catch (e) {
+               console.warn("[FileEditor] restore editor view failed", e);
+            } finally {
+               editorRestoredRef.current = true;
+            }
+         });
+      },
+      [tabKey, tabId],
+   );
+
+   // 卸载兜底：再保存一次（updateListener 大多已覆盖，但保险起见）
+   useEffect(() => {
+      return () => {
+         saveEditorSnapshot();
+         editorViewRef.current = null;
+         editorRestoredRef.current = false;
+      };
+   }, [saveEditorSnapshot]);
+
    // Build CodeMirror extensions
    const extensions = useMemo(() => {
       const exts: import("@codemirror/state").Extension[] = [
@@ -266,12 +365,13 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
          ]),
          saveKeymap,
          cmTheme,
+         viewStateExt,
       ];
 
       if (langExtension) exts.push(langExtension);
 
       return exts;
-   }, [langExtension, fontFamily, fontSize, saveKeymap, theme]);
+   }, [langExtension, fontFamily, fontSize, saveKeymap, theme, viewStateExt]);
 
    // Breadcrumb path segments
    const pathSegments = tab.filePath.replace(/\\/g, "/").split("/");
@@ -382,15 +482,17 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
          <div className="flex-1 min-h-0 overflow-hidden">
             {showPreview ? (
                isMd ? (
-                  <div className="h-full overflow-y-auto px-6 py-4">
+                  <MarkdownScrollContainer tabKey={tabKey} tabId={tabId} content={currentContent}>
                      <MarkdownPreview
                         content={currentContent}
                         theme={theme}
                         basePath={basePath}
                      />
-                  </div>
+                  </MarkdownScrollContainer>
                ) : (
                   <InlineHtmlPreview
+                     tabKey={tabKey}
+                     tabId={tabId}
                      content={currentContent}
                      basePath={basePath}
                      fileName={tab.fileName}
@@ -402,6 +504,7 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
                   height="100%"
                   extensions={extensions}
                   onChange={handleEditorChange}
+                  onCreateEditor={handleCreateEditor}
                   editable={true}
                   readOnly={!canEdit}
                   theme={cmTheme}
@@ -504,6 +607,57 @@ function formatFileSize(bytes: number): string {
    if (bytes < 1024) return `${bytes} B`;
    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Markdown preview 滚动容器：在 tab 切换时保存/恢复 scrollTop。
+ * 内容变化（content 改动）时，保留 scrollTop 但 clamp 到新的最大可滚动值。
+ */
+interface MarkdownScrollContainerProps {
+   tabKey: string;
+   tabId: string;
+   content: string;
+   children: React.ReactNode;
+}
+
+function MarkdownScrollContainer({ tabKey, tabId, content, children }: MarkdownScrollContainerProps) {
+   const ref = useRef<HTMLDivElement | null>(null);
+
+   // 挂载 + 内容变化后恢复 scrollTop（用 layoutEffect 抢在浏览器绘制前）
+   useLayoutEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const snap = getViewSnapshot(tabKey, tabId, "markdown");
+      if (!snap) return;
+      // 内容渲染可能尚未完成（图片/mermaid 异步）；先尝试一次，再 rAF 兜底
+      const apply = () => {
+         const max = Math.max(0, el.scrollHeight - el.clientHeight);
+         el.scrollTop = Math.min(snap.scrollTop, max);
+      };
+      apply();
+      const raf = requestAnimationFrame(apply);
+      return () => cancelAnimationFrame(raf);
+   }, [tabKey, tabId, content]);
+
+   const handleScroll = useCallback(() => {
+      const el = ref.current;
+      if (!el) return;
+      setViewSnapshot(tabKey, tabId, "markdown", { scrollTop: el.scrollTop });
+   }, [tabKey, tabId]);
+
+   useEffect(() => {
+      return () => {
+         const el = ref.current;
+         if (!el) return;
+         setViewSnapshot(tabKey, tabId, "markdown", { scrollTop: el.scrollTop });
+      };
+   }, [tabKey, tabId]);
+
+   return (
+      <div ref={ref} onScroll={handleScroll} className="h-full overflow-y-auto px-6 py-4">
+         {children}
+      </div>
+   );
 }
 
 export default React.memo(FileViewer);
