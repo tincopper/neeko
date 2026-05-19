@@ -4,10 +4,10 @@ import { getAgentIconSrc } from "../../utils/agents";
 import { cn } from "../../utils/cn";
 import { FolderIcon } from "../icons";
 import { Input } from "../ui";
-import { BUILTIN_AGENTS } from "./constants";
 
 interface BuiltInAgentsSectionProps {
   config: AppConfig;
+  builtinAgents: AgentConfig[];
   editingPresetId: string | null;
   editingValue: string;
   skillPathEditingAgentId: string | null;
@@ -34,6 +34,7 @@ interface BuiltInAgentsSectionProps {
 
 const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
   config,
+  builtinAgents,
   editingPresetId,
   editingValue,
   skillPathEditingAgentId,
@@ -64,14 +65,14 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
       </div>
 
       <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
-        {BUILTIN_AGENTS.map((agent) => {
+        {builtinAgents.map((agent) => {
           const iconSrc = getAgentIconSrc(agent.icon);
           const isEditing = editingPresetId === agent.id;
           const effectiveCmd = getEffectiveAgentCommand(agent);
           const isOverridden = !!config.agentCommandOverrides?.[agent.id];
           const effectiveSkillPath = getEffectiveSkillPath(
             agent.id,
-            agent.defaultSkillPath,
+            agent.default_skill_path,
           );
           const hasSkillPath = !!effectiveSkillPath;
 
@@ -148,7 +149,7 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   type="button"
                   className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue"
                    title="Select folder"
-                  onClick={() => onSelectSkillPath(agent.id, agent.defaultSkillPath)}
+                  onClick={() => onSelectSkillPath(agent.id, agent.default_skill_path)}
                 >
                   <FolderIcon size={14} />
                 </button>
@@ -160,10 +161,10 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                     autoFocus
                     spellCheck={false}
                     onChange={(e) => onSkillPathInputValueChange(e.target.value)}
-                    onBlur={() => onSaveSkillPath(agent.id, agent.defaultSkillPath)}
+                    onBlur={() => onSaveSkillPath(agent.id, agent.default_skill_path)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        onSaveSkillPath(agent.id, agent.defaultSkillPath);
+                        onSaveSkillPath(agent.id, agent.default_skill_path);
                       }
                       if (e.key === "Escape") {
                         onCancelSkillPathEdit();
@@ -180,13 +181,13 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                     onClick={() =>
                       onStartEditSkillPath(
                         agent.id,
-                        effectiveSkillPath || agent.defaultSkillPath || "",
+                        effectiveSkillPath || agent.default_skill_path || "",
                       )
                     }
                   >
                     {hasSkillPath
                       ? effectiveSkillPath
-                      : (agent.defaultSkillPath || "Not set")}
+                      : (agent.default_skill_path || "Not set")}
                   </span>
                 )}
               </div>

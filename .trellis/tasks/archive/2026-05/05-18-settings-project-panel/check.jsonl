@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查组件是否遵循 memo/props/结构规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量：无多余注释、无冗余 re-export"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 使用是否符合规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 代码质量规范"}
+{"file": ".trellis/spec/security/index.md", "reason": "路径选择/命令执行安全检查"}

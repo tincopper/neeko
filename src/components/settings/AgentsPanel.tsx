@@ -6,6 +6,7 @@ import CustomAgentsSection from "./CustomAgentsSection";
 
 interface AgentsPanelProps {
   config: AppConfig;
+  builtinAgents: AgentConfig[];
   editingPresetId: string | null;
   editingValue: string;
   skillPathEditingAgentId: string | null;
@@ -42,6 +43,7 @@ interface AgentsPanelProps {
 
 const AgentsPanel: React.FC<AgentsPanelProps> = ({
   config,
+  builtinAgents,
   editingPresetId,
   editingValue,
   skillPathEditingAgentId,
@@ -115,6 +117,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
 
       <BuiltInAgentsSection
         config={config}
+        builtinAgents={builtinAgents}
         editingPresetId={editingPresetId}
         editingValue={editingValue}
         skillPathEditingAgentId={skillPathEditingAgentId}

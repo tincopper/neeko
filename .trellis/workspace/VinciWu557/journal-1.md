@@ -1632,3 +1632,138 @@ Replaced 800ms debounce with throttle scheduler (immediate first-fire + signal c
 ### Next Steps
 
 - None - task complete
+
+
+## Session 43: Settings Panel App-Level View
+
+**Date**: 2026-05-18
+**Task**: Settings Panel App-Level View
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+将 Settings Panel 从 EditorGroupPane 的 Tab 提升为 App-Level View，新建 appViewStore 驱动三路视图切换，实现全屏两栏布局，完全移除旧 settings tab 机制
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e89661b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 44: Settings: Project panel + built-in agents backend single source
+
+**Date**: 2026-05-18
+**Task**: Settings: Project panel + built-in agents backend single source
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+Settings 左侧导航增加 Projects 分组与项目级 ProjectPanel（编辑名称/路径/Agent/IDE 覆盖、管理 Tasks、移除项目）。同时把内置 agents 元数据收敛到后端单源：AgentConfig 增加 is_builtin/default_skill_path 字段，前端废弃 BUILTIN_AGENTS 常量改走 list_agents 过滤；修复设置面板与后端漂移（补回 pi、qoder 默认命令显示修正为 qodercli）；add_agent 命令与 customAgents 持久化加载路径双重防御清零信任字段。沉淀两条 spec：信任标识字段与防御层（type-safety.md）、前端硬编码列表与后端注册表漂移（cross-layer-thinking-guide.md）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43da4b9` | (see git log) |
+| `9785fc2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 45: ProjectsPanel V1 Reference Faithful 重设计
+
+**Date**: 2026-05-19
+**Task**: ProjectsPanel V1 Reference Faithful 重设计
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+把侧边栏 ProjectsPanel 重设计为 V1 Reference Faithful 风格（字母色块头像 + 双行 session + 行尾 ↑N / +A -D / ⌘N chip + WSL/SSH lightweight section header），Local / WSL / SSH 三端共用 ProjectGroup + SessionRow + SessionChips；新增 aheadBehind store 切片 + aheadBehindKey 复合 key + 三端 useAheadBehindSync hook（active 切换时单次 invoke）；下线 sidebar 内嵌 Worktree Changes 文件树；删除 ProjectItemHeader / ProjectItemCard / ProjectBody 等被取代的旧实现。沉淀 5 个跨域复用模式入 spec：跨域共用切片 + 复合 key、跨域 active-切换 lazy invoke、展示组件 + 数据 adapter、Section vs Project header 视觉层级、跨域几乎相同实现并行的 debt 信号。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a29148f` | (see git log) |
+| `fa75e2d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 46: Project avatar color customization + spec capture
+
+**Date**: 2026-05-19
+**Task**: Project avatar color customization + spec capture
+**Branch**: `enhance/setting_panel`
+
+### Summary
+
+Added per-project customizable avatar color (UI + persistence). Captured patterns for per-project metadata extension and save semantics into spec docs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5adfe61` | (see git log) |
+| `f00cf6b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

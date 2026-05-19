@@ -135,6 +135,7 @@ impl StorageManager {
                 terminal_history: p.terminal.history.clone(),
                 last_status: p.terminal.status.clone(),
                 collapsed: p.collapsed,
+                avatar_color: p.avatar_color.clone(),
             })
             .collect();
 

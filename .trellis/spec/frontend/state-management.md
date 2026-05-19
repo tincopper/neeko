@@ -293,6 +293,84 @@ useAppStore.setState({ fileTree: tree, fileViewLoading: false });
 
 ---
 
+## 场景：跨域共用切片 + 复合 key 2026-05-18
+
+### 1. Scope / Trigger
+
+- Trigger：local / WSL / SSH 三端按 project 维度缓存同一份后端结果（如 ahead/behind），但 `projectId` 在 wsl/remote 之间不全局唯一，直接做 `Record<projectId, T>` 会跨域 collision。
+- Scope：`src/store/appStore.ts`、`src/utils/aheadBehindKey.ts`、`src/hooks/useAheadBehindSync.ts` 与读取 `aheadBehind` 切片的所有展示组件。
+
+### 2. Signatures
+
+```ts
+// src/utils/aheadBehindKey.ts
+export type AheadBehindKind = "local" | "wsl" | "remote";
+
+export function aheadBehindKey(
+  kind: AheadBehindKind,
+  entryId: string,
+  projectId: string,
+): string;
+
+// src/store/appStore.ts
+interface AppStoreState {
+  aheadBehind: Record<string, AheadBehind>;
+}
+
+interface AppStoreActions {
+  setAheadBehind(key: string, info: AheadBehind | null): void;
+}
+```
+
+### 3. Contracts
+
+1. Key 派生契约：所有写入/读取路径必须经过 `aheadBehindKey()`，不允许直接拼接字符串。Local 侧退化为 `aheadBehindKey("local", projectId, projectId)`，仍走 helper。
+2. 单一切片契约：跨三域的同语义状态共用一张表（`Record<key, T>`），不为每域单建独立切片。
+3. 写入幂等契约：`setAheadBehind` 必须做同值短路（防止无意义 re-render）。
+4. 清理契约：传 `null` 时从表中删除该 key，避免命令失败后陈旧数据残留。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 |
+|------|------|------|
+| local 写入 | `aheadBehindKey("local", id, id)` | 只在 local 项目读到 |
+| wsl/remote 写入 | `aheadBehindKey("wsl", distro, id)` | 仅命中 wsl 同 distro 同 id 的查询 |
+| 命令失败 | invoke reject | `setAheadBehind(key, null)` 删除 key |
+| 重复同值写入 | 现值 deepEqual 新值 | 不触发 setState |
+
+### 5. Good/Base/Bad Cases
+
+- Good：active 切换时单次 invoke 写一个 key，其余 key 不动。
+- Base：active 离开后旧 key 仍在表里——展示侧由 `isActive` 守卫，不渲染陈旧 chip。
+- Bad：直接 `aheadBehind[\`${distro}:${id}\`] = ...` 拼字符串——与 helper 派生的 key 互不兼容，永远 cache miss。
+
+### 6. Tests Required
+
+- `aheadBehindKey` 三种 kind 派生唯一字符串（无前缀冲突）。
+- `appStore` 单测：`setAheadBehind(key, null)` 后 `aheadBehind[key]` 不存在；同值写入不触发订阅。
+- 集成断言：local 与 wsl 同 `projectId` 互不读到对方数据。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 直接拼字符串，跨域未隔离
+const k = `${distro}:${projectId}`;
+useAppStore.getState().setAheadBehind(k, info);
+```
+
+#### Correct
+
+```ts
+import { aheadBehindKey } from "../utils/aheadBehindKey";
+
+const k = aheadBehindKey("wsl", distro, projectId);
+useAppStore.getState().setAheadBehind(k, info);
+```
+
+---
+
 ## 常见错误
 
 ### 1. 继续把跨域数据通过多层 Props 透传

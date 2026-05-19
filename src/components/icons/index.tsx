@@ -20,6 +20,8 @@ import {
   Folder,
   Sun,
   Keyboard,
+  MoreVertical,
+  Server,
   type LucideProps,
 } from "lucide-react";
 
@@ -43,6 +45,8 @@ export const GitLogoIcon = GitBranch;
 export const SearchIcon = Search;
 export const AppearanceIcon = Sun;
 export const KeyboardIcon = Keyboard;
+export const MoreVerticalIcon = MoreVertical;
+export const ServerIcon = Server;
 
 // ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
 

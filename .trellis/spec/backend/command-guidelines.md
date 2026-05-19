@@ -307,6 +307,42 @@ pub use project::*;  // 必须显式导出，否则 app.rs 无法引用
 
 ---
 
+## 对称 Rust + 渐进前端 caller 模式 2026-05-19
+
+### 适用场景
+
+实现 per-project 元数据（如 `selected_agent`、`selected_ide`、`avatar_color`）时，往往需要在 Local / WSL / SSH 三端 schema 上加同一个字段。Rust 侧的**对称 setter 命令**（`set_<field>` / `wsl_set_project_<field>` / `remote_set_project_<field>`）通常一次落齐三端，**但前端 caller 可以渐进落地**——例如本期 MVP 仅暴露 Local 入口，WSL/SSH UI 留待后续。
+
+这种"Rust 三端对齐、前端单端 caller"是允许的，但必须在 PRD 与代码注释中显式标注以避免后续审计误判 dead code。
+
+### 契约
+
+1. **三个对称命令必须全部注册到 `neeko_invoke_handler!`**，即使前端暂未调用——保证后续接前端 caller 时是"加一行 invoke"而不是"改 Rust + 改宏 + 加 invoke"。
+2. **PRD 显式标注 caller 状态**：在 PRD 的"实施范围"或"取舍点"小节列出"暂无前端 caller 的 Rust 命令"。
+3. **任务汇报中标注**：`trellis-implement` / `trellis-check` 汇报里要把这些命令明确列为"保留作未来扩展"，避免被误判为 dead code 删除。
+4. **不通过 `#[allow(dead_code)]` 标记**：这些命令是公开 Tauri 命令，已经被 `tauri::generate_handler!` 引用，不会触发 dead_code 警告。
+
+### 反模式
+
+❌ **只实现 Local setter，wsl/remote 等用到再补**：会导致后续接 wsl UI 时需要回头改 Rust schema + 命令 + 宏注册三处，增加事故面。
+
+❌ **三个 setter 都不注册到 `neeko_invoke_handler!`**：等到接前端 caller 时一并注册——容易遗漏。
+
+### 实例
+
+`avatar_color` 任务（`05-19-project-avatar-color-customization`）：
+- Rust：`set_project_color` / `wsl_set_project_color` / `remote_set_project_color` 三端对齐，全部注册到 `neeko_invoke_handler!`
+- 前端：MVP 仅 `ProjectPanel.tsx`（Local 子面板）调用 `set_project_color`；`wsl_set_project_color` / `remote_set_project_color` 暂无 caller
+- PRD 显式标注："UI override 入口 MVP 仅 Local"
+- 后续接 WSL/SSH UI 时只需加 `invoke` 调用，无需回头改 Rust
+
+### 何时 *不* 适用
+
+- 命令明显只属于某一端（如 `wsl_get_distros`），不存在"三端对齐"诉求
+- 字段只在一端持久化（如 SSH-only `saved_auth`）
+
+---
+
 ## 终端分屏会话契约 2026-04-17
 
 ### 变更文件

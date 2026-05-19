@@ -19,7 +19,37 @@ macro_rules! wsl_commands {
         $crate::commands::wsl_remove_worktree,
         $crate::commands::wsl_rename_worktree,
         $crate::commands::open_wsl_ide,
+        $crate::commands::wsl_set_project_color,
     };
+}
+
+/// 设置 WSL 项目的 avatar 颜色（None 表示清回 hash 默认）
+/// 修改 sessions.json 内匹配 distro + project_id 的记录
+#[tauri::command]
+pub fn wsl_set_project_color(
+    distro: String,
+    project_id: String,
+    color: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let mut session = state
+        .storage_manager
+        .load_session()
+        .map_err(AppError::from)?;
+    for entry in session.wsl_entries.iter_mut() {
+        if entry.distro != distro {
+            continue;
+        }
+        for project in entry.projects.iter_mut() {
+            if project.id == project_id {
+                project.avatar_color = color.clone();
+            }
+        }
+    }
+    state
+        .storage_manager
+        .save_session(&session)
+        .map_err(AppError::from)
 }
 
 fn wsl_command(program: &str) -> std::process::Command {

@@ -1,21 +1,100 @@
-import React, { useState } from "react";
+import React from "react";
 import { getDistroIcon } from "../../utils/distros";
 import serverIcon from "../../assets/server.svg";
 import { PlusIcon, TrashIcon } from "../icons";
 import ConnectionProjectCard from "./ConnectionProjectCard";
 import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from "./types";
 
+interface SectionActionButtonProps {
+  title: string;
+  hoverColor?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+const SectionActionButton: React.FC<SectionActionButtonProps> = ({
+  title,
+  hoverColor,
+  onClick,
+  children,
+}) => (
+  <button
+    type="button"
+    title={title}
+    className="text-text-muted p-1 rounded-md hover:bg-white/[0.06] transition shrink-0"
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick();
+    }}
+    onMouseOver={(e) => {
+      if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
+    }}
+    onMouseOut={(e) => {
+      (e.currentTarget as HTMLElement).style.color = "";
+    }}
+  >
+    {children}
+  </button>
+);
+
+/**
+ * 轻量 section header —— WSL/SSH 外层 distro/server 头：
+ * - 行高约 22~24px；padding `px-3 pt-3 pb-1`
+ * - Label `text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted`
+ * - distro/server 名 `text-[11px] text-text-secondary`
+ * - 计数 `text-[10.5px] text-text-muted`
+ * - hover 槽位：Add project / Remove server
+ */
+interface SectionHeaderProps {
+  iconSrc: string;
+  iconAlt?: string;
+  kindLabel: "WSL" | "SSH";
+  name: string;
+  count: number;
+  addTitle: string;
+  removeTitle: string;
+  onAdd: () => void;
+  onRemove: () => void;
+}
+
+const SectionHeader: React.FC<SectionHeaderProps> = ({
+  iconSrc,
+  iconAlt,
+  kindLabel,
+  name,
+  count,
+  addTitle,
+  removeTitle,
+  onAdd,
+  onRemove,
+}) => (
+  <div className="group flex items-center gap-2 px-3 pt-3 pb-1 select-none">
+    <img src={iconSrc} className="w-3.5 h-3.5 shrink-0 opacity-80" alt={iconAlt ?? ""} />
+    <span className="text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
+      {kindLabel}
+    </span>
+    <span className="text-[11px] text-text-secondary truncate">· {name}</span>
+    <span className="text-[10.5px] text-text-muted">({count})</span>
+    <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <SectionActionButton title={addTitle} onClick={onAdd}>
+        <PlusIcon size={12} />
+      </SectionActionButton>
+      <SectionActionButton title={removeTitle} hoverColor="#f85149" onClick={onRemove}>
+        <TrashIcon size={11} />
+      </SectionActionButton>
+    </div>
+  </div>
+);
+
 export const WSLItem = React.memo<WSLItemProps>(
   ({
     entry,
     activeKey,
-    openSessions,
+    lastProjectId,
     onSelectProject,
-    onCloseProject,
     onRemoveProject,
     onRemoveEntry,
     onAddProject,
-    onSelectFile,
     onOpenIde,
     onOpenWorktreeTerminal,
     ideCommandOverrides,
@@ -27,112 +106,72 @@ export const WSLItem = React.memo<WSLItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
-    void onCloseProject;
-    const [collapsed, setCollapsed] = useState(false);
-
     const handleDragEnd = onDragEnd
       ? (draggedId: string, targetId: string) => onDragEnd(entry.id, draggedId, targetId)
       : undefined;
 
     return (
-      <div className="gh-project mb-0.5 rounded-md overflow-visible">
-        <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
-          <img
-            src={getDistroIcon(entry.distro)}
-            className="sidebar-distro-icon w-5 h-5 shrink-0"
-            alt=""
-            style={{ cursor: "pointer" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setCollapsed((v) => !v);
-            }}
-          />
-          <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-            <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">
-              {entry.distro}
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>
-              WSL
-            </span>
-          </div>
-          <div
-            className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
-              title="Add WSL project"
-              onClick={() => onAddProject(entry.id)}
-            >
-              <PlusIcon size={11} />
-            </button>
-            <button
-              className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150"
-              title="Remove distro"
-              onClick={() => onRemoveEntry(entry.id)}
-            >
-              <TrashIcon size={11} />
-            </button>
-          </div>
-        </div>
-
-        {!collapsed && (
-          <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
-            {entry.projects.length === 0 ? (
-              <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>
-                No projects
-              </div>
-            ) : (
-              entry.projects.map((project) => {
-                const isActive =
-                  activeKey?.distro === entry.distro &&
-                  activeKey?.projectId === project.id;
-                const hasSession = openSessions.has(project.id);
-                return (
-                  <ConnectionProjectCard
-                    key={project.id}
-                    project={project}
-                    entryId={entry.id}
-                    source={{ type: "wsl", distro: entry.distro }}
-                    isActive={isActive}
-                    hasSession={hasSession}
-                    onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
-                    onRemoveProject={onRemoveProject}
-                    onSelectFile={onSelectFile}
-                    onOpenIde={onOpenIde}
-                    onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    ideCommandOverrides={ideCommandOverrides}
-                    onOpenSettings={onOpenSettings}
-                    onRefresh={
-                      onRefresh ? () => onRefresh(entry.distro, project.id) : undefined
-                    }
-                    agents={agents}
-                    config={config}
-                    onSaveProjectSettings={onSaveProjectSettings}
-                    onShowToast={onShowToast}
-                    onDragEnd={handleDragEnd}
-                  />
-                );
-              })
-            )}
-          </div>
+      <>
+        <SectionHeader
+          iconSrc={getDistroIcon(entry.distro)}
+          iconAlt={entry.distro}
+          kindLabel="WSL"
+          name={entry.distro}
+          count={entry.projects.length}
+          addTitle="Add WSL project"
+          removeTitle="Remove distro"
+          onAdd={() => onAddProject(entry.id)}
+          onRemove={() => onRemoveEntry(entry.id)}
+        />
+        {entry.projects.length === 0 ? (
+          <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
+        ) : (
+          entry.projects.map((project) => {
+            const isActive =
+              activeKey?.distro === entry.distro &&
+              activeKey?.projectId === project.id;
+            return (
+              <ConnectionProjectCard
+                key={project.id}
+                project={project}
+                entryId={entry.id}
+                source={{ type: "wsl", distro: entry.distro }}
+                isActive={isActive}
+                isLast={lastProjectId === project.id}
+                onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
+                onRemoveProject={onRemoveProject}
+                onOpenIde={onOpenIde}
+                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                ideCommandOverrides={ideCommandOverrides}
+                onOpenSettings={onOpenSettings}
+                onRefresh={
+                  onRefresh ? () => onRefresh(entry.distro, project.id) : undefined
+                }
+                agents={agents}
+                config={config}
+                onSaveProjectSettings={onSaveProjectSettings}
+                onShowToast={onShowToast}
+                onDragEnd={handleDragEnd}
+              />
+            );
+          })
         )}
-      </div>
+      </>
     );
   },
 );
+
+WSLItem.displayName = "WSLItem";
 
 export const RemoteItem = React.memo<RemoteItemProps>(
   ({
     entry,
     activeKey,
-    openSessions,
+    lastProjectId,
     onSelectProject,
-    onCloseProject,
     onRemoveProject,
     onRemoveEntry,
     onAddProject,
-    onSelectFile,
     onOpenIde,
     onOpenWorktreeTerminal,
     invokeRemoteGit,
@@ -145,8 +184,6 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
-    void onCloseProject;
-    const [collapsed, setCollapsed] = useState(false);
     const label = `${entry.host}:${entry.port}`;
 
     const handleDragEnd = onDragEnd
@@ -154,93 +191,58 @@ export const RemoteItem = React.memo<RemoteItemProps>(
       : undefined;
 
     return (
-      <div className="gh-project mb-0.5 rounded-md overflow-visible">
-        <div className="gh-project-header group flex items-center p-1.5 px-2 cursor-pointer gap-1.5 rounded-md transition-colors duration-[120ms] select-none hover:bg-bg-hover">
-          <img
-            src={serverIcon}
-            className="sidebar-distro-icon w-5 h-5 shrink-0"
-            alt=""
-            style={{ cursor: "pointer" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setCollapsed((v) => !v);
-            }}
-          />
-          <div className="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-            <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">
-              {label}
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>
-              SSH
-            </span>
-          </div>
-          <div
-            className="gh-project-actions flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
-              title="Add remote project"
-              onClick={() => onAddProject(entry.id)}
-            >
-              <PlusIcon size={11} />
-            </button>
-            <button
-              className="bg-transparent border-none cursor-pointer p-1 rounded flex items-center text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-150"
-              title="Remove server"
-              onClick={() => onRemoveEntry(entry.id)}
-            >
-              <TrashIcon size={11} />
-            </button>
-          </div>
-        </div>
-
-        {!collapsed && (
-          <div className="py-0.5 pb-1" style={{ paddingLeft: 16 }}>
-            {entry.projects.length === 0 ? (
-              <div className="text-xs text-text-muted py-2" style={{ paddingLeft: 28 }}>
-                No projects
-              </div>
-            ) : (
-              entry.projects.map((project) => {
-                const isActive =
-                  activeKey?.host === entry.host && activeKey?.projectId === project.id;
-                const hasSession = openSessions.has(project.id);
-                return (
-                  <ConnectionProjectCard
-                    key={project.id}
-                    project={project}
-                    entryId={entry.id}
-                    source={{
-                      type: "remote",
-                      entryId: entry.id,
-                      host: entry.host,
-                      invokeRemoteGit: invokeRemoteGit!,
-                    }}
-                    isActive={isActive}
-                    hasSession={hasSession}
-                    onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
-                    onRemoveProject={onRemoveProject}
-                    onSelectFile={onSelectFile}
-                    onOpenIde={onOpenIde}
-                    onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                    ideCommandOverrides={ideCommandOverrides}
-                    onOpenSettings={onOpenSettings}
-                    onRefresh={
-                      onRefresh ? () => onRefresh(entry.id, project.id) : undefined
-                    }
-                    agents={agents}
-                    config={config}
-                    onSaveProjectSettings={onSaveProjectSettings}
-                    onShowToast={onShowToast}
-                    onDragEnd={handleDragEnd}
-                  />
-                );
-              })
-            )}
-          </div>
+      <>
+        <SectionHeader
+          iconSrc={serverIcon}
+          iconAlt="server"
+          kindLabel="SSH"
+          name={label}
+          count={entry.projects.length}
+          addTitle="Add Remote project"
+          removeTitle="Remove server"
+          onAdd={() => onAddProject(entry.id)}
+          onRemove={() => onRemoveEntry(entry.id)}
+        />
+        {entry.projects.length === 0 ? (
+          <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
+        ) : (
+          entry.projects.map((project) => {
+            const isActive =
+              activeKey?.host === entry.host && activeKey?.projectId === project.id;
+            return (
+              <ConnectionProjectCard
+                key={project.id}
+                project={project}
+                entryId={entry.id}
+                source={{
+                  type: "remote",
+                  entryId: entry.id,
+                  host: entry.host,
+                  invokeRemoteGit: invokeRemoteGit!,
+                }}
+                isActive={isActive}
+                isLast={lastProjectId === project.id}
+                onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
+                onRemoveProject={onRemoveProject}
+                onOpenIde={onOpenIde}
+                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                ideCommandOverrides={ideCommandOverrides}
+                onOpenSettings={onOpenSettings}
+                onRefresh={
+                  onRefresh ? () => onRefresh(entry.id, project.id) : undefined
+                }
+                agents={agents}
+                config={config}
+                onSaveProjectSettings={onSaveProjectSettings}
+                onShowToast={onShowToast}
+                onDragEnd={handleDragEnd}
+              />
+            );
+          })
         )}
-      </div>
+      </>
     );
   },
 );
+
+RemoteItem.displayName = "RemoteItem";
