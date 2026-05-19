@@ -27,6 +27,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    const wrapperRef = useRef<HTMLDivElement>(null);
    const currentCacheKeyRef = useRef<string | null>(null);
    const loadingElRef = useRef<HTMLDivElement | null>(null);
+   const lastTaskRebuildKeyRef = useRef(0);
    const [rebuildCount, setRebuildCount] = useState(0);
 
    // Use prop if provided, otherwise read from store (worktree selected via sidebar)
@@ -136,15 +137,16 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
 
       detachAll();
 
-      // When a task tab is reused (rebuildKey bumped by taskStore), the old
-      // terminal session has already been destroyed. If the cache still exists
-      // but its sessionId is null it means the process exited and we're
-      // rerunning — destroy it so we fall through to create a fresh terminal.
+      // Only destroy stale task cache when runTask() explicitly bumped rebuildKey.
+      // Otherwise keep the cache alive so the user can view previous run logs.
       const staleCache = terminalCache.get(cacheKey);
       if (staleCache && staleCache.sessionId === null && taskCommand) {
-         log(`Stale task cache detected for ${cacheKey}, destroying for clean rebuild`);
-         destroyTerminalCache(cacheKey);
+         if (taskRebuildKey > lastTaskRebuildKeyRef.current) {
+            log(`Task rebuild requested for ${cacheKey}, destroying for clean rebuild`);
+            destroyTerminalCache(cacheKey);
+         }
       }
+      lastTaskRebuildKeyRef.current = taskRebuildKey;
 
       const existingCache = terminalCache.get(cacheKey);
       if (existingCache) {

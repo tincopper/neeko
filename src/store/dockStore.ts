@@ -21,6 +21,10 @@ export interface DockBarItem {
 export interface DockStore {
   zones: Record<string, DockZoneState>;
   barItems: DockBarItem[];
+  /** Per-panel remembered zone width percentage (0-100). Only panels with non-default widths are stored. */
+  rightPanelSizes: Record<string, number>;
+  /** Left sidebar width as a percentage (0-100). Default 18. */
+  leftPanelSize: number;
 
   togglePanel: (panelId: string) => void;
   activatePanel: (zoneId: string, panelId: string) => void;
@@ -28,6 +32,8 @@ export interface DockStore {
   closePanel: (panelId: string) => void;
   expandZone: (zoneId: string) => void;
   restoreDefaultLayout: () => void;
+  setRightPanelSize: (panelId: string, size: number) => void;
+  setLeftPanelSize: (size: number) => void;
 }
 
 // -- Defaults --
@@ -112,6 +118,8 @@ export const useDockStore = create<DockStore>()(
       return {
         zones: initial.zones,
         barItems: initial.barItems,
+        rightPanelSizes: { browser: 50 },
+        leftPanelSize: 18,
 
         togglePanel: (panelId: string) => {
           const { zones } = get();
@@ -271,22 +279,34 @@ export const useDockStore = create<DockStore>()(
           });
         },
 
+        setRightPanelSize: (panelId: string, size: number) => {
+          set((state) => ({
+            rightPanelSizes: { ...state.rightPanelSizes, [panelId]: size },
+          }));
+        },
+
+        setLeftPanelSize: (size: number) => {
+          set({ leftPanelSize: size });
+        },
+
         restoreDefaultLayout: () => {
           const defaults = createInitialState();
-          set({ zones: defaults.zones, barItems: defaults.barItems });
+          set({ zones: defaults.zones, barItems: defaults.barItems, rightPanelSizes: { browser: 50 }, leftPanelSize: 18 });
         },
       };
     },
     {
       name: "neeko-dock-layout",
-      version: 4,
+      version: 5,
       partialize: (state) => ({
         zones: state.zones,
         barItems: state.barItems,
+        rightPanelSizes: state.rightPanelSizes,
+        leftPanelSize: state.leftPanelSize,
       }),
       merge: (persisted: unknown, current: DockStore) => {
         const saved = persisted as
-          | { zones?: Record<string, DockZoneState>; barItems?: DockBarItem[] }
+          | { zones?: Record<string, DockZoneState>; barItems?: DockBarItem[]; rightPanelSizes?: Record<string, number>; leftPanelSize?: number }
           | undefined;
         const defaults = createInitialState();
         // Rebuild zone panels from registry defaultZone, then restore
@@ -309,10 +329,14 @@ export const useDockStore = create<DockStore>()(
             ? { ...defaultItem, visible: savedItem.visible }
             : defaultItem;
         });
+        const rightPanelSizes = saved?.rightPanelSizes ?? { browser: 50 };
+        const leftPanelSize = saved?.leftPanelSize ?? 18;
         return {
           ...current,
           zones,
           barItems,
+          rightPanelSizes,
+          leftPanelSize,
         };
       },
     },

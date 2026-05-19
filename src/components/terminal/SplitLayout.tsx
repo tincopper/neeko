@@ -98,7 +98,7 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
               if (el) paneRefs.current.set(node.paneId, el);
               else paneRefs.current.delete(node.paneId);
             }}
-            className={`relative min-w-[120px] min-h-[80px] flex-1 flex flex-col overflow-hidden transition-shadow duration-150 ${
+            className={`relative min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden transition-shadow duration-150 ${
               state.paneCount > 1
                 ? isActive
                   ? "border-2 border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset"
@@ -124,7 +124,7 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
           }`}
         >
           <div
-            className="min-w-[120px] min-h-[80px] flex flex-col overflow-hidden"
+            className="min-w-0 min-h-0 flex flex-col overflow-hidden"
             style={{
               flexBasis: `${node.ratio * 100}%`,
               flexGrow: 0,
@@ -147,7 +147,7 @@ function SplitLayout({ layoutId, maxPanes = 4, renderPane, className, onActivePa
             />
           </div>
 
-          <div className="min-w-[120px] min-h-[80px] flex-1 flex flex-col overflow-hidden">{renderTree({ node: node.second, path: [...path, "second"] })}</div>
+          <div className="min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">{renderTree({ node: node.second, path: [...path, "second"] })}</div>
         </div>
       );
     },

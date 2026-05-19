@@ -20,6 +20,8 @@ export interface DockPanelDef {
   component?: React.LazyExoticComponent<React.ComponentType<Record<string, unknown>>>;
   minPanelSize?: number; // px, minimum panel size when expanded
   openAs?: "tab" | "panel"; // default "panel"
+  /** Default zone width percentage (0-100) when this panel is active. Fallback: 18. */
+  defaultZoneSize?: number;
 }
 
 // ── Icon map (static imports for tree-shaking) ──
@@ -140,5 +142,6 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 300,
+    defaultZoneSize: 50,
   },
 };
