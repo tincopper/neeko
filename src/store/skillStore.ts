@@ -137,7 +137,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     });
     if (!filePath) return;
     try {
-      await invoke('install_skill_from_local', { filePath });
+      await invoke('install_local_skill', { sourcePath: filePath });
       await get().refreshSkills();
     } catch (e) {
       console.error('[skillStore] installLocal failed:', e);
@@ -146,7 +146,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   scanSkills: async (): Promise<DiscoveredSkillDto[]> => {
     try {
-      return await invoke<DiscoveredSkillDto[]>('scan_skills');
+      return await invoke<DiscoveredSkillDto[]>('scan_local_skills');
     } catch (e) {
       console.error('[skillStore] scanSkills failed:', e);
       return [];
@@ -155,7 +155,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   createSkill: async (name: string, content: string) => {
     try {
-      await invoke('create_managed_skill', { name, content });
+      await invoke('create_skill', { name, skillContent: content });
       await get().refreshSkills();
     } catch (e) {
       console.error('[skillStore] createSkill failed:', e);

@@ -212,7 +212,7 @@ describe('installLocal', () => {
   it('用户选择文件后调用 invoke("install_skill_from_local") 并刷新列表', async () => {
     mockOpen.mockResolvedValue('/path/to/skill.md');
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'install_skill_from_local') return undefined;
+      if (cmd === 'install_local_skill') return undefined;
       if (cmd === 'get_managed_skills') return [];
       return undefined;
     });
@@ -220,8 +220,8 @@ describe('installLocal', () => {
     await useSkillStore.getState().installLocal();
 
     expect(mockOpen).toHaveBeenCalled();
-    expect(mockInvoke).toHaveBeenCalledWith('install_skill_from_local', {
-      filePath: '/path/to/skill.md',
+    expect(mockInvoke).toHaveBeenCalledWith('install_local_skill', {
+      sourcePath: '/path/to/skill.md',
     });
     expect(mockInvoke).toHaveBeenCalledWith('get_managed_skills');
   });
@@ -244,7 +244,7 @@ describe('scanSkills', () => {
 
     const result = await useSkillStore.getState().scanSkills();
 
-    expect(mockInvoke).toHaveBeenCalledWith('scan_skills');
+    expect(mockInvoke).toHaveBeenCalledWith('scan_local_skills');
     expect(result).toEqual(discovered);
   });
 
@@ -263,16 +263,16 @@ describe('createSkill', () => {
   it('调用 invoke("create_managed_skill") 后自动刷新列表', async () => {
     const newSkill = createManagedSkill({ id: 'new-s', name: 'My Skill' });
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'create_managed_skill') return undefined;
+      if (cmd === 'create_skill') return undefined;
       if (cmd === 'get_managed_skills') return [newSkill];
       return undefined;
     });
 
     await useSkillStore.getState().createSkill('My Skill', '# content');
 
-    expect(mockInvoke).toHaveBeenCalledWith('create_managed_skill', {
+    expect(mockInvoke).toHaveBeenCalledWith('create_skill', {
       name: 'My Skill',
-      content: '# content',
+      skillContent: '# content',
     });
     expect(mockInvoke).toHaveBeenCalledWith('get_managed_skills');
     expect(useSkillStore.getState().skills).toEqual([newSkill]);
