@@ -223,7 +223,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   }, [handleKeyDown]);
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0 bg-bg-primary">
       {/* Left toolbar column: icon bar + optional footer */}
       <div className="flex flex-col shrink-0">
         <DockBar side="left" />

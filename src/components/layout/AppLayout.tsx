@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Plus, Settings } from "lucide-react";
 import { useAppViewStore } from "@/store/appViewStore";
+import { useDockStore } from "@/store/dockStore";
 import { cn } from "@/lib/utils";
 import { DockLayout } from "@/components/dock";
 import MainContent from "@/components/MainContent";
+import { SkillContent } from "@/components/skills";
 import { SettingsView } from "@/components/settings";
 import { IS_WINDOWS } from "@/utils/platform";
 import linuxIcon from "@/assets/linux.svg";
@@ -131,18 +133,28 @@ function AppLayout({
   onOpenSettings,
 }: AppLayoutProps) {
   const appView = useAppViewStore((s) => s.appView);
+  const skillsActive = useDockStore(
+    (s) => s.zones.left?.activePanelId === "skills",
+  );
 
   const isSettingsOpen = appView === "settings";
 
-  // Center content: two-way branch — Skills is a self-contained DockZone panel (left zone),
-  // no longer replaces the center area.
+  // Center content:
+  // Settings — full-page view, independent of dock layout.
+  // Normal mode — MainContent 和 SkillContent 始终挂载，通过 CSS hidden 切换。
+  // 避免 mount/unmount 触发的闪烁和 layout 重计算。
   const centerContent: React.ReactNode = appView === "settings" ? (
     <div className="flex-1 flex flex-col overflow-hidden">
       <SettingsView />
     </div>
   ) : (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <MainContent />
+    <div className="flex-1 flex flex-col overflow-hidden bg-bg-secondary relative">
+      <div className={cn("absolute inset-0", skillsActive && "hidden")}>
+        <MainContent />
+      </div>
+      <div className={cn("absolute inset-0", !skillsActive && "hidden")}>
+        <SkillContent />
+      </div>
     </div>
   );
 

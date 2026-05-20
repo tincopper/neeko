@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSkillStore } from '../../store/skillStore';
 import type { SkillDialogState } from './skillItemTypes';
 import LocalSkillContent from './LocalSkillContent';
@@ -24,6 +24,14 @@ const SkillContent: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore(s => s.activeSkillView);
   const createSkill = useSkillStore(s => s.createSkill);
   const updateSkillDocument = useSkillStore(s => s.updateSkillDocument);
+  const refreshSkills = useSkillStore(s => s.refreshSkills);
+  const refreshTagGroups = useSkillStore(s => s.refreshTagGroups);
+
+  // ── 初始数据加载（SkillContent mount 即 Skills 面板已激活）──────────────────
+  useEffect(() => {
+    refreshSkills();
+    refreshTagGroups();
+  }, [refreshSkills, refreshTagGroups]);
 
   // ── 统一对话框状态 ───────────────────────────────────────────────────────────
   const [dialog, setDialog] = useState<SkillDialogState>(null);

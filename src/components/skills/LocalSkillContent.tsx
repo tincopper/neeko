@@ -69,7 +69,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   }, [tagGroupSkills, skills, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-bg-secondary">
       <SkillHeader
         onCreateClick={handleCreate}
         onInstallClick={handleInstall}
