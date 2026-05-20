@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import {
   useFileActionsContext,
   useAppContext,
-  SkillProvider,
 } from "@/contexts";
 import { useAppStore } from "@/store/appStore";
 import { useDockStore } from "@/store/dockStore";
@@ -297,16 +296,11 @@ GitCommitPanelWrapper.displayName = "GitCommitPanelWrapper";
 // ── SkillsPanelWrapper ──
 
 /**
- * Wraps SkillsPanel with its required SkillProvider context.
- * Each DockZone instance gets its own SkillProvider scope.
+ * Renders SkillsPanel — data is sourced from the global skillStore singleton,
+ * no Provider wrapper needed.
  */
 const SkillsPanelWrapper: React.FC = React.memo(() => {
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
-  return (
-    <SkillProvider activeProjectId={activeProjectId}>
-      <SkillsPanel />
-    </SkillProvider>
-  );
+  return <SkillsPanel />;
 });
 SkillsPanelWrapper.displayName = "SkillsPanelWrapper";
 

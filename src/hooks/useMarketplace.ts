@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { SkillsShSkill, InstallProgress } from "../types";
+import type { SkillsShSkill, InstallProgress, LeaderboardType } from "../types";
 
-export type LeaderboardType = "hot" | "trending" | "alltime";
+export type { LeaderboardType };
 
 interface UseMarketplaceOptions {
   installedSkills: string[];

@@ -1,5 +1,9 @@
 # 已安装 Skill 卡片展示组件
 
+> **状态：COMPLETED（2026-05-20 归档）**
+>
+> 验证结果：`SkillCard.tsx` 已使用 shadcn Card + CardContent + CardFooter，配合 Badge（tags + source）、DropdownMenu（Edit/View/Delete）、agent icons、enabled 状态徽标。`src/components/ui/card.tsx` 使用 cva variants 实现。所有 7 项 PRD 验收标准均已满足。
+
 ## 概述
 
 重构已安装 Skill 的展示方式，使用 shadcn/ui Card 组件呈现，提供更丰富的卡片内容和操作能力。

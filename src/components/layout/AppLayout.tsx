@@ -1,13 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Plus, Settings } from "lucide-react";
-import { useDockStore } from "@/store/dockStore";
-import { useAppStore } from "@/store/appStore";
 import { useAppViewStore } from "@/store/appViewStore";
 import { cn } from "@/lib/utils";
-import { SkillProvider } from "@/contexts/skill-context";
 import { DockLayout } from "@/components/dock";
 import MainContent from "@/components/MainContent";
-import { SkillContent } from "@/components/skills";
 import { SettingsView } from "@/components/settings";
 import { IS_WINDOWS } from "@/utils/platform";
 import linuxIcon from "@/assets/linux.svg";
@@ -134,37 +130,21 @@ function AppLayout({
   onAddRemote,
   onOpenSettings,
 }: AppLayoutProps) {
-  const skillsActive = useDockStore(
-    (s) => s.zones.left?.activePanelId === "skills",
-  );
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
   const appView = useAppViewStore((s) => s.appView);
 
   const isSettingsOpen = appView === "settings";
 
-  // Center content: three-way branch
-  let centerContent: React.ReactNode;
-  if (appView === "settings") {
-    centerContent = (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <SettingsView />
-      </div>
-    );
-  } else if (skillsActive) {
-    centerContent = (
-      <SkillProvider activeProjectId={activeProjectId}>
-        <div className="flex-1 flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
-          <SkillContent />
-        </div>
-      </SkillProvider>
-    );
-  } else {
-    centerContent = (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <MainContent />
-      </div>
-    );
-  }
+  // Center content: two-way branch — Skills is a self-contained DockZone panel (left zone),
+  // no longer replaces the center area.
+  const centerContent: React.ReactNode = appView === "settings" ? (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <SettingsView />
+    </div>
+  ) : (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <MainContent />
+    </div>
+  );
 
   return (
     <DockLayout

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { Button, Input } from "../ui";
 import { ResizablePanel } from "../ui/resizable-panel";
 import MarkdownEditor from "./MarkdownEditor";
+import { useSkillStore } from "../../store/skillStore";
 import type { ManagedSkillDto } from "../../types";
 
 interface EditSkillDialogProps {
@@ -11,10 +11,6 @@ interface EditSkillDialogProps {
   skill: ManagedSkillDto | null;
   onClose: () => void;
   onConfirm: (name: string, skillContent: string) => Promise<void>;
-}
-
-interface SkillDocument {
-  content: string;
 }
 
 const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
@@ -31,9 +27,9 @@ const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
         setLoading(true);
         setError(null);
         
-        invoke<SkillDocument>("get_skill_document", { skillId: skill.id })
-          .then((doc) => {
-            setContent(doc.content);
+        useSkillStore.getState().getSkillDocument(skill.id)
+          .then((content) => {
+            setContent(content);
           })
           .catch((e) => {
             setError(String(e));

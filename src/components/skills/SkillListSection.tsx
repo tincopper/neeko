@@ -1,68 +1,79 @@
-import React, { useMemo } from "react";
-import SkillCard from "./SkillCard";
-import { useSkillContext } from "../../contexts";
+import React from 'react';
+import type { SkillListSectionProps } from './skillItemTypes';
+import SkillCard from './SkillCard';
+import { cn } from '../../utils/cn';
 
-const SkillListSection: React.FC = React.memo(() => {
-   const {
-      skills,
-      searchQuery,
-      selectedSkillId,
-      viewSkillDetail,
-      deleteSkill,
-      openEditSkillDialog,
-      openViewSkillDialog,
-   } = useSkillContext();
+// ─── Skeleton ────────────────────────────────────────────────────────────────
 
+const SKELETON_COUNT = 8;
 
-   const filtered = useMemo(() => {
-      if (!searchQuery.trim()) return skills;
-      const q = searchQuery.toLowerCase();
-      return skills.filter(
-         (s) =>
-            s.name.toLowerCase().includes(q) ||
-            (s.description?.toLowerCase().includes(q)) ||
-            s.tags.some((t) => t.toLowerCase().includes(q))
-      );
-   }, [skills, searchQuery]);
+const SkillCardSkeleton: React.FC = () => (
+  <div className="rounded-md border border-border bg-bg-secondary p-2 flex flex-col gap-1.5 animate-pulse">
+    <div className="h-3 w-3/4 rounded bg-bg-hover" />
+    <div className="h-2 w-full rounded bg-bg-hover" />
+    <div className="h-2 w-2/3 rounded bg-bg-hover" />
+    <div className="flex gap-1 mt-1">
+      <div className="h-2 w-8 rounded-full bg-bg-hover" />
+      <div className="h-2 w-10 rounded-full bg-bg-hover" />
+    </div>
+  </div>
+);
 
-   const handleAction = (action: "detail" | "delete" | "edit", skill: typeof skills[0]) => {
-      if (action === "edit") {
-         openEditSkillDialog(skill);
-      } else if (action === "detail") {
-         openViewSkillDialog(skill);
-      } else if (action === "delete") {
-         deleteSkill(skill.id);
-      }
-   };
+// ─── Component ───────────────────────────────────────────────────────────────
 
-   return (
+/**
+ * Skill 卡片列表（纯展示层，对标 SessionRow / ProjectGroup）。
+ *
+ * 职责：
+ * - 根据传入的 skills 渲染 skeleton / empty / grid
+ * - 通过 actions 接口触发操作，不直接访问 store
+ *
+ * 不负责：过滤（由 LocalSkillContent 的 useMemo 完成）、store 订阅。
+ */
+const SkillListSection: React.FC<SkillListSectionProps> = React.memo(
+  ({ skills, loading, selectedSkillId, actions }) => {
+    const { onSelectSkill, onEditSkill, onViewSkill, onDeleteSkill } = actions;
+
+    return (
       <section className="border-b border-border">
-         <div className="px-3 py-1.5 text-[11px] font-medium text-text-muted uppercase tracking-wider">
-            Skills ({filtered.length})
-         </div>
-         <div className="pb-1">
-            {filtered.length === 0 ? (
-               <div className="px-3 py-4 text-center text-xs text-text-muted">
-                  {skills.length === 0 ? "No skills installed" : "No matching skills"}
-               </div>
-            ) : (
-               <div className="grid grid-cols-4 gap-2 p-2">
-                  {filtered.map((s) => (
-                     <SkillCard
-                        key={s.id}
-                        skill={s}
-                        isSelected={selectedSkillId === s.id}
-                        onSelect={() => viewSkillDetail(s.id === selectedSkillId ? null : s.id)}
-                        onAction={(action) => handleAction(action, s)}
-                     />
-                  ))}
-               </div>
-            )}
-         </div>
-      </section>
-   );
-});
+        <div className="px-3 py-1.5 text-[11px] font-medium text-text-muted uppercase tracking-wider">
+          {loading ? 'Skills' : `Skills (${skills.length})`}
+        </div>
 
-SkillListSection.displayName = "SkillListSection";
+        <div className={cn('pb-1', loading && 'p-2')}>
+          {loading ? (
+            <div className="grid grid-cols-4 gap-2 p-2">
+              {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
+                <SkillCardSkeleton key={i} />
+              ))}
+            </div>
+          ) : skills.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[var(--font-size)] text-text-muted">
+              No skills found
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 p-2">
+              {skills.map(s => (
+                <SkillCard
+                  key={s.id}
+                  skill={s}
+                  isSelected={selectedSkillId === s.id}
+                  onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
+                  onAction={action => {
+                    if (action === 'delete') onDeleteSkill(s.id);
+                    else if (action === 'edit') onEditSkill(s);
+                    else if (action === 'detail') onViewSkill(s);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  },
+);
+
+SkillListSection.displayName = 'SkillListSection';
 
 export default SkillListSection;

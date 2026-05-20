@@ -60,6 +60,8 @@ export interface DiscoveredSkillDto {
 }
 
 // Marketplace types
+export type LeaderboardType = "hot" | "trending" | "alltime";
+
 export interface SkillsShSkill {
   id: string;
   skill_id: string;

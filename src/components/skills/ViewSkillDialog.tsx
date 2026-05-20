@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { Button, Badge } from "../ui";
 import { ResizablePanel } from "../ui/resizable-panel";
 import { MarkdownPreview } from "../ui/MarkdownPreview";
+import { useSkillStore } from "../../store/skillStore";
 import type { ManagedSkillDto } from "../../types";
 import { useAppConfig } from "../../hooks/useAppConfig";
 
@@ -11,10 +11,6 @@ interface ViewSkillDialogProps {
   open: boolean;
   skill: ManagedSkillDto | null;
   onClose: () => void;
-}
-
-interface SkillDocument {
-  content: string;
 }
 
 const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
@@ -29,9 +25,9 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
         setLoading(true);
         setError(null);
         
-        invoke<SkillDocument>("get_skill_document", { skillId: skill.id })
-          .then((doc) => {
-            setContent(doc.content);
+        useSkillStore.getState().getSkillDocument(skill.id)
+          .then((content) => {
+            setContent(content);
           })
           .catch((e) => {
             setError(String(e));

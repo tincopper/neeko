@@ -1,92 +1,106 @@
-import React, { useState, useCallback } from "react";
-import { useSkillContext } from "../../contexts";
-import SkillHeader from "./SkillHeader";
-import SkillSearchBar from "./SkillSearchBar";
-import SkillListSection from "./SkillListSection";
-import CreateSkillDialog from "./CreateSkillDialog";
-import EditSkillDialog from "./EditSkillDialog";
-import ViewSkillDialog from "./ViewSkillDialog";
-import DiscoveredSkillsList from "./DiscoveredSkillsList";
+import React, { useMemo } from 'react';
+import { useSkillStore } from '../../store/skillStore';
+import type { SkillDialogState } from './skillItemTypes';
+import { useLocalSkillActions } from './useLocalSkillActions';
+import SkillHeader from './SkillHeader';
+import SkillSearchInput from './SkillSearchInput';
+import SkillListSection from './SkillListSection';
+import DiscoveredSkillsList from './DiscoveredSkillsList';
 
-const LocalSkillContent: React.FC = React.memo(() => {
+// ─── Props ───────────────────────────────────────────────────────────────────
+
+interface LocalSkillContentProps {
+  /** 由 SkillContent 根级注入，触发对话框（对标 ProjectItem 的 onOpenDialog） */
+  setDialog: (state: SkillDialogState) => void;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+/**
+ * Local Skills 视图的纯组合层（对标 ProjectItem 的组合职责）。
+ *
+ * 职责：
+ * - 消费 useLocalSkillActions hook（scan/install/dialog 触发）
+ * - 从 store 读取数据，经 useMemo 过滤后传给 SkillListSection
+ * - 自身不持有任何业务逻辑或对话框状态
+ */
+const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDialog }) => {
+  const skills = useSkillStore(s => s.skills);
+  const loading = useSkillStore(s => s.loading);
+  const searchQuery = useSkillStore(s => s.searchQuery);
+  const activeTagGroupId = useSkillStore(s => s.activeTagGroupId);
+  const selectedSkillId = useSkillStore(s => s.selectedSkillId);
+  const setSearchQuery = useSkillStore(s => s.setSearchQuery);
+  const fetchSkillsForTagGroup = useSkillStore(s => s.fetchSkillsForTagGroup);
+
   const {
-    installLocal,
-    scanSkills,
-    createSkill,
-    searchQuery,
-    setSearchQuery,
-    editSkillDialogOpen,
-    editSkillDialogData,
-    closeEditSkillDialog,
-    viewSkillDialogOpen,
-    viewSkillDialogData,
-    closeViewSkillDialog,
     discoveredSkills,
-    importDiscoveredSkill,
-    clearDiscovered,
-  } = useSkillContext();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    handleCreate,
+    handleInstall,
+    handleScan,
+    handleImport,
+    handleClearDiscovered,
+    actions,
+  } = useLocalSkillActions(setDialog);
 
-  const handleCreate = useCallback(
-    async (name: string, skillContent: string) => {
-      await createSkill(name, skillContent);
-    },
-    [createSkill]
-  );
+  // ── 过滤逻辑（tag group + search query）────────────────────────────────────
+  // tag group 过滤通过服务端命令完成（fetchSkillsForTagGroup），
+  // 此处用 useMemo 做客户端 searchQuery 二次过滤，两层过滤均在容器层完成。
+  const [tagGroupSkills, setTagGroupSkills] = React.useState<typeof skills | null>(null);
 
-  const handleEdit = useCallback(
-    async (name: string, skillContent: string) => {
-      // TODO: 实现编辑保存逻辑
-      console.log("Edit skill:", name, skillContent);
-    },
-    []
-  );
+  React.useEffect(() => {
+    if (!activeTagGroupId) {
+      setTagGroupSkills(null);
+      return;
+    }
+    fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
+  }, [activeTagGroupId, fetchSkillsForTagGroup]);
+
+  const filteredSkills = useMemo(() => {
+    const base = tagGroupSkills ?? skills;
+    if (!searchQuery.trim()) return base;
+    const q = searchQuery.toLowerCase();
+    return base.filter(
+      s =>
+        s.name.toLowerCase().includes(q) ||
+        s.description?.toLowerCase().includes(q) ||
+        s.tags.some(t => t.toLowerCase().includes(q)),
+    );
+  }, [tagGroupSkills, skills, searchQuery]);
 
   return (
     <div className="flex flex-col h-full">
       <SkillHeader
-        onCreateClick={() => setCreateDialogOpen(true)}
-        onInstallClick={installLocal}
-        onScanClick={scanSkills}
+        onCreateClick={handleCreate}
+        onInstallClick={handleInstall}
+        onScanClick={handleScan}
       />
 
-      <SkillSearchBar
+      <SkillSearchInput
         value={searchQuery}
         onChange={setSearchQuery}
+        placeholder="Search skills..."
+        clearable
       />
 
       <DiscoveredSkillsList
         skills={discoveredSkills}
-        onImport={importDiscoveredSkill}
-        onClear={clearDiscovered}
+        onImport={handleImport}
+        onClear={handleClearDiscovered}
       />
 
       <div className="flex-1 overflow-y-auto p-2">
-        <SkillListSection />
+        <SkillListSection
+          skills={filteredSkills}
+          loading={loading && skills.length === 0}
+          selectedSkillId={selectedSkillId}
+          actions={actions}
+        />
       </div>
-
-      <CreateSkillDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onConfirm={handleCreate}
-      />
-
-      <EditSkillDialog
-        open={editSkillDialogOpen}
-        skill={editSkillDialogData}
-        onClose={closeEditSkillDialog}
-        onConfirm={handleEdit}
-      />
-
-      <ViewSkillDialog
-        open={viewSkillDialogOpen}
-        skill={viewSkillDialogData}
-        onClose={closeViewSkillDialog}
-      />
     </div>
   );
 });
 
-LocalSkillContent.displayName = "LocalSkillContent";
+LocalSkillContent.displayName = 'LocalSkillContent';
 
 export default LocalSkillContent;

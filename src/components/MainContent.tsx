@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import RemoteProjectView from "./RemoteProjectView";
 import { ProjectGuidePage } from "./project";
 import EditorGroupLayout from "./layout/EditorGroupLayout";
+import { SkillContent } from "./skills";
 import {
    useAppContext,
    useProjectActionsContext,
@@ -13,6 +14,7 @@ import {
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
 import { useAppViewStore } from "../store/appViewStore";
+import { useDockStore } from "../store/dockStore";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
@@ -42,6 +44,10 @@ function MainContent() {
    } = useEditorContext();
    const activeProject = useAppStore((state) => state.activeProject);
    const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+
+   // Skills 面板激活时，将 center 区域切换为 SkillContent 视图
+   // 复用 MainContent 的背景容器（bg-bg-secondary 不 unmount），杜绝切换闪烁
+   const skillsActive = useDockStore(s => s.zones.left?.activePanelId === "skills");
 
    // Determine the current project ID (local, WSL, or Remote)
    const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
@@ -177,8 +183,10 @@ function MainContent() {
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 rounded-lg shadow-sm bg-bg-secondary">
-         {/* Remote project view (special case) */}
-         {showRemoteProject ? (
+         {/* Skills view — 复用 MainContent 容器，切换时不 unmount 父 div，不闪烁 */}
+         {skillsActive ? (
+            <SkillContent />
+         ) : showRemoteProject ? (
             <RemoteProjectView />
          ) : tabs.length > 0 ? (
             <EditorGroupLayout

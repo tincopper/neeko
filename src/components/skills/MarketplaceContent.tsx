@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from "react";
 import { Store, Loader2 } from "lucide-react";
-import { useSkillContext } from "../../contexts";
+import { useSkillStore } from "../../store/skillStore";
 import { useMarketplace } from "../../hooks/useMarketplace";
 import MarketplaceSearchBar from "./MarketplaceSearchBar";
 import LeaderboardToggle from "./LeaderboardToggle";
@@ -9,7 +9,8 @@ import Pagination from "./Pagination";
 import MarketSkillCard from "./MarketSkillCard";
 
 const MarketplaceContent: React.FC = React.memo(() => {
-  const { skills, refreshSkills } = useSkillContext();
+  const skills = useSkillStore(s => s.skills);
+  const refreshSkills = useSkillStore(s => s.refreshSkills);
 
   const installedSkillNames = useMemo(
     () => skills.map(s => s.name),

@@ -1,5 +1,9 @@
 # PR#8: Fix Skill command registration and state injection
 
+> **状态：COMPLETED（2026-05-20 归档）**
+>
+> 验证结果：32 个 Skill 命令全部已注册到 `neeko_invoke_handler!`，`Arc<SkillStore>` 通过 `.manage()` 正确注入，State 类型匹配。原始问题已在后续开发中修复，前端功能完全正常。
+
 ## 概述
 
 当前所有 24 个 Skill Tauri 命令虽已定义在 `skill/commands.rs`，但存在两个关键问题导致前端完全无法调用：
