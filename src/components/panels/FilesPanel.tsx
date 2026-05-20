@@ -8,11 +8,11 @@ import type { ProjectType } from "../../types/project";
 
 /** git status → 文件名颜色 class */
 const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
-  Modified:  "text-accent-yellow",
+  Modified:  "text-accent-blue",
   Added:     "text-accent-green",
   Deleted:   "text-accent-red",
-  Renamed:   "text-accent-yellow",
-  Untracked: "text-accent-blue",
+  Renamed:   "text-accent-blue",
+  Untracked: "text-accent-red",
 };
 
 interface FilesPanelProps {
