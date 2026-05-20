@@ -28,6 +28,7 @@ import {
 // ─── Lucide aliases (保持现有组件名) ──────────────────────────────────────────
 
 export const BranchIcon = GitBranch;
+export const GitBranchIcon = GitBranch;
 export const ChevronRightIcon = ChevronRight;
 export const TrashIcon = Trash2;
 export const PlusIcon = Plus;

@@ -238,7 +238,7 @@ function EditorGroupPane({
                             disabled={!installed}
                             title={agent.name}
                           >
-                            <AgentIcon icon={agent.icon} />
+                            <AgentIcon icon={agent.icon} active={selected} />
                             {!compactMode && <span>{agent.name}</span>}
                           </button>
                         );

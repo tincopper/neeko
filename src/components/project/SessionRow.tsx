@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "../../utils/cn";
-import { TerminalIcon, FolderGitIcon } from "../icons";
+import { GitBranchIcon, TerminalIcon } from "../icons";
+import { IconTile } from "../ui";
 import SessionChips from "./SessionChips";
 
 export type SessionKind = "local" | "worktree";
@@ -31,7 +32,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
   onClick,
   trailing,
 }) => {
-  const Icon = kind === "worktree" ? FolderGitIcon : TerminalIcon;
+  const Icon = kind === "worktree" ? GitBranchIcon : TerminalIcon;
   return (
     <div
       className={cn(
@@ -41,17 +42,18 @@ const SessionRow: React.FC<SessionRowProps> = ({
       onClick={onClick}
       title={title}
     >
-      <span
-        className={cn(
-          "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
-          isActive ? "text-text-primary" : "text-text-muted",
-        )}
-        style={{
-          backgroundColor: isActive ? "var(--bg-selected)" : "transparent",
-        }}
-      >
-        <Icon size={16} />
-      </span>
+      <IconTile
+        variant="glyph"
+        size="md"
+        glyph={
+          <Icon
+            size={16}
+            className={cn(
+              isActive ? "text-text-primary" : "text-text-muted",
+            )}
+          />
+        }
+      />
       <div className="flex-1 min-w-0">
         <div className="text-[var(--font-size)] font-semibold text-text-primary truncate">
           {label}

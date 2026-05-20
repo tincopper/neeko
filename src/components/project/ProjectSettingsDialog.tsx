@@ -127,7 +127,7 @@ function ProjectSettingsDialog({
         <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide" style={{ marginTop: 12 }}>Agent</label>
         <div className="relative" ref={agentRef} style={{ width: "100%", marginTop: 4 }}>
           <button className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full" onClick={() => setAgentOpen((v) => !v)}>
-            <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null} size={16} fallback="&#9889;" />
+            <AgentIcon icon={agents.find((a) => a.id === selectedAgentId)?.icon ?? null} size="sm" fallback="&#9889;" />
             <span className="font-medium">{agents.find((a) => a.id === selectedAgentId)?.name ?? "None"}</span>
             <span className="text-xs text-text-secondary ml-auto">{agentOpen ? "−" : "+"}</span>
           </button>
@@ -135,13 +135,13 @@ function ProjectSettingsDialog({
             <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
               <div className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", !selectedAgentId && "bg-accent-blue text-white")}
                 onClick={() => { setSelectedAgentId(null); setAgentOpen(false); }}>
-                <AgentIcon icon={null} size={16} fallback="&#9889;" />
+                <AgentIcon icon={null} size="sm" fallback="&#9889;" />
                 <span className="font-medium">None</span>
               </div>
               {agents.filter((a) => a.enabled).map((agent) => (
                 <div key={agent.id} className={cn("flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover", selectedAgentId === agent.id && "bg-accent-blue text-white")}
                   onClick={() => { setSelectedAgentId(agent.id); setAgentOpen(false); }}>
-                  <AgentIcon icon={agent.icon} size={16} />
+                  <AgentIcon icon={agent.icon} size="sm" />
                   <span className="font-medium">{agent.name}</span>
                   <span className="ml-auto text-xs text-text-muted">{agent.command}</span>
                 </div>

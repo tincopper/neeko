@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "../../utils/cn";
 import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
+import { IconTile } from "../ui";
 import {
   ChevronRightIcon,
   PlusIcon,
@@ -108,17 +109,13 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         onContextMenu={actions.onContextMenu}
         data-testid="project-group-header"
       >
-        <span
-          className="w-7 h-7 rounded-md flex items-center justify-center text-[0.95em] font-bold shrink-0 uppercase"
-          style={{
-            color: avatarStyle.color,
-            backgroundColor: avatarStyle.backgroundColor,
-            border: `1.5px solid ${avatarStyle.color}`,
-          }}
-          aria-hidden="true"
-        >
-          {initials}
-        </span>
+        <IconTile
+          variant="letter"
+          size="md"
+          bg={avatarStyle.backgroundColor}
+          letter={initials}
+          style={{ color: avatarStyle.color }}
+        />
         <div className="flex-1 flex items-baseline gap-1.5 min-w-0">
           <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">
             {name}

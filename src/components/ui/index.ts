@@ -1,4 +1,5 @@
 export { Button, buttonVariants } from "./button";
+export { IconTile } from "./IconTile";
 export { Input, Textarea } from "./input";
 export {
   Dialog, DialogTrigger, DialogPortal, DialogClose,

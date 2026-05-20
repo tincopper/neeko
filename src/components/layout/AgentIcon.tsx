@@ -1,22 +1,26 @@
-﻿import React from "react";
-import { getAgentIconSrc } from "../../utils/agents";
+import React from "react";
+import { getAgentIconSrc, getAgentTileBg } from "../../utils/agents";
+import { IconTile } from "../ui";
+import type { IconTileSize } from "../ui/IconTile";
 
 interface AgentIconProps {
   icon?: string | null;
-  size?: number;
+  size?: IconTileSize;
   fallback?: string;
+  /** 是否为激活态（显示 accent ring） */
+  active?: boolean;
 }
 
-const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "" }) => {
+const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = "xs", fallback = "", active = false }) => {
   const src = getAgentIconSrc(icon);
   if (src) {
     return (
-      <img
-        className="w-4 h-4 object-contain"
+      <IconTile
+        variant="brand"
+        size={size}
+        bg={getAgentTileBg(icon)}
         src={src}
-        width={size}
-        height={size}
-        alt=""
+        active={active}
       />
     );
   }
