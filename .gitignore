@@ -44,3 +44,6 @@ src-tauri/gen/
 .neeko/
 tsconfig.app.tsbuildinfo
 nul
+
+# OMC
+.omc/
