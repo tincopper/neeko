@@ -92,7 +92,7 @@ function TitleBarBranchSwitcher({
         }
       >
         <GitBranch size={12} className="shrink-0" />
-        <span className="max-w-[120px] truncate">{currentBranch}</span>
+        <span className="max-w-[180px] truncate">{currentBranch}</span>
         {isWorktreeMode ? (
           <span className="text-[10px] text-accent-green/50 ml-0.5" title="Worktree branch (read-only)">
             WT

@@ -13,7 +13,7 @@ import type {
 } from "../../types";
 import { IS_MACOS } from "../../utils/platform";
 import { useAppStore } from "../../store/appStore";
-import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
+import { getAvatarStyle } from "../../utils/projectAvatar";
 import neekoIcon from "../../assets/neeko-icon.png";
 
 /** DockBar fixed width in pixels (w-11 = 44px) */
@@ -138,14 +138,22 @@ function TitleBar({
                {/* Project name + branch — always visible */}
                <div className="flex items-center gap-3 shrink-0 ml-2" data-tauri-drag-region>
                   {currentProjectName && (
-                     <span className="flex items-center gap-1.5 shrink-0" data-tauri-drag-region>
+                     <span
+                        className="flex items-center shrink-0"
+                        data-tauri-drag-region
+                        title={currentProjectName}
+                     >
+                        {/*
+                         * 标题栏里不再画项目头像 —— 同样的 letter avatar 在
+                         * sidebar 项目行里已经渲染过一次，标题栏只负责"当前项目"
+                         * 的文字身份，让视觉焦点收敛到项目名 + 分支。
+                         */}
                         <span
-                           className="w-5 h-5 rounded text-[11px] font-semibold flex items-center justify-center shrink-0 uppercase"
-                           style={getAvatarStyle({ name: currentProjectName, color: currentAvatarColor })}
+                           className="text-[var(--font-size)] font-medium text-text-primary max-w-[220px] truncate"
+                           style={{
+                              color: getAvatarStyle({ name: currentProjectName, color: currentAvatarColor }).color,
+                           }}
                         >
-                           {getProjectInitials(currentProjectName)}
-                        </span>
-                        <span className="text-[var(--font-size)] font-medium text-text-primary max-w-[160px] truncate">
                            {currentProjectName}
                         </span>
                      </span>

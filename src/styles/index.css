@@ -297,3 +297,25 @@
   /* Strikethrough (GFM) */
   .markdown-preview del { color: var(--text-muted); }
 }
+
+/* -- Tab status chip (running / failed) --
+ * Decoupled from "active" tab styling: the active tab is indicated by the top
+ * accent bar, while the chip purely conveys process status with a halo + pulse.
+ */
+.tab-status-chip {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+}
+.tab-status-chip-running {
+  background: var(--accent-green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-green) 28%, transparent);
+  animation: tab-chip-pulse 1.4s ease-in-out infinite;
+}
+.tab-status-chip-failed {
+  background: var(--status-failed);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-failed) 28%, transparent);
+}
+@keyframes tab-chip-pulse {
+  50% { opacity: 0.55; transform: scale(0.85); }
+}

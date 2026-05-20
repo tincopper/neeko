@@ -27,7 +27,7 @@ const DockBar: React.FC<DockBarProps> = ({ side }) => {
         aria-label={`${side} toolbar`}
       >
         {barItems.map((item) => (
-          <DockBarButton key={item.panelId} panelId={item.panelId} />
+          <DockBarButton key={item.panelId} panelId={item.panelId} side={side} />
         ))}
       </div>
     </TooltipProvider>

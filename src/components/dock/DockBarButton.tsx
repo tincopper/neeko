@@ -21,11 +21,13 @@ const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
 
 interface DockBarButtonProps {
   panelId: string;
+  /** Which DockBar this button lives on — controls the side of the active accent rail */
+  side?: "left" | "right";
 }
 
 /** Individual icon button on the DockBar (tool window bar).
  *  Subscribes directly to dockStore — no parent props needed for state. */
-const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
+const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "left" }) => {
   const def = dockPanelRegistry[panelId];
   const isTab = def?.openAs === "tab";
 
@@ -116,6 +118,16 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
           >
             {Icon ? <Icon className="h-5 w-5" /> : <span>{def.title[0]}</span>}
           </span>
+          {/* Active accent rail — left edge for left dock, right edge for right dock */}
+          {isActive && (
+            <span
+              aria-hidden="true"
+              className={cn(
+                "pointer-events-none absolute top-2 bottom-2 w-[2px] rounded-full bg-accent",
+                side === "left" ? "left-0" : "right-0",
+              )}
+            />
+          )}
           {/* Badge slot (hidden for now) */}
           <Badge
             variant="secondary"

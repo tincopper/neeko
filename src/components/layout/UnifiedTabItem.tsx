@@ -100,15 +100,16 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         ? fileIconSrc(data.fileName)
         : null;
 
-    // 状态指示器
+    // 状态指示器（与 active 解耦）：
+    //   Running → 绿色 chip + halo + 脉冲
+    //   Failed  → 红色 chip + halo
+    //   Idle    → 不显示（终端正常退出，无需提示）
     const terminalStatus =
       tab.data.kind === "terminal" ? tab.data.status : null;
-    // Show a coloured dot for active task terminals:
-    //   Running → green (accent-green)  Failed → red (status-failed)
-    // Idle (normal completion) shows no dot — the task finished cleanly.
-    const showStatusDot = terminalStatus === "Running" || terminalStatus === "Failed";
-    const statusDotColor =
-      terminalStatus === "Running" ? "bg-accent-green" : "bg-status-failed";
+    const statusKind: "running" | "failed" | null =
+      terminalStatus === "Running" ? "running"
+        : terminalStatus === "Failed" ? "failed"
+        : null;
     const showDirtyDot =
       tab.data.kind === "file" && tab.data.isDirty;
 
@@ -150,6 +151,11 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           <span className="pointer-events-none absolute right-0 top-0 bottom-0 w-0.5 bg-accent rounded-full" />
         )}
 
+        {/* Active accent bar — top edge, sandwiched between drop indicators */}
+        {isActive && !isPinned && (
+          <span className="tab-active-bar pointer-events-none absolute top-0 left-2 right-2 h-[2px] rounded-full bg-accent" />
+        )}
+
         {agentIconSrc ? (
           <img
             src={agentIconSrc}
@@ -174,9 +180,6 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
           />
         )}
 
-        {showStatusDot && (
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDotColor}`} />
-        )}
         {showDirtyDot && (
           <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
         )}
@@ -191,6 +194,18 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
         >
           {tab.title}
         </span>
+
+        {/* Status chip — placed AFTER title, with halo + pulse for Running */}
+        {statusKind && (
+          <span
+            className={cn(
+              "tab-status-chip shrink-0",
+              statusKind === "running" && "tab-status-chip-running",
+              statusKind === "failed" && "tab-status-chip-failed",
+            )}
+            title={statusKind === "running" ? "Running" : "Failed"}
+          />
+        )}
 
         {!isPinned && (
           <button
