@@ -1,19 +1,22 @@
 import type { ITheme } from "@xterm/xterm";
 
 const IS_LINUX = navigator.platform.toLowerCase().startsWith("linux");
+const IS_MAC = navigator.platform.toLowerCase().startsWith("mac");
 
 export const DEFAULT_FONT_FAMILY = IS_LINUX
   ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
-  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
+  : "'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
 
 export function buildFontFamily(fontFamily: string): string {
   const base = fontFamily
     ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}`
     : DEFAULT_FONT_FAMILY;
-  // NerdFontSymbols 作为 PUA 码点最终 fallback（CSS @font-face 通过
-  // unicode-range 仅对图标码点生效，不影响普通文字字体选择）
-  return `${base}, 'NerdFontSymbols'`;
+  return `${base}, 'SymbolsNerdFontMono-Regular', 'NerdFontSymbols'`;
 }
+
+/** macOS Retina 优化的终端渲染参数 */
+export const TERMINAL_LETTER_SPACING = IS_MAC ? 0.5 : 0;
+export const TERMINAL_LINE_HEIGHT = IS_MAC ? 1.35 : 1.2;
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement)
@@ -22,21 +25,21 @@ function cssVar(name: string): string {
 }
 
 const DARK_ANSI_COLORS: Partial<ITheme> = {
-  black: "#000000",
-  red: "#e06c75",
-  green: "#98c379",
-  yellow: "#e5c07b",
-  blue: "#61afef",
-  magenta: "#c678dd",
-  cyan: "#56b6c2",
-  white: "#abb2bf",
-  brightBlack: "#5c6370",
-  brightRed: "#e06c75",
-  brightGreen: "#98c379",
-  brightYellow: "#e5c07b",
-  brightBlue: "#61afef",
-  brightMagenta: "#c678dd",
-  brightCyan: "#56b6c2",
+  black: "#0b0b0c",
+  red: "#ef4444",
+  green: "#22c55e",
+  yellow: "#f59e0b",
+  blue: "#3b82f6",
+  magenta: "#8b5cf6",
+  cyan: "#06b6d4",
+  white: "#f5f5f6",
+  brightBlack: "#5c5c60",
+  brightRed: "#f87171",
+  brightGreen: "#4ade80",
+  brightYellow: "#fbbf24",
+  brightBlue: "#60a5fa",
+  brightMagenta: "#a78bfa",
+  brightCyan: "#22d3ee",
   brightWhite: "#ffffff",
 };
 
@@ -63,7 +66,7 @@ export function buildTerminalTheme(): ITheme {
   const theme =
     document.documentElement.getAttribute("data-theme") || "dark";
   const isLight = theme === "light" || theme === "claude";
-  const bg = cssVar("--bg-secondary") || (isLight ? "#ffffff" : "#000000");
+  const bg = cssVar("--bg-surface") || (isLight ? "#ffffff" : "#1a1a1d");
 
   // Sync terminal background to a dedicated CSS variable so all terminal
   // container layers (wrapper, xterm, scrollable-element, screen) stay in

@@ -3,7 +3,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
-import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
+import { buildFontFamily, buildTerminalTheme, TERMINAL_LETTER_SPACING, TERMINAL_LINE_HEIGHT } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
 import { useAppStore } from "../../store/appStore";
 import {
@@ -54,6 +54,8 @@ export async function createTerminalForProject(
     scrollback: 10000,
     overviewRuler: { width: 0 },
     allowProposedApi: true,
+    letterSpacing: TERMINAL_LETTER_SPACING,
+    lineHeight: TERMINAL_LINE_HEIGHT,
   });
 
   const fitAddon = new FitAddon();

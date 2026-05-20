@@ -33,42 +33,42 @@
 :root[data-theme="dark"],
 :root:not([data-theme]) {
   /* Titlebar gradient */
-  --titlebar-gradient-start: #000000;
+  --titlebar-gradient-start: #0b0b0c;
 
-  /* Background layers */
-  --bg-primary:   #1a1b1e;
-  --bg-gradient-start: #1d1e22;
-  --bg-gradient-end:   #1a1b1e;
-  --bg-secondary: #252528;
-  --bg-tertiary:  #2d2e32;
-  --bg-hover:     #37383d;
-  --bg-selected:  #3f4045;
+  /* Background layers — Neeko Night */
+  --bg-primary:   #0b0b0c;
+  --bg-gradient-start: #0b0b0c;
+  --bg-gradient-end:   #0b0b0c;
+  --bg-secondary: #1a1a1d;
+  --bg-tertiary:  #232326;
+  --bg-hover:     #2d2d32;
+  --bg-selected:  #38383e;
 
-  /* Text */
-  --text-primary:   #ededed;
-  --text-secondary: #888888;
-  --text-muted:     #666666;
+  /* Text — brighter hierarchy */
+  --text-primary:   #f5f5f6;
+  --text-secondary: #949498;
+  --text-muted:     #5c5c60;
 
-  /* Border */
-  --border-color: #2f3035;
+  /* Border — subtler */
+  --border-color: rgba(255, 255, 255, 0.06);
 
   /* Terminal selection */
-  --terminal-selection: rgba(97, 175, 239, 0.3);
+  --terminal-selection: rgba(59, 130, 246, 0.25);
 
-  /* Accent colors */
-  --accent-blue:       #61afef;
-  --accent-blue-rgb:   97, 175, 239;
-  --accent-green:  #98c379;
-  --accent-yellow: #e5c07b;
-  --accent-red:    #e06c75;
+  /* Accent colors — vibrant */
+  --accent-blue:       #3b82f6;
+  --accent-blue-rgb:   59, 130, 246;
+  --accent-green:  #22c55e;
+  --accent-yellow: #f59e0b;
+  --accent-red:    #ef4444;
 
   /* Text on accent backgrounds */
-  --text-on-accent: #111111;
+  --text-on-accent: #ffffff;
 
   /* Status */
-  --status-idle:    #98c379;
-  --status-running: #e5c07b;
-  --status-failed:  #e06c75;
+  --status-idle:    #22c55e;
+  --status-running: #f59e0b;
+  --status-failed:  #ef4444;
 
   /* Diff */
   --diff-added:        #98c37920;

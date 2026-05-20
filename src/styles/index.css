@@ -99,11 +99,11 @@
   .custom-radio input:checked ~ .radio-mark::after { transform: scale(1); }
   .custom-radio:hover .radio-mark { border-color: var(--accent-blue); }
 
-  /* Scrollbars */
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  /* Scrollbars — Neeko Night thin style */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
   /* Settings font ::after */
   .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }

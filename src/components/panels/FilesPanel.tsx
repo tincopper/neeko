@@ -89,19 +89,22 @@ function FileTreeNode({
     onContextMenu?.({ x: e.clientX, y: e.clientY }, node);
   }, [node, onContextMenu]);
 
-  const indent = 4 + depth * 12;
+  const indent = 6 + depth * 14;
 
   return (
     <>
       <div
-        className={`flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded select-none min-w-0 ${
-          isActive ? "bg-accent/10" : "hover:bg-bg-hover"
+        className={`group flex items-center gap-1.5 py-[3px] pr-2 text-[var(--font-size)] cursor-pointer rounded-md select-none min-w-0 transition-colors duration-150 relative ${
+          isActive ? "bg-bg-selected" : "hover:bg-bg-hover"
         }`}
         style={{ paddingLeft: indent }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         title={node.path}
       >
+        {isActive && (
+          <span className="absolute left-0 top-1 bottom-1 w-[2px] rounded-full bg-accent-blue" />
+        )}
         {node.is_dir ? (
           <>
             <ChevronRight
@@ -110,13 +113,13 @@ function FileTreeNode({
               }`}
             />
             <img
-              className="w-4 h-4 shrink-0 block"
+              className="w-[15px] h-[15px] shrink-0 block"
               src={`/icons/${isExpanded ? "_folder_open" : "_folder"}.svg`}
               alt=""
-              width={16}
-              height={16}
+              width={15}
+              height={15}
             />
-            <span className="flex-1 text-text-primary font-medium truncate">{node.name}</span>
+            <span className="flex-1 text-text-primary font-medium truncate text-[11px]">{node.name}</span>
             {isLoadingChildren && (
               <span className="shrink-0 w-3 h-3 rounded-full border border-text-muted border-t-transparent animate-spin ml-1" />
             )}
@@ -125,15 +128,15 @@ function FileTreeNode({
           <>
             <span className="w-3.5 h-3.5 shrink-0" />
             <img
-              className="w-3.5 h-3.5 shrink-0 block opacity-70"
+              className="w-[15px] h-[15px] shrink-0 block opacity-80"
               src={fileIconSrc(node.name)}
               alt=""
-              width={14}
-              height={14}
+              width={15}
+              height={15}
             />
             <span
-              className={`flex-1 truncate ${
-                isActive ? "text-accent font-medium" : "text-text-secondary"
+              className={`flex-1 truncate text-[11px] ${
+                isActive ? "text-accent font-medium" : "text-text-secondary group-hover:text-text-primary"
               }`}
             >
               {node.name}
@@ -332,7 +335,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           {activeFileName ? (
             <>

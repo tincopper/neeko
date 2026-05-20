@@ -119,7 +119,7 @@ function TitleBar({
    return (
       <>
          <div
-             className={`titlebar flex items-center h-9 shrink-0 select-none ${IS_MACOS ? 'pl-[72px]' : ''}`}
+             className={`titlebar flex items-center h-10 shrink-0 select-none ${IS_MACOS ? 'pl-[72px]' : ''}`}
             data-tauri-drag-region
          >
             {/* Left section: fixed width when panel is open (aligns with Projects Panel

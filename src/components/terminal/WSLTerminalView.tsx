@@ -6,7 +6,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { listen } from "@tauri-apps/api/event";
 import { emit } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../../types";
-import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
+import { buildFontFamily, buildTerminalTheme, TERMINAL_LETTER_SPACING, TERMINAL_LINE_HEIGHT } from "../../utils/terminal";
 import { setupTerminalInput } from "./terminalInput";
 import { tryLoadWebgl } from "./terminalFactory";
 import {
@@ -116,15 +116,17 @@ export default React.memo(function WSLTerminalView({
          element.style.width = "100%";
          element.style.height = "100%";
 
-         const term = new Terminal({
-            cursorBlink: true,
-            fontSize,
-            fontFamily: buildFontFamily(fontFamily),
-            theme: buildTerminalTheme(),
-            scrollback: 10000,
-            overviewRuler: { width: 0 },
-            allowProposedApi: true,
-         });
+          const term = new Terminal({
+             cursorBlink: true,
+             fontSize,
+             fontFamily: buildFontFamily(fontFamily),
+             theme: buildTerminalTheme(),
+             scrollback: 10000,
+             overviewRuler: { width: 0 },
+             allowProposedApi: true,
+             letterSpacing: TERMINAL_LETTER_SPACING,
+             lineHeight: TERMINAL_LINE_HEIGHT,
+          });
 
          const fitAddon = new FitAddon();
          term.loadAddon(fitAddon);

@@ -101,17 +101,17 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
         <button
           onClick={handleClick}
           className={cn(
-             "relative w-11 h-11 flex items-center justify-center",
-            "text-text-secondary hover:text-text-primary transition-colors duration-150",
+             "relative w-10 h-10 flex items-center justify-center",
+            "text-text-secondary hover:text-text-primary transition-colors duration-200",
             "focus:outline-none",
           )}
           aria-label={def.title}
         >
           <span
             className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-md",
-              "hover:bg-bg-hover",
-              isActive && "bg-bg-selected text-text-primary",
+              "flex items-center justify-center w-8 h-8 rounded-lg",
+              "hover:bg-bg-hover transition-all duration-200",
+              isActive && "bg-bg-selected text-text-primary shadow-[0_0_0_1px_var(--border-color)]",
             )}
           >
             {Icon ? <Icon className="h-5 w-5" /> : <span>{def.title[0]}</span>}
