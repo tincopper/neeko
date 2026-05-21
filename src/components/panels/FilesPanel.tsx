@@ -1,10 +1,19 @@
 import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "lucide-react";
-import React, { useCallback, useState, useEffect, useRef } from "react";
+import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { fileIconSrc } from "../../utils/fileIcons";
 import { resolveAbsolutePath } from "../../utils/browserUtils";
-import type { FileNode } from "../../types";
+import type { FileNode, FileChange } from "../../types";
 import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
 import type { ProjectType } from "../../types/project";
+
+/** git status → 文件名颜色 class */
+const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
+  Modified:  "text-accent-blue",
+  Added:     "text-accent-green",
+  Deleted:   "text-accent-red",
+  Renamed:   "text-accent-blue",
+  Untracked: "text-accent-red",
+};
 
 interface FilesPanelProps {
   projectName: string | null;
@@ -22,6 +31,8 @@ interface FilesPanelProps {
   onOpenInBrowser?: (filePath: string) => void;
   /** 在系统文件管理器中显示 */
   onRevealInExplorer?: (filePath: string) => void;
+  /** git 变更文件列表（用于文件名着色） */
+  changedFiles?: FileChange[];
 }
 
 /**
@@ -59,6 +70,7 @@ interface FileTreeNodeProps {
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
   onContextMenu?: (position: { x: number; y: number }, node: FileNode) => void;
+  changedFilesMap?: Map<string, FileChange["status"]>;
 }
 
 function FileTreeNode({
@@ -70,6 +82,7 @@ function FileTreeNode({
   onSelectFile,
   onToggleDir,
   onContextMenu,
+  changedFilesMap,
 }: FileTreeNodeProps) {
   const isExpanded = expandedDirs.has(node.path);
   const isActive = activeFilePath === node.path;
@@ -133,7 +146,9 @@ function FileTreeNode({
             />
             <span
               className={`flex-1 truncate ${
-                isActive ? "text-accent font-medium" : "text-text-secondary"
+                isActive
+                  ? "text-accent font-medium"
+                  : (changedFilesMap?.get(node.path) ? STATUS_TEXT_COLOR[changedFilesMap.get(node.path)!] : "text-text-secondary")
               }`}
             >
               {node.name}
@@ -155,6 +170,7 @@ function FileTreeNode({
                   onSelectFile={onSelectFile}
                   onToggleDir={onToggleDir}
                   onContextMenu={onContextMenu}
+                  changedFilesMap={changedFilesMap}
                 />
               ))
             : !isLoadingChildren && null}
@@ -166,13 +182,19 @@ function FileTreeNode({
 
 const MemoizedFileTreeNode = React.memo(FileTreeNode);
 
-function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer }: FilesPanelProps) {
+function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer, changedFiles }: FilesPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   // 正在加载中的目录
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   // 已懒加载过的空目录（避免重复请求真正的空目录）
   const [loadedEmptyDirs, setLoadedEmptyDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
+
+  // git 变更文件路径 → status 映射（用于文件名着色）
+  const changedFilesMap = useMemo(() => {
+    if (!changedFiles || changedFiles.length === 0) return undefined;
+    return new Map(changedFiles.map((f) => [f.path, f.status]));
+  }, [changedFiles]);
   // 右键上下文菜单状态
   const [contextMenu, setContextMenu] = useState<{
     position: { x: number; y: number };
@@ -392,6 +414,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
               onSelectFile={onSelectFile}
               onToggleDir={handleToggleDir}
               onContextMenu={handleContextMenu}
+              changedFilesMap={changedFilesMap}
             />
           ))
         )}
