@@ -240,10 +240,9 @@ export function useAppContainer(): UseAppContainerResult {
     async (projectId: string) => {
       closeSettingsView();
 
-      // Clear WSL/Remote diffState (local useState, batched by React 18 with the
+      // Clear WSL diffState (local useState, batched by React 18 with the
       // appStore.setState below)
       wslActions.setWslDiffState(null);
-      remoteActions.setRemoteDiffState(null);
 
       // ONE appStore.setState: inline clearWorktreeForProject + clear
       // WSL/Remote active + transient worktree + set new active project.
@@ -276,15 +275,9 @@ export function useAppContainer(): UseAppContainerResult {
 
       // Fire-and-forget backend notification
       invoke("set_active_project", { projectId }).catch(console.error);
-
-      const project = useAppStore.getState().activeProject;
-      if (project) {
-        // Fire-and-forget: 不阻塞项目切换流程，让 Commit Panel 可以立即渲染
-        fileView.loadFileTree(projectId, project.path).catch(console.error);
-      }
     },
     [closeSettingsView,
-      wslActions.setWslDiffState, remoteActions.setRemoteDiffState, fileView],
+      wslActions.setWslDiffState],
   );
 
   const handleSelectWslProjectWithSync = useCallback(
@@ -436,9 +429,6 @@ export function useAppContainer(): UseAppContainerResult {
     wslActions.setWslDiffState(null);
   }, [wslActions.setWslDiffState]);
 
-  const handleRemoteDiffBack = useCallback(() => {
-    remoteActions.setRemoteDiffState(null);
-  }, [remoteActions.setRemoteDiffState]);
 
   const handleToggleSettings = useCallback(() => {
     const currentView = useAppViewStore.getState().appView;
@@ -547,9 +537,17 @@ export function useAppContainer(): UseAppContainerResult {
           agentActions.handleSelectLocalAgent(agent, cacheKey);
         }
       } else if (activeWslProject) {
-        wslActions.handleSelectWslAgent(agent);
+        if (newTab) {
+          wslActions.updateWslProjectAgent(agent);
+        } else {
+          wslActions.handleSelectWslAgent(agent);
+        }
       } else if (activeRemoteProject) {
-        remoteActions.handleSelectRemoteAgent(agent);
+        if (newTab) {
+          remoteActions.updateRemoteProjectAgent(agent);
+        } else {
+          remoteActions.handleSelectRemoteAgent(agent);
+        }
       }
     },
     [
@@ -628,19 +626,16 @@ export function useAppContainer(): UseAppContainerResult {
     activeRemoteProject,
     activeRemoteWorktreePath: remoteActions.activeRemoteWorktreePath,
     remoteAuthStore,
-    remoteDiffState: remoteActions.remoteDiffState,
     setRemoteOpenSessions,
     onSelectRemoteProject: handleSelectRemoteProjectWithSync,
     onCloseRemoteProject: handleCloseRemoteProject,
     onRemoveRemoteProject: handleRemoveRemoteProject,
     onRemoveRemoteEntry: handleRemoveRemoteEntry,
     onAddRemoteProject: handleAddRemoteProject,
-    onSelectRemoteFile: remoteActions.handleSelectRemoteFile,
     onRefreshRemoteGit: remoteActions.handleRefreshRemoteGit,
     onOpenRemoteIde: remoteActions.handleOpenRemoteIde,
     onOpenRemoteWorktreeTerminal: handleOpenRemoteWorktreeTerminalWithSync,
     invokeRemoteGit: remoteActions.invokeRemoteGit,
-    onRemoteDiffBack: handleRemoteDiffBack,
     onRemoteDragEnd: handleRemoteDragEnd,
     setPendingAuthEntry,
   };

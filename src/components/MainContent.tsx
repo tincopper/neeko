@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import RemoteProjectView from "./RemoteProjectView";
 import { ProjectGuidePage } from "./project";
 import EditorGroupLayout from "./layout/EditorGroupLayout";
+import { Button } from "./ui/button";
 import {
    useAppContext,
    useProjectActionsContext,
@@ -31,7 +31,13 @@ function MainContent() {
    const {
       activeWslProject,
    } = useWslContext();
-   const { activeRemoteProject } = useRemoteContext();
+   const {
+      activeRemoteProject,
+      remoteAuthStore,
+      activeRemoteWorktreePath,
+      setRemoteOpenSessions,
+      setPendingAuthEntry,
+   } = useRemoteContext();
    const {
       agents,
       compactMode,
@@ -167,18 +173,62 @@ function MainContent() {
          ? `local:${activeProject.id}`
          : activeWslProject
             ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}`
-            : "none";
+            : activeRemoteProject
+               ? `remote:${activeRemoteProject.entry.id}:${activeRemoteProject.project.id}`
+               : "none";
       return `${base}:${groupId}:${tabId ?? "default"}`;
-   }, [activeProject, activeWslProject]);
+   }, [activeProject, activeWslProject, activeRemoteProject]);
 
-   const showRemoteProject = activeRemoteProject && !activeProject && !activeWslProject
-      && storeActiveTabId !== null
-      && !tabs.some((t) => t.id === storeActiveTabId && (t.data.kind === "file" || t.data.kind === "gitLog" || t.data.kind === "diff"));
+   const onRemoteSessionReady = useCallback(
+      (pid: string) => {
+         setRemoteOpenSessions((prev) => new Set(prev).add(pid));
+      },
+      [setRemoteOpenSessions],
+   );
+
+   // Remote project needs authentication but has no credentials yet
+   const needsRemoteAuth = !!(activeRemoteProject && !activeProject && !activeWslProject
+      && !remoteAuthStore.get(activeRemoteProject.entry.id));
+
+   const remoteProjectProp = useMemo(() => {
+      if (!activeRemoteProject || activeProject || activeWslProject) return null;
+      const { entry, project } = activeRemoteProject;
+      const auth = remoteAuthStore.get(entry.id);
+      if (!auth) return null;
+      const projectPath = activeRemoteWorktreePath ?? project.path;
+      const cacheKeySuffix = activeRemoteWorktreePath
+         ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, "")}`
+         : "";
+      return {
+         entryId: entry.id,
+         projectId: project.id,
+         projectName: project.name,
+         projectPath,
+         host: entry.host,
+         port: entry.port,
+         username: entry.username,
+         auth,
+         cacheKeySuffix,
+         onSessionReady: onRemoteSessionReady,
+      };
+   }, [activeRemoteProject, activeProject, activeWslProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full rounded-lg shadow-sm bg-bg-secondary">
-          {showRemoteProject ? (
-            <RemoteProjectView />
+          {needsRemoteAuth ? (
+            <div className="empty-state flex-1 flex flex-col text-text-secondary">
+               <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
+                  <div className="empty-icon text-[3.43em] opacity-50">🔑</div>
+                  <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
+                  <Button
+                     variant="primary"
+                     onClick={() => setPendingAuthEntry(activeRemoteProject!.entry)}
+                     style={{ color: 'var(--text-on-accent)' }}
+                  >
+                     Enter Credentials
+                  </Button>
+               </div>
+            </div>
          ) : tabs.length > 0 ? (
             <EditorGroupLayout
                tabKey={tabKey}
@@ -196,6 +246,7 @@ function MainContent() {
                config={config}
                showToast={showToast}
                wslProject={activeWslProject}
+               remoteProject={remoteProjectProp}
                buildLayoutId={buildLayoutId}
             />
          ) : hasActiveProject && activeProject ? (

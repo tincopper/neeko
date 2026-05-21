@@ -19,7 +19,6 @@ export {
    RemoteProvider,
    useRemoteContext,
    type RemoteContextValue,
-   type RemoteDiffState,
 } from "./remote-context";
 export {
    EditorProvider,

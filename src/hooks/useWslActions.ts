@@ -189,6 +189,25 @@ export function useWslActions({
     openWorktreeTerminal(worktreePath, branch);
   }, [openWorktreeTerminal]);
 
+  const updateWslProjectAgent = useCallback((agent: AgentConfig | null) => {
+    if (!activeWslProject) return;
+
+    const agentId = agent?.id ?? null;
+    const nextEntries = updateProjectInEntries(
+      wslEntries,
+      activeWslProject.project.id,
+      (project) => ({ ...project, selected_agent: agentId }),
+    );
+    setWslEntries(nextEntries);
+    setActiveWslProject((prev) => (
+      prev ? {
+        ...prev,
+        project: { ...prev.project, selected_agent: agentId },
+      } : prev
+    ));
+    saveSession(nextEntries, undefined).catch(console.error);
+  }, [activeWslProject, saveSession, setActiveWslProject, setWslEntries, wslEntries]);
+
   const handleSelectWslAgent = useCallback((agent: AgentConfig | null) => {
     if (!activeWslProject) {
       return;
@@ -208,26 +227,12 @@ export function useWslActions({
       );
     }
 
-    const agentId = agent?.id ?? null;
-    const nextEntries = updateProjectInEntries(
-      wslEntries,
-      activeWslProject.project.id,
-      (project) => ({ ...project, selected_agent: agentId }),
-    );
-    setWslEntries(nextEntries);
-    setActiveWslProject((prev) => (
-      prev ? {
-        ...prev,
-        project: { ...prev.project, selected_agent: agentId },
-      } : prev
-    ));
+    updateWslProjectAgent(agent);
 
     if (!agent) {
       setTimeout(() => refreshWslTerminal(cacheKey), 50);
     }
-
-    saveSession(nextEntries, undefined).catch(console.error);
-  }, [activeWslProject, config, saveSession, setActiveWslProject, setWslEntries, wslEntries]);
+  }, [activeWslProject, config, updateWslProjectAgent]);
 
   return {
     wslDiffState,
@@ -245,5 +250,6 @@ export function useWslActions({
     handleOpenWslIde,
     handleOpenWslWorktreeTerminal,
     handleSelectWslAgent,
+    updateWslProjectAgent,
   };
 }

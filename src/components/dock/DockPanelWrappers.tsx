@@ -81,12 +81,13 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     const sameProject = prevProjectIdRef.current === projectId;
     const fileRootPathChanged = fileRootPath !== prevFileRootPathRef.current;
 
-    // For local projects: only load when panel just became active, or when
+    // For local projects: load when panel just became active, when switching
+    // to a different project (e.g., from WSL/Remote back to local), or when
     // fileRootPath actually changed within the same project (e.g., worktree switch).
     // Skip when only the project object reference changed (e.g., git-changed re-fetch)
     // but the project ID and fileRootPath are the same.
     if (project.type === "local" && activeProjectId) {
-      if (justBecameActive || (sameProject && fileRootPathChanged)) {
+      if (justBecameActive || !sameProject || (sameProject && fileRootPathChanged)) {
         onLoadFileTree(activeProjectId, fileRootPath);
       }
     } else if (project.type !== "local" && commands) {

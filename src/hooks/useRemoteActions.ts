@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -10,7 +10,6 @@ import { useAppStore } from "../store/appStore";
 import type {
   AgentConfig,
   AppConfig,
-  AuthMethod,
   GitInfo,
   RemoteEntrySession,
   RemoteProject,
@@ -25,15 +24,7 @@ interface UseRemoteActionsParams {
   saveSession: SaveSessionFn;
 }
 
-type RemoteDiffState = {
-  entryId: string;
-  host: string;
-  port: number;
-  username: string;
-  auth: AuthMethod;
-  projectPath: string;
-  filePath: string;
-};
+
 
 export function useRemoteActions({
   config,
@@ -66,8 +57,7 @@ export function useRemoteActions({
   const remoteActiveWtBranch = useAppStore((s) => s.remoteActiveWtBranch);
   const remoteOpenedWt = useAppStore((s) => s.remoteOpenedWt);
 
-  // diffState stays local (typed per-connection and only consumed via context)
-  const [remoteDiffState, setRemoteDiffState] = useState<RemoteDiffState | null>(null);
+
 
   const setActiveRemoteWorktreePath = useCallback((path: string | null) => {
     useAppStore.setState({ activeRemoteWorktreePath: path });
@@ -91,7 +81,6 @@ export function useRemoteActions({
         ? prev
         : [...prev, { path: worktreePath, branch }],
     );
-    setRemoteDiffState(null);
   }, [setActiveRemoteWorktreePath, setRemoteActiveWtBranch, setRemoteOpenedWt]);
 
   const resetRemoteTransientState = useCallback(() => {
@@ -100,7 +89,6 @@ export function useRemoteActions({
       remoteActiveWtBranch: "",
       remoteOpenedWt: [],
     });
-    setRemoteDiffState(null);
   }, []);
 
   const invokeRemoteGit = useCallback(
@@ -172,26 +160,7 @@ export function useRemoteActions({
     }
   }, [remoteEntries, remoteAuthStore, resetRemoteTransientState, setActiveRemoteProject, refreshRemoteGit]);
 
-  const handleSelectRemoteFile = useCallback((
-    entryId: string,
-    projectPath: string,
-    filePath: string,
-  ) => {
-    const entry = remoteEntries.find((item) => item.id === entryId);
-    const auth = remoteAuthStore.get(entryId);
-    if (!entry || !auth) {
-      return;
-    }
-    setRemoteDiffState({
-      entryId,
-      host: entry.host,
-      port: entry.port,
-      username: entry.username,
-      auth,
-      projectPath,
-      filePath,
-    });
-  }, [remoteEntries, remoteAuthStore, setRemoteDiffState]);
+
 
   const handleRefreshRemoteGit = useCallback(async (
     entryId: string,
@@ -231,6 +200,25 @@ export function useRemoteActions({
     openWorktreeTerminal(worktreePath, branch);
   }, [openWorktreeTerminal]);
 
+  const updateRemoteProjectAgent = useCallback((agent: AgentConfig | null) => {
+    if (!activeRemoteProject) return;
+
+    const agentId = agent?.id ?? null;
+    const nextEntries = updateProjectInEntries(
+      remoteEntries,
+      activeRemoteProject.project.id,
+      (project) => ({ ...project, selected_agent: agentId }),
+    );
+    setRemoteEntries(nextEntries);
+    setActiveRemoteProject((prev) => (
+      prev ? {
+        ...prev,
+        project: { ...prev.project, selected_agent: agentId },
+      } : prev
+    ));
+    saveSession(undefined, nextEntries).catch(console.error);
+  }, [activeRemoteProject, remoteEntries, saveSession, setActiveRemoteProject, setRemoteEntries]);
+
   const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
     if (!activeRemoteProject) {
       return;
@@ -248,30 +236,14 @@ export function useRemoteActions({
       );
     }
 
-    const agentId = agent?.id ?? null;
-    const nextEntries = updateProjectInEntries(
-      remoteEntries,
-      activeRemoteProject.project.id,
-      (project) => ({ ...project, selected_agent: agentId }),
-    );
-    setRemoteEntries(nextEntries);
-    setActiveRemoteProject((prev) => (
-      prev ? {
-        ...prev,
-        project: { ...prev.project, selected_agent: agentId },
-      } : prev
-    ));
+    updateRemoteProjectAgent(agent);
 
     if (!agent) {
       setTimeout(() => refreshRemoteTerminal(cacheKey), 50);
     }
-
-    saveSession(undefined, nextEntries).catch(console.error);
-  }, [activeRemoteProject, config.agentCommandOverrides, remoteEntries, saveSession, setActiveRemoteProject, setRemoteEntries]);
+  }, [activeRemoteProject, config.agentCommandOverrides, updateRemoteProjectAgent]);
 
   return {
-    remoteDiffState,
-    setRemoteDiffState,
     activeRemoteWorktreePath,
     setActiveRemoteWorktreePath,
     remoteActiveWtBranch,
@@ -281,10 +253,10 @@ export function useRemoteActions({
     resetRemoteTransientState,
     invokeRemoteGit,
     handleSelectRemoteProject,
-    handleSelectRemoteFile,
     handleRefreshRemoteGit,
     handleOpenRemoteIde,
     handleOpenRemoteWorktreeTerminal,
     handleSelectRemoteAgent,
+    updateRemoteProjectAgent,
   };
 }

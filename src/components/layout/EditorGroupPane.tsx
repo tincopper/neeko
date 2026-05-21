@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { SplitLayout, TerminalView, WSLTerminalView } from "../terminal";
+import { SplitLayout, TerminalView, WSLTerminalView, RemoteTerminalView } from "../terminal";
 import type { SplitStateInfo } from "../terminal/SplitLayout";
 import DiffView from "../DiffView";
 import { FileViewer, HtmlPreview } from "../files";
@@ -9,7 +9,7 @@ import UnifiedTabBar from "./UnifiedTabBar";
 import AgentIcon from "./AgentIcon";
 import ContextMenu from "../project/ContextMenu";
 import type { ContextMenuItem } from "../project/ContextMenu";
-import type { AgentConfig, AppConfig, EditorGroupId, Tab } from "../../types";
+import type { AgentConfig, AppConfig, AuthMethod, EditorGroupId, Tab } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
 
@@ -40,6 +40,18 @@ interface EditorGroupPaneProps {
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   wslProject?: { distro: string; project: { id: string } } | null;
+  remoteProject?: {
+    entryId: string;
+    projectId: string;
+    projectName: string;
+    projectPath: string;
+    host: string;
+    port: number;
+    username: string;
+    auth: AuthMethod;
+    cacheKeySuffix?: string;
+    onSessionReady?: (pid: string) => void;
+  } | null;
   layoutId: string;
   /**
    * Extra context-menu items injected by the parent layout.
@@ -72,6 +84,7 @@ function EditorGroupPane({
   config,
   showToast,
   wslProject,
+  remoteProject,
   layoutId,
   contextMenuExtras,
 }: EditorGroupPaneProps) {
@@ -283,7 +296,23 @@ function EditorGroupPane({
             <SplitLayout
               layoutId={layoutId}
               renderPane={(paneId) =>
-                wslProject ? (
+                remoteProject ? (
+                  <RemoteTerminalView
+                    paneId={paneId}
+                    entryId={remoteProject.entryId}
+                    projectId={remoteProject.projectId}
+                    projectName={remoteProject.projectName}
+                    projectPath={remoteProject.projectPath}
+                    host={remoteProject.host}
+                    port={remoteProject.port}
+                    username={remoteProject.username}
+                    auth={remoteProject.auth}
+                    fontSize={config.terminalFontSize}
+                    fontFamily={config.fontFamily}
+                    cacheKeySuffix={remoteProject.cacheKeySuffix}
+                    onSessionReady={remoteProject.onSessionReady}
+                  />
+                ) : wslProject ? (
                   <WSLTerminalView paneId={paneId} />
                 ) : (
                   <TerminalView paneId={paneId} />

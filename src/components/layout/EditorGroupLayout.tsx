@@ -7,7 +7,7 @@ import {
 import EditorGroupPane from "./EditorGroupPane";
 import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
 import { useAppStore } from "../../store/appStore";
-import type { AgentConfig, AppConfig, Tab } from "../../types";
+import type { AgentConfig, AppConfig, AuthMethod, Tab } from "../../types";
 
 interface EditorGroupLayoutProps {
   tabKey: string;
@@ -25,6 +25,18 @@ interface EditorGroupLayoutProps {
   config: AppConfig;
   showToast: (msg: string, type?: "info" | "error") => void;
   wslProject?: { distro: string; project: { id: string } } | null;
+  remoteProject?: {
+    entryId: string;
+    projectId: string;
+    projectName: string;
+    projectPath: string;
+    host: string;
+    port: number;
+    username: string;
+    auth: AuthMethod;
+    cacheKeySuffix?: string;
+    onSessionReady?: (pid: string) => void;
+  } | null;
   buildLayoutId: (groupId: string, tabId: string | null) => string;
 }
 
@@ -42,6 +54,7 @@ function EditorGroupLayout({
   config,
   showToast,
   wslProject,
+  remoteProject,
   buildLayoutId,
 }: EditorGroupLayoutProps) {
   const {
@@ -212,6 +225,7 @@ function EditorGroupLayout({
     config,
     showToast,
     wslProject,
+    remoteProject,
     onActivateTab: handleActivateTab,
     onCloseTab:    handleCloseTab,
     onSplitRight:  splitRight,
