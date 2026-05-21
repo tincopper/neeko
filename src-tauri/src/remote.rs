@@ -1,4 +1,6 @@
 use crate::models::{AuthMethod, TerminalSession, TerminalStatus};
+use crate::theme::common;
+use crate::utils::command::ssh_auth;
 use anyhow::Result;
 use russh::*;
 use std::collections::HashMap;
@@ -23,19 +25,6 @@ struct SSHHandle {
 pub struct RemoteTerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     ssh_handles: Arc<Mutex<HashMap<String, SSHHandle>>>,
-}
-
-struct Client;
-
-impl client::Handler for Client {
-    type Error = russh::Error;
-
-    async fn check_server_key(
-        &mut self,
-        _server_public_key: &russh::keys::PublicKey,
-    ) -> Result<bool, Self::Error> {
-        Ok(true)
-    }
 }
 
 impl RemoteTerminalManager {
@@ -64,39 +53,8 @@ impl RemoteTerminalManager {
         log_info(&format!("[SSH] Username: {}", username));
         log_info(&format!("[SSH] Working Dir: {}", project_path));
 
-        // 建立 SSH 连接
-        let config = Arc::new(client::Config::default());
-        let mut session = client::connect(config, (host, port), Client).await?;
-
-        // 认证
-        let auth_result = match auth {
-            AuthMethod::Password(password) => {
-                session.authenticate_password(username, password).await?
-            }
-            AuthMethod::KeyFile(key_path) => {
-                let key_pair = russh::keys::load_secret_key(key_path, None)?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-            AuthMethod::KeyFileWithPassphrase {
-                key_path,
-                passphrase,
-            } => {
-                let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-        };
-
-        if !auth_result.success() {
-            return Err(anyhow::anyhow!("SSH authentication failed"));
-        }
+        // 建立 SSH 连接并认证
+        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         log_info(&format!("[SSH] Authentication successful for {}", username));
 
@@ -296,39 +254,7 @@ impl RemoteTerminalManager {
         username: &str,
         auth: &AuthMethod,
     ) -> Result<()> {
-        let config = Arc::new(client::Config::default());
-        let mut session = client::connect(config, (host, port), Client).await?;
-
-        let auth_result = match auth {
-            AuthMethod::Password(password) => {
-                session.authenticate_password(username, password).await?
-            }
-            AuthMethod::KeyFile(key_path) => {
-                let key_pair = russh::keys::load_secret_key(key_path, None)?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-            AuthMethod::KeyFileWithPassphrase {
-                key_path,
-                passphrase,
-            } => {
-                let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-        };
-
-        if !auth_result.success() {
-            return Err(anyhow::anyhow!(
-                "Authentication failed: invalid credentials"
-            ));
-        }
+        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, b"echo ok").await?;
@@ -356,37 +282,7 @@ impl RemoteTerminalManager {
         auth: &AuthMethod,
         path: &str,
     ) -> Result<Vec<String>> {
-        let config = Arc::new(client::Config::default());
-        let mut session = client::connect(config, (host, port), Client).await?;
-
-        let auth_result = match auth {
-            AuthMethod::Password(password) => {
-                session.authenticate_password(username, password).await?
-            }
-            AuthMethod::KeyFile(key_path) => {
-                let key_pair = russh::keys::load_secret_key(key_path, None)?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-            AuthMethod::KeyFileWithPassphrase {
-                key_path,
-                passphrase,
-            } => {
-                let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
-                let key_with_hash =
-                    russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-                session
-                    .authenticate_publickey(username, key_with_hash)
-                    .await?
-            }
-        };
-
-        if !auth_result.success() {
-            return Err(anyhow::anyhow!("SSH authentication failed"));
-        }
+        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         let mut channel = session.channel_open_session().await?;
         let safe_path = path.replace('\'', "'\\''");
@@ -433,8 +329,8 @@ fn log_error(msg: &str) {
 
 /// 安装远程 OpenCode + Pi 主题文件和项目配置
 /// 每个操作使用独立的 channel（SSH channel 只能 exec 一次）
-async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, project_path: &str) {
-    let theme = match read_neeko_theme() {
+async fn setup_remote_opencode_theme(session: &russh::client::Handle<ssh_auth::Client>, project_path: &str) {
+    let theme = match common::read_neeko_theme() {
         Some(t) => t,
         None => return,
     };
@@ -517,15 +413,6 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<Client>, pr
             }
         }
     }
-}
-
-/// 从 ~/.neeko/config.json 读取当前主题
-fn read_neeko_theme() -> Option<String> {
-    let home = dirs::home_dir()?;
-    let config_path = home.join(".neeko").join("config.json");
-    let content = std::fs::read_to_string(&config_path).ok()?;
-    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-    Some(crate::opencode_theme::get_current_theme(&config))
 }
 
 fn log_warn(msg: &str) {

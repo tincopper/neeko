@@ -1,7 +1,7 @@
 use crate::models::AuthMethod;
+use crate::utils::command::ssh_auth;
 use anyhow::Result;
 use russh::*;
-use std::sync::Arc;
 
 /// 通过 SSH 通道执行命令并等待完成（验证 exit code）
 pub async fn exec(channel: &mut russh::Channel<russh::client::Msg>, cmd: &str) -> Result<()> {
@@ -34,45 +34,7 @@ pub async fn exec_command(
     auth: &AuthMethod,
     cmd: &str,
 ) -> Result<String> {
-    struct Client;
-
-    impl client::Handler for Client {
-        type Error = russh::Error;
-        async fn check_server_key(
-            &mut self,
-            _server_public_key: &russh::keys::PublicKey,
-        ) -> Result<bool, Self::Error> {
-            Ok(true)
-        }
-    }
-
-    let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (host, port), Client).await?;
-
-    let auth_result = match auth {
-        AuthMethod::Password(password) => session.authenticate_password(username, password).await?,
-        AuthMethod::KeyFile(key_path) => {
-            let key_pair = russh::keys::load_secret_key(key_path, None)?;
-            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session
-                .authenticate_publickey(username, key_with_hash)
-                .await?
-        }
-        AuthMethod::KeyFileWithPassphrase {
-            key_path,
-            passphrase,
-        } => {
-            let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase))?;
-            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
-            session
-                .authenticate_publickey(username, key_with_hash)
-                .await?
-        }
-    };
-
-    if !auth_result.success() {
-        return Err(anyhow::anyhow!("SSH authentication failed"));
-    }
+    let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
     let mut channel = session.channel_open_session().await?;
     channel.exec(true, cmd.as_bytes()).await?;
