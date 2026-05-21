@@ -59,6 +59,11 @@ src-tauri/
     │   ├── local.rs
     │   ├── remote.rs
     │   └── wsl.rs
+    ├── theme/                # 主题安装与同步（OpenCode + Pi）
+    │   ├── mod.rs
+    │   ├── common.rs         # 共享工具：map_theme_name, base64_encode, shell_escape, read_neeko_theme
+    │   ├── opencode.rs       # OpenCode 主题：本地/WSL/SSH 安装与配置
+    │   └── pi.rs             # Pi 主题：本地/WSL/SSH 安装与配置
     ├── skill/                # Skill 系统（自包含子系统）
     │   ├── commands.rs
     │   ├── content_hash.rs
@@ -67,6 +72,11 @@ src-tauri/
     │   ├── types.rs
     │   └── ...
     ├── utils/                # 工具函数
+    │   ├── command/          # 命令执行工具
+    │   │   ├── local.rs
+    │   │   ├── ssh.rs        # SSH 命令执行（一次性连接）
+    │   │   ├── ssh_auth.rs   # SSH 认证统一：authenticate(), connect_and_authenticate()
+    │   │   └── wsl.rs
     │   └── fonts.rs
     ├── project.rs            # ProjectManager —— 项目 CRUD
     ├── terminal.rs           # TerminalManager —— 本地 PTY 生命周期
@@ -92,11 +102,14 @@ pub mod commands;
 pub mod error;
 pub mod git;
 pub mod models;
+pub mod opencode_theme;    // re-export wrapper → theme::opencode
+pub mod pi_theme;          // re-export wrapper → theme::pi
 pub mod project;
 pub mod remote;
 pub mod skill;
 pub mod storage;
 pub mod terminal;
+pub mod theme;             // 主题模块：common + opencode + pi
 pub mod utils;
 pub mod uri_scheme;
 pub mod watcher;
@@ -175,6 +188,8 @@ pub struct AppStateWrapper {
 | 新数据模型 | `models/<domain>.rs`，在 `models/mod.rs` 中导出 |
 | 新 Manager | 新建 `src/<name>.rs`，在 `lib.rs` 中用 `mod` 声明，添加到 `AppStateWrapper` |
 | Git 操作 | `git/local.rs`、`git/wsl.rs` 或 `git/remote.rs` |
+| SSH 认证 | `utils/command/ssh_auth.rs`（统一 `authenticate()` 和 `connect_and_authenticate()`） |
+| 主题操作 | `theme/opencode.rs` 或 `theme/pi.rs`（共享工具在 `theme/common.rs`） |
 | 工具函数 | `utils/<name>.rs` |
 | 错误类型扩展 | `error.rs` |
 
@@ -201,3 +216,6 @@ pub struct AppStateWrapper {
 - 命令拆分：`src-tauri/src/commands/project.rs` —— 领域命令独立模块
 - 中枢模式：`src-tauri/src/app.rs` —— Tauri Builder + 命令注册表
 - 状态组装：`src-tauri/src/app_state.rs` —— `AppStateWrapper` 定义
+- SSH 认证统一：`src-tauri/src/utils/command/ssh_auth.rs` —— `connect_and_authenticate()` 函数
+- 主题模块化：`src-tauri/src/theme/` —— `common.rs` 共享工具 + `opencode.rs`/`pi.rs` 域逻辑
+- Re-export wrapper：`src-tauri/src/opencode_theme.rs` 和 `pi_theme.rs` 为薄包装层，指向 `theme::` 子模块
