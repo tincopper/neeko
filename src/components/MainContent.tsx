@@ -176,7 +176,7 @@ function MainContent() {
       && !tabs.some((t) => t.id === storeActiveTabId && (t.data.kind === "file" || t.data.kind === "gitLog" || t.data.kind === "diff"));
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 rounded-lg shadow-sm bg-bg-secondary">
+      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full rounded-lg shadow-sm bg-bg-secondary">
           {showRemoteProject ? (
             <RemoteProjectView />
          ) : tabs.length > 0 ? (
