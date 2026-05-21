@@ -52,6 +52,10 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
   const changedFiles = project.gitInfo?.changed_files ?? [];
 
+  const noCommits = project.gitInfo !== null &&
+    project.gitInfo.branches.length === 0 &&
+    !project.gitInfo.current_branch;
+
   // Diff stats 懒加载：首次渲染后异步获取 +/- 统计
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({});
 
@@ -397,16 +401,22 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       />
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-md">
-        <ChangesList
-          files={changedFilesWithStats}
-          selectedFiles={selectedFiles}
-          onToggleFile={toggleFile}
-          onDiscardFile={handleDiscardFile}
-          onStageFile={handleStageFile}
-          onStageAllUntracked={handleStageAllUntracked}
-          onFileSelect={(path) => onSelectFile?.(path)}
-          loading={loading}
-        />
+        {noCommits ? (
+          <div className="flex-1 flex items-center justify-center">
+            <span className="text-[var(--font-size)] text-text-muted py-4">No commits yet</span>
+          </div>
+        ) : (
+          <ChangesList
+            files={changedFilesWithStats}
+            selectedFiles={selectedFiles}
+            onToggleFile={toggleFile}
+            onDiscardFile={handleDiscardFile}
+            onStageFile={handleStageFile}
+            onStageAllUntracked={handleStageAllUntracked}
+            onFileSelect={(path) => onSelectFile?.(path)}
+            loading={loading}
+          />
+        )}
       </div>
 
       {/* Draggable divider */}

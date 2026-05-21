@@ -34,6 +34,7 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
 
     let statuses = repo.statuses(Some(&mut opts))?;
     let mut files = Vec::new();
+    let repo_workdir = repo.workdir().unwrap_or(std::path::Path::new(""));
 
     for entry in statuses.iter() {
         if let Some(path) = entry.path() {
@@ -45,11 +46,18 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
             if status.is_empty() {
                 continue;
             }
+            if has_symlink_ancestor(repo_workdir, path) {
+                continue;
+            }
 
             let file_status = if status.contains(Status::INDEX_NEW) {
                 FileStatus::Added
             } else if status.contains(Status::WT_NEW) {
                 FileStatus::Untracked
+            } else if status.contains(Status::WT_TYPECHANGE)
+                || status.contains(Status::INDEX_TYPECHANGE)
+            {
+                FileStatus::Modified
             } else if status.contains(Status::WT_DELETED) || status.contains(Status::INDEX_DELETED)
             {
                 FileStatus::Deleted
@@ -74,6 +82,37 @@ fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
     }
 
     Ok(files)
+}
+
+/// Windows: 检测 reparse point（symlink + junction）。
+/// 非 Windows: 检测 symlink。
+#[cfg(windows)]
+fn is_reparse_point(path: &std::path::Path) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    path.symlink_metadata()
+        .map(|m| m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(path: &std::path::Path) -> bool {
+    path.symlink_metadata()
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// 检查路径自身或其任意祖先目录是否为 symlink / junction。
+/// 用于过滤 libgit2 recurse_untracked_dirs 跟进目录 junction 产生的误报。
+fn has_symlink_ancestor(repo_path: &std::path::Path, relative_path: &str) -> bool {
+    let mut current = repo_path.to_path_buf();
+    for component in std::path::Path::new(relative_path).components() {
+        current.push(component);
+        if is_reparse_point(&current) {
+            return true;
+        }
+    }
+    false
 }
 
 /// 获取变更文件的 diff 统计（仅 additions / deletions，不含 diff 内容）。

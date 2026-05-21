@@ -238,6 +238,8 @@ fn xy_to_status(xy: &str) -> String {
         "Added".to_string()
     } else if x == b'D' || y == b'D' {
         "Deleted".to_string()
+    } else if x == b'T' || y == b'T' {
+        "Modified".to_string()
     } else if x == b'R' {
         "Renamed".to_string()
     } else {
