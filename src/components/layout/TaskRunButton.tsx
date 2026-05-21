@@ -15,7 +15,7 @@ function TaskRunButton() {
 
   const {
     configs,
-    taskState,
+    taskStates,
     selectedConfigId,
     loadConfigs,
     addConfig,
@@ -47,7 +47,8 @@ function TaskRunButton() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  const isRunning = taskState.status === "running";
+  const currentProjectId = activeProject?.id ?? "";
+  const isRunning = taskStates[currentProjectId]?.status === "running";
   const canRun = isRunning || !!selectedConfigId;
   const selectedConfig = configs.find((c) => c.id === selectedConfigId);
 

@@ -111,7 +111,7 @@ export async function createTerminalForProject(
     // If this is a task terminal, write back the PTY session ID to taskStore
     if (taskConfigId) {
       const { useTaskStore } = await import("../../store/taskStore");
-      useTaskStore.getState().setPtySessionId(sid);
+      useTaskStore.getState().setPtySessionId(backendProjectId, sid);
     }
 
     const unlistenOutput = await listen<number[]>(
@@ -139,8 +139,8 @@ export async function createTerminalForProject(
         // - Do NOT destroy cache or trigger rebuild (prevents flicker/re-execute).
         const { useTaskStore } = await import("../../store/taskStore");
         const ts = useTaskStore.getState();
-        if (ts.taskState.ptySessionId === sid) {
-          ts.markIdle();
+        if (ts.taskStates[backendProjectId]?.ptySessionId === sid) {
+          ts.markIdle(backendProjectId);
         }
 
         // Reflect success/failure in the tab so the UI can show the right indicator

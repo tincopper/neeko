@@ -7,7 +7,8 @@ import type { TaskConfig, TaskState } from "../types/task";
 
 interface TaskStoreState {
   configs: TaskConfig[];
-  taskState: TaskState;
+  /** Task runtime state keyed by project ID */
+  taskStates: Record<string, TaskState>;
   selectedConfigId: string | null;
 
   loadConfigs: (projectPath?: string) => Promise<void>;
@@ -16,23 +17,18 @@ interface TaskStoreState {
   deleteConfig: (id: string, scope: string, projectPath?: string) => Promise<void>;
   /** Create a terminal tab and run the task command inside it */
   runTask: (command: string, configId: string) => void;
-  /** Kill the running task PTY session */
+  /** Kill the running task PTY session for the current active project */
   stopTask: () => void;
   /** Called by terminalFactory once the PTY session ID is known */
-  setPtySessionId: (ptySessionId: string) => void;
+  setPtySessionId: (projectId: string, ptySessionId: string) => void;
   /** Called by terminalFactory when the task process exits */
-  markIdle: () => void;
+  markIdle: (projectId: string) => void;
   setSelectedConfig: (id: string | null) => void;
 }
 
 export const useTaskStore = create<TaskStoreState>((set, get) => ({
   configs: [],
-  taskState: {
-    status: "idle",
-    activeConfigId: null,
-    sessionId: null,
-    ptySessionId: null,
-  },
+  taskStates: {},
   selectedConfigId: null,
 
   loadConfigs: async (projectPath?: string) => {
@@ -136,11 +132,14 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
         appState.activateTab(tabKey, finishedTab.id);
 
         set({
-          taskState: {
-            status: "running",
-            activeConfigId: configId,
-            sessionId: finishedTab.id,
-            ptySessionId: null,
+          taskStates: {
+            ...get().taskStates,
+            [activeProject.id]: {
+              status: "running",
+              activeConfigId: configId,
+              sessionId: finishedTab.id,
+              ptySessionId: null,
+            },
           },
           selectedConfigId: configId,
         });
@@ -174,18 +173,29 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     appState.activateTab(tabKey, tabId);
 
     set({
-      taskState: {
-        status: "running",
-        activeConfigId: configId,
-        sessionId: tabId,
-        ptySessionId: null,
+      taskStates: {
+        ...get().taskStates,
+        [activeProject.id]: {
+          status: "running",
+          activeConfigId: configId,
+          sessionId: tabId,
+          ptySessionId: null,
+        },
       },
       selectedConfigId: configId,
     });
   },
 
   stopTask: () => {
-    const { taskState } = get();
+    const appState = useAppStore.getState();
+    const activeProject = appState.activeProject;
+    if (!activeProject) return;
+
+    const taskState = get().taskStates[activeProject.id];
+    if (!taskState || taskState.status !== "running") {
+      console.warn("[TaskStore] stopTask: no running task for current project");
+      return;
+    }
 
     // Mark the tab as Idle before killing the PTY. When close_terminal_session
     // is called the backend removes the handle, so the watcher thread exits via
@@ -194,13 +204,9 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     // at "Running" forever. Updating it here ensures runTask() can later
     // detect the tab as finished and reuse it.
     if (taskState.sessionId) {
-      const appState = useAppStore.getState();
-      const activeProject = appState.activeProject;
-      if (activeProject) {
-        appState.updateTab(activeProject.id, taskState.sessionId, {
-          status: "Idle",
-        });
-      }
+      appState.updateTab(activeProject.id, taskState.sessionId, {
+        status: "Idle",
+      });
     }
 
     // Resolve which backend PTY session ID to close.
@@ -227,29 +233,46 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       console.warn("[TaskStore] stopTask: no PTY session ID found — process may not be killed");
     }
     set({
-      taskState: {
-        status: "idle",
-        activeConfigId: null,
-        sessionId: null,
-        ptySessionId: null,
+      taskStates: {
+        ...get().taskStates,
+        [activeProject.id]: {
+          status: "idle",
+          activeConfigId: null,
+          sessionId: null,
+          ptySessionId: null,
+        },
       },
     });
   },
 
-  setPtySessionId: (ptySessionId: string) => {
-    set((state) => ({
-      taskState: { ...state.taskState, ptySessionId },
-    }));
+  setPtySessionId: (projectId: string, ptySessionId: string) => {
+    set((state) => {
+      const current = state.taskStates[projectId];
+      if (!current || current.status !== "running") return state;
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [projectId]: { ...current, ptySessionId },
+        },
+      };
+    });
   },
 
-  markIdle: () => {
-    set({
-      taskState: {
-        status: "idle",
-        activeConfigId: null,
-        sessionId: null,
-        ptySessionId: null,
-      },
+  markIdle: (projectId: string) => {
+    set((state) => {
+      const current = state.taskStates[projectId];
+      if (!current || current.status !== "running") return state;
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [projectId]: {
+            status: "idle",
+            activeConfigId: null,
+            sessionId: null,
+            ptySessionId: null,
+          },
+        },
+      };
     });
   },
 
