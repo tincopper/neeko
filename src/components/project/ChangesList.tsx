@@ -5,6 +5,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Badge } from "../ui/badge";
 import { ChevronRightIcon } from "../icons";
 import { Undo2, Plus, ListPlus } from "lucide-react";
+import { fileIconSrc } from "@/utils/fileIcons";
 
 interface ChangesListProps {
   files: FileChange[];
@@ -261,6 +262,13 @@ const Section: React.FC<SectionProps> = ({
                   checked={isSelected}
                   onCheckedChange={() => onToggleFile(file.path)}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                />
+                <img
+                  className="w-3.5 h-3.5 shrink-0 block opacity-70"
+                  src={fileIconSrc(file.path)}
+                  alt=""
+                  width={14}
+                  height={14}
                 />
                 <span className="shrink-0 font-mono text-[calc(var(--font-size)-1px)]">
                   {file.path}
