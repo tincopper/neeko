@@ -1025,3 +1025,37 @@ feat(git): add git log viewer with commit detail panel, fix UI consistency acros
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 架构优化 Phase 1 实施：SSH 认证整合 + Theme 模块化
+
+**Date**: 2026-05-21
+**Task**: 架构优化 Phase 1 实施：SSH 认证整合 + Theme 模块化
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 1A: 创建 ssh_auth.rs，消除 remote.rs 和 ssh.rs 中 4 处重复 SSH 认证块。Phase 1B: 创建 theme/ 子模块（common.rs + opencode.rs + pi.rs），提取共享工具函数，原文件改为 re-export wrapper。所有测试通过（前端 562 + Rust 78），类型检查零 error。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a8f3fad` | (see git log) |
+| `9ee8855` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
