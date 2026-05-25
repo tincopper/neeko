@@ -1191,3 +1191,36 @@ Phase 3A 终端视图合并：\n- 新建 TerminalViewBase (206行)：统一 xter
 ### Next Steps
 
 - None - task complete
+
+
+## Session 34: Phase 3B: Prop 塌缩 Phase 3-4 (13→6, 删除 sharedPaneProps)
+
+**Date**: 2026-05-25
+**Task**: Phase 3B: Prop 塌缩 Phase 3-4 (13→6, 删除 sharedPaneProps)
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 3B 前端 prop 塌缩：\n- EditorGroupPaneProps: 13→6 (-54%)\n- EditorGroupLayoutProps: 7→4 (-43%)\n- 删除 sharedPaneProps 中间对象 (10字段)\n- onSplitRight/onMoveToRight/onMoveToLeft → useEditorGroupLayout(tabKey)\n- onCloseOtherTabs/onCloseAllTabs → useEditorGroupLayout(tabKey)[新增]\n- wslProject → useWslContext().activeWslProject\n- contextMenuExtras → 内联构造 pinTab/unpinTab\n- MainContent 删除 handleCloseOtherTabs/handleClearAllTabs (死代码)\n- npx tsc 零error，pnpm test:run 562 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `89408a5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

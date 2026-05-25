@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 33
+- **Total Sessions**: 34
 - **Last Active**: 2026-05-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1193 | Active |
+| `journal-1.md` | ~1226 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 34 | 2026-05-25 | Phase 3B: Prop 塌缩 Phase 3-4 (13→6, 删除 sharedPaneProps) | `89408a5` | `refactor/architecture-optimization` |
 | 33 | 2026-05-25 | Phase 3A: Terminal 视图合并 (WSL/Remote 策略模式) | `74ef587` | `refactor/architecture-optimization` |
 | 32 | 2026-05-25 | Phase 2B: useAppContainer 拆分 (757→689, 3个新hook) | `08a6564` | `refactor/architecture-optimization` |
 | 31 | 2026-05-25 | Phase 2A: Prop 塌缩 EditorGroupPane (30+ → 13 props) | `0b185bc` | `refactor/architecture-optimization` |
