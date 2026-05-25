@@ -459,15 +459,23 @@ import { Project, AgentConfig } from "../../types";
 
 ## CSS 字体大小变量规范
 
-项目使用三套独立的字体大小配置，均由用户在 Settings → Appearance/Editor/Terminal 中调整：
+项目使用三套基础字体大小配置 + 全局 zoom 叠加，由用户在 Settings 调整基础值，Cmd+/- 调整缩放：
 
 | CSS 变量 | 默认值 | 驱动字段 | 适用范围 |
 |----------|--------|---------|---------|
-| `--font-size` | `12px` | `config.appearanceFontSize` | 侧边栏项目名、文件树、Tab 标签、TitleBar 等所有 UI 文本 |
-| `--terminal-font-size` | `14px` | `config.terminalFontSize` | 终端 Tab、Agent 按钮列表、终端相关 UI |
-| （直接传 prop）| `14px` | `config.editorFontSize` | CodeMirror 编辑器，通过 `editorFontSize` prop 传入 `FileViewer` |
+| `--font-size` | `12px` | `effectiveAppearanceFontSize`（= `appearanceFontSize × zoomLevel / 100`） | 侧边栏项目名、文件树、Tab 标签、TitleBar 等所有 UI 文本 |
+| `--terminal-font-size` | `14px` | `effectiveTerminalFontSize`（= `terminalFontSize × zoomLevel / 100`） | 终端 Tab、Agent 按钮列表、终端相关 UI |
+| （直接传 prop）| `14px` | `effectiveEditorFontSize`（= `editorFontSize × zoomLevel / 100`） | CodeMirror 编辑器，通过 `effectiveEditorFontSize` prop 传入 `FileViewer` |
+
+| 快捷键 | 动作 | 范围 |
+|--------|------|------|
+| Cmd+= / Ctrl+= | zoomLevel + 10 | 50–200 |
+| Cmd+- / Ctrl+- | zoomLevel - 10 | 50–200 |
+| Cmd+0 / Ctrl+0 | 重置为 100 | — |
 
 **使用原则**：
 - Tailwind 类语法（推荐用于静态文本）：`className="text-[var(--font-size)]"`
 - 内联 style（用于动态或按钮元素）：`style={{ fontSize: "var(--terminal-font-size)" }}`
 - 新增任何侧边栏/文件树/Tab 组件时，**禁止**使用 `text-xs`、`text-sm`、`text-base` 等固定 Tailwind 字体类
+- 终端字号用 `effectiveTerminalFontSize`（含 zoom），不用 `config.terminalFontSize`（基础值）
+- Settings 面板字号滑块显示和修改基础值，不含 zoom 叠加

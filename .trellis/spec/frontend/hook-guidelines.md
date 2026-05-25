@@ -318,11 +318,36 @@ export function useAppConfig() {
 
 | 字段 | 默认值 | 用途 |
 |------|--------|------|
-| `appearanceFontSize` | `12` | 整体 UI 字体，驱动 `--font-size` CSS 变量 |
-| `editorFontSize` | `14` | CodeMirror 编辑器字体，通过 prop 传入 `FileViewer` |
-| `terminalFontSize` | `14` | 终端字体，驱动 `--terminal-font-size` CSS 变量 |
+| `appearanceFontSize` | `12` | 基础 UI 字体（Settings 滑块值），不含 zoom |
+| `editorFontSize` | `14` | 基础 CodeMirror 编辑器字体（Settings 滑块值），不含 zoom |
+| `terminalFontSize` | `14` | 基础终端字体（Settings 滑块值），不含 zoom |
+| `zoomLevel` | `100` | 全局缩放级别（50–200），Cmd+/- 调整 |
 
 > ⚠️ 旧字段 `fontSize`（单一字体大小）已在 2026-04-14 拆分为上述三字段。`useAppConfig` 中包含迁移逻辑，读取旧配置时将 `fontSize` 迁移为 `terminalFontSize`。新代码中**不得**使用 `config.fontSize`。
+
+### Zoom 叠加模式（2026-05-25）
+
+`useAppConfig` 派生三个有效字号，是实际渲染时使用的值：
+
+```tsx
+const effectiveAppearanceFontSize = Math.round(config.appearanceFontSize * config.zoomLevel / 100);
+const effectiveEditorFontSize = Math.round(config.editorFontSize * config.zoomLevel / 100);
+const effectiveTerminalFontSize = Math.round(config.terminalFontSize * config.zoomLevel / 100);
+```
+
+**关键规则**：
+1. CSS 变量 `--font-size` 和 `--terminal-font-size` 写入的是**有效字号**（含 zoom），不是基础值
+2. 终端创建和字号同步使用 `effectiveTerminalFontSize`，不是 `config.terminalFontSize`
+3. Settings 面板滑块显示和修改**基础值**，不含 zoom
+4. Cmd+/-/0 快捷键只改 `config.zoomLevel`，不改基础字号
+5. 字号变化时通过 `updateAllTerminalFontSizes()` 强制刷新所有终端实例（清除纹理缓存 + fit + PTY resize）
+
+**终端乱码修复**：`effectiveTerminalFontSize` 变化时调用 `updateAllTerminalFontSizes()`，它会：
+- 设置 `term.options.fontSize` 为有效字号
+- 调用 `term.refresh(0, term.rows - 1)` 清除渲染缓冲区
+- `requestAnimationFrame` 后调用 `fitAddon.fit()` + `invoke("resize_terminal"|"resize_remote_terminal")` 同步 PTY 尺寸
+
+**新增快捷键**：`shortcutRegistry.ts` 中 `zoomIn` (Cmd+=)、`zoomOut` (Cmd+-)、`zoomReset` (Cmd+0)。
 
 ### 会话保存防抖模式
 
