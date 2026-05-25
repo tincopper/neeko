@@ -1158,3 +1158,36 @@ Phase 2B 前端 hook 拆分：\n- 新建 useAppLayoutProps.ts (26行, Bag 3)\n- 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 33: Phase 3A: Terminal 视图合并 (WSL/Remote 策略模式)
+
+**Date**: 2026-05-25
+**Task**: Phase 3A: Terminal 视图合并 (WSL/Remote 策略模式)
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 3A 终端视图合并：\n- 新建 TerminalViewBase (206行)：统一 xterm 生命周期\n- 新建 strategies/ 目录：types/wsl/remote 策略接口与实现\n- WSLTerminalView: 262→30 (-89%)\n- RemoteTerminalView: 269→70 (-74%)\n- TerminalView(local) 暂不迁移 (factory+task terminal 差异大)\n- 5处重复代码统一为1处：xterm初始化/attach/ResizeObserver/agent/cleanup\n- npx tsc 零error，pnpm test:run 562 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `74ef587` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
