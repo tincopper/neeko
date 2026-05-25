@@ -4,6 +4,7 @@ mod browser;
 mod config;
 mod file;
 mod git;
+mod git_unified;
 mod ide;
 mod opener;
 mod project;
@@ -20,6 +21,7 @@ pub use browser::*;
 pub use config::*;
 pub use file::*;
 pub use git::*;
+pub use git_unified::*;
 pub use ide::*;
 pub use opener::*;
 pub use project::*;
@@ -250,6 +252,25 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::fetch_leaderboard,
             $crate::skill::commands::search_skillssh,
             $crate::skill::commands::install_from_skillssh,
+            // --- UNIFIED GIT COMMANDS (Phase 5.5) ---
+            $crate::commands::unified_stage_files,
+            $crate::commands::unified_unstage_files,
+            $crate::commands::unified_stage_all,
+            $crate::commands::unified_unstage_all,
+            $crate::commands::unified_discard_file,
+            $crate::commands::unified_discard_all,
+            $crate::commands::unified_fetch,
+            $crate::commands::unified_push,
+            $crate::commands::unified_cherry_pick,
+            $crate::commands::unified_revert,
+            $crate::commands::unified_create_tag,
+            $crate::commands::unified_checkout_branch,
+            $crate::commands::unified_create_branch,
+            $crate::commands::unified_delete_branch,
+            $crate::commands::unified_rename_branch,
+            $crate::commands::unified_remove_worktree,
+            $crate::commands::unified_rename_worktree,
+            $crate::commands::unified_is_worktree_dirty,
         ]
     };
 }
