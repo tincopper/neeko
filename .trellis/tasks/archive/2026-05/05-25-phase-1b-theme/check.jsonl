@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify no regression in refactored code"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Verify enum dispatch does not lose type safety"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error wrapping consistency"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Verify test patterns still apply"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Theme module organization & new file placement"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Enum-based strategy pattern type design"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Result/AppError conventions in strategy methods"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Tauri command conventions for sync_agent_theme"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "Async fn on enum (no async-trait needed)"}
