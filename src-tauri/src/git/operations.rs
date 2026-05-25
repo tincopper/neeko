@@ -122,3 +122,128 @@ pub async fn create_tag(
         .await?;
     Ok(())
 }
+
+// ─── Branching ───────────────────────────────────────────────────────────────
+
+/// Checkout a branch: `git checkout <branch_name>`
+pub async fn checkout_branch(
+    transport: &GitTransport,
+    work_dir: &str,
+    branch_name: &str,
+) -> Result<()> {
+    transport
+        .run_git(&["checkout", branch_name], work_dir)
+        .await?;
+    Ok(())
+}
+
+/// Create a branch: `git branch <branch_name> [<start_point>]`
+pub async fn create_branch(
+    transport: &GitTransport,
+    work_dir: &str,
+    branch_name: &str,
+    start_point: Option<&str>,
+) -> Result<()> {
+    let mut args: Vec<&str> = vec!["branch", branch_name];
+    if let Some(sp) = start_point {
+        args.push(sp);
+    }
+    transport.run_git(&args, work_dir).await?;
+    Ok(())
+}
+
+/// Delete a branch: `git branch -d <branch_name>` (force: `-D`)
+pub async fn delete_branch(
+    transport: &GitTransport,
+    work_dir: &str,
+    branch_name: &str,
+    force: bool,
+) -> Result<()> {
+    let flag = if force { "-D" } else { "-d" };
+    transport
+        .run_git(&["branch", flag, branch_name], work_dir)
+        .await?;
+    Ok(())
+}
+
+/// Rename a branch: `git branch -m <old_name> <new_name>`
+pub async fn rename_branch(
+    transport: &GitTransport,
+    work_dir: &str,
+    old_name: &str,
+    new_name: &str,
+) -> Result<()> {
+    transport
+        .run_git(&["branch", "-m", old_name, new_name], work_dir)
+        .await?;
+    Ok(())
+}
+
+/// Create and switch to a new branch: `git checkout -b <branch_name>`
+pub async fn create_and_switch_branch(
+    transport: &GitTransport,
+    work_dir: &str,
+    branch_name: &str,
+) -> Result<()> {
+    transport
+        .run_git(&["checkout", "-b", branch_name], work_dir)
+        .await?;
+    Ok(())
+}
+
+// ─── Worktree ────────────────────────────────────────────────────────────────
+
+/// Remove a worktree: `git worktree remove --force <path>`
+pub async fn remove_worktree(
+    transport: &GitTransport,
+    work_dir: &str,
+    worktree_path: &str,
+) -> Result<()> {
+    transport
+        .run_git(&["worktree", "remove", "--force", worktree_path], work_dir)
+        .await?;
+    Ok(())
+}
+
+/// Rename a worktree: `git worktree move <old_path> <new_path>`
+pub async fn rename_worktree(
+    transport: &GitTransport,
+    work_dir: &str,
+    old_path: &str,
+    new_path: &str,
+) -> Result<()> {
+    transport
+        .run_git(&["worktree", "move", old_path, new_path], work_dir)
+        .await?;
+    Ok(())
+}
+
+/// Check if a worktree is dirty: `git status --porcelain` returns output
+pub async fn is_worktree_dirty(
+    transport: &GitTransport,
+    worktree_path: &str,
+) -> Result<bool> {
+    let output = transport
+        .run_git(&["status", "--porcelain"], worktree_path)
+        .await?;
+    Ok(!output.trim().is_empty())
+}
+
+/// Get default branch: `git remote show origin | grep HEAD`
+pub async fn default_branch(transport: &GitTransport, work_dir: &str) -> Result<String> {
+    let output = transport
+        .run_git(&["remote", "show", "origin"], work_dir)
+        .await?;
+    for line in output.lines() {
+        if let Some(branch) = line.trim().strip_prefix("HEAD branch: ") {
+            return Ok(branch.to_string());
+        }
+    }
+    // Fallback: try rev-parse
+    let output = transport
+        .run_git(&["rev-parse", "--abbrev-ref", "origin/HEAD"], work_dir)
+        .await?;
+    let branch = output.trim().strip_prefix("origin/").unwrap_or(output.trim());
+    Ok(branch.to_string())
+}
+
