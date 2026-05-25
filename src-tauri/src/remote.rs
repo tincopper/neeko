@@ -327,79 +327,25 @@ fn log_error(msg: &str) {
     log::error!("{}", msg);
 }
 
-/// 安装远程 OpenCode + Pi 主题文件和项目配置
+/// 安装远程主题文件和项目配置
 /// 每个操作使用独立的 channel（SSH channel 只能 exec 一次）
-async fn setup_remote_opencode_theme(session: &russh::client::Handle<ssh_auth::Client>, project_path: &str) {
+async fn setup_remote_opencode_theme(
+    session: &russh::client::Handle<ssh_auth::Client>,
+    project_path: &str,
+) {
     let theme = match common::read_neeko_theme() {
         Some(t) => t,
         None => return,
     };
 
-    // channel 1: 安装 OpenCode 主题文件到 ~/.config/opencode/themes/
-    match session.channel_open_session().await {
-        Ok(mut ch) => {
-            if let Err(e) = crate::opencode_theme::install_remote_theme_files(&mut ch).await {
-                log_warn(&format!(
-                    "[SSH] Failed to install remote OpenCode theme files: {}",
-                    e
-                ));
-            }
-            let _ = ch.close().await;
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "[SSH] Failed to open channel for OpenCode theme install: {}",
-                e
-            ));
-        }
-    }
-
-    // channel 2: 安装 Pi 主题文件到 ~/.pi/agent/themes/
-    match session.channel_open_session().await {
-        Ok(mut ch) => {
-            if let Err(e) = crate::pi_theme::install_remote_pi_theme_files(&mut ch).await {
-                log_warn(&format!(
-                    "[SSH] Failed to install remote Pi theme files: {}",
-                    e
-                ));
-            }
-            let _ = ch.close().await;
-        }
-        Err(e) => {
-            log_warn(&format!(
-                "[SSH] Failed to open channel for Pi theme install: {}",
-                e
-            ));
-        }
-    }
-
-    // channel 3: 写入 OpenCode 项目 TUI 配置
-    if crate::opencode_theme::read_enable_opencode_theme_sync() {
+    for s in crate::theme::service::ThemeStrategy::all() {
+        // channel: 安装主题文件到远程 ~/.config/{opencode,pi}/
         match session.channel_open_session().await {
             Ok(mut ch) => {
-                if let Err(e) =
-                    crate::opencode_theme::write_remote_tui_config(&mut ch, project_path, &theme)
-                        .await
-                {
-                    log_warn(&format!("[SSH] Failed to write remote tui.json: {}", e));
-                }
-                let _ = ch.close().await;
-            }
-            Err(e) => {
-                log_warn(&format!("[SSH] Failed to open channel for tui.json: {}", e));
-            }
-        }
-    }
-
-    // channel 4: 写入 Pi 项目 settings.json
-    if crate::opencode_theme::read_enable_pi_theme_sync() {
-        match session.channel_open_session().await {
-            Ok(mut ch) => {
-                if let Err(e) =
-                    crate::pi_theme::write_remote_pi_settings(&mut ch, project_path, &theme).await
-                {
+                if let Err(e) = s.install_remote_files(&mut ch).await {
                     log_warn(&format!(
-                        "[SSH] Failed to write remote Pi settings.json: {}",
+                        "[SSH] Failed to install remote {} theme files: {}",
+                        s.name(),
                         e
                     ));
                 }
@@ -407,7 +353,29 @@ async fn setup_remote_opencode_theme(session: &russh::client::Handle<ssh_auth::C
             }
             Err(e) => {
                 log_warn(&format!(
-                    "[SSH] Failed to open channel for Pi settings.json: {}",
+                    "[SSH] Failed to open channel for {} theme install: {}",
+                    s.name(),
+                    e
+                ));
+            }
+        }
+
+        if !s.is_enabled() {
+            continue;
+        }
+
+        // channel: 写入项目级配置到远程 .opencode/tui.json 或 .pi/settings.json
+        match session.channel_open_session().await {
+            Ok(mut ch) => {
+                if let Err(e) = s.write_remote_config(&mut ch, project_path, &theme).await {
+                    log_warn(&format!("[SSH] Failed to write remote {} config: {}", s.name(), e));
+                }
+                let _ = ch.close().await;
+            }
+            Err(e) => {
+                log_warn(&format!(
+                    "[SSH] Failed to open channel for {} config: {}",
+                    s.name(),
                     e
                 ));
             }

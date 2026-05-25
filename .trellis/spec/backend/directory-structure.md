@@ -60,10 +60,11 @@ src-tauri/
     │   ├── remote.rs
     │   └── wsl.rs
     ├── theme/                # 主题安装与同步（OpenCode + Pi）
-    │   ├── mod.rs
+    │   ├── mod.rs            # 仅模块声明，无函数体
     │   ├── common.rs         # 共享工具：map_theme_name, base64_encode, shell_escape, read_neeko_theme
-    │   ├── opencode.rs       # OpenCode 主题：本地/WSL/SSH 安装与配置
-    │   └── pi.rs             # Pi 主题：本地/WSL/SSH 安装与配置
+    │   ├── opencode.rs       # OpenCode 主题：本地/WSL/SSH 安装与配置（领域逻辑）
+    │   ├── pi.rs             # Pi 主题：本地/WSL/SSH 安装与配置（领域逻辑）
+    │   └── service.rs        # 编排层：ThemeContext + ThemeStrategy + 服务函数
     ├── skill/                # Skill 系统（自包含子系统）
     │   ├── commands.rs
     │   ├── content_hash.rs
@@ -102,8 +103,6 @@ pub mod commands;
 pub mod error;
 pub mod git;
 pub mod models;
-pub mod opencode_theme;    // re-export wrapper → theme::opencode
-pub mod pi_theme;          // re-export wrapper → theme::pi
 pub mod project;
 pub mod remote;
 pub mod skill;
@@ -217,5 +216,5 @@ pub struct AppStateWrapper {
 - 中枢模式：`src-tauri/src/app.rs` —— Tauri Builder + 命令注册表
 - 状态组装：`src-tauri/src/app_state.rs` —— `AppStateWrapper` 定义
 - SSH 认证统一：`src-tauri/src/utils/command/ssh_auth.rs` —— `connect_and_authenticate()` 函数
-- 主题模块化：`src-tauri/src/theme/` —— `common.rs` 共享工具 + `opencode.rs`/`pi.rs` 域逻辑
-- Re-export wrapper：`src-tauri/src/opencode_theme.rs` 和 `pi_theme.rs` 为薄包装层，指向 `theme::` 子模块
+- 主题模块化：`src-tauri/src/theme/` —— `common.rs` 共享工具 + `opencode.rs`/`pi.rs` 域逻辑 + `service.rs` 编排层
+- 新代码位置指引：见上方"新代码应该放在哪里"表格

@@ -1,5 +1,5 @@
 use crate::models::{TerminalSession, TerminalStatus};
-use crate::opencode_theme::{
+use crate::theme::opencode::{
     install_wsl_theme_files, read_enable_opencode_theme_sync, read_enable_pi_theme_sync,
     write_wsl_tui_config,
 };
@@ -156,7 +156,7 @@ impl TerminalManager {
         if let Err(e) = install_wsl_theme_files(distro) {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = crate::pi_theme::install_wsl_pi_theme_files(distro) {
+        if let Err(e) = crate::theme::pi::install_wsl_pi_theme_files(distro) {
             log::warn!("[WSL] Failed to install Pi theme files: {}", e);
         }
         let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
@@ -167,7 +167,7 @@ impl TerminalManager {
         }
         if read_enable_pi_theme_sync() {
             if let Err(e) =
-                crate::pi_theme::write_wsl_pi_settings(distro, project_path, &current_theme)
+                crate::theme::pi::write_wsl_pi_settings(distro, project_path, &current_theme)
             {
                 log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
             }
@@ -796,27 +796,16 @@ fn log_error(msg: &str) {
 /// 读取 Neeko 配置并写入 OpenCode + Pi 项目级配置
 /// 静默执行，失败不影响终端创建
 fn write_opencode_tui_config(project_path: &str) {
-    let theme = match read_neeko_theme() {
-        Some(t) => t,
-        None => return,
-    };
-    if read_enable_opencode_theme_sync() {
-        if let Err(e) = crate::opencode_theme::write_project_tui_config(project_path, &theme) {
-            log::warn!("[PTY] Failed to write OpenCode tui.json: {}", e);
-        }
-    }
-    if read_enable_pi_theme_sync() {
-        if let Err(e) = crate::pi_theme::write_project_pi_settings(project_path, &theme) {
-            log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
-        }
+    if let Err(e) =
+        crate::theme::service::write_project_theme_config(
+            &crate::theme::service::ThemeContext::Local,
+            project_path,
+        )
+    {
+        log::warn!("[PTY] Failed to write theme config: {}", e);
     }
 }
 
-/// 从 ~/.neeko/config.json 读取当前主题
 fn read_neeko_theme() -> Option<String> {
-    let home = dirs::home_dir()?;
-    let config_path = home.join(".neeko").join("config.json");
-    let content = std::fs::read_to_string(&config_path).ok()?;
-    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-    Some(crate::opencode_theme::get_current_theme(&config))
+    crate::theme::common::read_neeko_theme()
 }

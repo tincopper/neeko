@@ -105,23 +105,25 @@ pub fn load_vcs_settings_command(
 
 #[tauri::command]
 pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
-    // === OpenCode 主题同步 ===
-    if crate::opencode_theme::read_enable_opencode_theme_sync() {
+    for s in crate::theme::service::ThemeStrategy::all() {
+        if !s.is_enabled() {
+            continue;
+        }
         for path in &targets.local_paths {
-            if let Err(e) = crate::opencode_theme::write_project_tui_config(path, &theme) {
+            if let Err(e) = s.sync_local(path, &theme) {
                 log::warn!(
-                    "[OpenCodeTheme] Failed to sync tui.json for local project {}: {}",
+                    "[{}] Failed to sync for local project {}: {}",
+                    s.name(),
                     path,
                     e
                 );
             }
         }
         for target in &targets.wsl {
-            if let Err(e) =
-                crate::opencode_theme::write_wsl_tui_config(&target.distro, &target.path, &theme)
-            {
+            if let Err(e) = s.sync_wsl(&target.distro, &target.path, &theme) {
                 log::warn!(
-                    "[OpenCodeTheme] Failed to sync tui.json for WSL project {} ({}): {}",
+                    "[{}] Failed to sync for WSL project {} ({}): {}",
+                    s.name(),
                     target.path,
                     target.distro,
                     e
@@ -129,31 +131,5 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
             }
         }
     }
-
-    // === Pi 主题同步 ===
-    if crate::opencode_theme::read_enable_pi_theme_sync() {
-        for path in &targets.local_paths {
-            if let Err(e) = crate::pi_theme::write_project_pi_settings(path, &theme) {
-                log::warn!(
-                    "[PiTheme] Failed to sync settings.json for local project {}: {}",
-                    path,
-                    e
-                );
-            }
-        }
-        for target in &targets.wsl {
-            if let Err(e) =
-                crate::pi_theme::write_wsl_pi_settings(&target.distro, &target.path, &theme)
-            {
-                log::warn!(
-                    "[PiTheme] Failed to sync settings.json for WSL project {} ({}): {}",
-                    target.path,
-                    target.distro,
-                    e
-                );
-            }
-        }
-    }
-
     Ok(())
 }

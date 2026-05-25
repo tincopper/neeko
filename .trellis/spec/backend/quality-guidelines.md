@@ -206,6 +206,43 @@ app_handle.unlisten(input_listener_id);
 
 始终为新字段添加，以确保与已有持久化数据的向后兼容。
 
+### 5. `mod.rs` 仅保留模块声明
+
+模块根文件 `mod.rs`（或 `name.rs`）不包含业务逻辑，只做模块声明：
+
+```rust
+// theme/mod.rs —— 正确
+pub mod common;
+pub mod opencode;
+pub mod pi;
+pub mod service;
+```
+
+业务逻辑下沉到子模块（`service.rs`、`types.rs` 等）。
+
+### 6. 有限策略集使用 Enum 而非 Trait Object
+
+当策略集已知且固定（≤ 5 种），使用 Enum + match 代替 `Box<dyn Trait>`：
+
+```rust
+// 正确：Enum 策略模式（零额外依赖，无虚函数调用）
+pub enum ThemeStrategy {
+    OpenCode,
+    Pi,
+}
+impl ThemeStrategy {
+    pub fn all() -> Vec<Self> { vec![Self::OpenCode, Self::Pi] }
+    pub fn sync_local(&self, path: &str, theme: &str) -> Result<()> {
+        match self {
+            Self::OpenCode => opencode::write_project_tui_config(path, theme),
+            Self::Pi => pi::write_project_pi_settings(path, theme),
+        }
+    }
+}
+
+// 优势：无需 #[async_trait]，编译期 dispatch，新增 variant 所有 match 必须处理
+```
+
 ---
 
 ## 构建与 CI
