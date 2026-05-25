@@ -1,5 +1,6 @@
 pub mod cache;
 mod local;
+pub mod operations;
 pub mod parsers;
 pub mod pr;
 pub mod remote;
