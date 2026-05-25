@@ -3,6 +3,7 @@ mod local;
 pub mod parsers;
 pub mod pr;
 pub mod remote;
+pub mod transport;
 #[cfg(target_os = "windows")]
 mod wsl;
 

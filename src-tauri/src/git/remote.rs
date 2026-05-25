@@ -2,8 +2,10 @@ use anyhow::Result;
 
 use crate::models::{
     AheadBehind, AuthMethod, CommitDetail, CommitEntry, CommitFileChange, CommitResult, DiffHunk,
-    DiffLine, DiffResult, FileChange, FileNode, FileStatus, GitInfo,
+    DiffLine, DiffResult, FileChange, FileNode, GitInfo,
 };
+#[cfg(test)]
+use crate::models::FileStatus;
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::parsers::{
