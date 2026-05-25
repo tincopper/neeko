@@ -37,15 +37,18 @@ pub fn remove_worktree(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::remove_worktree(&project.path, &PathBuf::from(&worktree_path))
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::remove_worktree(
+        &transport,
+        &work_dir,
+        &worktree_path,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -55,15 +58,13 @@ pub fn is_worktree_dirty(
     state: State<AppStateWrapper>,
 ) -> Result<bool, AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::is_worktree_dirty(&project.path, &PathBuf::from(&worktree_path))
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let _project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::is_worktree_dirty(&transport, &worktree_path))
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -73,14 +74,19 @@ pub fn delete_branch(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::delete_branch(&project.path, &branch_name, true).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::delete_branch(
+        &transport,
+        &work_dir,
+        &branch_name,
+        true,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -90,14 +96,18 @@ pub fn checkout_branch(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::checkout_branch(&project.path, &branch_name).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::checkout_branch(
+        &transport,
+        &work_dir,
+        &branch_name,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -108,15 +118,19 @@ pub fn create_branch(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::create_branch(&project.path, &branch_name, start_point.as_deref())
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::create_branch(
+        &transport,
+        &work_dir,
+        &branch_name,
+        start_point.as_deref(),
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -127,14 +141,19 @@ pub fn rename_branch(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::rename_branch(&project.path, &old_name, &new_name).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::rename_branch(
+        &transport,
+        &work_dir,
+        &old_name,
+        &new_name,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -145,15 +164,25 @@ pub fn rename_worktree(
     state: State<AppStateWrapper>,
 ) -> Result<String, AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::rename_worktree(&project.path, &PathBuf::from(&worktree_path), &new_name)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let parent = std::path::Path::new(&worktree_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(&worktree_path));
+    let new_path = parent.join(&new_name);
+    let new_path_str = new_path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::rename_worktree(
+        &transport,
+        &work_dir,
+        &worktree_path,
+        &new_path_str,
+    ))
+    .map_err(AppError::from)?;
+    Ok(new_path_str)
 }
 
 #[tauri::command]
@@ -280,14 +309,18 @@ pub fn unstage_files_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::unstage_files(&project.path, &file_paths).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::unstage_files(
+        &transport,
+        &work_dir,
+        &file_paths,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -329,14 +362,18 @@ pub fn discard_file_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::discard_file(&project.path, &file_path).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::discard_file(
+        &transport,
+        &work_dir,
+        &file_path,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -410,14 +447,14 @@ pub fn commit_files_command(
 #[tauri::command]
 pub fn fetch_command(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::fetch(&project.path).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::fetch(&transport, &work_dir))
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -440,14 +477,14 @@ pub fn push_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::push(&project.path, set_upstream).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::push(&transport, &work_dir, set_upstream))
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -659,14 +696,18 @@ pub fn cherry_pick_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::cherry_pick(&project.path, &commit_hash).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::cherry_pick(
+        &transport,
+        &work_dir,
+        &commit_hash,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -676,14 +717,14 @@ pub fn revert_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::revert(&project.path, &commit_hash).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::revert(&transport, &work_dir, &commit_hash))
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -694,14 +735,20 @@ pub fn create_tag_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::create_tag(&project.path, &tag_name, message.as_deref()).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let tag_message = message.as_deref().unwrap_or(&tag_name);
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::create_tag(
+        &transport,
+        &work_dir,
+        &tag_name,
+        tag_message,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -711,14 +758,18 @@ pub fn checkout_detached_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::checkout_detached(&project.path, &commit_hash).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::checkout_branch(
+        &transport,
+        &work_dir,
+        &commit_hash,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -728,14 +779,18 @@ pub fn create_and_switch_branch_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::create_and_switch_branch(&project.path, &branch_name).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::create_and_switch_branch(
+        &transport,
+        &work_dir,
+        &branch_name,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]

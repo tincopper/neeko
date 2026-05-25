@@ -49,10 +49,14 @@ pub async fn remote_checkout_branch(
     project_path: String,
     branch_name: String,
 ) -> Result<(), AppError> {
-    let cmd = format!("git checkout '{}'", branch_name.replace('\'', "'\\''"));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::checkout_branch(&transport, &project_path, &branch_name)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -65,10 +69,14 @@ pub async fn remote_create_branch(
     project_path: String,
     branch_name: String,
 ) -> Result<(), AppError> {
-    let cmd = format!("git branch '{}'", branch_name.replace('\'', "'\\''"));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::create_branch(&transport, &project_path, &branch_name, None)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -82,11 +90,14 @@ pub async fn remote_rename_branch(
     old_name: String,
     new_name: String,
 ) -> Result<(), AppError> {
-    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
-    let cmd = format!("git branch -m {} {}", q(&old_name), q(&new_name));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::rename_branch(&transport, &project_path, &old_name, &new_name)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -141,11 +152,14 @@ pub async fn remote_remove_worktree(
     project_path: String,
     worktree_path: String,
 ) -> Result<(), AppError> {
-    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
-    let cmd = format!("git worktree remove --force {}", q(&worktree_path));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::remove_worktree(&transport, &project_path, &worktree_path)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -164,9 +178,13 @@ pub async fn remote_rename_worktree(
         .and_then(|p| p.to_str())
         .unwrap_or(".");
     let new_path = format!("{}/{}", parent, new_name);
-    let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
-    let cmd = format!("git worktree move {} {}", q(&worktree_path), q(&new_path));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::rename_worktree(&transport, &project_path, &worktree_path, &new_path)
         .await
         .map(|_| new_path)
         .map_err(AppError::from)
@@ -199,7 +217,13 @@ pub async fn remote_is_worktree_dirty(
     auth: AuthMethod,
     worktree_path: String,
 ) -> Result<bool, AppError> {
-    crate::git::remote::remote_is_worktree_dirty(&host, port, &username, &auth, &worktree_path)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::is_worktree_dirty(&transport, &worktree_path)
         .await
         .map_err(AppError::from)
 }
@@ -269,17 +293,14 @@ pub async fn remote_unstage_files(
     project_path: String,
     file_paths: Vec<String>,
 ) -> Result<(), AppError> {
-    if file_paths.is_empty() {
-        return Ok(());
-    }
-    let quoted_files: Vec<String> = file_paths
-        .iter()
-        .map(|f| format!("'{}'", crate::utils::command::ssh::safe_path(f)))
-        .collect();
-    let cmd = format!("git restore --staged -- {}", quoted_files.join(" "));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::unstage_files(&transport, &project_path, &file_paths)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -292,11 +313,14 @@ pub async fn remote_discard_file(
     project_path: String,
     file_path: String,
 ) -> Result<(), AppError> {
-    let fp = crate::utils::command::ssh::safe_path(&file_path);
-    let cmd = format!("git checkout -- '{fp}'");
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::discard_file(&transport, &project_path, &file_path)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -332,26 +356,14 @@ pub async fn remote_push(
     project_path: String,
     set_upstream: bool,
 ) -> Result<(), AppError> {
-    let sp = crate::utils::command::ssh::safe_path(&project_path);
-    let cmd = if set_upstream {
-        let branch_output = crate::utils::command::ssh::exec_command(
-            &host,
-            port,
-            &username,
-            &auth,
-            &format!("cd '{sp}' && git rev-parse --abbrev-ref HEAD 2>/dev/null"),
-        )
-        .await
-        .map_err(AppError::from)?;
-        let branch = branch_output.trim().to_string();
-        let safe_branch = crate::utils::command::ssh::safe_path(&branch);
-        format!("cd '{sp}' && git push --set-upstream origin '{safe_branch}'")
-    } else {
-        format!("cd '{sp}' && git push")
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
     };
-    crate::utils::command::ssh::exec_command(&host, port, &username, &auth, &cmd)
+    operations::push(&transport, &project_path, set_upstream)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -377,17 +389,15 @@ pub async fn remote_fetch(
     auth: AuthMethod,
     project_path: String,
 ) -> Result<(), AppError> {
-    crate::git::remote::run_remote_git(
-        &host,
+    let transport = GitTransport::Remote {
+        host,
         port,
-        &username,
-        &auth,
-        &project_path,
-        "git fetch --all",
-    )
-    .await
-    .map(|_| ())
-    .map_err(AppError::from)
+        username,
+        auth,
+    };
+    operations::fetch(&transport, &project_path)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -500,11 +510,14 @@ pub async fn remote_cherry_pick(
     project_path: String,
     commit_hash: String,
 ) -> Result<(), AppError> {
-    let ch = crate::utils::command::ssh::safe_path(&commit_hash);
-    let cmd = format!("git cherry-pick '{ch}'");
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::cherry_pick(&transport, &project_path, &commit_hash)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -517,11 +530,14 @@ pub async fn remote_revert_commit(
     project_path: String,
     commit_hash: String,
 ) -> Result<(), AppError> {
-    let ch = crate::utils::command::ssh::safe_path(&commit_hash);
-    let cmd = format!("git revert --no-edit '{ch}'");
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::revert(&transport, &project_path, &commit_hash)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 
@@ -535,17 +551,15 @@ pub async fn remote_create_tag(
     tag_name: String,
     message: Option<String>,
 ) -> Result<(), AppError> {
-    let tn = crate::utils::command::ssh::safe_path(&tag_name);
-    let cmd = match message {
-        Some(ref msg) => {
-            let safe_msg = msg.replace('\'', "'\\''");
-            format!("git tag -a '{tn}' -m '{safe_msg}'")
-        }
-        None => format!("git tag '{tn}'"),
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
     };
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let tag_message = message.as_deref().unwrap_or(&tag_name);
+    operations::create_tag(&transport, &project_path, &tag_name, tag_message)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 

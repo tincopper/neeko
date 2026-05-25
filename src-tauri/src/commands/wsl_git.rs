@@ -48,9 +48,14 @@ pub fn wsl_checkout_branch(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(&distro, &project_path, &["checkout", &branch_name])
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::checkout_branch(
+            &transport,
+            &project_path,
+            &branch_name,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -69,9 +74,15 @@ pub fn wsl_create_branch(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(&distro, &project_path, &["branch", &branch_name])
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::create_branch(
+            &transport,
+            &project_path,
+            &branch_name,
+            None,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -91,12 +102,14 @@ pub fn wsl_rename_branch(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(
-            &distro,
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::rename_branch(
+            &transport,
             &project_path,
-            &["branch", "-m", &old_name, &new_name],
-        )
-        .map(|_| ())
+            &old_name,
+            &new_name,
+        ))
         .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
@@ -152,12 +165,13 @@ pub fn wsl_remove_worktree(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(
-            &distro,
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::remove_worktree(
+            &transport,
             &project_path,
-            &["worktree", "remove", "--force", &worktree_path],
-        )
-        .map(|_| ())
+            &worktree_path,
+        ))
         .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
@@ -178,13 +192,21 @@ pub fn wsl_rename_worktree(
 ) -> Result<String, AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(
-            &distro,
+        let transport = GitTransport::Wsl { distro };
+        let parent = std::path::Path::new(&worktree_path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or(".");
+        let new_path = format!("{}/{}", parent, new_name);
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::rename_worktree(
+            &transport,
             &project_path,
-            &["worktree", "move", &worktree_path, &new_name],
-        )
+            &worktree_path,
+            &new_path,
+        ))
         .map_err(AppError::from)
-        .map(|_| new_name)
+        .map(|_| new_path)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -217,7 +239,10 @@ pub fn wsl_get_worktree_changed_files(
 pub fn wsl_is_worktree_dirty(distro: String, worktree_path: String) -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::wsl_is_worktree_dirty(&distro, &worktree_path).map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::is_worktree_dirty(&transport, &worktree_path))
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -284,21 +309,14 @@ pub fn wsl_unstage_files(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        if file_paths.is_empty() {
-            return Ok(());
-        }
-        let quoted_files: Vec<String> = file_paths
-            .iter()
-            .map(|f| format!("'{}'", crate::utils::command::wsl::safe_path(f)))
-            .collect();
-        let sp = crate::utils::command::wsl::safe_path(&project_path);
-        let cmd = format!(
-            "cd '{sp}' && git restore --staged -- {}",
-            quoted_files.join(" ")
-        );
-        crate::utils::command::wsl::exec(&distro, &cmd)
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::unstage_files(
+            &transport,
+            &project_path,
+            &file_paths,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -317,9 +335,14 @@ pub fn wsl_discard_file(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(&distro, &project_path, &["checkout", "--", &file_path])
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::discard_file(
+            &transport,
+            &project_path,
+            &file_path,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -355,27 +378,14 @@ pub fn wsl_commit_files(
 pub fn wsl_push(distro: String, project_path: String, set_upstream: bool) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        let sp = crate::utils::command::wsl::safe_path(&project_path);
-        if set_upstream {
-            // Get current branch name first
-            let branch_output = crate::utils::command::wsl::exec(
-                &distro,
-                &format!("cd '{sp}' && git rev-parse --abbrev-ref HEAD 2>/dev/null"),
-            )
-            .map_err(AppError::from)?;
-            let branch = branch_output.trim().to_string();
-            let safe_branch = crate::utils::command::wsl::safe_path(&branch);
-            crate::utils::command::wsl::exec(
-                &distro,
-                &format!("cd '{sp}' && git push --set-upstream origin '{safe_branch}'"),
-            )
-            .map(|_| ())
-            .map_err(AppError::from)
-        } else {
-            crate::utils::command::wsl::exec(&distro, &format!("cd '{sp}' && git push"))
-                .map(|_| ())
-                .map_err(AppError::from)
-        }
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::push(
+            &transport,
+            &project_path,
+            set_upstream,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -407,8 +417,9 @@ pub fn wsl_pull(distro: String, project_path: String) -> Result<(), AppError> {
 pub fn wsl_fetch(distro: String, project_path: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(&distro, &project_path, &["fetch", "--all"])
-            .map(|_| ())
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::fetch(&transport, &project_path))
             .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
@@ -525,9 +536,14 @@ pub fn wsl_cherry_pick(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(&distro, &project_path, &["cherry-pick", &commit_hash])
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::cherry_pick(
+            &transport,
+            &project_path,
+            &commit_hash,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -546,12 +562,13 @@ pub fn wsl_revert_commit(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        crate::git::run_wsl_git(
-            &distro,
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::revert(
+            &transport,
             &project_path,
-            &["revert", "--no-edit", &commit_hash],
-        )
-        .map(|_| ())
+            &commit_hash,
+        ))
         .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
@@ -572,18 +589,16 @@ pub fn wsl_create_tag(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        match message {
-            Some(ref msg) => crate::git::run_wsl_git(
-                &distro,
-                &project_path,
-                &["tag", "-a", &tag_name, "-m", msg],
-            )
-            .map(|_| ())
-            .map_err(AppError::from),
-            None => crate::git::run_wsl_git(&distro, &project_path, &["tag", &tag_name])
-                .map(|_| ())
-                .map_err(AppError::from),
-        }
+        let transport = GitTransport::Wsl { distro };
+        let tag_message = message.as_deref().unwrap_or(&tag_name);
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::create_tag(
+            &transport,
+            &project_path,
+            &tag_name,
+            tag_message,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
