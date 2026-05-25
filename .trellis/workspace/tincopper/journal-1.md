@@ -1488,3 +1488,36 @@ Phase 5.6 命令重构端到端验证：\n- commands/git.rs: stage_files_command
 ### Next Steps
 
 - None - task complete
+
+
+## Session 43: Phase 5 收尾: stage_all/unstage_all/discard_all → operations.rs
+
+**Date**: 2026-05-26
+**Task**: Phase 5 收尾: stage_all/unstage_all/discard_all → operations.rs
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 5 最终收尾：\n- 3 命令追加迁移到 operations.rs\n- Phase 5 总计 45 条命令统一\n- 未迁: ~8 条 git2/复合命令\n- cargo check零error, cargo test 220 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `49ef929` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
