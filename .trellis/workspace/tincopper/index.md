@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 40
+- **Total Sessions**: 41
 - **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1424 | Active |
+| `journal-1.md` | ~1457 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 41 | 2026-05-26 | Phase 5.6: 现有命令接入 operations.rs (端到端验证) | `b7a895f` | `refactor/architecture-optimization` |
 | 40 | 2026-05-26 | Phase 5.5: 统一 git commands (git_unified.rs) | `572d758` | `refactor/architecture-optimization` |
 | 39 | 2026-05-26 | Phase 5.4: operations.rs 扩增 (branching + worktree) | `d956e73` | `refactor/architecture-optimization` |
 | 38 | 2026-05-26 | Phase 5.3: git/operations.rs (11 共享 shell 操作) | `cd73cae` | `refactor/architecture-optimization` |
