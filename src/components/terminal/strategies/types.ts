@@ -25,4 +25,8 @@ export interface TerminalStrategy {
   fontFamily: string;
   gpuAccel: boolean;
   onSessionReady?: () => void;
+  /** Optional output byte filter (Local removes 0x7f DEL) */
+  outputFilter?: (bytes: Uint8Array) => Uint8Array | Uint8Array<ArrayBuffer>;
+  /** Optional file links setup after terminal creation */
+  setupFileLinks?: (term: Terminal) => void;
 }

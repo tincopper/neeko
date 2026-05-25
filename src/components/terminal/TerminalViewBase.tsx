@@ -34,6 +34,8 @@ export default React.memo(function TerminalViewBase({
     fontFamily: fontFamilyProp,
     gpuAccel,
     onSessionReady,
+    outputFilter,
+    setupFileLinks,
   } = strategy;
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -116,6 +118,7 @@ export default React.memo(function TerminalViewBase({
       wrapper.appendChild(element);
       term.open(element);
       if (gpuAccel) void tryLoadWebgl(term);
+      if (setupFileLinks) setupFileLinks(term);
       fitAddon.fit();
 
       const entry = {
@@ -154,7 +157,8 @@ export default React.memo(function TerminalViewBase({
           }
 
           const unlisten = await listen<number[]>(`terminal-output-${sessionId}`, (event) => {
-            const bytes = new Uint8Array(event.payload);
+            let bytes: Uint8Array = new Uint8Array(event.payload);
+            if (outputFilter) bytes = outputFilter(bytes) as Uint8Array;
             term.write(bytes);
           });
           entry.unlisten = unlisten;
