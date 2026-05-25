@@ -1,3 +1,5 @@
+use crate::git::operations;
+use crate::git::transport::GitTransport;
 use crate::models::*;
 use crate::AppError;
 
@@ -256,18 +258,14 @@ pub fn wsl_stage_files(
 ) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
-        if file_paths.is_empty() {
-            return Ok(());
-        }
-        let quoted_files: Vec<String> = file_paths
-            .iter()
-            .map(|f| format!("'{}'", crate::utils::command::wsl::safe_path(f)))
-            .collect();
-        let sp = crate::utils::command::wsl::safe_path(&project_path);
-        let cmd = format!("cd '{sp}' && git add -- {}", quoted_files.join(" "));
-        crate::utils::command::wsl::exec(&distro, &cmd)
-            .map(|_| ())
-            .map_err(AppError::from)
+        let transport = GitTransport::Wsl { distro };
+        let rt = tokio::runtime::Handle::current();
+        rt.block_on(operations::stage_files(
+            &transport,
+            &project_path,
+            &file_paths,
+        ))
+        .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {

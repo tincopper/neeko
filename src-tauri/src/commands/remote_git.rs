@@ -1,3 +1,5 @@
+use crate::git::operations;
+use crate::git::transport::GitTransport;
 use crate::models::*;
 use crate::AppError;
 
@@ -247,17 +249,14 @@ pub async fn remote_stage_files(
     project_path: String,
     file_paths: Vec<String>,
 ) -> Result<(), AppError> {
-    if file_paths.is_empty() {
-        return Ok(());
-    }
-    let quoted_files: Vec<String> = file_paths
-        .iter()
-        .map(|f| format!("'{}'", crate::utils::command::ssh::safe_path(f)))
-        .collect();
-    let cmd = format!("git add -- {}", quoted_files.join(" "));
-    crate::git::remote::run_remote_git(&host, port, &username, &auth, &project_path, &cmd)
+    let transport = GitTransport::Remote {
+        host,
+        port,
+        username,
+        auth,
+    };
+    operations::stage_files(&transport, &project_path, &file_paths)
         .await
-        .map(|_| ())
         .map_err(AppError::from)
 }
 

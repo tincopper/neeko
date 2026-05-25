@@ -1,3 +1,5 @@
+use crate::git::operations;
+use crate::git::transport::GitTransport;
 use crate::models::*;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -257,14 +259,18 @@ pub fn stage_files_command(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::stage_files(&project.path, &file_paths).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let project = manager
+        .get_project(&project_id)
+        .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+    let work_dir = project.path.to_string_lossy().to_string();
+    let transport = GitTransport::Local;
+    let rt = tokio::runtime::Handle::current();
+    rt.block_on(operations::stage_files(
+        &transport,
+        &work_dir,
+        &file_paths,
+    ))
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
