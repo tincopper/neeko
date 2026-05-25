@@ -1224,3 +1224,36 @@ Phase 3B 前端 prop 塌缩：\n- EditorGroupPaneProps: 13→6 (-54%)\n- EditorG
 ### Next Steps
 
 - None - task complete
+
+
+## Session 35: Phase 4: Store 切片拆分（研究 — Zustand 5 类型系统阻塞）
+
+**Date**: 2026-05-25
+**Task**: Phase 4: Store 切片拆分（研究 — Zustand 5 类型系统阻塞）
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 4 商店切片拆分尝试：\n- 3种方案均因 Zustand 5 类型推断限制失败\n  StateCreator组合/工厂函数/plain函数 → consumer selector 类型断为any\n- 根因：Zustand 5 create<T>() 需单一表达式绑定泛型\n- 替代方案：添加域注释分隔线 (Project/Connection/Worktree/FileView/Tabs/Editor/Dock/Git)\n- npx tsc 零error，pnpm test:run 562 passed\n- 切片拆分需等 Zustand 6 或换状态管理方案
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ac639ab` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
