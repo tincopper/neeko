@@ -255,10 +255,17 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
 }
 
 export const useAppStore = create<AppStoreState>((set) => ({
+  // ═══════════════════════════════════════════════════════════════
+  // Domain: Project
+  // ═══════════════════════════════════════════════════════════════
   projects: [],
   activeProjectId: null,
   activeProject: null,
   isTerminalView: false,
+
+  // ═══════════════════════════════════════════════════════════════
+  // Domain: Connection (WSL / Remote)
+  // ═══════════════════════════════════════════════════════════════
   wslEntries: [],
   activeWslKey: null,
   activeWslProject: null,
@@ -267,6 +274,10 @@ export const useAppStore = create<AppStoreState>((set) => ({
   activeRemoteProject: null,
   remoteAuthStore: new Map(),
   pendingAuthEntry: null,
+
+  // ═══════════════════════════════════════════════════════════════
+  // Domain: Worktree
+  // ═══════════════════════════════════════════════════════════════
   activeWorktreePath: null,
   activeWorktreeBranch: "",
   openedWorktrees: [],
@@ -278,9 +289,17 @@ export const useAppStore = create<AppStoreState>((set) => ({
   remoteActiveWtBranch: "",
   remoteOpenedWt: [],
   worktreeState: {},
+
+  // ═══════════════════════════════════════════════════════════════
+  // Domain: File View
+  // ═══════════════════════════════════════════════════════════════
   fileTree: [],
   fileViewLoading: false,
   activeFilePath: null,
+
+  // ═══════════════════════════════════════════════════════════════
+  // Domain: Tabs + Editor Layout
+  // ═══════════════════════════════════════════════════════════════
   tabs: {},
   activeTabId: null,
   editorLayout: {},
