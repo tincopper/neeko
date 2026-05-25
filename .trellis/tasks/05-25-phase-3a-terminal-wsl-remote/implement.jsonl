@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "TerminalViewBase component design and React patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "useAppStore/zustand usage in terminal components"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Strategy interface and unified cache types"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useEffect/useRef/useCallback patterns for terminal lifecycle"}
