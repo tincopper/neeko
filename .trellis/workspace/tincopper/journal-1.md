@@ -1455,3 +1455,36 @@ Phase 5.6 命令重构端到端验证：\n- commands/git.rs: stage_files_command
 ### Next Steps
 
 - None - task complete
+
+
+## Session 42: Phase 5-Followup: 批量迁移 42 个 Git 命令
+
+**Date**: 2026-05-26
+**Task**: Phase 5-Followup: 批量迁移 42 个 Git 命令
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+批量迁移 Git 命令到 operations.rs：\n- commands/git.rs: 16命令 → operations + GitTransport::Local\n- commands/wsl_git.rs: 13命令 → operations + GitTransport::Wsl\n- commands/remote_git.rs: 13命令 → operations + GitTransport::Remote\n- 42条命令统一实现，签名零变更\n- cargo check零error, cargo test 220 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5fd112b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
