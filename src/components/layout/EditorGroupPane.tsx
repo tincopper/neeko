@@ -13,6 +13,7 @@ import type { AgentConfig, AuthMethod, EditorGroupId } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
 import { useAppContext } from "../../contexts/app-context";
+import { useWslContext } from "../../contexts/wsl-context";
 import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
 import { useAppStore } from "../../store/appStore";
 
@@ -22,13 +23,7 @@ interface EditorGroupPaneProps {
   /** Composite tab key — used by the pane to lookup layout & store state */
   tabKey: string;
   onAddTerminalTab?: () => void;
-  onSplitRight: (tabId: string) => void;
-  onMoveToRight: (tabId: string) => void;
-  onMoveToLeft: (tabId: string) => void;
   onFocusGroup: () => void;
-  onCloseOtherTabs?: (tabId: string) => void;
-  onCloseAllTabs?: () => void;
-  wslProject?: { distro: string; project: { id: string } } | null;
   remoteProject?: {
     entryId: string;
     projectId: string;
@@ -42,35 +37,54 @@ interface EditorGroupPaneProps {
     onSessionReady?: (pid: string) => void;
   } | null;
   layoutId: string;
-  /**
-   * Extra context-menu items injected by the parent layout.
-   * Rendered after the built-in split/move items, separated by a divider.
-   * This keeps pin logic (and any future layout-level actions) out of EditorGroupPane.
-   */
-  contextMenuExtras?: (tabId: string) => import("../project/ContextMenu").ContextMenuItem[];
 }
 
 function EditorGroupPane({
   groupId,
   tabKey,
   onAddTerminalTab,
-  onSplitRight,
-  onMoveToRight,
-  onMoveToLeft,
   onFocusGroup,
-  onCloseOtherTabs,
-  onCloseAllTabs,
-  wslProject,
   remoteProject,
   layoutId,
-  contextMenuExtras,
 }: EditorGroupPaneProps) {
   const globalEditorCtx = useEditorContext();
   const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
   const { config, showToast } = useAppContext();
+  const { activeWslProject: wslProject } = useWslContext();
 
   const layoutState = useEditorGroupLayout(tabKey);
-  const { leftTabs, rightTabs, leftActiveTabId, rightActiveTabId, pinnedTab, activeGroupId } = layoutState;
+  const {
+    leftTabs,
+    rightTabs,
+    leftActiveTabId,
+    rightActiveTabId,
+    pinnedTab,
+    activeGroupId,
+    splitRight: onSplitRight,
+    moveToRight: onMoveToRight,
+    moveToLeft: onMoveToLeft,
+    closeOtherTabs: onCloseOtherTabs,
+    closeAllTabs: onCloseAllTabs,
+    pinTab,
+    unpinTab,
+  } = layoutState;
+
+  // Build context menu extras inline based on groupId
+  const resolveContextMenuExtras = useCallback(
+    (tabId: string): ContextMenuItem[] => {
+      if (groupId === "pinned") {
+        return [{ label: "Unpin Tab", action: () => unpinTab() }];
+      }
+      const isPinnedTab = tabId === layoutState.pinnedTab?.id;
+      if (isPinnedTab) {
+        return [{ label: "Unpin Tab", action: () => unpinTab() }];
+      }
+      return [{ label: "Pin Tab", action: () => pinTab(tabId) }];
+    },
+    [groupId, layoutState.pinnedTab?.id, pinTab, unpinTab],
+  );
+
+  const contextMenuExtras = resolveContextMenuExtras;
 
   // Derive tabs / activeTabId from layout state based on this pane's groupId
   const tabs = useMemo(() => {

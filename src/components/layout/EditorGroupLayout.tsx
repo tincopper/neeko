@@ -11,9 +11,6 @@ import type { AuthMethod } from "../../types";
 interface EditorGroupLayoutProps {
   tabKey: string;
   onAddTerminalTab: () => void;
-  onCloseOtherTabs?: (tabId: string) => void;
-  onCloseAllTabs?: () => void;
-  wslProject?: { distro: string; project: { id: string } } | null;
   remoteProject?: {
     entryId: string;
     projectId: string;
@@ -32,9 +29,6 @@ interface EditorGroupLayoutProps {
 function EditorGroupLayout({
   tabKey,
   onAddTerminalTab,
-  onCloseOtherTabs,
-  onCloseAllTabs,
-  wslProject,
   remoteProject,
   buildLayoutId,
 }: EditorGroupLayoutProps) {
@@ -44,27 +38,12 @@ function EditorGroupLayout({
     leftTabs,
     leftActiveTabId,
     rightActiveTabId,
-    splitRight,
-    moveToRight,
-    moveToLeft,
     setActiveGroup,
     setSplitRatio,
     pinnedTab,
     pinnedPanelRatio,
-    pinTab,
-    unpinTab,
     setPinnedPanelRatio,
   } = useEditorGroupLayout(tabKey);
-
-  const handleCloseOtherTabs = useCallback(
-    (tabId: string) => onCloseOtherTabs?.(tabId),
-    [onCloseOtherTabs],
-  );
-
-  const handleCloseAllTabs = useCallback(
-    () => onCloseAllTabs?.(),
-    [onCloseAllTabs],
-  );
 
   // Panel IDs — stable per tabKey
   const pinnedPanelId = `pinned-${tabKey}`;
@@ -159,44 +138,13 @@ function EditorGroupLayout({
   const rightLayoutId  = buildLayoutId("right",  rightActiveTabId);
   const pinnedLayoutId = buildLayoutId("pinned", pinnedTab?.id ?? null);
 
-  // ── Context menu extras: injected by Layout so EditorGroupPane stays pin-unaware ──
-  const pinnedContextMenuExtras = useCallback(
-    (_tabId: string) => [
-      { label: "Unpin Tab", action: () => unpinTab() },
-    ],
-    [unpinTab],
-  );
-
-  const normalContextMenuExtras = useCallback(
-    (tabId: string) => {
-      const isPinnedTab = tabId === layout.pinnedTabId;
-      if (isPinnedTab) {
-        return [{ label: "Unpin Tab", action: () => unpinTab() }];
-      }
-      return [{ label: "Pin Tab", action: () => pinTab(tabId) }];
-    },
-    [layout.pinnedTabId, pinTab, unpinTab],
-  );
-
-  // ── Shared props for every EditorGroupPane ──
-  const sharedPaneProps = {
-    tabKey,
-    onAddTerminalTab,
-    wslProject,
-    remoteProject,
-    onSplitRight:  splitRight,
-    onMoveToRight: moveToRight,
-    onMoveToLeft:  moveToLeft,
-    onCloseOtherTabs: handleCloseOtherTabs,
-    onCloseAllTabs:   handleCloseAllTabs,
-    contextMenuExtras: normalContextMenuExtras,
-  };
-
   // ── Case A: no pin, no split — no ResizablePanelGroup needed ──
   if (!hasPinned && !isSplit) {
     return (
       <EditorGroupPane
-        {...sharedPaneProps}
+        tabKey={tabKey}
+        onAddTerminalTab={onAddTerminalTab}
+        remoteProject={remoteProject}
         groupId="left"
         onFocusGroup={() => setActiveGroup("left")}
         layoutId={leftLayoutId}
@@ -209,17 +157,12 @@ function EditorGroupLayout({
   if (hasPinned && !isSplit && leftTabs.length === 0) {
     return (
       <EditorGroupPane
-        {...sharedPaneProps}
+        tabKey={tabKey}
+        onAddTerminalTab={undefined}
+        remoteProject={remoteProject}
         groupId="pinned"
         onFocusGroup={() => {}}
         layoutId={pinnedLayoutId}
-        onAddTerminalTab={undefined}
-        onSplitRight={() => {}}
-        onMoveToRight={() => {}}
-        onMoveToLeft={() => {}}
-        onCloseOtherTabs={undefined}
-        onCloseAllTabs={undefined}
-        contextMenuExtras={pinnedContextMenuExtras}
       />
     );
   }
@@ -244,18 +187,12 @@ function EditorGroupLayout({
           >
             <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
               <EditorGroupPane
-                {...sharedPaneProps}
+                tabKey={tabKey}
+                onAddTerminalTab={undefined}
+                remoteProject={remoteProject}
                 groupId="pinned"
                 onFocusGroup={() => {}}
                 layoutId={pinnedLayoutId}
-                // Pin panel: no split/move/add operations — only Unpin
-                onAddTerminalTab={undefined}
-                onSplitRight={() => {}}
-                onMoveToRight={() => {}}
-                onMoveToLeft={() => {}}
-                onCloseOtherTabs={undefined}
-                onCloseAllTabs={undefined}
-                contextMenuExtras={pinnedContextMenuExtras}
               />
             </div>
           </ResizablePanel>
@@ -273,7 +210,9 @@ function EditorGroupLayout({
       >
         <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
           <EditorGroupPane
-            {...sharedPaneProps}
+            tabKey={tabKey}
+            onAddTerminalTab={onAddTerminalTab}
+            remoteProject={remoteProject}
             groupId="left"
             onFocusGroup={() => setActiveGroup("left")}
             layoutId={leftLayoutId}
@@ -292,7 +231,9 @@ function EditorGroupLayout({
           >
             <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
               <EditorGroupPane
-                {...sharedPaneProps}
+                tabKey={tabKey}
+                onAddTerminalTab={onAddTerminalTab}
+                remoteProject={remoteProject}
                 groupId="right"
                 onFocusGroup={() => setActiveGroup("right")}
                 layoutId={rightLayoutId}

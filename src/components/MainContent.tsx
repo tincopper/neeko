@@ -85,23 +85,6 @@ function MainContent() {
       useAppStore.getState().activateTab(tabKey, tabId);
    }, [tabKey, currentProjectId]);
 
-   const handleCloseOtherTabs = useCallback((keepTabId: string) => {
-      if (!tabKey) return;
-      const store = useAppStore.getState();
-      const projectTabs = store.tabs[tabKey];
-      if (!projectTabs) return;
-      for (const tab of projectTabs.tabs) {
-         if (tab.id !== keepTabId) {
-            store.closeTab(tabKey, tab.id);
-         }
-      }
-   }, [tabKey]);
-
-   const handleClearAllTabs = useCallback(() => {
-      if (!tabKey) return;
-      useAppStore.getState().clearProjectTabs(tabKey);
-   }, [tabKey]);
-
    // Agent installed status — cached at module level, only checks new agents
    // whose ID hasn't been seen yet. agentIdFingerprint ensures re-check
    // only when the agent list identity changes, not on project switches.
@@ -228,9 +211,6 @@ function MainContent() {
             <EditorGroupLayout
                tabKey={tabKey}
                onAddTerminalTab={handleAddTerminalTab}
-               onCloseOtherTabs={handleCloseOtherTabs}
-               onCloseAllTabs={handleClearAllTabs}
-               wslProject={activeWslProject}
                remoteProject={remoteProjectProp}
                buildLayoutId={buildLayoutId}
             />

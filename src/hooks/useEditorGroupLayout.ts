@@ -25,6 +25,8 @@ export interface EditorGroupLayoutResult {
   pinTab: (tabId: string) => void;
   unpinTab: () => void;
   setPinnedPanelRatio: (ratio: number) => void;
+  closeOtherTabs: (keepTabId: string) => void;
+  closeAllTabs: () => void;
 }
 
 export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
@@ -105,6 +107,24 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
 
   const pinnedPanelRatio = layout.pinnedPanelRatio ?? 0.35;
 
+  const closeOtherTabs = useCallback(
+    (keepTabId: string) => {
+      const store = useAppStore.getState();
+      const projectTabs = store.tabs[tabKey];
+      if (!projectTabs) return;
+      for (const tab of projectTabs.tabs) {
+        if (tab.id !== keepTabId) {
+          store.closeTab(tabKey, tab.id);
+        }
+      }
+    },
+    [tabKey],
+  );
+
+  const closeAllTabs = useCallback(() => {
+    useAppStore.getState().clearProjectTabs(tabKey);
+  }, [tabKey]);
+
   return {
     layout,
     isSplit: layout.isSplit,
@@ -126,5 +146,7 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     pinTab,
     unpinTab,
     setPinnedPanelRatio,
+    closeOtherTabs,
+    closeAllTabs,
   };
 }
