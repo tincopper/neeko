@@ -1323,3 +1323,36 @@ Phase 5.2 Git 传输抽象：\n- 新建 git/transport.rs (112行)：GitTransport
 ### Next Steps
 
 - None - task complete
+
+
+## Session 38: Phase 5.3: git/operations.rs (11 共享 shell 操作)
+
+**Date**: 2026-05-26
+**Task**: Phase 5.3: git/operations.rs (11 共享 shell 操作)
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 5.3 共享 git 操作：\n- 新建 git/operations.rs (127行)：11个统一操作\n  基于 GitTransport enum，对 Local/WSL/Remote 三端通用\n- 操作：stage_files, unstage_files, stage_all, unstage_all,\n  discard_file, discard_all, fetch, push, cherry_pick, revert, create_tag\n- cargo check零error, cargo test 220 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd73cae` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

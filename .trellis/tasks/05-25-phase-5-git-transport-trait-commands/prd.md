@@ -1,78 +1,37 @@
-# Phase 5.1: Git 解析器提取（parsers.rs）
+# Phase 5.3: operations.rs（共享 git 操作）
 
 ## Goal
 
-将 `git/remote.rs` 中的共享解析函数提取到独立 `git/parsers.rs` 模块，消除 `wsl.rs` 对 `remote.rs` 的反向依赖。
+基于 `GitTransport` 抽象，创建 `git/operations.rs`，包含 8 个 shell-only git 操作。这些操作在 local/wsl/remote 三端完全一致，唯一差异是执行机制。
 
-## What I already know
+## Batch 1: Shell-only operations
 
-### 当前解析函数位置
-
-| 函数 | 当前位置 | 行号 | WSL 引用 | Remote 引用 |
-|---|---|---|---|---|
-| `parse_unified_diff` | `git/local.rs` | L628 | ✅ via `super::local::` | ✅ via `super::local::` |
-| `collapse_diff_context` | `git/local.rs` | L716 | ✅ via `super::local::` | ✅ via `super::local::` |
-| `parse_git_info_output` | `git/remote.rs` | L89 | ✅ via `super::remote::` | 自身 |
-| `parse_status_line` | `git/remote.rs` | L204 | ✅ via `super::remote::` | 自身 |
-| `parse_commit_log_output` | `git/remote.rs` | L326 | ✅ via `super::remote::` | 自身 |
-| `extract_commit_hash_from_output` | `git/remote.rs` | L357 | ✅ via `super::remote::` | 自身 |
-| `build_file_tree_from_find` | `git/remote.rs` | L374 | ✅ via `super::remote::` | 自身 |
-| `collect_file_tree_children` | `git/remote.rs` | L450 | ✅ via `super::remote::` | 自身 |
-
-### 现有依赖链
-
-```
-local.rs ────────────────────────────────────┐
-  │                                            │
-  ├── parse_unified_diff ─────────── shared ──┤
-  └── collapse_diff_context                    │
-                                          parsed from
-remote.rs ─────────────────────────────┐    │
-  │                                     │    │
-  ├── parse_git_info_output ────────────┤    │
-  ├── parse_status_line                 │    │
-  ├── parse_commit_log_output           ├────┘
-  ├── extract_commit_hash_from_output   │
-  ├── build_file_tree_from_find         │
-  └── collect_file_tree_children        │
-                                   wsl.rs imports
-wsl.rs ────────────────────────────────┘
-  (imports from both local.rs and remote.rs)
-```
-
-### 目标架构
-
-```
-local.rs ← parsers.rs → wsl.rs
-              ↑
-          remote.rs
-```
+| 操作 | git 命令 | 当前三路实现 |
+|---|---|---|
+| `stage_files` | `git add -- <files>` | local.rs L797 / wsl_git.rs inline / remote_git.rs inline |
+| `unstage_files` | `git restore --staged -- <files>` | local.rs L819 / wsl_git.rs inline / remote_git.rs inline |
+| `discard_file` | `git checkout -- <file>` | local.rs L903 / wsl_git.rs inline / remote_git.rs inline |
+| `fetch` | `git fetch --all` | local.rs L1051 / wsl_git.rs inline / remote_git.rs inline |
+| `push` | `git push` | local.rs L1120 / wsl_git.rs inline / remote_git.rs inline |
+| `cherry_pick` | `git cherry-pick <hash>` | local.rs L1451 / wsl_git.rs inline / remote_git.rs inline |
+| `revert` | `git revert --no-edit <hash>` | local.rs L1468 / wsl_git.rs inline / remote_git.rs inline |
+| `create_tag` | `git tag -a <name> -m <msg>` | local.rs L1485 / wsl_git.rs inline / remote_git.rs inline |
 
 ## Requirements
 
-1. 创建 `git/parsers.rs`，移入全部 8 个解析函数
-2. 更新 `git/mod.rs`：添加 `mod parsers` + `pub use parsers::*`
-3. 更新 `git/local.rs`：删除 `parse_unified_diff` / `collapse_diff_context` 定义，改为 `use super::parsers::`
-4. 更新 `git/remote.rs`：删除 6 个函数定义，改为 `use super::parsers::`
-5. 更新 `git/wsl.rs`：导入路径从 `super::local` / `super::remote` 改为 `super::parsers`
-6. 函数签名不变，零行为变更
+1. 创建 `git/operations.rs`，实现 8 个函数
+2. 每个函数接受 `&GitTransport` + 参数，返回 `Result<()>`
+3. 函数内部调用 `transport.run_git(&args, work_dir).await`
+4. 不修改任何现有文件（纯新增）
 
 ## Acceptance Criteria
 
-- [ ] `cargo check --manifest-path src-tauri/Cargo.toml` 零 error
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml` 全部通过
-- [ ] `npx tsc --noEmit` 零 error（前端无变更）
-- [ ] `pnpm test:run` 全部通过
+- [ ] `cargo check` 零 error
+- [ ] `cargo test` 全部通过
+- [ ] 新 operations 编译通过
 
 ## Out of Scope
 
-- 不创建 GitTransport trait
-- 不创建 commands/git_unified.rs
-- 不删旧文件（local.rs / wsl.rs / remote.rs）
-- 不修改前端 invoke 调用
-
-## Technical Notes
-
-- 解析函数全部为纯函数（输入字符串 → 输出结构体），无副作用
-- `pub(crate)` 可见性保持不变
-- `parse_status_line` 当前为 `pub(crate)`，wsl.rs 通过 `super::remote::parse_status_line` 调用
+- 不替代现有 local.rs / wsl.rs / remote.rs 函数
+- 不修改 commands 或前端
+- 不含 git2 特定操作（commit, pull — Phase 5.4）
