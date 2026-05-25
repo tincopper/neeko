@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify no breaking changes after refactor"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify hook interfaces are properly typed"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Verify extracted hooks follow conventions"}

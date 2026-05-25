@@ -1,6 +1,9 @@
 export { useAgentActions } from "./useAgentActions";
 export { useAppConfig } from "./useAppConfig";
 export { useAppContainer } from "./useAppContainer";
+export { useAppModalsProps } from "./useAppModalsProps";
+export { useAppLayoutProps } from "./useAppLayoutProps";
+export { useTitleBarProps } from "./useTitleBarProps";
 export { useConnectionWorktreeState } from "./useConnectionWorktreeState";
 export { useDelayedInit } from "./useDelayedInit";
 export { useFileView } from "./useFileView";

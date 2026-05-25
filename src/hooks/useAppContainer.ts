@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type AppProviders from "../AppProviders";
 import type AppModals from "../AppModals";
@@ -26,9 +26,11 @@ import { useFileView } from "./useFileView";
 import { useActiveProject } from "./useActiveProject";
 import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
-import { IS_WINDOWS } from "../utils/platform";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 import { useFileTabRefresh } from "./useFileTabRefresh";
+import { useAppLayoutProps } from "./useAppLayoutProps";
+import { useTitleBarProps } from "./useTitleBarProps";
+import { useAppModalsProps } from "./useAppModalsProps";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
@@ -45,8 +47,6 @@ interface UseAppContainerResult {
   appLayoutProps: AppLayoutProps;
   appModalsProps: AppModalsProps;
 }
-
-const noop = () => { };
 
 export function useAppContainer(): UseAppContainerResult {
   const { config, saveConfig } = useAppConfig();
@@ -181,48 +181,6 @@ export function useAppContainer(): UseAppContainerResult {
 
   const activeContext = useActiveProject();
   const fileView = useFileView(activeContext.commands, activeContext.worktreePath);
-
-  // ── TitleBar branch switching ─────────────────────────────────────────────
-  const [isBranchSwitching, setIsBranchSwitching] = useState(false);
-
-  /** Unified git refresh for the currently active project (local / WSL / remote). */
-  const handleTitleBarRefreshGit = useCallback(async () => {
-    if (activeProject) {
-      await handleRefreshGit(activeProject.id);
-    } else if (activeWslProject) {
-      await wslActions.handleRefreshWslGit(
-        activeWslProject.distro,
-        activeWslProject.project.id,
-        activeWslProject.project.path,
-      );
-    } else if (activeRemoteProject) {
-      await remoteActions.handleRefreshRemoteGit(
-        activeRemoteProject.entry.id,
-        activeRemoteProject.project.id,
-        activeRemoteProject.project.path,
-      );
-    }
-  }, [
-    activeProject,
-    activeWslProject,
-    activeRemoteProject,
-    handleRefreshGit,
-    wslActions,
-    remoteActions,
-  ]);
-
-  const handleTitleBarCheckoutBranch = useCallback(async (branchName: string) => {
-    if (!activeContext.commands) return;
-    setIsBranchSwitching(true);
-    try {
-      await activeContext.commands.checkoutBranch(branchName);
-      await handleTitleBarRefreshGit();
-    } catch (e: unknown) {
-      showToast(String(e), "error");
-    } finally {
-      setIsBranchSwitching(false);
-    }
-  }, [activeContext.commands, handleTitleBarRefreshGit, showToast]);
 
   // Close settings view if open (when switching projects)
   const closeSettingsView = useCallback(() => {
@@ -428,26 +386,6 @@ export function useAppContainer(): UseAppContainerResult {
   const handleWslDiffBack = useCallback(() => {
     wslActions.setWslDiffState(null);
   }, [wslActions.setWslDiffState]);
-
-
-  const handleToggleSettings = useCallback(() => {
-    const currentView = useAppViewStore.getState().appView;
-    if (currentView === "settings") {
-      useAppViewStore.getState().setAppView("normal");
-    } else {
-      useAppViewStore.getState().setAppView("settings");
-    }
-  }, []);
-
-  const handleAddWslClick = useCallback(() => {
-    setWslDialogOpen(true);
-  }, [setWslDialogOpen]);
-
-  const handleAddRemoteClick = useCallback(() => {
-    setRemoteDialogOpen(true);
-  }, [setRemoteDialogOpen]);
-
-  const handleAddWslOrNoop = IS_WINDOWS ? handleAddWslClick : noop;
 
   const { initializing } = useSessionBootstrap({
     loadProjects,
@@ -655,24 +593,19 @@ export function useAppContainer(): UseAppContainerResult {
     onAgentClick: handleAgentClick,
   };
 
-  const titleBarBranches =
-    activeProject?.git_info?.branches ??
-    activeWslProject?.project.git_info?.branches ??
-    activeRemoteProject?.project.git_info?.branches ??
-    [];
-
-  const titleBarProps: TitleBarProps = {
+  const titleBarProps = useTitleBarProps({
     activeProject,
     activeWslProject,
     activeRemoteProject,
     activeWorktreeBranch,
-    activeWslWorktreeBranch: wslActions.wslActiveWtBranch,
-    activeRemoteWorktreeBranch: remoteActions.remoteActiveWtBranch,
-    branches: titleBarBranches,
-    isBranchSwitching,
-    onCheckoutBranch: handleTitleBarCheckoutBranch,
-    onRefreshGit: handleTitleBarRefreshGit,
-  };
+    handleRefreshGit,
+    handleRefreshWslGit: wslActions.handleRefreshWslGit,
+    handleRefreshRemoteGit: remoteActions.handleRefreshRemoteGit,
+    wslActiveWtBranch: wslActions.wslActiveWtBranch,
+    remoteActiveWtBranch: remoteActions.remoteActiveWtBranch,
+    checkoutBranch: activeContext.commands?.checkoutBranch ?? null,
+    showToast,
+  });
 
   const appProvidersProps: AppProvidersProps = {
     appValue: {
@@ -691,60 +624,59 @@ export function useAppContainer(): UseAppContainerResult {
     editorValue,
   };
 
-  const appLayoutProps: AppLayoutProps = {
+  const appLayoutProps = useAppLayoutProps({
     onAddProject: handleAddProject,
-    onAddWsl: handleAddWslOrNoop,
-    onAddRemote: handleAddRemoteClick,
-    onOpenSettings: handleToggleSettings,
-  };
+    onOpenWslDialog: () => setWslDialogOpen(true),
+    onOpenRemoteDialog: () => setRemoteDialogOpen(true),
+  });
 
-  const appModalsProps: AppModalsProps = {
-    addProject: {
-      pendingPath,
-      onConfirm: handleConfirmAddProject,
-      onCancel: () => setPendingPath(null),
-      loading,
+  const handleWslEntryAddRefresh = useCallback(
+    async (entry: WSLEntrySession) => {
+      await handleWSLEntryAdd(entry);
+      for (const project of entry.projects) {
+        if (!project.git_info) {
+          void wslActions.handleRefreshWslGit(entry.distro, project.id, project.path);
+        }
+      }
     },
-    wsl: {
-      open: wslDialogOpen,
-      onClose: handleWslDialogClose,
-      onAddWslEntry: async (entry: WSLEntrySession) => {
-        await handleWSLEntryAdd(entry);
-        // Refresh git info for newly added projects that lack it
+    [handleWSLEntryAdd, wslActions],
+  );
+
+  const handleRemoteEntryAddRefresh = useCallback(
+    async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
+      await handleRemoteEntryAdd(entry, auth, saved_auth);
+      const hasAuth = remoteAuthStore.has(entry.id) || !!auth;
+      if (hasAuth) {
         for (const project of entry.projects) {
           if (!project.git_info) {
-            void wslActions.handleRefreshWslGit(entry.distro, project.id, project.path);
+            void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
           }
         }
-      },
-      entries: wslEntries,
-      addToEntryId: wslAddToEntryId,
+      }
     },
-    remote: {
-      open: remoteDialogOpen,
-      onClose: handleRemoteDialogClose,
-      onAddRemoteEntry: async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
-        await handleRemoteEntryAdd(entry, auth, saved_auth);
-        // Refresh git info for newly added projects that lack it (requires auth)
-        const hasAuth = remoteAuthStore.has(entry.id) || !!auth;
-        if (hasAuth) {
-          for (const project of entry.projects) {
-            if (!project.git_info) {
-              void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
-            }
-          }
-        }
-      },
-      entries: remoteEntries,
-      addToEntryId: remoteAddToEntryId,
-      authStore: remoteAuthStore,
-    },
-    remoteAuth: {
-      pendingAuthEntry,
-      onCancel: remoteAuthActions.handleRemoteAuthCancel,
-      onSuccess: remoteAuthActions.handleRemoteAuthSuccess,
-    },
-  };
+    [handleRemoteEntryAdd, remoteAuthStore, remoteActions],
+  );
+
+  const appModalsProps = useAppModalsProps({
+    pendingPath,
+    handleConfirmAddProject,
+    setPendingPath,
+    loading,
+    wslDialogOpen,
+    wslAddToEntryId,
+    wslEntries,
+    handleWslDialogClose,
+    handleWslEntryAdd: handleWslEntryAddRefresh,
+    remoteDialogOpen,
+    remoteAddToEntryId,
+    remoteEntries,
+    handleRemoteDialogClose,
+    handleRemoteEntryAdd: handleRemoteEntryAddRefresh,
+    remoteAuthStore,
+    pendingAuthEntry,
+    handleRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel,
+    handleRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess,
+  });
 
   return {
     initializing,
