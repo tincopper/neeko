@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 36
-- **Last Active**: 2026-05-25
+- **Total Sessions**: 37
+- **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1292 | Active |
+| `journal-1.md` | ~1325 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 37 | 2026-05-26 | Phase 5.2: GitTransport enum + 3 impls | `fde7f30` | `refactor/architecture-optimization` |
 | 36 | 2026-05-25 | Phase 5.1: Git 解析器提取 (parsers.rs) | `8deca41` | `refactor/architecture-optimization` |
 | 35 | 2026-05-25 | Phase 4: Store 切片拆分（研究 — Zustand 5 类型系统阻塞） | `ac639ab` | `refactor/architecture-optimization` |
 | 34 | 2026-05-25 | Phase 3B: Prop 塌缩 Phase 3-4 (13→6, 删除 sharedPaneProps) | `89408a5` | `refactor/architecture-optimization` |
