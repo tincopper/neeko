@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 31
+- **Total Sessions**: 32
 - **Last Active**: 2026-05-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1127 | Active |
+| `journal-1.md` | ~1160 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 32 | 2026-05-25 | Phase 2B: useAppContainer 拆分 (757→689, 3个新hook) | `08a6564` | `refactor/architecture-optimization` |
 | 31 | 2026-05-25 | Phase 2A: Prop 塌缩 EditorGroupPane (30+ → 13 props) | `0b185bc` | `refactor/architecture-optimization` |
 | 30 | 2026-05-25 | Phase 1B Theme 编排收尾 + 策略模式重构 | `a8775fe` | `refactor/architecture-optimization` |
 | 29 | 2026-05-21 | 架构优化 Phase 1 实施：SSH 认证整合 + Theme 模块化 | `a8f3fad`, `9ee8855` | `refactor/architecture-optimization` |

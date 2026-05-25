@@ -1125,3 +1125,36 @@ Phase 2A 前端 prop 塌缩：\n- EditorGroupPane Props 从 30+ 降至 13\n- 移
 ### Next Steps
 
 - None - task complete
+
+
+## Session 32: Phase 2B: useAppContainer 拆分 (757→689, 3个新hook)
+
+**Date**: 2026-05-25
+**Task**: Phase 2B: useAppContainer 拆分 (757→689, 3个新hook)
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 2B 前端 hook 拆分：\n- 新建 useAppLayoutProps.ts (26行, Bag 3)\n- 新建 useTitleBarProps.ts (91行, Bag 1)\n- 新建 useAppModalsProps.ts (60行, Bag 4)\n- useAppContainer 757→689 (-68行)\n- 依赖注入模式，避免子hook实例重复\n- post-add git refresh 改为 wrapper callback\n- npx tsc 零error，pnpm test:run 562 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `08a6564` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
