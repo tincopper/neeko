@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
+- **Total Sessions**: 39
 - **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1358 | Active |
+| `journal-1.md` | ~1391 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-05-26 | Phase 5.4: operations.rs 扩增 (branching + worktree) | `d956e73` | `refactor/architecture-optimization` |
 | 38 | 2026-05-26 | Phase 5.3: git/operations.rs (11 共享 shell 操作) | `cd73cae` | `refactor/architecture-optimization` |
 | 37 | 2026-05-26 | Phase 5.2: GitTransport enum + 3 impls | `fde7f30` | `refactor/architecture-optimization` |
 | 36 | 2026-05-25 | Phase 5.1: Git 解析器提取 (parsers.rs) | `8deca41` | `refactor/architecture-optimization` |
