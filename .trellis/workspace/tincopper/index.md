@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 35
+- **Total Sessions**: 36
 - **Last Active**: 2026-05-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1259 | Active |
+| `journal-1.md` | ~1292 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 36 | 2026-05-25 | Phase 5.1: Git 解析器提取 (parsers.rs) | `8deca41` | `refactor/architecture-optimization` |
 | 35 | 2026-05-25 | Phase 4: Store 切片拆分（研究 — Zustand 5 类型系统阻塞） | `ac639ab` | `refactor/architecture-optimization` |
 | 34 | 2026-05-25 | Phase 3B: Prop 塌缩 Phase 3-4 (13→6, 删除 sharedPaneProps) | `89408a5` | `refactor/architecture-optimization` |
 | 33 | 2026-05-25 | Phase 3A: Terminal 视图合并 (WSL/Remote 策略模式) | `74ef587` | `refactor/architecture-optimization` |
