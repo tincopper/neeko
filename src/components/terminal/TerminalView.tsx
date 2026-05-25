@@ -18,7 +18,7 @@ import { createTerminalForProject } from "./terminalFactory";
 import type { TerminalCache, TerminalViewProps } from "./terminalTypes";
 
 function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProps) {
-   const { config } = useAppContext();
+   const { config, effectiveTerminalFontSize } = useAppContext();
    const activeProject = useAppStore((state) => state.activeProject);
    const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
    const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
@@ -78,10 +78,10 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
 
       const cache = terminalCache.get(cacheKey);
       if (cache) {
-         cache.term.options.fontSize = config.terminalFontSize;
+         cache.term.options.fontSize = effectiveTerminalFontSize;
          cache.term.options.fontFamily = buildFontFamily(config.fontFamily);
       }
-   }, [projectId, cacheKey, config.terminalFontSize, config.fontFamily]);
+   }, [projectId, cacheKey, effectiveTerminalFontSize, config.fontFamily]);
 
    useEffect(() => {
       if (!projectId || !projectPath || !projectName) {
@@ -159,19 +159,19 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
          loadingElRef.current = loadingEl;
          wrapper.appendChild(loadingEl);
          createTerminalForProject(
-            cacheKey,
-            projectPath,
-            projectName,
-            null,
-            config.terminalFontSize,
-            wrapper,
-            config.shell,
-            config.fontFamily,
-            projectId,
-            undefined,
-            taskCommand ?? undefined,
-            taskConfigId ?? undefined,
-            config.terminalGpuAcceleration,
+              cacheKey,
+              projectPath,
+              projectName,
+              null,
+              effectiveTerminalFontSize,
+              wrapper,
+              config.shell,
+              config.fontFamily,
+              projectId,
+              undefined,
+              taskCommand ?? undefined,
+              taskConfigId ?? undefined,
+              config.terminalGpuAcceleration,
          ).then((cache) => {
             if (loadingElRef.current) {
                loadingElRef.current.remove();
@@ -295,7 +295,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
       rebuildCount,
       taskCommand,
       taskRebuildKey,
-      config.terminalFontSize,
+      effectiveTerminalFontSize,
       config.shell,
       config.fontFamily,
       agentCommandOverride,

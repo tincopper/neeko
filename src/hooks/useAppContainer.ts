@@ -49,7 +49,7 @@ interface UseAppContainerResult {
 const noop = () => { };
 
 export function useAppContainer(): UseAppContainerResult {
-  const { config, saveConfig } = useAppConfig();
+  const { config, saveConfig, effectiveAppearanceFontSize, effectiveTerminalFontSize, effectiveEditorFontSize } = useAppConfig();
   const { toast, showToast } = useToast();
   const local = useLocalProjects();
 
@@ -157,7 +157,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const agentActions = useAgentActions({
     terminal: {
-      fontSize: config.terminalFontSize ?? 14,
+      fontSize: effectiveTerminalFontSize,
       shell: config.shell ?? "",
       fontFamily: config.fontFamily ?? "",
       gpuAcceleration: config.terminalGpuAcceleration ?? false,
@@ -518,6 +518,17 @@ export function useAppContainer(): UseAppContainerResult {
     onCloseTab: handleCloseTab,
     shortcuts: config.shortcuts,
     onToggleTerminal: handleToggleTerminal,
+    onZoomIn: useCallback(() => {
+      const next = Math.min(200, config.zoomLevel + 10);
+      if (next !== config.zoomLevel) saveConfig({ ...config, zoomLevel: next });
+    }, [config, saveConfig]),
+    onZoomOut: useCallback(() => {
+      const next = Math.max(50, config.zoomLevel - 10);
+      if (next !== config.zoomLevel) saveConfig({ ...config, zoomLevel: next });
+    }, [config, saveConfig]),
+    onZoomReset: useCallback(() => {
+      if (config.zoomLevel !== 100) saveConfig({ ...config, zoomLevel: 100 });
+    }, [config, saveConfig]),
   });
 
   const handleAgentClick = useCallback(
@@ -677,6 +688,9 @@ export function useAppContainer(): UseAppContainerResult {
   const appProvidersProps: AppProvidersProps = {
     appValue: {
       config,
+      effectiveAppearanceFontSize,
+      effectiveTerminalFontSize,
+      effectiveEditorFontSize,
       agents: agents ?? [],
       agentInstalledMap: {},
       loading,

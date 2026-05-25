@@ -51,7 +51,7 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
 }
 
 function FileViewer() {
-   const { config } = useAppContext();
+   const { config, effectiveEditorFontSize } = useAppContext();
    const activeProjectId = useAppStore((state) => state.activeProjectId);
    const activeProject = useAppStore((state) => state.activeProject);
    const activeWslProject = useAppStore((state) => state.activeWslProject);
@@ -66,7 +66,7 @@ function FileViewer() {
 
    const theme = config.theme;
    const fontFamily = config.fontFamily;
-   const fontSize = config.editorFontSize;
+   const fontSize = effectiveEditorFontSize;
 
    // Composite tab key: unified across local/WSL/remote projects
    const currentProjectId = activeProjectId

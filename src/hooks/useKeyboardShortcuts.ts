@@ -20,6 +20,9 @@ interface UseKeyboardShortcutsParams {
   onCloseTab: (tabId: string) => void;
   shortcuts: Record<string, string>;
   onToggleTerminal: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -32,6 +35,9 @@ export function useKeyboardShortcuts({
   onCloseTab,
   shortcuts,
   onToggleTerminal,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
 }: UseKeyboardShortcutsParams) {
   const shortcutsRef = useRef(shortcuts);
   shortcutsRef.current = shortcuts;
@@ -179,9 +185,27 @@ export function useKeyboardShortcuts({
           }
 
           case "toggleTerminal": {
-            e.preventDefault();
-            onToggleTerminal();
-            break;
+             e.preventDefault();
+             onToggleTerminal();
+             break;
+          }
+
+          case "zoomIn": {
+             e.preventDefault();
+             onZoomIn();
+             break;
+          }
+
+          case "zoomOut": {
+             e.preventDefault();
+             onZoomOut();
+             break;
+          }
+
+          case "zoomReset": {
+             e.preventDefault();
+             onZoomReset();
+             break;
           }
         }
 
@@ -191,7 +215,7 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, onCloseTab, onToggleTerminal]);
+  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, onCloseTab, onToggleTerminal, onZoomIn, onZoomOut, onZoomReset]);
 }
 
 type AllItem =

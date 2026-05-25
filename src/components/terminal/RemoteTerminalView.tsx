@@ -47,14 +47,14 @@ export default React.memo(function RemoteTerminalView({
   port,
   username,
   auth,
-  fontSize = 14,
+  fontSize: _fontSize = 14,
   fontFamily = "",
   onSessionReady,
   selectedAgentId: _selectedAgentId,
   paneId = "p1",
   cacheKeySuffix = "",
 }: RemoteTerminalViewProps) {
-  const { config } = useAppContext();
+  const { config, effectiveTerminalFontSize } = useAppContext();
   const { activeTabId, tabs } = useEditorContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
@@ -68,10 +68,10 @@ export default React.memo(function RemoteTerminalView({
     const key = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
     const cache = remoteTerminalCache.get(key);
     if (!cache) return;
-    cache.term.options.fontSize = fontSize;
+    cache.term.options.fontSize = effectiveTerminalFontSize;
     cache.term.options.fontFamily = buildFontFamily(fontFamily);
     cache.fitAddon.fit();
-  }, [fontSize, fontFamily, entryId, projectId, cacheKeySuffix, paneId, activeTabId]);
+  }, [effectiveTerminalFontSize, fontFamily, entryId, projectId, cacheKeySuffix, paneId, activeTabId]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -126,7 +126,7 @@ export default React.memo(function RemoteTerminalView({
 
       const term = new Terminal({
         cursorBlink: true,
-        fontSize,
+        fontSize: effectiveTerminalFontSize,
         fontFamily: buildFontFamily(fontFamily),
         theme: buildTerminalTheme(),
         scrollback: 10000,

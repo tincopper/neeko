@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../types";
-import { updateAllTerminalThemes } from "../components/terminal";
+import { updateAllTerminalThemes, updateAllTerminalFontSizes } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -9,6 +9,7 @@ const DEFAULT_CONFIG: AppConfig = {
    appearanceFontSize: 12,
    editorFontSize: 14,
    terminalFontSize: 14,
+   zoomLevel: 100,
    diffMode: "unified",
    shell: "",
    fontFamily: "",
@@ -34,21 +35,30 @@ type PartialLoadedConfig = Partial<AppConfig> & {
 export function useAppConfig() {
    const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
 
-   // 同步 UI 字体大小到 CSS 变量 --font-size（由 appearanceFontSize 驱动）
+   // 同步 UI 字体大小到 CSS 变量 --font-size（由 appearanceFontSize × zoomLevel 驱动）
+   const effectiveAppearanceFontSize = Math.round(config.appearanceFontSize * config.zoomLevel / 100);
+   const effectiveTerminalFontSize = Math.round(config.terminalFontSize * config.zoomLevel / 100);
+   const effectiveEditorFontSize = Math.round(config.editorFontSize * config.zoomLevel / 100);
+
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--font-size",
-         `${config.appearanceFontSize}px`,
+         `${effectiveAppearanceFontSize}px`,
       );
-   }, [config.appearanceFontSize]);
+   }, [effectiveAppearanceFontSize]);
 
    // 同步终端字体大小到 CSS 变量 --terminal-font-size
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--terminal-font-size",
-         `${config.terminalFontSize}px`,
+         `${effectiveTerminalFontSize}px`,
       );
-   }, [config.terminalFontSize]);
+   }, [effectiveTerminalFontSize]);
+
+   // 终端字号变化时刷新所有终端实例（清空纹理缓存 + fit + resize PTY）
+   useEffect(() => {
+      updateAllTerminalFontSizes(effectiveTerminalFontSize);
+   }, [effectiveTerminalFontSize]);
 
    // 同步主题到 data-theme 属性，并更新 OpenCode tui.json
    useEffect(() => {
@@ -82,6 +92,7 @@ export function useAppConfig() {
             prev.appearanceFontSize === next.appearanceFontSize &&
             prev.editorFontSize === next.editorFontSize &&
             prev.terminalFontSize === next.terminalFontSize &&
+            prev.zoomLevel === next.zoomLevel &&
             prev.diffMode === next.diffMode &&
             prev.shell === next.shell &&
             prev.fontFamily === next.fontFamily &&
@@ -137,6 +148,10 @@ export function useAppConfig() {
                      typeof saved.terminalFontSize === "number"
                         ? saved.terminalFontSize
                         : DEFAULT_CONFIG.terminalFontSize,
+                 zoomLevel:
+                     typeof saved.zoomLevel === "number"
+                        ? saved.zoomLevel
+                        : DEFAULT_CONFIG.zoomLevel,
                   diffMode: saved.diffMode === "split" ? "split" : "unified",
                   shell:
                      typeof saved.shell === "string"
@@ -202,5 +217,5 @@ export function useAppConfig() {
       })();
    }, []);
 
-   return { config, saveConfig };
+   return { config, saveConfig, effectiveAppearanceFontSize, effectiveTerminalFontSize, effectiveEditorFontSize };
 }

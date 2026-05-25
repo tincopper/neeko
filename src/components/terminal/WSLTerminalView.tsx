@@ -25,14 +25,14 @@ interface WSLTerminalViewProps {
 export default React.memo(function WSLTerminalView({
    paneId = "p1",
 }: WSLTerminalViewProps) {
-   const { config } = useAppContext();
+   const { config, effectiveTerminalFontSize } = useAppContext();
    const { activeTabId, tabs } = useEditorContext();
    const { activeWslProject, activeWslWorktreePath, setWslOpenSessions } = useWslContext();
 
    const distro = activeWslProject?.distro ?? null;
    const projectId = activeWslProject?.project.id ?? null;
    const projectPath = activeWslWorktreePath ?? activeWslProject?.project.path ?? "";
-   const fontSize = config.terminalFontSize;
+   const fontSize = effectiveTerminalFontSize;
    const fontFamily = config.fontFamily;
    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
    const tabAgentId = activeTab?.agentId ?? null;
@@ -52,7 +52,7 @@ export default React.memo(function WSLTerminalView({
    const [rebuildCount, setRebuildCount] = useState(0);
    const [ready, setReady] = useState(false);
 
-   // 字体変化时同步到已有实例
+   // 字体变化时同步到已有实例
    useEffect(() => {
       if (!distro || !projectId) return;
       const key = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;

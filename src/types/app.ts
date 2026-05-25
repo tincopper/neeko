@@ -9,6 +9,7 @@ export interface AppConfig {
   appearanceFontSize: number;
   editorFontSize: number;
   terminalFontSize: number;
+  zoomLevel: number;
   diffMode: DiffMode;
   shell: string;
   fontFamily: string;

@@ -34,6 +34,9 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "toggleTerminal", label: "Toggle Terminal/File View", defaultBinding: "Ctrl+T" },
   { id: "prevTab", label: "Previous Tab", defaultBinding: "Alt+Left" },
   { id: "nextTab", label: "Next Tab", defaultBinding: "Alt+Right" },
+  { id: "zoomIn", label: "Zoom In", defaultBinding: "Ctrl+=" },
+  { id: "zoomOut", label: "Zoom Out", defaultBinding: "Ctrl+-" },
+  { id: "zoomReset", label: "Reset Zoom", defaultBinding: "Ctrl+0" },
 ];
 
 const MODIFIER_MAP: Record<string, keyof Omit<ParsedBinding, "code">> = {

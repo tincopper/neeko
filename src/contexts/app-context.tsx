@@ -3,6 +3,9 @@ import type { AppConfig, AgentConfig } from "../types";
 
 interface AppContextValue {
   config: AppConfig;
+  effectiveAppearanceFontSize: number;
+  effectiveTerminalFontSize: number;
+  effectiveEditorFontSize: number;
   agents: AgentConfig[];
   agentInstalledMap: Record<string, boolean>;
   loading: boolean;

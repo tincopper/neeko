@@ -17,7 +17,7 @@ interface MarkdownEditorProps {
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
    ({ value, onChange, placeholder, className }) => {
-      const { config } = useAppContext();
+      const { config, effectiveEditorFontSize } = useAppContext();
 
       const handleChange = useCallback(
          (val: string) => onChange(val),
@@ -25,8 +25,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
       );
 
       const cmTheme = useMemo(
-         () => createCmTheme(config.fontFamily, config.editorFontSize),
-         [config.fontFamily, config.editorFontSize, config.theme]
+         () => createCmTheme(config.fontFamily, effectiveEditorFontSize),
+         [config.fontFamily, effectiveEditorFontSize, config.theme]
       );
 
       const extensions = useMemo(() => {
@@ -45,7 +45,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
          ];
 
          return exts;
-      }, [config.fontFamily, config.editorFontSize, config.theme]);
+      }, [config.fontFamily, effectiveEditorFontSize, config.theme]);
 
       return (
          <CodeMirror
