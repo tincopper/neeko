@@ -8,6 +8,7 @@ use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
 
 use super::invalidate_repo_caches;
+use super::parsers::{collapse_diff_context, parse_unified_diff};
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -622,113 +623,6 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
     }
 
     Ok(wt_new_str.to_string())
-}
-
-/// 解析 git diff --unified=3 文本输出为 DiffResult
-pub fn parse_unified_diff(output: &str) -> DiffResult {
-    let mut hunks: Vec<DiffHunk> = Vec::new();
-
-    for line in output.lines() {
-        if line.starts_with("@@") {
-            // 解析 @@ -old_start,old_lines +new_start,new_lines @@
-            if let Some((hunk_header, _)) = parse_hunk_header(line) {
-                hunks.push(hunk_header);
-            }
-        } else if let Some(last) = hunks.last_mut() {
-            if line.starts_with('+') && !line.starts_with("+++") {
-                last.lines.push(DiffLine::Added(line[1..].to_string()));
-            } else if line.starts_with('-') && !line.starts_with("---") {
-                last.lines.push(DiffLine::Removed(line[1..].to_string()));
-            } else if line.starts_with(' ') {
-                last.lines.push(DiffLine::Context(line[1..].to_string()));
-            }
-            // 跳过其他行（\ No newline at end of file 等）
-        }
-    }
-
-    DiffResult {
-        hunks,
-        truncated: false,
-    }
-}
-
-fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
-    // @@ -old_start,old_lines +new_start,new_lines @@
-    let rest = line.strip_prefix("@@ ")?;
-    let rest = rest.strip_prefix('-')?;
-
-    let (old_part, rest) = rest.split_once(' ')?;
-    let (old_start, old_lines) = if let Some((s, l)) = old_part.split_once(',') {
-        (s.parse::<u32>().ok()?, l.parse::<u32>().ok()?)
-    } else {
-        // 省略行数时隐含为 1（git 标准）
-        (old_part.parse::<u32>().ok()?, 1)
-    };
-
-    let rest = rest.strip_prefix('+')?;
-
-    let (new_part, _rest) = if let Some(pos) = rest.find(" @@") {
-        (&rest[..pos], &rest[pos..])
-    } else {
-        return None;
-    };
-
-    let (new_start, new_lines) = if let Some((s, l)) = new_part.split_once(',') {
-        (s.parse::<u32>().ok()?, l.parse::<u32>().ok()?)
-    } else {
-        // 省略行数时隐含为 1
-        (new_part.parse::<u32>().ok()?, 1)
-    };
-
-    Some((
-        DiffHunk {
-            old_start,
-            old_lines,
-            new_start,
-            new_lines,
-            lines: Vec::new(),
-        },
-        _rest,
-    ))
-}
-
-/// 将连续上下文的中间部分折叠（参考 Muxy GitDiffParser.collapseContextRows）
-fn flush_context_buffer(
-    collapsed_lines: &mut Vec<DiffLine>,
-    buffer: &mut Vec<DiffLine>,
-    threshold: usize,
-    keep_edges: usize,
-) {
-    let count = buffer.len();
-    let min_keep = keep_edges * 2;
-    if count > threshold && count > min_keep {
-        let middle = count - min_keep;
-        collapsed_lines.extend(buffer.drain(..keep_edges));
-        collapsed_lines.push(DiffLine::Collapsed(format!("{} unmodified lines", middle)));
-        buffer.drain(..middle);
-        collapsed_lines.extend(buffer.drain(..));
-    } else {
-        collapsed_lines.extend(buffer.drain(..));
-    }
-}
-
-/// 折叠连续上下文行（参考 Muxy GitDiffParser.collapseContextRows），保留前后 3 行
-pub fn collapse_diff_context(hunks: &mut Vec<DiffHunk>, threshold: usize) {
-    for hunk in hunks.iter_mut() {
-        let mut collapsed_lines: Vec<DiffLine> = Vec::new();
-        let mut context_buffer: Vec<DiffLine> = Vec::new();
-        for line in hunk.lines.drain(..) {
-            match &line {
-                DiffLine::Context(_) => context_buffer.push(line),
-                _ => {
-                    flush_context_buffer(&mut collapsed_lines, &mut context_buffer, threshold, 3);
-                    collapsed_lines.push(line);
-                }
-            }
-        }
-        flush_context_buffer(&mut collapsed_lines, &mut context_buffer, threshold, 3);
-        hunk.lines = collapsed_lines;
-    }
 }
 
 /// CLI 方式获取文件 diff（工作区 vs index，仅未暂存变更）

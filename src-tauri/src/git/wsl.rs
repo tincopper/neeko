@@ -6,8 +6,10 @@ use crate::models::{
 };
 use crate::utils::command::wsl::{exec, open_ide, safe_path};
 
-use super::local::parse_unified_diff;
-use super::remote::parse_git_info_output;
+use super::parsers::{
+    build_file_tree_from_find, collapse_diff_context, extract_commit_hash_from_output,
+    parse_commit_log_output, parse_git_info_output, parse_status_line, parse_unified_diff,
+};
 
 /// 通过 WSL 获取完整 GitInfo（通过 wsl.exe 调用）
 pub fn get_wsl_git_info(distro: &str, project_path: &str) -> Result<GitInfo> {
@@ -92,7 +94,7 @@ pub fn get_wsl_worktree_changed_files(
 
     let files: Vec<FileChange> = output
         .lines()
-        .filter_map(|line| super::remote::parse_status_line(line))
+        .filter_map(|line| parse_status_line(line))
         .collect();
 
     Ok(files)
@@ -210,7 +212,7 @@ pub fn wsl_get_commit_log(
 }
 
 fn parse_wsl_commit_log(output: &str) -> Vec<CommitEntry> {
-    super::remote::parse_commit_log_output(output)
+    parse_commit_log_output(output)
 }
 
 /// 通过 WSL 获取单个 commit 详细信息
@@ -328,7 +330,7 @@ pub fn wsl_get_commit_file_diff(
     let cmd = format!("cd '{sp}' && git diff '{ch}^' '{ch}' -- '{fp}' 2>/dev/null");
     let output = exec(distro, &cmd)?;
     let mut result = parse_unified_diff(&output);
-    super::local::collapse_diff_context(&mut result.hunks, 12);
+    collapse_diff_context(&mut result.hunks, 12);
     Ok(result)
 }
 
@@ -403,7 +405,7 @@ pub fn wsl_commit_files(
 }
 
 fn extract_wsl_commit_hash(output: &str) -> Option<String> {
-    super::remote::extract_commit_hash_from_output(output)
+    extract_commit_hash_from_output(output)
 }
 
 /// 通过 WSL 读取目录树（使用 find 命令）
@@ -453,5 +455,5 @@ fn prefix_paths(nodes: &mut Vec<FileNode>, prefix: &str) {
 }
 
 fn build_file_tree(find_output: &str, root_path: &str, _safe_root: &str) -> Result<Vec<FileNode>> {
-    super::remote::build_file_tree_from_find(find_output, root_path)
+    build_file_tree_from_find(find_output, root_path)
 }
