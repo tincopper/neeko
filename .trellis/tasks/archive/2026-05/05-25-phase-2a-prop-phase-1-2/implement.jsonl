@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "EditorGroupPane component refactoring conventions"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useEditorContext/useAppContext/useEditorGroupLayout hook usage"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "useAppStore.getState() for store actions"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Props interface reduction and type checking"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "Context-based data flow patterns"}
