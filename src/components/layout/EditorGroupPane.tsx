@@ -9,36 +9,25 @@ import UnifiedTabBar from "./UnifiedTabBar";
 import AgentIcon from "./AgentIcon";
 import ContextMenu from "../project/ContextMenu";
 import type { ContextMenuItem } from "../project/ContextMenu";
-import type { AgentConfig, AppConfig, AuthMethod, EditorGroupId, Tab } from "../../types";
+import type { AgentConfig, AuthMethod, EditorGroupId } from "../../types";
 import { cn } from "../../utils/cn";
 import { useEditorContext, EditorProvider } from "../../contexts/editor-context";
+import { useAppContext } from "../../contexts/app-context";
+import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
+import { useAppStore } from "../../store/appStore";
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
   groupId: EditorGroupId | "pinned";
+  /** Composite tab key — used by the pane to lookup layout & store state */
   tabKey: string;
-  tabs: Tab[];
-  activeTabId: string | null;
-  /** The currently-pinned tab id — forwarded to UnifiedTabBar to render the pin indicator. */
-  pinnedTabId?: string | null;
-  isFocused: boolean;
-  onActivateTab: (tabId: string) => void;
-  onCloseTab: (tabId: string) => void;
   onAddTerminalTab?: () => void;
   onSplitRight: (tabId: string) => void;
   onMoveToRight: (tabId: string) => void;
   onMoveToLeft: (tabId: string) => void;
   onFocusGroup: () => void;
-  agents: AgentConfig[];
-  compactMode: boolean;
-  showAgentBar: boolean;
-  hiddenAgentIds: string[];
-  onToggleHiddenAgent: (agentId: string) => void;
-  onAgentClick: (agent: AgentConfig) => void;
   onCloseOtherTabs?: (tabId: string) => void;
   onCloseAllTabs?: () => void;
-  config: AppConfig;
-  showToast: (msg: string, type?: "info" | "error") => void;
   wslProject?: { distro: string; project: { id: string } } | null;
   remoteProject?: {
     entryId: string;
@@ -63,32 +52,54 @@ interface EditorGroupPaneProps {
 
 function EditorGroupPane({
   groupId,
-  tabs,
-  activeTabId,
-  pinnedTabId = null,
-  isFocused,
-  onActivateTab,
-  onCloseTab,
+  tabKey,
   onAddTerminalTab,
   onSplitRight,
   onMoveToRight,
   onMoveToLeft,
   onFocusGroup,
-  agents,
-  compactMode,
-  showAgentBar,
-  hiddenAgentIds,
-  onAgentClick,
   onCloseOtherTabs,
   onCloseAllTabs,
-  config,
-  showToast,
   wslProject,
   remoteProject,
   layoutId,
   contextMenuExtras,
 }: EditorGroupPaneProps) {
   const globalEditorCtx = useEditorContext();
+  const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
+  const { config, showToast } = useAppContext();
+
+  const layoutState = useEditorGroupLayout(tabKey);
+  const { leftTabs, rightTabs, leftActiveTabId, rightActiveTabId, pinnedTab, activeGroupId } = layoutState;
+
+  // Derive tabs / activeTabId from layout state based on this pane's groupId
+  const tabs = useMemo(() => {
+    if (groupId === "left") return leftTabs;
+    if (groupId === "right") return rightTabs;
+    if (groupId === "pinned") return pinnedTab ? [pinnedTab] : [];
+    return [];
+  }, [groupId, leftTabs, rightTabs, pinnedTab]);
+
+  const activeTabId = useMemo(() => {
+    if (groupId === "left") return leftActiveTabId;
+    if (groupId === "right") return rightActiveTabId;
+    if (groupId === "pinned") return pinnedTab?.id ?? null;
+    return null;
+  }, [groupId, leftActiveTabId, rightActiveTabId, pinnedTab]);
+
+  const handleActivateTab = useCallback(
+    (tabId: string) => { useAppStore.getState().activateTab(tabKey, tabId); },
+    [tabKey],
+  );
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (groupId === "pinned") return; // pinned panel: close is handled via Unpin, not store.closeTab
+      useAppStore.getState().closeTab(tabKey, tabId);
+    },
+    [tabKey, groupId],
+  );
+
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
 
@@ -162,7 +173,7 @@ function EditorGroupPane({
     }
 
     const items: ContextMenuItem[] = [
-      { label: "Close", action: () => onCloseTab(tabId) },
+      { label: "Close", action: () => handleCloseTab(tabId) },
     ];
     if (onCloseOtherTabs) {
       items.push({ label: "Close Others", action: () => onCloseOtherTabs(tabId) });
@@ -184,22 +195,22 @@ function EditorGroupPane({
       items.push(...extras);
     }
     return items;
-  }, [contextMenu, groupId, onCloseTab, onCloseOtherTabs, onCloseAllTabs, onSplitRight, onMoveToRight, onMoveToLeft, contextMenuExtras]);
+  }, [contextMenu, groupId, handleCloseTab, onCloseOtherTabs, onCloseAllTabs, onSplitRight, onMoveToRight, onMoveToLeft, contextMenuExtras]);
 
   const localEditorCtx = useMemo(() => ({
     ...globalEditorCtx,
     activeTabId,
-    onActivateTab,
-    onCloseTab,
+    onActivateTab: handleActivateTab,
+    onCloseTab: handleCloseTab,
     onAddTab: onAddTerminalTab ?? (() => {}),
-  }), [globalEditorCtx, activeTabId, onActivateTab, onCloseTab, onAddTerminalTab]);
+  }), [globalEditorCtx, activeTabId, handleActivateTab, handleCloseTab, onAddTerminalTab]);
 
   return (
     <EditorProvider value={localEditorCtx}>
     <div
       className={cn(
         "flex-1 flex flex-col overflow-hidden min-h-0",
-        isFocused ? "ring-1 ring-[var(--border-color)]/30" : "",
+        activeGroupId === groupId ? "ring-1 ring-[var(--border-color)]/30" : "",
       )}
       onClick={onFocusGroup}
     >
@@ -211,9 +222,9 @@ function EditorGroupPane({
               <UnifiedTabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
-                pinnedTabId={pinnedTabId}
-                onActivateTab={onActivateTab}
-                onCloseTab={onCloseTab}
+                pinnedTabId={pinnedTab?.id ?? null}
+                onActivateTab={handleActivateTab}
+                onCloseTab={handleCloseTab}
                 onAddTerminalTab={onAddTerminalTab}
                 onContextMenu={handleTabContextMenu}
                 agents={agents}
@@ -331,7 +342,7 @@ function EditorGroupPane({
             diffSource={activeTab.data.diffSource}
             filePath={activeTab.data.filePath}
             initialMode={config.diffMode}
-            onBack={() => onCloseTab(activeTab.id)}
+            onBack={() => handleCloseTab(activeTab.id)}
           />
         )}
 

@@ -6,24 +6,13 @@ import {
 } from "../ui/resizable";
 import EditorGroupPane from "./EditorGroupPane";
 import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
-import { useAppStore } from "../../store/appStore";
-import type { AgentConfig, AppConfig, AuthMethod, Tab } from "../../types";
+import type { AuthMethod } from "../../types";
 
 interface EditorGroupLayoutProps {
   tabKey: string;
-  allTabs: Tab[];
-  activeTabId: string | null;
   onAddTerminalTab: () => void;
-  agents: AgentConfig[];
-  compactMode: boolean;
-  showAgentBar: boolean;
-  hiddenAgentIds: string[];
-  onToggleHiddenAgent: (agentId: string) => void;
-  onAgentClick: (agent: AgentConfig) => void;
   onCloseOtherTabs?: (tabId: string) => void;
   onCloseAllTabs?: () => void;
-  config: AppConfig;
-  showToast: (msg: string, type?: "info" | "error") => void;
   wslProject?: { distro: string; project: { id: string } } | null;
   remoteProject?: {
     entryId: string;
@@ -43,16 +32,8 @@ interface EditorGroupLayoutProps {
 function EditorGroupLayout({
   tabKey,
   onAddTerminalTab,
-  agents,
-  compactMode,
-  showAgentBar,
-  hiddenAgentIds,
-  onToggleHiddenAgent,
-  onAgentClick,
   onCloseOtherTabs,
   onCloseAllTabs,
-  config,
-  showToast,
   wslProject,
   remoteProject,
   buildLayoutId,
@@ -61,32 +42,19 @@ function EditorGroupLayout({
     layout,
     isSplit,
     leftTabs,
-    rightTabs,
     leftActiveTabId,
     rightActiveTabId,
-    activeGroupId,
     splitRight,
     moveToRight,
     moveToLeft,
     setActiveGroup,
     setSplitRatio,
-    activateTabInGroup,
     pinnedTab,
     pinnedPanelRatio,
     pinTab,
     unpinTab,
     setPinnedPanelRatio,
   } = useEditorGroupLayout(tabKey);
-
-  const handleActivateTab = useCallback(
-    (tabId: string) => activateTabInGroup(tabId),
-    [activateTabInGroup],
-  );
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => useAppStore.getState().closeTab(tabKey, tabId),
-    [tabKey],
-  );
 
   const handleCloseOtherTabs = useCallback(
     (tabId: string) => onCloseOtherTabs?.(tabId),
@@ -192,8 +160,6 @@ function EditorGroupLayout({
   const pinnedLayoutId = buildLayoutId("pinned", pinnedTab?.id ?? null);
 
   // ── Context menu extras: injected by Layout so EditorGroupPane stays pin-unaware ──
-  const pinnedTabId = layout.pinnedTabId;
-
   const pinnedContextMenuExtras = useCallback(
     (_tabId: string) => [
       { label: "Unpin Tab", action: () => unpinTab() },
@@ -203,37 +169,26 @@ function EditorGroupLayout({
 
   const normalContextMenuExtras = useCallback(
     (tabId: string) => {
-      const isPinnedTab = tabId === pinnedTabId;
+      const isPinnedTab = tabId === layout.pinnedTabId;
       if (isPinnedTab) {
         return [{ label: "Unpin Tab", action: () => unpinTab() }];
       }
       return [{ label: "Pin Tab", action: () => pinTab(tabId) }];
     },
-    [pinnedTabId, pinTab, unpinTab],
+    [layout.pinnedTabId, pinTab, unpinTab],
   );
 
   // ── Shared props for every EditorGroupPane ──
   const sharedPaneProps = {
     tabKey,
     onAddTerminalTab,
-    agents,
-    compactMode,
-    showAgentBar,
-    hiddenAgentIds,
-    onToggleHiddenAgent,
-    onAgentClick,
-    config,
-    showToast,
     wslProject,
     remoteProject,
-    onActivateTab: handleActivateTab,
-    onCloseTab:    handleCloseTab,
     onSplitRight:  splitRight,
     onMoveToRight: moveToRight,
     onMoveToLeft:  moveToLeft,
     onCloseOtherTabs: handleCloseOtherTabs,
     onCloseAllTabs:   handleCloseAllTabs,
-    pinnedTabId,
     contextMenuExtras: normalContextMenuExtras,
   };
 
@@ -243,9 +198,6 @@ function EditorGroupLayout({
       <EditorGroupPane
         {...sharedPaneProps}
         groupId="left"
-        tabs={leftTabs}
-        activeTabId={leftActiveTabId}
-        isFocused={activeGroupId === "left"}
         onFocusGroup={() => setActiveGroup("left")}
         layoutId={leftLayoutId}
       />
@@ -259,16 +211,12 @@ function EditorGroupLayout({
       <EditorGroupPane
         {...sharedPaneProps}
         groupId="pinned"
-        tabs={pinnedTab ? [pinnedTab] : []}
-        activeTabId={pinnedTab?.id ?? null}
-        isFocused={false}
         onFocusGroup={() => {}}
         layoutId={pinnedLayoutId}
         onAddTerminalTab={undefined}
         onSplitRight={() => {}}
         onMoveToRight={() => {}}
         onMoveToLeft={() => {}}
-        onCloseTab={() => {}}
         onCloseOtherTabs={undefined}
         onCloseAllTabs={undefined}
         contextMenuExtras={pinnedContextMenuExtras}
@@ -298,17 +246,13 @@ function EditorGroupLayout({
               <EditorGroupPane
                 {...sharedPaneProps}
                 groupId="pinned"
-                tabs={pinnedTab ? [pinnedTab] : []}
-                activeTabId={pinnedTab?.id ?? null}
-                isFocused={false}
                 onFocusGroup={() => {}}
                 layoutId={pinnedLayoutId}
-                // Pin panel: no split/move/close/add operations — only Unpin
+                // Pin panel: no split/move/add operations — only Unpin
                 onAddTerminalTab={undefined}
                 onSplitRight={() => {}}
                 onMoveToRight={() => {}}
                 onMoveToLeft={() => {}}
-                onCloseTab={() => {}}
                 onCloseOtherTabs={undefined}
                 onCloseAllTabs={undefined}
                 contextMenuExtras={pinnedContextMenuExtras}
@@ -331,9 +275,6 @@ function EditorGroupLayout({
           <EditorGroupPane
             {...sharedPaneProps}
             groupId="left"
-            tabs={leftTabs}
-            activeTabId={leftActiveTabId}
-            isFocused={activeGroupId === "left"}
             onFocusGroup={() => setActiveGroup("left")}
             layoutId={leftLayoutId}
           />
@@ -353,9 +294,6 @@ function EditorGroupLayout({
               <EditorGroupPane
                 {...sharedPaneProps}
                 groupId="right"
-                tabs={rightTabs}
-                activeTabId={rightActiveTabId}
-                isFocused={activeGroupId === "right"}
                 onFocusGroup={() => setActiveGroup("right")}
                 layoutId={rightLayoutId}
               />

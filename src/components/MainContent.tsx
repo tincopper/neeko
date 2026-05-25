@@ -23,7 +23,7 @@ const APP_SETTINGS_PROJECT_ID = "__app__";
 const agentInstalledCache = new Map<string, boolean>();
 
 function MainContent() {
-   const { config, showToast } = useAppContext();
+   const { showToast } = useAppContext();
    const {
       onAddProject,
       onOpenIde,
@@ -40,10 +40,6 @@ function MainContent() {
    } = useRemoteContext();
    const {
       agents,
-      compactMode,
-      showAgentBar,
-      hiddenAgentIds,
-      onToggleHiddenAgent,
       onAgentClick,
    } = useEditorContext();
    const activeProject = useAppStore((state) => state.activeProject);
@@ -64,7 +60,6 @@ function MainContent() {
    });
 
    const tabs = projectTabs?.tabs ?? [];
-   const storeActiveTabId = projectTabs?.activeTabId ?? null;
 
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
 
@@ -232,19 +227,9 @@ function MainContent() {
          ) : tabs.length > 0 ? (
             <EditorGroupLayout
                tabKey={tabKey}
-               allTabs={tabs}
-               activeTabId={storeActiveTabId}
                onAddTerminalTab={handleAddTerminalTab}
-               agents={agents}
-               compactMode={compactMode}
-               showAgentBar={showAgentBar}
-               hiddenAgentIds={hiddenAgentIds}
-               onToggleHiddenAgent={onToggleHiddenAgent}
-               onAgentClick={handleAgentClick}
                onCloseOtherTabs={handleCloseOtherTabs}
                onCloseAllTabs={handleClearAllTabs}
-               config={config}
-               showToast={showToast}
                wslProject={activeWslProject}
                remoteProject={remoteProjectProp}
                buildLayoutId={buildLayoutId}

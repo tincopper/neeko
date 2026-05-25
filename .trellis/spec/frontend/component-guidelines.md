@@ -406,9 +406,64 @@ const handleSave = useCallback(async () => {
 
 ---
 
-## 常见错误
+## Props 塌缩约定：优先从 Context/Store 获取数据
 
-### 1. 重复定义 `types.ts` 中已有的接口
+### 核心原则
+
+当组件需要的数据已在 Context 或 Store 中可用时，**不应通过 Props 传递**。按以下优先级获取：
+
+1. **领域 Context**：`useEditorContext()`、`useWslContext()`、`useRemoteContext()` 等
+2. **全局 Context**：`useAppContext()` — 配置、toast
+3. **Store 快照**：`useAppStore(s => s.field)` — 带 memo 的响应式
+4. **Store 门面**：`useAppStore.getState()` — 一次性读取，用于事件回调
+5. **领域 Hook**：`useEditorGroupLayout(tabKey)` 等
+
+### Props 塌缩步骤
+
+```tsx
+// Before（Prop 缠绕）
+<EditorGroupLayout
+  agents={agents}
+  config={config}
+  showToast={showToast}
+  ...
+/>
+  └─ <EditorGroupPane
+        agents={agents}
+        config={config}
+        showToast={showToast}
+        onActivateTab={handleActivateTab}
+        ...
+      />
+
+// After（直接读取 Context/Store）
+// MainContent 不再传递 agents/config/showToast
+<EditorGroupLayout ... />
+  └─ <EditorGroupPane ... />  // 内部调用 useEditorContext() / useAppContext()
+
+// Pane 内部
+const { agents } = useEditorContext();
+const { config, showToast } = useAppContext();
+const store = useAppStore.getState();
+store.activateTab(tabKey, tabId);  // 代替 onActivateTab prop
+```
+
+### 保留哪些 Props
+
+塌缩后保留的 Props 通常属于：
+- **实例差异**：`groupId`、`layoutId`、`wslProject`、`remoteProject`
+- **布局级回调**：`onSplitRight`、`onMoveToRight`、`onMoveToLeft`、`onFocusGroup`
+- **扩展点**：`contextMenuExtras`
+
+### 示例：EditorGroupPane 塌缩
+
+| Props 原数量 | 塌缩后 | 移除了什么 |
+|-------------|--------|-----------|
+| 30+ | ~13 | `tabKey`, `tabs`, `activeTabId`, `pinnedTabId`, `isFocused`, `onActivateTab`, `onCloseTab`, `agents`, `compactMode`, `showAgentBar`, `hiddenAgentIds`, `onToggleHiddenAgent`, `onAgentClick`, `config`, `showToast` |
+
+删除路径：`EditorGroupPaneProps` → `EditorGroupLayoutProps` → `sharedPaneProps` → `MainContent` JSX。每一层都同步删除。
+
+
 
 **错误做法** —— `TitleBar.tsx` 局部重新声明自己的 `Project` 和 `AgentConfig` 接口：
 
