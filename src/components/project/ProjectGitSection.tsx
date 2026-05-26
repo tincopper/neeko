@@ -2,7 +2,8 @@ import React, { useMemo } from "react";
 import type { Project } from "../../types";
 import WorktreeList from "./WorktreeList";
 import SessionRow from "./SessionRow";
-import { useAppStore } from "../../store/appStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useGitStore } from "../../store/gitStore";
 import { aheadBehindKey } from "../../utils/aheadBehindKey";
 
 interface ProjectGitSectionProps {
@@ -27,8 +28,8 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   const { onSelectProject, onRefreshGit, onOpenWorktreeTerminal, onShowToast } = actions;
 
   const worktrees = project.git_info?.worktrees ?? [];
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
-  const aheadBehind = useAppStore(
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const aheadBehind = useGitStore(
     (s) => s.aheadBehind[aheadBehindKey("local", project.id, project.id)],
   );
 

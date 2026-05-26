@@ -4,7 +4,7 @@ import { Worktree, FileChange } from "../../types";
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "../icons";
 import { terminalCache, destroyTerminalCache } from "../terminal";
 import { cn } from "../../utils/cn";
-import { useAppStore } from "../../store/appStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
 import SessionChips from "./SessionChips";
 
 interface WorktreeListProps {
@@ -33,7 +33,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; branch: string; isDirty: boolean } | null>(null);
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 

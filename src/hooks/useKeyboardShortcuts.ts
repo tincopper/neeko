@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import { IS_WINDOWS } from "../utils/platform";
 import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCacheKey } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useEditorStore } from "../store/editorStore";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 import type { WSLProject, RemoteProject } from "../types";
 import {
@@ -52,7 +55,12 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      const snapshot = useAppStore.getState();
+      const snapshot = {
+        ...useProjectStore.getState(),
+        ...useConnectionStore.getState(),
+        ...useWorktreeStore.getState(),
+        ...useEditorStore.getState(),
+      };
 
       const bindings = resolveBindings(shortcutsRef.current);
 
@@ -199,7 +207,11 @@ type AllItem =
   | { type: "wsl"; distro: string; project: WSLProject }
   | { type: "remote"; host: string; project: RemoteProject };
 
-function buildProjectList(snapshot: ReturnType<typeof useAppStore.getState>): AllItem[] {
+function buildProjectList(snapshot: {
+  projects: ReturnType<typeof useProjectStore.getState>['projects'];
+  wslEntries: ReturnType<typeof useConnectionStore.getState>['wslEntries'];
+  remoteEntries: ReturnType<typeof useConnectionStore.getState>['remoteEntries'];
+}): AllItem[] {
   return [
     ...snapshot.projects.map((p) => ({ type: "local" as const, id: p.id })),
     ...(IS_WINDOWS ? (snapshot.wslEntries ?? []).flatMap((entry) =>
@@ -211,7 +223,11 @@ function buildProjectList(snapshot: ReturnType<typeof useAppStore.getState>): Al
   ];
 }
 
-function findCurrentIndex(snapshot: ReturnType<typeof useAppStore.getState>, items: AllItem[]): number {
+function findCurrentIndex(snapshot: {
+  activeProjectId: ReturnType<typeof useProjectStore.getState>['activeProjectId'];
+  activeWslKey: ReturnType<typeof useConnectionStore.getState>['activeWslKey'];
+  activeRemoteKey: ReturnType<typeof useConnectionStore.getState>['activeRemoteKey'];
+}, items: AllItem[]): number {
   const curWslKey = snapshot.activeWslKey;
   const curRemoteKey = snapshot.activeRemoteKey;
   return items.findIndex((item) => {
@@ -221,7 +237,11 @@ function findCurrentIndex(snapshot: ReturnType<typeof useAppStore.getState>, ite
   });
 }
 
-function switchTo(snapshot: ReturnType<typeof useAppStore.getState>, item: AllItem) {
+function switchTo(snapshot: {
+  selectProject: ReturnType<typeof useProjectStore.getState>['selectProject'];
+  selectWslProject: ReturnType<typeof useConnectionStore.getState>['selectWslProject'];
+  selectRemoteProject: ReturnType<typeof useConnectionStore.getState>['selectRemoteProject'];
+}, item: AllItem) {
   if (item.type === "local") {
     snapshot.selectProject(item.id);
   } else if (item.type === "wsl") {
@@ -232,7 +252,12 @@ function switchTo(snapshot: ReturnType<typeof useAppStore.getState>, item: AllIt
 }
 
 function cycleTab(direction: 1 | -1) {
-  const snapshot = useAppStore.getState();
+  const snapshot = {
+    ...useProjectStore.getState(),
+    ...useConnectionStore.getState(),
+    ...useWorktreeStore.getState(),
+    ...useEditorStore.getState(),
+  };
 
   const currentProjectId =
     snapshot.activeProjectId ??
@@ -259,5 +284,5 @@ function cycleTab(direction: 1 | -1) {
   if (currentIndex < 0) return;
 
   const targetIndex = (currentIndex + direction + tabs.length) % tabs.length;
-  useAppStore.getState().activateTab(tabKey, tabs[targetIndex].id);
+  useEditorStore.getState().activateTab(tabKey, tabs[targetIndex].id);
 }

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import OpenIdeButton from "../layout/OpenIdeButton";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import type { Project } from "../../types";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -42,14 +43,16 @@ describe("OpenIdeButton", () => {
     });
 
     const project = makeProject();
-    useAppStore.setState({
+    useProjectStore.setState({
       projects: [project],
       activeProjectId: project.id,
       activeProject: project,
-      activeWslProject: null,
-      activeRemoteProject: null,
       openIde: openIdeSpy,
       setProjectIde: setProjectIdeSpy,
+    });
+    useConnectionStore.setState({
+      activeWslProject: null,
+      activeRemoteProject: null,
     });
   });
 

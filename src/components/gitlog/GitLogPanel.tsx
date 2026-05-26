@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useEditorStore } from "../../store/editorStore";
 import { useAppContext } from "../../contexts";
 import { useActiveProject } from "../../hooks/useActiveProject";
 import { useGitLog } from "./useGitLog";
@@ -153,15 +155,17 @@ const GitLogPanel: React.FC = () => {
 
       // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
       // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path）
-      const appStore = useAppStore.getState();
+      const projectState = useProjectStore.getState();
+      const connectionState = useConnectionStore.getState();
       const tabKey =
-        appStore.activeProjectId
-        ?? appStore.activeWslProject?.project.id
-        ?? appStore.activeRemoteProject?.project.id
+        projectState.activeProjectId
+        ?? connectionState.activeWslProject?.project.id
+        ?? connectionState.activeRemoteProject?.project.id
         ?? project.id;
 
       const tabId = `diff_${selectedHash.slice(0, 7)}_${filePath.replace(/[/\\]/g, "_")}`;
-      appStore.addTab(tabKey, {
+      const editorState = useEditorStore.getState();
+      editorState.addTab(tabKey, {
         id: tabId,
         projectId: tabKey,
         title: filePath.split(/[/\\]/).pop() ?? filePath,
@@ -173,7 +177,7 @@ const GitLogPanel: React.FC = () => {
           diffSource,
         },
       });
-      appStore.activateTab(tabKey, tabId);
+      editorState.activateTab(tabKey, tabId);
     },
     [project, selectedHash, connectionContext],
   );

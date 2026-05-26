@@ -20,11 +20,13 @@ import { useWorktreeActions } from "./useWorktreeActions";
 import { useRemoteAuthActions } from "./useRemoteAuthActions";
 import { useDelayedInit } from "./useDelayedInit";
 import { useTerminalTabs } from "./useTerminalTabs";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useEditorStore } from "../store/editorStore";
 import { useAppViewStore } from "../store/appViewStore";
 import { useFileView } from "./useFileView";
 import { useActiveProject } from "./useActiveProject";
-import { useSyncToStore } from "./useSyncToStore";
 import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 import { useFileTabRefresh } from "./useFileTabRefresh";
@@ -191,7 +193,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   // clearWslTransientState and clearRemoteTransientState removed.
   // WSL/Remote transient worktree state (path / branch / openedWt) now lives
-  // in appStore directly — clearing happens via resetWslTransientState /
+  // in worktreeStore directly — clearing happens via resetWslTransientState /
   // resetRemoteTransientState or inline in handleSelectProjectWithClear.
 
   const handleSelectProjectWithClear = useCallback(
@@ -199,36 +201,46 @@ export function useAppContainer(): UseAppContainerResult {
       closeSettingsView();
 
       // Clear WSL diffState (local useState, batched by React 18 with the
-      // appStore.setState below)
+      // setState calls below)
       wslActions.setWslDiffState(null);
 
-      // ONE appStore.setState: inline clearWorktreeForProject + clear
-      // WSL/Remote active + transient worktree + set new active project.
-      useAppStore.setState((state) => {
-        const targetProjectTabs = state.tabs[projectId];
-        // Inline clearWorktreeForProject logic — avoid extra Zustand store update
-        const wtCur = state.worktreeStateMap[projectId];
-        const nextWtMap = (wtCur && wtCur.activePath !== null)
-          ? { ...state.worktreeStateMap, [projectId]: { ...wtCur, activePath: null, activeBranch: "" } }
-          : state.worktreeStateMap;
-        return {
-          worktreeStateMap: nextWtMap,
-          activeWorktreePath: null,
-          activeWorktreeBranch: "",
-          activeWslKey: null,
-          activeWslProject: null,
-          activeRemoteKey: null,
-          activeRemoteProject: null,
-          activeWslWorktreePath: null,
-          wslActiveWtBranch: "",
-          wslOpenedWt: [],
-          activeRemoteWorktreePath: null,
-          remoteActiveWtBranch: "",
-          remoteOpenedWt: [],
-          activeProjectId: projectId,
-          activeProject: state.projects.find((p) => p.id === projectId) ?? null,
-          activeTabId: targetProjectTabs?.activeTabId ?? null,
-        };
+      // Read cross-store state before mutations
+      const targetProjectTabs = useEditorStore.getState().tabs[projectId];
+      const wtCur = useWorktreeStore.getState().worktreeStateMap[projectId];
+      const nextWtMap = (wtCur && wtCur.activePath !== null)
+        ? { ...useWorktreeStore.getState().worktreeStateMap, [projectId]: { ...wtCur, activePath: null, activeBranch: "" } }
+        : useWorktreeStore.getState().worktreeStateMap;
+
+      // Worktree domain
+      useWorktreeStore.setState({
+        worktreeStateMap: nextWtMap,
+        activeWorktreePath: null,
+        activeWorktreeBranch: "",
+        activeWslWorktreePath: null,
+        wslActiveWtBranch: "",
+        wslOpenedWt: [],
+        activeRemoteWorktreePath: null,
+        remoteActiveWtBranch: "",
+        remoteOpenedWt: [],
+      });
+
+      // Connection domain
+      useConnectionStore.setState({
+        activeWslKey: null,
+        activeWslProject: null,
+        activeRemoteKey: null,
+        activeRemoteProject: null,
+      });
+
+      // Project domain
+      useProjectStore.setState({
+        activeProjectId: projectId,
+        activeProject: useProjectStore.getState().projects.find((p) => p.id === projectId) ?? null,
+      });
+
+      // Editor domain
+      useEditorStore.setState({
+        activeTabId: targetProjectTabs?.activeTabId ?? null,
       });
 
       // Fire-and-forget backend notification
@@ -305,7 +317,7 @@ export function useAppContainer(): UseAppContainerResult {
     if (activeProject && !activeWorktreePath) return;
 
     // 检查项目是否有任何类型的 tab（不仅是 terminal）
-    const projectTabs = useAppStore.getState().tabs[tabKey];
+    const projectTabs = useEditorStore.getState().tabs[tabKey];
     const hasAnyTabs = projectTabs && projectTabs.tabs.length > 0;
 
     if (!hasAnyTabs) {
@@ -318,7 +330,7 @@ export function useAppContainer(): UseAppContainerResult {
   }, [tabKey, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
-  const activeTabId = useAppStore((state) => state.activeTabId);
+  const activeTabId = useEditorStore((state) => state.activeTabId);
 
   const handleAddTab = useCallback(() => {
     if (!tabKey) return;
@@ -327,7 +339,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
-      const state = useAppStore.getState();
+      const state = useEditorStore.getState();
       // Find which project this tab belongs to and close it
       for (const [projectId, pt] of Object.entries(state.tabs)) {
         if (pt.tabs.some((t) => t.id === tabId)) {
@@ -367,18 +379,17 @@ export function useAppContainer(): UseAppContainerResult {
   );
 
   const handleFileRefresh = useCallback(() => {
-    const state = useAppStore.getState();
-    const projectId = state.activeProjectId
-      ?? state.activeWslProject?.project.id
-      ?? state.activeRemoteProject?.project.id
+    const projectId = useProjectStore.getState().activeProjectId
+      ?? useConnectionStore.getState().activeWslProject?.project.id
+      ?? useConnectionStore.getState().activeRemoteProject?.project.id
       ?? null;
     if (!projectId) return;
-    const rootPath = state.activeWorktreePath
-      ?? state.activeWslWorktreePath
-      ?? state.activeRemoteWorktreePath
-      ?? state.activeProject?.path
-      ?? state.activeWslProject?.project.path
-      ?? state.activeRemoteProject?.project.path
+    const rootPath = useWorktreeStore.getState().activeWorktreePath
+      ?? useWorktreeStore.getState().activeWslWorktreePath
+      ?? useWorktreeStore.getState().activeRemoteWorktreePath
+      ?? useProjectStore.getState().activeProject?.path
+      ?? useConnectionStore.getState().activeWslProject?.project.path
+      ?? useConnectionStore.getState().activeRemoteProject?.project.path
       ?? undefined;
     fileView.loadFileTree(projectId, rootPath);
   }, [fileView.loadFileTree]);
@@ -428,23 +439,21 @@ export function useAppContainer(): UseAppContainerResult {
 
   const isTerminalView = activeProject?.active_view === "Terminal";
 
-  useSyncToStore({
-    isTerminalView: isTerminalView || activeWorktreePath !== null,
-    wslEntries,
-    activeWslKey,
-    activeWslProject,
-    remoteEntries,
-    activeRemoteKey,
-    activeRemoteProject,
-    remoteAuthStore,
-    pendingAuthEntry,
-    worktreeState: session.worktreeState,
-    selectProject: handleSelectProjectWithClear,
-    selectWslProject: handleSelectWslProjectWithSync,
-    selectRemoteProject: handleSelectRemoteProjectWithSync,
-    openIde: agentActions.handleOpenIdeCallback,
-    setProjectIde: agentActions.handleSetProjectIde,
-  });
+  useEffect(() => {
+    useProjectStore.setState({
+      isTerminalView: isTerminalView || activeWorktreePath !== null,
+      selectProject: handleSelectProjectWithClear,
+      openIde: agentActions.handleOpenIdeCallback,
+      setProjectIde: agentActions.handleSetProjectIde,
+    });
+  }, [isTerminalView, activeWorktreePath, handleSelectProjectWithClear, agentActions.handleOpenIdeCallback, agentActions.handleSetProjectIde]);
+
+  useEffect(() => {
+    useConnectionStore.setState({
+      selectWslProject: handleSelectWslProjectWithSync,
+      selectRemoteProject: handleSelectRemoteProjectWithSync,
+    });
+  }, [handleSelectWslProjectWithSync, handleSelectRemoteProjectWithSync]);
 
   useKeyboardShortcuts({
     updateWtPath,

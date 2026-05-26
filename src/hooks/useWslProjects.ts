@@ -3,31 +3,31 @@ import type { Dispatch, SetStateAction } from "react";
 import { wslCacheKey, destroyWslCachesByPrefix } from "../components/terminal";
 import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../types";
 import type { ActiveWslKey } from "../components/connections/types";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
 import { applyStateAction, upsertEntryById } from "../utils/entryUpdates";
 
 export type { ActiveWslKey };
 export type SaveSessionFn = (wslEntries?: WSLEntrySession[], remoteEntries?: RemoteEntrySession[]) => Promise<void>;
 
 export function useWslProjects(saveSession: SaveSessionFn) {
-  const wslEntries = useAppStore((state) => state.wslEntries);
-  const activeWslKey = useAppStore((state) => state.activeWslKey);
-  const activeWslProject = useAppStore((state) => state.activeWslProject);
+  const wslEntries = useConnectionStore((state) => state.wslEntries);
+  const activeWslKey = useConnectionStore((state) => state.activeWslKey);
+  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
 
   const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       wslEntries: applyStateAction(state.wslEntries, updater),
     }));
   }, []);
 
   const setActiveWslKey: Dispatch<SetStateAction<ActiveWslKey>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeWslKey: applyStateAction(state.activeWslKey, updater),
     }));
   }, []);
 
   const setActiveWslProject: Dispatch<SetStateAction<{ distro: string; project: WSLProject } | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeWslProject: applyStateAction(state.activeWslProject, updater),
     }));
   }, []);

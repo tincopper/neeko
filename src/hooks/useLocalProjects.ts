@@ -5,18 +5,19 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import type { Project, AgentConfig, Tab, GitBranchInfo, FileChange, Worktree } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useEditorStore } from "../store/editorStore";
 import { applyStateAction } from "../utils/entryUpdates";
 import { randomAvatarColor } from "../utils/projectAvatar";
 import { getMacAppNameByCommand } from "../utils/idePresets";
 
 export function useLocalProjects() {
-  const projects = useAppStore(useShallow((state) => state.projects));
-  const activeProjectId = useAppStore((state) => state.activeProjectId);
-  const activeProject = useAppStore((state) => state.activeProject);
+  const projects = useProjectStore(useShallow((state) => state.projects));
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeProject = useProjectStore((state) => state.activeProject);
 
   const setProjects: Dispatch<SetStateAction<Project[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => {
+    useProjectStore.setState((state) => {
       const nextProjects = applyStateAction(state.projects, updater);
       const nextActiveProject = state.activeProjectId
         ? nextProjects.find((project) => project.id === state.activeProjectId) ?? null
@@ -29,22 +30,22 @@ export function useLocalProjects() {
   }, []);
 
   const setActiveProjectId = useCallback((projectId: string | null) => {
-    useAppStore.setState((state) => {
-      const targetProjectTabs = projectId ? state.tabs[projectId] : null;
-      const restoredTabId = targetProjectTabs?.activeTabId ?? null;
+    const tabs = useEditorStore.getState().tabs;
+    const targetProjectTabs = projectId ? tabs[projectId] : null;
+    const restoredTabId = targetProjectTabs?.activeTabId ?? null;
 
-      return {
-        activeProjectId: projectId,
-        activeProject: projectId
-          ? state.projects.find((project) => project.id === projectId) ?? null
-          : null,
-        activeTabId: restoredTabId,
-      };
-    });
+    useProjectStore.setState((state) => ({
+      activeProjectId: projectId,
+      activeProject: projectId
+        ? state.projects.find((project) => project.id === projectId) ?? null
+        : null,
+    }));
+
+    useEditorStore.setState({ activeTabId: restoredTabId });
   }, []);
 
   const setActiveProject: Dispatch<SetStateAction<Project | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useProjectStore.setState((state) => ({
       activeProject: applyStateAction(state.activeProject, updater),
     }));
   }, []);
@@ -137,24 +138,28 @@ export function useLocalProjects() {
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
       await invoke("remove_project", { projectId });
-      useAppStore.setState((state) => {
-        const nextProjects = state.projects.filter((project) => project.id !== projectId);
-        const nextActiveProjectId = state.activeProjectId === projectId
-          ? (nextProjects[0]?.id ?? null)
-          : state.activeProjectId;
-        const nextActiveProject = nextActiveProjectId
-          ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
-          : null;
-        const nextActiveTabId = nextActiveProjectId
-          ? (state.tabs[nextActiveProjectId]?.activeTabId ?? null)
-          : null;
-        return {
-          projects: nextProjects,
-          activeProjectId: nextActiveProjectId,
-          activeProject: nextActiveProject,
-          activeTabId: nextActiveTabId,
-        };
+
+      const projState = useProjectStore.getState();
+      const editorState = useEditorStore.getState();
+
+      const nextProjects = projState.projects.filter((project) => project.id !== projectId);
+      const nextActiveProjectId = projState.activeProjectId === projectId
+        ? (nextProjects[0]?.id ?? null)
+        : projState.activeProjectId;
+      const nextActiveProject = nextActiveProjectId
+        ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
+        : null;
+      const nextActiveTabId = nextActiveProjectId
+        ? (editorState.tabs[nextActiveProjectId]?.activeTabId ?? null)
+        : null;
+
+      useProjectStore.setState({
+        projects: nextProjects,
+        activeProjectId: nextActiveProjectId,
+        activeProject: nextActiveProject,
       });
+      useEditorStore.setState({ activeTabId: nextActiveTabId });
+
       destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
       console.error("[App] Failed to remove project:", error);
@@ -173,12 +178,12 @@ export function useLocalProjects() {
       await invoke("set_active_project", { projectId });
     }
 
-    const existingTabs = useAppStore.getState().tabs[projectId];
+    const existingTabs = useEditorStore.getState().tabs[projectId];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath
     );
     if (existingDiffTab) {
-      useAppStore.getState().activateTab(projectId, existingDiffTab.id);
+      useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
       return;
     }
 
@@ -196,8 +201,8 @@ export function useLocalProjects() {
         diffSource: { type: "local", projectId },
       },
     };
-    useAppStore.getState().addTab(projectId, tab);
-    useAppStore.getState().activateTab(projectId, tabId);
+    useEditorStore.getState().addTab(projectId, tab);
+    useEditorStore.getState().activateTab(projectId, tabId);
   }, [activeProjectId]);
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
@@ -210,7 +215,7 @@ export function useLocalProjects() {
     };
 
     const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
-      useAppStore.setState((state) => {
+      useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) => {
           if (p.id !== projectId) return p;
           return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };

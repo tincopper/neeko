@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useLocalProjects } from '../../hooks/useLocalProjects';
-import { useAppStore } from '../../store/appStore';
+import { useEditorStore } from '../../store/editorStore';
 import { createProject } from '../../testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
@@ -284,7 +284,7 @@ describe('useLocalProjects', () => {
     // 项目已激活，不应再调用 set_active_project
     expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
     // 应在 store 中创建 diff tab
-    const storeTabs = useAppStore.getState().tabs['p-active'];
+    const storeTabs = useEditorStore.getState().tabs['p-active'];
     expect(storeTabs).toBeDefined();
     const diffTab = storeTabs?.tabs.find((t) => t.data.kind === 'diff');
     expect(diffTab).toBeDefined();

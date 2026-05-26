@@ -11,7 +11,10 @@ import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../types";
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useEditorContext } from "../../contexts/editor-context";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useEditorStore } from "../../store/editorStore";
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
@@ -53,13 +56,13 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
 
 function FileViewer() {
    const { config } = useAppContext();
-   const activeProjectId = useAppStore((state) => state.activeProjectId);
-   const activeProject = useAppStore((state) => state.activeProject);
-   const activeWslProject = useAppStore((state) => state.activeWslProject);
-   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
-   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
-   const activeWslWorktreePath = useAppStore((state) => state.activeWslWorktreePath);
-   const activeRemoteWorktreePath = useAppStore((state) => state.activeRemoteWorktreePath);
+   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+   const activeProject = useProjectStore((state) => state.activeProject);
+   const activeWslProject = useConnectionStore((state) => state.activeWslProject);
+   const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
+   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+   const activeWslWorktreePath = useWorktreeStore((state) => state.activeWslWorktreePath);
+   const activeRemoteWorktreePath = useWorktreeStore((state) => state.activeRemoteWorktreePath);
    const {
       onFileSave: onSave,
       onFileContentChange: onContentChange,
@@ -83,7 +86,7 @@ function FileViewer() {
       : currentProjectId;
 
    // Read project tabs from unified store
-   const projectTabs = useAppStore(useShallow((state) => {
+   const projectTabs = useEditorStore(useShallow((state) => {
       if (!tabKey) return null;
       return state.tabs[tabKey] ?? null;
    }));
@@ -175,7 +178,7 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
             filePath: tab.filePath,
             rootPath: undefined,
          });
-         useAppStore.getState().updateTab(tabKey, tabId, {
+         useEditorStore.getState().updateTab(tabKey, tabId, {
             kind: "file",
             content,
             isDirty: false,
@@ -191,7 +194,7 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
 
    // 处理外部文件修改：保留当前编辑
    const handleKeepEdits = useCallback(() => {
-      useAppStore.getState().updateTab(tabKey, tabId, {
+      useEditorStore.getState().updateTab(tabKey, tabId, {
          kind: "file",
          externallyModified: false,
       });

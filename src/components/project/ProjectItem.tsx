@@ -11,7 +11,7 @@ import DraggableProjectItem from "./DraggableProjectItem";
 import { useProjectItemDrag } from "./useProjectItemDrag";
 import { useProjectItemMenu } from "./useProjectItemMenu";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import type { ProjectItemProps } from "./projectItemTypes";
 
 interface ProjectItemViewExtras {
@@ -49,7 +49,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
 
   const [projectCollapsed, setProjectCollapsed] = useState(project.collapsed ?? true);
 
-  const projects = useAppStore((s) => s.projects);
+  const projects = useProjectStore((s) => s.projects);
   const shortcut = useMemo(() => {
     const idx = projects.findIndex((p) => p.id === project.id);
     if (idx < 0 || idx >= 9) return undefined;

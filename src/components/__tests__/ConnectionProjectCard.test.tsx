@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import ConnectionProjectCard from "../connections/ConnectionProjectCard";
-import { useAppStore } from "../../store/appStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useGitStore } from "../../store/gitStore";
 import type { WSLProject } from "../../types";
 
 function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
@@ -38,9 +39,11 @@ describe("ConnectionProjectCard (WSL)", () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockResolvedValue([]);
     // reset store
-    useAppStore.setState({
+    useWorktreeStore.setState({
       activeWslWorktreePath: null,
       activeRemoteWorktreePath: null,
+    });
+    useGitStore.setState({
       aheadBehind: {},
     });
   });
@@ -110,7 +113,7 @@ describe("ConnectionProjectCard (WSL)", () => {
 
   it("active + 无 active worktree 时 local 行显示 ↑N（来自 store 的 aheadBehind）", () => {
     const project = makeWslProject();
-    useAppStore.setState({
+    useGitStore.setState({
       aheadBehind: { "wsl:Ubuntu:wsl-p1": { ahead: 3, behind: 0 } },
     });
     render(
@@ -129,8 +132,10 @@ describe("ConnectionProjectCard (WSL)", () => {
 
   it("active worktree 与 isActive 都成立时 local 行不显示 ↑N", () => {
     const project = makeWslProject();
-    useAppStore.setState({
+    useWorktreeStore.setState({
       activeWslWorktreePath: "/home/user/wts/feature-x",
+    });
+    useGitStore.setState({
       aheadBehind: { "wsl:Ubuntu:wsl-p1": { ahead: 3, behind: 0 } },
     });
     render(

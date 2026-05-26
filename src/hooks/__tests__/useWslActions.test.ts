@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useWslActions } from "../useWslActions";
-import { useAppStore } from "../../store/appStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useEditorStore } from "../../store/editorStore";
 import type { WSLEntrySession } from "../../types";
 import {
   switchAgentInWslTerminal,
@@ -40,7 +43,12 @@ function seedStore(overrides: {
   activeWslProject?: { distro: string; project: ReturnType<typeof makeWslProject> };
 } = {}) {
   const project = makeWslProject("wp1");
-  useAppStore.setState({
+  useProjectStore.setState({
+    activeProjectId: null,
+    activeProject: null,
+    isTerminalView: false,
+  });
+  useConnectionStore.setState({
     wslEntries: overrides.wslEntries ?? [
       { id: "e1", distro: "Ubuntu", projects: [project] },
     ],
@@ -48,14 +56,13 @@ function seedStore(overrides: {
       distro: "Ubuntu",
       project,
     },
-    activeProjectId: null,
-    activeProject: null,
-    isTerminalView: false,
     remoteEntries: [],
     activeRemoteKey: null,
     activeRemoteProject: null,
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
+  });
+  useWorktreeStore.setState({
     activeWorktreePath: null,
     openedWorktrees: [],
     wslOpenedWt: [],
@@ -63,6 +70,8 @@ function seedStore(overrides: {
     remoteOpenedWt: [],
     activeRemoteWorktreePath: null,
     worktreeState: {},
+  });
+  useEditorStore.setState({
     tabs: {},
   });
 }
@@ -90,7 +99,7 @@ describe("useWslActions", () => {
         result.current.updateWslProjectAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
@@ -105,7 +114,7 @@ describe("useWslActions", () => {
         result.current.updateWslProjectAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeWslProject?.project.selected_agent).toBe("claude-code");
     });
 
@@ -126,7 +135,7 @@ describe("useWslActions", () => {
         result.current.updateWslProjectAgent(null);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeWslProject?.project.selected_agent).toBeNull();
     });
 
@@ -208,7 +217,7 @@ describe("useWslActions", () => {
         result.current.handleSelectWslAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeWslProject?.project.selected_agent).toBe("claude-code");
       expect(state.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
     });

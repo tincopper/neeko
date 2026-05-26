@@ -15,7 +15,6 @@ export { useRemoteProjects } from "./useRemoteProjects";
 export { useSessionBootstrap } from "./useSessionBootstrap";
 export { useSessionPersistence } from "./useSessionPersistence";
 export { useSplitLayout } from "./useSplitLayout";
-export { useSyncToStore } from "./useSyncToStore";
 export { useTerminalTabs } from "./useTerminalTabs";
 export { useToast } from "./useToast";
 export { useWorktreeActions } from "./useWorktreeActions";

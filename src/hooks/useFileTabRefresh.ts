@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileChangedEvent, FileContent } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useEditorStore } from "../store/editorStore";
 
 /**
  * useFileTabRefresh
@@ -19,7 +19,7 @@ export function useFileTabRefresh() {
       const { project_id, paths } = event.payload;
       if (!paths.length) return;
 
-      const state = useAppStore.getState();
+      const state = useEditorStore.getState();
 
       // 遍历所有 tabKey 下的 tabs，找出 projectId 匹配 + filePath 命中的 file tab
       for (const [tabKey, projectTabs] of Object.entries(state.tabs)) {
@@ -32,7 +32,7 @@ export function useFileTabRefresh() {
 
           if (tab.data.isDirty) {
             // 有未保存修改：标记 externallyModified，由 UI 弹 Modal
-            useAppStore.getState().updateTab(tabKey, tab.id, {
+            useEditorStore.getState().updateTab(tabKey, tab.id, {
               kind: "file",
               externallyModified: true,
             });
@@ -44,7 +44,7 @@ export function useFileTabRefresh() {
                 filePath: tab.data.filePath,
                 rootPath: undefined,
               });
-              useAppStore.getState().updateTab(tabKey, tab.id, {
+              useEditorStore.getState().updateTab(tabKey, tab.id, {
                 kind: "file",
                 content,
                 externallyModified: false,

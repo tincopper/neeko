@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { AuthMethod } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
 import type { SaveSessionFn } from "./useWslProjects";
 
 interface UseRemoteAuthActionsParams {
@@ -14,7 +14,7 @@ interface UseRemoteAuthActionsResult {
 
 export function useRemoteAuthActions({ saveSession }: UseRemoteAuthActionsParams): UseRemoteAuthActionsResult {
   const handleRemoteAuthCancel = useCallback(() => {
-    useAppStore.setState({
+    useConnectionStore.setState({
       pendingAuthEntry: null,
       activeRemoteKey: null,
       activeRemoteProject: null,
@@ -22,14 +22,14 @@ export function useRemoteAuthActions({ saveSession }: UseRemoteAuthActionsParams
   }, []);
 
   const handleRemoteAuthSuccess = useCallback((auth: AuthMethod, saved_auth?: string | null) => {
-    const snapshot = useAppStore.getState();
+    const snapshot = useConnectionStore.getState();
     const pending = snapshot.pendingAuthEntry;
     if (!pending) {
       return;
     }
 
     const entryId = pending.id;
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       remoteAuthStore: new Map(state.remoteAuthStore).set(entryId, auth),
       pendingAuthEntry: null,
     }));
@@ -44,7 +44,7 @@ export function useRemoteAuthActions({ saveSession }: UseRemoteAuthActionsParams
         : entry
     ));
 
-    useAppStore.setState({
+    useConnectionStore.setState({
       remoteEntries: updatedEntries,
     });
 

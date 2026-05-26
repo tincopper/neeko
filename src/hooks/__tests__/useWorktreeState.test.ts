@@ -1,20 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWorktreeState } from '../../hooks/useWorktreeState';
-import { useAppStore } from '../../store/appStore';
+import { useWorktreeStore } from '../../store/worktreeStore';
+import { useEditorStore } from '../../store/editorStore';
 
 describe('useWorktreeState', () => {
   let activeProjectId: string | null;
 
   beforeEach(() => {
     activeProjectId = 'project-1';
-    // Reset Zustand store — useWorktreeState now reads/writes appStore
+    // Reset Zustand store — useWorktreeState now reads/writes worktreeStore/editorStore
     // directly instead of local useState, so cross-test pollution must be cleaned.
-    useAppStore.setState({
+    useWorktreeStore.setState({
       worktreeStateMap: {},
       activeWorktreePath: null,
       activeWorktreeBranch: '',
       openedWorktrees: [],
+    });
+    useEditorStore.setState({
       tabs: {},
       activeTabId: null,
     });

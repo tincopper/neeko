@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { refreshTerminal, switchAgentInTerminal } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
 import type { AgentConfig } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
 
@@ -39,17 +40,17 @@ export function useAgentActions({
   showToast,
   saveSession,
 }: UseAgentActionsParams): UseAgentActionsResult {
-  const projects = useAppStore((state) => state.projects);
+  const projects = useProjectStore((state) => state.projects);
 
   const handleSelectLocalAgent = useCallback((agent: AgentConfig | null, cacheKey: string) => {
-    const snapshot = useAppStore.getState();
+    const snapshot = useProjectStore.getState();
     const currentActiveProject = snapshot.activeProject;
     if (!currentActiveProject) {
       return;
     }
 
     const agentId = agent?.id ?? null;
-    useAppStore.setState((state) => {
+    useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((project) => (
         project.id === currentActiveProject.id
           ? { ...project, selected_agent: agentId }
@@ -110,7 +111,7 @@ export function useAgentActions({
     agentId: string | null,
     ideCommand: string | null,
   ) => {
-    useAppStore.setState((state) => {
+    useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((project) => (
         project.id === projectId
           ? {
@@ -149,7 +150,7 @@ export function useAgentActions({
    */
   const handleSetProjectIde = useCallback(
     (projectId: string, ideCommand: string | null) => {
-      useAppStore.setState((state) => {
+      useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) =>
           p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
         );
@@ -158,6 +159,13 @@ export function useAgentActions({
             ? { ...state.activeProject, selected_ide: ideCommand }
             : state.activeProject;
 
+        return {
+          projects: nextProjects,
+          activeProject: nextActiveProject,
+        };
+      });
+
+      useConnectionStore.setState((state) => {
         const nextWslEntries = state.wslEntries.map((entry) => ({
           ...entry,
           projects: entry.projects.map((p) =>
@@ -187,8 +195,6 @@ export function useAgentActions({
             : state.activeRemoteProject;
 
         return {
-          projects: nextProjects,
-          activeProject: nextActiveProject,
           wslEntries: nextWslEntries,
           activeWslProject: nextActiveWslProject,
           remoteEntries: nextRemoteEntries,

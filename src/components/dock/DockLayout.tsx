@@ -8,7 +8,7 @@ import { usePanelRef, type PanelSize } from "react-resizable-panels";
 import DockBar from "./DockBar";
 import DockZone from "./DockZone";
 import { useDockStore } from "@/store/dockStore";
-import { useAppStore } from "@/store/appStore";
+
 import { dockPanelRegistry } from "@/registries/dockPanels";
 
 interface DockLayoutProps {
@@ -178,7 +178,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
     [setLeftPanelSize],
   );
 
-  const setLeftPanelWidth = useAppStore((s) => s.setLeftPanelWidth);
+  const setLeftPanelWidth = useDockStore((s) => s.setLeftPanelWidth);
 
   const leftPanelElRef = useRef<HTMLDivElement>(null);
 

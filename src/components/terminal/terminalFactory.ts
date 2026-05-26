@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import { buildFontFamily, buildTerminalTheme } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
-import { useAppStore } from "../../store/appStore";
+import { useEditorStore } from "../../store/editorStore";
 import {
   terminalCache,
   destroyTerminalCache,
@@ -146,10 +146,10 @@ export async function createTerminalForProject(
         // Reflect success/failure in the tab so the UI can show the right indicator
         // and so taskStore.runTask() can decide whether to reuse the tab.
         // Use the project ID captured at terminal-creation time (backendProjectId)
-        // rather than appState.activeProject 鈥?the user may have switched to a
+        // rather than appState.activeProject — the user may have switched to a
         // different project while the task was running, making activeProject null
         // or pointing to the wrong project.
-        const appState = useAppStore.getState();
+        const appState = useEditorStore.getState();
         const tabKey = backendProjectId;
         const pt = appState.tabs[tabKey];
         const tab = pt?.tabs.find(

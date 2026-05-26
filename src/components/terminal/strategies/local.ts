@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "../../../store/appStore";
+import { useProjectStore } from "../../../store/projectStore";
+import { useWorktreeStore } from "../../../store/worktreeStore";
 import { useAppContext, useEditorContext } from "../../../contexts";
 import {
   terminalCache,
@@ -17,9 +18,9 @@ export function useLocalTerminalStrategy(
   worktreeBranchOverride?: string,
 ): TerminalStrategy | null {
   const { config } = useAppContext();
-  const activeProject = useAppStore((s) => s.activeProject);
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
-  const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
   const { activeTabId, tabs } = useEditorContext();
 
   return useMemo(() => {

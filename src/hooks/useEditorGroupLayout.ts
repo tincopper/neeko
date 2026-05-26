@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useAppStore } from "../store/appStore";
+import { useEditorStore } from "../store/editorStore";
 import type { EditorGroupId, EditorSplitLayout, Tab } from "../types";
 import { createDefaultEditorLayout, findGroupIdForTab } from "../types/editorGroup";
 
@@ -30,18 +30,18 @@ export interface EditorGroupLayoutResult {
 }
 
 export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
-  const allTabs = useAppStore((s) => s.tabs[tabKey]?.tabs ?? []);
-  const rawLayout = useAppStore((s) => s.editorLayout[tabKey]);
-  const storeSplitRight = useAppStore((s) => s.splitRight);
-  const storeMoveToRight = useAppStore((s) => s.moveToRight);
-  const storeMoveToLeft = useAppStore((s) => s.moveToLeft);
-  const storeUnsplit = useAppStore((s) => s.unsplit);
-  const storeSetActiveGroup = useAppStore((s) => s.setActiveGroup);
-  const storeSetSplitRatio = useAppStore((s) => s.setSplitRatio);
-  const storeActivateTab = useAppStore((s) => s.activateTab);
-  const storePinTab = useAppStore((s) => s.pinTab);
-  const storeUnpinTab = useAppStore((s) => s.unpinTab);
-  const storeSetPinnedPanelRatio = useAppStore((s) => s.setPinnedPanelRatio);
+  const allTabs = useEditorStore((s) => s.tabs[tabKey]?.tabs ?? []);
+  const rawLayout = useEditorStore((s) => s.editorLayout[tabKey]);
+  const storeSplitRight = useEditorStore((s) => s.splitRight);
+  const storeMoveToRight = useEditorStore((s) => s.moveToRight);
+  const storeMoveToLeft = useEditorStore((s) => s.moveToLeft);
+  const storeUnsplit = useEditorStore((s) => s.unsplit);
+  const storeSetActiveGroup = useEditorStore((s) => s.setActiveGroup);
+  const storeSetSplitRatio = useEditorStore((s) => s.setSplitRatio);
+  const storeActivateTab = useEditorStore((s) => s.activateTab);
+  const storePinTab = useEditorStore((s) => s.pinTab);
+  const storeUnpinTab = useEditorStore((s) => s.unpinTab);
+  const storeSetPinnedPanelRatio = useEditorStore((s) => s.setPinnedPanelRatio);
 
   const layout: EditorSplitLayout = useMemo(() => {
     if (rawLayout) return rawLayout;
@@ -109,7 +109,7 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
 
   const closeOtherTabs = useCallback(
     (keepTabId: string) => {
-      const store = useAppStore.getState();
+      const store = useEditorStore.getState();
       const projectTabs = store.tabs[tabKey];
       if (!projectTabs) return;
       for (const tab of projectTabs.tabs) {
@@ -122,7 +122,7 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
   );
 
   const closeAllTabs = useCallback(() => {
-    useAppStore.getState().clearProjectTabs(tabKey);
+    useEditorStore.getState().clearProjectTabs(tabKey);
   }, [tabKey]);
 
   return {

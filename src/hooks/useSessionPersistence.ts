@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { WSLEntrySession, RemoteEntrySession } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
 
 export interface UseSessionPersistenceResult {
    worktreeState: Record<string, string>;
@@ -41,7 +41,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
    }, [persistWorktreeState]);
 
    const saveSession: SaveSessionFn = useCallback(async (wslEntriesParam?: WSLEntrySession[], remoteEntriesParam?: RemoteEntrySession[]) => {
-      const snapshot = useAppStore.getState();
+      const snapshot = useConnectionStore.getState();
       const wsl = wslEntriesParam ?? snapshot.wslEntries;
       const remote = remoteEntriesParam ?? snapshot.remoteEntries;
       await invoke("save_session", { wslEntries: wsl, remoteEntries: remote });
@@ -50,7 +50,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
    const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
    const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
-      const snapshot = useAppStore.getState();
+      const snapshot = useConnectionStore.getState();
       invoke("save_session", {
          wslEntries: snapshot.wslEntries,
          remoteEntries: snapshot.remoteEntries,

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "./appStore";
+import { useProjectStore } from "./projectStore";
+import { useEditorStore } from "./editorStore";
 import { destroyTerminalCache, terminalCache } from "../components/terminal/terminalCache";
 import type { Tab } from "../types/tab";
 import type { TaskConfig, TaskState } from "../types/task";
@@ -80,15 +81,15 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
   },
 
   runTask: (command: string, configId: string) => {
-    const appState = useAppStore.getState();
-    const activeProject = appState.activeProject;
+    const activeProject = useProjectStore.getState().activeProject;
     if (!activeProject) {
       console.error("No active project to run task in");
       return;
     }
 
     const tabKey = activeProject.id;
-    const existingTabs = appState.tabs[tabKey];
+    const editorState = useEditorStore.getState();
+    const existingTabs = editorState.tabs[tabKey];
 
     // ── Guard 1: same task already Running → just jump to its tab ────────
     if (existingTabs) {
@@ -99,7 +100,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
           t.data.status === "Running",
       );
       if (runningTab) {
-        appState.activateTab(tabKey, runningTab.id);
+        editorState.activateTab(tabKey, runningTab.id);
         set({ selectedConfigId: configId });
         return;
       }
@@ -125,11 +126,11 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
           finishedTab.data.kind === "terminal"
             ? (finishedTab.data.rebuildKey ?? 0)
             : 0;
-        appState.updateTab(tabKey, finishedTab.id, {
+        useEditorStore.getState().updateTab(tabKey, finishedTab.id, {
           status: "Running",
           rebuildKey: currentRebuildKey + 1,
         });
-        appState.activateTab(tabKey, finishedTab.id);
+        useEditorStore.getState().activateTab(tabKey, finishedTab.id);
 
         set({
           taskStates: {
@@ -169,8 +170,8 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       },
     };
 
-    appState.addTab(tabKey, tab);
-    appState.activateTab(tabKey, tabId);
+    useEditorStore.getState().addTab(tabKey, tab);
+    useEditorStore.getState().activateTab(tabKey, tabId);
 
     set({
       taskStates: {
@@ -187,8 +188,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
   },
 
   stopTask: () => {
-    const appState = useAppStore.getState();
-    const activeProject = appState.activeProject;
+    const activeProject = useProjectStore.getState().activeProject;
     if (!activeProject) return;
 
     const taskState = get().taskStates[activeProject.id];
@@ -204,7 +204,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     // at "Running" forever. Updating it here ensures runTask() can later
     // detect the tab as finished and reuse it.
     if (taskState.sessionId) {
-      appState.updateTab(activeProject.id, taskState.sessionId, {
+      useEditorStore.getState().updateTab(activeProject.id, taskState.sessionId, {
         status: "Idle",
       });
     }

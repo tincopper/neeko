@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useRemoteActions } from "../useRemoteActions";
-import { useAppStore } from "../../store/appStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useEditorStore } from "../../store/editorStore";
 import type { RemoteEntrySession } from "../../types";
 import {
   switchAgentInRemoteTerminal,
@@ -53,18 +56,22 @@ function seedStore(overrides: {
 } = {}) {
   const entry = makeRemoteEntry();
   const project = makeRemoteProject("rp1");
-  useAppStore.setState({
-    remoteEntries: overrides.remoteEntries ?? [entry],
-    activeRemoteProject: overrides.activeRemoteProject ?? { entry, project },
+  useProjectStore.setState({
     activeProjectId: null,
     activeProject: null,
     isTerminalView: false,
+  });
+  useConnectionStore.setState({
+    remoteEntries: overrides.remoteEntries ?? [entry],
+    activeRemoteProject: overrides.activeRemoteProject ?? { entry, project },
     wslEntries: [],
     activeWslKey: null,
     activeWslProject: null,
     activeRemoteKey: { host: "192.168.1.1", projectId: "rp1" },
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
+  });
+  useWorktreeStore.setState({
     activeWorktreePath: null,
     openedWorktrees: [],
     wslOpenedWt: [],
@@ -72,6 +79,8 @@ function seedStore(overrides: {
     remoteOpenedWt: [],
     activeRemoteWorktreePath: null,
     worktreeState: {},
+  });
+  useEditorStore.setState({
     tabs: {},
   });
 }
@@ -99,7 +108,7 @@ describe("useRemoteActions", () => {
         result.current.updateRemoteProjectAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.remoteEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
@@ -114,7 +123,7 @@ describe("useRemoteActions", () => {
         result.current.updateRemoteProjectAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeRemoteProject?.project.selected_agent).toBe("claude-code");
     });
 
@@ -131,7 +140,7 @@ describe("useRemoteActions", () => {
         result.current.updateRemoteProjectAgent(null);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeRemoteProject?.project.selected_agent).toBeNull();
     });
 
@@ -208,7 +217,7 @@ describe("useRemoteActions", () => {
         result.current.handleSelectRemoteAgent(agent);
       });
 
-      const state = useAppStore.getState();
+      const state = useConnectionStore.getState();
       expect(state.activeRemoteProject?.project.selected_agent).toBe("claude-code");
       expect(state.remoteEntries[0].projects[0].selected_agent).toBe("claude-code");
     });

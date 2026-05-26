@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeft, Search, FolderOpen } from "lucide-react";
 import { useAppViewStore } from "../../store/appViewStore";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import { useAppContext } from "../../contexts";
 import { cn } from "../../utils/cn";
 import { NAV_ITEMS, type SettingsNavId } from "./constants";
@@ -20,7 +20,7 @@ import type { AgentConfig, AppConfig } from "../../types";
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);
   const { config, saveConfig } = useAppContext();
-  const projects = useAppStore((s) => s.projects);
+  const projects = useProjectStore((s) => s.projects);
   const [activeNav, setActiveNav] = useState<SettingsNavId>("appearance");
   const [searchQuery, setSearchQuery] = useState("");
   const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);

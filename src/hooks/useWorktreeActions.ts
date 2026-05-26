@@ -1,7 +1,9 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useEditorStore } from "../store/editorStore";
 import type { Tab } from "../types";
 import type { WorktreeItem } from "./useWorktreeState";
 import { buildWorktreeTabKey } from "../utils/tabKey";
@@ -29,8 +31,8 @@ export function useWorktreeActions({
   setOpenedWorktrees,
   saveWorktreeState,
 }: UseWorktreeActionsParams): UseWorktreeActionsResult {
-  const activeProjectId = useAppStore((state) => state.activeProjectId);
-  const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
 
   const handleBackToMainTerminal = useCallback((projectId: string) => {
     if (activeWorktreePath !== null) {
@@ -47,13 +49,13 @@ export function useWorktreeActions({
     branch: string,
   ) => {
     if (activeProjectId !== projectId) {
-      useAppStore.setState((state) => {
-        const targetProjectTabs = state.tabs[projectId];
-        return {
-          activeProjectId: projectId,
-          activeProject: state.projects.find((project) => project.id === projectId) ?? null,
-          activeTabId: targetProjectTabs?.activeTabId ?? null,
-        };
+      const targetProjectTabs = useEditorStore.getState().tabs[projectId];
+      useProjectStore.setState({
+        activeProjectId: projectId,
+        activeProject: useProjectStore.getState().projects.find((project) => project.id === projectId) ?? null,
+      });
+      useEditorStore.setState({
+        activeTabId: targetProjectTabs?.activeTabId ?? null,
       });
       invoke("set_active_project", { projectId }).catch(console.error);
     }
@@ -80,12 +82,12 @@ export function useWorktreeActions({
     if (!activeProjectId) return;
 
     const tabKey = buildWorktreeTabKey(activeProjectId, worktreePath);
-    const existingTabs = useAppStore.getState().tabs[tabKey];
+    const existingTabs = useEditorStore.getState().tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath
     );
     if (existingDiffTab) {
-      useAppStore.getState().activateTab(tabKey, existingDiffTab.id);
+      useEditorStore.getState().activateTab(tabKey, existingDiffTab.id);
       return;
     }
 
@@ -103,8 +105,8 @@ export function useWorktreeActions({
         diffSource: { type: "worktree", projectId: activeProjectId, worktreePath },
       },
     };
-    useAppStore.getState().addTab(tabKey, tab);
-    useAppStore.getState().activateTab(tabKey, tabId);
+    useEditorStore.getState().addTab(tabKey, tab);
+    useEditorStore.getState().activateTab(tabKey, tabId);
   }, [activeProjectId]);
 
   return {

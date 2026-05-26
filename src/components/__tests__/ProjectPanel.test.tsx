@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import ProjectPanel from "../settings/ProjectPanel";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import { AVATAR_COLORS } from "../../utils/projectAvatar";
 import type { Project } from "../../types";
 
@@ -26,7 +26,7 @@ describe("ProjectPanel — Appearance section", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockResolvedValue([]);
-    useAppStore.setState({
+    useProjectStore.setState({
       projects: [makeProject()],
       activeProjectId: null,
       activeProject: null,
@@ -63,7 +63,7 @@ describe("ProjectPanel — Appearance section", () => {
       projectId: "p1",
       color: target,
     });
-    const next = useAppStore.getState().projects.find((p) => p.id === "p1");
+    const next = useProjectStore.getState().projects.find((p) => p.id === "p1");
     expect(next?.avatar_color).toBe(target);
   });
 
@@ -79,7 +79,7 @@ describe("ProjectPanel — Appearance section", () => {
   });
 
   it("avatar_color 已设置时显示 Reset，点击后调命令传 null 并清空 store", () => {
-    useAppStore.setState({
+    useProjectStore.setState({
       projects: [makeProject({ avatar_color: AVATAR_COLORS[0] })],
     });
     render(
@@ -96,13 +96,13 @@ describe("ProjectPanel — Appearance section", () => {
       projectId: "p1",
       color: null,
     });
-    const next = useAppStore.getState().projects.find((p) => p.id === "p1");
+    const next = useProjectStore.getState().projects.find((p) => p.id === "p1");
     expect(next?.avatar_color).toBeNull();
   });
 
   it("当前选中色 swatch 带 ring + scale 高亮", () => {
     const target = AVATAR_COLORS[3];
-    useAppStore.setState({
+    useProjectStore.setState({
       projects: [makeProject({ avatar_color: target })],
     });
     render(

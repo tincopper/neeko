@@ -15,7 +15,7 @@ import { useEditorContext, EditorProvider } from "../../contexts/editor-context"
 import { useAppContext } from "../../contexts/app-context";
 import { useWslContext } from "../../contexts/wsl-context";
 import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
-import { useAppStore } from "../../store/appStore";
+import { useEditorStore } from "../../store/editorStore";
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
@@ -102,14 +102,14 @@ function EditorGroupPane({
   }, [groupId, leftActiveTabId, rightActiveTabId, pinnedTab]);
 
   const handleActivateTab = useCallback(
-    (tabId: string) => { useAppStore.getState().activateTab(tabKey, tabId); },
+    (tabId: string) => { useEditorStore.getState().activateTab(tabKey, tabId); },
     [tabKey],
   );
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
       if (groupId === "pinned") return; // pinned panel: close is handled via Unpin, not store.closeTab
-      useAppStore.getState().closeTab(tabKey, tabId);
+      useEditorStore.getState().closeTab(tabKey, tabId);
     },
     [tabKey, groupId],
   );

@@ -4,27 +4,27 @@ import { remoteCacheKey, destroyRemoteCachesByPrefix } from "../components/termi
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
 import type { ActiveRemoteKey } from "../components/connections/types";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
 import { useShallow } from "zustand/shallow";
 import { applyStateAction, upsertEntryById } from "../utils/entryUpdates";
 
 export type { ActiveRemoteKey };
 
 export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (message: string, type?: "info" | "error") => void) {
-  const remoteEntries = useAppStore(useShallow((state) => state.remoteEntries));
-  const activeRemoteKey = useAppStore((state) => state.activeRemoteKey);
-  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
-  const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
-  const pendingAuthEntry = useAppStore((state) => state.pendingAuthEntry);
+  const remoteEntries = useConnectionStore(useShallow((state) => state.remoteEntries));
+  const activeRemoteKey = useConnectionStore((state) => state.activeRemoteKey);
+  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
+  const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
+  const pendingAuthEntry = useConnectionStore((state) => state.pendingAuthEntry);
 
   const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       remoteEntries: applyStateAction(state.remoteEntries, updater),
     }));
   }, []);
 
   const setActiveRemoteKey: Dispatch<SetStateAction<ActiveRemoteKey>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeRemoteKey: applyStateAction(state.activeRemoteKey, updater),
     }));
   }, []);
@@ -33,19 +33,19 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     entry: RemoteEntrySession;
     project: RemoteProject;
   } | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeRemoteProject: applyStateAction(state.activeRemoteProject, updater),
     }));
   }, []);
 
   const setRemoteAuthStore: Dispatch<SetStateAction<Map<string, AuthMethod>>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       remoteAuthStore: applyStateAction(state.remoteAuthStore, updater),
     }));
   }, []);
 
   const setPendingAuthEntry: Dispatch<SetStateAction<RemoteEntrySession | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       pendingAuthEntry: applyStateAction(state.pendingAuthEntry, updater),
     }));
   }, []);
@@ -62,7 +62,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
       return;
     }
     // Read auth store directly to avoid Map reference dependency
-    const hasAuth = useAppStore.getState().remoteAuthStore.has(activeRemoteProject.entry.id);
+    const hasAuth = useConnectionStore.getState().remoteAuthStore.has(activeRemoteProject.entry.id);
     if (!hasAuth) {
       setPendingAuthEntry(activeRemoteProject.entry);
     } else {
@@ -180,7 +180,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     }
     if (restored.size > 0) {
       // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就绪
-      useAppStore.setState((state) => {
+      useConnectionStore.setState((state) => {
         const merged = new Map(state.remoteAuthStore);
         for (const [k, v] of restored) merged.set(k, v);
         return { remoteAuthStore: merged };

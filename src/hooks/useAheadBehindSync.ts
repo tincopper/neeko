@@ -1,21 +1,23 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AheadBehind, AuthMethod } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useGitStore } from "../store/gitStore";
 import { aheadBehindKey } from "../utils/aheadBehindKey";
 
 /**
  * useAheadBehindSync —— 当 active 项目（local / WSL / SSH）切换时，
- * 单次 invoke 对应的 ahead/behind 命令，把结果写入 `useAppStore.aheadBehind`。
+ * 单次 invoke 对应的 ahead/behind 命令，把结果写入 `useGitStore.aheadBehind`。
  *
  * 复合 key：`${kind}:${entryId}:${projectId}`，详见 `utils/aheadBehindKey.ts`。
  */
 export function useAheadBehindSync() {
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
-  const activeWslProject = useAppStore((s) => s.activeWslProject);
-  const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
-  const remoteAuthStore = useAppStore((s) => s.remoteAuthStore);
-  const setAheadBehind = useAppStore((s) => s.setAheadBehind);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
+  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
+  const remoteAuthStore = useConnectionStore((s) => s.remoteAuthStore);
+  const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
   // ── Local ──
   useEffect(() => {

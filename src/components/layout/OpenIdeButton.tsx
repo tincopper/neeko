@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Play } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import {
   getIdeCommand,
   getIdeIconByCommand,
@@ -19,11 +20,11 @@ import type { AppConfig } from "../../types";
  *   - 行右侧 ▶ 按钮 → 立即打开该 IDE（不改默认）。
  */
 function OpenIdeButton() {
-  const activeProject = useAppStore((s) => s.activeProject);
-  const activeWslProject = useAppStore((s) => s.activeWslProject);
-  const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
-  const openIde = useAppStore((s) => s.openIde);
-  const setProjectIde = useAppStore((s) => s.setProjectIde);
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
+  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
+  const openIde = useProjectStore((s) => s.openIde);
+  const setProjectIde = useProjectStore((s) => s.setProjectIde);
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [config, setConfig] = useState<AppConfig | null>(null);

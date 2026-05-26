@@ -11,13 +11,13 @@ import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
 import CommitDialog from "../project/CommitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
-   const projects = useAppStore((state) => state.projects);
-   const activeProjectId = useAppStore((state) => state.activeProjectId);
+   const projects = useProjectStore((state) => state.projects);
+   const activeProjectId = useProjectStore((state) => state.activeProjectId);
    const {
       onRemoveProject,
       onSelectProject,

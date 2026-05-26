@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../types";
 import { updateAllTerminalThemes } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
 
 const DEFAULT_CONFIG: AppConfig = {
    theme: "dark",
@@ -58,7 +59,8 @@ export function useAppConfig() {
       });
 
       // 同步所有项目的 OpenCode tui.json 主题配置
-      const { projects, wslEntries } = useAppStore.getState();
+      const { projects } = useProjectStore.getState();
+      const { wslEntries } = useConnectionStore.getState();
       const localPaths = projects.map((p) => p.path);
       const wsl = wslEntries.flatMap((e) =>
          e.projects.map((p) => ({ distro: e.distro, path: p.path })),

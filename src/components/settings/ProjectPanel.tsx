@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2, Plus } from "lucide-react";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import { useTaskStore } from "../../store/taskStore";
 import { IDE_PRESETS } from "../../utils/idePresets";
 import { AVATAR_COLORS } from "../../utils/projectAvatar";
@@ -26,7 +26,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   customIdes,
   onProjectRemoved,
 }) => {
-  const project = useAppStore(
+  const project = useProjectStore(
     useCallback((s) => s.projects.find((p: Project) => p.id === projectId), [projectId]),
   );
 
@@ -72,7 +72,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
   const patchProject = useCallback(
     (patch: Partial<Project>) => {
-      useAppStore.setState((state) => {
+      useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) =>
           p.id === projectId ? { ...p, ...patch } : p,
         );

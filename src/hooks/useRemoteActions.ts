@@ -6,7 +6,9 @@ import {
   remoteCacheKey,
   switchAgentInRemoteTerminal,
 } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useProjectStore } from "../store/projectStore";
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
@@ -32,12 +34,12 @@ export function useRemoteActions({
   showToast,
   saveSession,
 }: UseRemoteActionsParams) {
-  const remoteEntries = useAppStore(useShallow((state) => state.remoteEntries));
-  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
-  const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
+  const remoteEntries = useConnectionStore(useShallow((state) => state.remoteEntries));
+  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
+  const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
 
   const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       remoteEntries: typeof updater === "function" ? updater(state.remoteEntries) : updater,
     }));
   }, []);
@@ -46,7 +48,7 @@ export function useRemoteActions({
     entry: RemoteEntrySession;
     project: RemoteProject;
   } | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeRemoteProject: typeof updater === "function" ? updater(state.activeRemoteProject) : updater,
     }));
   }, []);
@@ -54,22 +56,22 @@ export function useRemoteActions({
   // ── Remote transient worktree state ──
   // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
   // to avoid useState → useSyncToStore double-render and enable merged setState.
-  const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
-  const remoteActiveWtBranch = useAppStore((s) => s.remoteActiveWtBranch);
-  const remoteOpenedWt = useAppStore((s) => s.remoteOpenedWt);
+  const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
+  const remoteActiveWtBranch = useWorktreeStore((s) => s.remoteActiveWtBranch);
+  const remoteOpenedWt = useWorktreeStore((s) => s.remoteOpenedWt);
 
 
 
   const setActiveRemoteWorktreePath = useCallback((path: string | null) => {
-    useAppStore.setState({ activeRemoteWorktreePath: path });
+    useWorktreeStore.setState({ activeRemoteWorktreePath: path });
   }, []);
 
   const setRemoteActiveWtBranch = useCallback((branch: string) => {
-    useAppStore.setState({ remoteActiveWtBranch: branch });
+    useWorktreeStore.setState({ remoteActiveWtBranch: branch });
   }, []);
 
   const setRemoteOpenedWt: Dispatch<SetStateAction<WorktreeItem[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useWorktreeStore.setState((state) => ({
       remoteOpenedWt: typeof updater === "function" ? updater(state.remoteOpenedWt) : updater,
     }));
   }, []);
@@ -85,7 +87,7 @@ export function useRemoteActions({
   }, [setActiveRemoteWorktreePath, setRemoteActiveWtBranch, setRemoteOpenedWt]);
 
   const resetRemoteTransientState = useCallback(() => {
-    useAppStore.setState({
+    useWorktreeStore.setState({
       activeRemoteWorktreePath: null,
       remoteActiveWtBranch: "",
       remoteOpenedWt: [],
@@ -140,9 +142,11 @@ export function useRemoteActions({
   }), [invokeRemoteGit, setRemoteEntries, setActiveRemoteProject]);
 
   const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
-    useAppStore.setState({
+    useProjectStore.setState({
       activeProjectId: null,
       activeProject: null,
+    });
+    useConnectionStore.setState({
       activeWslKey: null,
       activeWslProject: null,
       activeRemoteKey: { host, projectId: project.id },

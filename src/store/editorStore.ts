@@ -1,111 +1,7 @@
 import { create } from "zustand";
-import type { ActiveRemoteKey, ActiveWslKey } from "../components/connections/types";
-import type {
-  AheadBehind,
-  AuthMethod,
-  EditorGroupId,
-  EditorSplitLayout,
-  FileChange,
-  FileNode,
-  Project,
-  ProjectTabs,
-  RemoteEntrySession,
-  RemoteProject,
-  Tab,
-  TabData,
-  WSLEntrySession,
-  WSLProject,
-} from "../types";
+import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from "../types";
 import type { FileTabData } from "../types/tab";
 import { createDefaultEditorLayout } from "../types/editorGroup";
-
-export interface WorktreeSnapshotItem {
-  path: string;
-  branch: string;
-}
-
-interface IdeProject {
-  id: string;
-  selected_ide: string | null;
-}
-
-interface AppStoreState {
-  projects: Project[];
-  activeProjectId: string | null;
-  activeProject: Project | null;
-  isTerminalView: boolean;
-  wslEntries: WSLEntrySession[];
-  activeWslKey: ActiveWslKey;
-  activeWslProject: { distro: string; project: WSLProject } | null;
-  remoteEntries: RemoteEntrySession[];
-  activeRemoteKey: ActiveRemoteKey;
-  activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
-  remoteAuthStore: Map<string, AuthMethod>;
-  pendingAuthEntry: RemoteEntrySession | null;
-  activeWorktreePath: string | null;
-  activeWorktreeBranch: string;
-  openedWorktrees: WorktreeSnapshotItem[];
-  // Per-project worktree state map — moved from useWorktreeState local useState
-  // to eliminate useState → useSyncToStore double-render.
-  worktreeStateMap: Record<string, { activePath: string | null; activeBranch: string; opened: WorktreeSnapshotItem[] }>;
-  activeWslWorktreePath: string | null;
-  wslActiveWtBranch: string;
-  wslOpenedWt: WorktreeSnapshotItem[];
-  activeRemoteWorktreePath: string | null;
-  remoteActiveWtBranch: string;
-  remoteOpenedWt: WorktreeSnapshotItem[];
-  worktreeState: Record<string, string>;
-  fileTree: FileNode[];
-  fileViewLoading: boolean;
-  activeFilePath: string | null;
-
-  // ── Per-project unified tabs ──
-  tabs: Record<string, ProjectTabs>;
-  activeTabId: string | null;
-
-  // ── Editor group split layout ──
-  editorLayout: Record<string, EditorSplitLayout>;
-
-  // ── Dock panel width tracking ──
-  leftPanelWidth: number;
-  setLeftPanelWidth: (width: number) => void;
-
-  // ── Ahead/behind by composite key (`${kind}:${entryId}:${projectId}`).
-  //    Lazy: filled when project becomes active. ──
-  aheadBehind: Record<string, AheadBehind>;
-  setAheadBehind: (key: string, info: AheadBehind | null) => void;
-
-  selectProject: (id: string) => void;
-  selectWslProject: (distro: string, project: WSLProject) => void;
-  selectRemoteProject: (host: string, project: RemoteProject) => void;
-  openIde: (project: IdeProject) => void;
-  setProjectIde: (projectId: string, ideCommand: string | null) => void;
-
-  // ── Tab CRUD actions ──
-  addTab: (projectId: string, tab: Tab) => void;
-  closeTab: (projectId: string, tabId: string) => void;
-  activateTab: (projectId: string, tabId: string) => void;
-  updateTab: (projectId: string, tabId: string, partial: Partial<TabData> & { title?: string }) => void;
-  clearProjectTabs: (projectId: string) => void;
-
-  // ── Editor group actions ──
-  splitRight: (tabKey: string, tabId: string) => void;
-  moveToRight: (tabKey: string, tabId: string) => void;
-  moveToLeft: (tabKey: string, tabId: string) => void;
-  unsplit: (tabKey: string) => void;
-  setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
-  setSplitRatio: (tabKey: string, ratio: number) => void;
-
-  // ── Pin tab actions ──
-  pinTab: (tabKey: string, tabId: string) => void;
-  unpinTab: (tabKey: string) => void;
-  setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
-
-  // ── Git incremental update ──
-  patchChangedFiles: (projectId: string, diff: { added: FileChange[]; removed: string[]; modified: FileChange[] }) => void;
-}
-
-const noop = () => {};
 
 function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string, allTabIds: string[], activeTabId: string | null): EditorSplitLayout {
   if (layouts[tabKey]) return layouts[tabKey];
@@ -115,22 +11,13 @@ function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string
   return layout;
 }
 
-/**
- * Type-safe shallow merge of partial data into a TabData variant.
- * Uses `in` operator to narrow the discriminated union — no `as` cast needed.
- */
 function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
-  // Reject kind mismatch
   if (partial.kind !== undefined && partial.kind !== data.kind) {
     return data;
   }
 
   switch (data.kind) {
     case "terminal": {
-      // Accept partial if it contains any TerminalTabData-specific field.
-      // The previous "agentId" in partial check was too strict — callers that
-      // only update status/rebuildKey (no agentId key) would hit the early
-      // return and silently discard their update.
       const isTerminalPartial =
         "agentId" in partial ||
         "status" in partial ||
@@ -142,16 +29,12 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         kind: "terminal",
         agentId: partial.agentId !== undefined ? partial.agentId : data.agentId,
         status: partial.status !== undefined ? partial.status : data.status,
-        // Preserve task-specific fields so they are never silently dropped
         taskCommand: partial.taskCommand !== undefined ? partial.taskCommand : data.taskCommand,
         taskConfigId: partial.taskConfigId !== undefined ? partial.taskConfigId : data.taskConfigId,
         rebuildKey: partial.rebuildKey !== undefined ? partial.rebuildKey : data.rebuildKey,
       };
     }
     case "file": {
-      // Accept any partial that touches at least one FileTabData-specific field.
-      // Use `content` as the primary discriminant for backwards-compat, but also
-      // accept isDirty-only or externallyModified-only updates via explicit cast.
       const isFilePartial =
         "content" in partial ||
         "isDirty" in partial ||
@@ -159,7 +42,6 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         "fileName" in partial ||
         "externallyModified" in partial;
       if (!isFilePartial) return data;
-      // Cast to Partial<FileTabData> — safe because we just checked the fields above
       const fp = partial as Partial<FileTabData>;
       return {
         kind: "file",
@@ -171,7 +53,6 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
       };
     }
     case "diff": {
-      // `in` narrows partial to the only member that has `diffSource`: Partial<DiffTabData>
       if (!("diffSource" in partial)) return data;
       return {
         kind: "diff",
@@ -195,12 +76,6 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
   }
 }
 
-// ── Pin layout helpers ──
-
-/**
- * Move a previously-pinned tab back into the front of the left group.
- * Returns the layout unchanged if prevPinnedId is null or matches tabId.
- */
 function clearPreviousPin(
   layout: EditorSplitLayout,
   prevPinnedId: string | null,
@@ -221,10 +96,6 @@ function clearPreviousPin(
   };
 }
 
-/**
- * Remove tabId from left/right groups and set it as the new pinnedTabId.
- * Auto-unsplits if the right group becomes empty.
- */
 function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
   const newLeftIds  = layout.groups.left.tabIds.filter((id) => id !== tabId);
   const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
@@ -254,89 +125,38 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
   };
 }
 
-export const useAppStore = create<AppStoreState>((set) => ({
-  // ═══════════════════════════════════════════════════════════════
-  // Domain: Project
-  // ═══════════════════════════════════════════════════════════════
-  projects: [],
-  activeProjectId: null,
-  activeProject: null,
-  isTerminalView: false,
+interface EditorStoreState {
+  tabs: Record<string, ProjectTabs>;
+  activeTabId: string | null;
+  editorLayout: Record<string, EditorSplitLayout>;
 
-  // ═══════════════════════════════════════════════════════════════
-  // Domain: Connection (WSL / Remote)
-  // ═══════════════════════════════════════════════════════════════
-  wslEntries: [],
-  activeWslKey: null,
-  activeWslProject: null,
-  remoteEntries: [],
-  activeRemoteKey: null,
-  activeRemoteProject: null,
-  remoteAuthStore: new Map(),
-  pendingAuthEntry: null,
+  addTab: (projectId: string, tab: Tab) => void;
+  closeTab: (projectId: string, tabId: string) => void;
+  activateTab: (projectId: string, tabId: string) => void;
+  updateTab: (projectId: string, tabId: string, partial: Partial<TabData> & { title?: string }) => void;
+  clearProjectTabs: (projectId: string) => void;
 
-  // ═══════════════════════════════════════════════════════════════
-  // Domain: Worktree
-  // ═══════════════════════════════════════════════════════════════
-  activeWorktreePath: null,
-  activeWorktreeBranch: "",
-  openedWorktrees: [],
-  worktreeStateMap: {},
-  activeWslWorktreePath: null,
-  wslActiveWtBranch: "",
-  wslOpenedWt: [],
-  activeRemoteWorktreePath: null,
-  remoteActiveWtBranch: "",
-  remoteOpenedWt: [],
-  worktreeState: {},
+  splitRight: (tabKey: string, tabId: string) => void;
+  moveToRight: (tabKey: string, tabId: string) => void;
+  moveToLeft: (tabKey: string, tabId: string) => void;
+  unsplit: (tabKey: string) => void;
+  setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
+  setSplitRatio: (tabKey: string, ratio: number) => void;
 
-  // ═══════════════════════════════════════════════════════════════
-  // Domain: File View
-  // ═══════════════════════════════════════════════════════════════
-  fileTree: [],
-  fileViewLoading: false,
-  activeFilePath: null,
+  pinTab: (tabKey: string, tabId: string) => void;
+  unpinTab: (tabKey: string) => void;
+  setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
+}
 
-  // ═══════════════════════════════════════════════════════════════
-  // Domain: Tabs + Editor Layout
-  // ═══════════════════════════════════════════════════════════════
+export const useEditorStore = create<EditorStoreState>((set) => ({
   tabs: {},
   activeTabId: null,
   editorLayout: {},
-
-  // ── Dock panel width tracking ──
-  leftPanelWidth: 0,
-  setLeftPanelWidth: (width) => set({ leftPanelWidth: width }),
-
-  // ── Ahead/behind ──
-  aheadBehind: {},
-  setAheadBehind: (key, info) =>
-    set((state) => {
-      if (info === null) {
-        if (!(key in state.aheadBehind)) return state;
-        const { [key]: _, ...rest } = state.aheadBehind;
-        return { aheadBehind: rest };
-      }
-      const current = state.aheadBehind[key];
-      if (current && current.ahead === info.ahead && current.behind === info.behind) {
-        return state;
-      }
-      return { aheadBehind: { ...state.aheadBehind, [key]: info } };
-    }),
-
-  selectProject: noop,
-  selectWslProject: noop,
-  selectRemoteProject: noop,
-  openIde: noop,
-  setProjectIde: noop,
-
-  // ── Tab CRUD actions ──
 
   addTab: (projectId, tab) =>
     set((state) => {
       const existing = state.tabs[projectId];
 
-      // Terminal tabs: enforce max 10 per project
       if (tab.data.kind === "terminal") {
         const terminalCount = (existing?.tabs ?? []).filter(
           (t) => t.data.kind === "terminal",
@@ -344,7 +164,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
         if (terminalCount >= 10) return state;
       }
 
-      // Prevent duplicate tab id
       if (existing?.tabs.some((t) => t.id === tab.id)) return state;
 
       const projectTabs: ProjectTabs = existing
@@ -384,7 +203,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
       const idx = existing.tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return state;
 
-      // Pinned tabs cannot be closed directly — must unpin first
       if (state.editorLayout[projectId]?.pinnedTabId === tabId) return state;
 
       const remaining = existing.tabs.filter((t) => t.id !== tabId);
@@ -394,7 +212,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
         if (remaining.length === 0) {
           newActiveId = null;
         } else {
-          // Activate the next tab, or the previous one if at the end
           const nextIdx = idx < remaining.length ? idx : remaining.length - 1;
           newActiveId = remaining[nextIdx].id;
         }
@@ -429,7 +246,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
           },
         };
 
-        // Right group emptied → collapse split, left stays
         if (newLayout.isSplit && newLayout.groups.right.tabIds.length === 0) {
           newLayout = {
             ...newLayout,
@@ -438,7 +254,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
           };
         }
 
-        // Left group emptied → promote right group to left, collapse split
         if (newLayout.isSplit && newLayout.groups.left.tabIds.length === 0) {
           newLayout = {
             ...newLayout,
@@ -466,7 +281,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
       const existing = state.tabs[projectId];
       if (!existing) return state;
 
-      // Ensure tabId belongs to this project
       if (!existing.tabs.some((t) => t.id === tabId)) return state;
 
       let newEditorLayout = state.editorLayout;
@@ -541,8 +355,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
       const { [projectId]: __, ...restLayouts } = state.editorLayout;
       return { tabs: rest, activeTabId: globalActiveId, editorLayout: restLayouts };
     }),
-
-  // ── Editor group actions ──
 
   splitRight: (tabKey, tabId) =>
     set((state) => {
@@ -715,8 +527,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
       };
     }),
 
-  // ── Pin tab actions ──
-
   pinTab: (tabKey, tabId) =>
     set((state) => {
       const projectTabs = state.tabs[tabKey];
@@ -747,7 +557,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
 
       const pinnedId = layout.pinnedTabId;
 
-      // Insert at front of left group
       const leftIds = [pinnedId, ...layout.groups.left.tabIds.filter((id) => id !== pinnedId)];
 
       const newLayout: EditorSplitLayout = {
@@ -778,64 +587,6 @@ export const useAppStore = create<AppStoreState>((set) => ({
           ...state.editorLayout,
           [tabKey]: { ...layout, pinnedPanelRatio: clamped },
         },
-      };
-    }),
-
-  // ── Git incremental update ──
-
-  patchChangedFiles: (projectId, diff) =>
-    set((state) => {
-      // 找到目标 project
-      const project = state.projects.find((p) => p.id === projectId);
-      if (!project) return state;
-
-      // 无变化时不更新（放在最前避免不必要的对象构造）
-      if (
-        diff.added.length === 0 &&
-        diff.removed.length === 0 &&
-        diff.modified.length === 0
-      ) {
-        return state;
-      }
-
-      // git_info 可能为 null（session 恢复时懒加载），此时用默认值兜底
-      const gitInfo = project.git_info ?? {
-        current_branch: "",
-        branches: [] as string[],
-        worktrees: [] as import("../types").Worktree[],
-        changed_files: [] as import("../types").FileChange[],
-        is_clean: true,
-      };
-
-      const currentFiles = gitInfo.changed_files ?? [];
-
-      // 1. 移除被删除的文件
-      const removedSet = new Set(diff.removed);
-      let updatedFiles = currentFiles.filter((f) => !removedSet.has(f.path));
-
-      // 2. 更新状态变化的文件
-      const modifiedMap = new Map(diff.modified.map((f) => [f.path, f]));
-      updatedFiles = updatedFiles.map((f) => modifiedMap.get(f.path) ?? f);
-
-      // 3. 追加新增的文件
-      updatedFiles = [...updatedFiles, ...diff.added];
-
-      const updatedGitInfo = {
-        ...gitInfo,
-        changed_files: updatedFiles,
-        is_clean: updatedFiles.length === 0,
-      };
-
-      const nextProjects = state.projects.map((p) =>
-        p.id === projectId ? { ...p, git_info: updatedGitInfo } : p
-      );
-
-      return {
-        projects: nextProjects,
-        activeProject:
-          state.activeProjectId === projectId
-            ? nextProjects.find((p) => p.id === projectId) ?? state.activeProject
-            : state.activeProject,
       };
     }),
 }));

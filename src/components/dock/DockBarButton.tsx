@@ -7,7 +7,9 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useDockStore } from "@/store/dockStore";
-import { useAppStore } from "@/store/appStore";
+import { useProjectStore } from "@/store/projectStore";
+import { useConnectionStore } from "@/store/connectionStore";
+import { useEditorStore } from "@/store/editorStore";
 import {
   dockPanelRegistry,
   dockPanelIcons,
@@ -32,14 +34,13 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
 
   // For tab-mode buttons, track if the tab is open in the active project
   // Use currentProjectId (covers local/WSL/remote) to match MainContent's tabKey
-  const isTabActive = useAppStore((s) => {
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeWslProjectId = useConnectionStore((s) => s.activeWslProject?.project.id ?? null);
+  const activeRemoteProjectId = useConnectionStore((s) => s.activeRemoteProject?.project.id ?? null);
+  const isTabActive = useEditorStore((s) => {
     if (!isTab) return false;
     const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-    const projectId =
-      s.activeProjectId ??
-      s.activeWslProject?.project.id ??
-      s.activeRemoteProject?.project.id ??
-      "__app__";
+    const projectId = activeProjectId ?? activeWslProjectId ?? activeRemoteProjectId ?? "__app__";
     const projectTabs = s.tabs[projectId];
     return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
   });
@@ -56,17 +57,12 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
   const isActive = isTab ? isTabActive : isDockActive;
 
   const togglePanel = useDockStore((s) => s.togglePanel);
-  const addTab = useAppStore((s) => s.addTab);
-  const closeTab = useAppStore((s) => s.closeTab);
-  const activateTab = useAppStore((s) => s.activateTab);
+  const addTab = useEditorStore((s) => s.addTab);
+  const closeTab = useEditorStore((s) => s.closeTab);
+  const activateTab = useEditorStore((s) => s.activateTab);
   // Use currentProjectId that covers local/WSL/remote — matches MainContent's tabKey
-  const currentProjectId = useAppStore((s) =>
-    s.activeProjectId ??
-    s.activeWslProject?.project.id ??
-    s.activeRemoteProject?.project.id ??
-    null
-  );
-  const tabs = useAppStore(useShallow((s) => s.tabs));
+  const currentProjectId = activeProjectId ?? activeWslProjectId ?? activeRemoteProjectId ?? null;
+  const tabs = useEditorStore(useShallow((s) => s.tabs));
 
   const handleClick = useCallback(() => {
     if (isTab) {

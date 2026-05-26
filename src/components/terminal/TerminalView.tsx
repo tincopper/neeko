@@ -4,7 +4,9 @@ import { emit } from "@tauri-apps/api/event";
 import { useAppContext, useEditorContext } from "../../contexts";
 import { buildFontFamily } from "../../utils/terminal";
 import type { AgentConfig } from "../../types";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useEditorStore } from "../../store/editorStore";
 import {
    terminalCache,
    destroyTerminalCache,
@@ -19,9 +21,9 @@ import type { TerminalCache, TerminalViewProps } from "./terminalTypes";
 
 function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProps) {
    const { config } = useAppContext();
-   const activeProject = useAppStore((state) => state.activeProject);
-   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
-   const activeWorktreeBranch = useAppStore((state) => state.activeWorktreeBranch);
+   const activeProject = useProjectStore((state) => state.activeProject);
+   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+   const activeWorktreeBranch = useWorktreeStore((state) => state.activeWorktreeBranch);
    const { tabs, activeTabId, onTabStatusChange } = useEditorContext();
 
    const wrapperRef = useRef<HTMLDivElement>(null);
@@ -44,8 +46,8 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
    const agentCommandOverride = config.agentCommandOverrides?.[
       tabAgentId ?? projectSelectedAgent ?? ""
    ];
-   // Task terminal fields — read from the full Tab in appStore (TerminalTab is legacy, lacks .data)
-   const fullTabData = useAppStore((s) => {
+   // Task terminal fields — read from the full Tab in editorStore (TerminalTab is legacy, lacks .data)
+   const fullTabData = useEditorStore((s) => {
       if (!projectId || !activeTabId) return null;
       const pt = s.tabs[projectId];
       return pt?.tabs.find((t) => t.id === activeTabId)?.data ?? null;

@@ -12,7 +12,7 @@ import type {
    RemoteProject,
 } from "../../types";
 import { IS_MACOS } from "../../utils/platform";
-import { useAppStore } from "../../store/appStore";
+import { useDockStore } from "../../store/dockStore";
 import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
 import neekoIcon from "../../assets/neeko-icon.png";
 
@@ -44,7 +44,7 @@ function TitleBar({
    onCheckoutBranch,
    onRefreshGit,
 }: TitleBarProps) {
-   const leftPanelWidth = useAppStore((s) => s.leftPanelWidth);
+   const leftPanelWidth = useDockStore((s) => s.leftPanelWidth);
 
    // ── Dialog state: owned by TitleBar, not by App ───────────────────────
    const [dialogState, setDialogState] = useState<DialogState | null>(null);

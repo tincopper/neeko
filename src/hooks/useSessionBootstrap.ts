@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project, FileChange, GitBranchInfo, Worktree, GitStatusDiff } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
 
 /** 将后端 git status 字符串映射为前端 FileChange.status */
 function mapGitStatus(status: string): FileChange["status"] {
@@ -38,7 +38,7 @@ export function useSessionBootstrap(deps: {
             };
 
             const patchGitInfo = (projectId: string, patch: Partial<typeof defaultGitInfo>) => {
-               useAppStore.setState((state) => {
+               useProjectStore.setState((state) => {
                   const nextProjects = state.projects.map((proj) => {
                      if (proj.id !== projectId) return proj;
                      return { ...proj, git_info: { ...(proj.git_info ?? defaultGitInfo), ...patch } };
@@ -104,7 +104,7 @@ export function useSessionBootstrap(deps: {
          };
 
          const updateGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
-            useAppStore.setState((state) => {
+            useProjectStore.setState((state) => {
                const nextProjects = state.projects.map((p) => {
                   if (p.id !== projectId) return p;
                   return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
@@ -141,7 +141,7 @@ export function useSessionBootstrap(deps: {
       const unlistenDiffPromise = listen<GitStatusDiff>("git-status-diff", (event) => {
          const diff = event.payload;
          if (!diff.project_id) return;
-         useAppStore.getState().patchChangedFiles(diff.project_id, {
+         useProjectStore.getState().patchChangedFiles(diff.project_id, {
             added: diff.added.map((f) => ({
                path: f.path,
                status: mapGitStatus(f.status),

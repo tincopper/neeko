@@ -6,7 +6,9 @@
  */
 
 import { useMemo } from "react";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
+import { useConnectionStore } from "../../store/connectionStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
 import type { ActiveProjectContext } from "../../types/activeProject";
 import { getCapabilities } from "./capabilities";
 import { toLocalUnifiedView, toWslUnifiedView, toRemoteUnifiedView } from "./adapters";
@@ -22,13 +24,13 @@ import { createLocalCommands, createWslCommands, createRemoteCommands } from "./
  */
 export function useActiveProject(): ActiveProjectContext {
   // 从 store 读取三种活跃项目状态
-  const activeProject = useAppStore((s) => s.activeProject);
-  const activeWslProject = useAppStore((s) => s.activeWslProject);
-  const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
-  const activeWslWorktreePath = useAppStore((s) => s.activeWslWorktreePath);
-  const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
-  const remoteAuthStore = useAppStore((s) => s.remoteAuthStore);
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
+  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
+  const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
+  const remoteAuthStore = useConnectionStore((s) => s.remoteAuthStore);
 
   // 稳定 commands 引用：只依赖标量参数（id、path、host 等），
   // 不依赖整个 activeProject 对象引用。这样即使 git-changed 事件

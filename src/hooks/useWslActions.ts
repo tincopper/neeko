@@ -6,7 +6,10 @@ import {
   switchAgentInWslTerminal,
   wslCacheKey,
 } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useProjectStore } from "../store/projectStore";
+import { useEditorStore } from "../store/editorStore";
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
@@ -37,17 +40,17 @@ export function useWslActions({
   showToast,
   saveSession,
 }: UseWslActionsParams) {
-  const wslEntries = useAppStore(useShallow((state) => state.wslEntries));
-  const activeWslProject = useAppStore((state) => state.activeWslProject);
+  const wslEntries = useConnectionStore(useShallow((state) => state.wslEntries));
+  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
 
   const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       wslEntries: typeof updater === "function" ? updater(state.wslEntries) : updater,
     }));
   }, []);
 
   const setActiveWslProject: Dispatch<SetStateAction<{ distro: string; project: WSLProject } | null>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useConnectionStore.setState((state) => ({
       activeWslProject: typeof updater === "function" ? updater(state.activeWslProject) : updater,
     }));
   }, []);
@@ -55,23 +58,23 @@ export function useWslActions({
   // ── WSL transient worktree state ──
   // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
   // to avoid useState → useSyncToStore double-render and enable merged setState.
-  const activeWslWorktreePath = useAppStore((s) => s.activeWslWorktreePath);
-  const wslActiveWtBranch = useAppStore((s) => s.wslActiveWtBranch);
-  const wslOpenedWt = useAppStore((s) => s.wslOpenedWt);
+  const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
+  const wslActiveWtBranch = useWorktreeStore((s) => s.wslActiveWtBranch);
+  const wslOpenedWt = useWorktreeStore((s) => s.wslOpenedWt);
 
   // diffState stays local (typed per-connection and only consumed via context)
   const [wslDiffState, setWslDiffState] = useState<WslDiffState | null>(null);
 
   const setActiveWslWorktreePath = useCallback((path: string | null) => {
-    useAppStore.setState({ activeWslWorktreePath: path });
+    useWorktreeStore.setState({ activeWslWorktreePath: path });
   }, []);
 
   const setWslActiveWtBranch = useCallback((branch: string) => {
-    useAppStore.setState({ wslActiveWtBranch: branch });
+    useWorktreeStore.setState({ wslActiveWtBranch: branch });
   }, []);
 
   const setWslOpenedWt: Dispatch<SetStateAction<WorktreeItem[]>> = useCallback((updater) => {
-    useAppStore.setState((state) => ({
+    useWorktreeStore.setState((state) => ({
       wslOpenedWt: typeof updater === "function" ? updater(state.wslOpenedWt) : updater,
     }));
   }, []);
@@ -88,7 +91,7 @@ export function useWslActions({
   }, [setActiveWslWorktreePath, setWslActiveWtBranch, setWslOpenedWt]);
 
   const resetWslTransientState = useCallback(() => {
-    useAppStore.setState({
+    useWorktreeStore.setState({
       activeWslWorktreePath: null,
       wslActiveWtBranch: "",
       wslOpenedWt: [],
@@ -121,9 +124,11 @@ export function useWslActions({
   }), [setWslEntries, setActiveWslProject]);
 
   const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
-    useAppStore.setState({
+    useProjectStore.setState({
       activeProjectId: null,
       activeProject: null,
+    });
+    useConnectionStore.setState({
       activeWslKey: { distro, projectId: project.id },
       activeWslProject: { distro, project },
       activeRemoteKey: null,
@@ -137,12 +142,12 @@ export function useWslActions({
     if (!activeWslProject) return;
 
     const projectId = activeWslProject.project.id;
-    const existingTabs = useAppStore.getState().tabs[projectId];
+    const existingTabs = useEditorStore.getState().tabs[projectId];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath
     );
     if (existingDiffTab) {
-      useAppStore.getState().activateTab(projectId, existingDiffTab.id);
+      useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
       return;
     }
 
@@ -160,8 +165,8 @@ export function useWslActions({
         diffSource: { type: "wsl", distro, projectPath },
       },
     };
-    useAppStore.getState().addTab(projectId, tab);
-    useAppStore.getState().activateTab(projectId, tabId);
+    useEditorStore.getState().addTab(projectId, tab);
+    useEditorStore.getState().activateTab(projectId, tabId);
   }, [activeWslProject]);
 
   const handleRefreshWslGit = useCallback(async (

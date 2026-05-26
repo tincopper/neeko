@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useAppStore } from '../../store/appStore';
+import { useProjectStore } from '../../store/projectStore';
+import { useConnectionStore } from '../../store/connectionStore';
+import { useWorktreeStore } from '../../store/worktreeStore';
 import { createProject } from '../../testing/factories';
 
 // mock terminal refresh functions
@@ -27,31 +29,45 @@ function createDefaultParams() {
   };
 }
 
-function seedStore(overrides: Partial<ReturnType<typeof useAppStore.getState>> = {}) {
-  const defaults = {
-    projects: [],
-    activeProjectId: null,
-    activeProject: null,
+function seedStore(overrides: Record<string, unknown> = {}) {
+  const projectDefaults = {
+    projects: [] as unknown[],
+    activeProjectId: null as string | null,
+    activeProject: null as unknown,
     isTerminalView: true,
-    wslEntries: [],
-    activeWslKey: null,
-    remoteEntries: [],
-    activeRemoteKey: null,
-    activeWorktreePath: null,
-    openedWorktrees: [],
-    wslOpenedWt: [],
-    activeWslWorktreePath: null,
-    remoteOpenedWt: [],
-    activeRemoteWorktreePath: null,
-    worktreeState: {},
     selectProject: vi.fn(),
-    selectWslProject: vi.fn(),
-    selectRemoteProject: vi.fn(),
     openIde: vi.fn(),
   };
-  const state = { ...defaults, ...overrides };
-  useAppStore.setState(state);
-  return state;
+  const connectionDefaults = {
+    wslEntries: [] as unknown[],
+    activeWslKey: null as string | null,
+    remoteEntries: [] as unknown[],
+    activeRemoteKey: null as unknown,
+    selectWslProject: vi.fn(),
+    selectRemoteProject: vi.fn(),
+  };
+  const worktreeDefaults = {
+    activeWorktreePath: null as string | null,
+    openedWorktrees: [] as unknown[],
+    wslOpenedWt: [] as unknown[],
+    activeWslWorktreePath: null as string | null,
+    remoteOpenedWt: [] as unknown[],
+    activeRemoteWorktreePath: null as string | null,
+    worktreeState: {} as Record<string, unknown>,
+  };
+
+  // Apply overrides to matching fields
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key in projectDefaults) (projectDefaults as Record<string, unknown>)[key] = value;
+    if (key in connectionDefaults) (connectionDefaults as Record<string, unknown>)[key] = value;
+    if (key in worktreeDefaults) (worktreeDefaults as Record<string, unknown>)[key] = value;
+  }
+
+  useProjectStore.setState(projectDefaults);
+  useConnectionStore.setState(connectionDefaults);
+  useWorktreeStore.setState(worktreeDefaults);
+
+  return { ...projectDefaults, ...connectionDefaults, ...worktreeDefaults };
 }
 
 function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean } = {}) {

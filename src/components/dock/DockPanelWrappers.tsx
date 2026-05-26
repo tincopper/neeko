@@ -5,7 +5,11 @@ import {
   useFileActionsContext,
   useAppContext,
 } from "@/contexts";
-import { useAppStore } from "@/store/appStore";
+import { useFileStore } from "@/store/fileStore";
+import { useProjectStore } from "@/store/projectStore";
+import { useWorktreeStore } from "@/store/worktreeStore";
+import { useEditorStore } from "@/store/editorStore";
+import { useConnectionStore } from "@/store/connectionStore";
 import { useDockStore } from "@/store/dockStore";
 import { FilesPanel } from "@/components/panels";
 import { SkillsPanel } from "@/components/skills";
@@ -46,10 +50,10 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const { project, commands, worktreePath } = useActiveProject();
   const projectName = project?.name ?? null;
   const fileRootPath = worktreePath ?? project?.path ?? null;
-  const fileTree = useAppStore((s) => s.fileTree);
-  const fileViewLoading = useAppStore((s) => s.fileViewLoading);
-  const activeFilePath = useAppStore((s) => s.activeFilePath);
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const fileTree = useFileStore((s) => s.fileTree);
+  const fileViewLoading = useFileStore((s) => s.fileViewLoading);
+  const activeFilePath = useFileStore((s) => s.activeFilePath);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
   const changedFiles = project?.gitInfo?.changed_files;
 
@@ -92,14 +96,14 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       }
     } else if (project.type !== "local" && commands) {
       // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
-      useAppStore.setState({ fileViewLoading: true });
+      useFileStore.setState({ fileViewLoading: true });
       commands.readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH)
         .then((tree) => {
-          useAppStore.setState({ fileTree: tree, fileViewLoading: false });
+          useFileStore.setState({ fileTree: tree, fileViewLoading: false });
         })
         .catch((err) => {
           console.error("[FilesPanelWrapper] Failed to load WSL/Remote file tree:", err);
-          useAppStore.setState({ fileTree: [], fileViewLoading: false });
+          useFileStore.setState({ fileTree: [], fileViewLoading: false });
         });
     }
 
@@ -126,7 +130,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
         maxDepth: DEFAULT_TREE_DEPTH,
       })
         .then((tree) => {
-          useAppStore.setState({ fileTree: tree });
+          useFileStore.setState({ fileTree: tree });
         })
         .catch(console.error);
     });
@@ -140,14 +144,14 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // Local: delegate to onFileRefresh (context → useFileView.loadFileTree).
   const handleRefresh = useCallback(() => {
     if (project?.type !== "local" && commands && fileRootPath) {
-      useAppStore.setState({ fileViewLoading: true });
+      useFileStore.setState({ fileViewLoading: true });
       commands.readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH)
         .then((tree) => {
-          useAppStore.setState({ fileTree: tree, fileViewLoading: false });
+          useFileStore.setState({ fileTree: tree, fileViewLoading: false });
         })
         .catch((err) => {
           console.error("[FilesPanelWrapper] Refresh failed:", err);
-          useAppStore.setState({ fileTree: [], fileViewLoading: false });
+          useFileStore.setState({ fileTree: [], fileViewLoading: false });
         });
     } else {
       onFileRefresh();
@@ -159,9 +163,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     if (project?.type !== "local" && commands && fileRootPath) {
       // WSL/Remote：直接通过 commands.readDirTree 加载子树
       const subChildren = await commands.readDirTree(fileRootPath, dirPath, DEFAULT_TREE_DEPTH);
-      const currentTree = useAppStore.getState().fileTree;
+      const currentTree = useFileStore.getState().fileTree;
       const merged = mergeSubTree(currentTree, dirPath, subChildren);
-      useAppStore.setState({ fileTree: merged });
+      useFileStore.setState({ fileTree: merged });
     } else {
       // Local：委托给 context（→ useFileView.expandSubTree）
       await onExpandDir(dirPath);
@@ -212,13 +216,13 @@ FilesPanelWrapper.displayName = "FilesPanelWrapper";
 const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const { showToast } = useAppContext();
   const { project, commands, capabilities, connectionContext } = useActiveProject();
-  const activeWorktreeBranch = useAppStore((s) => s.activeWorktreeBranch);
-  const activeWorktreePath = useAppStore((s) => s.activeWorktreePath);
+  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const onRefreshGit = useCallback(async () => {
     if (!commands || !project) return;
     const gitInfo = await commands.refreshGitInfo();
-    useAppStore.setState((state) => {
+    useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
         p.id === project.id ? { ...p, git_info: gitInfo } : p,
       );
@@ -255,17 +259,19 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const handleSelectFile = (filePath: string) => {
     // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
     // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path）
-    const state = useAppStore.getState();
-    const tabKey = state.activeProjectId
-      ?? state.activeWslProject?.project.id
-      ?? state.activeRemoteProject?.project.id
+    const projectState = useProjectStore.getState();
+    const connectionState = useConnectionStore.getState();
+    const editorState = useEditorStore.getState();
+    const tabKey = projectState.activeProjectId
+      ?? connectionState.activeWslProject?.project.id
+      ?? connectionState.activeRemoteProject?.project.id
       ?? project.id;
-    const existingTabs = state.tabs[tabKey];
+    const existingTabs = editorState.tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath,
     );
     if (existingDiffTab) {
-      state.activateTab(tabKey, existingDiffTab.id);
+      editorState.activateTab(tabKey, existingDiffTab.id);
       return;
     }
 
@@ -279,8 +285,8 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
       order: existingTabs?.tabs.length ?? 0,
       data: { kind: "diff", filePath, fileName, diffSource },
     };
-    state.addTab(tabKey, tab);
-    state.activateTab(tabKey, tabId);
+    editorState.addTab(tabKey, tab);
+    editorState.activateTab(tabKey, tabId);
   };
 
   return (

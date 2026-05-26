@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store/browserStore';
 import { useDockStore } from '../store/dockStore';
-import { useAppStore } from '../store/appStore';
+import { useProjectStore } from '../store/projectStore';
+import { useEditorStore } from '../store/editorStore';
 import { sendToTerminal } from '../components/terminal';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/browser/pickerUtils';
 import { fileUrlToFilePath } from '../utils/browserUtils';
@@ -370,11 +371,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       if (!data?.prompt || !data?.html) return;
 
       // Check if current active tab is agent CLI
-      const appState = useAppStore.getState();
-      const projectId = appState.activeProjectId;
+      const projectState = useProjectStore.getState();
+      const editorState = useEditorStore.getState();
+      const projectId = projectState.activeProjectId;
       if (!projectId) { reinjectPicker(); return; }
-      const projectTabs = appState.tabs[projectId];
-      if (!isAgentCliTab(projectTabs, appState.activeTabId)) {
+      const projectTabs = editorState.tabs[projectId];
+      if (!isAgentCliTab(projectTabs, editorState.activeTabId)) {
         showToastRef.current('Please switch to an Agent CLI tab', 'error');
         reinjectPicker();
         return;
@@ -382,7 +384,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
       const browserUrl = useBrowserStore.getState().url;
       const message = formatPickerMessage(data.prompt, data.html, browserUrl);
-      sendToTerminal(projectId, message + '\r', appState.activeTabId);
+      sendToTerminal(projectId, message + '\r', editorState.activeTabId);
       armAutoRefresh();
       reinjectPicker();
     }).then((fn) => {
@@ -404,7 +406,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       // Only react when auto-refresh is armed
       if (pendingRefreshTimer.current === null) return;
       // Only refresh for the active project
-      const activeProjectId = useAppStore.getState().activeProjectId;
+      const activeProjectId = useProjectStore.getState().activeProjectId;
       if (event.payload !== activeProjectId) return;
       // Trigger refresh and disarm
       refreshRef.current();
@@ -436,7 +438,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       if (!browserFilePath) return;
 
       // Find the project to get its root path
-      const state = useAppStore.getState();
+      const state = useProjectStore.getState();
       const project = state.projects.find((p) => p.id === project_id);
       if (!project) return;
 

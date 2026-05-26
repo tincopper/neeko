@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Square, ChevronDown, Plus, Pencil, X } from "lucide-react";
 import { useTaskStore } from "../../store/taskStore";
-import { useAppStore } from "../../store/appStore";
+import { useProjectStore } from "../../store/projectStore";
 import TaskDialog from "./TaskDialog";
 import type { TaskConfig } from "../../types/task";
 
@@ -26,7 +26,7 @@ function TaskRunButton() {
     setSelectedConfig,
   } = useTaskStore();
 
-  const activeProject = useAppStore((s) => s.activeProject);
+  const activeProject = useProjectStore((s) => s.activeProject);
   const projectPath = activeProject?.path ?? null;
 
   // Load configs when project changes

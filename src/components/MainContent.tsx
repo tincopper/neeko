@@ -11,7 +11,9 @@ import {
    useEditorContext,
 } from "../contexts";
 import type { AgentConfig, Tab } from "../types";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useEditorStore } from "../store/editorStore";
 import { useShallow } from "zustand/shallow";
 import { useAppViewStore } from "../store/appViewStore";
 import { buildWorktreeTabKey } from "../utils/tabKey";
@@ -43,8 +45,8 @@ function MainContent() {
       agents,
       onAgentClick,
    } = useEditorContext();
-   const activeProject = useAppStore((state) => state.activeProject);
-   const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
+   const activeProject = useProjectStore((state) => state.activeProject);
+   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
 
    // Determine the current project ID (local, WSL, or Remote)
    const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
@@ -55,7 +57,7 @@ function MainContent() {
       : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
    // Get unified tabs from store
-   const projectTabs = useAppStore(useShallow((state) => {
+   const projectTabs = useEditorStore(useShallow((state) => {
       if (!tabKey) return null;
       return state.tabs[tabKey] ?? null;
    }));
@@ -66,7 +68,7 @@ function MainContent() {
 
    const handleAddTerminalTab = useCallback(() => {
       if (!tabKey || !currentProjectId) return;
-      const existingTabs = useAppStore.getState().tabs[tabKey];
+      const existingTabs = useEditorStore.getState().tabs[tabKey];
       const terminalCount = (existingTabs?.tabs ?? []).filter((t) => t.data.kind === "terminal").length;
       if (terminalCount >= 10) return;
 
@@ -82,8 +84,8 @@ function MainContent() {
             status: "Idle",
          },
       };
-      useAppStore.getState().addTab(tabKey, tab);
-      useAppStore.getState().activateTab(tabKey, tabId);
+      useEditorStore.getState().addTab(tabKey, tab);
+      useEditorStore.getState().activateTab(tabKey, tabId);
    }, [tabKey, currentProjectId]);
 
    // Agent installed status — cached at module level, only checks new agents

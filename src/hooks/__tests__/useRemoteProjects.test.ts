@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '../../hooks/useRemoteProjects';
 import type { AuthMethod, RemoteEntrySession, RemoteProject } from '../../types';
-import { useAppStore } from '../../store/appStore';
+import { useProjectStore } from '../../store/projectStore';
+import { useConnectionStore } from '../../store/connectionStore';
+import { useWorktreeStore } from '../../store/worktreeStore';
 
 // mock terminal functions
 vi.mock('../../components/terminal', () => ({
@@ -45,11 +47,15 @@ describe('useRemoteProjects', () => {
   const mockShowToast = vi.fn();
 
   const resetStore = () => {
-    useAppStore.setState({
+    useProjectStore.setState({
       projects: [],
       activeProjectId: null,
       activeProject: null,
       isTerminalView: false,
+      selectProject: vi.fn(),
+      openIde: vi.fn(),
+    });
+    useConnectionStore.setState({
       wslEntries: [],
       activeWslKey: null,
       activeWslProject: null,
@@ -58,6 +64,10 @@ describe('useRemoteProjects', () => {
       activeRemoteProject: null,
       remoteAuthStore: new Map(),
       pendingAuthEntry: null,
+      selectWslProject: vi.fn(),
+      selectRemoteProject: vi.fn(),
+    });
+    useWorktreeStore.setState({
       activeWorktreePath: null,
       openedWorktrees: [],
       wslOpenedWt: [],
@@ -65,10 +75,6 @@ describe('useRemoteProjects', () => {
       remoteOpenedWt: [],
       activeRemoteWorktreePath: null,
       worktreeState: {},
-      selectProject: vi.fn(),
-      selectWslProject: vi.fn(),
-      selectRemoteProject: vi.fn(),
-      openIde: vi.fn(),
     });
   };
 

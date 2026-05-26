@@ -12,7 +12,8 @@ import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
 import type { FileChange } from "../../types";
 import { getIdeIconByCommand } from "../../utils/idePresets";
-import { useAppStore } from "../../store/appStore";
+import { useWorktreeStore } from "../../store/worktreeStore";
+import { useGitStore } from "../../store/gitStore";
 import { aheadBehindKey } from "../../utils/aheadBehindKey";
 
 const LOG_TAG: Record<string, string> = {
@@ -53,8 +54,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const selectProjectId = isWsl ? distro : host;
 
     // Active worktree path lives in connection-specific store fields
-    const activeWslWorktreePath = useAppStore((s) => s.activeWslWorktreePath);
-    const activeRemoteWorktreePath = useAppStore((s) => s.activeRemoteWorktreePath);
+    const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
+    const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
     const activeWorktreePath = isWsl ? activeWslWorktreePath : activeRemoteWorktreePath;
 
     // ahead/behind 仅在 active 项目时显示
@@ -63,7 +64,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       isWsl ? distro : remoteEntryId,
       project.id,
     );
-    const aheadBehind = useAppStore((s) => s.aheadBehind[aheadKey]);
+    const aheadBehind = useGitStore((s) => s.aheadBehind[aheadKey]);
 
     const [collapsed, setCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);

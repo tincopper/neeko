@@ -25,6 +25,9 @@ export interface DockStore {
   rightPanelSizes: Record<string, number>;
   /** Left sidebar width as a percentage (0-100). Default 18. */
   leftPanelSize: number;
+  /** Left sidebar runtime pixel width — set by DockLayout onLayout, consumed by TitleBar for drag region. */
+  leftPanelWidth: number;
+  setLeftPanelWidth: (width: number) => void;
 
   togglePanel: (panelId: string) => void;
   activatePanel: (zoneId: string, panelId: string) => void;
@@ -120,6 +123,8 @@ export const useDockStore = create<DockStore>()(
         barItems: initial.barItems,
         rightPanelSizes: { browser: 50 },
         leftPanelSize: 18,
+        leftPanelWidth: 0,
+        setLeftPanelWidth: (width) => set({ leftPanelWidth: Math.max(0, width) }),
 
         togglePanel: (panelId: string) => {
           const { zones } = get();

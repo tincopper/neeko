@@ -3,7 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab, FileTabData } from "../types";
 import { DEFAULT_TREE_DEPTH } from "../types/file";
 import type { ProjectCommands } from "../types/activeProject";
-import { useAppStore } from "../store/appStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
+import { useWorktreeStore } from "../store/worktreeStore";
+import { useFileStore } from "../store/fileStore";
+import { useEditorStore } from "../store/editorStore";
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
 import { clearViewSnapshot, clearAllForTabKey } from "../utils/editorViewState";
@@ -55,12 +59,12 @@ export function useFileView(
   externalCommands?: ProjectCommands | null,
   externalWorktreePath?: string | null,
 ) {
-  const fileTree = useAppStore(useShallow((state) => state.fileTree));
-  const activeProjectId = useAppStore((state) => state.activeProjectId);
-  const activeWslProject = useAppStore((state) => state.activeWslProject);
-  const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
-  const activeWorktreePath = useAppStore((state) => state.activeWorktreePath);
-  const fileTreeLoading = useAppStore((state) => state.fileViewLoading);
+  const fileTree = useFileStore(useShallow((state) => state.fileTree));
+  const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
+  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
+  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const fileTreeLoading = useFileStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
   // Unified current project ID — covers local/WSL/remote (matches MainContent tabKey logic)
@@ -80,7 +84,7 @@ export function useFileView(
     : currentProjectId;
 
   // Read project tabs from unified store using tabKey
-  const projectTabs = useAppStore(useShallow((state) => {
+  const projectTabs = useEditorStore(useShallow((state) => {
     if (!tabKey) return null;
     return state.tabs[tabKey] ?? null;
   }));
@@ -124,7 +128,7 @@ export function useFileView(
    * Load the directory tree for a project
    */
   const loadFileTree = useCallback(async (projectId: string, worktreePath?: string) => {
-    useAppStore.setState({ fileViewLoading: true });
+    useFileStore.setState({ fileViewLoading: true });
     setError(null);
     try {
       const cmds = externalCommandsRef.current;
@@ -141,13 +145,13 @@ export function useFileView(
           maxDepth: DEFAULT_TREE_DEPTH,
         });
       }
-      useAppStore.setState({
+      useFileStore.setState({
         fileTree: tree,
         fileViewLoading: false,
       });
     } catch (e) {
       setError(String(e));
-      useAppStore.setState({
+      useFileStore.setState({
         fileTree: [],
         fileViewLoading: false,
       });
@@ -159,11 +163,10 @@ export function useFileView(
    */
   const expandSubTree = useCallback(async (dirPath: string) => {
     const cmds = externalCommandsRef.current;
-    const state = useAppStore.getState();
     const projectId =
-      state.activeProjectId ??
-      state.activeWslProject?.project.id ??
-      state.activeRemoteProject?.project.id ??
+      useProjectStore.getState().activeProjectId ??
+      useConnectionStore.getState().activeWslProject?.project.id ??
+      useConnectionStore.getState().activeRemoteProject?.project.id ??
       null;
     if (!projectId) return;
     const rootPath = worktreePathRef.current ?? undefined;
@@ -183,9 +186,9 @@ export function useFileView(
         });
       }
 
-      const currentTree = useAppStore.getState().fileTree;
+      const currentTree = useFileStore.getState().fileTree;
       const merged = mergeSubTree(currentTree, dirPath, subChildren);
-      useAppStore.setState({ fileTree: merged });
+      useFileStore.setState({ fileTree: merged });
     } catch (e) {
       // Re-throw so the caller (FilesPanel.handleToggleDir) can handle it;
       // at minimum its `finally` block will clear the loading spinner.
@@ -205,10 +208,9 @@ export function useFileView(
     const tabId = getTabId(tk, filePath);
 
     // Check if tab already exists in unified store — just activate, no loading
-    const state = useAppStore.getState();
-    const existing = state.tabs[tk];
+    const existing = useEditorStore.getState().tabs[tk];
     if (existing?.tabs.some((t) => t.id === tabId)) {
-      state.activateTab(tk, tabId);
+      useEditorStore.getState().activateTab(tk, tabId);
       return;
     }
 
@@ -244,7 +246,7 @@ export function useFileView(
         },
       };
 
-      useAppStore.getState().addTab(tk, newTab);
+      useEditorStore.getState().addTab(tk, newTab);
     } catch (e) {
       setError(String(e));
     }
@@ -257,7 +259,7 @@ export function useFileView(
     const tk = tabKeyRef.current;
     if (!tk) return;
     clearViewSnapshot(tk, tabId);
-    useAppStore.getState().closeTab(tk, tabId);
+    useEditorStore.getState().closeTab(tk, tabId);
   }, []);
 
   /**
@@ -266,7 +268,7 @@ export function useFileView(
   const activateTab = useCallback((tabId: string) => {
     const tk = tabKeyRef.current;
     if (!tk) return;
-    useAppStore.getState().activateTab(tk, tabId);
+    useEditorStore.getState().activateTab(tk, tabId);
   }, []);
 
   /**
@@ -276,14 +278,13 @@ export function useFileView(
     const tk = tabKeyRef.current;
     if (!tk) return;
 
-    const state = useAppStore.getState();
-    const projTabs = state.tabs[tk];
+    const projTabs = useEditorStore.getState().tabs[tk];
     if (!projTabs) return;
 
     const tab = projTabs.tabs.find((t) => t.id === tabId);
     if (!tab || tab.data.kind !== "file") return;
 
-    state.updateTab(tk, tabId, {
+    useEditorStore.getState().updateTab(tk, tabId, {
       content: { ...tab.data.content, content },
       isDirty: content !== tab.data.content.content,
     });
@@ -296,8 +297,7 @@ export function useFileView(
     const tk = tabKeyRef.current;
     if (!tk) return false;
 
-    const state = useAppStore.getState();
-    const projTabs = state.tabs[tk];
+    const projTabs = useEditorStore.getState().tabs[tk];
     if (!projTabs) return false;
 
     // Find the active file tab
@@ -324,7 +324,7 @@ export function useFileView(
       }
 
       // Update tab: mark as not dirty, update content
-      state.updateTab(tk, fileTab.id, {
+      useEditorStore.getState().updateTab(tk, fileTab.id, {
         content: { ...fileTab.data.content, content },
         isDirty: false,
       });
@@ -342,14 +342,13 @@ export function useFileView(
     const tk = tabKeyRef.current;
     if (!tk) return;
 
-    const state = useAppStore.getState();
-    const projTabs = state.tabs[tk];
+    const projTabs = useEditorStore.getState().tabs[tk];
     if (!projTabs) return;
 
     const tab = projTabs.tabs.find((t) => t.id === tabId);
     if (!tab || tab.data.kind !== "file") return;
 
-    state.updateTab(tk, tabId, {
+    useEditorStore.getState().updateTab(tk, tabId, {
       content: tab.data.content,
       isDirty,
     });
@@ -361,7 +360,7 @@ export function useFileView(
   const clearFileView = useCallback(() => {
     const tk = tabKeyRef.current;
     if (tk) clearAllForTabKey(tk);
-    useAppStore.setState({
+    useFileStore.setState({
       fileTree: [],
       activeFilePath: null,
     });

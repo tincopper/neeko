@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
-import { useAppStore } from "../store/appStore";
+import { useEditorStore } from "../store/editorStore";
 
 function generateTabId(): string {
   return `tab_${crypto.randomUUID()}`;
@@ -27,7 +27,7 @@ function tabToTerminalTab(tab: Tab & { data: TerminalTabData }): TerminalTab {
 
 export function useTerminalTabs() {
   // Subscribe to the entire tabs record for reactivity
-  const storeTabs = useAppStore(useShallow((state) => state.tabs));
+  const storeTabs = useEditorStore(useShallow((state) => state.tabs));
 
   const getTabs = useCallback(
     (projectId: string): TerminalTab[] => {
@@ -77,7 +77,7 @@ export function useTerminalTabs() {
 
   const ensureDefaultTab = useCallback(
     (projectId: string, agentId?: string | null, agentName?: string): string => {
-      const state = useAppStore.getState();
+      const state = useEditorStore.getState();
       const existing = state.tabs[projectId];
       const terminalTabs = existing?.tabs.filter(isTerminalTab) ?? [];
 
@@ -122,7 +122,7 @@ export function useTerminalTabs() {
 
   const addTab = useCallback(
     (projectId: string, agentId?: string | null): TerminalTab | null => {
-      const state = useAppStore.getState();
+      const state = useEditorStore.getState();
       const existing = state.tabs[projectId];
       const terminalCount = (existing?.tabs ?? []).filter(isTerminalTab).length;
       if (terminalCount >= 10) return null;
@@ -159,21 +159,21 @@ export function useTerminalTabs() {
     (projectId: string, tabId: string): void => {
       // Clean up terminal cache before closing
       destroyTerminalCachesByPrefix(`${projectId}:${tabId}`);
-      useAppStore.getState().closeTab(projectId, tabId);
+      useEditorStore.getState().closeTab(projectId, tabId);
     },
     []
   );
 
   const activateTab = useCallback(
     (projectId: string, tabId: string): void => {
-      useAppStore.getState().activateTab(projectId, tabId);
+      useEditorStore.getState().activateTab(projectId, tabId);
     },
     []
   );
 
   const setTabAgent = useCallback(
     (projectId: string, tabId: string, agentId: string | null, agentName?: string): void => {
-      useAppStore.getState().updateTab(projectId, tabId, {
+      useEditorStore.getState().updateTab(projectId, tabId, {
         agentId,
         title: agentName ?? (agentId ? agentId : "Terminal"),
       });
@@ -183,14 +183,14 @@ export function useTerminalTabs() {
 
   const updateTabTitle = useCallback(
     (projectId: string, tabId: string, title: string): void => {
-      useAppStore.getState().updateTab(projectId, tabId, { title });
+      useEditorStore.getState().updateTab(projectId, tabId, { title });
     },
     []
   );
 
   const updateTabStatus = useCallback(
     (projectId: string, tabId: string, status: TerminalTab["status"]): void => {
-      useAppStore.getState().updateTab(projectId, tabId, { status });
+      useEditorStore.getState().updateTab(projectId, tabId, { status });
     },
     []
   );
@@ -206,7 +206,7 @@ export function useTerminalTabs() {
   const clearProjectTabs = useCallback(
     (projectId: string): void => {
       // Clean up all terminal caches for this project
-      const state = useAppStore.getState();
+      const state = useEditorStore.getState();
       const existing = state.tabs[projectId];
       if (existing) {
         for (const tab of existing.tabs) {
