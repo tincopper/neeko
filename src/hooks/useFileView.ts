@@ -4,6 +4,7 @@ import type { FileNode, FileContent, Tab, FileTabData } from "../types";
 import { DEFAULT_TREE_DEPTH } from "../types/file";
 import type { ProjectCommands } from "../types/activeProject";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
 import { clearViewSnapshot, clearAllForTabKey } from "../utils/editorViewState";
 
@@ -54,7 +55,7 @@ export function useFileView(
   externalCommands?: ProjectCommands | null,
   externalWorktreePath?: string | null,
 ) {
-  const fileTree = useAppStore((state) => state.fileTree);
+  const fileTree = useAppStore(useShallow((state) => state.fileTree));
   const activeProjectId = useAppStore((state) => state.activeProjectId);
   const activeWslProject = useAppStore((state) => state.activeWslProject);
   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
@@ -79,10 +80,10 @@ export function useFileView(
     : currentProjectId;
 
   // Read project tabs from unified store using tabKey
-  const projectTabs = useAppStore((state) => {
+  const projectTabs = useAppStore(useShallow((state) => {
     if (!tabKey) return null;
     return state.tabs[tabKey] ?? null;
-  });
+  }));
 
   // Derive file tabs (filtered by kind === "file")
   const fileTabs = useMemo(() => {

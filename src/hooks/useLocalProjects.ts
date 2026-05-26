@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { useShallow } from "zustand/shallow";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
@@ -10,7 +11,7 @@ import { randomAvatarColor } from "../utils/projectAvatar";
 import { getMacAppNameByCommand } from "../utils/idePresets";
 
 export function useLocalProjects() {
-  const projects = useAppStore((state) => state.projects);
+  const projects = useAppStore(useShallow((state) => state.projects));
   const activeProjectId = useAppStore((state) => state.activeProjectId);
   const activeProject = useAppStore((state) => state.activeProject);
 

@@ -12,6 +12,7 @@ import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../typ
 import { useAppContext, useFileActionsContext } from "../../contexts";
 import { useEditorContext } from "../../contexts/editor-context";
 import { useAppStore } from "../../store/appStore";
+import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "../../utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../utils/browserUtils";
 import { useActiveProject } from "../../hooks/useActiveProject";
@@ -82,10 +83,10 @@ function FileViewer() {
       : currentProjectId;
 
    // Read project tabs from unified store
-   const projectTabs = useAppStore((state) => {
+   const projectTabs = useAppStore(useShallow((state) => {
       if (!tabKey) return null;
       return state.tabs[tabKey] ?? null;
-   });
+   }));
 
    // Read per-group activeTabId from EditorContext (correct in split mode)
    const { activeTabId: groupActiveTabId } = useEditorContext();

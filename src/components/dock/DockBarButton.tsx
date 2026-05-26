@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { useShallow } from "zustand/shallow";
 import {
   Tooltip,
   TooltipContent,
@@ -65,7 +66,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
     s.activeRemoteProject?.project.id ??
     null
   );
-  const tabs = useAppStore((s) => s.tabs);
+  const tabs = useAppStore(useShallow((s) => s.tabs));
 
   const handleClick = useCallback(() => {
     if (isTab) {

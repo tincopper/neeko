@@ -7,6 +7,7 @@ import {
   switchAgentInRemoteTerminal,
 } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
   AppConfig,
@@ -31,7 +32,7 @@ export function useRemoteActions({
   showToast,
   saveSession,
 }: UseRemoteActionsParams) {
-  const remoteEntries = useAppStore((state) => state.remoteEntries);
+  const remoteEntries = useAppStore(useShallow((state) => state.remoteEntries));
   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
   const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
 

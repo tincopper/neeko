@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { useShallow } from "zustand/shallow";
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
@@ -26,7 +27,7 @@ function tabToTerminalTab(tab: Tab & { data: TerminalTabData }): TerminalTab {
 
 export function useTerminalTabs() {
   // Subscribe to the entire tabs record for reactivity
-  const storeTabs = useAppStore((state) => state.tabs);
+  const storeTabs = useAppStore(useShallow((state) => state.tabs));
 
   const getTabs = useCallback(
     (projectId: string): TerminalTab[] => {

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
 export interface WorktreeItem {
@@ -16,7 +17,7 @@ interface WorktreeState {
 const EMPTY_STATE: WorktreeState = { activePath: null, activeBranch: "", opened: [] };
 
 export function useWorktreeState(activeProjectId: string | null) {
-  const worktreeStateMap = useAppStore((s) => s.worktreeStateMap);
+  const worktreeStateMap = useAppStore(useShallow((s) => s.worktreeStateMap));
 
   const currentWtState: WorktreeState = activeProjectId
     ? (worktreeStateMap[activeProjectId] ?? EMPTY_STATE)

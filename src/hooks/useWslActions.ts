@@ -7,6 +7,7 @@ import {
   wslCacheKey,
 } from "../components/terminal";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
   AppConfig,
@@ -36,7 +37,7 @@ export function useWslActions({
   showToast,
   saveSession,
 }: UseWslActionsParams) {
-  const wslEntries = useAppStore((state) => state.wslEntries);
+  const wslEntries = useAppStore(useShallow((state) => state.wslEntries));
   const activeWslProject = useAppStore((state) => state.activeWslProject);
 
   const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {

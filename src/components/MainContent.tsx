@@ -12,6 +12,7 @@ import {
 } from "../contexts";
 import type { AgentConfig, Tab } from "../types";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import { useAppViewStore } from "../store/appViewStore";
 import { buildWorktreeTabKey } from "../utils/tabKey";
 
@@ -54,10 +55,10 @@ function MainContent() {
       : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
    // Get unified tabs from store
-   const projectTabs = useAppStore((state) => {
+   const projectTabs = useAppStore(useShallow((state) => {
       if (!tabKey) return null;
       return state.tabs[tabKey] ?? null;
-   });
+   }));
 
    const tabs = projectTabs?.tabs ?? [];
 

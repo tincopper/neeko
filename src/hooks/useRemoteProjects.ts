@@ -5,12 +5,13 @@ import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../types";
 import type { SaveSessionFn } from "./useWslProjects";
 import type { ActiveRemoteKey } from "../components/connections/types";
 import { useAppStore } from "../store/appStore";
+import { useShallow } from "zustand/shallow";
 import { applyStateAction, upsertEntryById } from "../utils/entryUpdates";
 
 export type { ActiveRemoteKey };
 
 export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (message: string, type?: "info" | "error") => void) {
-  const remoteEntries = useAppStore((state) => state.remoteEntries);
+  const remoteEntries = useAppStore(useShallow((state) => state.remoteEntries));
   const activeRemoteKey = useAppStore((state) => state.activeRemoteKey);
   const activeRemoteProject = useAppStore((state) => state.activeRemoteProject);
   const remoteAuthStore = useAppStore((state) => state.remoteAuthStore);
