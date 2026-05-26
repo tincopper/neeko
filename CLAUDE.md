@@ -326,3 +326,17 @@ VS Code, Cursor, Zed, IntelliJ IDEA, GoLand, RustRover, PyCharm
 - `docs/REQUIREMENTS.md` — 完整需求文档
 - `docs/SESSION_CONTEXT.md` — 开发历史与架构发现
 - `docs/skill-management-design.md` — Skill 系统设计（未实现）
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked on GitHub. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` at the repo root covers the whole project. See `docs/agents/domain.md`.
