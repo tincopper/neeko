@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 
+use crate::agent::types::AgentConfig;
 use crate::app_state::AppStateWrapper;
-use crate::models::AgentConfig;
 
 #[cfg(unix)]
 fn resolve_user_path() -> Option<String> {
@@ -56,7 +56,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .register_uri_scheme_protocol("neeko", crate::uri_scheme::create_handler())
+        .register_uri_scheme_protocol("neeko", crate::browser::uri_scheme::create_handler())
         .manage(skill_store.clone())
         .manage(AppStateWrapper::new_with_skill_store(skill_store))
         .setup(|app| {

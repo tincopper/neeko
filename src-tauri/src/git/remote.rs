@@ -1,16 +1,16 @@
 use anyhow::Result;
 
+#[cfg(test)]
+use crate::models::FileStatus;
 use crate::models::{
     AheadBehind, AuthMethod, CommitDetail, CommitEntry, CommitFileChange, CommitResult, DiffHunk,
     DiffLine, DiffResult, FileChange, FileNode, GitInfo,
 };
-#[cfg(test)]
-use crate::models::FileStatus;
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::parsers::{
-    build_file_tree_from_find, extract_commit_hash_from_output,
-    parse_commit_log_output, parse_git_info_output, parse_status_line, parse_unified_diff,
+    build_file_tree_from_find, extract_commit_hash_from_output, parse_commit_log_output,
+    parse_git_info_output, parse_status_line, parse_unified_diff,
 };
 
 /// 通过 SSH 获取完整 GitInfo（1 次 SSH 连接）

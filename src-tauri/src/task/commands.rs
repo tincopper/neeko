@@ -1,4 +1,4 @@
-use crate::task_runner::TaskConfig;
+use crate::task::TaskConfig;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::{Emitter, State};
@@ -9,7 +9,7 @@ pub fn get_task_configs(
     state: State<AppStateWrapper>,
 ) -> Result<Vec<TaskConfig>, AppError> {
     let _ = &state; // state available for future use
-    let configs = crate::task_runner::get_all_task_configs(project_path.as_deref());
+    let configs = crate::task::get_all_task_configs(project_path.as_deref());
     Ok(configs)
 }
 
@@ -20,7 +20,7 @@ pub fn save_task_config(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let _ = &state;
-    crate::task_runner::save_task(&config, project_path.as_deref()).map_err(AppError::from)
+    crate::task::save_task(&config, project_path.as_deref()).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -31,7 +31,7 @@ pub fn delete_task_config(
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     let _ = &state;
-    crate::task_runner::delete_task(&id, &scope, project_path.as_deref()).map_err(AppError::from)
+    crate::task::delete_task(&id, &scope, project_path.as_deref()).map_err(AppError::from)
 }
 
 #[tauri::command]

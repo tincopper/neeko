@@ -7,9 +7,14 @@ use crate::AppError;
 
 #[derive(Debug, Deserialize)]
 pub enum GitTransportKind {
-    Local { project_path: String },
+    Local {
+        project_path: String,
+    },
     #[cfg(target_os = "windows")]
-    Wsl { distro: String, project_path: String },
+    Wsl {
+        distro: String,
+        project_path: String,
+    },
     Remote {
         host: String,
         port: u16,
@@ -73,19 +78,13 @@ pub async fn unified_unstage_files(
 }
 
 #[tauri::command]
-pub async fn unified_stage_all(
-    transport: GitTransportKind,
-) -> Result<(), AppError> {
+pub async fn unified_stage_all(transport: GitTransportKind) -> Result<(), AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
-    operations::stage_all(&t, wd)
-        .await
-        .map_err(AppError::from)
+    operations::stage_all(&t, wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn unified_unstage_all(
-    transport: GitTransportKind,
-) -> Result<(), AppError> {
+pub async fn unified_unstage_all(transport: GitTransportKind) -> Result<(), AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::unstage_all(&t, wd)
         .await
@@ -104,9 +103,7 @@ pub async fn unified_discard_file(
 }
 
 #[tauri::command]
-pub async fn unified_discard_all(
-    transport: GitTransportKind,
-) -> Result<(), AppError> {
+pub async fn unified_discard_all(transport: GitTransportKind) -> Result<(), AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::discard_all(&t, wd)
         .await
@@ -114,9 +111,7 @@ pub async fn unified_discard_all(
 }
 
 #[tauri::command]
-pub async fn unified_fetch(
-    transport: GitTransportKind,
-) -> Result<(), AppError> {
+pub async fn unified_fetch(transport: GitTransportKind) -> Result<(), AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::fetch(&t, wd).await.map_err(AppError::from)
 }

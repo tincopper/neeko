@@ -1,4 +1,4 @@
-use crate::git_worker::{GitStatusDiff, GitStatusWorker};
+use crate::git::worker::{GitStatusDiff, GitStatusWorker};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
@@ -190,10 +190,7 @@ impl TreeChangeDebounceSender {
                     }
 
                     // 窗口结束，emit 一次 file-tree-changed
-                    log::debug!(
-                        "[TreeDebounce:{}] Emitting file-tree-changed",
-                        project_id
-                    );
+                    log::debug!("[TreeDebounce:{}] Emitting file-tree-changed", project_id);
                     let _ = app_handle.emit(
                         "file-tree-changed",
                         &FileTreeChangedEvent {
@@ -279,8 +276,7 @@ impl WatcherManager {
         let debounce = DebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
 
         // 3b. 创建 file-tree-changed debounce sender（专门处理 Create/Remove/Rename）
-        let tree_debounce =
-            TreeChangeDebounceSender::new(project_id.clone(), app_handle.clone());
+        let tree_debounce = TreeChangeDebounceSender::new(project_id.clone(), app_handle.clone());
 
         // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包
@@ -323,10 +319,8 @@ impl WatcherManager {
                         let _ = debounce_tx_for_notify.send(p.clone());
                     }
                     // 文件树结构变更（新增/删除/重命名）时额外触发 tree-changed 防抖
-                    let is_structure_change = matches!(
-                        event.kind,
-                        EventKind::Create(_) | EventKind::Remove(_)
-                    );
+                    let is_structure_change =
+                        matches!(event.kind, EventKind::Create(_) | EventKind::Remove(_));
                     if is_structure_change {
                         let _ = tree_debounce_tx.send(());
                     }

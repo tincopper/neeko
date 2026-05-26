@@ -2,6 +2,29 @@
 
 > Canonical vocabulary for this project. Use these terms and no others when writing code, issues, PRDs, and test descriptions.
 > For architecture details (module layout, type definitions, data flows), see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+>
+> Last updated: 2026-05-26 (domain module reorganization).
+
+---
+
+## Module Organization
+
+The Rust backend is organized by domain (not by type). Each domain module owns its types (`types.rs`), business logic (`mod.rs`), and Tauri commands (`commands.rs`):
+
+| Domain | Path | Contents |
+|--------|------|----------|
+| **project** | `project/` | ProjectManager, Project types (GitInfo, FileChange...), IDE commands |
+| **terminal** | `terminal/` | TerminalManager, RemoteTerminalManager, TerminalSession types, PTY/SSH commands |
+| **agent** | `agent/` | AgentManager, AgentConfig types, CLI detection |
+| **git** | `git/` | Git operations, worker, DiffResult types, commands (local/WSL/remote/unified) |
+| **connection** | `connection/` | WSL distro discovery, SSH connection test, AuthMethod types |
+| **task** | `task/` | TaskConfig, task runner lifecycle |
+| **browser** | `browser/` | uri_scheme protocol, webview management |
+| **workspace** | `workspace/` | StorageManager, WatcherManager, session persistence types, config/file/opener commands |
+| **skill** | `skill/` | Skill management (unchanged) |
+| **theme** | `theme/` | Theme management (unchanged) |
+
+`commands/mod.rs` and `models/mod.rs` are compatibility layers that re-export all command functions and types from their domain modules to maintain backward compatibility with the `neeko_invoke_handler!` macro.
 
 ---
 

@@ -3,14 +3,16 @@ use std::process::Command;
 
 use crate::models::AuthMethod;
 use crate::utils::command::local::exec as local_exec;
+use crate::utils::command::ssh::{exec_command, safe_path};
 #[cfg(target_os = "windows")]
 use crate::utils::command::wsl;
-use crate::utils::command::ssh::{exec_command, safe_path};
 
 pub enum GitTransport {
     Local,
     #[cfg(target_os = "windows")]
-    Wsl { distro: String },
+    Wsl {
+        distro: String,
+    },
     Remote {
         host: String,
         port: u16,
@@ -42,10 +44,8 @@ impl GitTransport {
             #[cfg(target_os = "windows")]
             GitTransport::Wsl { distro } => {
                 let sp = safe_path(work_dir);
-                let quoted_args: Vec<String> = args
-                    .iter()
-                    .map(|a| format!("'{}'", safe_path(a)))
-                    .collect();
+                let quoted_args: Vec<String> =
+                    args.iter().map(|a| format!("'{}'", safe_path(a))).collect();
                 let cmd = format!("cd '{sp}' && git {}", quoted_args.join(" "));
                 wsl::exec(distro, &cmd)
             }
@@ -66,9 +66,7 @@ impl GitTransport {
     /// Check if a directory is a git repo
     pub async fn is_git_repo(&self, path: &str) -> bool {
         match self {
-            GitTransport::Local => {
-                std::path::Path::new(path).join(".git").exists()
-            }
+            GitTransport::Local => std::path::Path::new(path).join(".git").exists(),
             #[cfg(target_os = "windows")]
             GitTransport::Wsl { distro } => {
                 let sp = safe_path(path);
@@ -83,7 +81,9 @@ impl GitTransport {
             } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
-                exec_command(host, *port, username, auth, &cmd).await.is_ok()
+                exec_command(host, *port, username, auth, &cmd)
+                    .await
+                    .is_ok()
             }
         }
     }

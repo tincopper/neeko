@@ -1,56 +1,6 @@
-use crate::models::*;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
-
-#[macro_export]
-macro_rules! wsl_commands {
-    () => {
-        $crate::commands::get_wsl_distros,
-        $crate::commands::get_wsl_directories,
-        $crate::commands::get_wsl_home_dir,
-        $crate::commands::create_wsl_terminal_session,
-        $crate::commands::refresh_wsl_git_info,
-        $crate::commands::get_wsl_file_diff_command,
-        $crate::commands::wsl_checkout_branch,
-        $crate::commands::wsl_create_branch,
-        $crate::commands::wsl_rename_branch,
-        $crate::commands::wsl_create_worktree,
-        $crate::commands::wsl_remove_worktree,
-        $crate::commands::wsl_rename_worktree,
-        $crate::commands::open_wsl_ide,
-        $crate::commands::wsl_set_project_color,
-    };
-}
-
-/// 设置 WSL 项目的 avatar 颜色（None 表示清回 hash 默认）
-/// 修改 sessions.json 内匹配 distro + project_id 的记录
-#[tauri::command]
-pub fn wsl_set_project_color(
-    distro: String,
-    project_id: String,
-    color: Option<String>,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    let mut session = state
-        .storage_manager
-        .load_session()
-        .map_err(AppError::from)?;
-    for entry in session.wsl_entries.iter_mut() {
-        if entry.distro != distro {
-            continue;
-        }
-        for project in entry.projects.iter_mut() {
-            if project.id == project_id {
-                project.avatar_color = color.clone();
-            }
-        }
-    }
-    state
-        .storage_manager
-        .save_session(&session)
-        .map_err(AppError::from)
-}
 
 fn wsl_command(program: &str) -> std::process::Command {
     #[allow(unused_mut)]
@@ -144,21 +94,32 @@ pub fn get_wsl_home_dir(distro: String) -> Result<String, AppError> {
 }
 
 #[tauri::command]
-pub fn create_wsl_terminal_session(
-    distro: String,
-    project_path: String,
-    cols: u16,
-    rows: u16,
-    state: State<AppStateWrapper>,
-    app_handle: tauri::AppHandle,
-) -> Result<TerminalSession, AppError> {
-    if !cfg!(target_os = "windows") {
-        return Err(AppError::Wsl(
-            "WSL is only supported on Windows".to_string(),
-        ));
-    }
+pub async fn test_remote_connection(
+    host: String,
+    port: u16,
+    username: String,
+    auth: crate::connection::types::AuthMethod,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
     state
-        .terminal_manager
-        .create_wsl_session(&distro, &project_path, cols, rows, app_handle)
+        .remote_terminal_manager
+        .test_connection(&host, port, &username, &auth)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn list_remote_directories(
+    host: String,
+    port: u16,
+    username: String,
+    auth: crate::connection::types::AuthMethod,
+    path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<String>, AppError> {
+    state
+        .remote_terminal_manager
+        .list_directories(&host, port, &username, &auth, &path)
+        .await
         .map_err(AppError::from)
 }

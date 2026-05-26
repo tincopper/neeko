@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use super::terminal::TerminalSession;
+use crate::terminal::types::TerminalSession;
 
 /// 文件状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

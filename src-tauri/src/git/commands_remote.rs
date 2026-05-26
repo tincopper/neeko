@@ -691,8 +691,8 @@ pub async fn remote_generate_commit_message(
     file_paths: Vec<String>,
     state: tauri::State<'_, crate::AppStateWrapper>,
 ) -> Result<String, AppError> {
-    use crate::commands::ai_commit;
     use crate::utils::command::ssh;
+    use crate::workspace::commands as ai_commit;
     let _ = agent_command_override; // WSL/SSH 不使用宿主机 override
 
     // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）

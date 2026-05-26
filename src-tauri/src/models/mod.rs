@@ -1,13 +1,7 @@
-pub mod agent;
-mod auth;
-mod diff;
-mod project;
-mod session;
-mod terminal;
-
-pub use agent::*;
-pub use auth::*;
-pub use diff::*;
-pub use project::*;
-pub use session::*;
-pub use terminal::*;
+// Compatibility re-exports — types moved to per-domain modules
+pub use crate::agent::types::*;
+pub use crate::connection::types::*;
+pub use crate::git::types::*;
+pub use crate::project::types::*;
+pub use crate::terminal::types::*;
+pub use crate::workspace::types::*;

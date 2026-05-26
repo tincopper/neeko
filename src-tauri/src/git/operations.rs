@@ -45,11 +45,7 @@ pub async fn unstage_all(transport: &GitTransport, work_dir: &str) -> Result<()>
 }
 
 /// Discard file changes: `git checkout -- <file>`
-pub async fn discard_file(
-    transport: &GitTransport,
-    work_dir: &str,
-    file_path: &str,
-) -> Result<()> {
+pub async fn discard_file(transport: &GitTransport, work_dir: &str, file_path: &str) -> Result<()> {
     transport
         .run_git(&["checkout", "--", file_path], work_dir)
         .await?;
@@ -58,7 +54,9 @@ pub async fn discard_file(
 
 /// Discard all changes: `git checkout -- .`
 pub async fn discard_all(transport: &GitTransport, work_dir: &str) -> Result<()> {
-    transport.run_git(&["checkout", "--", "."], work_dir).await?;
+    transport
+        .run_git(&["checkout", "--", "."], work_dir)
+        .await?;
     // Also clean untracked files
     let _ = transport.run_git(&["clean", "-fd"], work_dir).await;
     Ok(())
@@ -71,11 +69,7 @@ pub async fn fetch(transport: &GitTransport, work_dir: &str) -> Result<()> {
 }
 
 /// Push to remote: `git push [--set-upstream]`
-pub async fn push(
-    transport: &GitTransport,
-    work_dir: &str,
-    set_upstream: bool,
-) -> Result<()> {
+pub async fn push(transport: &GitTransport, work_dir: &str, set_upstream: bool) -> Result<()> {
     if set_upstream {
         transport
             .run_git(&["push", "--set-upstream"], work_dir)
@@ -99,11 +93,7 @@ pub async fn cherry_pick(
 }
 
 /// Revert a commit: `git revert --no-edit <commit_hash>`
-pub async fn revert(
-    transport: &GitTransport,
-    work_dir: &str,
-    commit_hash: &str,
-) -> Result<()> {
+pub async fn revert(transport: &GitTransport, work_dir: &str, commit_hash: &str) -> Result<()> {
     transport
         .run_git(&["revert", "--no-edit", commit_hash], work_dir)
         .await?;
@@ -219,10 +209,7 @@ pub async fn rename_worktree(
 }
 
 /// Check if a worktree is dirty: `git status --porcelain` returns output
-pub async fn is_worktree_dirty(
-    transport: &GitTransport,
-    worktree_path: &str,
-) -> Result<bool> {
+pub async fn is_worktree_dirty(transport: &GitTransport, worktree_path: &str) -> Result<bool> {
     let output = transport
         .run_git(&["status", "--porcelain"], worktree_path)
         .await?;
@@ -243,7 +230,9 @@ pub async fn default_branch(transport: &GitTransport, work_dir: &str) -> Result<
     let output = transport
         .run_git(&["rev-parse", "--abbrev-ref", "origin/HEAD"], work_dir)
         .await?;
-    let branch = output.trim().strip_prefix("origin/").unwrap_or(output.trim());
+    let branch = output
+        .trim()
+        .strip_prefix("origin/")
+        .unwrap_or(output.trim());
     Ok(branch.to_string())
 }
-

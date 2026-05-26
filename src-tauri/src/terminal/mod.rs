@@ -1,4 +1,8 @@
-use crate::models::{TerminalSession, TerminalStatus};
+pub mod commands;
+pub mod remote;
+pub mod types;
+
+use crate::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::opencode::{
     install_wsl_theme_files, read_enable_opencode_theme_sync, read_enable_pi_theme_sync,
     write_wsl_tui_config,
@@ -796,12 +800,10 @@ fn log_error(msg: &str) {
 /// 读取 Neeko 配置并写入 OpenCode + Pi 项目级配置
 /// 静默执行，失败不影响终端创建
 fn write_opencode_tui_config(project_path: &str) {
-    if let Err(e) =
-        crate::theme::service::write_project_theme_config(
-            &crate::theme::service::ThemeContext::Local,
-            project_path,
-        )
-    {
+    if let Err(e) = crate::theme::service::write_project_theme_config(
+        &crate::theme::service::ThemeContext::Local,
+        project_path,
+    ) {
         log::warn!("[PTY] Failed to write theme config: {}", e);
     }
 }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::AgentConfig;
+use crate::agent::types::AgentConfig;
 
 /// 终端状态
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,5 +1,5 @@
 use neeko_lib::models::*;
-use neeko_lib::storage::StorageManager;
+use neeko_lib::workspace::StorageManager;
 use std::path::PathBuf;
 use tempfile::TempDir;
 

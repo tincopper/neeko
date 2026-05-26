@@ -1,5 +1,13 @@
+pub mod commands;
+pub mod commands_ide;
+pub mod types;
+
+pub use commands_ide::*;
+
 use crate::git;
-use crate::models::{Project, TerminalSession, TerminalStatus, ViewMode};
+use crate::project::types::Project;
+use crate::project::types::ViewMode;
+use crate::terminal::types::{TerminalSession, TerminalStatus};
 use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;

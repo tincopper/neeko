@@ -25,12 +25,13 @@ pub async fn authenticate(
 ) -> Result<()> {
     let auth_result = match auth {
         AuthMethod::Password(password) => {
-            session.authenticate_password(username, password.as_str()).await?
+            session
+                .authenticate_password(username, password.as_str())
+                .await?
         }
         AuthMethod::KeyFile(key_path) => {
             let key_pair = russh::keys::load_secret_key(key_path, None)?;
-            let key_with_hash =
-                russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
+            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
             session
                 .authenticate_publickey(username, key_with_hash)
                 .await?
@@ -40,8 +41,7 @@ pub async fn authenticate(
             passphrase,
         } => {
             let key_pair = russh::keys::load_secret_key(key_path, Some(passphrase.as_str()))?;
-            let key_with_hash =
-                russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
+            let key_with_hash = russh::keys::PrivateKeyWithHashAlg::new(Arc::new(key_pair), None);
             session
                 .authenticate_publickey(username, key_with_hash)
                 .await?

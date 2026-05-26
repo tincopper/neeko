@@ -258,14 +258,8 @@ fn add_project_from_session() {
 #[test]
 fn add_project_from_session_nonexistent_path_fails() {
     let mut pm = ProjectManager::new();
-    let result = pm.add_project_from_session(
-        "id".into(),
-        "/nonexistent".into(),
-        None,
-        None,
-        true,
-        None,
-    );
+    let result =
+        pm.add_project_from_session("id".into(), "/nonexistent".into(), None, None, true, None);
     assert!(result.is_err());
 }
 

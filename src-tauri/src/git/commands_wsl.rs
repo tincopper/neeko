@@ -380,12 +380,8 @@ pub fn wsl_push(distro: String, project_path: String, set_upstream: bool) -> Res
     {
         let transport = GitTransport::Wsl { distro };
         let rt = tokio::runtime::Handle::current();
-        rt.block_on(operations::push(
-            &transport,
-            &project_path,
-            set_upstream,
-        ))
-        .map_err(AppError::from)
+        rt.block_on(operations::push(&transport, &project_path, set_upstream))
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -564,12 +560,8 @@ pub fn wsl_revert_commit(
     {
         let transport = GitTransport::Wsl { distro };
         let rt = tokio::runtime::Handle::current();
-        rt.block_on(operations::revert(
-            &transport,
-            &project_path,
-            &commit_hash,
-        ))
-        .map_err(AppError::from)
+        rt.block_on(operations::revert(&transport, &project_path, &commit_hash))
+            .map_err(AppError::from)
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -755,8 +747,8 @@ pub async fn wsl_generate_commit_message(
 ) -> Result<String, AppError> {
     #[cfg(target_os = "windows")]
     {
-        use crate::commands::ai_commit;
         use crate::utils::command::wsl;
+        use crate::workspace::commands as ai_commit;
         let _ = agent_command_override; // WSL/SSH 不使用宿主机 override
 
         // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）

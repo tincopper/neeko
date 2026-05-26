@@ -1,6 +1,7 @@
 # Neeko — 统一领域模型
 
 > 生成日期：2026-05-20（会话：domain-model-grill）
+> 最后更新：2026-05-26（领域模块重组）
 > 共识来自 Rust 后端 + Tauri IPC + TypeScript 前端的跨层架构审查。
 
 ---
@@ -17,7 +18,7 @@
 │  ── 命令注册表、DTO 契约、事件通道                     │
 ├──────────────────────────────────────────────────────┤
 │  后端域（Rust）                                       │
-│  src-tauri/src/ + neeko_lib/                         │
+│  src-tauri/src/                                      │
 │  ── 核心记录、持久化、业务逻辑                         │
 └──────────────────────────────────────────────────────┘
 ```
@@ -28,10 +29,43 @@
 
 ## 2. 后端域（Rust）
 
+### 2.0 领域模块结构
+
+后端按领域组织为顶层模块，遵循「按域组织，不按类型组织」原则。每个领域模块内聚自身类型（`types.rs`）、业务逻辑（`mod.rs`）与 Tauri 命令（`commands.rs`）：
+
+```
+src-tauri/src/
+├── project/             # 项目管理：ProjectManager + 类型 (Project, GitInfo...) + 命令
+│   ├── mod.rs, types.rs, commands.rs, commands_ide.rs
+├── terminal/            # 终端管理：TerminalManager + RemoteTerminalManager + 类型 + 命令
+│   ├── mod.rs, remote.rs, types.rs, commands.rs
+├── agent/               # Agent 配置：AgentManager + 类型 (AgentConfig) + 命令
+│   ├── mod.rs, types.rs, commands.rs
+├── git/                 # Git 操作：模块 + worker + 类型 (DiffResult) + 命令 (local/wsl/remote/unified)
+│   ├── mod.rs, worker.rs, types.rs, commands.rs, ...
+├── connection/          # 连接管理：WSL 发现 + SSH 连接测试 + 类型 (AuthMethod) + 命令
+│   ├── mod.rs, types.rs, commands.rs
+├── task/                # Task Runner：TaskConfig + 命令
+│   ├── mod.rs, commands.rs
+├── browser/             # 内嵌浏览器：uri_scheme + webview 命令
+│   ├── mod.rs, uri_scheme.rs, commands.rs
+├── workspace/           # 应用持久化 + 基础设施：StorageManager + WatcherManager + 类型 + 命令
+│   ├── mod.rs, session.rs, watcher.rs, types.rs, commands.rs, ...
+├── skill/               # Skill 管理（不变）
+├── theme/               # 主题管理（不变）
+├── commands/            # 兼容层：聚集所有域命令函数的 re-export
+│   └── mod.rs
+├── models/              # 兼容层：聚集所有域类型的 re-export
+│   └── mod.rs
+└── lib.rs               # 模块声明 + neeko_invoke_handler! 宏
+```
+
+> `commands/mod.rs` 和 `models/mod.rs` 为向后兼容层，聚集所有域的命令函数和类型，使 `neeko_invoke_handler!` 宏中 `$crate::commands::*` 路径保持可用。
+
 ### 2.1 项目（Project）
 
 ```rust
-// models/project.rs
+// project/types.rs
 pub struct Project {                          // 内存对象，由 ProjectManager 管理
     pub id: String,                           // UUID v4
     pub name: String,                         // 从路径文件名推导
@@ -45,7 +79,7 @@ pub struct Project {                          // 内存对象，由 ProjectManag
     pub avatar_color: Option<String>,
 }
 
-// models/session.rs — 持久化投影（无 git_info、无 active_view）
+// workspace/types.rs — 持久化投影（无 git_info、无 active_view）
 pub struct ProjectSession {
     pub id: String, pub name: String, pub path: PathBuf,
     pub selected_agent: Option<String>, pub selected_ide: Option<String>,
@@ -94,7 +128,7 @@ pub struct SessionStore {
 ### 2.2 终端（Terminal）
 
 ```rust
-// models/terminal.rs
+// terminal/types.rs
 pub struct TerminalSession {
     pub id: String,
     pub pid: Option<u32>,                     // 远程始终为 None（SSH 无本地 PID）
@@ -166,7 +200,24 @@ pub struct SkillTargetRecord {
 
 ### 3.1 命令注册表
 
-单一事实源：`src-tauri/src/commands/mod.rs` → `neeko_invoke_handler!()` 宏。
+Tauri 命令分散在各领域模块的 `commands.rs` 中，由 `lib.rs` 中的 `neeko_invoke_handler!()` 宏以平坦列表聚合注册。
+
+命令函数本身按域归属：
+
+| 域 | 命令文件 | 示例 |
+|---|---------|------|
+| `project/commands.rs` | 项目管理 + 本地 Git 操作 | `add_project`, `checkout_branch` |
+| `project/commands_ide.rs` | IDE 启动 | `open_ide`, `open_wsl_ide` |
+| `terminal/commands.rs` | 终端会话 (本地/WSL/远程) | `create_terminal_session`, `create_wsl_terminal_session` |
+| `agent/commands.rs` | Agent 管理 | `list_agents`, `add_agent` |
+| `git/commands.rs` + `commands_wsl.rs` + `commands_remote.rs` + `commands_unified.rs` | Git 操作 | `commit_command`, `wsl_push`, `remote_fetch` |
+| `connection/commands.rs` | WSL 发现 + SSH 测试 | `get_wsl_distros`, `test_remote_connection` |
+| `task/commands.rs` | Task Runner | `run_task`, `stop_task` |
+| `browser/commands.rs` | 内嵌浏览器 | `browser_navigate`, `create_browser_webview` |
+| `workspace/commands.rs` + 子文件 | 持久化 + 文件 + 颜色设置 | `save_session`, `read_file_content`, `wsl_set_project_color` |
+| `skill/commands.rs` | Skill 管理 | `get_managed_skills`, `install_local_skill` |
+
+`commands/mod.rs` 为兼容层，通过 `pub use crate::*::commands::*;` 聚集所有命令函数，使 `neeko_invoke_handler!` 的 `$crate::commands::*` 路径保持可用。
 
 命名规范：`动词-名词`（而非 `动词_名词_从_名词`）。例如：`install_local_skill` ✅，~~`install_skill_from_local`~~ ❌
 
@@ -181,6 +232,7 @@ pub struct SkillTargetRecord {
 | `GitInfo` + 子类型 | `GitInfo` 等 (git.ts) | 1:1 ✅ |
 | `SkillTargetRecord` | `SkillTargetRecord` (skill.ts) | 1:1 ✅ |
 | `DiscoveredSkillDto` | `DiscoveredSkillDto` (skill.ts) | 1:1 ✅ |
+| `AuthMethod` | `AuthMethod` (connection.ts) | 1:1 ✅ — `connection/types.rs` |
 | — | `WSLProject` (connection.ts) | 仅 TS（来自 session） |
 | — | `RemoteProject` (connection.ts) | 仅 TS（来自 session） |
 

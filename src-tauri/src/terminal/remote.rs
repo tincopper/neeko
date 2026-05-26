@@ -1,4 +1,5 @@
-use crate::models::{AuthMethod, TerminalSession, TerminalStatus};
+use crate::connection::types::AuthMethod;
+use crate::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use crate::utils::command::ssh_auth;
 use anyhow::Result;
@@ -368,7 +369,11 @@ async fn setup_remote_opencode_theme(
         match session.channel_open_session().await {
             Ok(mut ch) => {
                 if let Err(e) = s.write_remote_config(&mut ch, project_path, &theme).await {
-                    log_warn(&format!("[SSH] Failed to write remote {} config: {}", s.name(), e));
+                    log_warn(&format!(
+                        "[SSH] Failed to write remote {} config: {}",
+                        s.name(),
+                        e
+                    ));
                 }
                 let _ = ch.close().await;
             }

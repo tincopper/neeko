@@ -1,4 +1,4 @@
-use crate::models::{ProjectSession, RemoteEntrySession, SessionStore, WSLEntrySession};
+use crate::workspace::types::{ProjectSession, RemoteEntrySession, SessionStore, WSLEntrySession};
 use anyhow::Result;
 use chrono::Local;
 use std::fs;
