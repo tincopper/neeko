@@ -1554,3 +1554,36 @@ Phase 3A-2 Local 终端策略：\n- 新建 strategies/local.ts (92行)：useLoca
 ### Next Steps
 
 - None - task complete
+
+
+## Session 45: Phase 4-Retry: useShallow 性能优化
+
+**Date**: 2026-05-26
+**Task**: Phase 4-Retry: useShallow 性能优化
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Phase 4 重试: Zustand 5 useShallow 优化\n- 11处高频对象/数组selector添加useShallow\n- 10文件修改: tabs, projects, wslEntries×2, remoteEntries×2,\n  worktreeStateMap, fileTree, inline computed×3\n- 零API变更, 消费者透明\n- npx tsc零error, pnpm test:run 562 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fb209c5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
