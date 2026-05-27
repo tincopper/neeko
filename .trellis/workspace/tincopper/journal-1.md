@@ -1752,3 +1752,36 @@ Deleted useRefreshGitInfo.ts (44-line shallow module). Inlined store mutation in
 ### Next Steps
 
 - None - task complete
+
+
+## Session 51: Refactor: introduce useUnifiedProjectList, simplify ProjectsPanel
+
+**Date**: 2026-05-27
+**Task**: Refactor: introduce useUnifiedProjectList, simplify ProjectsPanel
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Created useUnifiedProjectList hook — flattens Local/WSL/Remote projects into a single array with position info (isLast, isFirstInSection). Simplified ProjectsPanel by replacing 25-line lastCardId computation with simple array lookup. Hook is independently testable.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4823ef4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
