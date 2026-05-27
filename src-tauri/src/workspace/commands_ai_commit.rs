@@ -308,7 +308,35 @@ Output ONLY the raw commit message. No explanation, no quotes, no code blocks."#
     )
 }
 
-// ─── Step 5: Agent CLI Execution ────────────────────────────────────────────
+// ─── Step 5: Remote/WSL Command String Construction ─────────────────────────
+
+/// Build the bash command string for running an agent commit message generator
+/// on a remote host or WSL distro. Shared by `commands_wsl` and `commands_remote`.
+pub(crate) fn build_agent_commit_cmd(
+    project_path: &str,
+    agent_cmd: &str,
+    prompt_args: &[String],
+    post_prompt_args: &[String],
+    prompt: &str,
+) -> String {
+    let sp = project_path;
+    let post_args = post_prompt_args.join(" ");
+    let uses_file_mode = prompt_args.last().map(|a| a == "-f").unwrap_or(false);
+
+    if uses_file_mode {
+        let prompt_args = prompt_args[..prompt_args.len() - 1].join(" ");
+        let short_msg = "Output ONLY the raw commit message for the staged changes. No explanation. No quotes. No markdown. Just the commit message text.";
+        format!(
+            "cd '{sp}' && cat > /tmp/.neeko_commit_prompt <<'NEEKO_EOF'\n{prompt}\nNEEKO_EOF\n{agent_cmd} {prompt_args} '{short_msg}' -f /tmp/.neeko_commit_prompt {post_args} && rm -f /tmp/.neeko_commit_prompt",
+        )
+    } else {
+        let prompt_args = prompt_args.join(" ");
+        let escaped_prompt = prompt.replace('\'', "'\\''");
+        format!("cd '{sp}' && {agent_cmd} {prompt_args} '{escaped_prompt}' {post_args}",)
+    }
+}
+
+// ─── Step 6: Local Agent CLI Execution ───────────────────────────────────────
 
 fn execute_agent_cli(
     config: &AgentInvokeConfig,
@@ -719,4 +747,79 @@ fn expand_env_vars_windows(s: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_agent_commit_cmd_file_mode() {
+        let cmd = build_agent_commit_cmd(
+            "/home/user/project",
+            "opencode",
+            &["-f".to_string()],
+            &[],
+            "some prompt text",
+        );
+        assert!(cmd.starts_with(
+            "cd '/home/user/project' && cat > /tmp/.neeko_commit_prompt <<'NEEKO_EOF'"
+        ));
+        assert!(cmd.contains("some prompt text"));
+        assert!(cmd.contains("Output ONLY the raw commit message"));
+        assert!(cmd.ends_with("&& rm -f /tmp/.neeko_commit_prompt"));
+    }
+
+    #[test]
+    fn test_build_agent_commit_cmd_inline_mode() {
+        let cmd = build_agent_commit_cmd(
+            "/home/user/project",
+            "claude",
+            &["-p".to_string()],
+            &[],
+            "feat: add feature",
+        );
+        assert!(cmd.starts_with("cd '/home/user/project' && claude -p 'feat: add feature'"));
+    }
+
+    #[test]
+    fn test_build_agent_commit_cmd_inline_escapes_single_quotes() {
+        let cmd = build_agent_commit_cmd(
+            "/tmp/test",
+            "echo",
+            &["-p".to_string()],
+            &[],
+            "it's working",
+        );
+        assert!(cmd.contains("'it'\\''s working'"));
+    }
+
+    #[test]
+    fn test_build_agent_commit_cmd_with_post_args() {
+        let cmd = build_agent_commit_cmd(
+            "/home/user/project",
+            "opencode",
+            &["-f".to_string()],
+            &["--model".to_string(), "gpt-4".to_string()],
+            "test prompt",
+        );
+        assert!(cmd.contains("--model gpt-4"));
+    }
+
+    #[test]
+    fn test_build_agent_commit_cmd_with_prompt_args_and_post_args() {
+        let cmd = build_agent_commit_cmd(
+            "/data",
+            "my-agent",
+            &["-c".to_string(), "ai".to_string(), "-f".to_string()],
+            &["--verbose".to_string()],
+            "hello",
+        );
+        // file mode: prompt_args without last "-f" are joined
+        assert!(cmd.contains("my-agent -c ai"));
+        // contains short_msg inline
+        assert!(cmd.contains("Output ONLY the raw commit message"));
+        // post_args appended
+        assert!(cmd.contains("--verbose"));
+    }
 }

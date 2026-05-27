@@ -32,6 +32,7 @@ import { buildWorktreeTabKey } from "../utils/tabKey";
 import { useFileTabRefresh } from "./useFileTabRefresh";
 import { useAppLayoutProps } from "./useAppLayoutProps";
 import { useTitleBarProps } from "./useTitleBarProps";
+import { useProjectSelection } from "./useProjectSelection";
 import { useAppModalsProps } from "./useAppModalsProps";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
@@ -183,6 +184,7 @@ export function useAppContainer(): UseAppContainerResult {
 
   const activeContext = useActiveProject();
   const fileView = useFileView(activeContext.commands, activeContext.worktreePath);
+  const { selectProject } = useProjectSelection();
 
   // Close settings view if open (when switching projects)
   const closeSettingsView = useCallback(() => {
@@ -199,55 +201,10 @@ export function useAppContainer(): UseAppContainerResult {
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
       closeSettingsView();
-
-      // Clear WSL diffState (local useState, batched by React 18 with the
-      // setState calls below)
       wslActions.setWslDiffState(null);
-
-      // Read cross-store state before mutations
-      const targetProjectTabs = useEditorStore.getState().tabs[projectId];
-      const wtCur = useWorktreeStore.getState().worktreeStateMap[projectId];
-      const nextWtMap = (wtCur && wtCur.activePath !== null)
-        ? { ...useWorktreeStore.getState().worktreeStateMap, [projectId]: { ...wtCur, activePath: null, activeBranch: "" } }
-        : useWorktreeStore.getState().worktreeStateMap;
-
-      // Worktree domain
-      useWorktreeStore.setState({
-        worktreeStateMap: nextWtMap,
-        activeWorktreePath: null,
-        activeWorktreeBranch: "",
-        activeWslWorktreePath: null,
-        wslActiveWtBranch: "",
-        wslOpenedWt: [],
-        activeRemoteWorktreePath: null,
-        remoteActiveWtBranch: "",
-        remoteOpenedWt: [],
-      });
-
-      // Connection domain
-      useConnectionStore.setState({
-        activeWslKey: null,
-        activeWslProject: null,
-        activeRemoteKey: null,
-        activeRemoteProject: null,
-      });
-
-      // Project domain
-      useProjectStore.setState({
-        activeProjectId: projectId,
-        activeProject: useProjectStore.getState().projects.find((p) => p.id === projectId) ?? null,
-      });
-
-      // Editor domain
-      useEditorStore.setState({
-        activeTabId: targetProjectTabs?.activeTabId ?? null,
-      });
-
-      // Fire-and-forget backend notification
-      invoke("set_active_project", { projectId }).catch(console.error);
+      await selectProject(projectId);
     },
-    [closeSettingsView,
-      wslActions.setWslDiffState],
+    [closeSettingsView, wslActions.setWslDiffState, selectProject],
   );
 
   const handleSelectWslProjectWithSync = useCallback(

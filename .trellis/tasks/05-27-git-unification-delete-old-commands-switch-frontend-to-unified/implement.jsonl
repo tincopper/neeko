@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Rust Tauri 命令模式、状态访问、返回类型约束"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError 类型与 From 实现，影响所有新命令"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Rust-TS 类型同步约定，防止跨层类型偏差"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "前端 IPC 调用模式，适配器层设计准则"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 提取规范，影响 useProjectSelection 结构"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store 模式，跨 store 事务设计"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "Vitest 配置与 Hook 测试模式"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Tauri invoke mock 策略，影响 commandFactory 测试"}

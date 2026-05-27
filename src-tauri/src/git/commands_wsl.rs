@@ -162,41 +162,15 @@ pub async fn wsl_generate_commit_message(
         // 2. 构建 prompt
         let prompt = ai_commit::build_simple_commit_prompt(&file_paths);
 
-        // 3. 构建命令字符串
-        // WSL: 直接使用 selected_agent 原值作为命令（路径或命令名）
+        // 3. 构建命令字符串（共享函数）
         let sp = wsl::safe_path(&project_path);
-
-        let post_args_str = post_prompt_args.join(" ");
-
-        // 判断 file mode：opencode 等 agent 需要通过 -f 传入 prompt 文件
-        let uses_file_mode = prompt_args.last().map(|a| a == "-f").unwrap_or(false);
-
-        let actual_cmd = if uses_file_mode {
-            // file mode: 通过 heredoc 写入临时文件，执行 agent，然后清理
-            let prompt_args_without_f = prompt_args[..prompt_args.len() - 1].join(" ");
-            let short_msg = "Output ONLY the raw commit message for the staged changes. No explanation. No quotes. No markdown. Just the commit message text.";
-            format!(
-                "cd '{sp}' && cat > /tmp/.neeko_commit_prompt <<'NEEKO_EOF'\n{prompt}\nNEEKO_EOF\n{agent_cmd} {prompt_args} '{short_msg}' -f /tmp/.neeko_commit_prompt {post_args} && rm -f /tmp/.neeko_commit_prompt",
-                sp = sp,
-                prompt = prompt,
-                agent_cmd = agent_cmd,
-                prompt_args = prompt_args_without_f,
-                short_msg = short_msg,
-                post_args = post_args_str,
-            )
-        } else {
-            // 普通模式: inline prompt
-            let prompt_args_str = prompt_args.join(" ");
-            let escaped_prompt = prompt.replace('\'', "'\\''");
-            format!(
-                "cd '{sp}' && {agent_cmd} {prompt_args} '{escaped_prompt}' {post_args}",
-                sp = sp,
-                agent_cmd = agent_cmd,
-                prompt_args = prompt_args_str,
-                escaped_prompt = escaped_prompt,
-                post_args = post_args_str,
-            )
-        };
+        let actual_cmd = ai_commit::build_agent_commit_cmd(
+            &sp,
+            &agent_cmd,
+            &prompt_args,
+            &post_prompt_args,
+            &prompt,
+        );
 
         // 注入环境加载前缀，source ~/.profile 加载用户路径（.cargo/bin 等）
         let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
@@ -292,48 +266,19 @@ pub async fn wsl_generate_commit_message(
 
 #[cfg(test)]
 mod tests {
-    // Test scaffolding - these tests document expected behavior
-    // Real WSL execution requires Windows + WSL environment
+    use crate::workspace::commands::build_agent_commit_cmd;
 
     #[test]
-    fn test_wsl_stage_files_empty_list_returns_ok() {
-        // On non-Windows, we'd get WSL error, but the logic for empty list is platform-independent
-        // This documents the contract: empty file list → Ok(())
-        // Actual integration requires Windows + WSL
-        // todo!("integration test requires WSL environment")
-        let _ = (); // placeholder assertion
-    }
-
-    #[test]
-    fn test_wsl_get_ahead_behind_no_upstream() {
-        // Documents: when no upstream, returns AheadBehind { ahead: 0, behind: 0 }
-        // todo!("integration test requires WSL environment")
-        let _ = ();
-    }
-
-    #[test]
-    fn test_wsl_commit_files_structure() {
-        // Documents: CommitResult has success, hash, message fields
-        let result = crate::models::CommitResult {
-            success: true,
-            hash: "abc1234".to_string(),
-            message: "test commit".to_string(),
-        };
-        assert!(result.success);
-        assert_eq!(result.hash, "abc1234");
-    }
-
-    #[test]
-    fn test_wsl_create_tag_with_message() {
-        // Documents: tag with message uses -a flag
-        // todo!("integration test requires WSL environment")
-        let _ = ();
-    }
-
-    #[test]
-    fn test_wsl_read_dir_tree_default_depth() {
-        // Documents: default max_depth is 4
-        // todo!("integration test requires WSL environment")
-        let _ = ();
+    fn test_wsl_build_agent_commit_cmd_file_mode() {
+        let cmd = build_agent_commit_cmd(
+            "/home/user/project",
+            "opencode",
+            &["-f".to_string()],
+            &[],
+            "test prompt",
+        );
+        assert!(cmd.contains("cd '/home/user/project'"));
+        assert!(cmd.contains("cat > /tmp/.neeko_commit_prompt"));
+        assert!(cmd.contains("test prompt"));
     }
 }
