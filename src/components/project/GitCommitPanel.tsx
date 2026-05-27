@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type { AheadBehind, CommitResult } from "../../types";
 import type {
   UnifiedProjectView,
@@ -65,10 +64,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       return;
     }
     let cancelled = false;
-    invoke<Array<{ path: string; additions: number; deletions: number }>>(
-      "unified_get_changed_files_diff_stats",
-      { transport: { Local: { project_path: project.path } } }
-    )
+    commands.getChangedFilesDiffStats()
       .then((stats) => {
         if (cancelled) return;
         const map: Record<string, { additions: number; deletions: number }> = {};

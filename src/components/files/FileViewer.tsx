@@ -234,15 +234,15 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
       setIsSaving(false);
    }, [currentContent, onSave]);
 
-   // 获取项目类型信息（用于判断是否显示 Open in Browser）
-   const { project } = useActiveProject();
-   const isLocalProject = project?.type === "local";
+   // 获取 capabilities（用于判断是否显示 Open in Browser）
+   const { capabilities } = useActiveProject();
+   const canOpenInBrowser = (capabilities?.canEditFiles ?? false);
 
    // 在 Browser Panel 中打开 HTML 文件
    const handleOpenInBrowser = useCallback(() => {
-      if (!projectPath || !isLocalProject) return;
+      if (!projectPath || !canOpenInBrowser) return;
       openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
-   }, [tab.filePath, projectPath, isLocalProject]);
+   }, [tab.filePath, projectPath, canOpenInBrowser]);
 
    // Ctrl+S handler
    const saveKeymap = useMemo(() => keymap.of([{
@@ -480,7 +480,7 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
             onSave={handleSave}
             onTogglePreview={() => setPreviewMode((m) => (m === "preview" ? "source" : "preview"))}
             onOpenInBrowser={handleOpenInBrowser}
-            isLocalProject={isLocalProject}
+            canOpenInBrowser={canOpenInBrowser}
          />
 
          <div className="flex-1 min-h-0 overflow-hidden">
@@ -533,7 +533,7 @@ interface EditorHeaderProps {
    onSave: () => void;
    onTogglePreview: () => void;
    onOpenInBrowser?: () => void;
-   isLocalProject?: boolean;
+    canOpenInBrowser?: boolean;
 }
 
 function EditorHeader({
@@ -547,7 +547,7 @@ function EditorHeader({
    onSave,
    onTogglePreview,
    onOpenInBrowser,
-   isLocalProject,
+    canOpenInBrowser,
 }: EditorHeaderProps) {
    return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
@@ -582,7 +582,7 @@ function EditorHeader({
             )}
 
             {/* HTML: Open in Browser Panel */}
-            {isHtml && isLocalProject && (
+            {isHtml && canOpenInBrowser && (
                <button
                   className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
                   onClick={onOpenInBrowser}

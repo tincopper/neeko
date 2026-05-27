@@ -123,6 +123,9 @@ export interface ProjectCommands {
   /** 获取当前分支相对于远程的超前/落后提交数 */
   getAheadBehind(): Promise<AheadBehind>;
 
+  /** 获取变更文件的 +/- diff 统计 */
+  getChangedFilesDiffStats(): Promise<Array<{ path: string; additions: number; deletions: number }>>;
+
   // ── Staging ──────────────────────────────────────────────────────────────
 
   /** 将指定文件路径加入暂存区（git add） */

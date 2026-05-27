@@ -66,6 +66,9 @@ export function createUnifiedCommands(transport: GitTransportKind): ProjectComma
     getAheadBehind(): Promise<AheadBehind> {
       return invoke<AheadBehind>("unified_get_ahead_behind", tp());
     },
+    getChangedFilesDiffStats(): Promise<Array<{ path: string; additions: number; deletions: number }>> {
+      return invoke<Array<{ path: string; additions: number; deletions: number }>>("unified_get_changed_files_diff_stats", tp());
+    },
 
     stageFiles(filePaths: string[]): Promise<void> {
       return invoke<void>("unified_stage_files", { ...tp(), filePaths });
