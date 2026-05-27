@@ -1,8 +1,7 @@
 import { useMemo } from "react";
 import { IS_WINDOWS } from "../utils/platform";
 import { useProjectStore } from "../store/projectStore";
-import { useWslContext } from "../contexts";
-import { useRemoteContext } from "../contexts";
+import { useWslContext, useRemoteContext } from "../contexts";
 
 export interface UnifiedProjectItem {
   kind: "local" | "wsl" | "remote";
@@ -11,14 +10,10 @@ export interface UnifiedProjectItem {
   path: string;
   has_git_info: boolean;
   selected_agent?: string | null;
-  // WSL context
   distro?: string;
   entryId?: string;
-  // Remote context
   host?: string;
-  // Position: true only for the very last item across all sections
   isLast: boolean;
-  // First item in its section (used to render section headers)
   isFirstInSection: boolean;
 }
 
@@ -30,10 +25,18 @@ export function useUnifiedProjectList(): {
   const { wslEntries } = useWslContext();
   const { remoteEntries } = useRemoteContext();
 
+  return useUnifiedProjectListFromData(projects, wslEntries, remoteEntries);
+}
+
+/** Pure function version — testable without React context */
+export function useUnifiedProjectListFromData(
+  projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[],
+  wslEntries: { id: string; distro: string; projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[] }[],
+  remoteEntries: { id: string; host: string; projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[] }[],
+): { items: UnifiedProjectItem[]; isEmpty: boolean } {
   return useMemo(() => {
     const items: UnifiedProjectItem[] = [];
 
-    // ── Local projects ──
     for (const p of projects) {
       items.push({
         kind: "local",
@@ -47,7 +50,6 @@ export function useUnifiedProjectList(): {
       });
     }
 
-    // ── WSL projects ──
     if (IS_WINDOWS) {
       for (const entry of wslEntries) {
         for (const p of entry.projects) {
@@ -70,7 +72,6 @@ export function useUnifiedProjectList(): {
       }
     }
 
-    // ── Remote projects ──
     for (const entry of remoteEntries) {
       for (const p of entry.projects) {
         const isFirstInEntry = items.every(
