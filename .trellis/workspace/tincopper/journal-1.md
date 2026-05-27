@@ -1587,3 +1587,36 @@ Phase 4 重试: Zustand 5 useShallow 优化\n- 11处高频对象/数组selector�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 46: Git unification: trim old commands, Candidate #1 AI commit dedup, Candidate #2 cross-store hook
+
+**Date**: 2026-05-27
+**Task**: Git unification: trim old commands, Candidate #1 AI commit dedup, Candidate #2 cross-store hook
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Complete git unification task: extract build_agent_commit_cmd() shared function (AI dedup), extract useProjectSelection hook (cross-store cleanup), trim commands_wsl/remote to non-git only. All spec-compliant, quality gate clean (535 frontend / 217 Rust tests).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46f7ba2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

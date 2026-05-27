@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 45
-- **Last Active**: 2026-05-26
+- **Total Sessions**: 46
+- **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1589 | Active |
+| `journal-1.md` | ~1622 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 46 | 2026-05-27 | Git unification: trim old commands, Candidate #1 AI commit dedup, Candidate #2 cross-store hook | `46f7ba2` | `refactor/architecture-optimization` |
 | 45 | 2026-05-26 | Phase 4-Retry: useShallow 性能优化 | `fb209c5` | `refactor/architecture-optimization` |
 | 44 | 2026-05-26 | Phase 3A-2: Local 终端策略 + TerminalViewBase 增强 | `b458b2a` | `refactor/architecture-optimization` |
 | 43 | 2026-05-26 | Phase 5 收尾: stage_all/unstage_all/discard_all → operations.rs | `49ef929` | `refactor/architecture-optimization` |
