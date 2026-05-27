@@ -17,7 +17,6 @@ import { useSessionPersistence } from "./useSessionPersistence";
 import { useAgentActions } from "./useAgentActions";
 import { useWorktreeActions } from "./useWorktreeActions";
 import { useRemoteAuthActions } from "./useRemoteAuthActions";
-import { useDelayedInit } from "./useDelayedInit";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useWorktreeStore } from "../store/worktreeStore";
@@ -287,7 +286,7 @@ export function useAppContainer(): UseAppContainerResult {
   });
 
   // 监听文件系统变更事件，刷新已打开的 file tab 内容
-  useFileTabRefresh();
+  useFileTabRefresh(activeContext.commands);
 
   // Refresh git info for WSL/Remote projects on startup (similar to local projects in useSessionBootstrap)
   const initialWslRemoteRefreshDone = React.useRef(false);
@@ -315,7 +314,11 @@ export function useAppContainer(): UseAppContainerResult {
     }
   }, [initializing, wslEntries, remoteEntries, remoteAuthStore, wslActions, remoteActions]);
 
-  useDelayedInit({ loadAgents });
+  // Delayed load agents after initial render
+  useEffect(() => {
+    const t = setTimeout(() => { loadAgents(); }, 100);
+    return () => clearTimeout(t);
+  }, [loadAgents]);
 
   const isTerminalView = activeProject?.active_view === "Terminal";
 

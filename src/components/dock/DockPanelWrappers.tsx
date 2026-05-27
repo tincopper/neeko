@@ -18,22 +18,8 @@ import { useActiveProject } from "@/hooks/useActiveProject";
 import { buildDiffSource } from "@/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
+import { mergeSubTree } from "@/utils/fileTree";
 import type { Tab, FileNode, FileTreeChangedEvent } from "@/types";
-
-/**
- * 将 newChildren 合并到 fileTree 中路径为 dirPath 的节点（WSL/Remote 懒加载使用）
- */
-function mergeSubTree(tree: FileNode[], dirPath: string, newChildren: FileNode[]): FileNode[] {
-  return tree.map((node) => {
-    if (node.path === dirPath) {
-      return { ...node, children: newChildren };
-    }
-    if (node.is_dir && node.children.length > 0 && dirPath.startsWith(node.path + "/")) {
-      return { ...node, children: mergeSubTree(node.children, dirPath, newChildren) };
-    }
-    return node;
-  });
-}
 
 // ── FilesPanelWrapper ──
 

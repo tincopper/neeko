@@ -5,7 +5,6 @@ export { useAppModalsProps } from "./useAppModalsProps";
 export { useAppLayoutProps } from "./useAppLayoutProps";
 export { useTitleBarProps } from "./useTitleBarProps";
 
-export { useDelayedInit } from "./useDelayedInit";
 export { useFileView } from "./useFileView";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useLocalProjects } from "./useLocalProjects";

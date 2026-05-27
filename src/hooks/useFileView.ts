@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FileNode, FileContent, Tab, FileTabData } from "../types";
+import type { FileNode, FileContent, Tab } from "../types";
 import { DEFAULT_TREE_DEPTH } from "../types/file";
 import type { ProjectCommands } from "../types/activeProject";
 import { useProjectStore } from "../store/projectStore";
@@ -11,40 +11,7 @@ import { useEditorStore } from "../store/editorStore";
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../utils/tabKey";
 import { clearViewSnapshot, clearAllForTabKey } from "../utils/editorViewState";
-
-/**
- * 将 newChildren 合并到 fileTree 中路径为 dirPath 的节点
- */
-function mergeSubTree(tree: FileNode[], dirPath: string, newChildren: FileNode[]): FileNode[] {
-  return tree.map((node) => {
-    if (node.path === dirPath) {
-      return { ...node, children: newChildren };
-    }
-    if (node.is_dir && node.children.length > 0 && dirPath.startsWith(node.path + "/")) {
-      return { ...node, children: mergeSubTree(node.children, dirPath, newChildren) };
-    }
-    return node;
-  });
-}
-
-/**
- * Generate a unique tab ID from project ID and file path
- */
-function getTabId(projectId: string, filePath: string): string {
-  return `${projectId}:${filePath}`;
-}
-
-/**
- * Extract file name from path
- */
-function getFileName(filePath: string): string {
-  return filePath.replace(/\\/g, "/").split("/").pop() || filePath;
-}
-
-/** Type guard: narrow Tab to file kind */
-function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
-  return tab.data.kind === "file";
-}
+import { mergeSubTree, getTabId, getFileName, isFileTab } from "../utils/fileTree";
 
 /**
  * useFileView — 文件视图 hook
