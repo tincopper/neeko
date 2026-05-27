@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import type AppProviders from "../AppProviders";
 import type AppModals from "../AppModals";
 import type AppLayout from "../components/layout/AppLayout";
@@ -19,23 +18,20 @@ import { useAgentActions } from "./useAgentActions";
 import { useWorktreeActions } from "./useWorktreeActions";
 import { useRemoteAuthActions } from "./useRemoteAuthActions";
 import { useDelayedInit } from "./useDelayedInit";
-import { useTerminalTabs } from "./useTerminalTabs";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useWorktreeStore } from "../store/worktreeStore";
-import { useEditorStore } from "../store/editorStore";
 import { useAppViewStore } from "../store/appViewStore";
 import { useFileView } from "./useFileView";
 import { useActiveProject } from "./useActiveProject";
-import type { AgentConfig, AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
-import { buildWorktreeTabKey } from "../utils/tabKey";
+import type { AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../types";
 import { useFileTabRefresh } from "./useFileTabRefresh";
 import { useAppLayoutProps } from "./useAppLayoutProps";
 import { useTitleBarProps } from "./useTitleBarProps";
 import { useProjectSelection } from "./useProjectSelection";
 import { useAppModalsProps } from "./useAppModalsProps";
-
-const APP_SETTINGS_PROJECT_ID = "__app__";
+import { useTabManagement } from "./useTabManagement";
+import { useAgentClickHandler } from "./useAgentClickHandler";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -193,11 +189,6 @@ export function useAppContainer(): UseAppContainerResult {
     }
   }, []);
 
-  // clearWslTransientState and clearRemoteTransientState removed.
-  // WSL/Remote transient worktree state (path / branch / openedWt) now lives
-  // in worktreeStore directly — clearing happens via resetWslTransientState /
-  // resetRemoteTransientState or inline in handleSelectProjectWithClear.
-
   const handleSelectProjectWithClear = useCallback(
     async (projectId: string) => {
       closeSettingsView();
@@ -242,91 +233,22 @@ export function useAppContainer(): UseAppContainerResult {
   );
 
   const {
-    getTabs,
-    ensureDefaultTab,
-    addTab,
-    activateTab,
-    updateTabStatus,
-    handleAgentClick: handleTabAgentClick,
-  } = useTerminalTabs();
-
-  const currentProjectId =
-    activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
-
-  // Tab key: composite when worktree is active, plain projectId otherwise
-  // Each worktree gets its own independent tab space (like a separate project)
-  // Fallback to __app__ when no project is selected (e.g. before project load)
-  const tabKey = activeWorktreePath && currentProjectId
-    ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-    : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
-
-  // activeTabId 恢复已内联到 setActiveProjectId（useLocalProjects）和
-  // setActiveWorktreePath（useWorktreeState）中，与项目/worktree 切换在同一
-  // 个 appStore.setState 内完成，不再需要 useEffect 额外渲染。
-
-  useEffect(() => {
-    if (!tabKey) return;
-
-    // __app__ space: no default terminal needed
-    if (tabKey === APP_SETTINGS_PROJECT_ID) return;
-
-    // Local 项目（非 worktree）：不自动创建 tab，让 ProjectGuidePage 引导用户
-    if (activeProject && !activeWorktreePath) return;
-
-    // 检查项目是否有任何类型的 tab（不仅是 terminal）
-    const projectTabs = useEditorStore.getState().tabs[tabKey];
-    const hasAnyTabs = projectTabs && projectTabs.tabs.length > 0;
-
-    if (!hasAnyTabs) {
-      // 只有在项目没有任何 tab 时才创建默认终端（WSL/Remote 场景）
-      const agentId = activeProject?.selected_agent ?? null;
-      const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
-      ensureDefaultTab(tabKey, agentId, agentName);
-    }
-    // 如果项目已有 tab（任何类型），不做任何操作，保留用户之前的 tab 状态
-  }, [tabKey, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
-
-  const tabs = tabKey ? getTabs(tabKey) : [];
-  const activeTabId = useEditorStore((state) => state.activeTabId);
-
-  const handleAddTab = useCallback(() => {
-    if (!tabKey) return;
-    addTab(tabKey);
-  }, [tabKey, addTab]);
-
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      const state = useEditorStore.getState();
-      // Find which project this tab belongs to and close it
-      for (const [projectId, pt] of Object.entries(state.tabs)) {
-        if (pt.tabs.some((t) => t.id === tabId)) {
-          state.closeTab(projectId, tabId);
-          return;
-        }
-      }
-    },
-    [],
-  );
-
-  const handleActivateTab = useCallback(
-    (tabId: string) => {
-      if (!tabKey) return;
-      activateTab(tabKey, tabId);
-    },
-    [tabKey, activateTab],
-  );
-
-  const handleToggleTerminal = useCallback(() => {
-    // fileViewOpen removed — toggleTerminal is currently a no-op
-  }, []);
-
-  const handleTabStatusChange = useCallback(
-    (tabId: string, status: "Idle" | "Running" | "Failed") => {
-      if (!tabKey) return;
-      updateTabStatus(tabKey, tabId, status);
-    },
-    [tabKey, updateTabStatus],
-  );
+    tabKey,
+    tabs,
+    activeTabId,
+    handleAddTab,
+    handleCloseTab,
+    handleActivateTab,
+    handleToggleTerminal,
+    handleTabStatusChange,
+    handleTabAgentClick,
+  } = useTabManagement({
+    activeProject,
+    activeWslProject,
+    activeRemoteProject,
+    activeWorktreePath,
+    agents,
+  });
 
   const handleFileSelect = useCallback(
     (filePath: string) => {
@@ -424,47 +346,16 @@ export function useAppContainer(): UseAppContainerResult {
     onToggleTerminal: handleToggleTerminal,
   });
 
-  const handleAgentClick = useCallback(
-    (agent: AgentConfig) => {
-      if (!tabKey) return;
-      const newTab = handleTabAgentClick(tabKey, agent);
-
-      if (activeProject) {
-        invoke("set_project_agent", {
-          projectId: activeProject.id,
-          agentId: agent.id,
-        }).catch((err: unknown) => {
-          console.error("[TitleBar] Failed to set agent:", err);
-        });
-        if (!newTab) {
-          const cacheKey = `${activeProject.id}:1`;
-          agentActions.handleSelectLocalAgent(agent, cacheKey);
-        }
-      } else if (activeWslProject) {
-        if (newTab) {
-          wslActions.updateWslProjectAgent(agent);
-        } else {
-          wslActions.handleSelectWslAgent(agent);
-        }
-      } else if (activeRemoteProject) {
-        if (newTab) {
-          remoteActions.updateRemoteProjectAgent(agent);
-        } else {
-          remoteActions.handleSelectRemoteAgent(agent);
-        }
-      }
-    },
-    [
-      tabKey,
-      handleTabAgentClick,
-      activeProject,
-      activeWslProject,
-      activeRemoteProject,
-      agentActions,
-      wslActions,
-      remoteActions,
-    ],
-  );
+  const { handleAgentClick } = useAgentClickHandler({
+    tabKey,
+    handleTabAgentClick,
+    activeProject,
+    activeWslProject,
+    activeRemoteProject,
+    agentActions,
+    wslActions,
+    remoteActions,
+  });
 
   const handleToggleHiddenAgent = useCallback(
     (agentId: string) => {

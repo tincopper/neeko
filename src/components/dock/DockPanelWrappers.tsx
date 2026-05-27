@@ -15,6 +15,7 @@ import { FilesPanel } from "@/components/panels";
 import { SkillsPanel } from "@/components/skills";
 import { GitCommitPanel } from "@/components/project";
 import { useActiveProject } from "@/hooks/useActiveProject";
+import { useRefreshGitInfo } from "@/hooks/useRefreshGitInfo";
 import { buildDiffSource } from "@/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
@@ -219,22 +220,11 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
+  const refreshGitInfo = useRefreshGitInfo(commands);
   const onRefreshGit = useCallback(async () => {
-    if (!commands || !project) return;
-    const gitInfo = await commands.refreshGitInfo();
-    useProjectStore.setState((state) => {
-      const nextProjects = state.projects.map((p) =>
-        p.id === project.id ? { ...p, git_info: gitInfo } : p,
-      );
-      return {
-        projects: nextProjects,
-        activeProject:
-          state.activeProjectId === project.id
-            ? (nextProjects.find((p) => p.id === project.id) ?? state.activeProject)
-            : state.activeProject,
-      };
-    });
-  }, [commands, project]);
+    if (!project) return;
+    return refreshGitInfo(project);
+  }, [refreshGitInfo, project]);
 
   if (!project || !commands || !capabilities) {
     return (

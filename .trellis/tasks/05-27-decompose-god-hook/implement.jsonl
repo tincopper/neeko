@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 命名、useCallback 模式、返回值约定"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store 访问模式，跨 store 状态读取"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "Hook 提取后测试模式"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "Tauri invoke mock 策略"}
