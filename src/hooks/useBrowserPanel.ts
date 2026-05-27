@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store/browserStore';
@@ -7,11 +7,11 @@ import { useProjectStore } from '../store/projectStore';
 import { useEditorStore } from '../store/editorStore';
 import { sendToTerminal } from '../components/terminal';
 import { useFileChangedEvent } from './useFileChangedEvent';
+import { useBrowserPicker } from './useBrowserPicker';
+import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/browser/pickerUtils';
 import { fileUrlToFilePath } from '../utils/browserUtils';
 import type { FileChangedEvent } from '../types';
-
-const BROWSER_WEBVIEW_LABEL = 'neeko-browser-panel';
 
 /** Safety-net timeout: auto-refresh even if no git-changed event arrives */
 const AUTO_REFRESH_TIMEOUT_MS = 30_000;
@@ -39,7 +39,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const LOADING_TIMEOUT_MS = 30_000;
 
-  const [isPicking, setIsPicking] = useState(false);
+  const { isPicking, startPicker, stopPicker, reinjectPicker } = useBrowserPicker({
+    isCreatedRef,
+    getThemeColors,
+  });
   // Keep showToast stable across renders via ref (avoids re-subscribing listeners)
   const showToastRef = useRef(showToast);
   showToastRef.current = showToast;
@@ -253,32 +256,6 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     }
   }, []);
 
-  // Start element picker mode
-  const startPicker = useCallback(async () => {
-    if (!isCreatedRef.current) return;
-    try {
-      await invoke('browser_start_picker', {
-        label: BROWSER_WEBVIEW_LABEL,
-        themeColors: getThemeColors(),
-      });
-      setIsPicking(true);
-
-    } catch (err) {
-      console.error('[Browser] Failed to start picker:', err);
-    }
-  }, []);
-
-  // Stop element picker mode
-  const stopPicker = useCallback(async () => {
-    if (!isCreatedRef.current) return;
-    try {
-      await invoke('browser_stop_picker', { label: BROWSER_WEBVIEW_LABEL });
-    } catch (err) {
-      console.error('[Browser] Failed to stop picker:', err);
-    }
-    setIsPicking(false);
-  }, []);
-
   // Destroy webview
   const destroy = useCallback(async () => {
     disarmAutoRefresh();
@@ -351,14 +328,6 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       unlisten?.();
     };
   }, [setUrl]);
-
-  // Re-inject picker script (shared helper to reduce duplication)
-  const reinjectPicker = useCallback(() => {
-    invoke('browser_start_picker', {
-      label: BROWSER_WEBVIEW_LABEL,
-      themeColors: getThemeColors(),
-    }).catch(() => {});
-  }, []);
 
   // Listen: prompt submitted from injected input inside browser webview
   useEffect(() => {
@@ -448,33 +417,6 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       refreshRef.current();
     }
   });
-
-  // Listen: picker cancelled (Escape / ✕ / click-outside) — re-inject picker
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    listen<void>('browser://picker-cancelled', () => {
-      reinjectPicker();
-    }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [reinjectPicker]);
-
-  // Fallback: while picker mode is active, periodically re-inject the picker
-  // script. The script is a no-op when `window.__NEEKO_PICKER__` already exists,
-  // so under normal conditions this has negligible cost. If the picker was lost
-  // (e.g. page navigation, JS error, timing race) this automatically restores it.
-  useEffect(() => {
-    if (!isPicking) return;
-    const id = setInterval(reinjectPicker, 3000);
-    return () => clearInterval(id);
-  }, [isPicking, reinjectPicker]);
 
   // Listen for external navigateTo() calls when the panel is already mounted.
   // navigateTo() sets url + isLoading=true in the store but cannot call
