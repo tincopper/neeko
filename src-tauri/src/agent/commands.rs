@@ -5,12 +5,12 @@ use std::collections::HashMap;
 use tauri::State;
 
 #[tauri::command]
-pub fn list_agents(state: State<AppStateWrapper>) -> Vec<AgentConfig> {
+pub fn list_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, AppError> {
     state
         .agent_manager
         .lock()
+        .map_err(AppError::from)
         .map(|am| am.get_agents())
-        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -81,10 +81,13 @@ pub fn set_project_agent(
     project_id: String,
     agent_id: Option<String>,
     state: State<AppStateWrapper>,
-) {
-    if let Ok(mut pm) = state.project_manager.lock() {
-        pm.set_selected_agent(&project_id, agent_id);
-    }
+) -> Result<(), AppError> {
+    state
+        .project_manager
+        .lock()
+        .map_err(AppError::from)?
+        .set_selected_agent(&project_id, agent_id);
+    Ok(())
 }
 
 #[tauri::command]

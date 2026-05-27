@@ -5,12 +5,13 @@ use anyhow::Result;
 use tauri::State;
 
 #[tauri::command]
-pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<AppStateWrapper>) {
+pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
-        .unwrap()
+        .map_err(AppError::from)?
         .set_selected_ide(&project_id, ide);
+    Ok(())
 }
 
 #[tauri::command]

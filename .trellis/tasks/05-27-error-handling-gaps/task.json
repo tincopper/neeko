@@ -3,7 +3,7 @@
   "name": "error-handling-gaps",
   "title": "fix: error handling — unwrap panics + silent swallowing",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
