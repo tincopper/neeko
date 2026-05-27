@@ -6,6 +6,7 @@ import { useDockStore } from '../store/dockStore';
 import { useProjectStore } from '../store/projectStore';
 import { useEditorStore } from '../store/editorStore';
 import { sendToTerminal } from '../components/terminal';
+import { useFileChangedEvent } from './useFileChangedEvent';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/browser/pickerUtils';
 import { fileUrlToFilePath } from '../utils/browserUtils';
 import type { FileChangedEvent } from '../types';
@@ -421,49 +422,32 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   }, []);
 
   // Listen: file-changed — auto-refresh browser when it has a file:// URL that matches
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
+  // Uses shared useFileChangedEvent (single IPC subscription with useFileTabRefresh / HtmlPreview)
+  useFileChangedEvent((event: FileChangedEvent) => {
+    const { project_id, paths } = event;
+    if (!paths.length) return;
 
-    listen<FileChangedEvent>('file-changed', (event) => {
-      const { project_id, paths } = event.payload;
-      if (!paths.length) return;
+    const currentUrl = useBrowserStore.getState().url;
+    if (!currentUrl?.startsWith('file://')) return;
 
-      // Only handle file:// URLs
-      const currentUrl = useBrowserStore.getState().url;
-      if (!currentUrl?.startsWith('file://')) return;
+    const browserFilePath = fileUrlToFilePath(currentUrl);
+    if (!browserFilePath) return;
 
-      // Extract local file path from the browser URL
-      const browserFilePath = fileUrlToFilePath(currentUrl);
-      if (!browserFilePath) return;
+    const state = useProjectStore.getState();
+    const project = state.projects.find((p) => p.id === project_id);
+    if (!project) return;
 
-      // Find the project to get its root path
-      const state = useProjectStore.getState();
-      const project = state.projects.find((p) => p.id === project_id);
-      if (!project) return;
-
-      // Normalize project path (forward slashes)
-      const projectRoot = project.path.replace(/\\/g, '/');
-
-      // Check if any changed path matches the currently loaded file
-      const browserFileNorm = browserFilePath.replace(/\\/g, '/');
-      const matched = paths.some((rel) => {
-        const abs = `${projectRoot}/${rel}`;
-        return abs === browserFileNorm;
-      });
-
-      if (matched) {
-        refreshRef.current();
-      }
-    }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+    const projectRoot = project.path.replace(/\\/g, '/');
+    const browserFileNorm = browserFilePath.replace(/\\/g, '/');
+    const matched = paths.some((rel: string) => {
+      const abs = `${projectRoot}/${rel}`;
+      return abs === browserFileNorm;
     });
 
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+    if (matched) {
+      refreshRef.current();
+    }
+  });
 
   // Listen: picker cancelled (Escape / ✕ / click-outside) — re-inject picker
   useEffect(() => {

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { Globe, RefreshCw } from "lucide-react";
 import type { FileContent, FileChangedEvent } from "../../types";
+import { useFileChangedEvent } from "../../hooks/useFileChangedEvent";
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -100,23 +100,14 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     };
   }, [loadHtmlContent]);
 
-  // 监听后端 file-changed 事件：当本预览文件发生变更时自动重新加载
-  useEffect(() => {
-    // 规范化当前预览文件路径（使用 / 分隔符）
-    const normalizedFilePath = filePath.replace(/\\/g, "/");
+  const normalizedFilePath = filePath.replace(/\\/g, "/");
 
-    const unlistenPromise = listen<FileChangedEvent>("file-changed", (event) => {
-      const { paths } = event.payload;
-      const matched = paths.some((p) => p === normalizedFilePath || p.endsWith("/" + normalizedFilePath));
-      if (matched) {
-        loadHtmlContent();
-      }
-    });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [filePath, loadHtmlContent]);
+  // 使用共享的 file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听）
+  useFileChangedEvent(useCallback((event: FileChangedEvent) => {
+    const { paths } = event;
+    const matched = paths.some((p) => p === normalizedFilePath || p.endsWith("/" + normalizedFilePath));
+    if (matched) loadHtmlContent();
+  }, [normalizedFilePath, loadHtmlContent]));
 
   // 处理刷新
   const handleRefresh = useCallback(() => {
