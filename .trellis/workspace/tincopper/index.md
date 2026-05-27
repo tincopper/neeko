@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 60
+- **Total Sessions**: 61
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~106 | Active |
+| `journal-2.md` | ~139 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 61 | 2026-05-27 | Fix Round 4 #1+3: Local transport bypass + FileViewer capabilities | `20b3f2f` | `refactor/architecture-optimization` |
 | 60 | 2026-05-27 | Refactor Round 3 #5: extract useBrowserPicker from useBrowserPanel | `8c2fdfc` | `refactor/architecture-optimization` |
 | 59 | 2026-05-27 | Refactor Round 3 #2: flatten AppModals, delete useAppModalsProps | `a32f0ae` | `refactor/architecture-optimization` |
 | 58 | 2026-05-27 | Refactor Round 3 #1+4: delete useDelayedInit, extract fileTree utils, fix WSL/Remote file refresh | `361685e` | `refactor/architecture-optimization` |

@@ -104,3 +104,36 @@ Extracted useBrowserPicker hook from useBrowserPanel (592→534 lines). New hook
 ### Next Steps
 
 - None - task complete
+
+
+## Session 61: Fix Round 4 #1+3: Local transport bypass + FileViewer capabilities
+
+**Date**: 2026-05-27
+**Task**: Fix Round 4 #1+3: Local transport bypass + FileViewer capabilities
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Fixed WSL/Remote diff stats bug in GitCommitPanel — was hardcoded to Local transport, now uses commands.getChangedFilesDiffStats() (unified). Added getChangedFilesDiffStats to ProjectCommands interface. Replaced project.type check with capabilities.canEditFiles in FileViewer.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20b3f2f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
