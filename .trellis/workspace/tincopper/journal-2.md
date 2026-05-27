@@ -170,3 +170,36 @@ Added unified commands path to useDiffData hook — 7-branch diffSource.type swi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 63: chore: remove all dead code
+
+**Date**: 2026-05-27
+**Task**: chore: remove all dead code
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Backend: 15 compiler warnings eliminated (9 via cargo fix, 6 manual). Removed dead functions (is_directory, clear, add_column_if_missing, validate_identifier, has_column), dead assignment (found=true), unused imports, unnecessary mut. Frontend: removed noop handleToggleTerminal callback, unused dockStore methods (expandZone, restoreDefaultLayout), unused worktreeStore.worktreeState field, unused barrel exports (ProjectSidebar, SessionKind). All tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `HEAD` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
