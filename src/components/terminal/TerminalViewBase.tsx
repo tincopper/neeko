@@ -14,12 +14,22 @@ interface TerminalViewBaseProps {
   strategy: TerminalStrategy;
   tabAgentId: string | null;
   activeTabId: string | null;
+  taskCommand?: string | null;
+  taskConfigId?: string | null;
+  taskRebuildKey?: number;
+  agentCommandOverride?: string;
+  onStatusChange?: (status: "Idle" | "Running" | "Failed") => void;
 }
 
 export default React.memo(function TerminalViewBase({
   strategy,
   tabAgentId,
   activeTabId: _activeTabId,
+  taskCommand,
+  taskConfigId,
+  taskRebuildKey = 0,
+  agentCommandOverride,
+  onStatusChange,
 }: TerminalViewBaseProps) {
   const {
     cacheKey,
@@ -90,6 +100,14 @@ export default React.memo(function TerminalViewBase({
 
     detachAll();
 
+    // Task rebuild guard: destroy stale task cache when rebuildKey bumps
+    if (taskCommand && taskRebuildKey > 0) {
+      const stale = cache.get(cacheKey);
+      if (stale && stale.sessionId === null) {
+        cache.delete(cacheKey);
+      }
+    }
+
     const existingCache = cache.get(cacheKey);
     if (existingCache) {
       setReady(!!existingCache.sessionId);
@@ -135,7 +153,10 @@ export default React.memo(function TerminalViewBase({
 
       (async () => {
         try {
-          const sessionId = await createSession(term.cols, term.rows);
+          const sessionId = await createSession(term.cols, term.rows, {
+            command: taskCommand ?? undefined,
+            configId: taskConfigId ?? undefined,
+          });
 
           if (currentKeyRef.current !== cacheKey) return;
           entry.sessionId = sessionId;
@@ -143,13 +164,16 @@ export default React.memo(function TerminalViewBase({
           onSessionReady?.();
 
           if (tabAgentId) {
+            const cmdOverride = agentCommandOverride;
             setTimeout(async () => {
               if (!entry.sessionId) return;
               try {
                 const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
-                const cmdStr = [agent.command, ...agent.args].join(" ") + "\r";
+                const cmd = cmdOverride ?? agent.command;
+                const cmdStr = [cmd, ...agent.args].join(" ") + "\r";
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
                 emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
+                onStatusChange?.("Running");
               } catch (err) {
                 console.error("[Terminal] Auto-launch agent failed:", err);
               }
@@ -220,7 +244,7 @@ export default React.memo(function TerminalViewBase({
       rebuildCallbacks.delete(cacheKey);
       wrapperRefs.delete(cacheKey);
     };
-  }, [cacheKey, rebuildCount]);
+  }, [cacheKey, rebuildCount, taskRebuildKey]);
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">

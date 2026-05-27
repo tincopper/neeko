@@ -17,7 +17,7 @@ export interface TerminalStrategy {
   cache: Map<string, CacheEntry>;
   rebuildCallbacks: Map<string, () => void>;
   wrapperRefs: Map<string, HTMLDivElement>;
-  createSession: (cols: number, rows: number) => Promise<string>;
+  createSession: (cols: number, rows: number, payload?: { command?: string; configId?: string }) => Promise<string>;
   resizeCmd: string;
   agentDelayMs: number;
   connectingMessage: string;

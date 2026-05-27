@@ -33,6 +33,8 @@ export function useLocalTerminalStrategy(
     const projectPath = effWorktreePath ?? activeProject?.path ?? null;
     const baseName = activeProject?.name ?? null;
     const projectName = baseName && effWorktreeBranch
+      ? `${baseName} [${effWorktreeBranch}]`
+      : baseName ?? null;
 
     const cacheKey = projectId
       ? isWorktree
@@ -46,7 +48,7 @@ export function useLocalTerminalStrategy(
       cache: terminalCache as unknown as Map<string, import("./types").CacheEntry>,
       rebuildCallbacks: terminalRebuildCallbacks,
       wrapperRefs: terminalWrapperRefs,
-      createSession: async (cols: number, rows: number) => {
+      createSession: async (cols: number, rows: number, payload?: { command?: string; configId?: string }) => {
         const session = await invoke<{ id: string }>(
           "create_terminal_session",
           {
@@ -55,7 +57,7 @@ export function useLocalTerminalStrategy(
             rows,
             shell: config.shell || null,
             workingDir: projectPath || null,
-            command: null,
+            command: payload?.command ?? null,
           },
         );
         return session.id;
