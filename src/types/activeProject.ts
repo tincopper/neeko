@@ -126,6 +126,9 @@ export interface ProjectCommands {
   /** 获取变更文件的 +/- diff 统计 */
   getChangedFilesDiffStats(): Promise<Array<{ path: string; additions: number; deletions: number }>>;
 
+  /** 获取指定文件的工作区 diff */
+  getFileDiff(filePath: string): Promise<import("./git").DiffResult>;
+
   // ── Staging ──────────────────────────────────────────────────────────────
 
   /** 将指定文件路径加入暂存区（git add） */

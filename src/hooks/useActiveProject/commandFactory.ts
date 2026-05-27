@@ -69,6 +69,9 @@ export function createUnifiedCommands(transport: GitTransportKind): ProjectComma
     getChangedFilesDiffStats(): Promise<Array<{ path: string; additions: number; deletions: number }>> {
       return invoke<Array<{ path: string; additions: number; deletions: number }>>("unified_get_changed_files_diff_stats", tp());
     },
+    getFileDiff(filePath: string): Promise<DiffResult> {
+      return invoke<DiffResult>("unified_get_file_diff", { ...tp(), filePath });
+    },
 
     stageFiles(filePaths: string[]): Promise<void> {
       return invoke<void>("unified_stage_files", { ...tp(), filePaths });
