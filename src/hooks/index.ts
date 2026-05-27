@@ -1,11 +1,10 @@
 export { useAgentActions } from "./useAgentActions";
 export { useAppConfig } from "./useAppConfig";
 export { useAppContainer } from "./useAppContainer";
-export { useAppModalsProps } from "./useAppModalsProps";
 export { useAppLayoutProps } from "./useAppLayoutProps";
 export { useTitleBarProps } from "./useTitleBarProps";
 
-export { useFileView } from "./useFileView";
+
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export { useLocalProjects } from "./useLocalProjects";
 export { useRemoteActions } from "./useRemoteActions";

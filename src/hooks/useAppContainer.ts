@@ -28,7 +28,6 @@ import { useFileTabRefresh } from "./useFileTabRefresh";
 import { useAppLayoutProps } from "./useAppLayoutProps";
 import { useTitleBarProps } from "./useTitleBarProps";
 import { useProjectSelection } from "./useProjectSelection";
-import { useAppModalsProps } from "./useAppModalsProps";
 import { useTabManagement } from "./useTabManagement";
 import { useAgentClickHandler } from "./useAgentClickHandler";
 import { useUnifiedProjectList } from "./useUnifiedProjectList";
@@ -519,26 +518,26 @@ export function useAppContainer(): UseAppContainerResult {
     [handleRemoteEntryAdd, remoteAuthStore, remoteActions],
   );
 
-  const appModalsProps = useAppModalsProps({
+  const appModalsProps: AppModalsProps = {
     pendingPath,
-    handleConfirmAddProject,
-    setPendingPath,
+    onConfirmAddProject: handleConfirmAddProject,
+    onCancelAddProject: () => setPendingPath(null),
     loading,
     wslDialogOpen,
     wslAddToEntryId,
     wslEntries,
-    handleWslDialogClose,
-    handleWslEntryAdd: handleWslEntryAddRefresh,
+    onWslDialogClose: handleWslDialogClose,
+    onAddWslEntry: handleWslEntryAddRefresh,
     remoteDialogOpen,
     remoteAddToEntryId,
     remoteEntries,
-    handleRemoteDialogClose,
-    handleRemoteEntryAdd: handleRemoteEntryAddRefresh,
+    onRemoteDialogClose: handleRemoteDialogClose,
+    onAddRemoteEntry: handleRemoteEntryAddRefresh,
     remoteAuthStore,
     pendingAuthEntry,
-    handleRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel,
-    handleRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess,
-  });
+    onRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel,
+    onRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess,
+  };
 
   return {
     initializing,

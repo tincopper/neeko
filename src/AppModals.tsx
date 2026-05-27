@@ -8,92 +8,93 @@ import {
 } from "./components/connections";
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "./types";
 
-interface AddProjectModalProps {
+interface AppModalsProps {
   pendingPath: string | null;
-  onConfirm: React.ComponentProps<typeof AddProjectModal>["onConfirm"];
-  onCancel: () => void;
+  onConfirmAddProject: (agentId: string | null, ideCommand: string | null) => Promise<void>;
+  onCancelAddProject: () => void;
   loading: boolean;
-}
 
-interface WslModalProps {
-  open: boolean;
-  onClose: () => void;
+  wslDialogOpen: boolean;
+  onWslDialogClose: () => void;
   onAddWslEntry: (entry: WSLEntrySession) => void;
-  entries: WSLEntrySession[];
-  addToEntryId: string | null;
-}
+  wslEntries: WSLEntrySession[];
+  wslAddToEntryId: string | null;
 
-interface RemoteModalProps {
-  open: boolean;
-  onClose: () => void;
+  remoteDialogOpen: boolean;
+  onRemoteDialogClose: () => void;
   onAddRemoteEntry: (
     entry: RemoteEntrySession,
     auth: AuthMethod | null,
     saved_auth?: string | null,
   ) => void;
-  entries: RemoteEntrySession[];
-  addToEntryId: string | null;
-  authStore: Map<string, AuthMethod>;
-}
+  remoteEntries: RemoteEntrySession[];
+  remoteAddToEntryId: string | null;
+  remoteAuthStore: Map<string, AuthMethod>;
 
-interface RemoteAuthModalProps {
   pendingAuthEntry: RemoteEntrySession | null;
-  onCancel: () => void;
-  onSuccess: (auth: AuthMethod, saved_auth?: string | null) => void;
-}
-
-interface AppModalsProps {
-  addProject: AddProjectModalProps;
-  wsl: WslModalProps;
-  remote: RemoteModalProps;
-  remoteAuth: RemoteAuthModalProps;
+  onRemoteAuthCancel: () => void;
+  onRemoteAuthSuccess: (auth: AuthMethod, saved_auth?: string | null) => void;
 }
 
 function AppModals({
-  addProject,
-  wsl,
-  remote,
-  remoteAuth,
+  pendingPath,
+  onConfirmAddProject,
+  onCancelAddProject,
+  loading,
+  wslDialogOpen,
+  onWslDialogClose,
+  onAddWslEntry,
+  wslEntries,
+  wslAddToEntryId,
+  remoteDialogOpen,
+  onRemoteDialogClose,
+  onAddRemoteEntry,
+  remoteEntries,
+  remoteAddToEntryId,
+  remoteAuthStore,
+  pendingAuthEntry,
+  onRemoteAuthCancel,
+  onRemoteAuthSuccess,
 }: AppModalsProps) {
   return (
     <>
-      {addProject.pendingPath && (
+      {pendingPath && (
         <AddProjectModal
-          pendingPath={addProject.pendingPath}
-          onConfirm={addProject.onConfirm}
-          onCancel={addProject.onCancel}
-          loading={addProject.loading}
+          pendingPath={pendingPath}
+          onConfirm={onConfirmAddProject}
+          onCancel={onCancelAddProject}
+          loading={loading}
         />
       )}
 
       {IS_WINDOWS && (
         <WSLDialog
-          isOpen={wsl.open}
-          onClose={wsl.onClose}
-          onAdd={wsl.onAddWslEntry}
-          existingEntries={wsl.entries}
-          selectedEntryId={wsl.addToEntryId ?? undefined}
+          isOpen={wslDialogOpen}
+          onClose={onWslDialogClose}
+          onAdd={onAddWslEntry}
+          existingEntries={wslEntries}
+          selectedEntryId={wslAddToEntryId ?? undefined}
         />
       )}
 
       <RemoteDialog
-        isOpen={remote.open}
-        onClose={remote.onClose}
-        onAdd={remote.onAddRemoteEntry}
-        existingEntries={remote.entries}
-        addProjectMode={remote.addToEntryId !== null}
-        selectedEntryId={remote.addToEntryId ?? undefined}
-        existingEntryAuth={remote.authStore}
+        isOpen={remoteDialogOpen}
+        onClose={onRemoteDialogClose}
+        onAdd={onAddRemoteEntry}
+        existingEntries={remoteEntries}
+        addProjectMode={remoteAddToEntryId !== null}
+        selectedEntryId={remoteAddToEntryId ?? undefined}
+        existingEntryAuth={remoteAuthStore}
       />
 
-      {remoteAuth.pendingAuthEntry && (
+      {pendingAuthEntry && (
         <RemoteAuthDialog
           isOpen={true}
-          host={remoteAuth.pendingAuthEntry.host}
-          port={remoteAuth.pendingAuthEntry.port}
-          username={remoteAuth.pendingAuthEntry.username}
-          onCancel={remoteAuth.onCancel}
-          onSuccess={remoteAuth.onSuccess}
+          host={pendingAuthEntry.host}
+          port={pendingAuthEntry.port}
+          username={pendingAuthEntry.username}
+          onCancel={onRemoteAuthCancel}
+          onSuccess={onRemoteAuthSuccess}
         />
       )}
     </>
