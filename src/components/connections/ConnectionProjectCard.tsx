@@ -14,6 +14,7 @@ import type { FileChange } from "../../types";
 import { getIdeIconByCommand } from "../../utils/idePresets";
 import { useWorktreeStore } from "../../store/worktreeStore";
 import { useGitStore } from "../../store/gitStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { aheadBehindKey } from "../../utils/aheadBehindKey";
 
 const LOG_TAG: Record<string, string> = {
@@ -98,46 +99,69 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       [onOpenWorktreeTerminal, connectionId],
     );
 
+    const remoteAuthStore = useConnectionStore((s) => s.remoteAuthStore);
+    const remoteEntries = useConnectionStore((s) => s.remoteEntries);
+
+    const getRemoteTransport = useCallback(() => {
+      const auth = remoteAuthStore.get(remoteEntryId);
+      const entry = remoteEntries.find((e) => e.id === remoteEntryId);
+      if (!auth || !entry) return null;
+      return {
+        Remote: {
+          host: entry.host,
+          port: entry.port,
+          username: entry.username,
+          auth,
+          project_path: project.path,
+        },
+      };
+    }, [remoteAuthStore, remoteEntries, remoteEntryId, project.path]);
+
     const handleRenameWorktree = useCallback(
       (oldPath: string, newName: string) => {
+        const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
         if (isWsl) {
-          invoke("wsl_rename_worktree", {
-            distro,
-            projectPath: project.path,
-            worktreePath: oldPath,
-            newName,
+          invoke("unified_rename_worktree", {
+            transport: { Wsl: { distro, project_path: project.path } },
+            oldPath,
+            newPath: newFullPath,
           }).catch(console.error);
         } else if (remoteInvoke) {
-          remoteInvoke("remote_rename_worktree", remoteEntryId, {
-            projectPath: project.path,
-            worktreePath: oldPath,
-            newName,
-          }).catch(console.error);
+          const rt = getRemoteTransport();
+          if (rt) {
+            invoke("unified_rename_worktree", {
+              transport: rt,
+              oldPath,
+              newPath: newFullPath,
+            }).catch(console.error);
+          }
         }
       },
-      [isWsl, distro, project.path, remoteInvoke, remoteEntryId],
+      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
     );
 
     const handleRemoveWorktree = useCallback(
       (wtPath: string, _branch: string) => {
         if (isWsl) {
-          invoke("wsl_remove_worktree", {
-            distro,
-            projectPath: project.path,
+          invoke("unified_remove_worktree", {
+            transport: { Wsl: { distro, project_path: project.path } },
             worktreePath: wtPath,
           }).catch((e: unknown) => {
             console.error(`${logTag} Failed to remove worktree:`, e);
           });
         } else if (remoteInvoke) {
-          remoteInvoke("remote_remove_worktree", remoteEntryId, {
-            projectPath: project.path,
-            worktreePath: wtPath,
-          }).catch((e: unknown) => {
-            console.error(`${logTag} Failed to remove worktree:`, e);
-          });
+          const rt = getRemoteTransport();
+          if (rt) {
+            invoke("unified_remove_worktree", {
+              transport: rt,
+              worktreePath: wtPath,
+            }).catch((e: unknown) => {
+              console.error(`${logTag} Failed to remove worktree:`, e);
+            });
+          }
         }
       },
-      [isWsl, distro, project.path, remoteInvoke, remoteEntryId, logTag],
+      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport, logTag],
     );
 
     const handleRemove = useCallback(() => {
@@ -155,34 +179,45 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleGetWorktreeChangedFiles = useCallback(
       (worktreePath: string): Promise<FileChange[]> => {
         if (isWsl) {
-          return invoke<FileChange[]>("wsl_get_worktree_changed_files", {
-            distro,
+          return invoke<FileChange[]>("unified_get_worktree_changed_files", {
+            transport: { Wsl: { distro, project_path: project.path } },
             worktreePath,
           });
         }
         if (remoteInvoke) {
-          return remoteInvoke("remote_get_worktree_changed_files", remoteEntryId, {
-            worktreePath,
-          }).then((r) => r as FileChange[]);
+          const rt = getRemoteTransport();
+          if (rt) {
+            return invoke<FileChange[]>("unified_get_worktree_changed_files", {
+              transport: rt,
+              worktreePath,
+            });
+          }
         }
         return Promise.resolve([] as FileChange[]);
       },
-      [isWsl, distro, remoteInvoke, remoteEntryId],
+      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
     );
 
     const handleIsWorktreeDirty = useCallback(
       (worktreePath: string): Promise<boolean> => {
         if (isWsl) {
-          return invoke<boolean>("wsl_is_worktree_dirty", { distro, worktreePath });
+          return invoke<boolean>("unified_is_worktree_dirty", {
+            transport: { Wsl: { distro, project_path: project.path } },
+            worktreePath,
+          });
         }
         if (remoteInvoke) {
-          return remoteInvoke("remote_is_worktree_dirty", remoteEntryId, {
-            worktreePath,
-          }).then((r) => r as boolean);
+          const rt = getRemoteTransport();
+          if (rt) {
+            return invoke<boolean>("unified_is_worktree_dirty", {
+              transport: rt,
+              worktreePath,
+            });
+          }
         }
         return Promise.resolve(false);
       },
-      [isWsl, distro, remoteInvoke, remoteEntryId],
+      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
     );
 
     const handleContextMenu = (e: React.MouseEvent) => {

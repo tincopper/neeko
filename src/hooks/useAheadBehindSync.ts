@@ -23,8 +23,11 @@ export function useAheadBehindSync() {
   useEffect(() => {
     if (!activeProjectId) return;
     const key = aheadBehindKey("local", activeProjectId, activeProjectId);
+    const projectPath = useProjectStore.getState().projects.find(p => p.id === activeProjectId)?.path ?? "";
     let cancelled = false;
-    invoke<AheadBehind>("get_ahead_behind_command", { projectId: activeProjectId })
+    invoke<AheadBehind>("unified_get_ahead_behind", {
+      transport: { Local: { project_path: projectPath } },
+    })
       .then((info) => {
         if (cancelled) return;
         setAheadBehind(key, info);
@@ -44,9 +47,8 @@ export function useAheadBehindSync() {
     const { distro, project } = activeWslProject;
     const key = aheadBehindKey("wsl", distro, project.id);
     let cancelled = false;
-    invoke<AheadBehind>("wsl_get_ahead_behind", {
-      distro,
-      projectPath: project.path,
+    invoke<AheadBehind>("unified_get_ahead_behind", {
+      transport: { Wsl: { distro, project_path: project.path } },
     })
       .then((info) => {
         if (cancelled) return;
@@ -69,12 +71,16 @@ export function useAheadBehindSync() {
     if (!auth) return;
     const key = aheadBehindKey("remote", entry.id, project.id);
     let cancelled = false;
-    invoke<AheadBehind>("remote_get_ahead_behind", {
-      host: entry.host,
-      port: entry.port,
-      username: entry.username,
-      auth,
-      projectPath: project.path,
+    invoke<AheadBehind>("unified_get_ahead_behind", {
+      transport: {
+        Remote: {
+          host: entry.host,
+          port: entry.port,
+          username: entry.username,
+          auth,
+          project_path: project.path,
+        },
+      },
     })
       .then((info) => {
         if (cancelled) return;

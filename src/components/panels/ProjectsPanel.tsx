@@ -78,7 +78,11 @@ const ProjectsPanel: React.FC = () => {
 
    const handlePush = useCallback(async (projectId: string) => {
       try {
-         await invoke("push_command", { projectId, setUpstream: false });
+         const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
+         await invoke("unified_push", {
+            transport: { Local: { project_path: projectPath } },
+            setUpstream: false,
+         });
          onRefreshGit(projectId);
       } catch (e) {
          showToast?.(String(e), "error");
@@ -87,7 +91,10 @@ const ProjectsPanel: React.FC = () => {
 
    const handlePull = useCallback(async (projectId: string) => {
       try {
-         await invoke("pull_command", { projectId });
+         const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
+         await invoke("unified_pull", {
+            transport: { Local: { project_path: projectPath } },
+         });
          onRefreshGit(projectId);
       } catch (e) {
          showToast?.(String(e), "error");

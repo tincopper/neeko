@@ -15,7 +15,7 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
 
     // 复用已打开的 Repository，避免重复 open
     let branch_info = get_git_branch_info_from_repo(&repo)?;
-    let changed_files = get_changed_files(&repo)?;
+    let changed_files = get_changed_files_from_repo(&repo)?;
     let is_clean = changed_files.is_empty();
 
     Ok(GitInfo {
@@ -27,7 +27,8 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     })
 }
 
-fn get_changed_files(repo: &Repository) -> Result<Vec<FileChange>> {
+/// Get changed files from an already-open git2 Repository
+pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>> {
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
@@ -473,7 +474,7 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
 /// 获取指定路径（worktree 或项目路径）的变更文件列表
 pub fn get_changed_files_for_path(repo_path: &Path) -> Result<Vec<FileChange>> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-    get_changed_files(&repo)
+    get_changed_files_from_repo(&repo)
 }
 
 /// 获取 Git 分支信息（轻量级，不含 changed_files）
@@ -483,7 +484,7 @@ pub fn get_git_branch_info(repo_path: &Path) -> Result<GitBranchInfo> {
 }
 
 /// 内部版本：接受已打开的 &Repository，避免重复 open
-fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo> {
+pub fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo> {
     // 获取当前分支
     let head = repo.head()?;
     let current_branch = if head.is_branch() {

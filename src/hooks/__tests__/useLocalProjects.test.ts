@@ -188,7 +188,10 @@ describe('useLocalProjects', () => {
       await result.current.handleRefreshGit('p1');
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_worktree_changed_files', { projectId: 'p1', worktreePath: '' });
+    expect(mockInvoke).toHaveBeenCalledWith('unified_get_worktree_changed_files', {
+      transport: { Local: { project_path: '' } },
+      worktreePath: '',
+    });
   });
 
   it('handleOpenIde 不做任何操作当无 IDE', async () => {

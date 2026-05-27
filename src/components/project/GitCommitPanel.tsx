@@ -66,8 +66,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
     let cancelled = false;
     invoke<Array<{ path: string; additions: number; deletions: number }>>(
-      "get_changed_files_diff_stats_command",
-      { projectId: project.id }
+      "unified_get_changed_files_diff_stats",
+      { transport: { Local: { project_path: project.path } } }
     )
       .then((stats) => {
         if (cancelled) return;

@@ -230,10 +230,16 @@ export function useLocalProjects() {
     };
 
     try {
-      const changedFiles = await invoke<FileChange[]>("get_worktree_changed_files", { projectId, worktreePath: "" });
+      const projectPath = projects.find(p => p.id === projectId)?.path ?? "";
+      const changedFiles = await invoke<FileChange[]>("unified_get_worktree_changed_files", {
+        transport: { Local: { project_path: projectPath } },
+        worktreePath: "",
+      });
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
-      invoke<GitBranchInfo>("get_git_branch_info_command", { projectId })
+      invoke<GitBranchInfo>("unified_get_git_branch_info", {
+        transport: { Local: { project_path: projectPath } },
+      })
         .then((branchInfo) => {
           updateProjectGitInfo({
             current_branch: branchInfo.current_branch,

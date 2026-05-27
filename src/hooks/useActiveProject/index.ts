@@ -12,7 +12,8 @@ import { useWorktreeStore } from "../../store/worktreeStore";
 import type { ActiveProjectContext } from "../../types/activeProject";
 import { getCapabilities } from "./capabilities";
 import { toLocalUnifiedView, toWslUnifiedView, toRemoteUnifiedView } from "./adapters";
-import { createLocalCommands, createWslCommands, createRemoteCommands } from "./commandFactory";
+import { createUnifiedCommands } from "./commandFactory";
+import type { GitTransportKind } from "./commandFactory";
 
 /**
  * useActiveProject — 读取 store 中三种活跃项目状态，构建统一 ActiveProjectContext
@@ -41,17 +42,36 @@ export function useActiveProject(): ActiveProjectContext {
       const authKey = entry.id;
       const savedAuth = remoteAuthStore.get(authKey);
       if (savedAuth === undefined) return null;
-      return createRemoteCommands(entry.host, entry.port, entry.username, savedAuth, project.path);
+      const transport: GitTransportKind = {
+        type: "Remote",
+        host: entry.host,
+        port: entry.port,
+        username: entry.username,
+        auth: savedAuth,
+        projectPath: project.path,
+      };
+      return createUnifiedCommands(transport);
     }
     if (activeWslProject !== null) {
-      return createWslCommands(activeWslProject.distro, activeWslProject.project.path);
+      const transport: GitTransportKind = {
+        type: "Wsl",
+        distro: activeWslProject.distro,
+        projectPath: activeWslProject.project.path,
+      };
+      return createUnifiedCommands(transport);
     }
     if (activeProject !== null) {
-      return createLocalCommands(activeProject.id);
+      const transport: GitTransportKind = {
+        type: "Local",
+        projectId: activeProject.id,
+        projectPath: activeProject.path,
+      };
+      return createUnifiedCommands(transport);
     }
     return null;
   }, [
     activeProject?.id,
+    activeProject?.path,
     activeWslProject?.distro,
     activeWslProject?.project.path,
     activeRemoteProject?.entry.id,

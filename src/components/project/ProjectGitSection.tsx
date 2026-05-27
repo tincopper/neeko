@@ -65,6 +65,7 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
       <WorktreeList
         worktrees={worktrees}
         projectId={project.id}
+        projectPath={project.path}
         onOpenWorktreeTerminal={onOpenWorktreeTerminal}
         onRefreshGit={onRefreshGit}
         onShowToast={onShowToast}

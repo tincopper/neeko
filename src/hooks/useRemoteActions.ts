@@ -119,15 +119,27 @@ export function useRemoteActions({
     string
   >({
     refreshGitInfo: async (projectPath, entryId) => {
-      const result = await invokeRemoteGit(
-        "refresh_remote_git_info",
-        entryId,
-        { projectPath },
-      ).catch((e) => {
+      const entry = remoteEntries.find((item) => item.id === entryId);
+      const auth = remoteAuthStore.get(entryId);
+      if (!entry || !auth) {
+        console.error("[SSH] No auth for entry");
+        return null;
+      }
+      const result = await invoke<GitInfo>("unified_get_git_info", {
+        transport: {
+          Remote: {
+            host: entry.host,
+            port: entry.port,
+            username: entry.username,
+            auth,
+            project_path: projectPath,
+          },
+        },
+      }).catch((e) => {
         console.error("[SSH] Failed to refresh git info:", e);
         return null;
       });
-      return result as GitInfo | null;
+      return result;
     },
     setEntries: setRemoteEntries,
     setActiveProject: setActiveRemoteProject,
@@ -139,7 +151,7 @@ export function useRemoteActions({
         git_info: gitInfo,
       },
     }),
-  }), [invokeRemoteGit, setRemoteEntries, setActiveRemoteProject]);
+  }), [remoteEntries, remoteAuthStore, setRemoteEntries, setActiveRemoteProject]);
 
   const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
     useProjectStore.setState({

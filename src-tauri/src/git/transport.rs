@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::process::Command;
+use std::path::Path;
 
 use crate::models::AuthMethod;
 use crate::utils::command::local::exec as local_exec;
@@ -61,6 +61,22 @@ impl GitTransport {
                 exec_command(host, *port, username, auth, &cmd).await
             }
         }
+    }
+
+    /// Open a git2 Repository for local transport, if git2 is available.
+    /// Returns None for non-Local transports.
+    pub fn open_repo(&self, path: &str) -> Option<git2::Repository> {
+        match self {
+            GitTransport::Local => git2::Repository::open(path).ok(),
+            #[cfg(target_os = "windows")]
+            GitTransport::Wsl { .. } => None,
+            GitTransport::Remote { .. } => None,
+        }
+    }
+
+    /// Check if this transport supports git2 operations
+    pub fn supports_git2(&self) -> bool {
+        matches!(self, GitTransport::Local)
     }
 
     /// Check if a directory is a git repo
