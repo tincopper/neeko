@@ -137,3 +137,36 @@ Fixed WSL/Remote diff stats bug in GitCommitPanel — was hardcoded to Local tra
 ### Next Steps
 
 - None - task complete
+
+
+## Session 62: Refactor Round 4 #2: simplify useDiffData with unified commands
+
+**Date**: 2026-05-27
+**Task**: Refactor Round 4 #2: simplify useDiffData with unified commands
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Added unified commands path to useDiffData hook — 7-branch diffSource.type switch now has a clean path using commands.getCommitFileDiff() and commands.getFileDiff(). Legacy per-type invoke dispatch preserved as fallback. Added getFileDiff to ProjectCommands interface.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5281940` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

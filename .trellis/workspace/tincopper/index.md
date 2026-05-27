@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 61
+- **Total Sessions**: 62
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~139 | Active |
+| `journal-2.md` | ~172 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 62 | 2026-05-27 | Refactor Round 4 #2: simplify useDiffData with unified commands | `5281940` | `refactor/architecture-optimization` |
 | 61 | 2026-05-27 | Fix Round 4 #1+3: Local transport bypass + FileViewer capabilities | `20b3f2f` | `refactor/architecture-optimization` |
 | 60 | 2026-05-27 | Refactor Round 3 #5: extract useBrowserPicker from useBrowserPanel | `8c2fdfc` | `refactor/architecture-optimization` |
 | 59 | 2026-05-27 | Refactor Round 3 #2: flatten AppModals, delete useAppModalsProps | `a32f0ae` | `refactor/architecture-optimization` |
