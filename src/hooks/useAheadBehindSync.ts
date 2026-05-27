@@ -1,97 +1,43 @@
 import { useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { AheadBehind, AuthMethod } from "../types";
+import type { AheadBehind } from "../types";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useGitStore } from "../store/gitStore";
 import { aheadBehindKey } from "../utils/aheadBehindKey";
 
+interface AheadBehindCommands {
+  getAheadBehind(): Promise<AheadBehind>;
+}
+
 /**
- * useAheadBehindSync —— 当 active 项目（local / WSL / SSH）切换时，
- * 单次 invoke 对应的 ahead/behind 命令，把结果写入 `useGitStore.aheadBehind`。
+ * useAheadBehindSync — when the active project changes, fetch ahead/behind counts.
  *
- * 复合 key：`${kind}:${entryId}:${projectId}`，详见 `utils/aheadBehindKey.ts`。
+ * If `commands` is provided (from useActiveProject), uses the unified transport.
+ * Otherwise falls back to legacy manual invoke (not used in new code).
  */
-export function useAheadBehindSync() {
+export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeWslProject = useConnectionStore((s) => s.activeWslProject);
   const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
-  const remoteAuthStore = useConnectionStore((s) => s.remoteAuthStore);
   const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
-  // ── Local ──
   useEffect(() => {
-    if (!activeProjectId) return;
-    const key = aheadBehindKey("local", activeProjectId, activeProjectId);
-    const projectPath = useProjectStore.getState().projects.find(p => p.id === activeProjectId)?.path ?? "";
-    let cancelled = false;
-    invoke<AheadBehind>("unified_get_ahead_behind", {
-      transport: { Local: { project_path: projectPath } },
-    })
-      .then((info) => {
-        if (cancelled) return;
-        setAheadBehind(key, info);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAheadBehind(key, null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeProjectId, setAheadBehind]);
+    if (!commands) return;
+    if (!activeProjectId && !activeWslProject && !activeRemoteProject) return;
 
-  // ── WSL ──
-  useEffect(() => {
-    if (!activeWslProject) return;
-    const { distro, project } = activeWslProject;
-    const key = aheadBehindKey("wsl", distro, project.id);
-    let cancelled = false;
-    invoke<AheadBehind>("unified_get_ahead_behind", {
-      transport: { Wsl: { distro, project_path: project.path } },
-    })
-      .then((info) => {
-        if (cancelled) return;
-        setAheadBehind(key, info);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAheadBehind(key, null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeWslProject, setAheadBehind]);
+    const id = (activeProjectId ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id)!;
+    const kind = (activeProjectId ? "local" : activeWslProject ? "wsl" : "remote") as "local" | "wsl" | "remote";
+    const entryId = activeWslProject?.distro ?? activeRemoteProject?.entry.id ?? id;
+    const key = aheadBehindKey(kind, entryId, id);
 
-  // ── Remote ──
-  useEffect(() => {
-    if (!activeRemoteProject) return;
-    const { entry, project } = activeRemoteProject;
-    const auth = remoteAuthStore.get(entry.id) as AuthMethod | undefined;
-    if (!auth) return;
-    const key = aheadBehindKey("remote", entry.id, project.id);
     let cancelled = false;
-    invoke<AheadBehind>("unified_get_ahead_behind", {
-      transport: {
-        Remote: {
-          host: entry.host,
-          port: entry.port,
-          username: entry.username,
-          auth,
-          project_path: project.path,
-        },
-      },
-    })
+    commands.getAheadBehind()
       .then((info) => {
-        if (cancelled) return;
-        setAheadBehind(key, info);
+        if (!cancelled) setAheadBehind(key, info);
       })
       .catch(() => {
-        if (cancelled) return;
-        setAheadBehind(key, null);
+        if (!cancelled) setAheadBehind(key, null);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeRemoteProject, remoteAuthStore, setAheadBehind]);
+    return () => { cancelled = true; };
+  }, [activeProjectId, activeWslProject, activeRemoteProject, commands, setAheadBehind]);
 }

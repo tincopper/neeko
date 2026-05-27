@@ -14,6 +14,7 @@ import { WSLItem, RemoteItem } from "../connections/RemoteItems";
 import { useProjectStore } from "../../store/projectStore";
 import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
 import { useUnifiedProjectList } from "../../hooks/useUnifiedProjectList";
+import { useActiveProject } from "../../hooks/useActiveProject";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
@@ -61,9 +62,10 @@ const ProjectsPanel: React.FC = () => {
    const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
    const [remoteHomeDir, setRemoteHomeDir] = useState<string>("");
 
-   useAheadBehindSync();
-
    const { items: unifiedItems, isEmpty: isEmpty } = useUnifiedProjectList();
+   const { commands } = useActiveProject();
+
+   useAheadBehindSync(commands);
 
    /// The very last item across all three sections
    const lastCardId = useMemo<{ kind: "local" | "wsl" | "remote"; entryId?: string; projectId: string } | null>(() => {
