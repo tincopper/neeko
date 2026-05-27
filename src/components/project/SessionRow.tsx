@@ -3,7 +3,7 @@ import { cn } from "../../utils/cn";
 import { TerminalIcon, FolderGitIcon } from "../icons";
 import SessionChips from "./SessionChips";
 
-export type SessionKind = "local" | "worktree";
+type SessionKind = "local" | "worktree";
 
 interface SessionRowProps {
   kind: SessionKind;

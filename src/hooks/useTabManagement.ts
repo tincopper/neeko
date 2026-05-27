@@ -76,9 +76,6 @@ export function useTabManagement(options: UseTabManagementOptions) {
     [tabKey, activateTab],
   );
 
-  const handleToggleTerminal = useCallback(() => {
-  }, []);
-
   const handleTabStatusChange = useCallback(
     (tabId: string, status: "Idle" | "Running" | "Failed") => {
       if (!tabKey) return;
@@ -94,7 +91,6 @@ export function useTabManagement(options: UseTabManagementOptions) {
     handleAddTab,
     handleCloseTab,
     handleActivateTab,
-    handleToggleTerminal,
     handleTabStatusChange,
     handleTabAgentClick,
   };

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use std::path::Path;
 
 use crate::connection::types::AuthMethod;
 use crate::utils::command::local::exec as local_exec;

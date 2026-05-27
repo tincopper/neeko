@@ -211,7 +211,6 @@ describe("shortcutRegistry", () => {
       const result = resolveBindings({});
       expect(result.cycleWorktree).toBe("Ctrl+N");
       expect(result.openIde).toBe("Ctrl+O");
-      expect(result.toggleTerminal).toBe("Ctrl+T");
     });
 
     it("applies overrides", () => {

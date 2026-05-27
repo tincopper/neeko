@@ -16,7 +16,6 @@ interface WorktreeStoreState {
   activeRemoteWorktreePath: string | null;
   remoteActiveWtBranch: string;
   remoteOpenedWt: WorktreeSnapshotItem[];
-  worktreeState: Record<string, string>;
 }
 
 export const useWorktreeStore = create<WorktreeStoreState>(() => ({
@@ -30,5 +29,4 @@ export const useWorktreeStore = create<WorktreeStoreState>(() => ({
   activeRemoteWorktreePath: null,
   remoteActiveWtBranch: "",
   remoteOpenedWt: [],
-  worktreeState: {},
 }));

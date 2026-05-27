@@ -18,7 +18,6 @@ interface UseKeyboardShortcutsParams {
   activeTabId: string | null;
   onCloseTab: (tabId: string) => void;
   shortcuts: Record<string, string>;
-  onToggleTerminal: () => void;
   unifiedItems: UnifiedProjectItem[];
 }
 
@@ -31,7 +30,6 @@ export function useKeyboardShortcuts({
   activeTabId,
   onCloseTab,
   shortcuts,
-  onToggleTerminal,
   unifiedItems,
 }: UseKeyboardShortcutsParams) {
   const shortcutsRef = useRef(shortcuts);
@@ -180,12 +178,6 @@ export function useKeyboardShortcuts({
             switchToItem(unifiedItems[targetIdx]);
             break;
           }
-
-          case "toggleTerminal": {
-            e.preventDefault();
-            onToggleTerminal();
-            break;
-          }
         }
 
         return;
@@ -194,7 +186,7 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, onCloseTab, onToggleTerminal, unifiedItems]);
+  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, onCloseTab, unifiedItems]);
 }
 
 /** Find current position in the unified project list */

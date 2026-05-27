@@ -1,7 +1,6 @@
 use crate::connection::types::AuthMethod;
 use crate::utils::command::ssh_auth;
 use anyhow::Result;
-use russh::*;
 
 /// 通过 SSH 通道执行命令并等待完成（验证 exit code）
 pub async fn exec(channel: &mut russh::Channel<russh::client::Msg>, cmd: &str) -> Result<()> {
@@ -34,7 +33,7 @@ pub async fn exec_command(
     auth: &AuthMethod,
     cmd: &str,
 ) -> Result<String> {
-    let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
+    let session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
     let mut channel = session.channel_open_session().await?;
     channel.exec(true, cmd.as_bytes()).await?;

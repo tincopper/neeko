@@ -55,7 +55,7 @@ impl RemoteTerminalManager {
         log_info(&format!("[SSH] Working Dir: {}", project_path));
 
         // 建立 SSH 连接并认证
-        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
+        let session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         log_info(&format!("[SSH] Authentication successful for {}", username));
 
@@ -255,7 +255,7 @@ impl RemoteTerminalManager {
         username: &str,
         auth: &AuthMethod,
     ) -> Result<()> {
-        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
+        let session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, b"echo ok").await?;
@@ -283,7 +283,7 @@ impl RemoteTerminalManager {
         auth: &AuthMethod,
         path: &str,
     ) -> Result<Vec<String>> {
-        let mut session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
+        let session = ssh_auth::connect_and_authenticate(host, port, username, auth).await?;
 
         let mut channel = session.channel_open_session().await?;
         let safe_path = path.replace('\'', "'\\''");

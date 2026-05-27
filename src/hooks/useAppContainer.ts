@@ -238,7 +238,6 @@ export function useAppContainer(): UseAppContainerResult {
     handleAddTab,
     handleCloseTab,
     handleActivateTab,
-    handleToggleTerminal,
     handleTabStatusChange,
     handleTabAgentClick,
   } = useTabManagement({
@@ -346,7 +345,6 @@ export function useAppContainer(): UseAppContainerResult {
     activeTabId,
     onCloseTab: handleCloseTab,
     shortcuts: config.shortcuts,
-    onToggleTerminal: handleToggleTerminal,
     unifiedItems: useUnifiedProjectList().items,
   });
 

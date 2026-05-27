@@ -159,41 +159,6 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-// --- Helpers ---
-
-fn add_column_if_missing(
-    conn: &Connection,
-    table: &str,
-    column: &str,
-    definition: &str,
-) -> Result<()> {
-    validate_identifier(table)?;
-    validate_identifier(column)?;
-
-    if !has_column(conn, table, column)? {
-        conn.execute(
-            &format!("ALTER TABLE {table} ADD COLUMN {column} {definition}"),
-            [],
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_identifier(name: &str) -> Result<()> {
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        anyhow::bail!("Invalid SQL identifier: {}", name);
-    }
-    Ok(())
-}
-
-fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
-    let columns: Vec<String> = stmt
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(columns.iter().any(|name| name == column))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

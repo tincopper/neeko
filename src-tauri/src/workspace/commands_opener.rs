@@ -2,11 +2,6 @@ use crate::AppError;
 use std::path::Path;
 use std::process::Command;
 
-/// 判断路径是否为目录
-fn is_directory(path: &str) -> bool {
-    Path::new(path).is_dir()
-}
-
 /// 规范化路径：将正斜杠统一为反斜杠（Windows）
 fn normalize_path(path: &str) -> String {
     #[cfg(target_os = "windows")]
@@ -114,7 +109,7 @@ mod tests {
     fn test_is_directory_with_existing_dir() {
         let temp = std::env::temp_dir().join("neeko_test_is_dir");
         let _ = fs::create_dir_all(&temp);
-        assert!(is_directory(temp.to_str().unwrap()));
+        assert!(std::path::Path::new(temp.to_str().unwrap()).is_dir());
         let _ = fs::remove_dir(&temp);
     }
 
@@ -122,7 +117,7 @@ mod tests {
     fn test_is_directory_with_file() {
         let temp = std::env::temp_dir().join("neeko_test_is_dir_file.txt");
         let _ = fs::write(&temp, "test");
-        assert!(!is_directory(temp.to_str().unwrap()));
+        assert!(!std::path::Path::new(temp.to_str().unwrap()).is_dir());
         let _ = fs::remove_file(&temp);
     }
 

@@ -31,7 +31,6 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "closeTab", label: "Close Tab", defaultBinding: "Ctrl+W" },
   { id: "cycleProject", label: "Next Project", defaultBinding: "Ctrl+Q" },
   { id: "switchProject", label: "Jump to Project", defaultBinding: "Ctrl+[1-9]" },
-  { id: "toggleTerminal", label: "Toggle Terminal/File View", defaultBinding: "Ctrl+T" },
   { id: "prevTab", label: "Previous Tab", defaultBinding: "Alt+Left" },
   { id: "nextTab", label: "Next Tab", defaultBinding: "Alt+Right" },
 ];

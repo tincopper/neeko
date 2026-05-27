@@ -1078,66 +1078,7 @@ pub async fn install_from_skillssh(
             for prefix in common_paths {
                 let alt_path = repo_path.join(prefix).join(&skill_id);
                 if alt_path.exists() {
-                    // Install from alternative path
-                    let result = super::installer::install_from_local(&alt_path, Some(&skill_id))
-                        .map_err(|e| e.to_string())?;
                     found = true;
-
-                    // Get revision
-                    let revision = super::git_fetcher::get_head_revision(&repo_path).ok();
-
-                    // Insert skill record
-                    let now = chrono::Utc::now().timestamp_millis();
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let skill = super::types::SkillRecord {
-                        id: id.clone(),
-                        name: result.name.clone(),
-                        description: result.description.clone(),
-                        source_type: "skillssh".to_string(),
-                        source_ref: Some(git_url.clone()),
-                        source_ref_resolved: None,
-                        source_subpath: Some(format!("{}/{}", prefix, skill_id)),
-                        source_branch: None,
-                        source_revision: revision,
-                        remote_revision: None,
-                        central_path: result.central_path.to_string_lossy().to_string(),
-                        content_hash: Some(result.content_hash),
-                        enabled: true,
-                        status: "ok".to_string(),
-                        update_status: "up_to_date".to_string(),
-                        last_checked_at: Some(now),
-                        last_check_error: None,
-                        created_at: now,
-                        updated_at: now,
-                    };
-                    store.insert_skill(&skill).map_err(|e| e.to_string())?;
-
-                    // Cleanup
-                    super::git_fetcher::cleanup_temp(&repo_path);
-
-                    // Emit progress: done
-                    let _ = app_handle.emit(
-                        "install-progress",
-                        serde_json::json!({
-                            "skill_id": skill_id,
-                            "phase": "done"
-                        }),
-                    );
-
-                    return Ok(ManagedSkillDtoOut {
-                        id,
-                        name: result.name,
-                        description: result.description,
-                        source_type: "skillssh".to_string(),
-                        source_ref: Some(git_url),
-                        central_path: result.central_path.to_string_lossy().to_string(),
-                        enabled: true,
-                        status: "ok".to_string(),
-                        update_status: "up_to_date".to_string(),
-                        tags: vec![],
-                        created_at: now,
-                        updated_at: now,
-                    });
                 }
             }
             if !found {

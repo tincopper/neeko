@@ -33,8 +33,6 @@ export interface DockStore {
   activatePanel: (zoneId: string, panelId: string) => void;
   movePanel: (panelId: string, targetZoneId: string, index?: number) => void;
   closePanel: (panelId: string) => void;
-  expandZone: (zoneId: string) => void;
-  restoreDefaultLayout: () => void;
   setRightPanelSize: (panelId: string, size: number) => void;
   setLeftPanelSize: (size: number) => void;
 }
@@ -271,22 +269,7 @@ export const useDockStore = create<DockStore>()(
           });
         },
 
-        expandZone: (zoneId: string) => {
-          set((state) => {
-            const zone = state.zones[zoneId];
-            if (!zone) return state;
-            return {
-              zones: {
-                ...state.zones,
-                [zoneId]: { ...zone, expanded: true },
-              },
-            };
-          });
-        },
-
         setRightPanelSize: (panelId: string, size: number) => {
-          // Clamp to at least 12% (= minSize) so a collapsed/transitioning resize
-          // event can never overwrite the stored size with an unusably small value.
           const clamped = Math.max(size, 12);
           set((state) => ({
             rightPanelSizes: { ...state.rightPanelSizes, [panelId]: clamped },
@@ -295,11 +278,6 @@ export const useDockStore = create<DockStore>()(
 
         setLeftPanelSize: (size: number) => {
           set({ leftPanelSize: size });
-        },
-
-        restoreDefaultLayout: () => {
-          const defaults = createInitialState();
-          set({ zones: defaults.zones, barItems: defaults.barItems, rightPanelSizes: { browser: 50 }, leftPanelSize: 18 });
         },
       };
     },

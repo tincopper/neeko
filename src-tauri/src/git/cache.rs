@@ -46,12 +46,6 @@ impl<T> TtlCache<T> {
             guard.retain(|k, _| !k.starts_with(&prefix));
         }
     }
-
-    fn clear(&self) {
-        if let Ok(mut guard) = self.inner.lock() {
-            guard.clear();
-        }
-    }
 }
 
 static PR_LIST_CACHE: LazyLock<TtlCache<Vec<PRListItem>>> = LazyLock::new(TtlCache::new);
