@@ -71,3 +71,36 @@ Flattened AppModals to accept flat props directly (18 individual fields instead 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 60: Refactor Round 3 #5: extract useBrowserPicker from useBrowserPanel
+
+**Date**: 2026-05-27
+**Task**: Refactor Round 3 #5: extract useBrowserPicker from useBrowserPanel
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Extracted useBrowserPicker hook from useBrowserPanel (592→534 lines). New hook manages isPicking state, startPicker/stopPicker/reinjectPicker callbacks, picker-cancelled event listener, and periodic fallback re-injection interval. Shared BROWSER_WEBVIEW_LABEL constant moved to useBrowserConstants.ts.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8c2fdfc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
