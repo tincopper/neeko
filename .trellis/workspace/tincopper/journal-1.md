@@ -1852,3 +1852,36 @@ Round 2 candidates #1 and #5: Deleted orphaned useConnectionWorktreeState hook a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 54: Refactor: simplify useKeyboardShortcuts — targeted reads + unified list
+
+**Date**: 2026-05-27
+**Task**: Refactor: simplify useKeyboardShortcuts — targeted reads + unified list
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Replaced quad-store snapshot spread with targeted per-action getState() reads. Replaced buildProjectList/findCurrentIndex/switchTo with useUnifiedProjectList items. Eliminated duplicate cycleTab tabKey derivation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `703f02a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
