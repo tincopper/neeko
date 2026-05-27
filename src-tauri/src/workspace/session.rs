@@ -119,7 +119,7 @@ impl StorageManager {
 
     pub fn create_session_from_projects(
         &self,
-        projects: &[crate::models::Project],
+        projects: &[crate::project::types::Project],
         wsl_entries: Option<&[WSLEntrySession]>,
         remote_entries: Option<&[RemoteEntrySession]>,
         sidebar_width: Option<u32>,

@@ -1,4 +1,5 @@
-use crate::models::{AheadBehind, DiffResult, FileDiffStats, PRInfo, PRListItem};
+use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem};
+use crate::git::types::DiffResult;
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};

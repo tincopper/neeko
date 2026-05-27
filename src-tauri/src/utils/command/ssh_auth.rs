@@ -1,4 +1,4 @@
-use crate::models::AuthMethod;
+use crate::connection::types::AuthMethod;
 use anyhow::Result;
 use russh::*;
 use std::sync::Arc;

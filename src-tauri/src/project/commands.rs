@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::project::types::{GitInfo, Project};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;

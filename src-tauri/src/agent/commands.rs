@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::agent::types::AgentConfig;
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::collections::HashMap;

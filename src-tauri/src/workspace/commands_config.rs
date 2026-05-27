@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::workspace::types::{RemoteEntrySession, SessionStore, WSLEntrySession};
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;

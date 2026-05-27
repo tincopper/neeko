@@ -1,4 +1,4 @@
-use crate::models::{FileContent, FileNode};
+use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::Path;

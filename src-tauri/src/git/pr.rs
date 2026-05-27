@@ -1,4 +1,4 @@
-use crate::models::{PRInfo, PRListItem, PRMergeResult};
+use crate::project::types::{PRInfo, PRListItem, PRMergeResult};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;

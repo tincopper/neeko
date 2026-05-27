@@ -1,4 +1,5 @@
-use neeko_lib::models::{TerminalStatus, ViewMode};
+use neeko_lib::terminal::types::TerminalStatus;
+use neeko_lib::project::types::ViewMode;
 use neeko_lib::project::ProjectManager;
 use std::path::PathBuf;
 use tempfile::TempDir;

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::models::{
-    CommitEntry, DiffHunk, DiffLine, DiffResult, FileChange, FileNode, FileStatus, GitInfo,
-    Worktree,
+use crate::project::types::{
+    CommitEntry, FileChange, FileNode, FileStatus, GitInfo, Worktree,
 };
+use crate::git::types::{DiffHunk, DiffLine, DiffResult};
 
 // ─── Diff parsers (originally from local.rs) ─────────────────────────────────
 

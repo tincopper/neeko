@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::models::AuthMethod;
+use crate::connection::types::AuthMethod;
 use crate::utils::command::local::exec as local_exec;
 use crate::utils::command::ssh::{exec_command, safe_path};
 #[cfg(target_os = "windows")]

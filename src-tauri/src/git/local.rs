@@ -1,7 +1,8 @@
-use crate::models::{
-    CommitDetail, CommitEntry, CommitFileChange, DiffHunk, DiffLine, DiffResult, FileChange,
+use crate::project::types::{
+    CommitDetail, CommitEntry, CommitFileChange, FileChange,
     FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
 };
+use crate::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::utils::command::local::exec;
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
@@ -1428,7 +1429,7 @@ pub fn remote_web_url(repo_path: &Path) -> Result<String> {
     Ok(url.strip_suffix(".git").unwrap_or(&url).to_string())
 }
 
-use crate::models::{AheadBehind, CommitResult};
+use crate::project::types::{AheadBehind, CommitResult};
 
 /// 获取指定文件相对于 HEAD 的 diff（未 staged 也包含）。
 /// 优先取 `git diff HEAD -- files`，新文件（untracked）回退到直接读文件内容。

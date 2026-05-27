@@ -1,8 +1,9 @@
 use anyhow::Result;
 
+use crate::connection::types::AuthMethod;
+use crate::project::types::{FileNode, GitInfo};
 #[cfg(test)]
-use crate::models::FileStatus;
-use crate::models::{AuthMethod, FileNode, GitInfo};
+use crate::project::types::FileStatus;
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::parsers::{build_file_tree_from_find, parse_git_info_output};
@@ -81,7 +82,7 @@ fn prefix_paths_remote(nodes: &mut Vec<FileNode>, prefix: &str) {
 mod tests {
     use super::*;
     use crate::git::parsers::parse_status_line;
-    use crate::models::FileStatus;
+    use crate::project::types::FileStatus;
 
     #[test]
     fn should_parse_git_info_with_branch() {

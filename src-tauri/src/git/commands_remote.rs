@@ -1,4 +1,5 @@
-use crate::models::*;
+use crate::connection::types::AuthMethod;
+use crate::project::types::{FileContent, FileNode, GitInfo};
 use crate::AppError;
 
 /// 文件树默认递归深度

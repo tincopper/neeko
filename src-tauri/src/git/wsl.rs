@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::models::FileNode;
+use crate::project::types::FileNode;
 use crate::utils::command::wsl::{exec, open_ide, safe_path};
 
 use super::parsers::build_file_tree_from_find;

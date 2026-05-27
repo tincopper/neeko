@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::project::types::{PRInfo, PRListItem, PRMergeResult};
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;

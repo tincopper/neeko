@@ -1,4 +1,4 @@
-use crate::models::AuthMethod;
+use crate::connection::types::AuthMethod;
 use crate::utils::command::ssh_auth;
 use anyhow::Result;
 use russh::*;

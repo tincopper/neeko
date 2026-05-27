@@ -2,11 +2,12 @@ use serde::Deserialize;
 
 use crate::git::operations;
 use crate::git::transport::GitTransport;
-use crate::models::AuthMethod;
-use crate::models::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, DiffResult, FileChange,
+use crate::connection::types::AuthMethod;
+use crate::project::types::{
+    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, GitBranchInfo, GitInfo,
 };
+use crate::git::types::DiffResult;
 use crate::AppError;
 
 #[derive(Debug, Deserialize)]

@@ -12,9 +12,6 @@ pub mod workspace;
 
 pub mod utils;
 
-// Compatibility — re-exports from old locations, to be removed later
-pub mod models;
-
 pub mod error;
 
 mod app;
