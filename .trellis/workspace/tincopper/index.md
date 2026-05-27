@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 55
+- **Total Sessions**: 56
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1920 | Active |
+| `journal-1.md` | ~1953 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 56 | 2026-05-27 | Refactor: centralize file-changed event listeners | `377cf75` | `refactor/architecture-optimization` |
 | 55 | 2026-05-27 | Refactor: integrate AheadBehind sync into unified command factory | HEAD~1 | `refactor/architecture-optimization` |
 | 54 | 2026-05-27 | Refactor: simplify useKeyboardShortcuts — targeted reads + unified list | `703f02a` | `refactor/architecture-optimization` |
 | 53 | 2026-05-27 | Fix: error handling — unwrap panics + silent swallowing | `9f4319d`, `5c5f26a` | `refactor/architecture-optimization` |

@@ -1918,3 +1918,36 @@ Collapsed useAheadBehindSync from 3 useEffect blocks (manual transport construct
 ### Next Steps
 
 - None - task complete
+
+
+## Session 56: Refactor: centralize file-changed event listeners
+
+**Date**: 2026-05-27
+**Task**: Refactor: centralize file-changed event listeners
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Created useFileChangedEvent hook with ref-counted single IPC subscription. Converted useFileTabRefresh, useBrowserPanel, and HtmlPreview to use shared hook instead of independent listen() calls.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `377cf75` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
