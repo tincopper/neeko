@@ -32,6 +32,7 @@ import { useProjectSelection } from "./useProjectSelection";
 import { useAppModalsProps } from "./useAppModalsProps";
 import { useTabManagement } from "./useTabManagement";
 import { useAgentClickHandler } from "./useAgentClickHandler";
+import { useUnifiedProjectList } from "./useUnifiedProjectList";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
@@ -344,6 +345,7 @@ export function useAppContainer(): UseAppContainerResult {
     onCloseTab: handleCloseTab,
     shortcuts: config.shortcuts,
     onToggleTerminal: handleToggleTerminal,
+    unifiedItems: useUnifiedProjectList().items,
   });
 
   const { handleAgentClick } = useAgentClickHandler({
