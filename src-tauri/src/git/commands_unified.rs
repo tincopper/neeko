@@ -60,29 +60,6 @@ fn into_transport_and_dir(kind: &GitTransportKind) -> (GitTransport, &str) {
     }
 }
 
-macro_rules! define_unified_command {
-    ($name:ident, $op:path, ($($param:ident: $t:ty),*), $ret:ty) => {
-        #[tauri::command]
-        pub async fn $name(
-            transport: GitTransportKind,
-            $($param: $t,)*
-        ) -> Result<$ret, AppError> {
-            let (t, wd) = into_transport_and_dir(&transport);
-            $op(&t, wd, $($param,)*).await.map_err(AppError::from)
-        }
-    };
-    ($name:ident, $op:path, ($($param:ident: $t:ty),*), $ret:ty, $extra:expr) => {
-        #[tauri::command]
-        pub async fn $name(
-            transport: GitTransportKind,
-            $($param: $t,)*
-        ) -> Result<$ret, AppError> {
-            let (t, wd) = into_transport_and_dir(&transport);
-            $op(&t, wd, $($param,)*).await.map_err(AppError::from)
-        }
-    };
-}
-
 // ─── Staging ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
