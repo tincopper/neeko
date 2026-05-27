@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 命名与接口设计"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "跨 store 列表联合查询模式"}

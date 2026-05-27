@@ -13,6 +13,7 @@ import CommitDialog from "../project/CommitDialog";
 import { WSLItem, RemoteItem } from "../connections/RemoteItems";
 import { useProjectStore } from "../../store/projectStore";
 import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
+import { useUnifiedProjectList } from "../../hooks/useUnifiedProjectList";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();
@@ -62,6 +63,15 @@ const ProjectsPanel: React.FC = () => {
 
    useAheadBehindSync();
 
+   const { items: unifiedItems, isEmpty: isEmpty } = useUnifiedProjectList();
+
+   /// The very last item across all three sections
+   const lastCardId = useMemo<{ kind: "local" | "wsl" | "remote"; entryId?: string; projectId: string } | null>(() => {
+      if (unifiedItems.length === 0) return null;
+      const last = unifiedItems[unifiedItems.length - 1];
+      return { kind: last.kind, entryId: last.entryId, projectId: last.id };
+   }, [unifiedItems]);
+
    useEffect(() => {
       if (!dialog || dialog.type !== "new-worktree" || dialog.source?.type !== "remote" || !dialog.source.entryId || !invokeRemoteGit) {
          setRemoteHomeDir("");
@@ -100,38 +110,6 @@ const ProjectsPanel: React.FC = () => {
          showToast?.(String(e), "error");
       }
    }, [onRefreshGit, showToast]);
-
-   const isEmpty =
-      projects.length === 0 &&
-      (IS_WINDOWS ? wslEntries.length === 0 : true) &&
-      remoteEntries.length === 0;
-
-   /**
-    * isLast 派生：整个 ProjectsPanel 中位于绝对末尾的项目卡才不画 hairline。
-    * 顺序：local 项目 → WSL section（按 entry，按 project）→ Remote section（按 entry，按 project）。
-    */
-   const lastCardId = useMemo<{ kind: "local" | "wsl" | "remote"; entryId?: string; projectId: string } | null>(() => {
-      const wslEnabled = IS_WINDOWS;
-      // Reverse search: remote → wsl → local
-      for (let i = remoteEntries.length - 1; i >= 0; i--) {
-         const entry = remoteEntries[i];
-         if (entry.projects.length > 0) {
-            return { kind: "remote", entryId: entry.id, projectId: entry.projects[entry.projects.length - 1].id };
-         }
-      }
-      if (wslEnabled) {
-         for (let i = wslEntries.length - 1; i >= 0; i--) {
-            const entry = wslEntries[i];
-            if (entry.projects.length > 0) {
-               return { kind: "wsl", entryId: entry.id, projectId: entry.projects[entry.projects.length - 1].id };
-            }
-         }
-      }
-      if (projects.length > 0) {
-         return { kind: "local", projectId: projects[projects.length - 1].id };
-      }
-      return null;
-   }, [projects, wslEntries, remoteEntries]);
 
    return (
       <>
