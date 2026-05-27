@@ -1653,3 +1653,36 @@ Extracted useTabManagement (tabKey/composite key + ensureDefaultTab effect + 5 t
 ### Next Steps
 
 - None - task complete
+
+
+## Session 48: Refactor: unify TerminalView — route local through TerminalViewBase
+
+**Date**: 2026-05-27
+**Task**: Refactor: unify TerminalView — route local through TerminalViewBase
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Collapsed TerminalView.tsx from 360 lines to 54 by routing local terminals through the strategy-based TerminalViewBase. Extended TerminalViewBase with task terminal support (taskCommand, taskRebuildKey) and agent command override. Fixed local strategy projectName construction bug. Local/WSL/Remote now share one terminal rendering code path.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4721d4d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
