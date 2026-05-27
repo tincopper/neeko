@@ -1620,3 +1620,36 @@ Complete git unification task: extract build_agent_commit_cmd() shared function 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 47: Refactor: decompose useAppContainer god hook, fix component-store setState
+
+**Date**: 2026-05-27
+**Task**: Refactor: decompose useAppContainer god hook, fix component-store setState
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Extracted useTabManagement (tabKey/composite key + ensureDefaultTab effect + 5 tab callbacks) and useAgentClickHandler (3-way Local/WSL/Remote dispatch) from useAppContainer.ts, reducing it by 109 lines. Extracted useRefreshGitInfo hook from DockPanelWrappers.tsx to eliminate the only direct setState call from a component. Quality gate clean.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60a85ea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
