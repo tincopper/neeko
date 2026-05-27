@@ -1885,3 +1885,36 @@ Replaced quad-store snapshot spread with targeted per-action getState() reads. R
 ### Next Steps
 
 - None - task complete
+
+
+## Session 55: Refactor: integrate AheadBehind sync into unified command factory
+
+**Date**: 2026-05-27
+**Task**: Refactor: integrate AheadBehind sync into unified command factory
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Collapsed useAheadBehindSync from 3 useEffect blocks (manual transport construction per type) to 1 unified effect using commands.getAheadBehind() from useActiveProject. Hook now accepts optional commands parameter.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `HEAD~1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
