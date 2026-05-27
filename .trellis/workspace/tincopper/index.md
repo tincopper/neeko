@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 51
+- **Total Sessions**: 52
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1787 | Active |
+| `journal-1.md` | ~1820 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 52 | 2026-05-27 | Refactor: migrate model imports to canonical domain paths | `b27a532` | `refactor/architecture-optimization` |
 | 51 | 2026-05-27 | Refactor: introduce useUnifiedProjectList, simplify ProjectsPanel | `4823ef4` | `refactor/architecture-optimization` |
 | 50 | 2026-05-27 | Refactor: inline useRefreshGitInfo pass-through | `5e2af80` | `refactor/architecture-optimization` |
 | 49 | 2026-05-27 | Refactor: remove dead git ops from wsl/remote, consolidate parsers | `57465f3` | `refactor/architecture-optimization` |

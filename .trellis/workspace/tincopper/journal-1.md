@@ -1785,3 +1785,36 @@ Created useUnifiedProjectList hook — flattens Local/WSL/Remote projects into a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 52: Refactor: migrate model imports to canonical domain paths
+
+**Date**: 2026-05-27
+**Task**: Refactor: migrate model imports to canonical domain paths
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Deleted src-tauri/src/models/ directory. Migrated 24 files from crate::models imports to canonical domain types (agent/types, project/types, git/types, connection/types, workspace/types). Removed pub mod models from lib.rs. The commit ce103d0 backend domain module reorganization is now complete.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b27a532` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
