@@ -1719,3 +1719,36 @@ Removed 22 dead git functions from wsl.rs (12) and remote.rs (11) — all supers
 ### Next Steps
 
 - None - task complete
+
+
+## Session 50: Refactor: inline useRefreshGitInfo pass-through
+
+**Date**: 2026-05-27
+**Task**: Refactor: inline useRefreshGitInfo pass-through
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Deleted useRefreshGitInfo.ts (44-line shallow module). Inlined store mutation into DockPanelWrappers.tsx directly — commands.refreshGitInfo() call + projectStore.setState(). Deletion test: removing it concentrates complexity.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5e2af80` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
