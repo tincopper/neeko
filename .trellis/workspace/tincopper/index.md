@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 48
+- **Total Sessions**: 49
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1688 | Active |
+| `journal-1.md` | ~1721 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 49 | 2026-05-27 | Refactor: remove dead git ops from wsl/remote, consolidate parsers | `57465f3` | `refactor/architecture-optimization` |
 | 48 | 2026-05-27 | Refactor: unify TerminalView — route local through TerminalViewBase | `4721d4d` | `refactor/architecture-optimization` |
 | 47 | 2026-05-27 | Refactor: decompose useAppContainer god hook, fix component-store setState | `60a85ea` | `refactor/architecture-optimization` |
 | 46 | 2026-05-27 | Git unification: trim old commands, Candidate #1 AI commit dedup, Candidate #2 cross-store hook | `46f7ba2` | `refactor/architecture-optimization` |

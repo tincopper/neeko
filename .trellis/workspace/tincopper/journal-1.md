@@ -1686,3 +1686,36 @@ Collapsed TerminalView.tsx from 360 lines to 54 by routing local terminals throu
 ### Next Steps
 
 - None - task complete
+
+
+## Session 49: Refactor: remove dead git ops from wsl/remote, consolidate parsers
+
+**Date**: 2026-05-27
+**Task**: Refactor: remove dead git ops from wsl/remote, consolidate parsers
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Removed 22 dead git functions from wsl.rs (12) and remote.rs (11) — all superseded by unified operations.rs. Consolidated 3 duplicate parsers (parse_commit_log, extract_commit_hash, parse_numstat_line) from local.rs/operations.rs into parsers.rs. Net: -875 lines. 217 Rust tests + 535 frontend tests all pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57465f3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
