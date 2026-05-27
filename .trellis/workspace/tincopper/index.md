@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 58
+- **Total Sessions**: 59
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~40 | Active |
+| `journal-2.md` | ~73 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 59 | 2026-05-27 | Refactor Round 3 #2: flatten AppModals, delete useAppModalsProps | `a32f0ae` | `refactor/architecture-optimization` |
 | 58 | 2026-05-27 | Refactor Round 3 #1+4: delete useDelayedInit, extract fileTree utils, fix WSL/Remote file refresh | `361685e` | `refactor/architecture-optimization` |
 | 57 | 2026-05-27 | Test: add tests for editorStore and useUnifiedProjectList | `ad654c4` | `refactor/architecture-optimization` |
 | 56 | 2026-05-27 | Refactor: centralize file-changed event listeners | `377cf75` | `refactor/architecture-optimization` |

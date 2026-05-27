@@ -38,3 +38,36 @@ Deleted useDelayedInit (inlined 3-line useEffect). Extracted mergeSubTree/getTab
 ### Next Steps
 
 - None - task complete
+
+
+## Session 59: Refactor Round 3 #2: flatten AppModals, delete useAppModalsProps
+
+**Date**: 2026-05-27
+**Task**: Refactor Round 3 #2: flatten AppModals, delete useAppModalsProps
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Flattened AppModals to accept flat props directly (18 individual fields instead of 4 nested sub-objects). Deleted useAppModalsProps.ts (60-line pure adapter). AppModals now has a self-documenting flat interface. Skipped #3 (shared agent skeleton): abstraction cost exceeds duplication cost.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a32f0ae` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
