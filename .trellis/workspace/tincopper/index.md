@@ -7,8 +7,8 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 57
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 58
 - **Last Active**: 2026-05-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1986 | Active |
+| `journal-2.md` | ~40 | Active |
+| `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 58 | 2026-05-27 | Refactor Round 3 #1+4: delete useDelayedInit, extract fileTree utils, fix WSL/Remote file refresh | `361685e` | `refactor/architecture-optimization` |
 | 57 | 2026-05-27 | Test: add tests for editorStore and useUnifiedProjectList | `ad654c4` | `refactor/architecture-optimization` |
 | 56 | 2026-05-27 | Refactor: centralize file-changed event listeners | `377cf75` | `refactor/architecture-optimization` |
 | 55 | 2026-05-27 | Refactor: integrate AheadBehind sync into unified command factory | HEAD~1 | `refactor/architecture-optimization` |
