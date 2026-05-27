@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { IS_WINDOWS } from "../utils/platform";
 import { useProjectStore } from "../store/projectStore";
-import { useWslContext, useRemoteContext } from "../contexts";
+import { useConnectionStore } from "../store/connectionStore";
 
 export interface UnifiedProjectItem {
   kind: "local" | "wsl" | "remote";
@@ -22,8 +22,8 @@ export function useUnifiedProjectList(): {
   isEmpty: boolean;
 } {
   const projects = useProjectStore((state) => state.projects);
-  const { wslEntries } = useWslContext();
-  const { remoteEntries } = useRemoteContext();
+  const wslEntries = useConnectionStore((state) => state.wslEntries);
+  const remoteEntries = useConnectionStore((state) => state.remoteEntries);
 
   return useUnifiedProjectListFromData(projects, wslEntries, remoteEntries);
 }

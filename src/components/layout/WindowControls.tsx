@@ -1,21 +1,35 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import React from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
 import { Minus, Square, Copy, X } from "lucide-react";
 
 function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
-  const appWindow = getCurrentWindow();
+  const [ready, setReady] = useState(false);
+  const appWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
-    appWindow.isMaximized().then(setIsMaximized);
-    const unlisten = appWindow.onResized(() => {
+    try {
+      const appWindow = getCurrentWindow();
+      appWindowRef.current = appWindow;
+
       appWindow.isMaximized().then(setIsMaximized);
-    });
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+      const unlisten = appWindow.onResized(() => {
+        appWindow.isMaximized().then(setIsMaximized);
+      });
+      setReady(true);
+
+      return () => {
+        unlisten.then((fn) => fn());
+      };
+    } catch {
+      setReady(false);
+    }
   }, []);
+
+  if (!ready) return null;
+
+  const appWindow = appWindowRef.current!;
 
   return (
     <div className="flex items-stretch shrink-0">
