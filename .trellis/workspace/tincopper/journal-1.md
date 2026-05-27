@@ -1951,3 +1951,36 @@ Created useFileChangedEvent hook with ref-counted single IPC subscription. Conve
 ### Next Steps
 
 - None - task complete
+
+
+## Session 57: Test: add tests for editorStore and useUnifiedProjectList
+
+**Date**: 2026-05-27
+**Task**: Test: add tests for editorStore and useUnifiedProjectList
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Added 18 new tests: 11 for editorStore (addTab, closeTab, activateTab, updateTab state machine) and 7 for useUnifiedProjectList (ordering, isLast, has_git_info, selected_agent). Refactored hook to expose pure useUnifiedProjectListFromData for testability. Test count: 535 → 553.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ad654c4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
