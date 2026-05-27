@@ -1818,3 +1818,37 @@ Deleted src-tauri/src/models/ directory. Migrated 24 files from crate::models im
 ### Next Steps
 
 - None - task complete
+
+
+## Session 53: Fix: error handling — unwrap panics + silent swallowing
+
+**Date**: 2026-05-27
+**Task**: Fix: error handling — unwrap panics + silent swallowing
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Round 2 candidates #1 and #5: Deleted orphaned useConnectionWorktreeState hook and unused define_unified_command macro. Fixed 9 Tauri commands: replaced .unwrap() with .map_err(AppError::from)?, changed void returns to Result<(), AppError>, stopped silent lock failure swallowing in list_projects, list_agents, set_project_agent, remove_project, set_active_project, set_view_terminal, set_view_diff, set_project_collapsed, set_project_ide. All tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9f4319d` | (see git log) |
+| `5c5f26a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
