@@ -8,7 +8,10 @@ use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};
 
 use super::invalidate_repo_caches;
-use super::parsers::{collapse_diff_context, parse_unified_diff};
+use super::parsers::{
+    collapse_diff_context, extract_commit_hash_from_output, parse_commit_log_output,
+    parse_numstat_line, parse_unified_diff,
+};
 
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -202,31 +205,6 @@ pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStat
 
         Ok(stats)
     })
-}
-
-/// 解析 git diff --numstat 的单行输出
-/// 格式: "additions\tdeletions\tpath"
-/// 二进制文件格式: "-\t-\tpath"
-fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
-    let parts: Vec<&str> = line.splitn(3, '\t').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-
-    // 二进制文件返回 0/0
-    let additions = if parts[0] == "-" {
-        0
-    } else {
-        parts[0].parse().unwrap_or(0)
-    };
-    let deletions = if parts[1] == "-" {
-        0
-    } else {
-        parts[1].parse().unwrap_or(0)
-    };
-    let path = parts[2].to_string();
-
-    Some((additions, deletions, path))
 }
 
 /// 使用 wc -l 计算文件行数
@@ -916,7 +894,7 @@ pub fn commit(repo_path: &Path, message: &str) -> Result<CommitResult> {
         }
         anyhow::bail!("git commit failed: {}", stderr.trim());
     }
-    let hash = extract_commit_hash(&combined).unwrap_or_default();
+    let hash = extract_commit_hash_from_output(&combined).unwrap_or_default();
     invalidate_repo_caches(repo_path);
     Ok(CommitResult {
         success: true,
@@ -1073,7 +1051,7 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    Ok(parse_commit_log(&String::from_utf8_lossy(&output.stdout)))
+    Ok(parse_commit_log_output(&String::from_utf8_lossy(&output.stdout)))
 }
 
 /// 获取 Ahead/Behind 计数（参考 Muxy）
@@ -1134,55 +1112,6 @@ fn check_upstream(repo_path: &Path, branch: &str) -> Result<bool> {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false))
-}
-
-fn extract_commit_hash(stdout: &str) -> Option<String> {
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            // 支持 "[branch abc1234]" 和 "[detached HEAD abc1234]" 格式
-            if let Some(idx) = trimmed.find("] ") {
-                let bracket_content = &trimmed[1..idx];
-                // 取最后一个空格后的部分作为 hash
-                if let Some(last_space) = bracket_content.rfind(' ') {
-                    return Some(bracket_content[last_space + 1..].to_string());
-                }
-                // 如果没有空格，整个内容就是 hash（如 "[abc1234]"）
-                return Some(bracket_content.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn parse_commit_log(output: &str) -> Vec<CommitEntry> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\0').collect();
-            if parts.len() >= 6 {
-                let parents = parts
-                    .get(6)
-                    .map(|s| {
-                        s.split_whitespace()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                Some(CommitEntry {
-                    hash: parts[0].to_string(),
-                    short_hash: parts[1].to_string(),
-                    author: parts[2].to_string(),
-                    timestamp: parts[3].to_string(),
-                    message: parts[4].to_string(),
-                    refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
-                    parents,
-                })
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// 获取单个 Commit 详细信息

@@ -113,28 +113,12 @@ pub async fn commit_files(
     let output = transport
         .run_git(&["commit", "-m", message], work_dir)
         .await?;
-    let hash = extract_commit_hash(&output);
+    let hash = super::parsers::extract_commit_hash_from_output(&output);
     Ok(CommitResult {
         success: true,
         hash: hash.unwrap_or_default(),
         message: message.to_string(),
     })
-}
-
-fn extract_commit_hash(output: &str) -> Option<String> {
-    for line in output.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            if let Some(idx) = trimmed.find("] ") {
-                let bracket_content = &trimmed[1..idx];
-                if let Some(last_space) = bracket_content.rfind(' ') {
-                    return Some(bracket_content[last_space + 1..].to_string());
-                }
-                return Some(bracket_content.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Cherry-pick a commit: `git cherry-pick <commit_hash>`
@@ -354,37 +338,7 @@ pub async fn get_commit_log(
     }
     let str_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let output = transport.run_git(&str_args, work_dir).await?;
-    Ok(parse_commit_log(&output))
-}
-
-fn parse_commit_log(output: &str) -> Vec<CommitEntry> {
-    output
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\0').collect();
-            if parts.len() >= 6 {
-                let parents = parts
-                    .get(6)
-                    .map(|s| {
-                        s.split_whitespace()
-                            .map(|p| p.to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                Some(CommitEntry {
-                    hash: parts[0].to_string(),
-                    short_hash: parts[1].to_string(),
-                    author: parts[2].to_string(),
-                    timestamp: parts[3].to_string(),
-                    message: parts[4].to_string(),
-                    refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
-                    parents,
-                })
-            } else {
-                None
-            }
-        })
-        .collect()
+    Ok(super::parsers::parse_commit_log_output(&output))
 }
 
 /// Get commit detail: `git show --format=... --no-patch <hash>`
@@ -785,7 +739,7 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
     let mut tracked_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in String::from_utf8_lossy(&unstaged.stdout).lines() {
-        if let Some((add, del, path)) = parse_numstat_line(line) {
+        if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
             tracked_paths.insert(path.clone());
             stats.push(FileDiffStats {
                 path: std::path::PathBuf::from(&path),
@@ -796,7 +750,7 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
     }
 
     for line in String::from_utf8_lossy(&staged.stdout).lines() {
-        if let Some((add, del, path)) = parse_numstat_line(line) {
+        if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
             if let Some(existing) = stats.iter_mut().find(|s| s.path.to_string_lossy() == path) {
                 existing.additions += add;
                 existing.deletions += del;
@@ -835,24 +789,6 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
     }
 
     Ok(stats)
-}
-
-fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
-    let parts: Vec<&str> = line.splitn(3, '\t').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    let additions = if parts[0] == "-" {
-        0
-    } else {
-        parts[0].parse().unwrap_or(0)
-    };
-    let deletions = if parts[1] == "-" {
-        0
-    } else {
-        parts[1].parse().unwrap_or(0)
-    };
-    Some((additions, deletions, parts[2].to_string()))
 }
 
 /// Get recent commit messages
