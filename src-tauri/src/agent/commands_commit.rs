@@ -1,6 +1,7 @@
 use crate::AppError;
 use crate::AppStateWrapper;
-use crate::workspace::services;
+use crate::agent::services::commit;
+use crate::utils::path_resolver;
 use tauri::State;
 
 // ─── Tauri Command ──────────────────────────────────────────────────────────
@@ -15,9 +16,9 @@ pub async fn generate_commit_message_command(
     file_paths: Vec<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
-    let project_path = services::path_resolver::resolve_project_path(&state, &project_id)?;
+    let project_path = path_resolver::resolve_project_path(&state, &project_id)?;
     let config = resolve_agent_config(&state, &agent_id, agent_command_override.as_deref())?;
-    services::ai_commit::generate_commit_message(&project_path, &config, &file_paths)
+    commit::generate_commit_message(&project_path, &config, &file_paths)
 }
 
 // ─── Agent Config Bridge (State → Plain Data) ──────────────────────────────
@@ -27,7 +28,7 @@ pub(crate) fn resolve_agent_config(
     state: &AppStateWrapper,
     agent_id: &str,
     command_override: Option<&str>,
-) -> Result<services::ai_commit::AgentInvokeConfig, AppError> {
+) -> Result<commit::AgentInvokeConfig, AppError> {
     let agent_manager = state.agent_manager.lock().map_err(AppError::from)?;
     let agent = agent_manager
         .get_agent(agent_id)
@@ -55,7 +56,7 @@ pub(crate) fn resolve_agent_config(
         post_prompt_args
     );
 
-    Ok(services::ai_commit::AgentInvokeConfig {
+    Ok(commit::AgentInvokeConfig {
         command,
         prompt_args,
         post_prompt_args,

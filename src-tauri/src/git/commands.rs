@@ -33,7 +33,7 @@ pub enum GitTransportKind {
 }
 
 /// Transport for file operations and commit message generation (Remote + WSL).
-/// Local file operations use the existing project_id-based commands in workspace::commands_file.
+/// Local file operations use the existing project_id-based commands in file::commands.
 #[derive(Debug, Deserialize)]
 pub enum FileTransportKind {
     #[cfg(target_os = "windows")]
@@ -772,8 +772,8 @@ pub async fn unified_generate_commit_message(
     file_paths: Vec<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
-    use crate::workspace::commands as ai_commit;
-    use crate::workspace::services::ai_commit as ai_svc;
+    use crate::agent::commands_commit as ai_commit;
+    use crate::agent::services::commit as ai_svc;
     let _ = agent_command_override; // Remote/WSL 不使用宿主机 override
 
     // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）

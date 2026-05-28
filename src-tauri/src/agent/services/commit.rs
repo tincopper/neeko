@@ -344,11 +344,9 @@ fn decode_output(bytes: &[u8]) -> String {
 
 /// 清理 AI 输出：去除 markdown 包裹、ANSI 颜色码、常见废话前缀，只保留 commit message 本体。
 pub fn clean_ai_output(raw: &str) -> String {
-    // 1. 去除 ANSI 颜色/控制码（形如 \x1b[...m）
     let ansi_stripped = strip_ansi(raw);
     let trimmed = ansi_stripped.trim();
 
-    // 2. 去除 ``` 代码块包裹
     let inner = if trimmed.starts_with("```") {
         let without_fence = trimmed.trim_start_matches('`');
         let after_lang = without_fence
@@ -360,7 +358,6 @@ pub fn clean_ai_output(raw: &str) -> String {
         trimmed
     };
 
-    // 3. 去除常见 AI 废话前缀（逐行检查第一个非空行）
     let waste_prefixes: &[&str] = &[
         "here is",
         "here's",
@@ -381,7 +378,6 @@ pub fn clean_ai_output(raw: &str) -> String {
         "提交消息：",
     ];
     let lines: Vec<&str> = inner.lines().collect();
-    // 找到第一个非空且不是废话前缀的行作为起始
     let start_idx = lines
         .iter()
         .position(|l| {
@@ -391,8 +387,6 @@ pub fn clean_ai_output(raw: &str) -> String {
         .unwrap_or(0);
     let lines = &lines[start_idx..];
 
-    // 4. 取 subject + 可选 body（subject + 空行 + body），遇到第二个空行截止
-    //    最多保留 20 行，丢弃 AI 在 commit message 后附加的解释
     let mut result_lines: Vec<&str> = Vec::new();
     let mut blank_count = 0;
     for line in lines {
@@ -420,10 +414,8 @@ fn strip_ansi(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // 跳过 ESC [ ... m 序列
             if chars.peek() == Some(&'[') {
                 chars.next();
-                // 跳到序列终止字符（字母）
                 for ch in chars.by_ref() {
                     if ch.is_ascii_alphabetic() {
                         break;

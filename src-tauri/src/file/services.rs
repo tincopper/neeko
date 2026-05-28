@@ -28,7 +28,7 @@ pub fn read_dir_tree(base: &Path, sub_path: Option<&str>, depth: u32) -> Result<
         None => base.to_path_buf(),
     };
 
-    super::path_resolver::validate_within_root(&target_path, base)?;
+    crate::utils::path_resolver::validate_within_root(&target_path, base)?;
 
     read_dir_recursive(&target_path, base, depth)
 }
@@ -36,7 +36,7 @@ pub fn read_dir_tree(base: &Path, sub_path: Option<&str>, depth: u32) -> Result<
 /// 读取文件内容（纯业务逻辑，无 State 依赖）。
 pub fn read_file_content(base: &Path, file_path: &str) -> Result<FileContent, AppError> {
     let full_path = base.join(file_path);
-    super::path_resolver::validate_within_root(&full_path, base)?;
+    crate::utils::path_resolver::validate_within_root(&full_path, base)?;
 
     let metadata = std::fs::metadata(&full_path)
         .map_err(|e| AppError::File(format!("Failed to read metadata: {}", e)))?;

@@ -5,15 +5,17 @@ pub mod browser;
 pub mod commands;
 pub mod connection;
 pub mod error;
+pub mod file;
 pub mod git;
 mod logger;
 pub mod project;
+pub mod session;
+pub mod settings;
 pub mod skill;
 pub mod task;
 pub mod terminal;
 pub mod theme;
 pub mod utils;
-pub mod workspace;
 
 pub use app::run;
 pub use app_state::AppStateWrapper;
@@ -77,14 +79,12 @@ macro_rules! neeko_invoke_handler {
             $crate::commands::get_wsl_directories,
             $crate::commands::get_wsl_home_dir,
             $crate::commands::create_wsl_terminal_session,
-            $crate::commands::wsl_set_project_color,
             // --- Remote ---
             $crate::commands::create_remote_terminal_session,
             $crate::commands::close_remote_terminal_session,
             $crate::commands::resize_remote_terminal,
             $crate::commands::test_remote_connection,
             $crate::commands::list_remote_directories,
-            $crate::commands::remote_set_project_color,
             // --- Task Runner ---
             $crate::commands::get_task_configs,
             $crate::commands::save_task_config,

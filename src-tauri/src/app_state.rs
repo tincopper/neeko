@@ -1,10 +1,10 @@
 use crate::agent::AgentManager;
+use crate::file::WatcherManager;
 use crate::project::ProjectManager;
+use crate::session::StorageManager;
 use crate::skill;
 use crate::terminal::remote::RemoteTerminalManager;
 use crate::terminal::TerminalManager;
-use crate::workspace::StorageManager;
-use crate::workspace::WatcherManager;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;

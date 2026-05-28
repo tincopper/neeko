@@ -1,6 +1,87 @@
+use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
+use crate::AppStateWrapper;
+use crate::file::services;
+use crate::utils::path_resolver;
 use std::path::Path;
 use std::process::Command;
+use tauri::State;
+
+// ── File Commands ────────────────────────────────────────────────────────────
+
+/// 读取目录树
+#[tauri::command]
+pub fn read_dir_tree(
+    project_id: String,
+    root_path: Option<String>,
+    sub_path: Option<String>,
+    max_depth: Option<u32>,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<FileNode>, AppError> {
+    let depth = max_depth.unwrap_or(services::DEFAULT_TREE_DEPTH);
+    let base = path_resolver::resolve_worktree_or_project(
+        &state,
+        &project_id,
+        root_path.as_deref(),
+    )?;
+    services::read_dir_tree(&base, sub_path.as_deref(), depth)
+}
+
+/// 读取文件内容
+#[tauri::command]
+pub fn read_file_content(
+    project_id: String,
+    file_path: String,
+    root_path: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<FileContent, AppError> {
+    let base = path_resolver::resolve_worktree_or_project(
+        &state,
+        &project_id,
+        root_path.as_deref(),
+    )?;
+    services::read_file_content(&base, &file_path)
+}
+
+/// 写入文件内容
+#[tauri::command]
+pub fn write_file_content(
+    project_id: String,
+    file_path: String,
+    content: String,
+    root_path: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let base = path_resolver::resolve_worktree_or_project(
+        &state,
+        &project_id,
+        root_path.as_deref(),
+    )?;
+    services::write_file_content(&base, &file_path, &content)
+}
+
+// ── Opener Command ───────────────────────────────────────────────────────────
+
+/// 在系统文件管理器中打开或 reveal 指定路径
+#[tauri::command]
+pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
+    let normalized = normalize_path(&path);
+    let path = Path::new(&normalized);
+
+    if !path.exists() {
+        return Err(AppError::NotFound(format!(
+            "Path does not exist: {}",
+            normalized
+        )));
+    }
+
+    if let Some(mut cmd) = build_reveal_command(path) {
+        cmd.spawn()
+            .map_err(|e| AppError::Io(format!("Failed to reveal in file manager: {}", e)))?;
+    }
+
+    Ok(())
+}
 
 /// 规范化路径：将正斜杠统一为反斜杠（Windows）
 fn normalize_path(path: &str) -> String {
@@ -15,8 +96,6 @@ fn normalize_path(path: &str) -> String {
 }
 
 /// 构建在系统文件管理器中 reveal 指定路径的命令（不执行）
-/// - 文件：在文件管理器中选中该文件
-/// - 文件夹：直接打开该文件夹
 fn build_reveal_command(path: &Path) -> Option<Command> {
     let path_str = path.to_str()?;
     let normalized = normalize_path(path_str);
@@ -29,7 +108,6 @@ fn build_reveal_command(path: &Path) -> Option<Command> {
             Some(cmd)
         } else {
             let mut cmd = Command::new("explorer");
-            // /select, 与路径必须合并为单一参数，分开传递 explorer 无法识别
             cmd.arg(format!("/select,{}", normalized));
             Some(cmd)
         }
@@ -64,26 +142,7 @@ fn build_reveal_command(path: &Path) -> Option<Command> {
     }
 }
 
-/// 在系统文件管理器中打开或 reveal 指定路径
-#[tauri::command]
-pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
-    let normalized = normalize_path(&path);
-    let path = Path::new(&normalized);
-
-    if !path.exists() {
-        return Err(AppError::NotFound(format!(
-            "Path does not exist: {}",
-            normalized
-        )));
-    }
-
-    if let Some(mut cmd) = build_reveal_command(path) {
-        cmd.spawn()
-            .map_err(|e| AppError::Io(format!("Failed to reveal in file manager: {}", e)))?;
-    }
-
-    Ok(())
-}
+// ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -187,8 +246,6 @@ mod tests {
 
     #[test]
     fn test_build_reveal_command_for_nonexistent() {
-        // build_reveal_command 不检查存在性，只构建命令
-        // 存在性检查在 reveal_in_file_manager 中完成
         let cmd = build_reveal_command(Path::new("/nonexistent/path"));
         assert!(cmd.is_some());
     }
