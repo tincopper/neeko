@@ -111,7 +111,7 @@ describe("useTerminalTabs", () => {
 
       expect(created).not.toBeNull();
       expect(created?.agentId).toBe("cursor-agent");
-      expect(created?.title).toBe("cursor-agent");
+      expect(created?.title).toBe("Cursor Agent");
     });
 
     it("达到 10 个 tab 上限时返回 null", () => {

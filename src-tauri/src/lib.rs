@@ -1,22 +1,19 @@
 pub mod agent;
+mod app;
+mod app_state;
 pub mod browser;
 pub mod commands;
 pub mod connection;
+pub mod error;
 pub mod git;
+mod logger;
 pub mod project;
 pub mod skill;
 pub mod task;
 pub mod terminal;
 pub mod theme;
-pub mod workspace;
-
 pub mod utils;
-
-pub mod error;
-
-mod app;
-mod app_state;
-mod logger;
+pub mod workspace;
 
 pub use app::run;
 pub use app_state::AppStateWrapper;

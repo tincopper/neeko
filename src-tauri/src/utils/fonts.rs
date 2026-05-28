@@ -1,7 +1,7 @@
 /// 获取系统等宽字体列表（跨平台实现）
 pub fn get_monospace_fonts() -> Vec<String> {
     let mut fonts = get_system_fonts();
-    fonts.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    fonts.sort_by_key(|a| a.to_lowercase());
     fonts.dedup();
     fonts
 }
@@ -28,7 +28,10 @@ Select-Object -ExpandProperty Name"#,
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect(),
-        Err(_) => vec![],
+        Err(e) => {
+            log::warn!("Failed to get Windows fonts via PowerShell: {e}");
+            vec![]
+        }
     }
 }
 
@@ -57,7 +60,10 @@ fn get_system_fonts() -> Vec<String> {
                         }
                         std::thread::sleep(Duration::from_millis(100));
                     }
-                    Err(_) => return vec![],
+                    Err(e) => {
+                        log::warn!("Failed to check system_profiler process: {e}");
+                        return vec![];
+                    }
                 }
             }
             let output = child.wait_with_output();
@@ -78,10 +84,16 @@ fn get_system_fonts() -> Vec<String> {
                     }
                     fonts
                 }
-                Err(_) => vec![],
+                Err(e) => {
+                    log::warn!("Failed to read system_profiler output: {e}");
+                    vec![]
+                }
             }
         }
-        Err(_) => vec![],
+        Err(e) => {
+            log::warn!("Failed to spawn system_profiler: {e}");
+            vec![]
+        }
     }
 }
 
@@ -106,6 +118,9 @@ fn get_system_fonts() -> Vec<String> {
                 .collect();
             fonts
         }
-        Err(_) => vec![],
+        Err(e) => {
+            log::warn!("Failed to get Linux fonts via fc-list: {e}");
+            vec![]
+        }
     }
 }

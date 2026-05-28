@@ -58,10 +58,15 @@ pub async fn exec_command(
         }
     }
 
-    let _ = channel.close().await;
-    let _ = session
+    if let Err(e) = channel.close().await {
+        log::debug!("SSH channel close error (non-fatal): {e}");
+    }
+    if let Err(e) = session
         .disconnect(russh::Disconnect::ByApplication, "", "")
-        .await;
+        .await
+    {
+        log::debug!("SSH disconnect error (non-fatal): {e}");
+    }
 
     let stdout = String::from_utf8_lossy(&stdout_buf).to_string();
 
@@ -78,8 +83,4 @@ pub async fn exec_command(
     }
 
     Ok(stdout)
-}
-
-pub fn safe_path(path: &str) -> String {
-    path.replace('\'', "'\\''")
 }

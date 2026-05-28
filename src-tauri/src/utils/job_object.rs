@@ -35,6 +35,10 @@ mod inner {
 
     // HANDLE is just a pointer-sized integer; it is safe to send across
     // threads because we never share it (single-owner).
+    /// # Safety
+    /// `JobHandle` wraps a raw Windows HANDLE in a single-owner pattern.
+    /// The HANDLE is never shared or aliased across threads. The `Drop`
+    /// implementation ensures the handle is closed exactly once.
     unsafe impl Send for JobHandle {}
     unsafe impl Sync for JobHandle {}
 

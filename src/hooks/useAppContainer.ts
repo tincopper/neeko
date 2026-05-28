@@ -317,6 +317,11 @@ export function useAppContainer(): UseAppContainerResult {
     const t = setTimeout(() => { loadAgents(); }, 100);
     return () => clearTimeout(t);
   }, [loadAgents]);
+  
+  // Refresh agents when config changes (e.g., after adding custom agent in Settings)
+  useEffect(() => {
+    loadAgents();
+  }, [config, loadAgents]);
 
   const isTerminalView = activeProject?.active_view === "Terminal";
 

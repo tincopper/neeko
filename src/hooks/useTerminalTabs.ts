@@ -121,7 +121,7 @@ export function useTerminalTabs() {
   );
 
   const addTab = useCallback(
-    (projectId: string, agentId?: string | null): TerminalTab | null => {
+    (projectId: string, agentId?: string | null, agentName?: string): TerminalTab | null => {
       const state = useEditorStore.getState();
       const existing = state.tabs[projectId];
       const terminalCount = (existing?.tabs ?? []).filter(isTerminalTab).length;
@@ -131,7 +131,7 @@ export function useTerminalTabs() {
       const newTab: Tab = {
         id: tabId,
         projectId,
-        title: agentId ?? `Terminal ${terminalCount + 1}`,
+        title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
         order: existing?.tabs.length ?? 0,
         data: {
           kind: "terminal",
@@ -147,7 +147,7 @@ export function useTerminalTabs() {
         id: tabId,
         projectId,
         agentId: agentId ?? null,
-        title: agentId ?? `Terminal ${terminalCount + 1}`,
+        title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
         status: "Idle",
         order: newTab.order,
       };
@@ -198,7 +198,7 @@ export function useTerminalTabs() {
   const handleAgentClick = useCallback(
     (projectId: string, agent: AgentConfig): TerminalTab | null => {
       // Always create a new tab when clicking an agent
-      return addTab(projectId, agent.id);
+      return addTab(projectId, agent.id, agent.name);
     },
     [addTab]
   );

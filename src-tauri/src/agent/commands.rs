@@ -135,7 +135,7 @@ pub async fn check_agents_installed(
             .map(|a| a.command.clone());
         let installed = match command {
             Some(cmd) => match tokio::task::spawn_blocking(move || {
-                crate::utils::command::check_command_exists(&cmd)
+                crate::utils::command::local::check_command_exists(&cmd)
             })
             .await
             {

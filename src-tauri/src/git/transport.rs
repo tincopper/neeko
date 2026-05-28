@@ -2,7 +2,8 @@ use anyhow::Result;
 
 use crate::connection::types::AuthMethod;
 use crate::utils::command::local::exec as local_exec;
-use crate::utils::command::ssh::{exec_command, safe_path};
+use crate::utils::command::local::safe_path;
+use crate::utils::command::ssh::exec_command;
 #[cfg(target_os = "windows")]
 use crate::utils::command::wsl;
 

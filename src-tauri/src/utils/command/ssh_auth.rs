@@ -1,6 +1,6 @@
 use crate::connection::types::AuthMethod;
 use anyhow::Result;
-use russh::*;
+use russh::client;
 use std::sync::Arc;
 
 /// SSH client handler that accepts all server keys.

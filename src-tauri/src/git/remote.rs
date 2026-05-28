@@ -4,7 +4,8 @@ use crate::connection::types::AuthMethod;
 #[cfg(test)]
 use crate::project::types::FileStatus;
 use crate::project::types::{FileNode, GitInfo};
-use crate::utils::command::ssh::{exec_command, safe_path};
+use crate::utils::command::local::safe_path;
+use crate::utils::command::ssh::exec_command;
 
 use super::parsers::{build_file_tree_from_find, parse_git_info_output};
 

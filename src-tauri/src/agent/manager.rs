@@ -44,7 +44,7 @@ impl AgentManager {
                     .agents
                     .iter()
                     .find(|a| a.id == *id)
-                    .map(|a| crate::utils::command::check_command_exists(&a.command))
+                    .map(|a| crate::utils::command::local::check_command_exists(&a.command))
                     .unwrap_or(false);
                 (id.clone(), installed)
             })

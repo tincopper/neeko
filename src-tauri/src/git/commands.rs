@@ -548,7 +548,7 @@ async fn read_file_content_shell(
     #[cfg(not(target_os = "windows"))] _distro: &str,
     host: Option<(&str, u16, &str, &AuthMethod)>,
 ) -> Result<FileContent, AppError> {
-    let safe_fp = crate::utils::command::ssh::safe_path(full_path);
+    let safe_fp = crate::utils::command::local::safe_path(full_path);
 
     // 文件大小
     let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
@@ -700,12 +700,11 @@ pub async fn unified_write_file_content(
         } => {
             let base = root_path.unwrap_or(project_path);
             let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = crate::utils::command::wsl::safe_path(&full_path);
+            let safe_fp = crate::utils::command::local::safe_path(&full_path);
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent =
-                    crate::utils::command::wsl::safe_path(parent.to_str().unwrap_or(""));
+                let safe_parent = crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let d = distro.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -735,15 +734,15 @@ pub async fn unified_write_file_content(
             auth,
             project_path,
         } => {
-            use crate::utils::command::ssh::{exec_command, safe_path};
+            use crate::utils::command::ssh::exec_command;
 
             let base = root_path.unwrap_or(project_path);
             let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = safe_path(&full_path);
+            let safe_fp = crate::utils::command::local::safe_path(&full_path);
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent = safe_path(parent.to_str().unwrap_or(""));
+                let safe_parent = crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let _ = exec_command(&host, port, &username, &auth, &mkdir_cmd).await;
             }
@@ -794,7 +793,7 @@ pub async fn unified_generate_commit_message(
         } => {
             use crate::utils::command::ssh;
 
-            let sp = ssh::safe_path(&project_path);
+            let sp = crate::utils::command::local::safe_path(&project_path);
             let actual_cmd = ai_commit::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
@@ -854,9 +853,7 @@ pub async fn unified_generate_commit_message(
             distro,
             project_path,
         } => {
-            use crate::utils::command::wsl;
-
-            let sp = wsl::safe_path(&project_path);
+            let sp = crate::utils::command::local::safe_path(&project_path);
             let actual_cmd = ai_commit::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
