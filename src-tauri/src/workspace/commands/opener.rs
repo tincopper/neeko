@@ -18,7 +18,8 @@ fn normalize_path(path: &str) -> String {
 /// - 文件：在文件管理器中选中该文件
 /// - 文件夹：直接打开该文件夹
 fn build_reveal_command(path: &Path) -> Option<Command> {
-    let normalized = normalize_path(&path.to_str().unwrap_or_default());
+    let path_str = path.to_str()?;
+    let normalized = normalize_path(path_str);
 
     #[cfg(target_os = "windows")]
     {

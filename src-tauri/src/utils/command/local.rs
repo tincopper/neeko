@@ -59,6 +59,154 @@ pub fn safe_path(path: &str) -> String {
     path.replace('\'', "'\\''")
 }
 
+/// Resolve a command to its full executable path using where.exe (Windows) or which (Unix).
+/// Falls back to the original command name if not found.
+pub fn resolve_command_path(command: &str, path_env: &str) -> String {
+    if std::path::Path::new(command).is_absolute() {
+        return command.to_string();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let output = exec("where.exe")
+            .arg(command)
+            .env("PATH", path_env)
+            .output();
+
+        if let Ok(o) = output {
+            if o.status.success() {
+                let text = String::from_utf8_lossy(&o.stdout);
+                if let Some(first) = text.lines().next() {
+                    let p = first.trim().to_string();
+                    if !p.is_empty() {
+                        log::info!("[Command] resolved '{}' -> '{}'", command, p);
+                        return p;
+                    }
+                }
+            }
+        }
+        command.to_string()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use which::which_in;
+        match which_in(
+            command,
+            Some(path_env),
+            std::env::current_dir().unwrap_or_default(),
+        ) {
+            Ok(p) => {
+                let s = p.to_string_lossy().to_string();
+                log::info!("[Command] resolved '{}' -> '{}'", command, s);
+                s
+            }
+            Err(_) => command.to_string(),
+        }
+    }
+}
+
+/// Get the full PATH: merges current process PATH + user/system PATH.
+/// Solves Tauri GUI process not inheriting user shell PATH (npm global bin, nvm, etc.).
+pub fn resolve_full_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+
+    #[cfg(target_os = "windows")]
+    {
+        let user_path = std::env::var("USERPROFILE")
+            .map(|home| {
+                let appdata = std::env::var("APPDATA").unwrap_or_default();
+                vec![
+                    format!("{}\\AppData\\Local\\Microsoft\\WindowsApps", home),
+                    format!("{}\\npm", appdata),
+                    format!("{}\\npm", home),
+                ]
+            })
+            .unwrap_or_default();
+
+        let reg_user_path = read_registry_path_windows();
+
+        let mut parts: Vec<String> = vec![current.clone()];
+        if !reg_user_path.is_empty() {
+            parts.push(reg_user_path);
+        }
+        parts.extend(user_path);
+
+        let mut seen = std::collections::HashSet::new();
+        parts
+            .join(";")
+            .split(';')
+            .filter(|p| !p.is_empty() && seen.insert(p.to_string()))
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let extra = [
+            format!("{}/.local/bin", home),
+            format!("{}/.nvm/versions/node/current/bin", home),
+            "/usr/local/bin".to_string(),
+            "/opt/homebrew/bin".to_string(),
+        ];
+        let mut parts: Vec<&str> = current.split(':').collect();
+        for e in &extra {
+            if !parts.contains(&e.as_str()) {
+                parts.push(e);
+            }
+        }
+        parts.join(":")
+    }
+}
+
+/// Read user-level PATH from Windows registry (HKCU\Environment).
+#[cfg(target_os = "windows")]
+fn read_registry_path_windows() -> String {
+    let output = exec("reg")
+        .args(["query", "HKCU\\Environment", "/v", "PATH"])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let text = String::from_utf8_lossy(&o.stdout).to_string();
+            for line in text.lines() {
+                let line = line.trim();
+                if line.to_uppercase().starts_with("PATH") {
+                    if let Some(pos) = line.rfind("REG_") {
+                        let after = &line[pos..];
+                        if let Some(val_pos) = after.find("    ") {
+                            let val = after[val_pos..].trim();
+                            return expand_env_vars_windows(val);
+                        }
+                    }
+                }
+            }
+            String::new()
+        }
+        _ => String::new(),
+    }
+}
+
+/// Expand %VAR% style environment variables on Windows.
+#[cfg(target_os = "windows")]
+fn expand_env_vars_windows(s: &str) -> String {
+    let mut result = s.to_string();
+    if !result.contains('%') {
+        return result;
+    }
+    let output = exec("cmd.exe")
+        .args(["/C", &format!("echo {}", s)])
+        .output();
+    if let Ok(o) = output {
+        let expanded = String::from_utf8_lossy(&o.stdout).trim().to_string();
+        if !expanded.is_empty() && !expanded.starts_with("echo") {
+            result = expanded;
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

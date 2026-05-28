@@ -1,16 +1,12 @@
-#[path = "commands_ai_commit.rs"]
-mod commands_ai_commit;
-#[path = "commands_config.rs"]
-mod commands_config;
-#[path = "commands_file.rs"]
-mod commands_file;
-#[path = "commands_opener.rs"]
-mod commands_opener;
+mod ai_commit;
+mod config;
+mod file;
+mod opener;
 
-pub use commands_ai_commit::*;
-pub use commands_config::*;
-pub use commands_file::*;
-pub use commands_opener::*;
+pub use ai_commit::*;
+pub use config::*;
+pub use file::*;
+pub use opener::*;
 
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -32,14 +28,9 @@ pub fn wsl_set_project_color(
         .storage_manager
         .load_session()
         .map_err(AppError::from)?;
-    for entry in session.wsl_entries.iter_mut() {
-        if entry.distro != distro {
-            continue;
-        }
-        for project in entry.projects.iter_mut() {
-            if project.id == project_id {
-                project.avatar_color = color.clone();
-            }
+    if let Some(entry) = session.wsl_entries.iter_mut().find(|e| e.distro == distro) {
+        if let Some(project) = entry.projects.iter_mut().find(|p| p.id == project_id) {
+            project.avatar_color = color;
         }
     }
     state
@@ -59,14 +50,13 @@ pub fn remote_set_project_color(
         .storage_manager
         .load_session()
         .map_err(AppError::from)?;
-    for entry in session.remote_entries.iter_mut() {
-        if entry.id != entry_id {
-            continue;
-        }
-        for project in entry.projects.iter_mut() {
-            if project.id == project_id {
-                project.avatar_color = color.clone();
-            }
+    if let Some(entry) = session
+        .remote_entries
+        .iter_mut()
+        .find(|e| e.id == entry_id)
+    {
+        if let Some(project) = entry.projects.iter_mut().find(|p| p.id == project_id) {
+            project.avatar_color = color;
         }
     }
     state

@@ -773,6 +773,7 @@ pub async fn unified_generate_commit_message(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     use crate::workspace::commands as ai_commit;
+    use crate::workspace::services::ai_commit as ai_svc;
     let _ = agent_command_override; // Remote/WSL 不使用宿主机 override
 
     // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
@@ -780,7 +781,7 @@ pub async fn unified_generate_commit_message(
         ai_commit::resolve_agent_for_remote(&state, &agent_id);
 
     // 2. 构建 prompt
-    let prompt = ai_commit::build_simple_commit_prompt(&file_paths);
+    let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
 
     // 3. 构建命令字符串（共享函数）— 差异在 transport 分支中处理
     let output = match transport {
@@ -794,7 +795,7 @@ pub async fn unified_generate_commit_message(
             use crate::utils::command::ssh;
 
             let sp = crate::utils::command::local::safe_path(&project_path);
-            let actual_cmd = ai_commit::build_agent_commit_cmd(
+            let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
                 &prompt_args,
@@ -854,7 +855,7 @@ pub async fn unified_generate_commit_message(
             project_path,
         } => {
             let sp = crate::utils::command::local::safe_path(&project_path);
-            let actual_cmd = ai_commit::build_agent_commit_cmd(
+            let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
                 &prompt_args,
@@ -935,7 +936,7 @@ pub async fn unified_generate_commit_message(
     };
 
     // 清理输出
-    let message = ai_commit::clean_ai_output(&output);
+    let message = ai_svc::clean_ai_output(&output);
     if message.is_empty() {
         return Err(AppError::InvalidInput(
             "Agent returned an empty response.".to_string(),

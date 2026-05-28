@@ -140,7 +140,10 @@ impl StorageManager {
             .collect();
 
         // None 表示"从已有 session 读取"，Some 表示"使用传入的数据"
-        let existing = self.load_session().unwrap_or_else(|_| SessionStore::new());
+        let existing = self.load_session().unwrap_or_else(|e| {
+            log::warn!("Failed to load existing session, using empty: {e}");
+            SessionStore::new()
+        });
 
         SessionStore {
             projects: project_sessions,

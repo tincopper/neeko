@@ -54,6 +54,12 @@ impl SessionStore {
     }
 }
 
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// WSL 项目会话（持久化用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSLProjectSession {

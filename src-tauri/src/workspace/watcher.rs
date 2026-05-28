@@ -226,6 +226,12 @@ pub struct WatcherManager {
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
 }
 
+impl Default for WatcherManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// 判断路径是否应该被忽略（.git / node_modules / target / .DS_Store 等）
 fn should_ignore_path(path: &Path) -> bool {
     for component in path.components() {
