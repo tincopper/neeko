@@ -39,23 +39,11 @@ function transportArg(t: GitTransportKind): Record<string, unknown> {
   }
 }
 
-/** Old-style args for local file/AI commands that use project_id */
-function localFileArgs(t: GitTransportKind): Record<string, unknown> {
+/** Build the `transport` argument for file operation commands (Local + WSL + Remote) */
+function fileTransportArg(t: GitTransportKind): Record<string, unknown> {
   switch (t.type) {
     case "Local":
-      return { projectId: t.projectId };
-    case "Wsl":
-      return { distro: t.distro, projectPath: t.projectPath };
-    case "Remote":
-      return { host: t.host, port: t.port, username: t.username, auth: t.auth as AuthMethod, projectPath: t.projectPath };
-  }
-}
-
-/** Build the `transport` argument for file operation commands (Remote + WSL) */
-function fileTransportArg(t: GitTransportKind): Record<string, unknown> | null {
-  switch (t.type) {
-    case "Local":
-      return null; // Local uses project_id-based commands
+      return { transport: { Local: { project_path: t.projectPath } } };
     case "Wsl":
       return { transport: { Wsl: { distro: t.distro, project_path: t.projectPath } } };
     case "Remote":
@@ -75,8 +63,7 @@ function fileTransportArg(t: GitTransportKind): Record<string, unknown> | null {
 
 /**
  * createUnifiedCommands — 统一项目命令集
- * Git 操作通过 unified_* 路由到后端，后端自动分发到 Local/WSL/Remote。
- * 文件/AI 操作仍使用传统 per-type 命令，不做统一。
+ * 所有操作通过 unified_* 路由到后端，后端自动分发到 Local/WSL/Remote。
  */
 export function createUnifiedCommands(transport: GitTransportKind): ProjectCommands {
   const tp = () => transportArg(transport);
@@ -152,37 +139,29 @@ export function createUnifiedCommands(transport: GitTransportKind): ProjectComma
       return invoke<void>("create_tag", { ...tp(), tagName, message });
     },
 
-    // Non-git commands — per-type dispatch (different command names per transport type)
+    // File operations — unified commands handle all transport types
     readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
-      const ft = fileTransportArg(transport);
-      if (ft) {
-        return invoke<FileNode[]>("unified_read_dir_tree", {
-          ...ft,
-          rootPath: rootPath ?? null,
-          subPath: subPath ?? null,
-          maxDepth: maxDepth ?? 4,
-        });
-      }
       return invoke<FileNode[]>("read_dir_tree", {
-        ...localFileArgs(transport),
+        ...fileTransportArg(transport),
         rootPath: rootPath ?? null,
         subPath: subPath ?? null,
         maxDepth: maxDepth ?? 4,
       });
     },
     readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {
-      const ft = fileTransportArg(transport);
-      if (ft) {
-        return invoke<FileContent>("unified_read_file_content", { ...ft, filePath, rootPath });
-      }
-      return invoke<FileContent>("read_file_content", { ...localFileArgs(transport), filePath, rootPath });
+      return invoke<FileContent>("read_file_content", {
+        ...fileTransportArg(transport),
+        filePath,
+        rootPath,
+      });
     },
     writeFileContent(filePath: string, content: string, rootPath?: string): Promise<void> {
-      const ft = fileTransportArg(transport);
-      if (ft) {
-        return invoke<void>("unified_write_file_content", { ...ft, filePath, content, rootPath });
-      }
-      return invoke<void>("write_file_content", { ...localFileArgs(transport), filePath, content, rootPath });
+      return invoke<void>("write_file_content", {
+        ...fileTransportArg(transport),
+        filePath,
+        content,
+        rootPath,
+      });
     },
 
     generateCommitMessage(
@@ -190,17 +169,8 @@ export function createUnifiedCommands(transport: GitTransportKind): ProjectComma
       filePaths: string[],
       agentCommandOverride?: string | null,
     ): Promise<string> {
-      const ft = fileTransportArg(transport);
-      if (ft) {
-        return invoke<string>("unified_generate_commit_message", {
-          ...ft,
-          agentId,
-          agentCommandOverride: agentCommandOverride ?? null,
-          filePaths,
-        });
-      }
-      return invoke<string>("generate_commit_message_command", {
-        ...localFileArgs(transport),
+      return invoke<string>("generate_commit_message", {
+        ...fileTransportArg(transport),
         agentId,
         agentCommandOverride: agentCommandOverride ?? null,
         filePaths,

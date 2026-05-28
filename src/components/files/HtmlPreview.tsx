@@ -3,6 +3,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { Globe, RefreshCw } from "@/components/icons"
 import type { FileContent, FileChangedEvent } from "../../types";
 import { useFileChangedEvent } from "../../hooks/useFileChangedEvent";
+import { useProjectStore } from "../../store/projectStore";
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -32,8 +33,9 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     setError(null);
 
     try {
+      const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? projectId;
       const fileContent = await invoke<FileContent>("read_file_content", {
-        projectId,
+        transport: { Local: { project_path: projectPath } },
         filePath,
       });
 

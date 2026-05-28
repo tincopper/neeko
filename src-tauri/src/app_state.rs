@@ -68,12 +68,25 @@ impl AppStateWrapper {
 
     /// Create with an external shared Arc<SkillStore> (used for Tauri state injection)
     pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
+        let storage_manager = StorageManager::new().expect("Failed to create storage manager");
+
+        // Persist callback: auto-saves projects after every mutation
+        let persist = {
+            let sm_clone = storage_manager.clone();
+            move |projects: &[crate::project::types::Project]| {
+                let session = sm_clone.create_session_from_projects(projects, None, None, None);
+                if let Err(e) = sm_clone.save_session(&session) {
+                    log::error!("Auto-save session failed: {}", e);
+                }
+            }
+        };
+
         Self {
-            project_manager: Mutex::new(ProjectManager::new()),
+            project_manager: Mutex::new(ProjectManager::new(persist)),
             terminal_manager: TerminalManager::new(),
             remote_terminal_manager: RemoteTerminalManager::new(),
             agent_manager: Mutex::new(AgentManager::new()),
-            storage_manager: StorageManager::new().expect("Failed to create storage manager"),
+            storage_manager,
             active_project_id: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
             skill_store,

@@ -17,6 +17,15 @@ pub fn create_terminal_session(
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
         let path = project.path.to_string_lossy().to_string();
+
+        // Theme sync — skip for task terminals (command != None)
+        if command.is_none() {
+            let _ = crate::theme::service::write_project_theme_config(
+                &crate::theme::service::ThemeContext::Local,
+                &path,
+            );
+        }
+
         state
             .terminal_manager
             .create_session(&path, cols, rows, shell, working_dir, command, app_handle)
@@ -63,6 +72,38 @@ pub fn create_wsl_terminal_session(
             "WSL is only supported on Windows".to_string(),
         ));
     }
+
+    // WSL theme sync — install theme files and write project-level configs
+    // All errors are non-fatal: terminal creation proceeds regardless
+    {
+        use crate::theme::{
+            common::read_neeko_theme,
+            opencode::{
+                install_wsl_theme_files, read_enable_opencode_theme_sync,
+                read_enable_pi_theme_sync, write_wsl_tui_config,
+            },
+            pi,
+        };
+
+        if let Err(e) = install_wsl_theme_files(&distro) {
+            log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
+        }
+        if let Err(e) = pi::install_wsl_pi_theme_files(&distro) {
+            log::warn!("[WSL] Failed to install Pi theme files: {}", e);
+        }
+        let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
+        if read_enable_opencode_theme_sync() {
+            if let Err(e) = write_wsl_tui_config(&distro, &project_path, &current_theme) {
+                log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+            }
+        }
+        if read_enable_pi_theme_sync() {
+            if let Err(e) = pi::write_wsl_pi_settings(&distro, &project_path, &current_theme) {
+                log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
+            }
+        }
+    }
+
     state
         .terminal_manager
         .create_wsl_session(&distro, &project_path, cols, rows, app_handle)

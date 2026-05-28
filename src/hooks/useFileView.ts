@@ -104,10 +104,12 @@ export function useFileView(
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
         tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
       } else {
-        // Local 模式：直接 invoke
+        // Local 模式：通过 unified 命令调用，需获取项目的实际路径
+        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
+        const resolvedPath = worktreePath ?? localProject?.path ?? projectId;
         tree = await invoke<FileNode[]>("read_dir_tree", {
-          projectId,
-          rootPath: worktreePath ?? null,
+          transport: { Local: { project_path: resolvedPath } },
+          rootPath: null,
           subPath: null,
           maxDepth: DEFAULT_TREE_DEPTH,
         });
@@ -144,10 +146,12 @@ export function useFileView(
         // WSL/Remote 模式
         subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
       } else {
-        // Local 模式
+        // Local 模式：通过 unified 命令
+        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
+        const resolvedPath = rootPath ?? localProject?.path ?? projectId;
         subChildren = await invoke<FileNode[]>("read_dir_tree", {
-          projectId,
-          rootPath: rootPath ?? null,
+          transport: { Local: { project_path: resolvedPath } },
+          rootPath: null,
           subPath: dirPath,
           maxDepth: DEFAULT_TREE_DEPTH,
         });
@@ -191,11 +195,12 @@ export function useFileView(
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
         content = await cmds.readFileContent(filePath, rootPath);
       } else {
-        // Local 模式：直接 invoke
+        // Local 模式：通过 unified 命令
+        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
+        const resolvedPath = rootPath ?? localProject?.path ?? projectId;
         content = await invoke<FileContent>("read_file_content", {
-          projectId,
+          transport: { Local: { project_path: resolvedPath } },
           filePath,
-          rootPath,
         });
       }
 
@@ -281,12 +286,13 @@ export function useFileView(
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
         await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
       } else {
-        // Local 模式：直接 invoke
+        // Local 模式：通过 unified 命令
+        const localProject = useProjectStore.getState().projects.find(p => p.id === fileTab.projectId);
+        const resolvedPath = rootPath ?? localProject?.path ?? fileTab.projectId;
         await invoke("write_file_content", {
-          projectId: fileTab.projectId,
+          transport: { Local: { project_path: resolvedPath } },
           filePath: fileTab.data.filePath,
           content,
-          rootPath,
         });
       }
 

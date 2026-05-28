@@ -79,7 +79,7 @@ const ProjectsPanel: React.FC = () => {
          setRemoteHomeDir("");
          return;
       }
-       invokeRemoteGit("unified_get_remote_home_dir", dialog.source.entryId, {})
+       invokeRemoteGit("get_remote_home_dir", dialog.source.entryId, {})
          .then((dir) => setRemoteHomeDir(dir as string))
          .catch(() => setRemoteHomeDir(""));
    }, [dialog, invokeRemoteGit]);

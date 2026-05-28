@@ -6,14 +6,14 @@ use tempfile::TempDir;
 
 #[test]
 fn new_manager_is_empty() {
-    let pm = ProjectManager::new();
+    let pm = ProjectManager::new(|_| {});
     assert!(pm.list_projects().is_empty());
 }
 
 #[test]
 fn add_project_from_valid_path() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
 
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
@@ -26,7 +26,7 @@ fn add_project_from_valid_path() {
 
 #[test]
 fn add_project_nonexistent_path_fails() {
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let result = pm.add_project("/nonexistent/path/xyz".into(), None, None, None);
     assert!(result.is_err());
 }
@@ -34,7 +34,7 @@ fn add_project_nonexistent_path_fails() {
 #[test]
 fn add_project_with_agent_and_ide() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
 
     let project = pm
         .add_project(
@@ -52,7 +52,7 @@ fn add_project_with_agent_and_ide() {
 #[test]
 fn add_project_default_state() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
 
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
@@ -78,7 +78,7 @@ fn add_project_from_git_repo() {
     repo.commit(Some("HEAD"), &sig, &sig, "Init", &tree, &[])
         .unwrap();
 
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -88,7 +88,7 @@ fn add_project_from_git_repo() {
 #[test]
 fn get_project_by_id() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -100,7 +100,7 @@ fn get_project_by_id() {
 #[test]
 fn remove_project() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -111,7 +111,7 @@ fn remove_project() {
 
 #[test]
 fn remove_nonexistent_project_is_noop() {
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     pm.remove_project("nonexistent");
     assert!(pm.list_projects().is_empty());
 }
@@ -119,7 +119,7 @@ fn remove_nonexistent_project_is_noop() {
 #[test]
 fn set_selected_agent() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -141,7 +141,7 @@ fn set_selected_agent() {
 #[test]
 fn set_selected_ide() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -156,7 +156,7 @@ fn set_selected_ide() {
 #[test]
 fn set_collapsed() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -169,7 +169,7 @@ fn set_collapsed() {
 #[test]
 fn set_avatar_color() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -192,7 +192,7 @@ fn set_avatar_color() {
 #[test]
 fn add_project_persists_avatar_color() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, Some("#98c379".into()))
         .unwrap();
@@ -207,7 +207,7 @@ fn add_project_persists_avatar_color() {
 #[test]
 fn set_view_diff() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -222,7 +222,7 @@ fn set_view_diff() {
 #[test]
 fn set_view_terminal() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
@@ -238,7 +238,7 @@ fn set_view_terminal() {
 #[test]
 fn add_project_from_session() {
     let tmp = TempDir::new().unwrap();
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
 
     let project = pm
         .add_project_from_session(
@@ -258,7 +258,7 @@ fn add_project_from_session() {
 
 #[test]
 fn add_project_from_session_nonexistent_path_fails() {
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     let result =
         pm.add_project_from_session("id".into(), "/nonexistent".into(), None, None, true, None);
     assert!(result.is_err());
@@ -281,7 +281,7 @@ fn list_projects_returns_empty_changed_files() {
     // 添加一个修改的文件
     std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
-    let mut pm = ProjectManager::new();
+    let mut pm = ProjectManager::new(|_| {});
     pm.add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 

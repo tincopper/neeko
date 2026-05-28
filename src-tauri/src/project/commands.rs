@@ -29,27 +29,14 @@ pub fn add_project(
 
 #[tauri::command]
 pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
-    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
-    pm.remove_project(&project_id);
-    drop(pm);
-    state.terminal_manager.close_session(&project_id);
-    state.watcher_manager.unwatch(&project_id);
-    let projects = state
+    state
         .project_manager
         .lock()
         .map_err(AppError::from)?
-        .list_projects();
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
-    state.storage_manager.save_session(&session).map_err(|e| {
-        log::error!(
-            "Failed to save session after removing project {}: {}",
-            project_id,
-            e
-        );
-        AppError::from(e)
-    })?;
+        .remove_project(&project_id);
+
+    state.terminal_manager.close_session(&project_id);
+    state.watcher_manager.unwatch(&project_id);
     Ok(())
 }
 
@@ -144,49 +131,21 @@ pub fn set_project_collapsed(
         .lock()
         .map_err(AppError::from)?
         .set_collapsed(&project_id, collapsed);
-    let projects = state
-        .project_manager
-        .lock()
-        .map_err(AppError::from)?
-        .list_projects();
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
-    state.storage_manager.save_session(&session).map_err(|e| {
-        log::error!(
-            "Failed to save session after collapsing project {}: {}",
-            project_id,
-            e
-        );
-        AppError::from(e)
-    })?;
     Ok(())
 }
 
-/// 设置 Local 项目的 avatar 颜色（None 表示清回 hash 默认）
-/// 同时立即持久化到 sessions.json
 #[tauri::command]
 pub fn set_project_color(
     project_id: String,
     color: Option<String>,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    {
-        let mut pm = state.project_manager.lock().map_err(AppError::from)?;
-        pm.set_avatar_color(&project_id, color);
-    }
-    let projects = state
+    state
         .project_manager
         .lock()
         .map_err(AppError::from)?
-        .list_projects();
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
-    state
-        .storage_manager
-        .save_session(&session)
-        .map_err(AppError::from)
+        .set_avatar_color(&project_id, color);
+    Ok(())
 }
 
 #[tauri::command]
@@ -195,17 +154,12 @@ pub fn rename_project(
     new_name: String,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
-    pm.rename_project(&project_id, &new_name);
-    let projects = pm.list_projects();
-    drop(pm);
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
     state
-        .storage_manager
-        .save_session(&session)
-        .map_err(|e| AppError::Storage(e.to_string()))
+        .project_manager
+        .lock()
+        .map_err(AppError::from)?
+        .rename_project(&project_id, &new_name);
+    Ok(())
 }
 
 #[tauri::command]
@@ -215,24 +169,18 @@ pub fn change_project_path(
     state: State<AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
-    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
-    pm.change_path(&project_id, &new_path);
-    pm.refresh_git_info(&project_id).map_err(AppError::from)?;
-    let projects = pm.list_projects();
-    drop(pm);
+    {
+        let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+        pm.change_path(&project_id, &new_path);
+        pm.refresh_git_info(&project_id).map_err(AppError::from)?;
+    }
 
     state.watcher_manager.unwatch(&project_id);
     state
         .watcher_manager
         .watch(project_id, PathBuf::from(new_path), app_handle);
 
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
-    state
-        .storage_manager
-        .save_session(&session)
-        .map_err(|e| AppError::Storage(e.to_string()))
+    Ok(())
 }
 
 #[tauri::command]
@@ -240,17 +188,10 @@ pub fn reorder_projects(
     ordered_ids: Vec<String>,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let mut pm = state.project_manager.lock().map_err(AppError::from)?;
-    pm.reorder_projects(&ordered_ids);
-
-    // Persist the new order
-    let projects = pm.list_projects();
-    drop(pm);
-    let session = state
-        .storage_manager
-        .create_session_from_projects(&projects, None, None, None);
     state
-        .storage_manager
-        .save_session(&session)
-        .map_err(|e| AppError::Storage(e.to_string()))
+        .project_manager
+        .lock()
+        .map_err(AppError::from)?
+        .reorder_projects(&ordered_ids);
+    Ok(())
 }

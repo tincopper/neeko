@@ -22,7 +22,11 @@ pub const DEFAULT_TREE_DEPTH: u32 = 4;
 const MAX_EDIT_SIZE: u64 = 512 * 1024;
 
 /// 读取目录树（纯业务逻辑，无 State 依赖）。
-pub fn read_dir_tree(base: &Path, sub_path: Option<&str>, depth: u32) -> Result<Vec<FileNode>, AppError> {
+pub fn read_dir_tree(
+    base: &Path,
+    sub_path: Option<&str>,
+    depth: u32,
+) -> Result<Vec<FileNode>, AppError> {
     let target_path = match sub_path {
         Some(sp) => base.join(sp),
         None => base.to_path_buf(),
@@ -77,7 +81,9 @@ pub fn write_file_content(base: &Path, file_path: &str, content: &str) -> Result
                 .canonicalize()
                 .map_err(|e| AppError::File(format!("Invalid parent path: {}", e)))?;
             if !canonical_parent.starts_with(&canonical_root) {
-                return Err(AppError::File("File path is outside root directory".to_string()));
+                return Err(AppError::File(
+                    "File path is outside root directory".to_string(),
+                ));
             }
         }
     }

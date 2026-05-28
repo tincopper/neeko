@@ -3,10 +3,6 @@ pub mod remote;
 pub mod types;
 
 use crate::terminal::types::{TerminalSession, TerminalStatus};
-use crate::theme::opencode::{
-    install_wsl_theme_files, read_enable_opencode_theme_sync, read_enable_pi_theme_sync,
-    write_wsl_tui_config,
-};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -90,9 +86,7 @@ impl TerminalManager {
             return Err(anyhow::anyhow!("Working directory does not exist: {}", cwd));
         }
 
-        // 写入 OpenCode 项目级 TUI 配置（主题同步）
-        write_opencode_tui_config(cwd);
-
+        // Open local PTY pair
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
@@ -155,27 +149,6 @@ impl TerminalManager {
         log_info(&format!("[WSL] Session ID: {}", id));
         log_info(&format!("[WSL] Distro: {}", distro));
         log_info(&format!("[WSL] Working Dir: {}", project_path));
-
-        // 安装 WSL 主题文件并写入项目级配置（OpenCode + Pi 主题同步）
-        if let Err(e) = install_wsl_theme_files(distro) {
-            log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
-        }
-        if let Err(e) = crate::theme::pi::install_wsl_pi_theme_files(distro) {
-            log::warn!("[WSL] Failed to install Pi theme files: {}", e);
-        }
-        let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
-        if read_enable_opencode_theme_sync() {
-            if let Err(e) = write_wsl_tui_config(distro, project_path, &current_theme) {
-                log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
-            }
-        }
-        if read_enable_pi_theme_sync() {
-            if let Err(e) =
-                crate::theme::pi::write_wsl_pi_settings(distro, project_path, &current_theme)
-            {
-                log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
-            }
-        }
 
         let pair = create_pty(cols, rows)?;
         log_info(&format!("[WSL] PTY opened ({}x{})", cols, rows));
@@ -795,19 +768,4 @@ fn log_info(msg: &str) {
 
 fn log_error(msg: &str) {
     log::error!("{}", msg);
-}
-
-/// 读取 Neeko 配置并写入 OpenCode + Pi 项目级配置
-/// 静默执行，失败不影响终端创建
-fn write_opencode_tui_config(project_path: &str) {
-    if let Err(e) = crate::theme::service::write_project_theme_config(
-        &crate::theme::service::ThemeContext::Local,
-        project_path,
-    ) {
-        log::warn!("[PTY] Failed to write theme config: {}", e);
-    }
-}
-
-fn read_neeko_theme() -> Option<String> {
-    crate::theme::common::read_neeko_theme()
 }

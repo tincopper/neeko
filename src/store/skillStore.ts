@@ -180,12 +180,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       console.error('[skillStore] updateSkillDocument: skill not found', skillId);
       return;
     }
-    // 复用 write_file_content，通过 rootPath 指定 central_path，无需 project 上下文
+    // 复用 unified_write_file_content，通过 transport.project_path 指定 central_path
     await invoke('write_file_content', {
-      projectId: '',
+      transport: { Local: { project_path: skill.central_path } },
       filePath: SKILL_DOC_FILENAME,
       content,
-      rootPath: skill.central_path,
     });
     // 刷新 skills 列表以同步 metadata（description 可能从 frontmatter 更新）
     await get().refreshSkills();

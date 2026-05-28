@@ -1,25 +1,6 @@
+use crate::agent::services::commit;
 use crate::AppError;
 use crate::AppStateWrapper;
-use crate::agent::services::commit;
-use crate::utils::path_resolver;
-use tauri::State;
-
-// ─── Tauri Command ──────────────────────────────────────────────────────────
-
-/// 通过当前项目选择的 Agent CLI，根据 selected diff 和近期 commit 历史，
-/// 自动生成 commit message。
-#[tauri::command]
-pub async fn generate_commit_message_command(
-    project_id: String,
-    agent_id: String,
-    agent_command_override: Option<String>,
-    file_paths: Vec<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<String, AppError> {
-    let project_path = path_resolver::resolve_project_path(&state, &project_id)?;
-    let config = resolve_agent_config(&state, &agent_id, agent_command_override.as_deref())?;
-    commit::generate_commit_message(&project_path, &config, &file_paths)
-}
 
 // ─── Agent Config Bridge (State → Plain Data) ──────────────────────────────
 

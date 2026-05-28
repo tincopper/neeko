@@ -4,6 +4,7 @@ use chrono::Local;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone)]
 pub struct StorageManager {
     config_dir: PathBuf,
 }

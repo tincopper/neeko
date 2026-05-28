@@ -110,8 +110,8 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!isActive || !fileRootPath) return;
       // 静默刷新：直接 invoke，不触发 loading 状态，旧树保持可见
       invoke<FileNode[]>("read_dir_tree", {
-        projectId: activeProjectId,
-        rootPath: fileRootPath,
+        transport: { Local: { project_path: fileRootPath } },
+        rootPath: null,
         subPath: null,
         maxDepth: DEFAULT_TREE_DEPTH,
       })

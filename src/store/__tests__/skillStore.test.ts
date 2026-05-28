@@ -353,7 +353,7 @@ describe('UI 动作', () => {
 // ─── updateSkillDocument ─────────────────────────────────────────────────────
 
 describe('updateSkillDocument', () => {
-  it('调用 write_file_content 并传入 SKILL.md 和 rootPath=central_path', async () => {
+  it('调用 write_file_content 并传入 transport={ Local: central_path }', async () => {
     const skill = createManagedSkill({ id: 'sk-1', central_path: '/home/.neeko/skills/my-skill' });
     useSkillStore.setState({ skills: [skill] });
 
@@ -366,10 +366,9 @@ describe('updateSkillDocument', () => {
     await useSkillStore.getState().updateSkillDocument('sk-1', 'my-skill', '# Content');
 
     expect(mockInvoke).toHaveBeenCalledWith('write_file_content', {
-      projectId: '',
+      transport: { Local: { project_path: '/home/.neeko/skills/my-skill' } },
       filePath: 'SKILL.md',
       content: '# Content',
-      rootPath: '/home/.neeko/skills/my-skill',
     });
   });
 

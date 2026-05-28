@@ -41,7 +41,10 @@ pub fn resolve_worktree_or_project(
 }
 
 /// 校验目标路径在根目录范围内（防止路径穿越）。
-pub fn validate_within_root(target: &std::path::Path, root: &std::path::Path) -> Result<(), AppError> {
+pub fn validate_within_root(
+    target: &std::path::Path,
+    root: &std::path::Path,
+) -> Result<(), AppError> {
     let canonical_target = target
         .canonicalize()
         .map_err(|e| AppError::File(format!("Invalid path: {}", e)))?;

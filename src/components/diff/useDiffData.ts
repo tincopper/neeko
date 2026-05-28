@@ -1,7 +1,102 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useProjectStore } from "../../store/projectStore";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
 import type { ProjectCommands } from "../../types/activeProject";
+
+function lookupLocalProjectPath(projectId: string): string {
+  const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
+  return project?.path ?? projectId;
+}
+
+function buildLocalTransport(projectPath: string): Record<string, unknown> {
+  return { Local: { project_path: projectPath } };
+}
+
+function buildWslTransport(distro: string, projectPath: string): Record<string, unknown> {
+  return { Wsl: { distro, project_path: projectPath } };
+}
+
+function buildRemoteTransport(
+  host: string,
+  port: number,
+  username: string,
+  auth: unknown,
+  projectPath: string,
+): Record<string, unknown> {
+  return { Remote: { host, port, username, auth, project_path: projectPath } };
+}
+
+function buildFileDiffArgs(diffSource: DiffSource): {
+  transport: Record<string, unknown>;
+  filePath: string;
+} {
+  switch (diffSource.type) {
+    case "local":
+      return {
+        transport: buildLocalTransport(lookupLocalProjectPath(diffSource.projectId)),
+        filePath: "",
+      };
+    case "wsl":
+      return {
+        transport: buildWslTransport(diffSource.distro, diffSource.projectPath),
+        filePath: "",
+      };
+    case "remote":
+      return {
+        transport: buildRemoteTransport(
+          diffSource.host,
+          diffSource.port,
+          diffSource.username,
+          diffSource.auth,
+          diffSource.projectPath,
+        ),
+        filePath: "",
+      };
+    case "worktree":
+      return {
+        transport: buildLocalTransport(diffSource.worktreePath),
+        filePath: "",
+      };
+    default:
+      return { transport: {}, filePath: "" };
+  }
+}
+
+function buildCommitDiffArgs(diffSource: DiffSource): {
+  transport: Record<string, unknown>;
+  commitHash: string;
+  filePath: string;
+} {
+  switch (diffSource.type) {
+    case "commit":
+      return {
+        transport: buildLocalTransport(lookupLocalProjectPath(diffSource.projectId)),
+        commitHash: diffSource.commitHash,
+        filePath: "",
+      };
+    case "wsl-commit":
+      return {
+        transport: buildWslTransport(diffSource.distro, diffSource.projectPath),
+        commitHash: diffSource.commitHash,
+        filePath: "",
+      };
+    case "remote-commit":
+      return {
+        transport: buildRemoteTransport(
+          diffSource.host,
+          diffSource.port,
+          diffSource.username,
+          diffSource.auth,
+          diffSource.projectPath,
+        ),
+        commitHash: diffSource.commitHash,
+        filePath: "",
+      };
+    default:
+      return { transport: {}, commitHash: "", filePath: "" };
+  }
+}
 
 interface UseDiffDataParams {
   projectId?: string;
@@ -22,72 +117,42 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
     setError(null);
     try {
       let result: DiffResult;
+      const ds = diffSource;
 
-      if (commands && diffSource?.type) {
-        // Unified path: use ProjectCommands
-        if (diffSource.type === "wsl-commit" || diffSource.type === "remote-commit" || diffSource.type === "commit") {
-          result = await commands.getCommitFileDiff(diffSource.commitHash, filePath);
-        } else if (diffSource.type === "worktree") {
-          result = await invoke<DiffResult>("get_worktree_file_diff", {
-            projectId: diffSource.projectId,
-            worktreePath: diffSource.worktreePath,
+      if (!ds?.type) {
+        const projectPath = lookupLocalProjectPath(projectId ?? "");
+        result = await invoke<DiffResult>("get_file_diff", {
+          transport: buildLocalTransport(projectPath),
+          filePath,
+        });
+      } else if (
+        ds.type === "commit" ||
+        ds.type === "wsl-commit" ||
+        ds.type === "remote-commit"
+      ) {
+        if (commands) {
+          result = await commands.getCommitFileDiff(ds.commitHash, filePath);
+        } else {
+          const args = buildCommitDiffArgs(ds);
+          result = await invoke<DiffResult>("get_commit_file_diff", {
+            transport: args.transport,
+            commitHash: args.commitHash,
             filePath,
           });
-        } else {
-          result = await commands.getFileDiff(filePath);
         }
+      } else if (ds.type === "worktree") {
+        result = await invoke<DiffResult>("get_file_diff", {
+          transport: buildLocalTransport(ds.worktreePath),
+          filePath,
+        });
+      } else if (commands) {
+        result = await commands.getFileDiff(filePath);
       } else {
-        // Legacy path: per-type invoke dispatch
-        if (diffSource?.type === "wsl") {
-          result = await invoke<DiffResult>("get_wsl_file_diff_command", {
-            distro: diffSource.distro,
-            projectPath: diffSource.projectPath,
-            filePath,
-          });
-        } else if (diffSource?.type === "remote") {
-          result = await invoke<DiffResult>("get_remote_file_diff_command", {
-            host: diffSource.host,
-            port: diffSource.port,
-            username: diffSource.username,
-            auth: diffSource.auth,
-            projectPath: diffSource.projectPath,
-            filePath,
-          });
-        } else if (diffSource?.type === "worktree") {
-          result = await invoke<DiffResult>("get_worktree_file_diff", {
-            projectId: diffSource.projectId,
-            worktreePath: diffSource.worktreePath,
-            filePath,
-          });
-        } else if (diffSource?.type === "wsl-commit") {
-          result = await invoke<DiffResult>("wsl_get_commit_file_diff", {
-            distro: diffSource.distro,
-            projectPath: diffSource.projectPath,
-            commitHash: diffSource.commitHash,
-            filePath,
-          });
-        } else if (diffSource?.type === "remote-commit") {
-          result = await invoke<DiffResult>("remote_get_commit_file_diff", {
-            host: diffSource.host,
-            port: diffSource.port,
-            username: diffSource.username,
-            auth: diffSource.auth,
-            projectPath: diffSource.projectPath,
-            commitHash: diffSource.commitHash,
-            filePath,
-          });
-        } else if (diffSource?.type === "commit") {
-          result = await invoke<DiffResult>("get_commit_file_diff_command", {
-            projectId: diffSource.projectId,
-            commitHash: diffSource.commitHash,
-            filePath,
-          });
-        } else {
-          result = await invoke<DiffResult>("get_file_diff_command", {
-            projectId: projectId ?? diffSource?.projectId,
-            filePath,
-          });
-        }
+        const args = buildFileDiffArgs(ds);
+        result = await invoke<DiffResult>("get_file_diff", {
+          transport: args.transport,
+          filePath,
+        });
       }
 
       setDiffResult(result);

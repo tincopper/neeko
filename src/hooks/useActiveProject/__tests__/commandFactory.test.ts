@@ -171,10 +171,10 @@ describe("createUnifiedCommands (Local)", () => {
     });
   });
 
-  it("readDirTree (Local) should call read_dir_tree with projectId", async () => {
+  it("readDirTree (Local) should call read_dir_tree with transport", async () => {
     await commands.readDirTree();
     expect(mockInvoke).toHaveBeenCalledWith("read_dir_tree", {
-      projectId: "proj-123",
+      transport: { Local: { project_path: "/home/user/project" } },
       rootPath: null,
       subPath: null,
       maxDepth: 4,
@@ -184,7 +184,7 @@ describe("createUnifiedCommands (Local)", () => {
   it("readFileContent (Local) should call read_file_content", async () => {
     await commands.readFileContent("src/foo.ts");
     expect(mockInvoke).toHaveBeenCalledWith("read_file_content", {
-      projectId: "proj-123",
+      transport: { Local: { project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       rootPath: undefined,
     });
@@ -193,17 +193,17 @@ describe("createUnifiedCommands (Local)", () => {
   it("writeFileContent (Local) should call write_file_content", async () => {
     await commands.writeFileContent("src/foo.ts", "const x = 1;");
     expect(mockInvoke).toHaveBeenCalledWith("write_file_content", {
-      projectId: "proj-123",
+      transport: { Local: { project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       content: "const x = 1;",
       rootPath: undefined,
     });
   });
 
-  it("generateCommitMessage (Local) should call generate_commit_message_command", async () => {
+  it("generateCommitMessage (Local) should call generate_commit_message", async () => {
     await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
-    expect(mockInvoke).toHaveBeenCalledWith("generate_commit_message_command", {
-      projectId: "proj-123",
+    expect(mockInvoke).toHaveBeenCalledWith("generate_commit_message", {
+      transport: { Local: { project_path: "/home/user/project" } },
       agentId: "opencode",
       agentCommandOverride: null,
       filePaths: ["src/foo.ts"],
@@ -299,9 +299,9 @@ describe("createUnifiedCommands (WSL)", () => {
     });
   });
 
-  it("readDirTree (WSL) should call unified_read_dir_tree with transport", async () => {
+  it("readDirTree (WSL) should call read_dir_tree with transport", async () => {
     await commands.readDirTree();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_read_dir_tree", {
+    expect(mockInvoke).toHaveBeenCalledWith("read_dir_tree", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       rootPath: null,
       subPath: null,
@@ -309,18 +309,18 @@ describe("createUnifiedCommands (WSL)", () => {
     });
   });
 
-  it("readFileContent (WSL) should call unified_read_file_content", async () => {
+  it("readFileContent (WSL) should call read_file_content", async () => {
     await commands.readFileContent("src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_read_file_content", {
+    expect(mockInvoke).toHaveBeenCalledWith("read_file_content", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       rootPath: undefined,
     });
   });
 
-  it("writeFileContent (WSL) should call unified_write_file_content", async () => {
+  it("writeFileContent (WSL) should call write_file_content", async () => {
     await commands.writeFileContent("src/foo.ts", "content");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_write_file_content", {
+    expect(mockInvoke).toHaveBeenCalledWith("write_file_content", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       content: "content",
@@ -328,9 +328,9 @@ describe("createUnifiedCommands (WSL)", () => {
     });
   });
 
-  it("generateCommitMessage (WSL) should call unified_generate_commit_message", async () => {
+  it("generateCommitMessage (WSL) should call generate_commit_message", async () => {
     await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_generate_commit_message", {
+    expect(mockInvoke).toHaveBeenCalledWith("generate_commit_message", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       agentId: "opencode",
       agentCommandOverride: null,
@@ -400,9 +400,9 @@ describe("createUnifiedCommands (Remote)", () => {
     expect(mockInvoke).toHaveBeenCalledWith("push", { ...tp(), setUpstream: false });
   });
 
-  it("readDirTree (Remote) should call unified_read_dir_tree with transport", async () => {
+  it("readDirTree (Remote) should call read_dir_tree with transport", async () => {
     await commands.readDirTree();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_read_dir_tree", {
+    expect(mockInvoke).toHaveBeenCalledWith("read_dir_tree", {
       transport: {
         Remote: {
           host: "192.168.1.100",
@@ -418,9 +418,9 @@ describe("createUnifiedCommands (Remote)", () => {
     });
   });
 
-  it("readFileContent (Remote) should call unified_read_file_content", async () => {
+  it("readFileContent (Remote) should call read_file_content", async () => {
     await commands.readFileContent("src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_read_file_content", {
+    expect(mockInvoke).toHaveBeenCalledWith("read_file_content", {
       transport: {
         Remote: {
           host: "192.168.1.100",
@@ -435,9 +435,9 @@ describe("createUnifiedCommands (Remote)", () => {
     });
   });
 
-  it("writeFileContent (Remote) should call unified_write_file_content", async () => {
+  it("writeFileContent (Remote) should call write_file_content", async () => {
     await commands.writeFileContent("src/foo.ts", "content");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_write_file_content", {
+    expect(mockInvoke).toHaveBeenCalledWith("write_file_content", {
       transport: {
         Remote: {
           host: "192.168.1.100",
@@ -453,9 +453,9 @@ describe("createUnifiedCommands (Remote)", () => {
     });
   });
 
-  it("generateCommitMessage (Remote) should call unified_generate_commit_message", async () => {
+  it("generateCommitMessage (Remote) should call generate_commit_message", async () => {
     await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_generate_commit_message", {
+    expect(mockInvoke).toHaveBeenCalledWith("generate_commit_message", {
       transport: {
         Remote: {
           host: "192.168.1.100",

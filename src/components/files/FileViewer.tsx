@@ -173,10 +173,10 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    // 处理外部文件修改：重新加载
    const handleReload = useCallback(async () => {
       try {
+         const projectPath = useProjectStore.getState().projects.find(p => p.id === tab.projectId)?.path ?? tab.projectId;
          const content = await invoke<FileContent>("read_file_content", {
-            projectId: tab.projectId,
+            transport: { Local: { project_path: projectPath } },
             filePath: tab.filePath,
-            rootPath: undefined,
          });
          useEditorStore.getState().updateTab(tabKey, tabId, {
             kind: "file",

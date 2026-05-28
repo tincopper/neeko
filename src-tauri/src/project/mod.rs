@@ -12,16 +12,21 @@ use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Clone)]
 pub struct ProjectManager {
     projects: Vec<Project>,
+    persist: Box<dyn Fn(&[Project]) + Send>,
 }
 
 impl ProjectManager {
-    pub fn new() -> Self {
+    pub fn new(persist: impl Fn(&[Project]) + Send + 'static) -> Self {
         Self {
             projects: Vec::new(),
+            persist: Box::new(persist),
         }
+    }
+
+    fn notify_persist(&self) {
+        (self.persist)(&self.projects);
     }
 
     pub fn add_project(
@@ -31,7 +36,6 @@ impl ProjectManager {
         ide: Option<String>,
         avatar_color: Option<String>,
     ) -> Result<Project> {
-        // 检查路径是否存在
         if !path.exists() {
             anyhow::bail!("Project path does not exist");
         }
@@ -70,6 +74,7 @@ impl ProjectManager {
         };
 
         self.projects.push(project.clone());
+        self.notify_persist();
         Ok(project)
     }
 
@@ -90,7 +95,6 @@ impl ProjectManager {
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        // Skip git_info on startup - will be refreshed lazily via refresh_git_info command
         let terminal_session = TerminalSession {
             id: Uuid::new_v4().to_string(),
             pid: None,
@@ -118,12 +122,14 @@ impl ProjectManager {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_ide = ide;
         }
+        self.notify_persist();
     }
 
     pub fn rename_project(&mut self, project_id: &str, new_name: &str) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.name = new_name.to_string();
         }
+        self.notify_persist();
     }
 
     pub fn change_path(&mut self, project_id: &str, new_path: &str) {
@@ -131,10 +137,12 @@ impl ProjectManager {
             project.path = PathBuf::from(new_path);
             project.git_info = None;
         }
+        self.notify_persist();
     }
 
     pub fn remove_project(&mut self, project_id: &str) {
         self.projects.retain(|p| p.id != project_id);
+        self.notify_persist();
     }
 
     pub fn get_project(&self, project_id: &str) -> Option<&Project> {
@@ -142,8 +150,6 @@ impl ProjectManager {
     }
 
     pub fn list_projects(&self) -> Vec<Project> {
-        // 返回轻量版项目数据，changed_files 置空
-        // changed_files 由 watcher/handleRefreshGit 维护，不需要在 list_projects 中返回
         self.projects
             .iter()
             .map(|p| {
@@ -165,16 +171,11 @@ impl ProjectManager {
         Ok(())
     }
 
-    pub fn set_active_view(&mut self, project_id: &str, view: ViewMode) {
-        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
-            project.active_view = view;
-        }
-    }
-
     pub fn set_selected_agent(&mut self, project_id: &str, agent_id: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_agent = agent_id;
         }
+        self.notify_persist();
     }
 
     pub fn set_view_terminal(&mut self, project_id: &str) {
@@ -189,16 +190,16 @@ impl ProjectManager {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.collapsed = collapsed;
         }
+        self.notify_persist();
     }
 
     pub fn set_avatar_color(&mut self, project_id: &str, color: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.avatar_color = color;
         }
+        self.notify_persist();
     }
 
-    /// Reorder projects based on a list of project IDs in the desired order.
-    /// Projects not in the list will be appended at the end.
     pub fn reorder_projects(&mut self, ordered_ids: &[String]) {
         let mut ordered: Vec<Project> = Vec::with_capacity(self.projects.len());
         for id in ordered_ids {
@@ -206,8 +207,14 @@ impl ProjectManager {
                 ordered.push(self.projects.remove(pos));
             }
         }
-        // Append any projects that weren't in the ordered list
         ordered.append(&mut self.projects);
         self.projects = ordered;
+        self.notify_persist();
+    }
+
+    fn set_active_view(&mut self, project_id: &str, view: ViewMode) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.active_view = view;
+        }
     }
 }

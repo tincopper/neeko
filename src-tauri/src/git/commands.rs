@@ -32,10 +32,12 @@ pub enum GitTransportKind {
     },
 }
 
-/// Transport for file operations and commit message generation (Remote + WSL).
-/// Local file operations use the existing project_id-based commands in file::commands.
+/// Transport for file operations and commit message generation (Local + WSL + Remote).
 #[derive(Debug, Deserialize)]
 pub enum FileTransportKind {
+    Local {
+        project_path: String,
+    },
     #[cfg(target_os = "windows")]
     Wsl {
         distro: String,
@@ -495,7 +497,7 @@ pub async fn default_branch(transport: GitTransportKind) -> Result<String, AppEr
 const DEFAULT_TREE_DEPTH: u32 = 4;
 
 #[tauri::command]
-pub async fn unified_read_dir_tree(
+pub async fn read_dir_tree(
     transport: FileTransportKind,
     root_path: Option<String>,
     sub_path: Option<String>,
@@ -503,6 +505,15 @@ pub async fn unified_read_dir_tree(
 ) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
     match transport {
+        FileTransportKind::Local { project_path } => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or(project_path));
+            tokio::task::spawn_blocking(move || {
+                crate::file::services::read_dir_tree(&base, sub_path.as_deref(), depth)
+            })
+            .await
+            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
+            .map_err(AppError::from)
+        }
         #[cfg(target_os = "windows")]
         FileTransportKind::Wsl {
             distro,
@@ -647,12 +658,23 @@ async fn read_file_content_shell(
 }
 
 #[tauri::command]
-pub async fn unified_read_file_content(
+pub async fn read_file_content(
     transport: FileTransportKind,
     file_path: String,
     root_path: Option<String>,
 ) -> Result<FileContent, AppError> {
     match &transport {
+        FileTransportKind::Local { project_path } => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or_else(|| project_path.clone()));
+            let base = Box::new(base);
+            let fp = file_path.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::file::services::read_file_content(&base, &fp)
+            })
+            .await
+            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
+            .map_err(AppError::from)
+        }
         #[cfg(target_os = "windows")]
         FileTransportKind::Wsl {
             distro,
@@ -686,13 +708,25 @@ pub async fn unified_read_file_content(
 }
 
 #[tauri::command]
-pub async fn unified_write_file_content(
+pub async fn write_file_content(
     transport: FileTransportKind,
     file_path: String,
     content: String,
     root_path: Option<String>,
 ) -> Result<(), AppError> {
     match transport {
+        FileTransportKind::Local { project_path } => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or(project_path));
+            let base = Box::new(base);
+            let fp = file_path.clone();
+            let c = content.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::file::services::write_file_content(&base, &fp, &c)
+            })
+            .await
+            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
+            .map_err(AppError::from)
+        }
         #[cfg(target_os = "windows")]
         FileTransportKind::Wsl {
             distro,
@@ -704,7 +738,8 @@ pub async fn unified_write_file_content(
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent = crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
+                let safe_parent =
+                    crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let d = distro.clone();
                 let _ = tokio::task::spawn_blocking(move || {
@@ -742,7 +777,8 @@ pub async fn unified_write_file_content(
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent = crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
+                let safe_parent =
+                    crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let _ = exec_command(&host, port, &username, &auth, &mkdir_cmd).await;
             }
@@ -765,7 +801,7 @@ pub async fn unified_write_file_content(
 /// 通过 agent CLI 生成 commit message（Remote/WSL 统一入口）。
 /// Agent 在远程/WSL 服务器上执行，自行分析变更，不传入 diff 内容。
 #[tauri::command]
-pub async fn unified_generate_commit_message(
+pub async fn generate_commit_message(
     transport: FileTransportKind,
     agent_id: String,
     agent_command_override: Option<String>,
@@ -785,6 +821,15 @@ pub async fn unified_generate_commit_message(
 
     // 3. 构建命令字符串（共享函数）— 差异在 transport 分支中处理
     let output = match transport {
+        FileTransportKind::Local { project_path } => {
+            let sp = std::path::PathBuf::from(&project_path);
+            let config = ai_commit::resolve_agent_config(
+                &state,
+                &agent_id,
+                agent_command_override.as_deref(),
+            )?;
+            ai_svc::generate_commit_message(&sp, &config, &file_paths).map_err(AppError::from)?
+        }
         FileTransportKind::Remote {
             host,
             port,
@@ -948,7 +993,7 @@ pub async fn unified_generate_commit_message(
 // ─── Remote/SSH utilities ───────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn unified_get_remote_home_dir(
+pub async fn get_remote_home_dir(
     host: String,
     port: u16,
     username: String,
