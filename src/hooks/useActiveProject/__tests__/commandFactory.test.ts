@@ -24,147 +24,147 @@ describe("createUnifiedCommands (Local)", () => {
 
   beforeEach(() => mockInvoke.mockClear());
 
-  it("refreshGitInfo should call unified_get_git_info", async () => {
+  it("refreshGitInfo should call get_git_info", async () => {
     await commands.refreshGitInfo();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_git_info", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("get_git_info", tp());
   });
 
-  it("getAheadBehind should call unified_get_ahead_behind", async () => {
+  it("getAheadBehind should call get_ahead_behind", async () => {
     await commands.getAheadBehind();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_ahead_behind", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("get_ahead_behind", tp());
   });
 
-  it("stageFiles should call unified_stage_files with filePaths", async () => {
+  it("stageFiles should call stage_files with filePaths", async () => {
     await commands.stageFiles(["src/foo.ts", "src/bar.ts"]);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_stage_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("stage_files", {
       ...tp(),
       filePaths: ["src/foo.ts", "src/bar.ts"],
     });
   });
 
-  it("unstageFiles should call unified_unstage_files", async () => {
+  it("unstageFiles should call unstage_files", async () => {
     await commands.unstageFiles(["src/foo.ts"]);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_unstage_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("unstage_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
     });
   });
 
-  it("discardFile should call unified_discard_file", async () => {
+  it("discardFile should call discard_file", async () => {
     await commands.discardFile("src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_discard_file", {
+    expect(mockInvoke).toHaveBeenCalledWith("discard_file", {
       ...tp(),
       filePath: "src/foo.ts",
     });
   });
 
-  it("commitFiles should call unified_commit_files with message", async () => {
+  it("commitFiles should call commit_files with message", async () => {
     await commands.commitFiles(["src/foo.ts"], "feat: add feature");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_commit_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("commit_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
       message: "feat: add feature",
     });
   });
 
-  it("fetch should call unified_fetch", async () => {
+  it("fetch should call fetch", async () => {
     await commands.fetch();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_fetch", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("fetch", tp());
   });
 
-  it("pull should call unified_pull", async () => {
+  it("pull should call pull", async () => {
     await commands.pull();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_pull", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("pull", tp());
   });
 
   it("push should default setUpstream to false", async () => {
     await commands.push();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_push", { ...tp(), setUpstream: false });
+    expect(mockInvoke).toHaveBeenCalledWith("push", { ...tp(), setUpstream: false });
   });
 
   it("push should pass setUpstream=true when provided", async () => {
     await commands.push(true);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_push", { ...tp(), setUpstream: true });
+    expect(mockInvoke).toHaveBeenCalledWith("push", { ...tp(), setUpstream: true });
   });
 
-  it("checkoutBranch should call unified_checkout_branch", async () => {
+  it("checkoutBranch should call checkout_branch", async () => {
     await commands.checkoutBranch("feature/new-ui");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_checkout_branch", {
+    expect(mockInvoke).toHaveBeenCalledWith("checkout_branch", {
       ...tp(),
       branchName: "feature/new-ui",
     });
   });
 
-  it("createBranch should call unified_create_branch", async () => {
+  it("createBranch should call create_branch", async () => {
     await commands.createBranch("feature/new-ui", "main");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_create_branch", {
+    expect(mockInvoke).toHaveBeenCalledWith("create_branch", {
       ...tp(),
       branchName: "feature/new-ui",
       startPoint: "main",
     });
   });
 
-  it("deleteBranch should call unified_delete_branch", async () => {
+  it("deleteBranch should call delete_branch", async () => {
     await commands.deleteBranch("feature/old");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_delete_branch", {
+    expect(mockInvoke).toHaveBeenCalledWith("delete_branch", {
       ...tp(),
       branchName: "feature/old",
     });
   });
 
-  it("getCommitLog should call unified_get_commit_log", async () => {
+  it("getCommitLog should call get_commit_log", async () => {
     await commands.getCommitLog(50, 100);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_commit_log", {
+    expect(mockInvoke).toHaveBeenCalledWith("get_commit_log", {
       ...tp(),
       count: 50,
       skip: 100,
     });
   });
 
-  it("getCommitDetail should call unified_get_commit_detail", async () => {
+  it("getCommitDetail should call get_commit_detail", async () => {
     await commands.getCommitDetail("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_commit_detail", {
+    expect(mockInvoke).toHaveBeenCalledWith("get_commit_detail", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("getCommitFiles should call unified_get_commit_files", async () => {
+  it("getCommitFiles should call get_commit_files", async () => {
     await commands.getCommitFiles("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_commit_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("get_commit_files", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("getCommitFileDiff should call unified_get_commit_file_diff", async () => {
+  it("getCommitFileDiff should call get_commit_file_diff", async () => {
     await commands.getCommitFileDiff("abc123", "src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_commit_file_diff", {
+    expect(mockInvoke).toHaveBeenCalledWith("get_commit_file_diff", {
       ...tp(),
       commitHash: "abc123",
       filePath: "src/foo.ts",
     });
   });
 
-  it("cherryPick should call unified_cherry_pick", async () => {
+  it("cherryPick should call cherry_pick", async () => {
     await commands.cherryPick("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_cherry_pick", {
+    expect(mockInvoke).toHaveBeenCalledWith("cherry_pick", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("revert should call unified_revert", async () => {
+  it("revert should call revert", async () => {
     await commands.revert("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_revert", {
+    expect(mockInvoke).toHaveBeenCalledWith("revert", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("createTag should call unified_create_tag", async () => {
+  it("createTag should call create_tag", async () => {
     await commands.createTag("v1.0.0", "Release v1.0.0");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_create_tag", {
+    expect(mockInvoke).toHaveBeenCalledWith("create_tag", {
       ...tp(),
       tagName: "v1.0.0",
       message: "Release v1.0.0",
@@ -242,100 +242,96 @@ describe("createUnifiedCommands (WSL)", () => {
 
   beforeEach(() => mockInvoke.mockClear());
 
-  it("refreshGitInfo should call unified_get_git_info with WSL transport", async () => {
+  it("refreshGitInfo should call get_git_info with WSL transport", async () => {
     await commands.refreshGitInfo();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_git_info", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("get_git_info", tp());
   });
 
-  it("stageFiles should call unified_stage_files", async () => {
+  it("stageFiles should call stage_files", async () => {
     await commands.stageFiles(["src/foo.ts"]);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_stage_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("stage_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
     });
   });
 
-  it("commitFiles should call unified_commit_files", async () => {
+  it("commitFiles should call commit_files", async () => {
     await commands.commitFiles(["src/foo.ts"], "feat: commit");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_commit_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("commit_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
       message: "feat: commit",
     });
   });
 
-  it("pull should call unified_pull", async () => {
+  it("pull should call pull", async () => {
     await commands.pull();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_pull", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("pull", tp());
   });
 
-  it("push should call unified_push", async () => {
+  it("push should call push", async () => {
     await commands.push();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_push", { ...tp(), setUpstream: false });
+    expect(mockInvoke).toHaveBeenCalledWith("push", { ...tp(), setUpstream: false });
   });
 
-  it("cherryPick should call unified_cherry_pick", async () => {
+  it("cherryPick should call cherry_pick", async () => {
     await commands.cherryPick("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_cherry_pick", {
+    expect(mockInvoke).toHaveBeenCalledWith("cherry_pick", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("revert should call unified_revert", async () => {
+  it("revert should call revert", async () => {
     await commands.revert("abc123");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_revert", {
+    expect(mockInvoke).toHaveBeenCalledWith("revert", {
       ...tp(),
       commitHash: "abc123",
     });
   });
 
-  it("createTag should call unified_create_tag", async () => {
+  it("createTag should call create_tag", async () => {
     await commands.createTag("v1.0.0", "msg");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_create_tag", {
+    expect(mockInvoke).toHaveBeenCalledWith("create_tag", {
       ...tp(),
       tagName: "v1.0.0",
       message: "msg",
     });
   });
 
-  it("readDirTree (WSL) should call wsl_read_dir_tree with distro + projectPath", async () => {
+  it("readDirTree (WSL) should call unified_read_dir_tree with transport", async () => {
     await commands.readDirTree();
-    expect(mockInvoke).toHaveBeenCalledWith("wsl_read_dir_tree", {
-      distro: "Ubuntu-22.04",
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_read_dir_tree", {
+      transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       rootPath: null,
       subPath: null,
       maxDepth: 4,
     });
   });
 
-  it("readFileContent (WSL) should call wsl_read_file_content", async () => {
+  it("readFileContent (WSL) should call unified_read_file_content", async () => {
     await commands.readFileContent("src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("wsl_read_file_content", {
-      distro: "Ubuntu-22.04",
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_read_file_content", {
+      transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       rootPath: undefined,
     });
   });
 
-  it("writeFileContent (WSL) should call wsl_write_file_content", async () => {
+  it("writeFileContent (WSL) should call unified_write_file_content", async () => {
     await commands.writeFileContent("src/foo.ts", "content");
-    expect(mockInvoke).toHaveBeenCalledWith("wsl_write_file_content", {
-      distro: "Ubuntu-22.04",
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_write_file_content", {
+      transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       filePath: "src/foo.ts",
       content: "content",
       rootPath: undefined,
     });
   });
 
-  it("generateCommitMessage (WSL) should call wsl_generate_commit_message", async () => {
+  it("generateCommitMessage (WSL) should call unified_generate_commit_message", async () => {
     await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
-    expect(mockInvoke).toHaveBeenCalledWith("wsl_generate_commit_message", {
-      distro: "Ubuntu-22.04",
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_generate_commit_message", {
+      transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
       agentId: "opencode",
       agentCommandOverride: null,
       filePaths: ["src/foo.ts"],
@@ -372,87 +368,103 @@ describe("createUnifiedCommands (Remote)", () => {
 
   beforeEach(() => mockInvoke.mockClear());
 
-  it("refreshGitInfo should call unified_get_git_info with Remote transport", async () => {
+  it("refreshGitInfo should call get_git_info with Remote transport", async () => {
     await commands.refreshGitInfo();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_get_git_info", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("get_git_info", tp());
   });
 
-  it("stageFiles should call unified_stage_files", async () => {
+  it("stageFiles should call stage_files", async () => {
     await commands.stageFiles(["src/foo.ts"]);
-    expect(mockInvoke).toHaveBeenCalledWith("unified_stage_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("stage_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
     });
   });
 
-  it("commitFiles should call unified_commit_files", async () => {
+  it("commitFiles should call commit_files", async () => {
     await commands.commitFiles(["src/foo.ts"], "feat: commit");
-    expect(mockInvoke).toHaveBeenCalledWith("unified_commit_files", {
+    expect(mockInvoke).toHaveBeenCalledWith("commit_files", {
       ...tp(),
       filePaths: ["src/foo.ts"],
       message: "feat: commit",
     });
   });
 
-  it("pull should call unified_pull", async () => {
+  it("pull should call pull", async () => {
     await commands.pull();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_pull", tp());
+    expect(mockInvoke).toHaveBeenCalledWith("pull", tp());
   });
 
-  it("push should call unified_push", async () => {
+  it("push should call push", async () => {
     await commands.push();
-    expect(mockInvoke).toHaveBeenCalledWith("unified_push", { ...tp(), setUpstream: false });
+    expect(mockInvoke).toHaveBeenCalledWith("push", { ...tp(), setUpstream: false });
   });
 
-  it("readDirTree (Remote) should call remote_read_dir_tree with SSH params", async () => {
+  it("readDirTree (Remote) should call unified_read_dir_tree with transport", async () => {
     await commands.readDirTree();
-    expect(mockInvoke).toHaveBeenCalledWith("remote_read_dir_tree", {
-      host: "192.168.1.100",
-      port: 22,
-      username: "user",
-      auth: { Password: "secret" },
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_read_dir_tree", {
+      transport: {
+        Remote: {
+          host: "192.168.1.100",
+          port: 22,
+          username: "user",
+          auth: { Password: "secret" },
+          project_path: "/home/user/project",
+        },
+      },
       rootPath: null,
       subPath: null,
       maxDepth: 4,
     });
   });
 
-  it("readFileContent (Remote) should call remote_read_file_content", async () => {
+  it("readFileContent (Remote) should call unified_read_file_content", async () => {
     await commands.readFileContent("src/foo.ts");
-    expect(mockInvoke).toHaveBeenCalledWith("remote_read_file_content", {
-      host: "192.168.1.100",
-      port: 22,
-      username: "user",
-      auth: { Password: "secret" },
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_read_file_content", {
+      transport: {
+        Remote: {
+          host: "192.168.1.100",
+          port: 22,
+          username: "user",
+          auth: { Password: "secret" },
+          project_path: "/home/user/project",
+        },
+      },
       filePath: "src/foo.ts",
       rootPath: undefined,
     });
   });
 
-  it("writeFileContent (Remote) should call remote_write_file_content", async () => {
+  it("writeFileContent (Remote) should call unified_write_file_content", async () => {
     await commands.writeFileContent("src/foo.ts", "content");
-    expect(mockInvoke).toHaveBeenCalledWith("remote_write_file_content", {
-      host: "192.168.1.100",
-      port: 22,
-      username: "user",
-      auth: { Password: "secret" },
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_write_file_content", {
+      transport: {
+        Remote: {
+          host: "192.168.1.100",
+          port: 22,
+          username: "user",
+          auth: { Password: "secret" },
+          project_path: "/home/user/project",
+        },
+      },
       filePath: "src/foo.ts",
       content: "content",
       rootPath: undefined,
     });
   });
 
-  it("generateCommitMessage (Remote) should call remote_generate_commit_message", async () => {
+  it("generateCommitMessage (Remote) should call unified_generate_commit_message", async () => {
     await commands.generateCommitMessage("opencode", ["src/foo.ts"], null);
-    expect(mockInvoke).toHaveBeenCalledWith("remote_generate_commit_message", {
-      host: "192.168.1.100",
-      port: 22,
-      username: "user",
-      auth: { Password: "secret" },
-      projectPath: "/home/user/project",
+    expect(mockInvoke).toHaveBeenCalledWith("unified_generate_commit_message", {
+      transport: {
+        Remote: {
+          host: "192.168.1.100",
+          port: 22,
+          username: "user",
+          auth: { Password: "secret" },
+          project_path: "/home/user/project",
+        },
+      },
       agentId: "opencode",
       agentCommandOverride: null,
       filePaths: ["src/foo.ts"],

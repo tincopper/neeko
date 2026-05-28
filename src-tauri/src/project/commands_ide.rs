@@ -5,7 +5,11 @@ use anyhow::Result;
 use tauri::State;
 
 #[tauri::command]
-pub fn set_project_ide(project_id: String, ide: Option<String>, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn set_project_ide(
+    project_id: String,
+    ide: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
@@ -204,7 +208,6 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        
 
         local::exec(exe)
             .args(args)

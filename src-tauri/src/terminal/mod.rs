@@ -475,7 +475,7 @@ fn spawn_watcher_thread(
                         code
                     ));
                     if let Ok(mut handles) = watch_pty_handles.lock() {
-                        if let Some(handle) = handles.remove(&watch_id) {
+                        if let Some(mut handle) = handles.remove(&watch_id) {
                             handle.app_handle.unlisten(handle.input_listener_id);
                             // On Windows: drop the Job Object before the
                             // ConPTY master so that any surviving grandchild

@@ -1,5 +1,5 @@
-use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem};
 use crate::git::types::DiffResult;
+use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};

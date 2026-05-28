@@ -42,17 +42,14 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Resu
     let session = state
         .storage_manager
         .create_session_from_projects(&projects, None, None, None);
-    state
-        .storage_manager
-        .save_session(&session)
-        .map_err(|e| {
-            log::error!(
-                "Failed to save session after removing project {}: {}",
-                project_id,
-                e
-            );
-            AppError::from(e)
-        })?;
+    state.storage_manager.save_session(&session).map_err(|e| {
+        log::error!(
+            "Failed to save session after removing project {}: {}",
+            project_id,
+            e
+        );
+        AppError::from(e)
+    })?;
     Ok(())
 }
 
@@ -92,7 +89,10 @@ pub fn refresh_git_info(
 }
 
 #[tauri::command]
-pub fn set_active_project(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn set_active_project(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
     state
         .active_project_id
         .lock()
@@ -107,7 +107,10 @@ pub fn get_active_project(state: State<AppStateWrapper>) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn set_view_terminal(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn set_view_terminal(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
@@ -117,7 +120,11 @@ pub fn set_view_terminal(project_id: String, state: State<AppStateWrapper>) -> R
 }
 
 #[tauri::command]
-pub fn set_view_diff(project_id: String, file_path: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn set_view_diff(
+    project_id: String,
+    file_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
@@ -127,7 +134,11 @@ pub fn set_view_diff(project_id: String, file_path: String, state: State<AppStat
 }
 
 #[tauri::command]
-pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<AppStateWrapper>) -> Result<(), AppError> {
+pub fn set_project_collapsed(
+    project_id: String,
+    collapsed: bool,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
@@ -141,17 +152,14 @@ pub fn set_project_collapsed(project_id: String, collapsed: bool, state: State<A
     let session = state
         .storage_manager
         .create_session_from_projects(&projects, None, None, None);
-    state
-        .storage_manager
-        .save_session(&session)
-        .map_err(|e| {
-            log::error!(
-                "Failed to save session after collapsing project {}: {}",
-                project_id,
-                e
-            );
-            AppError::from(e)
-        })?;
+    state.storage_manager.save_session(&session).map_err(|e| {
+        log::error!(
+            "Failed to save session after collapsing project {}: {}",
+            project_id,
+            e
+        );
+        AppError::from(e)
+    })?;
     Ok(())
 }
 

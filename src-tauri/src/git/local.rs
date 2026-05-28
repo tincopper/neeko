@@ -1,8 +1,8 @@
-use crate::project::types::{
-    CommitDetail, CommitEntry, CommitFileChange, FileChange,
-    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
-};
 use crate::git::types::{DiffHunk, DiffLine, DiffResult};
+use crate::project::types::{
+    CommitDetail, CommitEntry, CommitFileChange, FileChange, FileDiffStats, FileStatus,
+    GitBranchInfo, GitInfo, Worktree,
+};
 use crate::utils::command::local::exec;
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
@@ -1052,7 +1052,9 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    Ok(parse_commit_log_output(&String::from_utf8_lossy(&output.stdout)))
+    Ok(parse_commit_log_output(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 /// 获取 Ahead/Behind 计数（参考 Muxy）

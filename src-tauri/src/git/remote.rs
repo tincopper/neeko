@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 use crate::connection::types::AuthMethod;
-use crate::project::types::{FileNode, GitInfo};
 #[cfg(test)]
 use crate::project::types::FileStatus;
+use crate::project::types::{FileNode, GitInfo};
 use crate::utils::command::ssh::{exec_command, safe_path};
 
 use super::parsers::{build_file_tree_from_find, parse_git_info_output};

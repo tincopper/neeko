@@ -10,7 +10,7 @@ pub mod flags {
 
 /// 创建无窗口进程命令（Windows 下隐藏控制台窗口）
 pub fn exec(program: &str) -> Command {
-    let cmd = Command::new(program);
+    let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;

@@ -1,11 +1,11 @@
 use anyhow::Result;
 
 use super::transport::GitTransport;
+use crate::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
 };
-use crate::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::utils::command::local::exec;
 
 /// Stage specific files: `git add -- <files>`
@@ -605,7 +605,12 @@ pub async fn get_git_branch_info_shell(
     let worktrees_output = transport
         .run_git(&["worktree", "list", "--porcelain"], work_dir)
         .await?;
-    let worktrees = parse_worktree_list(&worktrees_output);
+    let mut worktrees = parse_worktree_list(&worktrees_output);
+    // The first worktree is always the main worktree (the project directory itself).
+    // Filter it out to match the behavior of git2 and parsers::parse_git_info_output.
+    if !worktrees.is_empty() {
+        worktrees.remove(0);
+    }
 
     Ok(GitBranchInfo {
         current_branch: current_branch.to_string(),

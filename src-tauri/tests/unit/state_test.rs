@@ -3,7 +3,9 @@ use neeko_lib::connection::types::AuthMethod;
 use neeko_lib::git::types::DiffLine;
 use neeko_lib::project::types::{FileChange, FileStatus, ViewMode};
 use neeko_lib::terminal::types::TerminalStatus;
-use neeko_lib::workspace::types::{ProjectSession, RemoteEntrySession, RemoteProjectSession, SessionStore, WSLProjectSession};
+use neeko_lib::workspace::types::{
+    ProjectSession, RemoteEntrySession, RemoteProjectSession, SessionStore, WSLProjectSession,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 

@@ -121,7 +121,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       (oldPath: string, newName: string) => {
         const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
         if (isWsl) {
-          invoke("unified_rename_worktree", {
+          invoke("rename_worktree", {
             transport: { Wsl: { distro, project_path: project.path } },
             oldPath,
             newPath: newFullPath,
@@ -129,7 +129,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         } else if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            invoke("unified_rename_worktree", {
+            invoke("rename_worktree", {
               transport: rt,
               oldPath,
               newPath: newFullPath,
@@ -143,7 +143,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleRemoveWorktree = useCallback(
       (wtPath: string, _branch: string) => {
         if (isWsl) {
-          invoke("unified_remove_worktree", {
+          invoke("remove_worktree", {
             transport: { Wsl: { distro, project_path: project.path } },
             worktreePath: wtPath,
           }).catch((e: unknown) => {
@@ -152,7 +152,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         } else if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            invoke("unified_remove_worktree", {
+            invoke("remove_worktree", {
               transport: rt,
               worktreePath: wtPath,
             }).catch((e: unknown) => {
@@ -179,7 +179,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleGetWorktreeChangedFiles = useCallback(
       (worktreePath: string): Promise<FileChange[]> => {
         if (isWsl) {
-          return invoke<FileChange[]>("unified_get_worktree_changed_files", {
+          return invoke<FileChange[]>("get_worktree_changed_files", {
             transport: { Wsl: { distro, project_path: project.path } },
             worktreePath,
           });
@@ -187,7 +187,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            return invoke<FileChange[]>("unified_get_worktree_changed_files", {
+            return invoke<FileChange[]>("get_worktree_changed_files", {
               transport: rt,
               worktreePath,
             });
@@ -201,7 +201,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleIsWorktreeDirty = useCallback(
       (worktreePath: string): Promise<boolean> => {
         if (isWsl) {
-          return invoke<boolean>("unified_is_worktree_dirty", {
+          return invoke<boolean>("is_worktree_dirty", {
             transport: { Wsl: { distro, project_path: project.path } },
             worktreePath,
           });
@@ -209,7 +209,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
         if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            return invoke<boolean>("unified_is_worktree_dirty", {
+            return invoke<boolean>("is_worktree_dirty", {
               transport: rt,
               worktreePath,
             });

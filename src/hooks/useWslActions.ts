@@ -106,7 +106,7 @@ export function useWslActions({
     string
   >({
     refreshGitInfo: async (projectPath, distro) => (
-      invoke<GitInfo>("unified_get_git_info", {
+      invoke<GitInfo>("get_git_info", {
         transport: { Wsl: { distro, project_path: projectPath } },
       }).catch((e) => {
         console.error("[WSL] Failed to refresh git info:", e);

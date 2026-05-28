@@ -79,7 +79,7 @@ const ProjectsPanel: React.FC = () => {
          setRemoteHomeDir("");
          return;
       }
-      invokeRemoteGit("get_remote_home_dir", dialog.source.entryId, {})
+       invokeRemoteGit("unified_get_remote_home_dir", dialog.source.entryId, {})
          .then((dir) => setRemoteHomeDir(dir as string))
          .catch(() => setRemoteHomeDir(""));
    }, [dialog, invokeRemoteGit]);
@@ -91,7 +91,7 @@ const ProjectsPanel: React.FC = () => {
    const handlePush = useCallback(async (projectId: string) => {
       try {
          const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-         await invoke("unified_push", {
+         await invoke("push", {
             transport: { Local: { project_path: projectPath } },
             setUpstream: false,
          });
@@ -104,7 +104,7 @@ const ProjectsPanel: React.FC = () => {
    const handlePull = useCallback(async (projectId: string) => {
       try {
          const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-         await invoke("unified_pull", {
+         await invoke("pull", {
             transport: { Local: { project_path: projectPath } },
          });
          onRefreshGit(projectId);

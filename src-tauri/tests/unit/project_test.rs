@@ -1,6 +1,6 @@
-use neeko_lib::terminal::types::TerminalStatus;
 use neeko_lib::project::types::ViewMode;
 use neeko_lib::project::ProjectManager;
+use neeko_lib::terminal::types::TerminalStatus;
 use std::path::PathBuf;
 use tempfile::TempDir;
 

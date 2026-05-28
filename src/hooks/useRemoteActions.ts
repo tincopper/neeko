@@ -125,7 +125,7 @@ export function useRemoteActions({
         console.error("[SSH] No auth for entry");
         return null;
       }
-      const result = await invoke<GitInfo>("unified_get_git_info", {
+      const result = await invoke<GitInfo>("get_git_info", {
         transport: {
           Remote: {
             host: entry.host,

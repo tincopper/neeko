@@ -58,7 +58,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     let cancelled = false;
     for (const wt of filteredWorktrees) {
       if (changeStats[wt.path]) continue;
-      invoke<FileChange[]>("unified_get_worktree_changed_files", {
+      invoke<FileChange[]>("get_worktree_changed_files", {
         transport: { Local: { project_path: projectPath } },
         worktreePath: wt.path,
       })
@@ -82,7 +82,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   const handleRemove = useCallback(async (worktreePath: string, branch: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const isDirty = await invoke<boolean>("unified_is_worktree_dirty", {
+      const isDirty = await invoke<boolean>("is_worktree_dirty", {
         transport: { Local: { project_path: projectPath } },
         worktreePath,
       });
@@ -102,13 +102,13 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
         await invoke("close_terminal_session", { sessionId: wtCache.sessionId }).catch(() => {});
       }
       destroyTerminalCache(wtCacheKey);
-      await invoke("unified_remove_worktree", {
+      await invoke("remove_worktree", {
         transport: { Local: { project_path: projectPath } },
         worktreePath,
       });
       let branchError: string | null = null;
       try {
-        await invoke("unified_delete_branch", {
+        await invoke("delete_branch", {
           transport: { Local: { project_path: projectPath } },
           branchName: branch,
         });
@@ -143,7 +143,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     if (newName === oldDirName) return;
     try {
       const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
-      await invoke("unified_rename_worktree", {
+      await invoke("rename_worktree", {
         transport: { Local: { project_path: projectPath } },
         oldPath,
         newPath: newFullPath,

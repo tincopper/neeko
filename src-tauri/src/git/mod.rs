@@ -1,8 +1,5 @@
 pub mod cache;
 pub mod commands;
-pub mod commands_remote;
-pub mod commands_unified;
-pub mod commands_wsl;
 mod local;
 pub mod operations;
 pub mod parsers;

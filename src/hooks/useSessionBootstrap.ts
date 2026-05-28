@@ -55,7 +55,7 @@ export function useSessionBootstrap(deps: {
             for (const p of projects) {
                if (!p.git_info?.changed_files?.length) {
                   // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
-                  invoke<FileChange[]>("unified_get_worktree_changed_files", {
+                  invoke<FileChange[]>("get_worktree_changed_files", {
                      transport: { Local: { project_path: p.path } },
                      worktreePath: "",
                   })
@@ -64,7 +64,7 @@ export function useSessionBootstrap(deps: {
                      })
                      .catch(() => { });
 
-                  invoke<GitBranchInfo>("unified_get_git_branch_info", {
+                  invoke<GitBranchInfo>("get_git_branch_info", {
                      transport: { Local: { project_path: p.path } },
                   })
                      .then((branchInfo) => {
@@ -125,7 +125,7 @@ export function useSessionBootstrap(deps: {
          };
 
          // 1. 获取变更文件列表（轻量）
-         invoke<FileChange[]>("unified_get_worktree_changed_files", {
+         invoke<FileChange[]>("get_worktree_changed_files", {
             transport: { Local: { project_path: projectPath } },
             worktreePath: "",
          })
@@ -135,7 +135,7 @@ export function useSessionBootstrap(deps: {
             .catch((e) => console.error("[SessionBootstrap] get_worktree_changed_files failed:", e));
 
          // 2. 获取分支信息（异步，不阻塞文件列表更新）
-         invoke<GitBranchInfo>("unified_get_git_branch_info", {
+         invoke<GitBranchInfo>("get_git_branch_info", {
             transport: { Local: { project_path: projectPath } },
          })
             .then((branchInfo) => {

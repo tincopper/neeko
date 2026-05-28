@@ -74,7 +74,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
     try {
       const src = dialog.source;
       if (src?.type === "wsl") {
-        await invoke("unified_create_branch", {
+        await invoke("create_branch", {
           transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
           branchName: branchName.trim(),
         });
@@ -84,7 +84,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await invoke("unified_create_branch", {
+        await invoke("create_branch", {
           transport: { Local: { project_path: dialog.projectPath ?? "" } },
           branchName: branchName.trim(),
         });
@@ -107,7 +107,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
     try {
       const src = dialog.source;
       if (src?.type === "wsl") {
-        await invoke("unified_create_worktree", {
+        await invoke("create_worktree", {
           transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
           worktreePath: computedPath,
           branchName: name,
@@ -119,7 +119,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await invoke("unified_create_worktree", {
+        await invoke("create_worktree", {
           transport: { Local: { project_path: dialog.projectPath ?? "" } },
           worktreePath: computedPath,
           branchName: name,
@@ -142,7 +142,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
     try {
       const src = dialog.source;
       if (src?.type === "wsl") {
-        await invoke("unified_create_worktree", {
+        await invoke("create_worktree", {
           transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
           worktreePath: worktreePath.trim(),
           branchName: worktreeBranch.trim(),
@@ -154,7 +154,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         setSubmitting(false);
         return;
       } else {
-        await invoke("unified_create_worktree", {
+        await invoke("create_worktree", {
           transport: { Local: { project_path: dialog.projectPath ?? "" } },
           worktreePath: worktreePath.trim(),
           branchName: worktreeBranch.trim(),

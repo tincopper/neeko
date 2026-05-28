@@ -23,7 +23,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
 
   useEffect(() => {
     const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    invoke<FileChange[]>("unified_get_worktree_changed_files", {
+    invoke<FileChange[]>("get_worktree_changed_files", {
       transport: { Local: { project_path: projectPath } },
       worktreePath: "",
     })
@@ -42,7 +42,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       return;
     }
     const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    invoke<CommitEntry[]>("unified_get_commit_log", {
+    invoke<CommitEntry[]>("get_commit_log", {
       transport: { Local: { project_path: projectPath } },
       count: 1,
     })
@@ -63,13 +63,13 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     try {
       const filePaths = files.map((f) => f.path);
       const projectPath = getProjectPath();
-      await invoke("unified_commit_files", {
+      await invoke("commit_files", {
         transport: { Local: { project_path: projectPath } },
         filePaths,
         message: message.trim(),
       });
       if (pushAfter) {
-        await invoke("unified_push", {
+        await invoke("push", {
           transport: { Local: { project_path: projectPath } },
           setUpstream: false,
         });
@@ -88,7 +88,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await invoke("unified_push", {
+      await invoke("push", {
         transport: { Local: { project_path: projectPath } },
         setUpstream: false,
       });
@@ -106,7 +106,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await invoke("unified_pull", {
+      await invoke("pull", {
         transport: { Local: { project_path: projectPath } },
       });
       onRefreshGit(projectId);

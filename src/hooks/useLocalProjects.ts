@@ -57,7 +57,7 @@ export function useLocalProjects() {
   const loadProjects = useCallback(async () => {
     try {
       const projectList = await invoke<Project[]>("list_projects");
-      
+
       // 合并逻辑：保留 store 中已有的 git_info.changed_files
       // list_projects 返回的项目 changed_files 为空（轻量版）
       // changed_files 由 watcher/handleRefreshGit 维护
@@ -231,13 +231,13 @@ export function useLocalProjects() {
 
     try {
       const projectPath = projects.find(p => p.id === projectId)?.path ?? "";
-      const changedFiles = await invoke<FileChange[]>("unified_get_worktree_changed_files", {
+      const changedFiles = await invoke<FileChange[]>("get_worktree_changed_files", {
         transport: { Local: { project_path: projectPath } },
         worktreePath: "",
       });
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
-      invoke<GitBranchInfo>("unified_get_git_branch_info", {
+      invoke<GitBranchInfo>("get_git_branch_info", {
         transport: { Local: { project_path: projectPath } },
       })
         .then((branchInfo) => {
