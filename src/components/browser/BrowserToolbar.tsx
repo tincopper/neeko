@@ -1,5 +1,5 @@
 import React, { useState, useCallback, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowRight, Bug, ExternalLink, MousePointerClick, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bug, ExternalLink, MousePointerClick, RefreshCw } from "@/components/icons"
 
 interface BrowserToolbarProps {
   url: string;

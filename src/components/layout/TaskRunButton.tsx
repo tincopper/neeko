@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Square, ChevronDown, Plus, Pencil, X } from "lucide-react";
+import { Play, Square, ChevronDown, Plus, Pencil, X } from "@/components/icons"
 import { useTaskStore } from "../../store/taskStore";
 import { useProjectStore } from "../../store/projectStore";
 import TaskDialog from "./TaskDialog";

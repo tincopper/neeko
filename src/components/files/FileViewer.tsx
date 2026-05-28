@@ -5,7 +5,7 @@ import { EditorSelection } from "@codemirror/state";
 import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
-import { Eye, Save, FileCode, Globe } from "lucide-react";
+import { Eye, Save, FileCode, Globe } from "@/components/icons"
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../utils/codemirror";
 import { MarkdownPreview } from "../ui";
 import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../types";

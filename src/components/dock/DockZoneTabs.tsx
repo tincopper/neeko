@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback } from "react";
-import { X } from "lucide-react";
+import { X } from "@/components/icons"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ContextMenu,

@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, FolderDown, Radar } from "lucide-react";
+import { Plus, FolderDown, Radar } from "@/components/icons"
 import { Button } from "../ui";
 
 interface SkillHeaderProps {

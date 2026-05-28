@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Play } from "lucide-react";
+import { ChevronDown, Play } from "@/components/icons"
 import { invoke } from "@tauri-apps/api/core";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";

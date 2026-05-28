@@ -1,6 +1,6 @@
 import React from "react";
 import { SearchIcon } from "../icons";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "@/components/icons"
 import { cn } from "../../utils/cn";
 
 interface LogToolbarProps {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { X } from "lucide-react";
+import { X } from "@/components/icons"
 import { Button, Badge } from "../ui";
 import { ResizablePanel } from "../ui/resizable-panel";
 import { MarkdownPreview } from "../ui/MarkdownPreview";

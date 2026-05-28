@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { LibraryBig, Settings, Plus, ListTree } from "lucide-react";
+import { LibraryBig, Settings, Plus, ListTree } from "@/components/icons"
 import { useSidebar, type ActivityPanel } from "../../contexts";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "../ui/sidebar";
 import { IS_WINDOWS } from "../../utils/platform";

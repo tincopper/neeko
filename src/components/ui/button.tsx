@@ -9,7 +9,6 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-accent-blue text-[var(--text-on-accent)] hover:brightness-110",
         primary: "bg-accent-blue text-[var(--text-on-accent)] hover:brightness-110",
         destructive: "bg-accent-red text-white hover:brightness-110",
         danger: "bg-accent-red text-white hover:brightness-110",

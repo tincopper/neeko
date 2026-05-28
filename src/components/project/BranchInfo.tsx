@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import type { GitInfo, AheadBehind } from "../../types";
 import { BranchIcon, PlusIcon } from "../icons";
-import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "lucide-react";
+import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "@/components/icons"
 import BranchDropdownContent from "../shared/BranchDropdownContent";
 
 interface BranchInfoProps {

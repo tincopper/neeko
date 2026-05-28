@@ -7,7 +7,7 @@
  */
 
 import React, { useRef, useEffect, useMemo } from "react";
-import { GitBranch } from "lucide-react";
+import { GitBranch } from "@/components/icons"
 import { SearchIcon } from "../icons";
 
 export interface BranchDropdownContentProps {

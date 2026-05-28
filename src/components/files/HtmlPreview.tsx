@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { Globe, RefreshCw } from "lucide-react";
+import { Globe, RefreshCw } from "@/components/icons"
 import type { FileContent, FileChangedEvent } from "../../types";
 import { useFileChangedEvent } from "../../hooks/useFileChangedEvent";
 

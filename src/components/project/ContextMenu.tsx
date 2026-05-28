@@ -1,5 +1,5 @@
-﻿import React, { useEffect, useRef, useMemo } from "react";
-import { LucideIcon } from "lucide-react";
+import React, { useEffect, useRef, useMemo } from "react";
+import { LucideIcon } from "@/components/icons"
 import { cn } from "../../utils/cn";
 
 export type ContextMenuItem =
@@ -60,14 +60,14 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
     >
       {items.map((item, idx) =>
         item.separator === true ? (
-          <div key={idx} className="gh-context-separator" />
+          <div key={idx} className="h-px bg-border my-1" />
         ) : (
           <div
             key={idx}
             className={cn(
               "flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover",
               item.danger && "text-[#e06c75] hover:bg-[rgba(224,108,117,0.15)]",
-              item.disabled && "gh-context-menu-item-disabled"
+              item.disabled && "opacity-40 cursor-default pointer-events-none"
             )}
             onClick={() => {
               if (!item.disabled) {

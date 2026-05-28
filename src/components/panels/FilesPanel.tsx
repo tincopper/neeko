@@ -1,4 +1,4 @@
-import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "lucide-react";
+import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "@/components/icons"
 import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { fileIconSrc } from "../../utils/fileIcons";
 import { resolveAbsolutePath } from "../../utils/browserUtils";

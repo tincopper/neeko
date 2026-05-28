@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2, FileText, Edit3, MoreHorizontal } from "lucide-react";
+import { Trash2, FileText, Edit3, MoreHorizontal } from "@/components/icons"
 import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Badge } from "../ui";
 import type { ManagedSkillDto } from "../../types";
 import { cn } from "../../utils/cn";

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { PRListItem } from "../../types";
 import { ChevronRightIcon } from "../icons";
 import { cn } from "../../utils/cn";
-import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "lucide-react";
+import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/components/icons"
 
 interface PullRequestsPanelProps {
   projectId: string;

@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useMemo } from "react";
-import { Plus } from "lucide-react";
+import { Plus } from "@/components/icons"
 import { cn } from "../../utils/cn";
 import UnifiedTabItem from "./UnifiedTabItem";
 import AgentIcon from "./AgentIcon";

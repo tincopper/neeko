@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen } from "@/components/icons"
 
 const ProjectSkillContent: React.FC = React.memo(() => {
   return (

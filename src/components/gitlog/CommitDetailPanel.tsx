@@ -8,7 +8,7 @@ import {
   Pencil,
   Trash2,
   FilePlus,
-} from "lucide-react";
+} from "@/components/icons"
 import { cn } from "../../utils/cn";
 
 interface CommitDetailPanelProps {

@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Download, X } from "lucide-react";
+import { Download, X } from "@/components/icons"
 import { Button } from "../ui";
 import type { DiscoveredSkillDto } from "../../types";
 

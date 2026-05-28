@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import { Store, Loader2 } from "lucide-react";
+import { Store, Loader2 } from "@/components/icons"
 import { useSkillStore } from "../../store/skillStore";
 import { useMarketplace } from "../../hooks/useMarketplace";
 import MarketplaceSearchBar from "./MarketplaceSearchBar";

@@ -1,54 +1,34 @@
 import React from "react";
-import {
-  GitBranch,
-  ChevronRight,
-  ChevronLeft,
-  X,
-  Trash2,
-  Plus,
-  FileCode2,
-  Terminal,
-  Square,
-  Settings,
-  AlignJustify,
-  Code,
-  Grid2x2,
-  Info,
-  OctagonAlert,
-  Search,
-  FolderGit2,
-  Folder,
-  Sun,
-  Keyboard,
-  MoreVertical,
-  Server,
-  type LucideProps,
+
+// ─── Lucide aliases (semantic names for commonly used icons) ─────────────
+export {
+  GitBranch as BranchIcon,
+  ChevronRight as ChevronRightIcon,
+  Trash2 as TrashIcon,
+  Plus as PlusIcon,
+  FileCode2 as FileIcon,
+  FolderGit2 as FolderGitIcon,
+  Folder as FolderIcon,
+  Settings as SettingsIcon,
+  AlignJustify as EditorIcon,
+  Terminal as TerminalIcon,
+  Code as CodeIcon,
+  Grid2x2 as GridIcon,
+  Info as InfoCircleIcon,
+  OctagonAlert as ErrorOctagonIcon,
+  GitBranch as GitLogoIcon,
+  Search as SearchIcon,
+  Sun as AppearanceIcon,
+  Keyboard as KeyboardIcon,
+  MoreVertical as MoreVerticalIcon,
+  Server as ServerIcon,
 } from "lucide-react";
 
-// ─── Lucide aliases (保持现有组件名) ──────────────────────────────────────────
+// ─── Re-export everything so all lucide icons importable from one path ───
+export * from "lucide-react";
 
-export const BranchIcon = GitBranch;
-export const ChevronRightIcon = ChevronRight;
-export const TrashIcon = Trash2;
-export const PlusIcon = Plus;
-export const FileIcon = FileCode2;
-export const FolderGitIcon = FolderGit2;
-export const FolderIcon = Folder;
-export const SettingsIcon = Settings;
-export const EditorIcon = AlignJustify;
-export const TerminalIcon = Terminal;
-export const CodeIcon = Code;
-export const GridIcon = Grid2x2;
-export const InfoCircleIcon = Info;
-export const ErrorOctagonIcon = OctagonAlert;
-export const GitLogoIcon = GitBranch;
-export const SearchIcon = Search;
-export const AppearanceIcon = Sun;
-export const KeyboardIcon = Keyboard;
-export const MoreVerticalIcon = MoreVertical;
-export const ServerIcon = Server;
-
-// ─── 特殊处理 (定制尺寸/样式) ─────────────────────────────────────────────────
+// ─── Special overrides (custom size/style) ───────────────────────────────
+import { X, Square, ChevronLeft, type LucideProps } from "lucide-react"
 
 export const CloseIcon: React.FC<LucideProps> = (props) => (
   <X size={14} strokeWidth={1.8} {...props} />

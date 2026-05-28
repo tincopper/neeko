@@ -1,5 +1,5 @@
 import React from "react";
-import { Flame, TrendingUp, Star } from "lucide-react";
+import { Flame, TrendingUp, Star } from "@/components/icons"
 import { cn } from "../../utils/cn";
 import type { LeaderboardType } from "../../hooks/useMarketplace";
 

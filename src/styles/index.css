@@ -25,6 +25,12 @@
   --color-diff-removed: var(--diff-removed);
   --color-diff-added-text: var(--diff-added-text);
   --color-diff-removed-text: var(--diff-removed-text);
+  --font-size-ui: var(--font-size);
+  --font-size-terminal: var(--terminal-font-size);
+  --spacing-sidebar: var(--sidebar-width);
+  --animate-wt-spin: wt-spin 0.6s linear infinite;
+  --animate-wt-fade: wt-fade-out 0.5s ease-in forwards;
+  --animate-toast-in: toast-in 0.18s ease;
 }
 
 /* -- Global base -- */
@@ -105,23 +111,15 @@
   ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-  /* Settings font ::after */
   .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }
-
-  /* Context menu disabled */
-  .gh-context-menu-item-disabled { opacity: 0.4; cursor: default; pointer-events: none; }
-  .gh-context-menu-item-disabled:hover { background-color: transparent; }
 
   /* Worktree animations */
   @keyframes wt-fade-out { 0%, 80% { opacity: 1; max-height: 40px; padding-top: 4px; padding-bottom: 4px; margin-bottom: 0; } 100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -2px; } }
-  .gh-worktree-item.wt-deleting { animation: wt-fade-out 0.5s ease-in forwards; pointer-events: none; overflow: hidden; }
+  .wt-deleting { animation: wt-fade-out 0.5s ease-in forwards; pointer-events: none; overflow: hidden; }
   @keyframes wt-spin { to { transform: rotate(360deg); } }
   .wt-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent-yellow); border-radius: 50%; animation: wt-spin 0.6s linear infinite; flex-shrink: 0; }
-
   /* Toast animation */
   @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  .app-toast { animation: toast-in 0.18s ease; }
-
 
   /* Agent bar button */
   .agent-bar-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: all 0.15s; }
@@ -147,8 +145,8 @@
   .split-cell.context, .split-linenum.context { background-color: transparent; }
 
   /* Diff word highlights (embedded in dangerouslySetInnerHTML) */
-  .word-diff-added { color: #3fb950; font-weight: 600; }
-  .word-diff-removed { color: #f85149; font-weight: 600; }
+  .word-diff-added { color: var(--diff-added-text); font-weight: 600; }
+  .word-diff-removed { color: var(--diff-removed-text); font-weight: 600; }
 
   /* Syntax highlighting — driven by CodeMirror theme variables */
   .diff-line .line-content .hljs-keyword, .diff-line .line-content .hljs-selector-tag { color: var(--cm-keyword); }
@@ -170,22 +168,8 @@
   .diff-line .line-content .hljs-formula { background-color: rgba(var(--accent-blue-rgb), 0.1); }
 
   /* Placeholder styling */
-  .gh-branch-dropdown-search-input::placeholder { color: var(--text-muted); }
-  .gh-dialog-input::placeholder { color: var(--text-muted); }
   .path-input::placeholder { color: var(--text-muted); }
 
-  /* Hide number input spinners */
-  .gh-dialog-input[type="number"]::-webkit-inner-spin-button,
-  .gh-dialog-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  .gh-dialog-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
-
-  /* Hover-show actions pattern */
-  .gh-project-header .gh-project-actions, .gh-project-header .gh-ide-btn { opacity: 0; transition: opacity 0.15s; }
-  .gh-project-header:hover .gh-project-actions, .gh-project.active .gh-project-header:hover .gh-ide-btn { opacity: 1; }
-  .gh-branch-item .gh-project-actions { opacity: 0; transition: opacity 0.15s; }
-  .gh-branch-item:hover .gh-project-actions { opacity: 1; }
-
-  /* Project active header */
 
   /* -- Markdown Preview Typography -- */
   .markdown-preview {

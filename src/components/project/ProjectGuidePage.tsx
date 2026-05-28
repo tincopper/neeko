@@ -1,5 +1,5 @@
 import React from "react";
-import { Settings } from "lucide-react";
+import { Settings } from "@/components/icons"
 import neekoIcon from "../../assets/neeko-icon.png";
 import AgentIcon from "../layout/AgentIcon";
 import type { AgentConfig } from "../../types";

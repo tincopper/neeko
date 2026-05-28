@@ -11,7 +11,7 @@ import {
   Tag,
   SquareArrowOutUpRight,
   Check,
-} from "lucide-react";
+} from "@/components/icons"
 import { cn } from "../../utils/cn";
 
 interface CommitListProps {

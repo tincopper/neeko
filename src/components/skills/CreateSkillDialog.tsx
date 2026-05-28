@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { X } from "lucide-react";
+import { X } from "@/components/icons"
 import { Button, Input } from "../ui";
 import { ResizablePanel } from "../ui/resizable-panel";
 import MarkdownEditor from "./MarkdownEditor";

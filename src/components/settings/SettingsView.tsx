@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowLeft, Search, FolderOpen } from "lucide-react";
+import { ArrowLeft, Search, FolderOpen } from "@/components/icons"
 import { useAppViewStore } from "../../store/appViewStore";
 import { useProjectStore } from "../../store/projectStore";
 import { useAppContext } from "../../contexts";

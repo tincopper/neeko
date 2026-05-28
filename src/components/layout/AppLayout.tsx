@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Settings } from "lucide-react";
+import { Plus, Settings } from "@/components/icons"
 import { useAppViewStore } from "@/store/appViewStore";
 import { useDockStore } from "@/store/dockStore";
 import { cn } from "@/lib/utils";
