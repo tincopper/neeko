@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Agent 配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub id: String,
     pub name: String,
@@ -24,4 +24,16 @@ pub struct AgentConfig {
     /// 内置 agent 的默认 skill 路径。用户自定义 agent 此字段始终为 None。
     #[serde(default)]
     pub default_skill_path: Option<String>,
+}
+
+impl AgentConfig {
+    /// Resolve prompt prefix args. Returns None if agent doesn't support prompt mode.
+    pub fn resolve_prompt_args(&self) -> Option<Vec<String>> {
+        self.prompt_args.clone()
+    }
+
+    /// Resolve prompt suffix args (appended after prompt).
+    pub fn resolve_post_prompt_args(&self) -> Vec<String> {
+        self.post_prompt_args.clone().unwrap_or_default()
+    }
 }

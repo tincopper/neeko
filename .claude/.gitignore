@@ -42,3 +42,10 @@
 !skills/zoom-out/**
 !skills/tdd/
 !skills/tdd/**
+!skills/react-doctor
+!skills/react-doctor/**
+!skills/rust-patterns
+!skills/rust-patterns/**
+!skills/rust-testing/
+!skills/rust-testing/**
+

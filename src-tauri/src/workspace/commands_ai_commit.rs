@@ -84,7 +84,7 @@ pub(crate) fn resolve_agent_config(
         .get_agent(agent_id)
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))?;
 
-    let prompt_args = crate::agent::AgentManager::resolve_prompt_args(agent).ok_or_else(|| {
+    let prompt_args = agent.resolve_prompt_args().ok_or_else(|| {
         AppError::InvalidInput(format!(
             "Agent '{}' does not support prompt mode.",
             agent.name
@@ -96,7 +96,7 @@ pub(crate) fn resolve_agent_config(
         .unwrap_or(&agent.command)
         .to_string();
 
-    let post_prompt_args = crate::agent::AgentManager::resolve_post_prompt_args(agent);
+    let post_prompt_args = agent.resolve_post_prompt_args();
 
     log::info!(
         "[AI commit] agent_id={} command={} prompt_args={:?} post_prompt_args={:?}",

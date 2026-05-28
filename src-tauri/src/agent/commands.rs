@@ -10,7 +10,7 @@ pub fn list_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, Ap
         .agent_manager
         .lock()
         .map_err(AppError::from)
-        .map(|am| am.get_agents())
+        .map(|am| am.get_agents().to_vec())
 }
 
 #[tauri::command]
@@ -34,7 +34,10 @@ pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Resul
         .lock()
         .map_err(AppError::from)?
         .add_agent(agent.clone());
-    let mut config = state.storage_manager.load_config().unwrap_or_default();
+    let mut config = state
+        .storage_manager
+        .load_config()
+        .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
     let custom_agents = config
         .as_object_mut()
         .and_then(|m| {
@@ -57,12 +60,26 @@ pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Resul
 
 #[tauri::command]
 pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
+    {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        if let Some(agent) = am.get_agent(&agent_id) {
+            if agent.is_builtin {
+                return Err(AppError::InvalidInput(format!(
+                    "Cannot remove builtin agent: {}",
+                    agent_id
+                )));
+            }
+        }
+    }
     state
         .agent_manager
         .lock()
         .map_err(AppError::from)?
         .remove_agent(&agent_id);
-    let mut config = state.storage_manager.load_config().unwrap_or_default();
+    let mut config = state
+        .storage_manager
+        .load_config()
+        .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
     if let Some(custom_agents) = config
         .as_object_mut()
         .and_then(|m| m.get_mut("customAgents"))
@@ -107,7 +124,8 @@ pub async fn check_agents_installed(
         .agent_manager
         .lock()
         .map_err(AppError::from)?
-        .get_agents();
+        .get_agents()
+        .to_vec();
     // Perform async check without holding lock
     let mut result = HashMap::new();
     for id in &ids {
@@ -116,11 +134,17 @@ pub async fn check_agents_installed(
             .find(|a| a.id == *id)
             .map(|a| a.command.clone());
         let installed = match command {
-            Some(cmd) => {
-                tokio::task::spawn_blocking(move || crate::agent::check_command_exists(&cmd))
-                    .await
-                    .unwrap_or(false)
-            }
+            Some(cmd) => match tokio::task::spawn_blocking(move || {
+                crate::utils::command::check_command_exists(&cmd)
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    log::error!("check_command_exists task failed: {e}");
+                    false
+                }
+            },
             None => false,
         };
         result.insert(id.clone(), installed);
