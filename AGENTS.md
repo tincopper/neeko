@@ -142,6 +142,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | `src-tauri/Cargo.toml` | Rust 依赖与目标配置 |
 | `src-tauri/tauri.conf.json` | Tauri 构建与窗口配置 |
 | `.trellis/workflow.md` | AI 开发流程规范 |
+| `docs/neeko-development-spec.md` | 全栈 Feature-Based / Domain-Driven 架构规范 |
 
 ## Runtime and Tooling Preferences
 

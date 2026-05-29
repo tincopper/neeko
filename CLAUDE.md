@@ -323,6 +323,7 @@ VS Code, Cursor, Zed, IntelliJ IDEA, GoLand, RustRover, PyCharm
 
 ## 相关文档
 
+- `docs/neeko-development-spec.md` — 全栈 Feature-Based / Domain-Driven 架构规范（含 ESLint 约束）
 - `docs/REQUIREMENTS.md` — 完整需求文档
 - `docs/SESSION_CONTEXT.md` — 开发历史与架构发现
 - `docs/skill-management-design.md` — Skill 系统设计（未实现）
