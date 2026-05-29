@@ -6,7 +6,16 @@ export { RemoteDialog } from "./components/RemoteDialog";
 export { WSLItem, RemoteItem } from "./components/RemoteItems";
 export { WSLDialog } from "./components/WSLDialog";
 
-// Types
+// Domain Types
+export type {
+  WSLProject,
+  WSLEntrySession,
+  RemoteProject,
+  AuthMethod,
+  RemoteEntrySession,
+} from "./types";
+
+// Component Types
 export type {
   ActiveWslKey,
   ActiveRemoteKey,
@@ -26,6 +35,7 @@ export { useWslActions } from "./hooks/useWslActions";
 export { useRemoteProjects } from "./hooks/useRemoteProjects";
 export { useRemoteActions } from "./hooks/useRemoteActions";
 export { useRemoteAuthActions } from "./hooks/useRemoteAuthActions";
+export { useConnectionOrchestrator } from "./hooks/useConnectionOrchestrator";
 
 // Contexts
 export { WslProvider, useWslContext } from "./contexts/wsl-context";

@@ -12,7 +12,7 @@ import { useDockStore } from "@/shared/store/dockStore";
 import FilesPanel from "@/features/file/components/FilesPanel";
 import SkillsPanel from "@/features/skill/components/SkillsPanel";
 import GitCommitPanel from "@/features/git/components/GitCommitPanel";
-import { useActiveProject } from "@/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/useActiveProject";
 import { buildDiffSource } from "@/shared/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";

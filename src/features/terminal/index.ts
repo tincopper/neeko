@@ -39,4 +39,5 @@ export {
 } from "./components/terminalCache";
 export { default as SplitLayout } from "./components/SplitLayout";
 export { updateAllTerminalThemes } from "./components/index";
+export type { TerminalTab } from "./types";
 export { useTerminalTabs } from "./hooks/useTerminalTabs";

@@ -4,7 +4,7 @@ import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
 import type { ActiveWslKey, ActiveRemoteKey } from "@/features/connection/components/types";
-import { useAppContainer } from "@/hooks";
+import { useAppShell } from "@/app/hooks";
 
 export type { ActiveWslKey, ActiveRemoteKey };
 
@@ -16,7 +16,7 @@ function App() {
     appProvidersProps,
     appLayoutProps,
     appModalsProps,
-  } = useAppContainer();
+  } = useAppShell();
 
   if (initializing) {
     return <SplashScreen />;

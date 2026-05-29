@@ -3,7 +3,7 @@ import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useEditorStore } from "@/features/editor/store";
 import { useAppContext } from "@/shared/contexts/app-context";
-import { useActiveProject } from "@/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/useActiveProject";
 import { useGitLog } from "./useGitLog";
 import { useCommitDetail } from "./useCommitDetail";
 import LogToolbar from "./LogToolbar";

@@ -39,7 +39,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
 
 // ProjectsPanel takes no props �� render directly
 const ProjectsPanel = lazy(
-  () => import("@/components/panels/ProjectsPanel"),
+  () => import("@/features/project/components/ProjectsPanel"),
 );
 
 /**

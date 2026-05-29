@@ -19,7 +19,7 @@ import { useEditorStore } from "../store";
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
-import { useActiveProject } from "@/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/useActiveProject";
 import {
    getViewSnapshot,
    setViewSnapshot,

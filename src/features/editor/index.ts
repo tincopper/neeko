@@ -14,9 +14,32 @@ export { useTabManagement } from "./hooks/useTabManagement";
 export { useEditorGroupLayout } from "./hooks/useEditorGroupLayout";
 export type { EditorGroupLayoutResult } from "./hooks/useEditorGroupLayout";
 export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from "./hooks/useSplitLayout";
+export { useEditorOrchestrator } from "./hooks/useEditorOrchestrator";
 
 // Store
 export { useEditorStore } from "./store";
+
+// Types
+export type {
+  TabKind,
+  TerminalTabData,
+  FileTabData,
+  DiffTabData,
+  GitLogTabData,
+  HtmlPreviewTabData,
+  TabData,
+  Tab,
+  ProjectTabs,
+  EditorGroupId,
+  EditorGroupState,
+  EditorSplitLayout,
+  PaneId,
+  PaneDirection,
+  SplitPathStep,
+  PaneNode,
+  SplitState,
+} from "./types";
+export { createDefaultEditorLayout, findGroupIdForTab, oppositeGroup } from "./types";
 
 // Context
 export { EditorProvider, useEditorContext } from "./context";

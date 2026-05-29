@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import WindowControls from "./WindowControls";
-import TaskRunButton from "../components/layout/TaskRunButton";
+import TaskRunButton from "@/features/task/components/TaskRunButton";
 import OpenIdeButton from "./OpenIdeButton";
 import TitleBarBranchSwitcher from "./TitleBarBranchSwitcher";
 import GitDialog from "@/features/git/components/GitDialog";

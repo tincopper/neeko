@@ -9,6 +9,7 @@ export { default as SessionRow } from "./components/SessionRow";
 export { default as SessionChips } from "./components/SessionChips";
 export { default as ProjectGuidePage } from "./components/ProjectGuidePage";
 export { default as DraggableProjectItem } from "./components/DraggableProjectItem";
+export { default as ProjectsPanel } from "./components/ProjectsPanel";
 export { useProjectItemDrag } from "./components/useProjectItemDrag";
 export { useProjectItemMenu } from "./components/useProjectItemMenu";
 export type {
@@ -25,10 +26,28 @@ export { useProjectSelection } from "./hooks/useProjectSelection";
 export { useCrossTypeSelection } from "./hooks/useCrossTypeSelection";
 export { useWorktreeActions } from "./hooks/useWorktreeActions";
 export { useWorktreeState, type WorktreeItem } from "./hooks/useWorktreeState";
+export { useActiveProject } from "./hooks/useActiveProject";
+export { useProjectOrchestrator } from "./hooks/useProjectOrchestrator";
 
 // Store
 export { useProjectStore } from "./store";
 export { useWorktreeStore, type WorktreeSnapshotItem } from "./worktreeStore";
+
+// Types
+export type {
+  Project,
+  TerminalEntry,
+  ProjectType,
+  UnifiedProject,
+  LocalConnectionContext,
+  WslConnectionContext,
+  RemoteConnectionContext,
+  ConnectionContext,
+  UnifiedProjectView,
+  ProjectCommands,
+  ProjectCapabilities,
+  ActiveProjectContext,
+} from "./types";
 
 // Context
 export { ProjectActionsProvider, useProjectActionsContext, type ProjectActionsContextValue } from "./context";

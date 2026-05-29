@@ -3,9 +3,21 @@
 // Store
 export { useSkillStore, initialSkillState } from "./store";
 
+// Domain Types
+export type {
+  SkillRecord,
+  ManagedSkillDto,
+  TagGroup,
+  SkillTargetRecord,
+  SkillDocumentDto,
+  DiscoveredSkillDto,
+  LeaderboardType,
+  SkillsShSkill,
+  InstallProgress,
+} from "./types";
+
 // Hooks
 export { useMarketplace, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE } from "./hooks/useMarketplace";
-export type { LeaderboardType } from "./hooks/useMarketplace";
 
 // Types & Hooks (public contract)
 export type { SkillDialogState, SkillItemActions, SkillListSectionProps } from "./components/skillItemTypes";
