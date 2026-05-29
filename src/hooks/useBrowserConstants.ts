@@ -1,1 +1,1 @@
-export const BROWSER_WEBVIEW_LABEL = "neeko-browser-panel";
+export { BROWSER_WEBVIEW_LABEL } from '@/features/browser/hooks/useBrowserConstants';
