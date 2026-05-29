@@ -6,7 +6,14 @@
 
 ## 概述
 
-后端的质量门禁是 **`cargo check`**（在 CI 中三平台运行）。没有配置 clippy、rustfmt，也没有使用测试框架。平台特定代码使用条件编译。
+后端的质量门禁是 **`cargo check`**（在 CI 中三平台运行）与 **`cargo clippy`** + **`cargo fmt --check`**（通过 `pnpm lint` 在本地执行）。
+
+质量门禁配置：
+- Clippy lint 级别在 `src-tauri/Cargo.toml` 的 `[lints.clippy]` 和 `[lints.rust]` 段定义
+- Strict deny lints 在 `src-tauri/src/lib.rs` 的 `#![deny(...)]` 属性中声明
+- Rust 代码格式通过 `src-tauri/.rustfmt.toml` 控制（如存在）或使用默认配置
+
+平台特定代码使用条件编译。
 
 ---
 
@@ -251,8 +258,60 @@ impl ThemeStrategy {
 
 ```bash
 cargo check            # 快速类型检查
+cargo clippy           # Clippy lint 检查
+cargo fmt --check      # 格式检查
 cargo build            # Debug 构建
 pnpm tauri dev         # 完整开发环境（前端 + 后端）
+```
+
+### 质量门禁脚本
+
+```bash
+pnpm lint              # 运行所有质量检查（cargo fmt + clippy + eslint + tsc）
+```
+
+### `[lints.clippy]` 配置说明
+
+`Cargo.toml` 中的 lint 分三级：
+
+| 级别 | 含义 | 示例 |
+|------|------|------|
+| `"deny"` | 编译错误，必须修复 | `unwrap_used = "deny"` |
+| `"warn"` | 警告，建议修复 | `missing_docs = "warn"` |
+| 未设置 | 使用 clippy 默认 | - |
+
+部分 deny 级别的 lint（如 `cast_possible_truncation`、`wildcard_imports`）在现有代码中存在大量违反，当前使用 `#[allow(...)]` 逐处豁免。新代码应避免引入新违规。
+
+注意：`missing_docs` 是 rustc lint，必须放在 `[lints.rust]` 而非 `[lints.clippy]` 段。
+
+### `#![deny(...)]` 属性
+
+在 `src-tauri/src/lib.rs` 顶部声明的 deny 属性覆盖 Cargo.toml 的 warn 级别，强制执行关键 lints：
+
+```rust
+#![deny(
+    clippy::dbg_macro,
+    clippy::todo,
+    clippy::print_stdout,
+    clippy::wildcard_imports,
+    unused_must_use
+)]
+```
+
+### 惯用法：宏内的 `#[allow]` 必须放在函数级别
+
+```rust
+// 错误 —— #[allow] 在 params! 宏内不生效
+tx.execute(query,
+    #[allow(clippy::cast_possible_truncation)]
+    params![i as i32, id],
+)?;
+
+// 正确 —— 放在函数上
+#[allow(clippy::cast_possible_truncation)]
+pub fn reorder(&self, ids: &[String]) -> Result<()> {
+    tx.execute(query, params![i as i32, id])?;
+}
 ```
 
 ### CI 流水线（`.github/workflows/ci.yml`）

@@ -6,7 +6,30 @@
 
 ## 概述
 
-项目当前的主要质量门禁是 **TypeScript 类型检查**（`tsc --noEmit`）与 **Vitest** 回归测试。项目目前没有配置 ESLint、Prettier。CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。
+项目当前的主要质量门禁是：
+
+1. **ESLint**（`eslint src/`）—— 架构约束 + 代码风格 + 命名规范
+2. **TypeScript 类型检查**（`tsc --noEmit`）—— 类型安全
+3. **Vitest** 回归测试
+
+CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。本地通过 `pnpm lint` 运行全部质量检查。
+
+### ESLint 配置要点
+
+配置文件：`.eslintrc.cjs`（ESLint 8 格式，支持 `.eslintrc.*` 文件）
+
+核心规则：
+
+| 规则 | 级别 | 用途 |
+|------|------|------|
+| `import/no-restricted-paths` | error | 禁止跨 feature 引用，强制单向依赖流 |
+| `import/no-cycle` | warn | 检测循环依赖 |
+| `import/order` | warn | import 语句分组排序 |
+| `check-file/filename-naming-convention` | warn | `.tsx` 使用 PascalCase，`.ts` 使用 camelCase |
+| `check-file/folder-naming-convention` | error | 目录使用 kebab-case（`__tests__` 除外） |
+| `prettier/prettier` | error | 代码格式统一 |
+
+注意：ESLint 10+ 移除了 `.eslintrc.*` 支持，仅支持 flat config。本项目使用 ESLint 8 以兼容插件生态。
 
 ---
 
@@ -135,11 +158,12 @@ pnpm dev          # 启动 Vite 开发服务器（端口 1420）
 pnpm tauri dev    # 启动完整的 Tauri 开发环境
 ```
 
-### 类型检查
+### 质量门禁
 
 ```bash
-pnpm tsc --noEmit    # 前端类型检查
-cargo check          # 后端（Rust）类型检查
+pnpm lint         # 运行全部质量检查：cargo fmt + clippy + eslint + tsc
+pnpm type-check   # 仅 TypeScript 类型检查
+pnpm lint:fix     # 自动修复 ESLint/prettier 问题（如需要，手动执行 npx eslint --fix）
 ```
 
 ### CI 流水线（`.github/workflows/ci.yml`）
