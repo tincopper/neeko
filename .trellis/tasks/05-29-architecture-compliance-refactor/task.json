@@ -1,0 +1,31 @@
+{
+  "id": "architecture-compliance-refactor",
+  "name": "architecture-compliance-refactor",
+  "title": "Architecture Compliance Refactor — align codebase with spec",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-05-29",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "refactor/architecture-optimization",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "05-29-phase1-quality-gates",
+    "05-29-phase2-backend-layering",
+    "05-29-phase3-frontend-layering",
+    "05-29-phase4-eliminate-unwrap"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

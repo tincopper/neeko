@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "docs/neeko-development-spec.md", "reason": "Spec §3 ESLint config + §4 Clippy config"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend quality conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality conventions"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Frontend directory structure spec"}
