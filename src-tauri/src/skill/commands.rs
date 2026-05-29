@@ -5,6 +5,7 @@ use tauri::Emitter;
 use tauri::State;
 
 use super::skill_store::SkillStore;
+#[allow(clippy::wildcard_imports)]
 use super::types::*;
 use crate::AppError;
 

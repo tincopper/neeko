@@ -1,3 +1,11 @@
+#![deny(
+    clippy::dbg_macro,
+    clippy::todo,
+    clippy::print_stdout,
+    clippy::wildcard_imports,
+    unused_must_use
+)]
+
 pub mod agent;
 mod app;
 mod app_state;

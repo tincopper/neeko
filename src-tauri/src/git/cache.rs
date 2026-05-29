@@ -120,6 +120,7 @@ impl LruCache {
         map: &mut HashMap<String, usize>,
         queue: &VecDeque<(String, DiffResult)>,
     ) {
+        let _ = self;
         map.clear();
         for (i, (key, _)) in queue.iter().enumerate() {
             map.insert(key.clone(), i);

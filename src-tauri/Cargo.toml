@@ -46,6 +46,36 @@ arboard = "3.6.1"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[lints.clippy]
+# --- 正确性（Phase 4 会将 unwrap_used 升级为 deny）---
+unwrap_used = "warn"
+expect_used = "warn"
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+# --- 模块可见性 ---
+wildcard_imports = "deny"
+module_inception = "deny"
+needless_pass_by_ref_mut = "deny"
+# --- 代码质量 ---
+must_use_candidate = "warn"
+missing_const_for_fn = "warn"
+semicolon_if_nothing_returned = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+unused_self = "deny"
+enum_glob_use = "deny"
+fallible_impl_from = "deny"
+large_enum_variant = "warn"
+cast_lossless = "warn"
+manual_string_new = "warn"
+unnecessary_wraps = "warn"
+redundant_else = "warn"
+
+[lints.rust]
+missing_docs = "warn"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",

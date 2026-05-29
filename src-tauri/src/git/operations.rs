@@ -715,6 +715,7 @@ pub async fn get_file_diff(
                     .map(|line| DiffLine::Added(line.to_string()))
                     .collect();
                 if !lines.is_empty() {
+                    #[allow(clippy::cast_possible_truncation)]
                     result.hunks.push(DiffHunk {
                         old_start: 0,
                         old_lines: 0,

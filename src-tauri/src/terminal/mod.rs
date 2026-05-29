@@ -422,6 +422,7 @@ fn spawn_watcher_thread(
                     match watch_pty_handles.lock() {
                         Ok(mut handles) => {
                             if let Some(handle) = handles.get_mut(&watch_id) {
+                                #[allow(clippy::cast_possible_wrap)]
                                 match handle.child.try_wait() {
                                     Ok(Some(status)) => Some(status.exit_code() as i32),
                                     Ok(None) => None,
@@ -668,6 +669,7 @@ fn graceful_kill(child: &mut dyn Child) {
         // (PGID == PID).  Sending signals to -PGID therefore reaches the
         // entire process tree (shell + any grandchildren such as node, cargo,
         // etc.) without affecting the parent Neeko process.
+        #[allow(clippy::cast_possible_wrap)]
         let pgid = pid as i32;
 
         let sigterm_result = unsafe { libc::kill(-pgid, libc::SIGTERM) };

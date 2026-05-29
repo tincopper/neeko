@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+#[allow(clippy::wildcard_imports)]
 use super::types::*;
 
 pub struct SkillStore {
@@ -211,6 +212,7 @@ impl SkillStore {
         Ok(())
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn reorder_tag_groups(&self, ids: &[String]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
@@ -263,6 +265,7 @@ impl SkillStore {
         let conn = self.conn.lock().unwrap();
         let tx = conn.unchecked_transaction()?;
         for (i, skill_id) in skill_ids.iter().enumerate() {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             tx.execute("UPDATE tag_group_skills SET sort_order = ?1 WHERE tag_group_id = ?2 AND skill_id = ?3", params![i as i32, tag_group_id, skill_id])?;
         }
         tx.commit()?;

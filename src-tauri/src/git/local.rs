@@ -383,6 +383,7 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
                     .collect();
 
                 if !lines.is_empty() {
+                    #[allow(clippy::cast_possible_truncation)]
                     result_hunks.push(DiffHunk {
                         old_start: 0,
                         old_lines: 0,
@@ -631,6 +632,7 @@ pub fn get_file_diff_cli(
                     .map(|line| DiffLine::Added(line.to_string()))
                     .collect();
                 if !lines.is_empty() {
+                    #[allow(clippy::cast_possible_truncation)]
                     result.hunks.push(DiffHunk {
                         old_start: 0,
                         old_lines: 0,

@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use crate::terminal::types::*;
 use crate::AppError;
 use crate::AppStateWrapper;

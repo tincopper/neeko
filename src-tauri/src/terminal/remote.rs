@@ -3,6 +3,7 @@ use crate::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use crate::utils::command::ssh_auth;
 use anyhow::Result;
+#[allow(clippy::wildcard_imports)]
 use russh::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
