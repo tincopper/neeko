@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { useSkillStore, initialSkillState } from '../../../../store/skillStore';
+import { useSkillStore, initialSkillState } from '../../store';
 import { createManagedSkill, createTagGroup } from '../../../../testing/factories';
 import SkillsPanel from '../SkillsPanel';
 

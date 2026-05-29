@@ -279,7 +279,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Alt+R 刷新当前 tab 终端', async () => {
-    const { refreshTerminal } = await import('../../components/terminal');
+    const { refreshTerminal } = await import('@/features/terminal/components/terminalCache');
     params.activeTabId = 'tab1';
     storeState = seedStore({
       ...storeState,
@@ -295,7 +295,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Alt+R 无活跃 tab 时刷新项目终端', async () => {
-    const { refreshTerminal } = await import('../../components/terminal');
+    const { refreshTerminal } = await import('@/features/terminal/components/terminalCache');
     params.activeTabId = null;
     storeState = seedStore({
       ...storeState,

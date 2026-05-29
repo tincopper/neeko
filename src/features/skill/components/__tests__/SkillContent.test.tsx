@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { useSkillStore, initialSkillState } from '../../../../store/skillStore';
+import { useSkillStore, initialSkillState } from '../../store';
 import SkillContent from '../SkillContent';
 
 // stub 子视图，专注测试 SkillContent 路由逻辑

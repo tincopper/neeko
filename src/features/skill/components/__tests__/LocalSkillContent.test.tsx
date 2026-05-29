@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useSkillStore, initialSkillState } from '../../../../store/skillStore';
+import { useSkillStore, initialSkillState } from '../../store';
 import { createDiscoveredSkill } from '../../../../testing/factories';
 import LocalSkillContent from '../LocalSkillContent';
 import type { SkillDialogState } from '../skillItemTypes';
