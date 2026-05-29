@@ -1,5 +1,6 @@
-export { default } from "./DiffView";
-export { default as DiffView } from "./DiffView";
+// Re-export stub — barrel moved to @/features/git/components/diff
+export { default } from "@/features/git/components/diff";
+export { default as DiffView } from "@/features/git/components/diff";
 
 export type {
   DiffLine,
@@ -9,14 +10,14 @@ export type {
   DiffViewProps,
   SplitRow,
   ViewMode,
-} from "./types";
+} from "@/features/git/components/diff";
 
 export {
   tokenizeForDiff,
   computeLCS,
   computeWordDiff,
   buildSplitRows,
-} from "./diffAlgorithm";
-export type { WordDiffPart } from "./diffAlgorithm";
+} from "@/features/git/components/diff";
+export type { WordDiffPart } from "@/features/git/components/diff";
 
-export { detectLanguage, escapeHtml } from "./highlight";
+export { detectLanguage, escapeHtml } from "@/features/git/components/diff";

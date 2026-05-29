@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { PRListItem } from "../../types";
-import { ChevronRightIcon } from "../icons";
-import { cn } from "../../utils/cn";
-import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/components/icons"
+import type { PRListItem } from "../../../types";
+import { ChevronRightIcon } from "@/shared/components/icons";
+import { cn } from "../../../utils/cn";
+import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/shared/components/icons"
 
 interface PullRequestsPanelProps {
   projectId: string;

@@ -1,5 +1,5 @@
 import React from "react";
-import { cn } from "../../utils/cn";
+import { cn } from "../../../../utils/cn";
 import { computeWordDiff } from "./diffAlgorithm";
 import { renderHighlightedHtml, renderWordDiffHtml } from "./highlight";
 import type { DiffResult } from "./types";

@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import { useEditorStore } from "../../store/editorStore";
-import { useAppContext } from "../../contexts";
-import { useActiveProject } from "../../hooks/useActiveProject";
+import { useProjectStore } from "../../../../store/projectStore";
+import { useConnectionStore } from "../../../../store/connectionStore";
+import { useEditorStore } from "../../../../store/editorStore";
+import { useAppContext } from "../../../../contexts";
+import { useActiveProject } from "../../../../hooks/useActiveProject";
 import { useGitLog } from "./useGitLog";
 import { useCommitDetail } from "./useCommitDetail";
 import LogToolbar from "./LogToolbar";

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import type { CommitEntry } from "../../types";
+import type { CommitEntry } from "../../../../types";
 import type { CommitMenuAction } from "./types";
 import CommitGraph, { ROW_HEIGHT } from "./CommitGraph";
 import {
@@ -11,8 +11,8 @@ import {
   Tag,
   SquareArrowOutUpRight,
   Check,
-} from "@/components/icons"
-import { cn } from "../../utils/cn";
+} from "@/shared/components/icons"
+import { cn } from "../../../../utils/cn";
 
 interface CommitListProps {
   commits: CommitEntry[];

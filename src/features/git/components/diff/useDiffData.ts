@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../store/projectStore";
+import { useProjectStore } from "../../../../store/projectStore";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
-import type { ProjectCommands } from "../../types/activeProject";
+import type { ProjectCommands } from "../../../../types/activeProject";
 
 function lookupLocalProjectPath(projectId: string): string {
   const project = useProjectStore.getState().projects.find((p) => p.id === projectId);

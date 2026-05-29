@@ -1,4 +1,4 @@
-import type { DiffSource, ViewMode } from "../components/diff/types";
+import type { DiffSource, ViewMode } from "@/features/git/components/diff/types";
 import type { FileContent } from "./file";
 
 /** Tab 类型标签 */

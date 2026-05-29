@@ -1,4 +1,4 @@
-import type { AuthMethod } from "../../types";
+import type { AuthMethod } from "../../../../types";
 
 export interface DiffLine {
   Context?: string;

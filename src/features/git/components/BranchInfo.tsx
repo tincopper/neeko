@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import type { GitInfo, AheadBehind } from "../../types";
-import { BranchIcon, PlusIcon } from "../icons";
-import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "@/components/icons"
-import BranchDropdownContent from "../shared/BranchDropdownContent";
+import type { GitInfo, AheadBehind } from "../../../types";
+import { BranchIcon, PlusIcon } from "@/shared/components/icons";
+import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "@/shared/components/icons"
+import BranchDropdownContent from "@/shared/components/BranchDropdownContent";
 
 interface BranchInfoProps {
   gitInfo: GitInfo | null;

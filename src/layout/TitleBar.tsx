@@ -3,8 +3,8 @@ import WindowControls from "./WindowControls";
 import TaskRunButton from "../components/layout/TaskRunButton";
 import OpenIdeButton from "./OpenIdeButton";
 import TitleBarBranchSwitcher from "./TitleBarBranchSwitcher";
-import GitDialog from "../components/project/GitDialog";
-import type { DialogState } from "../components/project/GitDialog";
+import GitDialog from "@/features/git/components/GitDialog";
+import type { DialogState } from "@/features/git/components/GitDialog";
 import type {
    Project,
    WSLProject,
