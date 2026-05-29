@@ -1,7 +1,7 @@
 import React from "react";
-import { getDistroIcon } from "../../utils/distros";
-import serverIcon from "../../assets/server.svg";
-import { PlusIcon, TrashIcon } from "../icons";
+import { getDistroIcon } from "../../../utils/distros";
+import serverIcon from "../../../assets/server.svg";
+import { PlusIcon, TrashIcon } from "@/shared/components/icons";
 import ConnectionProjectCard from "./ConnectionProjectCard";
 import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from "./types";
 

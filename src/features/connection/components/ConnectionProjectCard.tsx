@@ -4,18 +4,18 @@ import {
   DraggableProjectItem,
   ProjectGroup,
   SessionRow,
-} from "../project";
-import { useProjectItemDrag } from "../project/useProjectItemDrag";
-import ContextMenu, { type ContextMenuItem } from "../project/ContextMenu";
-import ProjectSettingsDialog from "../project/ProjectSettingsDialog";
+} from "@/components/project";
+import { useProjectItemDrag } from "@/components/project/useProjectItemDrag";
+import ContextMenu, { type ContextMenuItem } from "@/components/project/ContextMenu";
+import ProjectSettingsDialog from "@/components/project/ProjectSettingsDialog";
 import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
-import type { FileChange } from "../../types";
-import { getIdeIconByCommand } from "../../utils/idePresets";
-import { useWorktreeStore } from "../../store/worktreeStore";
-import { useGitStore } from "../../store/gitStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import { aheadBehindKey } from "../../utils/aheadBehindKey";
+import type { FileChange } from "../../../types";
+import { getIdeIconByCommand } from "../../../utils/idePresets";
+import { useWorktreeStore } from "../../../store/worktreeStore";
+import { useGitStore } from "../../../store/gitStore";
+import { useConnectionStore } from "../store";
+import { aheadBehindKey } from "../../../utils/aheadBehindKey";
 
 const LOG_TAG: Record<string, string> = {
   wsl: "[WSL]",

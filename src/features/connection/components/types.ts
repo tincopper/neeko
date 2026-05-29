@@ -5,7 +5,7 @@ import type {
   RemoteProject,
   WSLEntrySession,
   WSLProject,
-} from "../../types";
+} from "../../../types";
 
 export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;

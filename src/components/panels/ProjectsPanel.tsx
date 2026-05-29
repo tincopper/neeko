@@ -10,7 +10,7 @@ import {
 import ProjectItem from "../project/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
 import CommitDialog from "../project/CommitDialog";
-import { WSLItem, RemoteItem } from "../connections/RemoteItems";
+import { WSLItem, RemoteItem } from "../connections";
 import { useProjectStore } from "../../store/projectStore";
 import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
 import { useUnifiedProjectList } from "../../hooks/useUnifiedProjectList";
