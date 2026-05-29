@@ -1,10 +1,2 @@
-export * from "./agents";
-export * from "./cn";
-export * from "./codemirror";
-export * from "./distros";
-export * from "./entryUpdates";
-export * from "./fileIcons";
-export * from "./idePresets";
-export * from "./platform";
-export * from "./terminal";
-export * from "./withTimeout";
+// Compatibility re-export layer — B19 batch will delete this file
+export * from "@/shared/utils";
