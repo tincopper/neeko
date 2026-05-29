@@ -1,10 +1,10 @@
-import { AppLayout, TitleBar } from "../layout";
-import { AppToast } from "../components/AppToast";
-import { SplashScreen } from "../components/SplashScreen";
+import { AppLayout, TitleBar } from "@/layout";
+import { AppToast } from "@/shared/components/AppToast";
+import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
-import type { ActiveWslKey } from "../components/connections";
-import { type ActiveRemoteKey, useAppContainer } from "../hooks";
+import type { ActiveWslKey, ActiveRemoteKey } from "@/features/connection/components/types";
+import { useAppContainer } from "@/hooks";
 
 export type { ActiveWslKey, ActiveRemoteKey };
 

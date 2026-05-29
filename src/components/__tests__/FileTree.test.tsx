@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildTree } from "../../components/files";
-import type { FileChange } from "../../types";
+import { buildTree } from "@/features/file/components/FileTree";
+import type { FileChange } from "@/types";
 
 const file = (path: string, status: FileChange["status"] = "Modified"): FileChange => ({
   path,

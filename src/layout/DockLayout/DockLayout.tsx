@@ -7,7 +7,7 @@ import {
 import { usePanelRef, type PanelSize } from "react-resizable-panels";
 import DockBar from "./DockBar";
 import DockZone from "./DockZone";
-import { useDockStore } from "@/store/dockStore";
+import { useDockStore } from "@/shared/store/dockStore";
 
 import { dockPanelRegistry } from "../dockPanels";
 

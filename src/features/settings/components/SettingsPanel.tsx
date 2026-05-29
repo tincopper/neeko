@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppContext } from "../../../contexts";
-import { cn } from "../../../utils/cn";
+import { useAppContext } from '@/shared/contexts';
+import { cn } from '@/lib/utils';
 import type { AgentConfig, AppConfig, DiffMode } from "../../../types";
 import { CloseIcon } from "@/shared/components/icons";
 import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from "./constants";

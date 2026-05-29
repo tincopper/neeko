@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useMemo } from "react";
 import { Plus } from "@/shared/components/icons"
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import UnifiedTabItem from "./UnifiedTabItem";
 import AgentIcon from "../../../components/layout/AgentIcon";
 import type { Tab } from "../../../types/tab";
@@ -17,7 +17,7 @@ interface UnifiedTabBarProps {
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
   /** 关闭其他 tab */
   onCloseOtherTabs?: (tabId: string) => void;
-  /** 关闭所有 tab */
+  /** 关闭所�?tab */
   onCloseAllTabs?: () => void;
   // Agent Bar 相关（仅终端 tab 时显示）
   agents?: AgentConfig[];
@@ -81,7 +81,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
       }
     }, []);
 
-    // 空状态
+    // 空状�?
     if (tabs.length === 0) return null;
 
     // 终端 tab 数量
@@ -90,7 +90,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
       [tabs]
     );
 
-    // 当前激活 tab 是否为终端
+    // 当前激�?tab 是否为终�?
     const activeTab = useMemo(
       () => tabs.find((t) => t.id === activeTabId),
       [tabs, activeTabId]

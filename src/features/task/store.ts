@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../store/projectStore";
-import { useEditorStore } from "../../store/editorStore";
-import { destroyTerminalCache, terminalCache } from "../../components/terminal/terminalCache";
+import { useProjectStore } from '@/features/project/store';
+import { useEditorStore } from '@/features/editor/store';
+import { destroyTerminalCache, terminalCache } from "../terminal/components/terminalCache";
 import type { Tab } from "../../types/tab";
 import type { TaskConfig, TaskState } from "../../types/task";
 
@@ -91,7 +91,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     const editorState = useEditorStore.getState();
     const existingTabs = editorState.tabs[tabKey];
 
-    // ── Guard 1: same task already Running → just jump to its tab ────────
+    // ── Guard 1: same task already Running �?just jump to its tab ────────
     if (existingTabs) {
       const runningTab = existingTabs.tabs.find(
         (t) =>
@@ -106,7 +106,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       }
     }
 
-    // ── Guard 2: same task finished (Failed / Idle) → reuse tab ──────────
+    // ── Guard 2: same task finished (Failed / Idle) �?reuse tab ──────────
     if (existingTabs) {
       const finishedTab = existingTabs.tabs.find(
         (t) =>
@@ -148,7 +148,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       }
     }
 
-    // ── Normal path: no existing tab → create a new one ──────────────────
+    // ── Normal path: no existing tab �?create a new one ──────────────────
     const taskName =
       get().configs.find((c) => c.id === configId)?.name ?? command;
 
@@ -199,7 +199,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
     // Mark the tab as Idle before killing the PTY. When close_terminal_session
     // is called the backend removes the handle, so the watcher thread exits via
-    // the "Handle gone" path without emitting terminal-closed — meaning the
+    // the "Handle gone" path without emitting terminal-closed �?meaning the
     // terminalFactory callback never fires and the tab status would be stuck
     // at "Running" forever. Updating it here ensures runTask() can later
     // detect the tab as finished and reuse it.
@@ -214,7 +214,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     // established, but if the user clicks Stop before the async session
     // creation completes it may still be null.  In that case fall back to
     // scanning the terminalCache for an entry whose key contains the tab's
-    // sessionId — the cache key format is "projectId:tabId:paneId".
+    // sessionId �?the cache key format is "projectId:tabId:paneId".
     const sessionIdToClose = taskState.ptySessionId ?? (() => {
       if (!taskState.sessionId) return null;
       for (const [key, entry] of terminalCache.entries()) {
@@ -230,7 +230,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
         sessionId: sessionIdToClose,
       }).catch((e) => console.error("Failed to stop task:", e));
     } else {
-      console.warn("[TaskStore] stopTask: no PTY session ID found — process may not be killed");
+      console.warn("[TaskStore] stopTask: no PTY session ID found �?process may not be killed");
     }
     set({
       taskStates: {

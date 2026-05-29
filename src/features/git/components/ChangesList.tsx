@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useCallback } from "react";
 import type { FileChange } from "../../../types";
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { Checkbox } from "@/ui/checkbox";
 import { Badge } from "@/ui/badge";
 import { ChevronRightIcon } from "@/shared/components/icons";
 import { Undo2, Plus, ListPlus } from "@/shared/components/icons"
-import { fileIconSrc } from "@/utils/fileIcons";
+import { fileIconSrc } from "@/shared/utils/fileIcons";
 
 interface ChangesListProps {
   files: FileChange[];
@@ -212,7 +212,7 @@ const Section: React.FC<SectionProps> = ({
 }) => {
   return (
     <div className="flex flex-col shrink-0 mb-1">
-      {/* Header: Chevron â†’ Checkbox â†’ Title â†’ Count â†’ Stats â†’ Filter */}
+      {/* Header: Chevron â†?Checkbox â†?Title â†?Count â†?Stats â†?Filter */}
       <div className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors duration-100 hover:bg-bg-hover select-none shrink-0">
         <ChevronRightIcon
           size={9}

@@ -5,11 +5,11 @@ import {
   refreshWslTerminal,
   switchAgentInWslTerminal,
   wslCacheKey,
-} from "@/components/terminal";
+} from "@/features/terminal/components/terminalCache";
 import { useConnectionStore } from "../store";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useProjectStore } from "../../../store/projectStore";
-import { useEditorStore } from "../../../store/editorStore";
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useProjectStore } from '@/features/project/store';
+import { useEditorStore } from '@/features/editor/store';
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
@@ -19,9 +19,9 @@ import type {
   WSLProject,
   WSLEntrySession,
 } from "../../../types";
-import { buildRefreshGitHandler, updateProjectInEntries } from "../../../utils/entryUpdates";
+import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
-import type { WorktreeItem } from "@/hooks/useWorktreeState";
+import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";
 
 interface UseWslActionsParams {
   config: AppConfig;
@@ -57,7 +57,7 @@ export function useWslActions({
 
   // ── WSL transient worktree state ──
   // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
-  // to avoid useState → useSyncToStore double-render and enable merged setState.
+  // to avoid useState �?useSyncToStore double-render and enable merged setState.
   const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
   const wslActiveWtBranch = useWorktreeStore((s) => s.wslActiveWtBranch);
   const wslOpenedWt = useWorktreeStore((s) => s.wslOpenedWt);

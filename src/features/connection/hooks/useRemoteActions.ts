@@ -5,10 +5,10 @@ import {
   refreshRemoteTerminal,
   remoteCacheKey,
   switchAgentInRemoteTerminal,
-} from "@/components/terminal";
+} from "@/features/terminal/components/terminalCache";
 import { useConnectionStore } from "../store";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useProjectStore } from "../../../store/projectStore";
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useProjectStore } from '@/features/project/store';
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
@@ -17,9 +17,9 @@ import type {
   RemoteEntrySession,
   RemoteProject,
 } from "../../../types";
-import { buildRefreshGitHandler, updateProjectInEntries } from "../../../utils/entryUpdates";
+import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
-import type { WorktreeItem } from "@/hooks/useWorktreeState";
+import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";
 
 interface UseRemoteActionsParams {
   config: AppConfig;
@@ -55,7 +55,7 @@ export function useRemoteActions({
 
   // ── Remote transient worktree state ──
   // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
-  // to avoid useState → useSyncToStore double-render and enable merged setState.
+  // to avoid useState �?useSyncToStore double-render and enable merged setState.
   const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
   const remoteActiveWtBranch = useWorktreeStore((s) => s.remoteActiveWtBranch);
   const remoteOpenedWt = useWorktreeStore((s) => s.remoteOpenedWt);

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../../../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminalCache";
-import { useEditorStore } from "../../../store/editorStore";
+import { useEditorStore } from '@/features/editor/store';
 
 function generateTabId(): string {
   return `tab_${crypto.randomUUID()}`;
@@ -90,12 +90,12 @@ export function useTerminalTabs() {
           });
         }
 
-        // 如果当前 active tab 是 terminal tab，返回它
+        // 如果当前 active tab �?terminal tab，返回它
         const activeTerminal = terminalTabs.find((t) => t.id === existing?.activeTabId);
         if (activeTerminal) return activeTerminal.id;
 
-        // 如果 active tab 不是 terminal tab，不要强制激活 terminal tab
-        // 保留用户当前的 tab 选择（例如 file/diff tab）
+        // 如果 active tab 不是 terminal tab，不要强制激�?terminal tab
+        // 保留用户当前�?tab 选择（例�?file/diff tab�?
         return terminalTabs[0].id;
       }
 

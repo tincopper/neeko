@@ -1,5 +1,5 @@
 import React from "react";
-import { getDistroIcon } from "../../../utils/distros";
+import { getDistroIcon } from "@/shared/utils/distros";
 import serverIcon from "../../../assets/server.svg";
 import { PlusIcon, TrashIcon } from "@/shared/components/icons";
 import ConnectionProjectCard from "./ConnectionProjectCard";
@@ -38,10 +38,10 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
 );
 
 /**
- * 轻量 section header —— WSL/SSH 外层 distro/server 头：
- * - 行高约 22~24px；padding `px-3 pt-3 pb-1`
+ * 轻量 section header —�?WSL/SSH 外层 distro/server 头：
+ * - 行高�?22~24px；padding `px-3 pt-3 pb-1`
  * - Label `text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted`
- * - distro/server 名 `text-[11px] text-text-secondary`
+ * - distro/server �?`text-[11px] text-text-secondary`
  * - 计数 `text-[10.5px] text-text-muted`
  * - hover 槽位：Add project / Remove server
  */

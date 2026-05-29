@@ -3,7 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   getViewSnapshot,
   setViewSnapshot,
-} from "../../../utils/editorViewState";
+} from '@/shared/utils/editorViewState';
 
 interface InlineHtmlPreviewProps {
   tabKey: string;
@@ -22,7 +22,7 @@ interface InlineHtmlPreviewProps {
  *   instead of triggering iframe navigation.
  * - Restores/saves scrollY across tab switches via editorViewState cache.
  *
- * Security note: `allow-scripts allow-same-origin` is intentional — the iframe
+ * Security note: `allow-scripts allow-same-origin` is intentional �?the iframe
  * renders local HTML files authored by the user, so script execution is
  * expected. The combination allows the injected anchor-fix script to run while
  * still sandboxing external network requests.
@@ -72,7 +72,7 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
     return html;
   }, [content, basePath]);
 
-  // 在 iframe load 完成后绑定滚动监听 + 恢复上次 scrollY
+  // �?iframe load 完成后绑定滚动监�?+ 恢复上次 scrollY
   const handleLoad = () => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -109,7 +109,7 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
       }
     };
     win.addEventListener("scroll", onScroll, { passive: true });
-    // 把卸载/重载时的清理函数挂在 iframe 自身，下一次 load 之前调用
+    // 把卸�?重载时的清理函数挂在 iframe 自身，下一�?load 之前调用
     (iframe as unknown as { __neekoCleanup?: () => void }).__neekoCleanup = () => {
       try {
         win.removeEventListener("scroll", onScroll);
@@ -119,7 +119,7 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
     };
   };
 
-  // 卸载时再保存一次（防 onScroll 节流丢最后一帧），并清理监听
+  // 卸载时再保存一次（�?onScroll 节流丢最后一帧），并清理监听
   useEffect(() => {
     return () => {
       const iframe = iframeRef.current;

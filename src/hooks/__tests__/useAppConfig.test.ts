@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useAppConfig } from '../../hooks/useAppConfig';
+import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 
 const mockInvoke = vi.mocked(invoke);
 

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import OpenIdeButton from "../layout/OpenIdeButton";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import type { Project } from "../../types";
+import OpenIdeButton from "@/layout/OpenIdeButton";
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import type { Project } from "@/types";
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 

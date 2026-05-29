@@ -5,8 +5,8 @@ import { lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelect
 import { defaultKeymap } from "@codemirror/commands";
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { createCmTheme } from "../../../utils/codemirror";
-import { useAppContext } from "../../../contexts";
+import { createCmTheme } from '@/shared/utils/codemirror';
+import { useAppContext } from '@/shared/contexts';
 
 interface MarkdownEditorProps {
    value: string;

@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
 import type { FileChange, CommitEntry } from "../../../types";
-import { useProjectStore } from "../../../store/projectStore";
+import { useProjectStore } from '@/features/project/store';
 
 interface CommitDialogProps {
   projectId: string;

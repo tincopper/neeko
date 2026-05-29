@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import { useWorktreeActions } from "../useWorktreeActions";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import { useWorktreeStore } from "../../store/worktreeStore";
-import { createProject } from "../../testing/factories";
+import { useWorktreeActions } from "@/features/project/hooks/useWorktreeActions";
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { createProject } from "@/testing/factories";
 
 const mockInvoke = vi.mocked(invoke);
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from "react";
-import { Store, Loader2 } from "@/components/icons"
-import { useSkillStore } from '../../../store/skillStore';
-import { useMarketplace } from '../../../hooks/useMarketplace';
+import { Store, Loader2 } from "@/shared/components/icons"
+import { useSkillStore } from '@/features/skill/store';
+import { useMarketplace } from '@/features/skill/hooks/useMarketplace';
 import MarketplaceSearchBar from "./MarketplaceSearchBar";
 import LeaderboardToggle from "./LeaderboardToggle";
 import SourceFilter from "./SourceFilter";

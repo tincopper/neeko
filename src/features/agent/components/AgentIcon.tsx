@@ -1,5 +1,5 @@
-﻿import React from "react";
-import { getAgentIconSrc } from "../../../utils/agents";
+import React from "react";
+import { getAgentIconSrc } from '@/shared/utils/agents';
 
 interface AgentIconProps {
   icon?: string | null;

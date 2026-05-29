@@ -5,8 +5,8 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from "../../../types/activeProject";
-import { useAppContext } from "../../../contexts";
-import { withTimeout } from "../../../utils/withTimeout";
+import { useAppContext } from '@/shared/contexts';
+import { withTimeout } from '@/shared/utils/withTimeout';
 import BranchInfo from "./BranchInfo";
 import ChangesList from "./ChangesList";
 import CommitForm from "./CommitForm";
@@ -44,7 +44,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
-  // AI 生成 commit message 相关状态
+  // AI 生成 commit message 相关状�?
   const [commitMessage, setCommitMessage] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const { config } = useAppContext();
@@ -55,7 +55,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     project.gitInfo.branches.length === 0 &&
     !project.gitInfo.current_branch;
 
-  // Diff stats 懒加载：首次渲染后异步获取 +/- 统计
+  // Diff stats 懒加载：首次渲染后异步获�?+/- 统计
   const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({});
 
   useEffect(() => {
@@ -77,7 +77,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     return () => { cancelled = true; };
   }, [project.id, changedFiles.length]);
 
-  // 合并 diff stats 到文件列表
+  // 合并 diff stats 到文件列�?
   const changedFilesWithStats = changedFiles.map((f) => ({
     ...f,
     additions: diffStats[f.path]?.additions ?? f.additions,
@@ -127,7 +127,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     };
   }, []);
 
-  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可用
+  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可�?
   const canAiGenerate = capabilities.canGenerateCommitMessage && !!project.selectedAgent;
 
   const handleAiGenerate = useCallback(async () => {

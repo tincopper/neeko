@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Plus, Settings } from "@/components/icons"
-import { useAppViewStore } from "@/store/appViewStore";
-import { useDockStore } from "@/store/dockStore";
+import { Plus, Settings } from "@/shared/components/icons"
+import { useAppViewStore } from "@/shared/store/appViewStore";
+import { useDockStore } from "@/shared/store/dockStore";
 import { cn } from "@/lib/utils";
 import { DockLayout } from "./DockLayout";
 import MainContent from "./MainContent";
-import { SkillContent } from "@/components/skills";
-import { SettingsView } from "@/components/settings";
-import { IS_WINDOWS } from "@/utils/platform";
+import SkillContent from "@/features/skill/components/SkillContent";
+import SettingsView from "@/features/settings/components/SettingsView";
+import { IS_WINDOWS } from "@/shared/utils/platform";
 import linuxIcon from "@/assets/linux.svg";
 import serverIcon from "@/assets/server.svg";
 

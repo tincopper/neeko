@@ -1,22 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ProjectGuidePage } from "../components/project";
-import EditorGroupLayout from "../components/layout/EditorGroupLayout";
+import ProjectGuidePage from "@/features/project/components/ProjectGuidePage";
+import EditorGroupLayout from "@/features/editor/components/EditorGroupLayout";
 import { Button } from "@/ui/button";
-import {
-   useAppContext,
-   useProjectActionsContext,
-   useWslContext,
-   useRemoteContext,
-   useEditorContext,
-} from "../contexts";
-import type { AgentConfig, Tab } from "../types";
-import { useProjectStore } from "../store/projectStore";
-import { useWorktreeStore } from "../store/worktreeStore";
-import { useEditorStore } from "../store/editorStore";
+import { useAppContext } from "@/shared/contexts";
+import { useProjectActionsContext } from "@/features/project/context";
+import { useWslContext } from "@/features/connection/contexts/wsl-context";
+import { useRemoteContext } from "@/features/connection/contexts/remote-context";
+import { useEditorContext } from "@/features/editor/context";
+import type { AgentConfig, Tab } from "@/types";
+import { useProjectStore } from "@/features/project/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useEditorStore } from "@/features/editor/store";
 import { useShallow } from "zustand/shallow";
-import { useAppViewStore } from "../store/appViewStore";
-import { buildWorktreeTabKey } from "../utils/tabKey";
+import { useAppViewStore } from "@/shared/store/appViewStore";
+import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 

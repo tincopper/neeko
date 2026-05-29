@@ -1,27 +1,30 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { SplitLayout, TerminalView, WSLTerminalView, RemoteTerminalView } from "../../../components/terminal";
-import type { SplitStateInfo } from "../../../components/terminal/SplitLayout";
-import DiffView from "../../../components/DiffView";
+import SplitLayout from '@/features/terminal/components/SplitLayout';
+import TerminalView from '@/features/terminal/components/TerminalView';
+import WSLTerminalView from '@/features/terminal/components/WSLTerminalView';
+import RemoteTerminalView from '@/features/terminal/components/RemoteTerminalView';
+import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
+import DiffView from "@/features/git/components/diff";
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
-import { GitLogPanel } from "../../../components/gitlog";
+import { GitLogPanel } from '@/features/git/components/gitlog';
 import UnifiedTabBar from "./UnifiedTabBar";
-import AgentIcon from "../../../components/layout/AgentIcon";
+import AgentIcon from "@/features/agent/components/AgentIcon";
 import ContextMenu from "@/features/project/components/ContextMenu";
 import type { ContextMenuItem } from "@/features/project/components/ContextMenu";
 import type { AgentConfig, AuthMethod, EditorGroupId } from "../../../types";
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from "../context";
-import { useAppContext } from "../../../contexts/app-context";
-import { useWslContext } from "../../../contexts/wsl-context";
+import { useAppContext } from '@/shared/contexts/app-context';
+import { useWslContext } from '@/features/connection/contexts/wsl-context';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
 import { useEditorStore } from "../store";
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
   groupId: EditorGroupId | "pinned";
-  /** Composite tab key — used by the pane to lookup layout & store state */
+  /** Composite tab key �?used by the pane to lookup layout & store state */
   tabKey: string;
   onAddTerminalTab?: () => void;
   onFocusGroup: () => void;

@@ -1,7 +1,7 @@
 import React from "react";
 import type { AgentConfig, AppConfig } from "../../../types";
-import { getAgentIconSrc } from "../../../utils/agents";
-import { cn } from "../../../utils/cn";
+import { getAgentIconSrc } from '@/shared/utils/agents';
+import { cn } from '@/lib/utils';
 import { FolderIcon } from "@/shared/components/icons";
 import { Input } from "@/ui";
 

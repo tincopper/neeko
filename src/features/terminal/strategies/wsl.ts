@@ -6,7 +6,9 @@ import {
   wslTerminalCache,
   wslWrapperRefs,
 } from "../components/terminalCache";
-import { useAppContext, useEditorContext, useWslContext } from "../../../contexts";
+import { useAppContext } from '@/shared/contexts';
+import { useEditorContext } from '@/features/editor/context';
+import { useWslContext } from '@/features/connection/contexts/wsl-context';
 import type { TerminalStrategy } from "./types";
 
 export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null {

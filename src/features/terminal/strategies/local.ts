@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../../store/projectStore";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useAppContext, useEditorContext } from "../../../contexts";
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useAppContext } from '@/shared/contexts';
+import { useEditorContext } from '@/features/editor/context';
 import {
   terminalCache,
   terminalRebuildCallbacks,

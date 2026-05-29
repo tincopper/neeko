@@ -2,9 +2,9 @@ import React, { useMemo } from "react";
 import type { Project } from "../../../types";
 import WorktreeList from "./WorktreeList";
 import SessionRow from "./SessionRow";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useGitStore } from "../../../store/gitStore";
-import { aheadBehindKey } from "../../../utils/aheadBehindKey";
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useGitStore } from '@/features/git/store';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
 interface ProjectGitSectionProps {
   project: Project;
@@ -20,9 +20,9 @@ interface ProjectGitSectionProps {
 }
 
 /**
- * ProjectGitSection —— 渲染项目 group 展开后的 session 列表：
- * 1. 主终端行（"local"）
- * 2. 每个 worktree 行（由 WorktreeList 负责，附带 +A -D chip 与 trash/rename 控件）
+ * ProjectGitSection —�?渲染项目 group 展开后的 session 列表�?
+ * 1. 主终端行�?local"�?
+ * 2. 每个 worktree 行（�?WorktreeList 负责，附�?+A -D chip �?trash/rename 控件�?
  */
 function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitSectionProps) {
   const { onSelectProject, onRefreshGit, onOpenWorktreeTerminal, onShowToast } = actions;

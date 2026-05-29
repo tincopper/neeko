@@ -1,9 +1,9 @@
 import React from "react";
-import { Trash2, FileText, Edit3, MoreHorizontal } from "@/components/icons"
+import { Trash2, FileText, Edit3, MoreHorizontal } from "@/shared/components/icons"
 import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Badge } from "@/ui";
 import type { ManagedSkillDto } from "../../../types";
-import { cn } from "../../../utils/cn";
-import { getAgentIconSrc } from "../../../utils/agents";
+import { cn } from '@/lib/utils';
+import { getAgentIconSrc } from '@/shared/utils/agents';
 
 interface SkillCardProps {
    skill: ManagedSkillDto;
@@ -134,7 +134,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
             )}
          </CardContent>
 
-         {/* CardFooter: 来源 + agents 图标 + 启用状态 */}
+         {/* CardFooter: 来源 + agents 图标 + 启用状�?*/}
          <CardFooter className="p-3 pt-0 items-center">
             <Badge variant="default" className="text-[10px] px-1.5 py-0">
                 {skill.source_type === "local" ? "📦 Local" : skill.source_type}

@@ -1,6 +1,6 @@
 import * as ResizablePrimitive from "react-resizable-panels"
 
-import { cn } from "../utils/cn"
+import { cn } from '@/lib/utils'
 
 const ResizablePanelGroup = ({
   className,
@@ -41,7 +41,7 @@ const ResizableHandle = ({
   >
     {withHandle && (
       <div className="z-10 flex h-8 w-px items-center justify-center rounded-none bg-transparent hover:bg-white/20">
-        {/* No grip icon â€” keep it invisible like original resize handles */}
+        {/* No grip icon â€?keep it invisible like original resize handles */}
       </div>
     )}
   </ResizablePrimitive.Separator>

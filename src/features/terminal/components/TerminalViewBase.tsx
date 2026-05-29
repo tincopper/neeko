@@ -5,7 +5,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../../../types";
-import { buildFontFamily, buildTerminalTheme } from "../../../utils/terminal";
+import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 import { setupTerminalInput } from "./terminalInput";
 import { tryLoadWebgl } from "./terminalFactory";
 import type { TerminalStrategy, CacheEntry } from "../strategies/types";

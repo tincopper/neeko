@@ -1,8 +1,8 @@
-Ôªøimport React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AgentIcon from "./AgentIcon";
 import type { AppConfig, AgentConfig } from "../../../types";
-import { useDockStore } from "../../../store/dockStore";
+import { useDockStore } from '@/shared/store/dockStore';
 
 type MenuMode = "none" | "main" | "terminal" | "chat" | "browser";
 
@@ -10,7 +10,7 @@ interface AgentSelectorProps {
   projectId: string;
   currentAgentId: string | null;
   onSelectAgent: (agent: AgentConfig | null) => void;
-  /** WSL/SSH È°πÁõÆ‰º† trueÔºåË∑≥ËøáÂêéÁ´Ø set_project_agentÔºåÁî±Â§ñÈÉ®ÂõûË∞ÉËá™Ë°åÊåÅ‰πÖÂåñ */
+  /** WSL/SSH œÓƒø¥´ true£¨Ã¯π˝∫Û∂À set_project_agent£¨”…Õ‚≤øªÿµ˜◊‘––≥÷æ√ªØ */
   skipBackendPersist?: boolean;
   onShowToast?: (message: string, type?: "info" | "error") => void;
 }
@@ -291,7 +291,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             </>
           ) : (
             <>
-              <AgentIcon icon={null} fallback="‚ö°" />
+              <AgentIcon icon={null} fallback="?" />
               <span className="agent-name">None</span>
             </>
           )}
@@ -315,7 +315,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             className={`add-menu-item ${activeMode === "terminal" ? "active" : ""}`}
             onClick={() => handleSelectMode("terminal")}
           >
-            <span className="add-menu-icon">‚åò</span>
+            <span className="add-menu-icon">?</span>
             <span>Terminal</span>
           </div>
 
@@ -324,7 +324,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             className={`add-menu-item ${activeMode === "chat" ? "active" : ""}`}
             onClick={() => handleSelectMode("chat")}
           >
-            <span className="add-menu-icon">üí¨</span>
+            <span className="add-menu-icon">??</span>
             <span>Chat</span>
             <span className="menu-badge">Soon</span>
           </div>
@@ -334,7 +334,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
             className={`add-menu-item ${activeMode === "browser" ? "active" : ""}`}
             onClick={() => handleSelectMode("browser")}
           >
-            <span className="add-menu-icon">üåê</span>
+            <span className="add-menu-icon">??</span>
             <span>Browser</span>
           </div>
 

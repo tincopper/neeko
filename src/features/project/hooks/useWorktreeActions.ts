@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../../store/projectStore";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useEditorStore } from "../../../store/editorStore";
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useEditorStore } from '@/features/editor/store';
 import type { Tab } from "../../../types";
 import type { WorktreeItem } from "./useWorktreeState";
-import { buildWorktreeTabKey } from "../../../utils/tabKey";
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 interface UseWorktreeActionsParams {
   setActiveWorktreePath: (path: string | null) => void;

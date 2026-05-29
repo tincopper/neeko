@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useRemoteProjects } from '../../hooks/useRemoteProjects';
-import type { AuthMethod, RemoteEntrySession, RemoteProject } from '../../types';
-import { useProjectStore } from '../../store/projectStore';
-import { useConnectionStore } from '../../store/connectionStore';
-import { useWorktreeStore } from '../../store/worktreeStore';
+import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
+import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/types';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 
 // mock terminal functions
-vi.mock('../../components/terminal', () => ({
+vi.mock('@/features/terminal/components/terminalCache', () => ({
   remoteCacheKey: (entryId: string, projectId: string) => `remote:${entryId}:${projectId}`,
   destroyRemoteCachesByPrefix: vi.fn(),
 }));

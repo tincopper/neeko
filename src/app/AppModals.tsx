@@ -1,12 +1,10 @@
 import React from "react";
-import { IS_WINDOWS } from "../utils/platform";
-import { AddProjectModal } from "../components/project";
-import {
-  WSLDialog,
-  RemoteDialog,
-  RemoteAuthDialog,
-} from "../components/connections";
-import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "../types";
+import { IS_WINDOWS } from "@/shared/utils/platform";
+import AddProjectModal from "@/features/project/components/AddProjectModal";
+import { WSLDialog } from "@/features/connection/components/WSLDialog";
+import { RemoteDialog } from "@/features/connection/components/RemoteDialog";
+import { RemoteAuthDialog } from "@/features/connection/components/RemoteAuthDialog";
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "@/types";
 
 interface AppModalsProps {
   pendingPath: string | null;

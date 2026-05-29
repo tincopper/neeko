@@ -2,16 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2, Plus } from "@/shared/components/icons"
-import { useProjectStore } from "../../../store/projectStore";
-import { useTaskStore } from "../../../store/taskStore";
-import { IDE_PRESETS } from "../../../utils/idePresets";
-import { AVATAR_COLORS } from "../../../utils/projectAvatar";
-import { cn } from "../../../utils/cn";
+import { useProjectStore } from '@/features/project/store';
+import { useTaskStore } from '@/features/task/store';
+import { IDE_PRESETS } from '@/shared/utils/idePresets';
+import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
+import { cn } from '@/lib/utils';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
   Input, Button, Separator,
 } from "@/ui";
-import TaskDialog from "@/components/layout/TaskDialog";
+import TaskDialog from "@/features/task/components/TaskDialog";
 import type { TaskConfig } from "../../../types/task";
 import type { Project } from "../../../types";
 

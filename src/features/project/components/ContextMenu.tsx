@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo } from "react";
 import { LucideIcon } from "@/shared/components/icons"
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 
 export type ContextMenuItem =
   | { separator: true }

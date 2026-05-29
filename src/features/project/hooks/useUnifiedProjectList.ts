@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { IS_WINDOWS } from "../../../utils/platform";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
+import { IS_WINDOWS } from '@/shared/utils/platform';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
 
 export interface UnifiedProjectItem {
   kind: "local" | "wsl" | "remote";
@@ -28,7 +28,7 @@ export function useUnifiedProjectList(): {
   return useUnifiedProjectListFromData(projects, wslEntries, remoteEntries);
 }
 
-/** Pure function version â€” testable without React context */
+/** Pure function version â€?testable without React context */
 export function useUnifiedProjectListFromData(
   projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[],
   wslEntries: { id: string; distro: string; projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[] }[],

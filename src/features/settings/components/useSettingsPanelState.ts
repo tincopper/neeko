@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AgentConfig, AppConfig, DiffMode } from "../../../types";
-import { IDE_PRESETS, getIdeCommand } from "../../../utils/idePresets";
-import type { IdePreset } from "../../../utils/idePresets";
+import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
+import type { IdePreset } from '@/shared/utils/idePresets';
 import {
   BUILTIN_FONTS,
   PRESET_SHELLS,

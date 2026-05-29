@@ -3,24 +3,24 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FileNode, FileContent, Tab } from "../../../types";
 import { DEFAULT_TREE_DEPTH } from "../../../types/file";
 import type { ProjectCommands } from "../../../types/activeProject";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useFileStore } from "../../../store/fileStore";
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from "../store";
 import { useShallow } from "zustand/shallow";
-import { buildWorktreeTabKey, parseProjectIdFromTabKey } from "../../../utils/tabKey";
-import { clearViewSnapshot, clearAllForTabKey } from "../../../utils/editorViewState";
-import { mergeSubTree, getTabId, getFileName, isFileTab } from "../../../utils/fileTree";
+import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
+import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
+import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
 
 /**
- * useFileView — 文件视图 hook
+ * useFileView �?文件视图 hook
  *
- * 支持两种模式：
- * - 无参数 (local 模式): 从 store 读取 activeProjectId / activeWorktreePath，直接 invoke
+ * 支持两种模式�?
+ * - 无参�?(local 模式): �?store 读取 activeProjectId / activeWorktreePath，直�?invoke
  * - 传入 externalCommands / externalWorktreePath (WSL/Remote 模式): 通过 ProjectCommands 接口调用
  *
- * 选项 A：最小改动，保证本地功能不受影响，WSL/Remote 通过 externalCommands 接入。
+ * 选项 A：最小改动，保证本地功能不受影响，WSL/Remote 通过 externalCommands 接入�?
  */
 export function useFileView(
   externalCommands?: ProjectCommands | null,
@@ -34,7 +34,7 @@ export function useFileView(
   const fileTreeLoading = useFileStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
-  // Unified current project ID — covers local/WSL/remote (matches MainContent tabKey logic)
+  // Unified current project ID �?covers local/WSL/remote (matches MainContent tabKey logic)
   const currentProjectId = activeProjectId
     ?? activeWslProject?.project.id
     ?? activeRemoteProject?.project.id
@@ -81,7 +81,7 @@ export function useFileView(
   }, [fileTabs, activeFileTabId]);
 
   // Refs for callbacks (avoids stale closures)
-  // Sync during render phase — ensures loadFileTree/openFile always read latest values
+  // Sync during render phase �?ensures loadFileTree/openFile always read latest values
   const tabKeyRef = useRef(tabKey);
   tabKeyRef.current = tabKey;
 
@@ -104,7 +104,7 @@ export function useFileView(
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
         tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
       } else {
-        // Local 模式：通过 unified 命令调用，需获取项目的实际路径
+        // Local 模式：通过 unified 命令调用，需获取项目的实际路�?
         const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
         const resolvedPath = worktreePath ?? localProject?.path ?? projectId;
         tree = await invoke<FileNode[]>("read_dir_tree", {
@@ -178,14 +178,14 @@ export function useFileView(
     const projectId = parseProjectIdFromTabKey(tk);
     const tabId = getTabId(tk, filePath);
 
-    // Check if tab already exists in unified store — just activate, no loading
+    // Check if tab already exists in unified store �?just activate, no loading
     const existing = useEditorStore.getState().tabs[tk];
     if (existing?.tabs.some((t) => t.id === tabId)) {
       useEditorStore.getState().activateTab(tk, tabId);
       return;
     }
 
-    // Load file content — do NOT touch fileTreeLoading
+    // Load file content �?do NOT touch fileTreeLoading
     setError(null);
     try {
       const rootPath = worktreePathRef.current ?? undefined;

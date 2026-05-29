@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import ProjectPanel from "../settings/ProjectPanel";
-import { useProjectStore } from "../../store/projectStore";
-import { AVATAR_COLORS } from "../../utils/projectAvatar";
-import type { Project } from "../../types";
+import ProjectPanel from "@/features/settings/components/ProjectPanel";
+import { useProjectStore } from "@/features/project/store";
+import { AVATAR_COLORS } from "@/shared/utils/projectAvatar";
+import type { Project } from "@/types";
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {

@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useLocalProjects } from '../../hooks/useLocalProjects';
-import { useEditorStore } from '../../store/editorStore';
-import { createProject } from '../../testing/factories';
+import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
+import { useEditorStore } from '@/features/editor/store';
+import { createProject } from '@/testing/factories';
 
 // mock destroyTerminalCache — 不验证内部调用
-vi.mock('../../components/terminal', () => ({
+vi.mock('@/features/terminal/components/terminalCache', () => ({
   destroyTerminalCachesByPrefix: vi.fn(),
   refreshTerminal: vi.fn(),
   refreshSideTerminal: vi.fn(),

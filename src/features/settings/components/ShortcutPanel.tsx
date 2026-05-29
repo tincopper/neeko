@@ -8,7 +8,7 @@ import {
   captureBinding,
   isSwitchProjectBinding,
   type ConflictEntry,
-} from "../../../utils/shortcutRegistry";
+} from '@/shared/utils/shortcutRegistry';
 
 const MODIFIER_CODES = new Set([
   "ControlLeft", "ControlRight",

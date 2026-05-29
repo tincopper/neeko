@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../../../store/projectStore";
+import { useProjectStore } from "@/features/project/store";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
 import type { ProjectCommands } from "../../../../types/activeProject";
 

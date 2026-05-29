@@ -1,22 +1,22 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { FileChange, Worktree } from "../../../types";
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
-import { cn } from "../../../utils/cn";
-import { SessionChips } from "@/components/project";
+import { cn } from '@/lib/utils';
+import SessionChips from "@/features/project/components/SessionChips";
 
 interface ConnectionWorktreeListProps {
   worktrees: Worktree[];
-  /** 当前激活的 worktree 路径（来自 connection-specific store 字段） */
+  /** 当前激活的 worktree 路径（来�?connection-specific store 字段�?*/
   activeWorktreePath: string | null;
   /** 点击 worktree 行：触发外部 onOpenWorktreeTerminal */
   onOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
-  /** 双击 worktree label：开始重命名（提交 newName 由父级处理） */
+  /** 双击 worktree label：开始重命名（提�?newName 由父级处理） */
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
-  /** 删除 worktree（含分支） */
+  /** 删除 worktree（含分支�?*/
   onRemoveWorktree: (worktreePath: string, branch: string) => void;
-  /** 懒加载 worktree changed_files（用于 +A -D chip） */
+  /** 懒加�?worktree changed_files（用�?+A -D chip�?*/
   onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
-  /** 检查 worktree 是否 dirty */
+  /** 检�?worktree 是否 dirty */
   onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
 }
 
@@ -48,7 +48,7 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
     }
   }, [renaming]);
 
-  // 懒加载 worktree changed_files 用于 +A -D chip 聚合。
+  // 懒加�?worktree changed_files 用于 +A -D chip 聚合�?
   useEffect(() => {
     if (!onGetWorktreeChangedFiles) return;
     let cancelled = false;

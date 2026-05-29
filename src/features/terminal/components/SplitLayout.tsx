@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { useSplitLayout } from "../../../hooks/useSplitLayout";
+import { useSplitLayout } from '@/features/editor/hooks/useSplitLayout';
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep } from "../../../types";
 
 export interface SplitStateInfo {

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { WSLProject, RemoteProject } from "../../../types";
-import { useAppViewStore } from "../../../store/appViewStore";
+import { useAppViewStore } from '@/shared/store/appViewStore';
 
 interface WslActions {
   setWslDiffState: (state: null) => void;

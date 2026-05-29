@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../../utils/idePresets";
-import AgentIcon from "../../../components/layout/AgentIcon";
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "@/shared/utils/idePresets";
+import AgentIcon from "@/features/agent/components/AgentIcon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import type { AppConfig, AgentConfig } from "../../../types";
-import { cn } from "../../../utils/cn";
+import { cn } from "@/lib/utils";
 
 interface ProjectSettingsDialogProps {
   projectId: string;

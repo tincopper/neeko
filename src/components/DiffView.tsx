@@ -1,4 +1,4 @@
-export { default } from "./diff";
+export { default } from "@/features/git/components/diff";
 export type {
   DiffLine,
   DiffHunk,
@@ -8,5 +8,5 @@ export type {
   SplitRow,
   ViewMode,
   WordDiffPart,
-} from "./diff";
-export { detectLanguage, escapeHtml, tokenizeForDiff, computeLCS, computeWordDiff, buildSplitRows } from "./diff";
+} from "@/features/git/components/diff";
+export { detectLanguage, escapeHtml, tokenizeForDiff, computeLCS, computeWordDiff, buildSplitRows } from "@/features/git/components/diff";

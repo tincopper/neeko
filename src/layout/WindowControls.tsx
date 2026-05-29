@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import React from "react";
 import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
-import { Minus, Square, Copy, X } from "@/components/icons"
+import { Minus, Square, Copy, X } from "@/shared/components/icons"
 
 function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);

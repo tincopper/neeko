@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search, X } from 'lucide-react';
 import { Input } from '@/ui/input';
-import { cn } from '../../../utils/cn';
+import { cn } from '@/lib/utils';
 
 interface SkillSearchInputProps {
   value: string;

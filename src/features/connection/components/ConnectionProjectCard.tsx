@@ -11,11 +11,11 @@ import ProjectSettingsDialog from "@/features/project/components/ProjectSettings
 import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
 import type { FileChange } from "../../../types";
-import { getIdeIconByCommand } from "../../../utils/idePresets";
-import { useWorktreeStore } from "../../../store/worktreeStore";
-import { useGitStore } from "../../../store/gitStore";
+import { getIdeIconByCommand } from '@/shared/utils/idePresets';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useGitStore } from '@/features/git/store';
 import { useConnectionStore } from "../store";
-import { aheadBehindKey } from "../../../utils/aheadBehindKey";
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
 const LOG_TAG: Record<string, string> = {
   wsl: "[WSL]",
@@ -59,7 +59,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
     const activeWorktreePath = isWsl ? activeWslWorktreePath : activeRemoteWorktreePath;
 
-    // ahead/behind 仅在 active 项目时显示
+    // ahead/behind 仅在 active 项目时显�?
     const aheadKey = aheadBehindKey(
       isWsl ? "wsl" : "remote",
       isWsl ? distro : remoteEntryId,

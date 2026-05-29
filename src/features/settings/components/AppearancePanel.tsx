@@ -1,6 +1,6 @@
 import React from "react";
 import type { AppTheme } from "../../../types";
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { Switch } from "@/ui";
 
 interface AppearancePanelProps {

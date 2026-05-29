@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
-import { useWorktreeStore, type WorktreeSnapshotItem } from "../../../store/worktreeStore";
-import { useEditorStore } from "../../../store/editorStore";
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore, type WorktreeSnapshotItem } from '@/features/project/worktreeStore';
+import { useEditorStore } from '@/features/editor/store';
 
 /**
- * useProjectSelection â€” extract project selection logic from useAppContainer.
+ * useProjectSelection â€?extract project selection logic from useAppContainer.
  *
  * Batches cross-store mutations: reads all current state, computes deltas,
  * then applies them. Each zustand store still notifies subscribers separately,

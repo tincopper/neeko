@@ -1,6 +1,6 @@
 import React from "react";
 import type { AuthMethod } from "../../../types";
-import { useEditorContext } from "../../../contexts";
+import { useEditorContext } from '@/features/editor/context';
 import TerminalViewBase from "./TerminalViewBase";
 import { useRemoteTerminalStrategy } from "../strategies";
 

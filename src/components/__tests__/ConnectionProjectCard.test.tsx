@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import ConnectionProjectCard from "../connections/ConnectionProjectCard";
-import { useWorktreeStore } from "../../store/worktreeStore";
-import { useGitStore } from "../../store/gitStore";
-import type { WSLProject } from "../../types";
+import ConnectionProjectCard from "@/features/connection/components/ConnectionProjectCard";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useGitStore } from "@/features/git/store";
+import type { WSLProject } from "@/types";
 
 function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
   return {

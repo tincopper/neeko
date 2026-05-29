@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppConfig } from "../../../types";
-import { updateAllTerminalThemes } from "../../../components/terminal";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
+import { updateAllTerminalThemes } from '@/features/terminal';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
 
 const DEFAULT_CONFIG: AppConfig = {
    theme: "dark",
@@ -35,7 +35,7 @@ type PartialLoadedConfig = Partial<AppConfig> & {
 export function useAppConfig() {
    const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
 
-   // 同步 UI 字体大小到 CSS 变量 --font-size（由 appearanceFontSize 驱动）
+   // 同步 UI 字体大小�?CSS 变量 --font-size（由 appearanceFontSize 驱动�?
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--font-size",
@@ -43,7 +43,7 @@ export function useAppConfig() {
       );
    }, [config.appearanceFontSize]);
 
-   // 同步终端字体大小到 CSS 变量 --terminal-font-size
+   // 同步终端字体大小�?CSS 变量 --terminal-font-size
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--terminal-font-size",
@@ -51,7 +51,7 @@ export function useAppConfig() {
       );
    }, [config.terminalFontSize]);
 
-   // 同步主题到 data-theme 属性，并更新 OpenCode tui.json
+   // 同步主题�?data-theme 属性，并更�?OpenCode tui.json
    useEffect(() => {
       document.documentElement.setAttribute("data-theme", config.theme);
       requestAnimationFrame(() => {
@@ -75,10 +75,10 @@ export function useAppConfig() {
       }
    }, [config.theme]);
 
-   // 持久化保存配置
+   // 持久化保存配�?
    const saveConfig = useCallback(async (next: AppConfig) => {
       setConfig(prev => {
-         // 浅比较：所有字段相同则返回旧引用，避免不必要的重渲染
+         // 浅比较：所有字段相同则返回旧引用，避免不必要的重渲�?
          if (
             prev.theme === next.theme &&
             prev.appearanceFontSize === next.appearanceFontSize &&
@@ -109,7 +109,7 @@ export function useAppConfig() {
       }
    }, []);
 
-   // 应用启动时加载配置
+   // 应用启动时加载配�?
    useEffect(() => {
       (async () => {
          try {

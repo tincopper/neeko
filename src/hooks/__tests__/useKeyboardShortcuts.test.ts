@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useProjectStore } from '../../store/projectStore';
-import { useConnectionStore } from '../../store/connectionStore';
-import { useWorktreeStore } from '../../store/worktreeStore';
-import { createProject } from '../../testing/factories';
+import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions
-vi.mock('../../components/terminal', () => ({
+vi.mock('@/features/terminal/components/terminalCache', () => ({
   refreshTerminal: vi.fn(),
   refreshWslTerminal: vi.fn(),
   refreshRemoteTerminal: vi.fn(),

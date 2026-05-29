@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import SessionChips from "../project/SessionChips";
+import SessionChips from "@/features/project/components/SessionChips";
 
 describe("SessionChips.Ahead", () => {
   it("ahead > 0 时渲染 ↑N", () => {

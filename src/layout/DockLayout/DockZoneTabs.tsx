@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback } from "react";
-import { X } from "@/components/icons"
+import { X } from "@/shared/components/icons"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import {
   ContextMenu,
@@ -9,7 +9,7 @@ import {
   ContextMenuTrigger,
 } from "@/ui/context-menu";
 import { ScrollArea } from "@/ui/scroll-area";
-import { useDockStore } from "@/store/dockStore";
+import { useDockStore } from "@/shared/store/dockStore";
 import { dockPanelRegistry } from "../dockPanels";
 import { cn } from "@/lib/utils";
 

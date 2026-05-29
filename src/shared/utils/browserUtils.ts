@@ -1,5 +1,5 @@
-import { useDockStore } from "../../store/dockStore";
-import { useBrowserStore } from "../../store/browserStore";
+import { useDockStore } from "@/shared/store/dockStore";
+import { useBrowserStore } from "@/features/browser/store";
 
 /**
  * 将可能为相对路径的 filePath 解析为绝对路径（规范化斜杠）

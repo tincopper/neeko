@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import SettingsPanel from "../../components/SettingsPanel";
-import { AppProvider } from "../../contexts";
-import type { AppConfig } from "../../types";
+import SettingsPanel from "@/components/SettingsPanel";
+import { AppProvider } from "@/shared/contexts";
+import type { AppConfig } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 
 const mockInvoke = vi.mocked(invoke);

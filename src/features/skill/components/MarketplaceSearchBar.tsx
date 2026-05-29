@@ -1,5 +1,5 @@
 import React from "react";
-import { Search, X } from "@/components/icons"
+import { Search, X } from "@/shared/components/icons"
 import { Input } from "@/ui";
 
 interface MarketplaceSearchBarProps {

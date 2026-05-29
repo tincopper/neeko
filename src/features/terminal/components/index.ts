@@ -39,7 +39,7 @@ export {
 } from "./terminalCache";
 export { default as SplitLayout } from "./SplitLayout";
 
-import { buildTerminalTheme } from "../../../utils/terminal";
+import { buildTerminalTheme } from '@/shared/utils/terminal';
 import {
   terminalCache,
   wslTerminalCache,

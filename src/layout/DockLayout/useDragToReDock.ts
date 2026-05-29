@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { useDockStore } from "@/store/dockStore";
+import { useDockStore } from "@/shared/store/dockStore";
 
 /**
  * Hook: drag-to-re-dock handlers for DockZone components.

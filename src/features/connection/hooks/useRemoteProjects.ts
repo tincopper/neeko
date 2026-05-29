@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { remoteCacheKey, destroyRemoteCachesByPrefix } from "@/components/terminal";
+import { remoteCacheKey, destroyRemoteCachesByPrefix } from "@/features/terminal/components/terminalCache";
 import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../../../types";
 import type { SaveSessionFn } from "./useWslProjects";
 import type { ActiveRemoteKey } from "../components/types";
 import { useConnectionStore } from "../store";
 import { useShallow } from "zustand/shallow";
-import { applyStateAction, upsertEntryById } from "../../../utils/entryUpdates";
+import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
 export type { ActiveRemoteKey };
 
@@ -72,7 +72,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
 
   const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
     try {
-      // 如果有 saved_auth，写入 entry 用于持久化
+      // 如果�?saved_auth，写�?entry 用于持久�?
       const persistEntry = saved_auth ? { ...entry, saved_auth } : entry;
       const newEntries = upsertEntryById(remoteEntries, persistEntry);
       setRemoteEntries(newEntries);
@@ -164,7 +164,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     });
   }, [saveSession]);
 
-  /** 从持久化的 saved_auth 恢复 remoteAuthStore（同步更新 store） */
+  /** 从持久化�?saved_auth 恢复 remoteAuthStore（同步更�?store�?*/
   const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
     const restored = new Map<string, AuthMethod>();
     for (const entry of entries) {
@@ -179,7 +179,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
       }
     }
     if (restored.size > 0) {
-      // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就绪
+      // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就�?
       useConnectionStore.setState((state) => {
         const merged = new Map(state.remoteAuthStore);
         for (const [k, v] of restored) merged.set(k, v);

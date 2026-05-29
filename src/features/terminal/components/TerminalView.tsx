@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
-import { useAppContext, useEditorContext } from "../../../contexts";
-import { useEditorStore } from "../../../store/editorStore";
+import { useAppContext } from '@/shared/contexts';
+import { useEditorContext } from '@/features/editor/context';
+import { useEditorStore } from '@/features/editor/store';
 import TerminalViewBase from "./TerminalViewBase";
 import { useLocalTerminalStrategy } from "../strategies";
 import type { TerminalViewProps } from "./terminalTypes";
@@ -15,7 +16,7 @@ function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProp
 
   const agentCommandOverride = config.agentCommandOverrides?.[tabAgentId ?? ""];
 
-  // Task terminal fields — read from full Tab data in editorStore
+  // Task terminal fields �?read from full Tab data in editorStore
   const projectId = strategy ? strategy.cacheKey.split(":")[0] : null;
   const fullTabData = useEditorStore((s) => {
     if (!projectId || !activeTabId) return null;

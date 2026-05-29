@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useTerminalTabs } from "../../hooks/useTerminalTabs";
-import { useEditorStore } from "../../store/editorStore";
+import { useTerminalTabs } from "@/features/terminal/hooks/useTerminalTabs";
+import { useEditorStore } from "@/features/editor/store";
 
-vi.mock("../../components/terminal", () => ({
+vi.mock("@/features/terminal/components/terminalCache", () => ({
   destroyTerminalCachesByPrefix: vi.fn(),
 }));
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Square, ChevronDown, Plus, Pencil, X } from "@/shared/components/icons"
 import { useTaskStore } from "../store";
-import { useProjectStore } from "../../../store/projectStore";
+import { useProjectStore } from '@/features/project/store';
 import TaskDialog from "./TaskDialog";
 import type { TaskConfig } from "../../../types/task";
 
@@ -94,7 +94,7 @@ function TaskRunButton() {
   const handleDialogSubmit = useCallback(
     (name: string, command: string) => {
       if (editingConfig) {
-        // Edit mode â€” update existing config preserving id + scope
+        // Edit mode â€?update existing config preserving id + scope
         const updated: TaskConfig = {
           ...editingConfig,
           name: name || command,
@@ -102,7 +102,7 @@ function TaskRunButton() {
         };
         updateConfig(updated, projectPath ?? undefined);
       } else {
-        // Add mode â€” create new config
+        // Add mode â€?create new config
         const config: TaskConfig = {
           id: crypto.randomUUID(),
           name: name || command,
@@ -206,7 +206,7 @@ function TaskRunButton() {
         )}
       </div>
 
-      {/* Task Dialog (Add / Edit) â€” rendered at body level via portal */}
+      {/* Task Dialog (Add / Edit) â€?rendered at body level via portal */}
       {dialogOpen && (
         <TaskDialog
           onClose={() => { setDialogOpen(false); setEditingConfig(null); }}

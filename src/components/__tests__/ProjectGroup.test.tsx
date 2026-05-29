@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import ProjectGroup from "../project/ProjectGroup";
+import ProjectGroup from "@/features/project/components/ProjectGroup";
 
 function setup(overrides: Partial<React.ComponentProps<typeof ProjectGroup>> = {}) {
   const onToggle = vi.fn();

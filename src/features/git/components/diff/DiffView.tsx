@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { fileIconSrc } from "../../../../utils/fileIcons";
+import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { ChevronRightIcon } from "@/shared/components/icons";
-import { cn } from "../../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { detectLanguage, ensureLanguageRegistered } from "./highlight";
 import { useDiffData } from "./useDiffData";
 import UnifiedDiffTable from "./UnifiedDiffTable";

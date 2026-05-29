@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SessionStore, WSLEntrySession, RemoteEntrySession, Project, FileChange, GitBranchInfo, Worktree, GitStatusDiff } from "../../../types";
-import { useProjectStore } from "../../../store/projectStore";
+import { useProjectStore } from '@/features/project/store';
 
-/** 将后端 git status 字符串映射为前端 FileChange.status */
+/** 将后�?git status 字符串映射为前端 FileChange.status */
 function mapGitStatus(status: string): FileChange["status"] {
    switch (status) {
       case "Untracked": return "Untracked";
@@ -54,7 +54,7 @@ export function useSessionBootstrap(deps: {
 
             for (const p of projects) {
                if (!p.git_info?.changed_files?.length) {
-                  // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
+                  // split 轻量路径：与 watcher git-changed 处理一致，避免重量�?refresh_git_info
                   invoke<FileChange[]>("get_worktree_changed_files", {
                      transport: { Local: { project_path: p.path } },
                      worktreePath: "",
@@ -100,7 +100,7 @@ export function useSessionBootstrap(deps: {
          const projectId = event.payload;
          const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
 
-         // split 轻量路径：分别获取 changed_files 和 branch_info，避免全量 refresh_git_info
+         // split 轻量路径：分别获�?changed_files �?branch_info，避免全�?refresh_git_info
          const defaultGitInfo = {
             current_branch: "",
             branches: [] as string[],
@@ -148,7 +148,7 @@ export function useSessionBootstrap(deps: {
             .catch((e) => console.error("[SessionBootstrap] get_git_branch_info_command failed:", e));
       });
 
-      // 增量 diff 事件：直接 patch store，无需重新请求后端
+      // 增量 diff 事件：直�?patch store，无需重新请求后端
       const unlistenDiffPromise = listen<GitStatusDiff>("git-status-diff", (event) => {
          const diff = event.payload;
          if (!diff.project_id) return;

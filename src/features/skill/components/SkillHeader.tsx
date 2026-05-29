@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, FolderDown, Radar } from "@/components/icons"
+import { Plus, FolderDown, Radar } from "@/shared/components/icons"
 import { Button } from "@/ui";
 
 interface SkillHeaderProps {

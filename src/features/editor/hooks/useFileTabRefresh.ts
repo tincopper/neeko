@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FileChangedEvent, FileContent } from "../../../types";
 import { useEditorStore } from "../store";
-import { useProjectStore } from "../../../store/projectStore";
-import { useFileChangedEvent } from "../../../hooks/useFileChangedEvent";
+import { useProjectStore } from '@/features/project/store';
+import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 
 interface FileRefreshCommands {
   readFileContent(path: string): Promise<FileContent>;
 }
 
 /**
- * useFileTabRefresh â€” listens for file-changed events and refreshes open file tabs.
+ * useFileTabRefresh â€?listens for file-changed events and refreshes open file tabs.
  * Accepts optional commands for WSL/Remote file reading (from useActiveProject).
  * Falls back to unified_read_file_content for local when commands is null.
  */

@@ -1,10 +1,11 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { refreshTerminal, switchAgentInTerminal } from "../../../components/terminal";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
+import { refreshTerminal } from '@/features/terminal/components/terminalCache';
+import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
 import type { AgentConfig } from "../../../types";
-import type { SaveSessionFn } from "../../../hooks/useWslProjects";
+import type { SaveSessionFn } from "@/features/connection/hooks/useWslProjects";
 
 interface TerminalSettings {
   fontSize: number;
@@ -144,9 +145,9 @@ export function useAgentActions({
   }, [saveSession]);
 
   /**
-   * 把指定 IDE 设为某项目的默认 IDE，但不打开。
-   * 同步更新 local / wsl / remote 三种项目数组的 selected_ide，
-   * 触发 saveSession 写盘，本地项目额外 invoke set_project_ide 让后端 manager 同步。
+   * 把指�?IDE 设为某项目的默认 IDE，但不打开�?
+   * 同步更新 local / wsl / remote 三种项目数组�?selected_ide�?
+   * 触发 saveSession 写盘，本地项目额�?invoke set_project_ide 让后�?manager 同步�?
    */
   const handleSetProjectIde = useCallback(
     (projectId: string, ideCommand: string | null) => {
@@ -202,7 +203,7 @@ export function useAgentActions({
         };
       });
 
-      // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错。
+      // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错�?
       invoke("set_project_ide", { projectId, ide: ideCommand }).catch(() => {
         // ignore: WSL/remote projects are not tracked by local project_manager
       });

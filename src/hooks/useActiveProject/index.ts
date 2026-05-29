@@ -6,9 +6,9 @@
  */
 
 import { useMemo } from "react";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import { useWorktreeStore } from "../../store/worktreeStore";
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
 import type { ActiveProjectContext } from "../../types/activeProject";
 import { getCapabilities } from "./capabilities";
 import { toLocalUnifiedView, toWslUnifiedView, toRemoteUnifiedView } from "./adapters";

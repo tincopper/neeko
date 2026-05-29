@@ -2,12 +2,22 @@ import React from "react";
 import {
    AppProvider,
    SidebarProvider,
+} from "@/shared/contexts";
+import {
    ProjectActionsProvider,
+} from "@/features/project/context";
+import {
    FileActionsProvider,
+} from "@/features/editor/file-actions-context";
+import {
    WslProvider,
+} from "@/features/connection/contexts/wsl-context";
+import {
    RemoteProvider,
+} from "@/features/connection/contexts/remote-context";
+import {
    EditorProvider,
-} from "../contexts";
+} from "@/features/editor/context";
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>["value"];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>["value"];

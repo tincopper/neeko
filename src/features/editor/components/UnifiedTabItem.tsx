@@ -1,8 +1,8 @@
 import React, { useCallback } from "react";
 import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, Pin } from "@/shared/components/icons"
-import { cn } from "../../../utils/cn";
-import { getAgentIconSrc } from "../../../utils/agents";
-import { fileIconSrc } from "../../../utils/fileIcons";
+import { cn } from '@/lib/utils';
+import { getAgentIconSrc } from '@/shared/utils/agents';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
 import type { Tab } from "../../../types/tab";
 import type { AgentConfig } from "../../../types";
 
@@ -85,8 +85,8 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
     const terminalStatus =
       tab.data.kind === "terminal" ? tab.data.status : null;
     // Show a coloured dot for active task terminals:
-    //   Running â†’ green (accent-green)  Failed â†’ red (status-failed)
-    // Idle (normal completion) shows no dot â€” the task finished cleanly.
+    //   Running â†?green (accent-green)  Failed â†?red (status-failed)
+    // Idle (normal completion) shows no dot â€?the task finished cleanly.
     const showStatusDot = terminalStatus === "Running" || terminalStatus === "Failed";
     const statusDotColor =
       terminalStatus === "Running" ? "bg-accent-green" : "bg-status-failed";

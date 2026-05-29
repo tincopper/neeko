@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeft, Search, FolderOpen } from "@/shared/components/icons"
-import { useAppViewStore } from "../../../store/appViewStore";
-import { useProjectStore } from "../../../store/projectStore";
-import { useAppContext } from "../../../contexts";
-import { cn } from "../../../utils/cn";
+import { useAppViewStore } from '@/shared/store/appViewStore';
+import { useProjectStore } from '@/features/project/store';
+import { useAppContext } from '@/shared/contexts';
+import { cn } from '@/lib/utils';
 import { NAV_ITEMS, type SettingsNavId } from "./constants";
 import { useSettingsPanelState } from "./useSettingsPanelState";
 import AppearancePanel from "./AppearancePanel";

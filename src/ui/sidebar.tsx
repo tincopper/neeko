@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "../utils/cn";
+import { cn } from '@/lib/utils';
 
 // --- Sidebar (layout container) ---
 
@@ -22,7 +22,7 @@ function Sidebar({ variant, className, children, ...props }: SidebarProps) {
     );
   }
 
-  // variant="panel" resize handle removed in Phase 3 â€” replaced by DockLayout
+  // variant="panel" resize handle removed in Phase 3 â€?replaced by DockLayout
   if (variant === "panel") {
     return (
       <div

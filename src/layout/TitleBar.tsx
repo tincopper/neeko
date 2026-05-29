@@ -11,9 +11,9 @@ import type {
    RemoteEntrySession,
    RemoteProject,
 } from "../types";
-import { IS_MACOS } from "../utils/platform";
-import { useDockStore } from "../store/dockStore";
-import { getAvatarStyle, getProjectInitials } from "../utils/projectAvatar";
+import { IS_MACOS } from "@/shared/utils/platform";
+import { useDockStore } from "@/shared/store/dockStore";
+import { getAvatarStyle, getProjectInitials } from "@/shared/utils/projectAvatar";
 import neekoIcon from "../assets/neeko-icon.png";
 
 /** DockBar fixed width in pixels (w-11 = 44px) */

@@ -1,16 +1,16 @@
 import { useEffect } from "react";
 import type { AheadBehind } from "../../../types";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
-import { useGitStore } from "../../../store/gitStore";
-import { aheadBehindKey } from "../../../utils/aheadBehindKey";
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useGitStore } from '@/features/git/store';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
 interface AheadBehindCommands {
   getAheadBehind(): Promise<AheadBehind>;
 }
 
 /**
- * useAheadBehindSync â€” when the active project changes, fetch ahead/behind counts.
+ * useAheadBehindSync â€?when the active project changes, fetch ahead/behind counts.
  *
  * If `commands` is provided (from useActiveProject), uses the unified transport.
  * Otherwise falls back to legacy manual invoke (not used in new code).

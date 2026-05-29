@@ -11,8 +11,8 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { GitBranch, Plus, ChevronDown } from "@/components/icons"
-import BranchDropdownContent from "../components/shared/BranchDropdownContent";
+import { GitBranch, Plus, ChevronDown } from "@/shared/components/icons"
+import BranchDropdownContent from "@/shared/components/BranchDropdownContent";
 
 interface TitleBarBranchSwitcherProps {
   currentBranch: string;

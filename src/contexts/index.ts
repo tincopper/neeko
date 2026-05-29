@@ -1,27 +1,27 @@
-export { AppProvider, useAppContext } from "./app-context";
-export { SidebarProvider, useSidebar, type ActivityPanel } from "./sidebar-context";
+export { AppProvider, useAppContext } from "@/shared/contexts/app-context";
+export { SidebarProvider, useSidebar, type ActivityPanel } from "@/shared/contexts/sidebar-context";
 export {
    ProjectActionsProvider,
    useProjectActionsContext,
    type ProjectActionsContextValue,
-} from "./project-actions-context";
+} from "@/features/project/context";
 export {
    FileActionsProvider,
    useFileActionsContext,
    type FileActionsContextValue,
-} from "./file-actions-context";
+} from "@/features/editor/file-actions-context";
 export {
    WslProvider,
    useWslContext,
    type WslContextValue,
-} from "./wsl-context";
+} from "@/features/connection/contexts/wsl-context";
 export {
    RemoteProvider,
    useRemoteContext,
    type RemoteContextValue,
-} from "./remote-context";
+} from "@/features/connection/contexts/remote-context";
 export {
    EditorProvider,
    useEditorContext,
    type EditorContextValue,
-} from "./editor-context";
+} from "@/features/editor/context";

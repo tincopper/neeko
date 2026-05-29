@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
-import { IS_WINDOWS } from "../../utils/platform";
-import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCacheKey } from "../../components/terminal";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
-import { useWorktreeStore } from "../../store/worktreeStore";
-import { useEditorStore } from "../../store/editorStore";
-import { buildWorktreeTabKey } from "../../utils/tabKey";
-import { resolveBindings, matchesBinding, SHORTCUT_ACTIONS } from "../../utils/shortcutRegistry";
-import type { UnifiedProjectItem } from "../../hooks/useUnifiedProjectList";
+import { IS_WINDOWS } from "@/shared/utils/platform";
+import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCacheKey } from "@/features/terminal/components/terminalCache";
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useEditorStore } from "@/features/editor/store";
+import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
+import { resolveBindings, matchesBinding, SHORTCUT_ACTIONS } from "@/shared/utils/shortcutRegistry";
+import type { UnifiedProjectItem } from "@/features/project/hooks/useUnifiedProjectList";
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;

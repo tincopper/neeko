@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import { Download, Check, Loader2, ExternalLink } from "@/components/icons"
+import { Download, Check, Loader2, ExternalLink } from "@/shared/components/icons"
 import { Card, CardContent, CardFooter, Button } from "@/ui";
 import type { SkillsShSkill, InstallProgress } from "../../../types";
 

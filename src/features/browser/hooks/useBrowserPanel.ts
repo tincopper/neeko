@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store';
-import { useDockStore } from '../../../store/dockStore';
-import { useProjectStore } from '../../../store/projectStore';
-import { useEditorStore } from '../../../store/editorStore';
-import { sendToTerminal } from '../../../components/terminal';
-import { useFileChangedEvent } from '../../../hooks/useFileChangedEvent';
+import { useDockStore } from '@/shared/store/dockStore';
+import { useProjectStore } from '@/features/project/store';
+import { useEditorStore } from '@/features/editor/store';
+import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 import { useBrowserPicker } from './useBrowserPicker';
 import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/pickerUtils';
-import { fileUrlToFilePath } from '../../../utils/browserUtils';
+import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 import type { FileChangedEvent } from '../../../types';
 
 /** Safety-net timeout: auto-refresh even if no git-changed event arrives */
@@ -175,7 +175,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
-  // Stable ref for navigate — prevents the store subscription below from
+  // Stable ref for navigate �?prevents the store subscription below from
   // re-subscribing every time navigate's useCallback dependencies change,
   // which could cause duplicate navigation on the same url update.
   const navigateRef = useRef(navigate);
@@ -269,7 +269,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     }
   }, [reset, disarmAutoRefresh]);
 
-  // Listen: URL changed (navigation started) — sync address bar
+  // Listen: URL changed (navigation started) �?sync address bar
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -287,7 +287,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     };
   }, [setUrl, setLoading]);
 
-  // Listen: page fully loaded — stop loading indicator
+  // Listen: page fully loaded �?stop loading indicator
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -306,7 +306,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     };
   }, [setUrl, setLoading]);
 
-  // Listen: target="_blank" link — navigate in current webview
+  // Listen: target="_blank" link �?navigate in current webview
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -367,7 +367,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     };
   }, [reinjectPicker, armAutoRefresh]);
 
-  // Listen: git-changed — auto-refresh browser when armed (after prompt submit)
+  // Listen: git-changed �?auto-refresh browser when armed (after prompt submit)
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
@@ -390,7 +390,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     };
   }, []);
 
-  // Listen: file-changed — auto-refresh browser when it has a file:// URL that matches
+  // Listen: file-changed �?auto-refresh browser when it has a file:// URL that matches
   // Uses shared useFileChangedEvent (single IPC subscription with useFileTabRefresh / HtmlPreview)
   useFileChangedEvent((event: FileChangedEvent) => {
     const { project_id, paths } = event;
@@ -468,7 +468,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     if (isCreated) {
       isCreatedRef.current = true;
       // Only restore visibility if the browser panel is actually the active,
-      // expanded panel — prevents the webview appearing over other panels.
+      // expanded panel �?prevents the webview appearing over other panels.
       const dockState = useDockStore.getState();
       const zone = dockState.zones.right;
       const shouldBeVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
@@ -481,10 +481,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       // Read directly from store snapshot to avoid stale closure
       const { url: pendingUrl, isLoading: pendingLoading } = useBrowserStore.getState();
       if (pendingUrl && pendingLoading) {
-        // navigateTo() was called before we mounted — execute the navigation now
+        // navigateTo() was called before we mounted �?execute the navigation now
         navigate(pendingUrl);
       } else {
-        // No pending navigation — hide any orphaned webview from a prior session
+        // No pending navigation �?hide any orphaned webview from a prior session
         invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: false }).catch(() => {});
       }
     }

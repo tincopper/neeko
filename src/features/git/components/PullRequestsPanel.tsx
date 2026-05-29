@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { PRListItem } from "../../../types";
 import { ChevronRightIcon } from "@/shared/components/icons";
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/shared/components/icons"
 
 interface PullRequestsPanelProps {
@@ -83,7 +83,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     loadPRs();
   }, [loadPRs]);
 
-  // Auto-sync interval (参考 Muxy VCSTabState PR auto-sync)
+  // Auto-sync interval (参�?Muxy VCSTabState PR auto-sync)
   useEffect(() => {
     if (autoSyncRef.current) {
       clearInterval(autoSyncRef.current);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useUnifiedProjectListFromData } from "../../hooks/useUnifiedProjectList";
+import { useUnifiedProjectListFromData } from "@/features/project/hooks/useUnifiedProjectList";
 
 function proj(id: string, overrides: Partial<{ name: string; path: string; git_info: unknown; selected_agent: string | null }> = {}) {
   return { id, name: overrides.name ?? id, path: overrides.path ?? `/tmp/${id}`, git_info: overrides.git_info ?? null, selected_agent: overrides.selected_agent ?? null };

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../../types";
-import AgentIcon from "@/components/layout/AgentIcon";
-import { useAppContext } from "../../../contexts";
-import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../../utils/idePresets";
-import { randomAvatarColor } from "../../../utils/projectAvatar";
+import AgentIcon from "@/features/agent/components/AgentIcon";
+import { useAppContext } from "@/shared/contexts/app-context";
+import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "@/shared/utils/idePresets";
+import { randomAvatarColor } from "@/shared/utils/projectAvatar";
 import serverIcon from "../../../assets/server.svg";
-import { cn } from "../../../utils/cn";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";

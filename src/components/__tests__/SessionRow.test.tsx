@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
-import SessionRow from "../project/SessionRow";
+import SessionRow from "@/features/project/components/SessionRow";
 
 describe("SessionRow", () => {
   it("渲染 label 与 branch 双行", () => {

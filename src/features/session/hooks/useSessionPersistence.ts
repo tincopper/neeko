@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { WSLEntrySession, RemoteEntrySession } from "../../../types";
 import type { SaveSessionFn } from "../../connection/hooks/useWslProjects";
-import { useConnectionStore } from "../../../store/connectionStore";
+import { useConnectionStore } from '@/features/connection/store';
 
 export interface UseSessionPersistenceResult {
    worktreeState: Record<string, string>;

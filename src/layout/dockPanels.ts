@@ -1,4 +1,4 @@
-﻿import { lazy } from "react";
+import { lazy } from "react";
 import {
   FolderOpen,
   FileText,
@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-// ── DockPanelDef type ──
+// ���� DockPanelDef type ����
 
 export interface DockPanelDef {
   id: string;
@@ -24,7 +24,7 @@ export interface DockPanelDef {
   defaultZoneSize?: number;
 }
 
-// ── Icon map (static imports for tree-shaking) ──
+// ���� Icon map (static imports for tree-shaking) ����
 
 export const dockPanelIcons: Record<string, LucideIcon> = {
   FolderOpen,
@@ -35,9 +35,9 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   Globe,
 };
 
-// ── Lazy-loaded panel components ──
+// ���� Lazy-loaded panel components ����
 
-// ProjectsPanel takes no props — render directly
+// ProjectsPanel takes no props �� render directly
 const ProjectsPanel = lazy(
   () => import("@/components/panels/ProjectsPanel"),
 );
@@ -73,11 +73,11 @@ const LazyGitCommitPanelWrapper = lazy(
 );
 
 const LazyBrowserPanel = lazy(
-  () => import("@/components/browser/BrowserPanel"),
+  () => import("@/features/browser/components/BrowserPanel"),
 );
 
 
-// ── Registry ──
+// ���� Registry ����
 
 export const dockPanelRegistry: Record<string, DockPanelDef> = {
   projects: {

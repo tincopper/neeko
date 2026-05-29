@@ -6,26 +6,26 @@ import { history, historyKeymap, indentWithTab, defaultKeymap } from "@codemirro
 import { foldGutter, indentOnInput, bracketMatching } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { Eye, Save, FileCode, Globe } from "@/shared/components/icons"
-import { getLanguageExtension, createCmTheme, isMarkdownFile } from "../../../utils/codemirror";
+import { getLanguageExtension, createCmTheme, isMarkdownFile } from "@/shared/utils/codemirror";
 import { MarkdownPreview } from "@/ui";
 import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../../types";
-import { useAppContext } from "../../../contexts";
+import { useAppContext } from "@/shared/contexts/app-context";
 import { useFileActionsContext } from "../file-actions-context";
 import { useEditorContext } from "../context";
-import { useProjectStore } from "../../../store/projectStore";
-import { useConnectionStore } from "../../../store/connectionStore";
-import { useWorktreeStore } from "../../../store/worktreeStore";
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from "../store";
 import { useShallow } from "zustand/shallow";
-import { buildWorktreeTabKey } from "../../../utils/tabKey";
-import { openHtmlInBrowserPanel, resolveAbsolutePath } from "../../../utils/browserUtils";
-import { useActiveProject } from "../../../hooks/useActiveProject";
+import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
+import { useActiveProject } from "@/hooks/useActiveProject";
 import {
    getViewSnapshot,
    setViewSnapshot,
    clearViewSnapshot,
    type SerializedSelection,
-} from "../../../utils/editorViewState";
+} from "@/shared/utils/editorViewState";
 import InlineHtmlPreview from "./InlineHtmlPreview";
 import { invoke } from "@tauri-apps/api/core";
 

@@ -6,8 +6,8 @@ import {
   computeLCS,
   computeWordDiff,
   buildSplitRows,
-} from "../../components/DiffView";
-import type { DiffHunk, DiffLine, DiffSource } from "../../components/DiffView";
+} from "@/features/git/components/diff";
+import type { DiffHunk, DiffLine, DiffSource } from "@/features/git/components/diff";
 
 describe("detectLanguage", () => {
   it(".ts 返回 typescript", () => {

@@ -2,10 +2,10 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import { Worktree, FileChange } from "../../../types";
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
-import { terminalCache, destroyTerminalCache } from "../../../components/terminal";
-import { cn } from "../../../utils/cn";
-import { useProjectStore } from "../../../store/projectStore";
-import { useWorktreeStore } from "../../../store/worktreeStore";
+import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
+import { cn } from '@/lib/utils';
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import SessionChips from "./SessionChips";
 
 interface WorktreeListProps {
@@ -52,8 +52,8 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
     }
   }, [renaming]);
 
-  // Worktree changes 仅用于 +A -D chip 聚合，懒加载一次。
-  // 不再展开 FileTree（移到 DiffView）。
+  // Worktree changes 仅用�?+A -D chip 聚合，懒加载一次�?
+  // 不再展开 FileTree（移�?DiffView）�?
   useEffect(() => {
     let cancelled = false;
     for (const wt of filteredWorktrees) {

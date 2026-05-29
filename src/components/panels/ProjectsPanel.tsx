@@ -1,20 +1,18 @@
 import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { IS_WINDOWS } from "../../utils/platform";
-import {
-   useAppContext,
-   useProjectActionsContext,
-   useWslContext,
-   useRemoteContext,
-} from "../../contexts";
+import { IS_WINDOWS } from "@/shared/utils/platform";
+import { useAppContext } from "@/shared/contexts/app-context";
+import { useProjectActionsContext } from "@/features/project/context";
+import { useWslContext } from "@/features/connection/contexts/wsl-context";
+import { useRemoteContext } from "@/features/connection/contexts/remote-context";
 import ProjectItem from "@/features/project/components/ProjectItem";
-import GitDialog, { DialogState } from "../project/GitDialog";
-import CommitDialog from "../project/CommitDialog";
-import { WSLItem, RemoteItem } from "../connections";
-import { useProjectStore } from "../../store/projectStore";
-import { useAheadBehindSync } from "../../hooks/useAheadBehindSync";
-import { useUnifiedProjectList } from "../../hooks/useUnifiedProjectList";
-import { useActiveProject } from "../../hooks/useActiveProject";
+import GitDialog, { DialogState } from "@/features/git/components/GitDialog";
+import CommitDialog from "@/features/git/components/CommitDialog";
+import { WSLItem, RemoteItem } from "@/features/connection/components/RemoteItems";
+import { useProjectStore } from "@/features/project/store";
+import { useAheadBehindSync } from "@/features/git/hooks/useAheadBehindSync";
+import { useUnifiedProjectList } from "@/features/project/hooks/useUnifiedProjectList";
+import { useActiveProject } from "@/hooks/useActiveProject";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();

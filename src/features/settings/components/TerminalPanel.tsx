@@ -1,6 +1,6 @@
 import React from "react";
 import { PRESET_SHELLS } from "./constants";
-import { cn } from "../../../utils/cn";
+import { cn } from '@/lib/utils';
 import { Input, Switch } from "@/ui";
 
 interface TerminalPanelProps {

@@ -1,24 +1,22 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import {
-  useFileActionsContext,
-  useAppContext,
-} from "@/contexts";
-import { useFileStore } from "@/store/fileStore";
-import { useProjectStore } from "@/store/projectStore";
-import { useWorktreeStore } from "@/store/worktreeStore";
-import { useEditorStore } from "@/store/editorStore";
-import { useConnectionStore } from "@/store/connectionStore";
-import { useDockStore } from "@/store/dockStore";
-import { FilesPanel } from "@/components/panels";
-import { SkillsPanel } from "@/components/skills";
-import { GitCommitPanel } from "@/components/project";
+import { useAppContext } from "@/shared/contexts";
+import { useFileActionsContext } from "@/features/editor/file-actions-context";
+import { useFileStore } from "@/features/file/store";
+import { useProjectStore } from "@/features/project/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useEditorStore } from "@/features/editor/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useDockStore } from "@/shared/store/dockStore";
+import FilesPanel from "@/features/file/components/FilesPanel";
+import SkillsPanel from "@/features/skill/components/SkillsPanel";
+import GitCommitPanel from "@/features/git/components/GitCommitPanel";
 import { useActiveProject } from "@/hooks/useActiveProject";
-import { buildDiffSource } from "@/utils/diffSource";
-import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/utils/browserUtils";
+import { buildDiffSource } from "@/shared/utils/diffSource";
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
-import { mergeSubTree } from "@/utils/fileTree";
+import { mergeSubTree } from "@/shared/utils/fileTree";
 import type { Tab, FileNode, FileTreeChangedEvent } from "@/types";
 
 // ── FilesPanelWrapper ──

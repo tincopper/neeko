@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { wslCacheKey, destroyWslCachesByPrefix } from "@/components/terminal";
+import { wslCacheKey, destroyWslCachesByPrefix } from "@/features/terminal/components/terminalCache";
 import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../../../types";
 import type { ActiveWslKey } from "../components/types";
 import { useConnectionStore } from "../store";
-import { applyStateAction, upsertEntryById } from "../../../utils/entryUpdates";
+import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
 export type { ActiveWslKey };
 export type SaveSessionFn = (wslEntries?: WSLEntrySession[], remoteEntries?: RemoteEntrySession[]) => Promise<void>;
