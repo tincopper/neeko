@@ -1,33 +1,21 @@
-// ─── Types & Hooks (public contract) ─────────────────────────────────────────
-export type { SkillDialogState, SkillItemActions, SkillListSectionProps } from "./skillItemTypes";
-export { useLocalSkillActions } from "./useLocalSkillActions";
-
-// ─── Panel Components ────────────────────────────────────────────────────────
-export { default as SkillsPanel } from "./SkillsPanel";
-export { default as SkillContent } from "./SkillContent";
-export { default as LocalSkillContent } from "./LocalSkillContent";
-export { default as MarketplaceContent } from "./MarketplaceContent";
-export { default as ProjectSkillContent } from "./ProjectSkillContent";
-
-// ─── Skill Cards & List ───────────────────────────────────────────────────────
-export { default as SkillCard } from "./SkillCard";
-export { default as MarketSkillCard } from "./MarketSkillCard";
-export { default as SkillListSection } from "./SkillListSection";
-
-// ─── Local Skill Controls ────────────────────────────────────────────────────
-export { default as SkillHeader } from "./SkillHeader";
-export { default as SkillSearchInput } from "./SkillSearchInput";
-export { default as DiscoveredSkillsList } from "./DiscoveredSkillsList";
-
-// ─── Dialogs ─────────────────────────────────────────────────────────────────
-export { default as CreateSkillDialog } from "./CreateSkillDialog";
-export { default as EditSkillDialog } from "./EditSkillDialog";
-export { default as ViewSkillDialog } from "./ViewSkillDialog";
-
-// ─── Editors ─────────────────────────────────────────────────────────────────
-export { default as MarkdownEditor } from "./MarkdownEditor";
-
-// ─── Marketplace Controls ────────────────────────────────────────────────────
-export { default as LeaderboardToggle } from "./LeaderboardToggle";
-export { default as SourceFilter } from "./SourceFilter";
-export { default as Pagination } from "./Pagination";
+// Re-export stub — canonical location is src/features/skill/components/
+export { default as SkillsPanel } from "@/features/skill/components/SkillsPanel";
+export { default as SkillContent } from "@/features/skill/components/SkillContent";
+export { default as LocalSkillContent } from "@/features/skill/components/LocalSkillContent";
+export { default as MarketplaceContent } from "@/features/skill/components/MarketplaceContent";
+export { default as ProjectSkillContent } from "@/features/skill/components/ProjectSkillContent";
+export { default as SkillCard } from "@/features/skill/components/SkillCard";
+export { default as MarketSkillCard } from "@/features/skill/components/MarketSkillCard";
+export { default as SkillListSection } from "@/features/skill/components/SkillListSection";
+export { default as SkillHeader } from "@/features/skill/components/SkillHeader";
+export { default as SkillSearchInput } from "@/features/skill/components/SkillSearchInput";
+export { default as DiscoveredSkillsList } from "@/features/skill/components/DiscoveredSkillsList";
+export { default as CreateSkillDialog } from "@/features/skill/components/CreateSkillDialog";
+export { default as EditSkillDialog } from "@/features/skill/components/EditSkillDialog";
+export { default as ViewSkillDialog } from "@/features/skill/components/ViewSkillDialog";
+export { default as MarkdownEditor } from "@/features/skill/components/MarkdownEditor";
+export { default as LeaderboardToggle } from "@/features/skill/components/LeaderboardToggle";
+export { default as SourceFilter } from "@/features/skill/components/SourceFilter";
+export { default as Pagination } from "@/features/skill/components/Pagination";
+export { useLocalSkillActions } from "@/features/skill/components/useLocalSkillActions";
+export type { SkillDialogState, SkillItemActions, SkillListSectionProps } from "@/features/skill/components/skillItemTypes";
