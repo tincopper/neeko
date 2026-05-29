@@ -13,7 +13,7 @@ import { useEditorStore } from "@/store/editorStore";
 import {
   dockPanelRegistry,
   dockPanelIcons,
-} from "@/registries/dockPanels";
+} from "../dockPanels";
 import { cn } from "@/lib/utils";
 import type { TabKind } from "@/types/tab";
 

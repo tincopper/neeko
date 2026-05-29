@@ -10,7 +10,7 @@ import {
 } from "@/ui/context-menu";
 import { ScrollArea } from "@/ui/scroll-area";
 import { useDockStore } from "@/store/dockStore";
-import { dockPanelRegistry } from "@/registries/dockPanels";
+import { dockPanelRegistry } from "../dockPanels";
 import { cn } from "@/lib/utils";
 
 interface DockZoneTabsProps {

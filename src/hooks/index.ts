@@ -1,8 +1,8 @@
 export { useAgentActions } from "./useAgentActions";
 export { useAppConfig } from "./useAppConfig";
 export { useAppContainer } from "./useAppContainer";
-export { useAppLayoutProps } from "./useAppLayoutProps";
-export { useTitleBarProps } from "./useTitleBarProps";
+export { useAppLayoutProps } from "../layout/hooks/useAppLayoutProps";
+export { useTitleBarProps } from "../layout/hooks/useTitleBarProps";
 
 
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";

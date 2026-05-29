@@ -12,7 +12,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { GitBranch, Plus, ChevronDown } from "@/components/icons"
-import BranchDropdownContent from "../shared/BranchDropdownContent";
+import BranchDropdownContent from "../components/shared/BranchDropdownContent";
 
 interface TitleBarBranchSwitcherProps {
   currentBranch: string;

@@ -1,6 +1,6 @@
 import React, { Suspense } from "react";
 import { useDockStore } from "@/store/dockStore";
-import { dockPanelRegistry } from "@/registries/dockPanels";
+import { dockPanelRegistry } from "../dockPanels";
 import { useDragToReDock } from "./useDragToReDock";
 import { cn } from "@/lib/utils";
 

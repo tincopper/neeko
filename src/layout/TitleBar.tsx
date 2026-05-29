@@ -1,20 +1,20 @@
 import React, { useState, useCallback } from "react";
 import WindowControls from "./WindowControls";
-import TaskRunButton from "./TaskRunButton";
+import TaskRunButton from "../components/layout/TaskRunButton";
 import OpenIdeButton from "./OpenIdeButton";
 import TitleBarBranchSwitcher from "./TitleBarBranchSwitcher";
-import GitDialog from "../project/GitDialog";
-import type { DialogState } from "../project/GitDialog";
+import GitDialog from "../components/project/GitDialog";
+import type { DialogState } from "../components/project/GitDialog";
 import type {
    Project,
    WSLProject,
    RemoteEntrySession,
    RemoteProject,
-} from "../../types";
-import { IS_MACOS } from "../../utils/platform";
-import { useDockStore } from "../../store/dockStore";
-import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
-import neekoIcon from "../../assets/neeko-icon.png";
+} from "../types";
+import { IS_MACOS } from "../utils/platform";
+import { useDockStore } from "../store/dockStore";
+import { getAvatarStyle, getProjectInitials } from "../utils/projectAvatar";
+import neekoIcon from "../assets/neeko-icon.png";
 
 /** DockBar fixed width in pixels (w-11 = 44px) */
 const DOCK_BAR_WIDTH = 44;

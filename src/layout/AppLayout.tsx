@@ -3,8 +3,8 @@ import { Plus, Settings } from "@/components/icons"
 import { useAppViewStore } from "@/store/appViewStore";
 import { useDockStore } from "@/store/dockStore";
 import { cn } from "@/lib/utils";
-import { DockLayout } from "@/components/dock";
-import MainContent from "@/components/MainContent";
+import { DockLayout } from "./DockLayout";
+import MainContent from "./MainContent";
 import { SkillContent } from "@/components/skills";
 import { SettingsView } from "@/components/settings";
 import { IS_WINDOWS } from "@/utils/platform";

@@ -53,21 +53,21 @@ const ProjectsPanel = lazy(
 
 const LazyFilesPanelWrapper = lazy(
   () =>
-    import("@/components/dock/DockPanelWrappers").then((m) => ({
+    import("./DockLayout/DockPanelWrappers").then((m) => ({
       default: m.FilesPanelWrapper,
     })),
 );
 
 const LazySkillsPanelWrapper = lazy(
   () =>
-    import("@/components/dock/DockPanelWrappers").then((m) => ({
+    import("./DockLayout/DockPanelWrappers").then((m) => ({
       default: m.SkillsPanelWrapper,
     })),
 );
 
 const LazyGitCommitPanelWrapper = lazy(
   () =>
-    import("@/components/dock/DockPanelWrappers").then((m) => ({
+    import("./DockLayout/DockPanelWrappers").then((m) => ({
       default: m.GitCommitPanelWrapper,
     })),
 );

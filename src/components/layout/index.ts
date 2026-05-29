@@ -1,11 +1,11 @@
-export { default as AppLayout } from "./AppLayout";
-export { default as ActivityBar } from "./ActivityBar";
-export { default as TitleBar } from "./TitleBar";
-export { default as WindowControls } from "./WindowControls";
+export { default as AppLayout } from "../../layout/AppLayout";
+export { default as ActivityBar } from "../../layout/ActivityBar";
+export { default as TitleBar } from "../../layout/TitleBar";
+export { default as WindowControls } from "../../layout/WindowControls";
 export { default as AgentSelector } from "./AgentSelector";
 export { default as AgentBar } from "./AgentBar";
 export { default as AgentIcon } from "./AgentIcon";
 export { default as UnifiedTabBar } from "./UnifiedTabBar";
 export { default as UnifiedTabItem } from "./UnifiedTabItem";
-export { default as PanelArea } from "./PanelArea";
-export { default as OpenIdeButton } from "./OpenIdeButton";
+export { default as PanelArea } from "../../layout/PanelArea";
+export { default as OpenIdeButton } from "../../layout/OpenIdeButton";

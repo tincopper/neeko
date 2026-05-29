@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { useAppViewStore } from "../store/appViewStore";
-import { IS_WINDOWS } from "../utils/platform";
-import type AppLayout from "../components/layout/AppLayout";
+import { useAppViewStore } from "../../store/appViewStore";
+import { IS_WINDOWS } from "../../utils/platform";
+import type AppLayout from "../AppLayout";
 
 const noop = () => {};
 

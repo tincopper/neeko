@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Play } from "@/components/icons"
 import { invoke } from "@tauri-apps/api/core";
-import { useProjectStore } from "../../store/projectStore";
-import { useConnectionStore } from "../../store/connectionStore";
+import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
 import {
   getIdeCommand,
   getIdeIconByCommand,
   getIdeIconSrc,
   IDE_PRESETS,
-} from "../../utils/idePresets";
-import type { AppConfig } from "../../types";
+} from "../utils/idePresets";
+import type { AppConfig } from "../types";
 
 /**
  * OpenIdeButton — 标题栏中 TaskRunButton 左侧的 IDE 打开/选择按钮

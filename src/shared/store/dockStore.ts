@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { dockPanelRegistry } from "../../registries/dockPanels";
+import { dockPanelRegistry } from "../../layout/dockPanels";
 
 // -- Types --
 

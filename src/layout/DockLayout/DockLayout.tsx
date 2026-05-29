@@ -9,7 +9,7 @@ import DockBar from "./DockBar";
 import DockZone from "./DockZone";
 import { useDockStore } from "@/store/dockStore";
 
-import { dockPanelRegistry } from "@/registries/dockPanels";
+import { dockPanelRegistry } from "../dockPanels";
 
 interface DockLayoutProps {
   children: React.ReactNode;

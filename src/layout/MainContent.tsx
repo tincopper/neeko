@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ProjectGuidePage } from "./project";
-import EditorGroupLayout from "./layout/EditorGroupLayout";
+import { ProjectGuidePage } from "../components/project";
+import EditorGroupLayout from "../components/layout/EditorGroupLayout";
 import { Button } from "@/ui/button";
 import {
    useAppContext,

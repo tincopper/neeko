@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { LibraryBig, Settings, Plus, ListTree } from "@/components/icons"
-import { useSidebar, type ActivityPanel } from "../../contexts";
+import { useSidebar, type ActivityPanel } from "../contexts";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/ui/sidebar";
-import { IS_WINDOWS } from "../../utils/platform";
-import linuxIcon from "../../assets/linux.svg";
-import serverIcon from "../../assets/server.svg";
+import { IS_WINDOWS } from "../utils/platform";
+import linuxIcon from "../assets/linux.svg";
+import serverIcon from "../assets/server.svg";
 
 function FolderIcon({ size = 22 }: { size?: number }) {
    return (

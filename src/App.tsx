@@ -1,4 +1,4 @@
-import { AppLayout, TitleBar } from "./components/layout";
+import { AppLayout, TitleBar } from "./layout";
 import { AppToast } from "./components/AppToast";
 import { SplashScreen } from "./components/SplashScreen";
 import AppProviders from "./AppProviders";
