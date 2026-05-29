@@ -1,4 +1,2 @@
-// cache key 格式：projectId + ":wt:" + worktreePath
-export function worktreeKey(projectId: string, worktreePath: string) {
-   return `${projectId}:wt:${worktreePath}`;
-}
+// Re-export stub — migrated to src/features/terminal/components/worktreeTerminalKey
+export { worktreeKey } from "@/features/terminal/components/worktreeTerminalKey";

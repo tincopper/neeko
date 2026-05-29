@@ -1,4 +1,5 @@
-export { default as TerminalView } from "./TerminalView";
+// Re-export stub — migrated to src/features/terminal/components
+export { default as TerminalView } from "@/features/terminal/components/TerminalView";
 export {
   terminalCache,
   terminalRebuildCallbacks,
@@ -8,11 +9,11 @@ export {
   refreshTerminal,
   terminalWrapperRefs,
   executedAgentKeys,
-} from "./terminalCache";
-export { createTerminalForProject } from "./terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./terminalCommands";
-export { worktreeKey } from "./worktreeTerminalKey";
-export { default as WSLTerminalView } from "./WSLTerminalView";
+} from "@/features/terminal/components/terminalCache";
+export { createTerminalForProject } from "@/features/terminal/components/terminalFactory";
+export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "@/features/terminal/components/terminalCommands";
+export { worktreeKey } from "@/features/terminal/components/worktreeTerminalKey";
+export { default as WSLTerminalView } from "@/features/terminal/components/WSLTerminalView";
 export {
   wslCacheKey,
   destroyWslCache,
@@ -25,8 +26,8 @@ export {
   switchAgentInWslTerminal,
   wslWrapperRefs,
   wslTerminalCache,
-} from "./terminalCache";
-export { default as RemoteTerminalView } from "./RemoteTerminalView";
+} from "@/features/terminal/components/terminalCache";
+export { default as RemoteTerminalView } from "@/features/terminal/components/RemoteTerminalView";
 export {
   remoteCacheKey,
   launchAgentInRemoteTerminal,
@@ -36,25 +37,6 @@ export {
   switchAgentInRemoteTerminal,
   remoteWrapperRefs,
   remoteTerminalCache,
-} from "./terminalCache";
-export { default as SplitLayout } from "./SplitLayout";
-
-import { buildTerminalTheme } from "../../utils/terminal";
-import {
-  terminalCache,
-  wslTerminalCache,
-  remoteTerminalCache,
-} from "./terminalCache";
-
-export function updateAllTerminalThemes() {
-  const theme = buildTerminalTheme();
-  for (const cache of terminalCache.values()) {
-    cache.term.options.theme = theme;
-  }
-  for (const cache of wslTerminalCache.values()) {
-    cache.term.options.theme = theme;
-  }
-  for (const cache of remoteTerminalCache.values()) {
-    cache.term.options.theme = theme;
-  }
-}
+} from "@/features/terminal/components/terminalCache";
+export { default as SplitLayout } from "@/features/terminal/components/SplitLayout";
+export { updateAllTerminalThemes } from "@/features/terminal/components/index";

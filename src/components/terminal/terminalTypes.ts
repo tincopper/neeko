@@ -1,19 +1,2 @@
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import type { TerminalInputController } from "./terminalInput";
-
-export interface TerminalViewProps {
-  paneId: string;
-  worktreePath?: string;
-  worktreeBranch?: string;
-}
-
-export interface TerminalCache {
-  term: Terminal;
-  fitAddon: FitAddon;
-  element: HTMLElement;
-  sessionId: string | null;
-  unlistenOutput: (() => void) | null;
-  unlistenClosed: (() => void) | null;
-  inputController: TerminalInputController | null;
-}
+// Re-export stub — migrated to src/features/terminal/components/terminalTypes
+export type { TerminalViewProps, TerminalCache } from "@/features/terminal/components/terminalTypes";
