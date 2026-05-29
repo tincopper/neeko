@@ -106,7 +106,7 @@ pub struct ProjectSession {
 | `wsl_set_project_<field>` | `load_session() → 改 wsl_entries[*].projects[*].<field> → save_session()` 整批模式（无 in-memory manager） |
 | `remote_set_project_<field>` | 同 wsl，用 `remote_entries` |
 
-三个都要在 `commands/mod.rs` 的 `neeko_invoke_handler!` 注册，否则前端 `invoke` 会 404。
+三个都要在 `lib.rs` 的 `neeko_invoke_handler!` 注册，否则前端 `invoke` 会 404。
 
 ### 步骤 (d)：前端三处 TS interface + UI
 

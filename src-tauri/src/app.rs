@@ -19,7 +19,7 @@ fn resolve_user_path() -> Option<String> {
 }
 
 pub fn run() {
-    crate::logger::init_logger();
+    crate::core::logger::init_logger();
     log::info!("Neeko starting");
 
     // Ensure skill central repo directories exist

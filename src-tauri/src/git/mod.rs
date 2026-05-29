@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod commands;
 mod local;
+pub mod model;
 pub mod operations;
 pub mod parsers;
 pub mod pr;

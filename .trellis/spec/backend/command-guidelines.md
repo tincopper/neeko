@@ -101,19 +101,71 @@ fn some_command(state: State<AppStateWrapper>) -> Result<(), AppError> {
 
 ## 命令组织
 
-`commands/` 下的模块按领域拆分：
+命令按领域拆分到各模块的 `commands.rs` 中：
 
-| 模块 | 领域 |
-|------|------|
-| `project.rs` | 本地项目 CRUD |
-| `git.rs` | 本地 Git 操作 |
-| `terminal.rs` | 本地终端会话 |
-| `wsl.rs` / `wsl_git.rs` | WSL 终端和 Git |
-| `remote.rs` / `remote_git.rs` | SSH 远程终端和 Git |
-| `agent.rs` | Agent 管理 |
-| `ide.rs` | IDE 启动 |
-| `config.rs` | 配置和会话持久化 |
-| `file.rs` | 文件树和文件内容 |
+| 领域模块 | 命令文件 | 数量 | 主要领域 |
+|----------|----------|------|----------|
+| `project/` | `commands.rs` | ~15 | 项目 CRUD、视图模式、project color |
+| `project/commands_ide.rs` | `commands_ide.rs` | ~3 | IDE 启动（三端） |
+| `git/` | `commands.rs` | ~40 | stage/unstage、commit、branch、worktree、PR、file ops |
+| `terminal/` | `commands.rs` | ~7 | 本地/WSL/SSH 终端 create/close/resize |
+| `connection/` | `commands.rs` | ~5 | WSL 枚举、SSH 测试/目录列表 |
+| `agent/` | `commands.rs` + `commands_commit.rs` | ~6 | Agent CRUD、commit message |
+| `session/` | `commands.rs` | ~8 | save/load 会话、配置、VCS 设置 |
+| `browser/` | `commands.rs` | ~12 | WebView 创建、导航、元素选择器 |
+| `task/` | `commands.rs` | ~5 | Task CRUD、run/stop |
+| `file/` | `commands.rs` | ~1 | `reveal_in_file_manager` |
+| `settings/` | `commands.rs` | ~1 | `get_system_fonts` |
+| `theme/` | `commands.rs` | ~1 | `sync_agent_theme` |
+| `skill/` | `commands.rs` | ~25 | Skill CRUD、tag 管理、安装、同步 |
+
+### commands.rs → services.rs 委派模式
+
+对于不依赖 `AppStateWrapper` State 的纯 I/O 逻辑，`commands.rs` 委派给同域的 `services.rs`：
+
+```rust
+// connection/commands.rs —— 极薄包装层
+#[tauri::command]
+pub fn get_wsl_distros() -> Result<Vec<String>, AppError> {
+    services::get_wsl_distros()
+}
+```
+
+```rust
+// task/commands.rs —— 更薄的包装（services 通过 re-export 暴露）
+#[tauri::command]
+pub fn get_task_configs(project_path: Option<String>, ...) -> Result<Vec<TaskConfig>, AppError> {
+    let configs = crate::task::get_all_task_configs(project_path.as_deref());
+    Ok(configs)
+}
+```
+
+对于需要访问 `AppStateWrapper` 的 Stateful 命令，命令仍然保留完整逻辑或委派给 Manager：
+
+```rust
+// terminal/commands.rs
+#[tauri::command]
+pub fn create_terminal_session(...) -> Result<TerminalSession, AppError> {
+    // Stateful: 需要访问 state.terminal_manager
+    state.terminal_manager.create_session(...).map_err(AppError::from)
+}
+
+// connection/commands.rs —— SSH 命令通过 Manager
+#[tauri::command]
+pub async fn test_remote_connection(...) -> Result<(), AppError> {
+    state.remote_terminal_manager.test_connection(...).await.map_err(AppError::from)
+}
+```
+
+**何时委派给 services.rs vs Manager**：
+
+| 条件 | 委派目标 | 例子 |
+|------|----------|------|
+| 不需要 State、无 Tauri IPC | `services.rs` | `get_wsl_distros`、`get_all_task_configs` |
+| 需要 Manager 内部状态 | Manager 方法 | `terminal_manager.create_session` |
+| 需要 Tauri IPC (emit/listen) | 命令函数直接处理，或传入 `AppHandle` | `close_terminal_session`（emit close event） |
+
+详见 [`directory-structure.md`](./directory-structure.md) 的 §services.rs 模式。
 
 ---
 
@@ -170,13 +222,13 @@ const project = await invoke<Project>("add_project", {
 3. 将命令路径加入 `neeko_invoke_handler!` 命令清单
 
 ```rust
-// src-tauri/src/commands/mod.rs
+// src-tauri/src/lib.rs —— neeko_invoke_handler! 位于 lib.rs 中
 #[macro_export]
 macro_rules! neeko_invoke_handler {
     () => {
         tauri::generate_handler![
             // ... existing commands ...
-            $crate::commands::your_new_command,
+            $crate::project::commands::your_new_command,
         ]
     };
 }

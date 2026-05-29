@@ -223,9 +223,16 @@ pub mod common;
 pub mod opencode;
 pub mod pi;
 pub mod service;
+
+// task/mod.rs —— 正确
+pub mod commands;
+pub mod services;
+
+pub use services::*;  // 可选：方便 commands.rs 直接调用 services 函数
 ```
 
-业务逻辑下沉到子模块（`service.rs`、`types.rs` 等）。
+业务逻辑下沉到子模块（`services.rs`、`types.rs`、`manager.rs` 等）。
+新代码统一使用 **`services.rs`**（复数），`service.rs`（单数）是遗留命名方式，仅 `theme/` 域保留。
 
 ### 6. 有限策略集使用 Enum 而非 Trait Object
 

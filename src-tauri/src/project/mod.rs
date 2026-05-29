@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod commands_ide;
+pub mod model;
 pub mod types;
 
 pub use commands_ide::*;
