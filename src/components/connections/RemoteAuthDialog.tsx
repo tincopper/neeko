@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { AuthMethod } from "../../types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
+import { Input } from "@/ui/input";
+import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 
 interface RemoteAuthDialogProps {
   isOpen: boolean;

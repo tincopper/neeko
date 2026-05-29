@@ -3,7 +3,7 @@ import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from "../ui/resizable";
+} from "@/ui/resizable";
 import EditorGroupPane from "./EditorGroupPane";
 import { useEditorGroupLayout } from "../../hooks/useEditorGroupLayout";
 import type { AuthMethod } from "../../types";

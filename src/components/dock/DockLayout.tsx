@@ -3,7 +3,7 @@ import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
-} from "@/components/ui/resizable";
+} from "@/ui/resizable";
 import { usePanelRef, type PanelSize } from "react-resizable-panels";
 import DockBar from "./DockBar";
 import DockZone from "./DockZone";

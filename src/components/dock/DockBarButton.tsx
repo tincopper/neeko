@@ -4,8 +4,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
+} from "@/ui/tooltip";
+import { Badge } from "@/ui/badge";
 import { useDockStore } from "@/store/dockStore";
 import { useProjectStore } from "@/store/projectStore";
 import { useConnectionStore } from "@/store/connectionStore";

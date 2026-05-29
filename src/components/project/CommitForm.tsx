@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { Button } from "../ui/button";
+import { Button } from "@/ui/button";
 import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from "@/components/icons"
 
 interface CommitFormProps {

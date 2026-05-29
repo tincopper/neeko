@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { X } from "@/components/icons"
 import { Button, Badge } from "../ui";
-import { ResizablePanel } from "../ui/resizable-panel";
-import { MarkdownPreview } from "../ui/MarkdownPreview";
+import { ResizablePanel } from "@/ui/resizable-panel";
+import { MarkdownPreview } from "@/ui/MarkdownPreview";
 import { useSkillStore } from "../../store/skillStore";
 import type { ManagedSkillDto } from "../../types";
 import { useAppConfig } from "../../hooks/useAppConfig";

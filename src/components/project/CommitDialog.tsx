@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
+import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 import type { FileChange, CommitEntry } from "../../types";
 import { useProjectStore } from "../../store/projectStore";
 

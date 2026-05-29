@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useCallback } from "react";
 import type { FileChange } from "../../types";
 import { cn } from "../../utils/cn";
-import { Checkbox } from "../ui/checkbox";
-import { Badge } from "../ui/badge";
+import { Checkbox } from "@/ui/checkbox";
+import { Badge } from "@/ui/badge";
 import { ChevronRightIcon } from "../icons";
 import { Undo2, Plus, ListPlus } from "@/components/icons"
 import { fileIconSrc } from "@/utils/fileIcons";

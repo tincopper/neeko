@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { X } from "@/components/icons"
 import { Button, Input } from "../ui";
-import { ResizablePanel } from "../ui/resizable-panel";
+import { ResizablePanel } from "@/ui/resizable-panel";
 import MarkdownEditor from "./MarkdownEditor";
 import { useSkillStore } from "../../store/skillStore";
 import type { ManagedSkillDto } from "../../types";

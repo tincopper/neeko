@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { cn } from "../../utils/cn";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
+import { Input } from "@/ui/input";
+import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 
 export type DialogType = "new-branch" | "new-worktree";
 

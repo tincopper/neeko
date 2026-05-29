@@ -1,6 +1,6 @@
 import React from "react";
 import { useSidebar } from "../../contexts";
-import { Sidebar } from "../ui/sidebar";
+import { Sidebar } from "@/ui/sidebar";
 
 interface PanelAreaProps {
   children: React.ReactNode;

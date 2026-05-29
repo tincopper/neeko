@@ -1,14 +1,14 @@
 import React, { Suspense, useCallback } from "react";
 import { X } from "@/components/icons"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from "@/ui/context-menu";
+import { ScrollArea } from "@/ui/scroll-area";
 import { useDockStore } from "@/store/dockStore";
 import { dockPanelRegistry } from "@/registries/dockPanels";
 import { cn } from "@/lib/utils";

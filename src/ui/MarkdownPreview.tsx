@@ -5,7 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import plantumlEncoder from "plantuml-encoder";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { AppTheme } from "../../types";
+import type { AppTheme } from "../types";
 
 function resolveImageSrc(src: string, basePath?: string): string {
   if (/^(https?:|data:|blob:|asset:)\/?\//i.test(src)) return src;

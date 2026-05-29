@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { FileChange } from "../../types";
 import { fileIconSrc } from "../../utils/fileIcons";
-import { Badge } from "../ui/badge";
+import { Badge } from "@/ui/badge";
 
 export interface TreeNode {
   name: string;

@@ -1,5 +1,5 @@
 import React from "react";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/ui/tooltip";
 import { useDockStore } from "@/store/dockStore";
 import DockBarButton from "./DockBarButton";
 

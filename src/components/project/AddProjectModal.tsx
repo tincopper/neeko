@@ -3,8 +3,8 @@ import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePreset
 import { useAppContext } from "../../contexts";
 import AgentIcon from "../layout/AgentIcon";
 import { cn } from "../../utils/cn";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
-import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
+import { Button } from "@/ui/button";
 
 interface AddProjectModalProps {
    pendingPath: string;

@@ -7,10 +7,10 @@ import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "../../utils/idePreset
 import { randomAvatarColor } from "../../utils/projectAvatar";
 import serverIcon from "../../assets/server.svg";
 import { cn } from "../../utils/cn";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
+import { Input } from "@/ui/input";
+import { Button } from "@/ui/button";
+import { Checkbox } from "@/ui/checkbox";
 
 interface RemoteDialogProps {
    isOpen: boolean;
