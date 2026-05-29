@@ -1,5 +1,5 @@
-import type { AgentConfig, AppConfig, Project } from "../../types";
-import type { DialogState } from "./GitDialog";
+import type { AgentConfig, AppConfig, Project } from "../../../types";
+import type { DialogState } from "@/features/git/components/GitDialog";
 
 export interface ProjectItemActions {
   onSelectProject: (projectId: string) => void;

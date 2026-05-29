@@ -4,10 +4,10 @@ import {
   DraggableProjectItem,
   ProjectGroup,
   SessionRow,
-} from "@/components/project";
-import { useProjectItemDrag } from "@/components/project/useProjectItemDrag";
-import ContextMenu, { type ContextMenuItem } from "@/components/project/ContextMenu";
-import ProjectSettingsDialog from "@/components/project/ProjectSettingsDialog";
+} from "@/features/project/components";
+import { useProjectItemDrag } from "@/features/project/components/useProjectItemDrag";
+import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
+import ProjectSettingsDialog from "@/features/project/components/ProjectSettingsDialog";
 import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
 import type { FileChange } from "../../../types";

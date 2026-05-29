@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../utils/idePresets";
-import { useAppContext } from "../../contexts";
-import AgentIcon from "../layout/AgentIcon";
-import { cn } from "../../utils/cn";
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "../../../utils/idePresets";
+import { useAppContext } from "../../../contexts";
+import AgentIcon from "../../../components/layout/AgentIcon";
+import { cn } from "../../../utils/cn";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Button } from "@/ui/button";
 

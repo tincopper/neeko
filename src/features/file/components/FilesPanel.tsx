@@ -3,7 +3,7 @@ import React, { useCallback, useState, useEffect, useRef, useMemo } from "react"
 import { fileIconSrc } from "../../../utils/fileIcons";
 import { resolveAbsolutePath } from "../../../utils/browserUtils";
 import type { FileNode, FileChange } from "../../../types";
-import ContextMenu, { type ContextMenuItem } from "@/components/project/ContextMenu";
+import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
 import type { ProjectType } from "../../../types/project";
 
 /** git status → 文件名颜色 class */

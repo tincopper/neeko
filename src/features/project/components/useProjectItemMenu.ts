@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import type { Project } from "../../types";
-import type { DialogState } from "./GitDialog";
+import type { Project } from "../../../types";
+import type { DialogState } from "@/features/git/components/GitDialog";
 import type { ContextMenuItem } from "./ContextMenu";
-import { FolderGitIcon, GitLogoIcon } from "../icons";
+import { FolderGitIcon, GitLogoIcon } from "@/shared/components/icons";
 
 interface UseProjectItemMenuParams {
   project: Project;

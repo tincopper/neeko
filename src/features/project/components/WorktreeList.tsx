@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Worktree, FileChange } from "../../types";
-import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "../icons";
-import { terminalCache, destroyTerminalCache } from "../terminal";
-import { cn } from "../../utils/cn";
-import { useProjectStore } from "../../store/projectStore";
-import { useWorktreeStore } from "../../store/worktreeStore";
+import { Worktree, FileChange } from "../../../types";
+import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
+import { terminalCache, destroyTerminalCache } from "../../../components/terminal";
+import { cn } from "../../../utils/cn";
+import { useProjectStore } from "../../../store/projectStore";
+import { useWorktreeStore } from "../../../store/worktreeStore";
 import SessionChips from "./SessionChips";
 
 interface WorktreeListProps {

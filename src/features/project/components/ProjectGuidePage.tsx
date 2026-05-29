@@ -1,8 +1,8 @@
 import React from "react";
-import { Settings } from "@/components/icons"
-import neekoIcon from "../../assets/neeko-icon.png";
-import AgentIcon from "../layout/AgentIcon";
-import type { AgentConfig } from "../../types";
+import { Settings } from "@/shared/components/icons"
+import neekoIcon from "../../../assets/neeko-icon.png";
+import AgentIcon from "../../../components/layout/AgentIcon";
+import type { AgentConfig } from "../../../types";
 
 interface ProjectGuidePageProps {
   selectedAgent: AgentConfig | null;

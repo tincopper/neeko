@@ -1,6 +1,6 @@
 import React from "react";
-import { cn } from "../../utils/cn";
-import { TerminalIcon, FolderGitIcon } from "../icons";
+import { cn } from "../../../utils/cn";
+import { TerminalIcon, FolderGitIcon } from "@/shared/components/icons";
 import SessionChips from "./SessionChips";
 
 type SessionKind = "local" | "worktree";

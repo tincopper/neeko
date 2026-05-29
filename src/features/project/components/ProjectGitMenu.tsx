@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
-import type { Project } from "../../types";
-import type { DialogType } from "./GitDialog";
-import { FolderGitIcon, GitLogoIcon } from "../icons";
+import type { Project } from "../../../types";
+import type { DialogType } from "@/features/git/components/GitDialog";
+import { FolderGitIcon, GitLogoIcon } from "@/shared/components/icons";
 
 interface ProjectGitMenuProps {
   project: Project;

@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
-import type { Project } from "../../types";
+import type { Project } from "../../../types";
 import WorktreeList from "./WorktreeList";
 import SessionRow from "./SessionRow";
-import { useWorktreeStore } from "../../store/worktreeStore";
-import { useGitStore } from "../../store/gitStore";
-import { aheadBehindKey } from "../../utils/aheadBehindKey";
+import { useWorktreeStore } from "../../../store/worktreeStore";
+import { useGitStore } from "../../../store/gitStore";
+import { aheadBehindKey } from "../../../utils/aheadBehindKey";
 
 interface ProjectGitSectionProps {
   project: Project;

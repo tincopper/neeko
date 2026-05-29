@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MoreVerticalIcon } from "../icons";
-import type { DialogType } from "./GitDialog";
+import { MoreVerticalIcon } from "@/shared/components/icons";
+import type { DialogType } from "@/features/git/components/GitDialog";
 import ContextMenu from "./ContextMenu";
 import ProjectSettingsDialog from "./ProjectSettingsDialog";
 import ProjectGroup from "./ProjectGroup";
@@ -10,8 +10,8 @@ import ProjectGitMenu from "./ProjectGitMenu";
 import DraggableProjectItem from "./DraggableProjectItem";
 import { useProjectItemDrag } from "./useProjectItemDrag";
 import { useProjectItemMenu } from "./useProjectItemMenu";
-import { getIdeIconByCommand } from "../../utils/idePresets";
-import { useProjectStore } from "../../store/projectStore";
+import { getIdeIconByCommand } from "../../../utils/idePresets";
+import { useProjectStore } from "../../../store/projectStore";
 import type { ProjectItemProps } from "./projectItemTypes";
 
 interface ProjectItemViewExtras {

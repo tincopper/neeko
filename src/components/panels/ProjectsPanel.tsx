@@ -7,7 +7,7 @@ import {
    useWslContext,
    useRemoteContext,
 } from "../../contexts";
-import ProjectItem from "../project/ProjectItem";
+import ProjectItem from "@/features/project/components/ProjectItem";
 import GitDialog, { DialogState } from "../project/GitDialog";
 import CommitDialog from "../project/CommitDialog";
 import { WSLItem, RemoteItem } from "../connections";

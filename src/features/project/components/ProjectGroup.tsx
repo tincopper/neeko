@@ -1,12 +1,12 @@
 import React from "react";
-import { cn } from "../../utils/cn";
-import { getAvatarStyle, getProjectInitials } from "../../utils/projectAvatar";
+import { cn } from "../../../utils/cn";
+import { getAvatarStyle, getProjectInitials } from "../../../utils/projectAvatar";
 import {
   ChevronRightIcon,
   PlusIcon,
   TrashIcon,
   MoreVerticalIcon,
-} from "../icons";
+} from "@/shared/components/icons";
 
 interface ProjectGroupActions {
   /** 折叠/展开切换。点击 header 主体或 chevron 按钮均触发 */
