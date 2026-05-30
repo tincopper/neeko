@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify cross-domain rules no longer violated"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify error handling patterns followed"}

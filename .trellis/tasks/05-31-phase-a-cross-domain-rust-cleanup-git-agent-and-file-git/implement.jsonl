@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "core/ module structure — where core/services/ and core/watcher live"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError usage patterns for extracted functions"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Module visibility and cross-domain rules"}
