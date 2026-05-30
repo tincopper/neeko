@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件设计规范 - 用于评估重复代码和组件抽象"}
-{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook 设计规范 - 用于评估 useAppContainer 膨胀问题"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范 - 用于评估 useSyncToStore 的闭包过期风险"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "代码复用思考指南 - 用于指导消除终端层/项目卡片重复"}

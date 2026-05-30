@@ -1,6 +1,0 @@
-{"file": "AGENTS.md", "reason": "Verify compliance with development conventions (type management, barrel exports, React performance)"}
-{"file": "src/styles.css", "reason": "Verify no remaining references to deleted class names in any component after migration"}
-{"file": "src/testing/setup.ts", "reason": "Test setup — verify no test breakage from class name changes"}
-{"file": "src/components/__tests__/SettingsPanel.test.tsx", "reason": "Settings panel tests — may assert specific CSS class names"}
-{"file": "src/components/__tests__/FileTree.test.tsx", "reason": "File tree tests — may assert specific CSS class names"}
-{"file": "src/components/__tests__/DiffView.test.tsx", "reason": "Diff view tests — may assert specific CSS class names"}

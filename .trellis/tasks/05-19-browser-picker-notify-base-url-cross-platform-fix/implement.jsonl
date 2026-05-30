@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "browser_start_picker is a #[tauri::command] — keep adherence to the project's command authoring conventions when changing its signature/body."}
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Adding serde_json::to_string failure path inside browser_start_picker — must follow project AppError mapping conventions instead of unwrap()."}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Cross-platform cfg gating, const placement, and overall Rust style conventions for the browser.rs change."}
-{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Guides the lightweight Rust unit test additions (NOTIFY_BASE per platform, script formatting smoke test)."}

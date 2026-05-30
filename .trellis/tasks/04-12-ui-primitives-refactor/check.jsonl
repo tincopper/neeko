@@ -1,4 +1,0 @@
-{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
-{"file": "src/components/__tests__/SettingsPanel.test.tsx", "reason": "Settings测试，重构后需更新选择器"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范，重构后需更新"}
