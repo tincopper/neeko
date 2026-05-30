@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/api-layer.md", "reason": "Defines the api/ layer contract — types, error handling, invoke wrapper patterns"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Where api/ lives inside each feature module"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Typed invoke wrappers pattern — how to type IPC calls"}
-{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "How frontend components interact with api layer"}
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "ESLint import rules to enforce isolation"}
-{"file": "docs/neeko-development-spec.md", "reason": "Primary architecture spec — frontend layering section"}
