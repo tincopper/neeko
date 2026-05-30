@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Quality rules — clippy unwrap_used expectations"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Verify replacements follow error handling patterns"}
