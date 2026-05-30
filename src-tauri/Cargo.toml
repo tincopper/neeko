@@ -47,7 +47,7 @@ arboard = "3.6.1"
 libc = "0.2"
 
 [lints.clippy]
-# --- 正确性（Phase 4 会将 unwrap_used 升级为 deny）---
+# --- 正确性（Phase 4 完成：production unwrap 已消除，warn 保留给测试代码）---
 unwrap_used = "warn"
 expect_used = "warn"
 cast_possible_truncation = "deny"

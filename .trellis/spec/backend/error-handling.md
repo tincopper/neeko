@@ -128,23 +128,52 @@ state.terminal_manager
 .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
 ```
 
+### `.expect("infallible: ...")` 用于逻辑不可达的锁中毒
+
+Mutex 锁上使用，表示锁中毒在逻辑上不可达（如自含的 LRU 缓存、全局静态）：
+
+```rust
+let mut cache = self.cache.lock().expect("infallible: LRU cache lock");
+```
+
 ---
 
 ## Mutex 锁处理
 
-Mutex 锁使用 `.unwrap()` —— 锁中毒视为致命错误（panic）：
+Mutex 锁有三种处理模式（Phase 4 已统一）：
+
+### 模式一：`.expect("infallible: ...")` —— 内部自含锁
+
+用于自含结构体内部的锁（如 LRU 缓存、线程安全集合），锁中毒在逻辑上不可达：
 
 ```rust
-let mut pm = state.project_manager.lock().unwrap();
+let mut cache = self.cache.lock().expect("infallible: LRU cache lock");
+let mut handles = self.pty_handles.lock().expect("infallible: pty handles");
 ```
 
-这是有意为之的。如果一个线程在持有锁时 panic，应用状态被视为已损坏，崩溃是正确的行为。
+### 模式二：`.map_err(...)?` —— 外部状态锁（命令边界）
 
-在命令边界，若需要优雅处理，可使用 `AppError` 的 `From` 实现：
+用于 `AppStateWrapper` 中由外部注入的 Manager 锁：
 
 ```rust
-let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+let mut pm = state
+    .project_manager
+    .lock()
+    .map_err(|e| AppError::LockPoisoned(e.to_string()))?;
 ```
+
+### 模式三（旧）：`.unwrap()` —— 仅 `anyhow::Result` 函数
+
+遗留模式，仅存在于 `anyhow::Result` 且无法轻易迁移的内部函数中：
+
+```rust
+let conn = self.conn.lock().unwrap();
+```
+
+**原则**：
+- 如果锁是结构体内部的纯数据保护 → `.expect("infallible: ...")`
+- 如果锁来自外部注入的 `State` → `.map_err(...)?`（返回 AppError）
+- 测试代码中的 `.unwrap()` 保持原样
 
 ---
 

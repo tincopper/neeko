@@ -317,7 +317,9 @@ pub fn preview_git_install(
     let clone_path_for_preview = clone_path.clone();
 
     // Store in global cache
-    let mut cache = GIT_PREVIEWS.lock().unwrap();
+    let mut cache = GIT_PREVIEWS
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Git previews lock poisoned: {}", e))?;
     let preview_id = cache.insert(GitPreview {
         id: String::new(),
         clone_url: clone_url.to_string(),
@@ -332,7 +334,7 @@ pub fn preview_git_install(
 
 /// Get preview info by ID
 pub fn get_preview(preview_id: &str) -> Option<GitPreview> {
-    let cache = GIT_PREVIEWS.lock().unwrap();
+    let cache = GIT_PREVIEWS.lock().ok()?;
     cache.get(preview_id).cloned()
 }
 
@@ -343,7 +345,9 @@ pub fn confirm_git_install(
     name: Option<&str>,
 ) -> Result<InstallResult> {
     let _preview = {
-        let mut cache = GIT_PREVIEWS.lock().unwrap();
+        let mut cache = GIT_PREVIEWS
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Git previews lock poisoned: {}", e))?;
         cache
             .remove(preview_id)
             .ok_or_else(|| anyhow::anyhow!("Preview not found"))?
@@ -364,7 +368,9 @@ pub fn confirm_git_install(
 /// Cancel git preview - cleanup temp clone
 pub fn cancel_git_preview(preview_id: &str) -> Result<()> {
     let preview = {
-        let mut cache = GIT_PREVIEWS.lock().unwrap();
+        let mut cache = GIT_PREVIEWS
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Git previews lock poisoned: {}", e))?;
         cache
             .remove(preview_id)
             .ok_or_else(|| anyhow::anyhow!("Preview not found"))?

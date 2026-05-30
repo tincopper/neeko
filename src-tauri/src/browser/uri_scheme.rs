@@ -41,7 +41,7 @@ pub fn create_handler() -> impl Fn(
             .status(200)
             .header("Access-Control-Allow-Origin", "*")
             .body(Vec::<u8>::new())
-            .unwrap()
+            .expect("infallible: static response builder should not fail")
     }
 }
 
@@ -53,7 +53,9 @@ fn handle_prompt_submitted(
 ) {
     if let Some((prompt, html)) = parse_prompt_submitted_query(query) {
         let should_emit = {
-            let mut last = last_prompt_emit.lock().unwrap();
+            let mut last = last_prompt_emit
+                .lock()
+                .expect("infallible: prompt dedup lock should not be poisoned");
             let now = Instant::now();
             let emit = last
                 .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)

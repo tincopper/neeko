@@ -56,8 +56,15 @@ impl SkillStore {
         content_hash: Option<&str>,
         update_status: &str,
     ) -> Result<()> {
-        self.repo
-            .update_skill_after_install(id, name, description, source_revision, remote_revision, content_hash, update_status)
+        self.repo.update_skill_after_install(
+            id,
+            name,
+            description,
+            source_revision,
+            remote_revision,
+            content_hash,
+            update_status,
+        )
     }
 
     pub fn update_skill_check_state(
@@ -142,7 +149,8 @@ impl SkillStore {
     }
 
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
-        self.repo.remove_skill_from_tag_group(tag_group_id, skill_id)
+        self.repo
+            .remove_skill_from_tag_group(tag_group_id, skill_id)
     }
 
     pub fn get_skills_for_tag_group(&self, tag_group_id: &str) -> Result<Vec<SkillRecord>> {
@@ -205,8 +213,7 @@ impl SkillStore {
     }
 
     pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
-        self.repo
-            .remove_project_tag_group(project_id, tag_group_id)
+        self.repo.remove_project_tag_group(project_id, tag_group_id)
     }
 
     // Settings

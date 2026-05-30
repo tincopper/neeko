@@ -138,7 +138,10 @@ fn parse_rsc_initial_skills(html: &str) -> Result<Vec<SkillsShSkill>> {
 
     let mut skills = Vec::new();
     for cap in skill_re.captures_iter(raw_array) {
-        let json_str = cap.get(0).unwrap().as_str();
+        let json_str = cap
+            .get(0)
+            .context("Missing capture group 0 in skill regex")?
+            .as_str();
         // Unescape \" -> " for JSON parsing
         let unescaped = json_str.replace("\\\"", "\"");
         if let Ok(entry) = serde_json::from_str::<RscSkillEntry>(&unescaped) {
@@ -171,7 +174,10 @@ fn parse_rsc_payload(html: &str) -> Result<Vec<SkillsShSkill>> {
     )?;
 
     for cap in re_block.captures_iter(html) {
-        let block = cap.get(0).unwrap().as_str();
+        let block = cap
+            .get(0)
+            .context("Missing capture group 0 in skill block regex")?
+            .as_str();
 
         let source = re_source
             .captures(block)

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use super::types::*;
+use super::types::{SkillRecord, SkillTargetRecord, TagGroupRecord, ToolToggleRecord};
 
 pub struct SkillRepository {
     conn: Mutex<Connection>,
@@ -30,13 +30,18 @@ impl SkillRepository {
     }
 
     pub fn get_conn_inner(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap()
+        self.conn
+            .lock()
+            .expect("infallible: database lock should not be poisoned")
     }
 
     // Skills CRUD
 
     pub fn insert_skill(&self, skill: &SkillRecord) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "INSERT INTO skills (id, name, description, source_type, source_ref, source_ref_resolved, source_subpath, source_branch, source_revision, remote_revision, central_path, content_hash, enabled, status, update_status, last_checked_at, last_check_error, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![skill.id, skill.name, skill.description, skill.source_type, skill.source_ref, skill.source_ref_resolved, skill.source_subpath, skill.source_branch, skill.source_revision, skill.remote_revision, skill.central_path, skill.content_hash, skill.enabled, skill.status, skill.update_status, skill.last_checked_at, skill.last_check_error, skill.created_at, skill.updated_at],
@@ -45,28 +50,40 @@ impl SkillRepository {
     }
 
     pub fn get_all_skills(&self) -> Result<Vec<SkillRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, name, description, source_type, source_ref, source_ref_resolved, source_subpath, source_branch, source_revision, remote_revision, central_path, content_hash, enabled, status, update_status, last_checked_at, last_check_error, created_at, updated_at FROM skills ORDER BY name")?;
         let rows = stmt.query_map([], map_skill_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn get_skill_by_id(&self, id: &str) -> Result<Option<SkillRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, name, description, source_type, source_ref, source_ref_resolved, source_subpath, source_branch, source_revision, remote_revision, central_path, content_hash, enabled, status, update_status, last_checked_at, last_check_error, created_at, updated_at FROM skills WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![id], map_skill_row)?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
     pub fn get_skill_by_central_path(&self, central_path: &str) -> Result<Option<SkillRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, name, description, source_type, source_ref, source_ref_resolved, source_subpath, source_branch, source_revision, remote_revision, central_path, content_hash, enabled, status, update_status, last_checked_at, last_check_error, created_at, updated_at FROM skills WHERE central_path = ?1")?;
         let mut rows = stmt.query_map(params![central_path], map_skill_row)?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
     pub fn update_skill(&self, skill: &SkillRecord) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE skills SET name = ?1, description = ?2, source_type = ?3, source_ref = ?4, source_ref_resolved = ?5, source_subpath = ?6, source_branch = ?7, source_revision = ?8, remote_revision = ?9, central_path = ?10, content_hash = ?11, enabled = ?12, status = ?13, update_status = ?14, last_checked_at = ?15, last_check_error = ?16, updated_at = ?17 WHERE id = ?18",
@@ -85,7 +102,10 @@ impl SkillRepository {
         content_hash: Option<&str>,
         update_status: &str,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE skills SET name = ?1, description = ?2, source_revision = ?3, remote_revision = ?4, content_hash = ?5, updated_at = ?6, update_status = ?7, last_checked_at = ?6, last_check_error = NULL WHERE id = ?8", params![name, description, source_revision, remote_revision, content_hash, now, update_status, id])?;
         Ok(())
@@ -98,14 +118,20 @@ impl SkillRepository {
         update_status: &str,
         last_check_error: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE skills SET remote_revision = ?1, update_status = ?2, last_checked_at = ?3, last_check_error = ?4 WHERE id = ?5", params![remote_revision, update_status, now, last_check_error, id])?;
         Ok(())
     }
 
     pub fn delete_skill(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute("DELETE FROM skills WHERE id = ?1", params![id])?;
         Ok(())
     }
@@ -113,27 +139,39 @@ impl SkillRepository {
     // Targets
 
     pub fn insert_target(&self, target: &SkillTargetRecord) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute("INSERT OR REPLACE INTO skill_targets (id, skill_id, tool, target_path, mode, status, synced_at, last_error) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", params![target.id, target.skill_id, target.tool, target.target_path, target.mode, target.status, target.synced_at, target.last_error])?;
         Ok(())
     }
 
     pub fn get_targets_for_skill(&self, skill_id: &str) -> Result<Vec<SkillTargetRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, skill_id, tool, target_path, mode, status, synced_at, last_error FROM skill_targets WHERE skill_id = ?1")?;
         let rows = stmt.query_map(params![skill_id], map_target_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn get_all_targets(&self) -> Result<Vec<SkillTargetRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, skill_id, tool, target_path, mode, status, synced_at, last_error FROM skill_targets")?;
         let rows = stmt.query_map([], map_target_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn delete_target(&self, skill_id: &str, tool: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM skill_targets WHERE skill_id = ?1 AND tool = ?2",
             params![skill_id, tool],
@@ -144,14 +182,20 @@ impl SkillRepository {
     // Skill Tags
 
     pub fn get_all_tags(&self) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT DISTINCT tag FROM skill_tags ORDER BY tag")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn set_tags_for_skill(&self, skill_id: &str, tags: &[String]) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM skill_tags WHERE skill_id = ?1",
             params![skill_id],
@@ -169,7 +213,10 @@ impl SkillRepository {
     }
 
     pub fn get_tags_map(&self) -> Result<HashMap<String, Vec<String>>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT skill_id, tag FROM skill_tags ORDER BY tag")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -184,13 +231,19 @@ impl SkillRepository {
     // Tag Groups
 
     pub fn insert_tag_group(&self, tg: &TagGroupRecord) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute("INSERT INTO tag_groups (id, name, description, icon, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![tg.id, tg.name, tg.description, tg.icon, tg.sort_order, tg.created_at, tg.updated_at])?;
         Ok(())
     }
 
     pub fn get_all_tag_groups(&self) -> Result<Vec<TagGroupRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT id, name, description, icon, sort_order, created_at, updated_at FROM tag_groups ORDER BY sort_order, created_at")?;
         let rows = stmt.query_map([], map_tag_group_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -203,21 +256,30 @@ impl SkillRepository {
         description: Option<&str>,
         icon: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("UPDATE tag_groups SET name = ?1, description = ?2, icon = ?3, updated_at = ?4 WHERE id = ?5", params![name, description, icon, now, id])?;
         Ok(())
     }
 
     pub fn delete_tag_group(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute("DELETE FROM tag_groups WHERE id = ?1", params![id])?;
         Ok(())
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn reorder_tag_groups(&self, ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let tx = conn.unchecked_transaction()?;
         for (i, id) in ids.iter().enumerate() {
             tx.execute(
@@ -232,14 +294,20 @@ impl SkillRepository {
     // TagGroup-Skill mapping
 
     pub fn add_skill_to_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute("INSERT OR IGNORE INTO tag_group_skills (tag_group_id, skill_id, added_at) VALUES (?1, ?2, ?3)", params![tag_group_id, skill_id, now])?;
         Ok(())
     }
 
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM tag_group_skills WHERE tag_group_id = ?1 AND skill_id = ?2",
             params![tag_group_id, skill_id],
@@ -248,14 +316,20 @@ impl SkillRepository {
     }
 
     pub fn get_skills_for_tag_group(&self, tag_group_id: &str) -> Result<Vec<SkillRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT s.id, s.name, s.description, s.source_type, s.source_ref, s.source_ref_resolved, s.source_subpath, s.source_branch, s.source_revision, s.remote_revision, s.central_path, s.content_hash, s.enabled, s.status, s.update_status, s.last_checked_at, s.last_check_error, s.created_at, s.updated_at FROM skills s INNER JOIN tag_group_skills tgs ON s.id = tgs.skill_id WHERE tgs.tag_group_id = ?1 ORDER BY tgs.sort_order, s.name")?;
         let rows = stmt.query_map(params![tag_group_id], map_skill_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM tag_group_skills WHERE tag_group_id = ?1",
             params![tag_group_id],
@@ -264,12 +338,11 @@ impl SkillRepository {
         Ok(count)
     }
 
-    pub fn reorder_tag_group_skills(
-        &self,
-        tag_group_id: &str,
-        skill_ids: &[String],
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn reorder_tag_group_skills(&self, tag_group_id: &str, skill_ids: &[String]) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let tx = conn.unchecked_transaction()?;
         for (i, skill_id) in skill_ids.iter().enumerate() {
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
@@ -289,7 +362,10 @@ impl SkillRepository {
         tool: &str,
         enabled: bool,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO tag_group_skill_tools (tag_group_id, skill_id, tool, enabled, updated_at)
@@ -306,7 +382,10 @@ impl SkillRepository {
         tag_group_id: &str,
         skill_id: &str,
     ) -> Result<Vec<ToolToggleRecord>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT tag_group_id, skill_id, tool, enabled, updated_at
              FROM tag_group_skill_tools
@@ -329,7 +408,10 @@ impl SkillRepository {
         tag_group_id: &str,
         skill_id: &str,
     ) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT tool FROM tag_group_skill_tools
              WHERE tag_group_id = ?1 AND skill_id = ?2 AND enabled = 1",
@@ -341,7 +423,10 @@ impl SkillRepository {
     }
 
     pub fn get_tag_groups_for_skill(&self, skill_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt =
             conn.prepare("SELECT tag_group_id FROM tag_group_skills WHERE skill_id = ?1")?;
         let rows = stmt.query_map(params![skill_id], |row| row.get::<_, String>(0))?;
@@ -350,12 +435,11 @@ impl SkillRepository {
 
     // Project-TagGroup binding
 
-    pub fn set_project_tag_groups(
-        &self,
-        project_id: &str,
-        tag_group_ids: &[String],
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let tx = conn.unchecked_transaction()?;
         tx.execute(
             "DELETE FROM project_tag_groups WHERE project_id = ?1",
@@ -373,7 +457,10 @@ impl SkillRepository {
     }
 
     pub fn get_project_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
             "SELECT tag_group_id FROM project_tag_groups WHERE project_id = ?1 ORDER BY added_at",
         )?;
@@ -381,12 +468,11 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    pub fn add_project_tag_group(
-        &self,
-        project_id: &str,
-        tag_group_id: &str,
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT OR IGNORE INTO project_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
@@ -395,12 +481,11 @@ impl SkillRepository {
         Ok(())
     }
 
-    pub fn remove_project_tag_group(
-        &self,
-        project_id: &str,
-        tag_group_id: &str,
-    ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+    pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM project_tag_groups WHERE project_id = ?1 AND tag_group_id = ?2",
             params![project_id, tag_group_id],
@@ -411,14 +496,20 @@ impl SkillRepository {
     // Settings
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
         let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
             params![key, value],
@@ -429,7 +520,10 @@ impl SkillRepository {
     // Cache methods
 
     pub fn get_cache(&self, key: &str, ttl_secs: i64) -> Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         let cutoff = now - (ttl_secs * 1000);
 
@@ -442,7 +536,10 @@ impl SkillRepository {
     }
 
     pub fn set_cache(&self, key: &str, data: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT OR REPLACE INTO skillssh_cache (cache_key, data, fetched_at) VALUES (?1, ?2, ?3)",
@@ -452,7 +549,10 @@ impl SkillRepository {
     }
 
     pub fn clear_cache(&self, key: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute(
             "DELETE FROM skillssh_cache WHERE cache_key = ?1",
             params![key],
@@ -461,7 +561,10 @@ impl SkillRepository {
     }
 
     pub fn clear_all_cache(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         conn.execute("DELETE FROM skillssh_cache", [])?;
         Ok(())
     }

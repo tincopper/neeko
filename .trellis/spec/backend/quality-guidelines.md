@@ -139,7 +139,26 @@ let content = fs::read_to_string(path).unwrap();
 let content = fs::read_to_string(path).context("Failed to read")?;
 ```
 
-例外：`Mutex::lock()` 上的 `.unwrap()` 是可接受的。
+例外：
+
+**A. 内部锁 (`Mutex`) 上的 `.unwrap()` 已逐步迁移**
+
+Phase 4 已将大部分 production `.lock().unwrap()` 替换为以下两种模式：
+
+```rust
+// 模式一：锁中毒视为不可恢复（推荐用于内部锁，逻辑不可达）
+let sessions = self.sessions.lock().expect("infallible: sessions lock");
+
+// 模式二：优雅处理（用于命令边界，返回 AppError）
+let sessions = state
+    .project_manager
+    .lock()
+    .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+```
+
+**B. 测试代码中的 `.unwrap()` 可接受**
+
+测试中 `.unwrap()` 保持原样，不做替换。
 
 ### 2. 阻塞 tokio 运行时
 
@@ -283,7 +302,7 @@ pnpm lint              # 运行所有质量检查（cargo fmt + clippy + eslint 
 
 | 级别 | 含义 | 示例 |
 |------|------|------|
-| `"deny"` | 编译错误，必须修复 | `unwrap_used = "deny"` |
+| `"deny"` | 编译错误，必须修复 | `cast_possible_truncation = "deny"` |
 | `"warn"` | 警告，建议修复 | `missing_docs = "warn"` |
 | 未设置 | 使用 clippy 默认 | - |
 

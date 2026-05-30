@@ -88,8 +88,14 @@ impl LruCache {
     }
 
     fn set(&self, key: String, val: DiffResult) {
-        let mut queue = self.queue.lock().unwrap();
-        let mut map = self.map.lock().unwrap();
+        let mut queue = self
+            .queue
+            .lock()
+            .expect("infallible: LRU queue lock should not be poisoned");
+        let mut map = self
+            .map
+            .lock()
+            .expect("infallible: LRU map lock should not be poisoned");
 
         // Remove existing entry if present
         if let Some(&idx) = map.get(&key) {
@@ -108,8 +114,14 @@ impl LruCache {
     }
 
     fn invalidate_repo(&self, repo_path: &Path) {
-        let mut queue = self.queue.lock().unwrap();
-        let mut map = self.map.lock().unwrap();
+        let mut queue = self
+            .queue
+            .lock()
+            .expect("infallible: LRU queue lock should not be poisoned");
+        let mut map = self
+            .map
+            .lock()
+            .expect("infallible: LRU map lock should not be poisoned");
         let prefix = repo_key_prefix(repo_path);
         queue.retain(|(k, _)| !k.starts_with(&prefix));
         self.rebuild_indices(&mut map, &queue);

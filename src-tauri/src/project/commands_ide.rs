@@ -41,7 +41,9 @@ pub fn open_ide(
                 return Err("Empty IDE command".into());
             }
             let mut it = parts.into_iter();
-            let exe = it.next().unwrap();
+            let exe = it.next().ok_or_else(|| {
+                AppError::InvalidInput("IDE command is empty after parsing".to_string())
+            })?;
             (exe, it.collect())
         }
     };

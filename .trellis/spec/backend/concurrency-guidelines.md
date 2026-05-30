@@ -56,8 +56,12 @@ pub struct AppStateWrapper {
     // ...
 }
 
-// 在命令中的使用
-let mut pm = state.project_manager.lock().unwrap();
+// 在命令中的使用（内部锁用 expect，外部状态锁用 map_err）
+let sessions = self.sessions.lock().expect("infallible: sessions lock");
+let mut pm = state
+    .project_manager
+    .lock()
+    .map_err(|e| AppError::LockPoisoned(e.to_string()))?;
 ```
 
 ### `Arc<Mutex<HashMap<String, T>>>` —— 用于并发会话映射
@@ -81,7 +85,7 @@ std::thread::Builder::new()
     .name(format!("pty-reader-{}", &id[..8]))
     .spawn(move || {
         // 通过 Arc 访问 sessions 和 handles
-        let mut map = sessions.lock().unwrap();
+        let mut map = sessions.lock().expect("infallible: pty sessions");
         // ...
     })
     .ok();
@@ -240,12 +244,12 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 ```rust
 // 错误 —— 派生线程时持有锁
-let mut pm = state.project_manager.lock().unwrap();
+let mut pm = state.project_manager.lock().map_err(...)?;
 std::thread::spawn(move || { /* pm 被捕获 */ });
 
 // 正确 —— 提取数据，释放锁，然后派生
 let data = {
-    let pm = state.project_manager.lock().unwrap();
+    let pm = state.project_manager.lock().map_err(...)?;
     pm.get_data().clone()
 };
 std::thread::spawn(move || { /* 使用 data */ });

@@ -2,7 +2,7 @@ use crate::connection::types::AuthMethod;
 use crate::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use crate::utils::command::ssh_auth;
-use anyhow::Result;
+use anyhow::{Context, Result};
 #[allow(clippy::wildcard_imports)]
 use russh::*;
 use std::collections::HashMap;
@@ -90,7 +90,7 @@ impl RemoteTerminalManager {
 
         self.sessions
             .lock()
-            .unwrap()
+            .map_err(|e| anyhow::anyhow!("Sessions lock poisoned: {}", e))?
             .insert(id.clone(), terminal_session.clone());
 
         // mpsc channel：input listener → IO 任务
@@ -138,7 +138,13 @@ impl RemoteTerminalManager {
         thread::Builder::new()
             .name(format!("ssh-io-{}", &id[..8]))
             .spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                let rt = match tokio::runtime::Runtime::new() {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        log_error(&format!("[SSH-IO] Failed to create tokio runtime: {}", e));
+                        return;
+                    }
+                };
                 rt.block_on(async move {
                     log_info(&format!("[SSH-IO] Thread started for {}", &io_id[..8]));
                     loop {

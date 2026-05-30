@@ -48,8 +48,7 @@ fn save_tasks_to_file(path: &PathBuf, tasks: &[TaskConfig]) -> Result<(), std::i
     let file = TaskConfigFile {
         tasks: tasks.to_vec(),
     };
-    let json = serde_json::to_string_pretty(&file)
-        .map_err(std::io::Error::other)?;
+    let json = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
     std::fs::write(path, json)
 }
 
