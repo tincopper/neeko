@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 65
-- **Last Active**: 2026-05-30
+- **Total Sessions**: 66
+- **Last Active**: 2026-05-31
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~273 | Active |
+| `journal-2.md` | ~306 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 66 | 2026-05-31 | Spec compliance audit fixes: editor to app/, invoke isolation, ESLint rules | `b6a537f` | `refactor/architecture-optimization` |
 | 65 | 2026-05-30 | Phase 4: eliminate unwrap() — 55 calls replaced with ? + AppError | `02047ac` | `refactor/architecture-optimization` |
 | 64 | 2026-05-30 | Phase 2 + 3: backend layering, services/repository extraction, frontend api wrappers | `bdc23e6`, `0357db0`, `59fb6a4` | `refactor/architecture-optimization` |
 | 63 | 2026-05-27 | chore: remove all dead code | HEAD | `refactor/architecture-optimization` |
