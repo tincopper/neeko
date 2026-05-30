@@ -36,7 +36,7 @@ src-tauri/
     │   ├── mod.rs
     │   ├── error.rs          # AppError —— 统一可序列化错误类型
     │   ├── logger.rs         # 自定义文件日志
-    │   └── db.rs             # SQLite 数据库（Skill 系统使用）
+    │   └── db.rs             # SQLite 连接管理（open/open_in_memory，WAL + foreign keys）
     ├── agent/                # Agent 子系统（自包含）
     │   ├── mod.rs
     │   ├── commands.rs

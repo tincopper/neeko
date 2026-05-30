@@ -26,7 +26,7 @@ src/
 │       ├── components/
 │       ├── hooks/
 │       ├── context.tsx
-│       ├── file-actions-context.tsx
+│       ├── FileActionsContext.tsx
 │       ├── store.ts
 │       └── types.ts
 │
@@ -42,7 +42,12 @@ src/
 │   ├── browser/
 │   │   └── api/browserApi.ts
 │   ├── connection/
-│   │   └── api/connectionApi.ts
+│   │   ├── api/connectionApi.ts
+│   │   ├── components/          # Remote/WSL 连接对话框
+│   │   ├── contexts/           # RemoteContext.tsx, WslContext.tsx
+│   │   ├── hooks/              # 连接 hooks（useRemoteProjects, useWslProjects）
+│   │   ├── store.ts
+│   │   └── types.ts
 │   ├── file/
 │   │   ├── api/fileApi.ts
 │   │   └── types.ts          # FileTransportKind, FileContent, FileNode
@@ -53,8 +58,10 @@ src/
 │   │   └── types.ts          # FileDiffStats, GitInfo, CommitEntry 等
 │   ├── project/
 │   │   ├── api/projectApi.ts
-│   │   ├── hooks/
+│   │   ├── hooks/               # 含 use-active-project/ 子目录（kebab-case）
 │   │   ├── components/
+│   │   ├── context.tsx
+│   │   ├── store.ts
 │   │   └── types.ts
 │   ├── session/
 │   │   ├── api/sessionApi.ts
@@ -79,109 +86,63 @@ src/
 │   └── theme/
 │       └── api/themeApi.ts
 │
-├── components/              # UI 组件（按领域组织）
-│   ├── DiffView.tsx         # 兼容入口，转发到 components/diff
+├── layout/                  # 窗口边框 & 导航（top-level domain）
+│   ├── ActivityBar.tsx      # 左侧活动栏（projects/files/skills 切换）
+│   ├── AppLayout.tsx        # 顶层布局编排（ActivityBar + PanelArea + MainContent）
 │   ├── MainContent.tsx
-│   ├── SettingsPanel.tsx    # 兼容入口，转发到 components/settings
-│   ├── connections/         # SSH/WSL 连接对话框
-│   │   ├── index.ts         # 桶文件导出
-│   │   ├── ProjectBody.tsx
-│   │   ├── ProjectItemCard.tsx
-│   │   ├── WSLProjectCard.tsx
-│   │   ├── RemoteProjectCard.tsx
-│   │   ├── RemoteAuthDialog.tsx
-│   │   ├── RemoteDialog.tsx
-│   │   ├── RemoteItems.tsx
-│   │   └── WSLDialog.tsx
-│   ├── diff/                # Diff 领域拆分
-│   │   ├── DiffView.tsx
-│   │   ├── UnifiedDiffTable.tsx
-│   │   ├── SplitDiffTable.tsx
-│   │   ├── useDiffData.ts
-│   │   ├── diffAlgorithm.ts
-│   │   ├── highlight.ts
-│   │   └── index.ts
-│   ├── layout/              # 窗口边框 & 导航
+│   ├── PanelArea.tsx
+│   ├── dockPanels.ts
+│   ├── dock-layout/         # Dock 布局系统（原 DockLayout/，kebab-case 对齐）
 │   │   ├── index.ts
-│   │   ├── ActivityBar.tsx  # 左侧活动栏（projects/files/skills 切换）
-│   │   ├── AppLayout.tsx    # 顶层布局编排（ActivityBar + PanelArea + MainContent）
-│   │   ├── AgentIcon.tsx
-│   │   ├── AgentSelector.tsx
-│   │   ├── TitleBar.tsx
-│   │   └── WindowControls.tsx
-│   ├── panels/              # 侧栏面板内容（按活动栏选项切换）
-│   │   ├── FilesPanel.tsx   # 文件树面板（files 活动）
-│   │   ├── FileViewer.tsx   # 文件编辑器（CodeMirror，多 Tab）
-│   │   └── ProjectsPanel.tsx
-│   ├── project/             # 项目侧边栏 & Git UI
+│   │   ├── DockBar.tsx
+│   │   ├── DockBarButton.tsx
+│   │   ├── DockLayout.tsx
+│   │   ├── DockPanelWrappers.tsx
+│   │   ├── DockZone.tsx
+│   │   ├── DockZoneTabs.tsx
+│   │   └── useDragToReDock.ts
+│   ├── hooks/               # Layout hooks
+│   └── __tests__/
+│
+├── ui/                      # UI 基元组件（shadcn-styled）
+│   ├── index.ts
+│   ├── ContextMenu.tsx
+│   ├── DropdownMenu.tsx
+│   ├── ResizablePanel.tsx
+│   ├── ScrollArea.tsx
+│   └── ToggleGroup.tsx
+│
+├── shared/                  # 共享层（contexts/hooks/store/utils/types）
+│   ├── contexts/            # 基础 Context（全局配置、侧栏、技能）
 │   │   ├── index.ts
-│   │   ├── AddProjectModal.tsx
-│   │   ├── FileTree.tsx
-│   │   ├── GitDialog.tsx
-│   │   ├── ProjectItem.tsx
-│   │   ├── ProjectItemHeader.tsx
-│   │   ├── ProjectGitSection.tsx
-│   │   ├── useProjectItemDrag.ts
-│   │   ├── useProjectItemMenu.ts
-│   │   └── ProjectSidebar.tsx
-│   ├── settings/            # 设置面板拆分
-│   │   ├── SettingsPanel.tsx
-│   │   ├── AppearancePanel.tsx
-│   │   ├── EditorPanel.tsx
-│   │   ├── TerminalPanel.tsx
-│   │   ├── AgentsPanel.tsx
-│   │   ├── IdePanel.tsx
-│   │   ├── GitPanel.tsx
-│   │   └── index.ts
-│   └── terminal/            # 终端视图（xterm.js）
-│       ├── index.ts
-│       ├── TerminalView.tsx
-│       ├── terminalCache.ts
-│       ├── terminalFactory.ts
-│       ├── terminalCommands.ts
-│       ├── terminalTypes.ts
-│       ├── WorktreeTerminalView.tsx
-│       ├── WSLTerminalView.tsx
-│       └── RemoteTerminalView.tsx
+│   │   ├── AppContext.tsx
+│   │   ├── SidebarContext.tsx
+│   │   └── skill-context.tsx
+│   ├── components/          # 共享组件
+│   │   ├── AppToast.tsx
+│   │   ├── BranchDropdownContent.tsx
+│   │   └── icons/
+│   ├── hooks/               # 共享 hooks（含 __tests__）
+│   ├── store/               # 共享状态（appStore）
+│   ├── types/               # 共享类型
+│   └── utils/               # 纯工具函数
+│       ├── agents.ts
+│       ├── codemirror.ts
+│       ├── distros.ts
+│       ├── fileIcons.ts
+│       ├── idePresets.ts
+│       ├── platform.ts
+│       └── terminal.ts
 │
-├── hooks/                   # 自定义 React Hooks（扁平目录）
-│   ├── useAppContainer.ts   # App 容器层，聚合各领域 Hook 与回调
-│   ├── useAppConfig.ts
-│   ├── useFileView.ts       # 文件面板：多 Tab 状态管理（openFile/closeTab/saveFile）
-│   ├── useKeyboardShortcuts.ts
-│   ├── useLocalProjects.ts
-│   ├── useRemoteProjects.ts
-│   ├── useSideTerminalResize.ts
-│   ├── useToast.ts
-│   ├── useWorktreeState.ts
-│   └── useWslProjects.ts
+├── styles/                  # 样式入口（Tailwind CSS v4）
+│   └── tailwind.css
 │
-├── context/                 # 基础 Context（全局配置、侧栏、技能）
-│   ├── app-context.tsx
-│   ├── sidebar-context.tsx
-│   ├── skill-context.tsx
-│   └── index.ts
+├── lib/                     # 库包装
+├── types.ts                 # 共享 TypeScript 接口
 │
-├── contexts/                # 领域动作 Context（project/file/wsl/remote/editor）
-│   ├── project-actions-context.tsx
-│   ├── file-actions-context.tsx
-│   ├── wsl-context.tsx
-│   ├── remote-context.tsx
-│   ├── editor-context.tsx
-│   └── index.ts
-│
-├── utils/                   # 纯工具函数（扁平目录）
-│   ├── agents.ts            # Agent 图标查找表
-│   ├── codemirror.ts        # CodeMirror 配置（语言加载、主题、字体样式扩展）
-│   ├── distros.ts           # WSL 发行版图标映射
-│   ├── fileIcons.ts         # 文件扩展名到图标的映射
-│   ├── idePresets.ts        # IDE 预设定义
-│   ├── platform.ts          # 平台检测常量
-│   └── terminal.ts          # 终端字体构建器
-│
-│   └── testing/             # 测试配置
-│       ├── setup.ts         # Vitest 全局配置
-│       └── factories.ts     # 测试数据工厂
+├── testing/                 # 测试配置
+│   ├── setup.ts             # Vitest 全局配置
+│   └── factories.ts         # 测试数据工厂
 │
 └── assets/                  # 静态资源（图片）
     ├── agents/              # Agent 图标（PNG/SVG）
@@ -205,61 +166,72 @@ src-tauri/
 
 ## 模块组织
 
-### 目录变更 2026-04-21
+### 目录变更 2026-04-21 / 2026-05-31
 
-`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。目录职责调整如下：
+2026-04-21：`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。
 
-| 文件 | 角色 |
-|------|------|
-| `contexts/project-actions-context.tsx` | 项目与 worktree 侧副作用动作 |
-| `contexts/file-actions-context.tsx` | 文件树加载、文件保存、Tab 动作 |
-| `hooks/useFileView.ts` | 文件域动作与错误处理，状态写入 store |
-| `store/appStore.ts` | `project/file/worktree` 状态单源 |
+2026-05-31 (Phase B)：重构目录布局、文件命名合规化、去除 `src/components/` 中间层。
+
+| 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
+|------|------|------|
+| `components/layout/` | `layout/` | layout 提升到顶层 |
+| `components/DockLayout/` | `layout/dock-layout/` | Docker 布局 → kebab-case dir |
+| `context/app-context.tsx` | `shared/contexts/AppContext.tsx` | Context 统一到 shared |
+| `context/sidebar-context.tsx` | `shared/contexts/SidebarContext.tsx` | PascalCase 文件名 |
+| `hooks/useFileView.ts` | `app/editor/hooks/useFileView.ts` | Hook 下沉到 editor 域 |
+| `contexts/file-actions-context.tsx` | `app/editor/FileActionsContext.tsx` | PascalCase 文件名 |
+| `stores/appStore.ts` | `shared/store/appStore.ts` | 统一到 shared |
+| `utils/` | `shared/utils/` | 统一到 shared |
+| `components/panels/` | 分散到 `features/*/components/` | 按 feature 域分布 |
+| `components/connections/` | `features/connection/components/` | 按 feature 域分布 |
+| `components/diff/` | `features/git/components/diff/` | 按 feature 域分布 |
+| `components/terminal/` | `features/terminal/components/` | 按 feature 域分布 |
+| `components/settings/` | `features/settings/components/` | 按 feature 域分布 |
 
 ### 组件子目录按领域/功能组织
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
-| `components/layout/` | 窗口边框 | 标题栏、窗口控制、Activity Bar、全局布局 |
-| `components/panels/` | 侧栏面板 | FilesPanel（文件树）、FileViewer（多 Tab 编辑器）、ProjectsPanel |
-| `components/project/` | 项目管理 | 项目卡片壳层 + 头部 + Git 区段 + 拖拽/菜单 Hook |
-| `components/terminal/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
-| `components/connections/` | 远程连接 | SSH/WSL 对话框 |
-| `components/diff/` | Diff | 算法、语言高亮、数据加载与渲染分层 |
-| `components/settings/` | 设置 | 按面板拆分的设置 UI |
+| `layout/` | 窗口边框 | ActivityBar、AppLayout、PanelArea、MainContent |
+| `layout/dock-layout/` | Docker 布局 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
+| `ui/` | UI 基元 | ContextMenu、DropdownMenu、ResizablePanel、ScrollArea、ToggleGroup |
+| `features/project/components/` | 项目管理 | 项目卡片壳层 + Git 区段 + 拖拽/菜单 Hook |
+| `features/terminal/components/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
+| `features/connection/components/` | 远程连接 | SSH/WSL 对话框 |
+| `features/git/components/diff/` | Diff | 算法、语言高亮、数据加载与渲染分层 |
+| `features/git/components/gitlog/` | Git 日志 | CommitGraph、CommitList、GitLogPanel |
+| `features/settings/components/` | 设置 | 按面板拆分的设置 UI |
 
 ### 桶文件导出
 
 每个组件子目录都有一个 `index.ts` 桶文件，提供整洁的导入方式：
 
 ```tsx
-// components/layout/index.ts
-export { default as TitleBar } from "./TitleBar";
-export { default as WindowControls } from "./WindowControls";
-export { default as AgentSelector } from "./AgentSelector";
-export { default as AgentIcon } from "./AgentIcon";
+// ui/index.ts
+export { default as ContextMenu } from "./ContextMenu";
+export { default as DropdownMenu } from "./DropdownMenu";
+export { default as ResizablePanel } from "./ResizablePanel";
 ```
 
-Terminal 桶文件还会导出工具函数和缓存：
+Feature 桶文件还会导出工具函数和缓存：
 
 ```tsx
-// components/terminal/index.ts
+// features/terminal/components/index.ts
 export { default as TerminalView } from "./TerminalView";
 export { terminalCache, terminalCacheKey } from "./terminalCache";
 export { createTerminalForProject } from "./terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands";
 ```
 
 ### 新代码应该放在哪里
 
 | 新代码类型 | 位置 |
 |-----------|------|
-| 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件，或 `features/<domain>/components/`，或 `app/<domain>/components/` |
-| 独立组件 | `components/<Name>.tsx`（顶层） |
-| 自定义 Hook | `hooks/use<Name>.ts` 或 `features/<domain>/hooks/` 或 `app/<domain>/hooks/` |
-| 新的全局基础状态分发 | `context/<domain>-context.tsx` |
-| 新的领域状态分发 | `contexts/<domain>-context.tsx` |
-| 纯工具函数 | `utils/<name>.ts` |
+| 新的领域组件组 | `features/<domain>/components/` 或 `app/<domain>/components/` 或 `ui/`（UI 基元） |
+| 独立组件 | `ui/<Name>.tsx` 或 `layout/<Name>.tsx` |
+| 自定义 Hook | `features/<domain>/hooks/` 或 `app/<domain>/hooks/` 或 `shared/hooks/` |
+| 新的全局基础状态分发 | `shared/contexts/<domain>-context.tsx` |
+| 新的领域状态分发 | `features/<domain>/contexts/` 或 `app/<domain>/<Name>Context.tsx` |
+| 纯工具函数 | `shared/utils/<name>.ts` |
 | IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个；或 `app/<domain>/api/<domain>Api.ts`（如 editor 域） |
 | 共享类型 | `types.ts`，或 `features/<domain>/types.ts`，或 `app/<domain>/types.ts` |
 | Feature 域入口 | `features/<domain>/` 域目录结构参考 features/agent/ |

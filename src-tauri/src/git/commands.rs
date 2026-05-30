@@ -915,8 +915,7 @@ pub async fn generate_commit_message(
     let _ = agent_command_override; // Remote/WSL 不使用宿主机 override
 
     // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
-    let (agent_cmd, prompt_args, post_prompt_args) =
-        resolve_agent_for_remote(&state, &agent_id);
+    let (agent_cmd, prompt_args, post_prompt_args) = resolve_agent_for_remote(&state, &agent_id);
 
     // 2. 构建 prompt
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
@@ -925,11 +924,8 @@ pub async fn generate_commit_message(
     let output = match transport {
         FileTransportKind::Local { project_path } => {
             let sp = std::path::PathBuf::from(&project_path);
-            let config = resolve_agent_config(
-                &state,
-                &agent_id,
-                agent_command_override.as_deref(),
-            )?;
+            let config =
+                resolve_agent_config(&state, &agent_id, agent_command_override.as_deref())?;
             ai_svc::generate_commit_message(&sp, &config, &file_paths).map_err(AppError::from)?
         }
         FileTransportKind::Remote {

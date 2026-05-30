@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { Globe } from 'lucide-react';
 import { useBrowserPanel } from '../hooks/useBrowserPanel';
-import { useAppContext } from '@/shared/contexts/app-context';
+import { useAppContext } from '@/shared/contexts/AppContext';
 import BrowserToolbar from './BrowserToolbar';
 
 const BrowserPanel: React.FC = () => {

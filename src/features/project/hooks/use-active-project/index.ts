@@ -1,5 +1,5 @@
 /**
- * useActiveProject — 统一 Active Project Context 主 Hook
+ * use-active-project — 统一 Active Project Context 主 Hook
  *
  * 约束 H2：只负责「读取 store → 构建 context」，不包含副作用（无 useEffect，无 setState）。
  * 约束 L2：返回值供面板组件使用，面板不需要直接访问 appStore。
@@ -16,7 +16,7 @@ import { createUnifiedCommands } from "./commandFactory";
 import type { GitTransportKind } from "./commandFactory";
 
 /**
- * useActiveProject — 读取 store 中三种活跃项目状态，构建统一 ActiveProjectContext
+ * use-active-project — 读取 store 中三种活跃项目状态，构建统一 ActiveProjectContext
  *
  * 优先级：remote > wsl > local
  * 所有字段在 project 为 null 时返回 null，不抛出异常。

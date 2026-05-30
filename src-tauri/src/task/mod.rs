@@ -1,4 +1,4 @@
 pub mod commands;
-pub mod services;
+mod services;
 
 pub use services::*;

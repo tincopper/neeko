@@ -16,8 +16,8 @@ import type { ContextMenuItem } from "@/features/project/components/ContextMenu"
 import type { AgentConfig, AuthMethod, EditorGroupId } from "../../../types";
 import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from "../context";
-import { useAppContext } from '@/shared/contexts/app-context';
-import { useWslContext } from '@/features/connection/contexts/wsl-context';
+import { useAppContext } from '@/shared/contexts/AppContext';
+import { useWslContext } from '@/features/connection/contexts/WslContext';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
 import { useEditorStore } from "../store";
 

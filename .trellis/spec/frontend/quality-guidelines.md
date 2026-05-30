@@ -165,6 +165,8 @@ try {
 - [ ] 新的组件子目录有桶文件 `index.ts`
 - [ ] 没有在 `api/` 目录外直接 import `invoke`（使用对应域的 API wrapper 或 `connectionApi` 再导出）
 - [ ] Tauri 事件监听器在 `useEffect` 返回函数中清理
+- [ ] 所有 `.tsx` 文件使用 PascalCase，`.ts` 文件使用 camelCase（`check-file/filename-naming-convention`）
+- [ ] 目录名使用 kebab-case，`__tests__` 除外（`check-file/folder-naming-convention`）
 - [ ] 没有未使用的导入或变量（`noUnusedLocals` 强制执行）
 
 ---

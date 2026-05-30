@@ -44,5 +44,5 @@ export { createDefaultEditorLayout, findGroupIdForTab, oppositeGroup } from "./t
 // Context
 export { EditorProvider, useEditorContext } from "./context";
 export type { EditorContextValue } from "./context";
-export { FileActionsProvider, useFileActionsContext } from "./file-actions-context";
-export type { FileActionsContextValue } from "./file-actions-context";
+export { FileActionsProvider, useFileActionsContext } from "./FileActionsContext";
+export type { FileActionsContextValue } from "./FileActionsContext";

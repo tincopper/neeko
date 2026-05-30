@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { X } from "@/shared/components/icons"
 import { Button, Badge } from "@/ui";
-import { ResizablePanel } from "@/ui/resizable-panel";
+import { ResizablePanel } from "@/ui/ResizablePanel";
 import { MarkdownPreview } from "@/ui/MarkdownPreview";
 import { useSkillStore } from '@/features/skill/store';
 import type { ManagedSkillDto } from '../../../types';

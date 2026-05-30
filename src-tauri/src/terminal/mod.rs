@@ -1,7 +1,7 @@
 pub mod commands;
 pub mod model;
 pub mod remote;
-pub mod services;
+mod services;
 pub mod types;
 
 use crate::terminal::types::TerminalSession;

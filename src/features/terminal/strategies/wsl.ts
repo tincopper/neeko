@@ -8,7 +8,7 @@ import {
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
 import { useEditorContext } from '@/app/editor/context';
-import { useWslContext } from '@/features/connection/contexts/wsl-context';
+import { useWslContext } from '@/features/connection/contexts/WslContext';
 import type { TerminalStrategy } from "./types";
 
 export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null {

@@ -1,6 +1,6 @@
 pub mod commands;
 pub mod model;
-pub mod services;
+mod services;
 pub mod types;
 
 pub use commands::*;

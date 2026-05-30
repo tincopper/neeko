@@ -7,8 +7,8 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/ui/context-menu";
-import { ScrollArea } from "@/ui/scroll-area";
+} from "@/ui/ContextMenu";
+import { ScrollArea } from "@/ui/ScrollArea";
 import { useDockStore } from "@/shared/store/dockStore";
 import { dockPanelRegistry } from "../dockPanels";
 import { cn } from "@/lib/utils";

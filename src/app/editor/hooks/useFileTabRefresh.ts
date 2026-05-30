@@ -10,7 +10,7 @@ interface FileRefreshCommands {
 
 /**
  * useFileTabRefresh �?listens for file-changed events and refreshes open file tabs.
- * Accepts optional commands for WSL/Remote file reading (from useActiveProject).
+ * Accepts optional commands for WSL/Remote file reading (from use-active-project).
  * Falls back to unified_read_file_content for local when commands is null.
  */
 export function useFileTabRefresh(commands?: FileRefreshCommands | null) {

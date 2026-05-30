@@ -26,7 +26,7 @@ export { useProjectSelection } from "./hooks/useProjectSelection";
 export { useCrossTypeSelection } from "./hooks/useCrossTypeSelection";
 export { useWorktreeActions } from "./hooks/useWorktreeActions";
 export { useWorktreeState, type WorktreeItem } from "./hooks/useWorktreeState";
-export { useActiveProject } from "./hooks/useActiveProject";
+export { useActiveProject } from "./hooks/use-active-project";
 export { useProjectOrchestrator } from "./hooks/useProjectOrchestrator";
 
 // Store

@@ -38,7 +38,7 @@ export { useRemoteAuthActions } from "./hooks/useRemoteAuthActions";
 export { useConnectionOrchestrator } from "./hooks/useConnectionOrchestrator";
 
 // Contexts
-export { WslProvider, useWslContext } from "./contexts/wsl-context";
-export type { WslContextValue } from "./contexts/wsl-context";
-export { RemoteProvider, useRemoteContext } from "./contexts/remote-context";
-export type { RemoteContextValue } from "./contexts/remote-context";
+export { WslProvider, useWslContext } from "./contexts/WslContext";
+export type { WslContextValue } from "./contexts/WslContext";
+export { RemoteProvider, useRemoteContext } from "./contexts/RemoteContext";
+export type { RemoteContextValue } from "./contexts/RemoteContext";

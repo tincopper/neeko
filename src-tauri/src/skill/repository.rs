@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 
 use super::types::{SkillRecord, SkillTargetRecord, TagGroupRecord, ToolToggleRecord};
@@ -11,9 +11,8 @@ pub struct SkillRepository {
 }
 
 impl SkillRepository {
-    pub fn open(db_path: &PathBuf) -> Result<Self> {
-        let conn = Connection::open(db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    pub fn open(db_path: &Path) -> Result<Self> {
+        let conn = crate::core::db::open(db_path)?;
         super::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -21,8 +20,7 @@ impl SkillRepository {
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        let conn = crate::core::db::open_in_memory()?;
         super::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),

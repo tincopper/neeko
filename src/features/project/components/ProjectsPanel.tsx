@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect, useMemo } from "react";
 import { push, pull } from "../../git/api/gitApi";
 import { IS_WINDOWS } from "@/shared/utils/platform";
-import { useAppContext } from "@/shared/contexts/app-context";
+import { useAppContext } from "@/shared/contexts/AppContext";
 import { useProjectActionsContext } from "@/features/project/context";
-import { useWslContext } from "@/features/connection/contexts/wsl-context";
-import { useRemoteContext } from "@/features/connection/contexts/remote-context";
+import { useWslContext } from "@/features/connection/contexts/WslContext";
+import { useRemoteContext } from "@/features/connection/contexts/RemoteContext";
 import ProjectItem from "@/features/project/components/ProjectItem";
 import GitDialog, { DialogState } from "@/features/git/components/GitDialog";
 import CommitDialog from "@/features/git/components/CommitDialog";
@@ -12,7 +12,7 @@ import { WSLItem, RemoteItem } from "@/features/connection/components/RemoteItem
 import { useProjectStore } from "@/features/project/store";
 import { useAheadBehindSync } from "@/features/git/hooks/useAheadBehindSync";
 import { useUnifiedProjectList } from "@/features/project/hooks/useUnifiedProjectList";
-import { useActiveProject } from "@/features/project/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/use-active-project";
 
 const ProjectsPanel: React.FC = () => {
    const { config, agents, ideCommandOverrides, showToast } = useAppContext();

@@ -8,13 +8,13 @@ import {
 } from "@/features/project/context";
 import {
    FileActionsProvider,
-} from "@/app/editor/file-actions-context";
+} from "@/app/editor/FileActionsContext";
 import {
    WslProvider,
-} from "@/features/connection/contexts/wsl-context";
+} from "@/features/connection/contexts/WslContext";
 import {
    RemoteProvider,
-} from "@/features/connection/contexts/remote-context";
+} from "@/features/connection/contexts/RemoteContext";
 import {
    EditorProvider,
 } from "@/app/editor/context";

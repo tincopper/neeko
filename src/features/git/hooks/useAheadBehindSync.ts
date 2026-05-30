@@ -12,7 +12,7 @@ interface AheadBehindCommands {
 /**
  * useAheadBehindSync â€?when the active project changes, fetch ahead/behind counts.
  *
- * If `commands` is provided (from useActiveProject), uses the unified transport.
+ * If `commands` is provided (from use-active-project), uses the unified transport.
  * Otherwise falls back to legacy manual invoke (not used in new code).
  */
 export function useAheadBehindSync(commands?: AheadBehindCommands | null) {

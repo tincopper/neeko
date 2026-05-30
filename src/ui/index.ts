@@ -15,7 +15,7 @@ export {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuGroup, DropdownMenuPortal, DropdownMenuSub,
   DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuRadioGroup,
-} from "./dropdown-menu";
+} from "./DropdownMenu";
 export { Checkbox } from "./checkbox";
 export { Badge, badgeVariants } from "./badge";
 export { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "./sidebar";
@@ -23,9 +23,9 @@ export { MarkdownPreview } from "./MarkdownPreview";
 export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, cardVariants } from "./card";
 export { Separator } from "./separator";
 export { Switch } from "./switch";
-export { ToggleGroup, ToggleGroupItem } from "./toggle-group";
+export { ToggleGroup, ToggleGroupItem } from "./ToggleGroup";
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./resizable";
-export { ScrollArea, ScrollBar } from "./scroll-area";
+export { ScrollArea, ScrollBar } from "./ScrollArea";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
 export {
@@ -34,4 +34,4 @@ export {
   ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut,
   ContextMenuGroup, ContextMenuPortal, ContextMenuSub,
   ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuRadioGroup,
-} from "./context-menu";
+} from "./ContextMenu";

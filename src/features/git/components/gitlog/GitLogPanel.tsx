@@ -2,8 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useEditorStore } from "@/app/editor/store";
-import { useAppContext } from "@/shared/contexts/app-context";
-import { useActiveProject } from "@/features/project/hooks/useActiveProject";
+import { useAppContext } from "@/shared/contexts/AppContext";
+import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import { useGitLog } from "./useGitLog";
 import { useCommitDetail } from "./useCommitDetail";
 import LogToolbar from "./LogToolbar";
@@ -154,7 +154,7 @@ const GitLogPanel: React.FC = () => {
       }
 
       // tabKey 需要与 MainContent 对齐：使�?store 中的原始项目 ID�?
-      // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path�?
+      // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path�?
       const projectState = useProjectStore.getState();
       const connectionState = useConnectionStore.getState();
       const tabKey =

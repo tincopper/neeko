@@ -59,6 +59,17 @@
 - **Manager 方法为 `pub`**（需要跨模块访问的）
 - **辅助函数为私有**
 
+**Phase B 合规状态**：以下 4 个域已将 `pub mod services` 改为 `mod services`，满足"所有模块为私有"规则：
+
+| 域 | `mod.rs` 可见性 | 外部访问方式 |
+|----|----------------|-------------|
+| `agent/` | `mod services` | `pub use manager::AgentManager` 间接暴露 |
+| `connection/` | `mod services` | `pub use commands::*; pub use types::*` 间接暴露 |
+| `terminal/` | `mod services` | `pub mod commands; pub mod remote` 间接暴露 |
+| `task/` | `mod services` | `pub use services::*` 显式 re-export |
+
+如果 services 函数需要对外可见，使用 `pub use services::*` 显式 re-export（如 `task/mod.rs`），而非直接公开子模块。
+
 ### `#[allow(dead_code)]`
 
 用于仅为 RAII drop 语义而存在的字段：

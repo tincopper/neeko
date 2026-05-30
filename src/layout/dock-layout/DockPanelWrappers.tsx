@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { revealInFileManager, readDirTree } from "@/features/file/api/fileApi";
 import { listen } from "@tauri-apps/api/event";
 import { useAppContext } from "@/shared/contexts";
-import { useFileActionsContext } from "@/app/editor/file-actions-context";
+import { useFileActionsContext } from "@/app/editor/FileActionsContext";
 import { useFileStore } from "@/features/file/store";
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
@@ -12,7 +12,7 @@ import { useDockStore } from "@/shared/store/dockStore";
 import FilesPanel from "@/features/file/components/FilesPanel";
 import SkillsPanel from "@/features/skill/components/SkillsPanel";
 import GitCommitPanel from "@/features/git/components/GitCommitPanel";
-import { useActiveProject } from "@/features/project/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import { buildDiffSource } from "@/shared/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
@@ -242,7 +242,7 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
 
   const handleSelectFile = (filePath: string) => {
     // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
-    // 而非 useActiveProject 的统一 ID（wsl:distro:path / remote:host:path）
+    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
     const projectState = useProjectStore.getState();
     const connectionState = useConnectionStore.getState();
     const editorState = useEditorStore.getState();

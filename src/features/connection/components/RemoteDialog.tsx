@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { testRemoteConnection, listRemoteDirectories } from "../api/connectionApi";
 import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../../types";
 import AgentIcon from "@/features/agent/components/AgentIcon";
-import { useAppContext } from "@/shared/contexts/app-context";
+import { useAppContext } from "@/shared/contexts/AppContext";
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "@/shared/utils/idePresets";
 import { randomAvatarColor } from "@/shared/utils/projectAvatar";
 import serverIcon from "../../../assets/server.svg";

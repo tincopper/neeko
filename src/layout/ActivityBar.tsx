@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { LibraryBig, Settings, Plus, ListTree } from "@/shared/components/icons"
-import { useSidebar, type ActivityPanel } from "@/shared/contexts/sidebar-context";
+import { useSidebar, type ActivityPanel } from "@/shared/contexts/SidebarContext";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/ui/sidebar";
 import { IS_WINDOWS } from "@/shared/utils/platform";
 import linuxIcon from "../assets/linux.svg";

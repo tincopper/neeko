@@ -3,7 +3,7 @@ import { Plus, Settings } from "@/shared/components/icons"
 import { useAppViewStore } from "@/shared/store/appViewStore";
 import { useDockStore } from "@/shared/store/dockStore";
 import { cn } from "@/lib/utils";
-import { DockLayout } from "./DockLayout";
+import { DockLayout } from "./dock-layout";
 import MainContent from "./MainContent";
 import SkillContent from "@/features/skill/components/SkillContent";
 import SettingsView from "@/features/settings/components/SettingsView";

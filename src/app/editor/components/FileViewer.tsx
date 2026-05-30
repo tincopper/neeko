@@ -9,8 +9,8 @@ import { Eye, Save, FileCode, Globe } from "@/shared/components/icons"
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "@/shared/utils/codemirror";
 import { MarkdownPreview } from "@/ui";
 import type { FileTab, AppTheme, Tab, FileTabData } from "../../../types";
-import { useAppContext } from "@/shared/contexts/app-context";
-import { useFileActionsContext } from "../file-actions-context";
+import { useAppContext } from "@/shared/contexts/AppContext";
+import { useFileActionsContext } from "../FileActionsContext";
 import { useEditorContext } from "../context";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
@@ -19,7 +19,7 @@ import { useEditorStore } from "../store";
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
-import { useActiveProject } from "@/features/project/hooks/useActiveProject";
+import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import {
    getViewSnapshot,
    setViewSnapshot,

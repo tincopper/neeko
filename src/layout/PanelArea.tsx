@@ -1,5 +1,5 @@
 import React from "react";
-import { useSidebar } from "@/shared/contexts/sidebar-context";
+import { useSidebar } from "@/shared/contexts/SidebarContext";
 import { Sidebar } from "@/ui/sidebar";
 
 interface PanelAreaProps {

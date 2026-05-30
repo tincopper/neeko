@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { getWslDistros, getWslDirectories, getWslHomeDir } from "../api/connectionApi";
 import { WSLProject, WSLEntrySession } from "../../../types";
 import AgentIcon from "@/features/agent/components/AgentIcon";
-import { useAppContext } from "@/shared/contexts/app-context";
+import { useAppContext } from "@/shared/contexts/AppContext";
 import { getDistroIcon } from "@/shared/utils/distros";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "@/shared/utils/idePresets";
 import { randomAvatarColor } from "@/shared/utils/projectAvatar";
