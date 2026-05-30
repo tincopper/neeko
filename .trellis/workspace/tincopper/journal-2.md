@@ -304,3 +304,38 @@ Fixed P0/P1 compliance gaps: moved editor to app/ layer (1:1 domain alignment), 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 67: Spec compliance refactor complete - Phases A, B, C
+
+**Date**: 2026-05-31
+**Task**: Spec compliance refactor complete - Phases A, B, C
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Completed all 3 phases of remaining compliance gaps: Phase A (cross-domain Rust cleanup - core/services/commit + core/watcher), Phase B (core/db.rs, naming conventions, module visibility), Phase C (ESLint rules to error, lib.rs deny sync, spec alignment). All 4 compliance phases (1-4 + A-C) now complete.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f72ba98` | (see git log) |
+| `0e0c84d` | (see git log) |
+| `23c4588` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
