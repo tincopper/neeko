@@ -203,3 +203,38 @@ Backend: 15 compiler warnings eliminated (9 via cargo fix, 6 manual). Removed de
 ### Next Steps
 
 - None - task complete
+
+
+## Session 64: Phase 2 + 3: backend layering, services/repository extraction, frontend api wrappers
+
+**Date**: 2026-05-30
+**Task**: Phase 2 + 3: backend layering, services/repository extraction, frontend api wrappers
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+Completed Phase 2 (core module, services/repository extraction, skill repository SQL extraction) and Phase 3 (per-feature api/ wrappers, import isolation, ESLint restricted-imports)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bdc23e6` | (see git log) |
+| `0357db0` | (see git log) |
+| `59fb6a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
