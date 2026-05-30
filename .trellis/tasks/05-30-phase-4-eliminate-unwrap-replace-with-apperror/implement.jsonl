@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/backend/error-handling.md", "reason": "Error handling patterns — AppError, map_err, ? operator"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Clippy lint rules for unwrap_used"}
-{"file": "src-tauri/src/core/error.rs", "reason": "Actual AppError enum definition — available variants"}
