@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { commitFiles, push, pull, getWorktreeChangedFiles, getCommitLog } from "../api/gitApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
-import type { FileChange, CommitEntry } from "../../../types";
+import type { FileChange } from "../../../types";
 import { useProjectStore } from '@/features/project/store';
 
 interface CommitDialogProps {
@@ -23,10 +23,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
 
   useEffect(() => {
     const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    invoke<FileChange[]>("get_worktree_changed_files", {
-      transport: { Local: { project_path: projectPath } },
-      worktreePath: "",
-    })
+    getWorktreeChangedFiles(
+      { Local: { project_path: projectPath } },
+      "",
+    )
       .then((result) => {
         const untracked = result.filter((f) => f.status === "Untracked");
         setUntrackedCount(untracked.length);
@@ -42,10 +42,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       return;
     }
     const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    invoke<CommitEntry[]>("get_commit_log", {
-      transport: { Local: { project_path: projectPath } },
-      count: 1,
-    })
+    getCommitLog(
+      { Local: { project_path: projectPath } },
+      1,
+    )
       .then((entries) => {
         if (entries.length > 0) setMessage(entries[0].message);
       })
@@ -63,16 +63,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     try {
       const filePaths = files.map((f) => f.path);
       const projectPath = getProjectPath();
-      await invoke("commit_files", {
-        transport: { Local: { project_path: projectPath } },
-        filePaths,
-        message: message.trim(),
-      });
+      const transport = { Local: { project_path: projectPath } } as const;
+      await commitFiles(transport, filePaths, message.trim());
       if (pushAfter) {
-        await invoke("push", {
-          transport: { Local: { project_path: projectPath } },
-          setUpstream: false,
-        });
+        await push(transport, false);
       }
       onRefreshGit(projectId);
       onClose();
@@ -88,10 +82,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await invoke("push", {
-        transport: { Local: { project_path: projectPath } },
-        setUpstream: false,
-      });
+      await push({ Local: { project_path: projectPath } }, false);
       onRefreshGit(projectId);
       onClose();
     } catch (e) {
@@ -106,9 +97,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await invoke("pull", {
-        transport: { Local: { project_path: projectPath } },
-      });
+      await pull({ Local: { project_path: projectPath } });
       onRefreshGit(projectId);
       onClose();
     } catch (e) {

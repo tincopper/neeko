@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { saveConfig as saveConfigApi, loadConfig as loadConfigApi, syncAgentTheme } from "../api/settingsApi";
 import type { AppConfig } from "../../../types";
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useProjectStore } from '@/features/project/store';
@@ -66,10 +66,7 @@ export function useAppConfig() {
          e.projects.map((p) => ({ distro: e.distro, path: p.path })),
       );
       if (localPaths.length > 0 || wsl.length > 0) {
-         invoke("sync_agent_theme", {
-            theme: config.theme,
-            targets: { local_paths: localPaths, wsl },
-         }).catch((e) => {
+         syncAgentTheme(config.theme, { local_paths: localPaths, wsl }).catch((e) => {
             console.error("[App] Failed to sync agent theme:", e);
          });
       }
@@ -103,7 +100,7 @@ export function useAppConfig() {
          return next;
       });
       try {
-         await invoke("save_config", { config: next });
+         await saveConfigApi(next as unknown as Record<string, unknown>);
       } catch (e) {
          console.error("[App] Failed to save config:", e);
       }
@@ -113,7 +110,7 @@ export function useAppConfig() {
    useEffect(() => {
       (async () => {
          try {
-            const loaded = await invoke<unknown>("load_config");
+            const loaded = await loadConfigApi();
             if (loaded && typeof loaded === "object") {
                const saved = loaded as PartialLoadedConfig;
                if (typeof saved.fontSize === "number" && typeof saved.terminalFontSize !== "number") {

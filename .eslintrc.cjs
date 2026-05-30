@@ -55,7 +55,7 @@ module.exports = {
               { target: './src/features/connection', from: './src/features', except: ['./connection'] },
               { target: './src/features/editor', from: './src/features', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
-              { target: './src/features/git', from: './src/features', except: ['./git'] },
+              { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
               { target: './src/features/project', from: './src/features', except: ['./project'] },
               { target: './src/features/session', from: './src/features', except: ['./session'] },
               { target: './src/features/settings', from: './src/features', except: ['./settings'] },
@@ -91,6 +91,25 @@ module.exports = {
             groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
             'newlines-between': 'always',
             alphabetize: { order: 'asc', caseInsensitive: true },
+          },
+        ],
+        // Block direct @tauri-apps/api/core imports outside api/ directories
+        'no-restricted-imports': [
+          'warn',
+          {
+            paths: [
+              {
+                name: '@tauri-apps/api/core',
+                importNames: ['invoke'],
+                message: 'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
+              },
+            ],
+            patterns: [
+              {
+                group: ['@tauri-apps/api/core'],
+                message: 'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
+              },
+            ],
           },
         ],
         // .tsx files: PascalCase (React convention); exempt entry points
@@ -154,7 +173,7 @@ module.exports = {
               { target: './src/features/connection', from: './src/features', except: ['./connection'] },
               { target: './src/features/editor', from: './src/features', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
-              { target: './src/features/git', from: './src/features', except: ['./git'] },
+              { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
               { target: './src/features/project', from: './src/features', except: ['./project'] },
               { target: './src/features/session', from: './src/features', except: ['./session'] },
               { target: './src/features/settings', from: './src/features', except: ['./settings'] },
@@ -192,6 +211,25 @@ module.exports = {
             alphabetize: { order: 'asc', caseInsensitive: true },
           },
         ],
+        // Block direct @tauri-apps/api/core imports outside api/ directories
+        'no-restricted-imports': [
+          'warn',
+          {
+            paths: [
+              {
+                name: '@tauri-apps/api/core',
+                importNames: ['invoke'],
+                message: 'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
+              },
+            ],
+            patterns: [
+              {
+                group: ['@tauri-apps/api/core'],
+                message: 'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
+              },
+            ],
+          },
+        ],
         // .ts files: camelCase; exempt Vite convention files
         'check-file/filename-naming-convention': [
           'warn',
@@ -213,6 +251,13 @@ module.exports = {
         '@typescript-eslint/no-empty-function': ['off'],
         '@typescript-eslint/no-explicit-any': ['off'],
         'prettier/prettier': ['error', {}, { usePrettierrc: true }],
+      },
+    },
+    // ── API files: allow @tauri-apps/api/core import ──────────────────────
+    {
+      files: ['src/features/*/api/*.ts'],
+      rules: {
+        'no-restricted-imports': 'off',
       },
     },
     // ── directory naming: kebab-case ───────────────────────────────────────

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { renameProject, changeProjectPath, setProjectIde, setProjectColor, removeProject } from "../../project/api/projectApi";
+import { setProjectAgent, listAgents } from "../../agent/api/agentApi";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2, Plus } from "@/shared/components/icons"
 import { useProjectStore } from '@/features/project/store';
@@ -48,7 +49,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const projectPath = project?.path ?? null;
 
   useEffect(() => {
-    invoke<{ id: string; name: string; enabled: boolean }[]>("list_agents")
+    listAgents()
       .then((list) => setAgents(list.filter((a) => a.enabled)))
       .catch(() => {});
   }, []);
@@ -91,7 +92,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleNameBlur = useCallback(() => {
     const trimmed = name.trim();
     if (trimmed && trimmed !== project?.name) {
-      invoke("rename_project", { projectId, newName: trimmed });
+      renameProject(projectId, trimmed);
       patchProject({ name: trimmed });
     }
   }, [name, project?.name, projectId, patchProject]);
@@ -108,17 +109,14 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleChangePath = useCallback(async () => {
     const selected = await open({ directory: true, multiple: false });
     if (selected && typeof selected === "string") {
-      await invoke("change_project_path", {
-        projectId,
-        newPath: selected,
-      });
+      await changeProjectPath(projectId, selected);
     }
   }, [projectId]);
 
   const handleAgentChange = useCallback(
     (value: string) => {
       const agentId = value === "__global__" ? null : value;
-      invoke("set_project_agent", { projectId, agentId });
+      setProjectAgent(projectId, agentId);
       patchProject({ selected_agent: agentId });
     },
     [projectId, patchProject],
@@ -127,7 +125,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleIdeChange = useCallback(
     (value: string) => {
       const ide = value === "__global__" ? null : value;
-      invoke("set_project_ide", { projectId, ide });
+      setProjectIde(projectId, ide);
       patchProject({ selected_ide: ide });
     },
     [projectId, patchProject],
@@ -135,7 +133,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
   const handleAvatarColorChange = useCallback(
     (color: string | null) => {
-      invoke("set_project_color", { projectId, color }).catch((e) => {
+      setProjectColor(projectId, color).catch((e) => {
         console.error("[ProjectPanel] Failed to set avatar color:", e);
       });
       patchProject({ avatar_color: color });
@@ -186,7 +184,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   );
 
   const handleRemove = useCallback(() => {
-    invoke("remove_project", { projectId });
+    removeProject(projectId);
     onProjectRemoved();
   }, [projectId, onProjectRemoved]);
 

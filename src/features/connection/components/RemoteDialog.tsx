@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { testRemoteConnection, listRemoteDirectories } from "../api/connectionApi";
 import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../../types";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { useAppContext } from "@/shared/contexts/app-context";
@@ -122,13 +122,13 @@ export function RemoteDialog({
 
       setLoadingSuggestions(true);
       try {
-         const dirs = await invoke<string[]>("list_remote_directories", {
-            host: getCurrentHost(),
-            port: getCurrentPort(),
-            username: getCurrentUsername(),
+         const dirs = await listRemoteDirectories(
+            getCurrentHost(),
+            getCurrentPort(),
+            getCurrentUsername(),
             auth,
-            path: parentDir,
-         });
+            parentDir,
+         );
          if (seq !== fetchSeq.current) return;
          const base = parentDir === "/" ? "" : parentDir;
          const filtered = dirs
@@ -200,12 +200,12 @@ export function RemoteDialog({
       setError(null);
       setConnecting(true);
       try {
-         await invoke("test_remote_connection", {
+         await testRemoteConnection(
             host,
-            port: parseInt(port) || 22,
+            parseInt(port) || 22,
             username,
             auth,
-         });
+         );
          setStep("add-project");
          // 连接成功后聚焦路径输入并触发初始补全
          setTimeout(() => {

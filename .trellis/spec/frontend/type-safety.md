@@ -115,13 +115,33 @@ status: "Idle" | "Running" | "Failed";
 status: "Modified" | "Added" | "Deleted" | "Renamed" | "Untracked";
 ```
 
-### 带类型的 Tauri invoke
+### 带类型的 API wrapper 调用
 
-始终为 `invoke` 提供泛型类型参数：
+所有 IPC 调用通过 `features/<domain>/api/<domain>Api.ts` 封装，每个 API 函数提供明确的返回类型：
 
 ```tsx
-const gitInfo = await invoke<GitInfo>("get_git_info", { path: projectPath });
-const config = await invoke<AppConfig>("load_config");
+// src/features/git/api/gitApi.ts
+export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
+  return invoke<GitInfo>('get_git_info', { transport });
+}
+
+// 消费方
+import { getGitInfo } from "../api/gitApi";
+const gitInfo = await getGitInfo(transport);  // 类型自动推导为 GitInfo
+```
+
+API wrapper 内部始终为 `invoke` 提供泛型类型参数：
+
+```typescript
+// 正确 —— 明确返回类型
+export function listProjects(): Promise<Project[]> {
+  return invoke<Project[]>("list_projects");
+}
+
+// 错误 —— 返回 any
+export function listProjects() {
+  return invoke("list_projects");
+}
 ```
 
 ### Record 类型用于映射型数据
@@ -166,11 +186,11 @@ type WorktreeStateMap = Record<string, WorktreeState>;
 // 错误
 const data: any = await invoke("load_session");
 
-// 正确
-const data = await invoke<SessionData>("load_session");
+// 正确 —— 使用 API wrapper（内部提供类型参数）
+const data = await loadSession();
 
 // 可接受（仅当后端数据结构确实是动态的）
-const saved = await invoke<Record<string, any>>("load_config");
+const saved = await loadConfig();
 // 后接手动字段校验
 ```
 

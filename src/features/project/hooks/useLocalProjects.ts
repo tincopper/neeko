@@ -1,10 +1,13 @@
 import { useState, useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useShallow } from "zustand/shallow";
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { addProject, removeProject, setActiveProject as setActiveProjectApi, openIde, reorderProjects, listProjects } from "../api/projectApi";
+import { listAgents } from "../../agent/api/agentApi";
+import { saveSession } from "../../session/api/sessionApi";
+import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
-import type { Project, AgentConfig, Tab, GitBranchInfo, FileChange, Worktree } from "../../../types";
+import type { Project, AgentConfig, Tab, FileChange, Worktree } from "../../../types";
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/features/editor/store';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
@@ -56,17 +59,17 @@ export function useLocalProjects() {
 
   const loadProjects = useCallback(async () => {
     try {
-      const projectList = await invoke<Project[]>("list_projects");
+      const projectList = await listProjects();
 
-      // 合并逻辑：保�?store 中已有的 git_info.changed_files
-      // list_projects 返回的项�?changed_files 为空（轻量版�?
-      // changed_files �?watcher/handleRefreshGit 维护
+      // 合并逻辑：保�?store 中已有的 git_info.changed_files
+      // list_projects 返回的项�?changed_files 为空（轻量版�?
+      // changed_files �?watcher/handleRefreshGit 维护
       setProjects((prev) => {
         const prevMap = new Map(prev.map(p => [p.id, p]));
         return projectList.map((newProject) => {
           const existing = prevMap.get(newProject.id);
           if (existing?.git_info?.changed_files && existing.git_info.changed_files.length > 0) {
-            // 保留已有�?changed_files
+            // 保留已有�?changed_files
             return {
               ...newProject,
               git_info: newProject.git_info ? {
@@ -85,7 +88,7 @@ export function useLocalProjects() {
 
   const loadAgents = useCallback(async () => {
     try {
-      const agentList = await invoke<AgentConfig[]>("list_agents");
+      const agentList = await listAgents();
       setAgents(agentList);
     } catch (error) {
       console.error("[App] Failed to load agents:", error);
@@ -116,14 +119,13 @@ export function useLocalProjects() {
     if (!pendingPath) return;
     try {
       setLoading(true);
-      const project = await invoke<Project>("add_project", {
-        path: pendingPath,
+      const project = await addProject(
+        pendingPath,
         agentId,
-        ide: ideCommand,
-        // 新建项目随机分配一个调色板内的 avatar 颜色（立即持久化�?
-        avatarColor: randomAvatarColor(),
-      });
-      await invoke("save_session").catch(() => {});
+        ideCommand,
+        randomAvatarColor(),
+      );
+      await saveSession([], []).catch(() => {});
       setProjects((prev) => [...prev, project]);
       setActiveProjectId(project.id);
       setActiveProject(project);
@@ -137,7 +139,7 @@ export function useLocalProjects() {
 
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
-      await invoke("remove_project", { projectId });
+      await removeProject(projectId);
 
       const projState = useProjectStore.getState();
       const editorState = useEditorStore.getState();
@@ -169,13 +171,13 @@ export function useLocalProjects() {
   const handleSelectProject = useCallback(async (projectId: string) => {
     setActiveProjectId(projectId);
     // fire-and-forget: 通知后端，不阻塞前端切换
-    invoke("set_active_project", { projectId }).catch(console.error);
+    setActiveProjectApi(projectId).catch(console.error);
   }, []);
 
   const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
     if (activeProjectId !== projectId) {
       setActiveProjectId(projectId);
-      await invoke("set_active_project", { projectId });
+      await setActiveProjectApi(projectId);
     }
 
     const existingTabs = useEditorStore.getState().tabs[projectId];
@@ -231,15 +233,13 @@ export function useLocalProjects() {
 
     try {
       const projectPath = projects.find(p => p.id === projectId)?.path ?? "";
-      const changedFiles = await invoke<FileChange[]>("get_worktree_changed_files", {
-        transport: { Local: { project_path: projectPath } },
-        worktreePath: "",
-      });
+      const changedFiles = await getWorktreeChangedFiles(
+        { Local: { project_path: projectPath } },
+        "",
+      );
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
-      invoke<GitBranchInfo>("get_git_branch_info", {
-        transport: { Local: { project_path: projectPath } },
-      })
+      getGitBranchInfo({ Local: { project_path: projectPath } })
         .then((branchInfo) => {
           updateProjectGitInfo({
             current_branch: branchInfo.current_branch,
@@ -257,11 +257,7 @@ export function useLocalProjects() {
     if (!project.selected_ide) return;
     const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
     const macAppName = getMacAppNameByCommand(project.selected_ide);
-    await invoke("open_ide", {
-      ideCommand: project.selected_ide,
-      projectPath,
-      macAppName,
-    });
+    await openIde(project.selected_ide, projectPath, macAppName);
   }, [projects]);
 
   const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
@@ -277,7 +273,7 @@ export function useLocalProjects() {
 
       // Persist the new order
       const orderedIds = newProjects.map((p) => p.id);
-      invoke("reorder_projects", { orderedIds }).catch((e) =>
+      reorderProjects(orderedIds).catch((e) =>
         console.error("[App] Failed to persist project order:", e)
       );
 

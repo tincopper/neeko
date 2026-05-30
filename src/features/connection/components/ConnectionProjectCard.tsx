@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { renameWorktree, removeWorktree, getWorktreeChangedFiles, isWorktreeDirty } from "../../git/api/gitApi";
 import {
   DraggableProjectItem,
   ProjectGroup,
@@ -59,7 +59,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
     const activeWorktreePath = isWsl ? activeWslWorktreePath : activeRemoteWorktreePath;
 
-    // ahead/behind 仅在 active 项目时显�?
+    // ahead/behind 仅在 active 项目时显�?
     const aheadKey = aheadBehindKey(
       isWsl ? "wsl" : "remote",
       isWsl ? distro : remoteEntryId,
@@ -121,19 +121,15 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       (oldPath: string, newName: string) => {
         const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
         if (isWsl) {
-          invoke("rename_worktree", {
-            transport: { Wsl: { distro, project_path: project.path } },
+          renameWorktree(
+            { Wsl: { distro, project_path: project.path } } as any,
             oldPath,
-            newPath: newFullPath,
-          }).catch(console.error);
+            newFullPath,
+          ).catch(console.error);
         } else if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            invoke("rename_worktree", {
-              transport: rt,
-              oldPath,
-              newPath: newFullPath,
-            }).catch(console.error);
+            renameWorktree(rt, oldPath, newFullPath).catch(console.error);
           }
         }
       },
@@ -143,19 +139,16 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleRemoveWorktree = useCallback(
       (wtPath: string, _branch: string) => {
         if (isWsl) {
-          invoke("remove_worktree", {
-            transport: { Wsl: { distro, project_path: project.path } },
-            worktreePath: wtPath,
-          }).catch((e: unknown) => {
+          removeWorktree(
+            { Wsl: { distro, project_path: project.path } } as any,
+            wtPath,
+          ).catch((e: unknown) => {
             console.error(`${logTag} Failed to remove worktree:`, e);
           });
         } else if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            invoke("remove_worktree", {
-              transport: rt,
-              worktreePath: wtPath,
-            }).catch((e: unknown) => {
+            removeWorktree(rt, wtPath).catch((e: unknown) => {
               console.error(`${logTag} Failed to remove worktree:`, e);
             });
           }
@@ -179,18 +172,15 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleGetWorktreeChangedFiles = useCallback(
       (worktreePath: string): Promise<FileChange[]> => {
         if (isWsl) {
-          return invoke<FileChange[]>("get_worktree_changed_files", {
-            transport: { Wsl: { distro, project_path: project.path } },
+          return getWorktreeChangedFiles(
+            { Wsl: { distro, project_path: project.path } },
             worktreePath,
-          });
+          );
         }
         if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            return invoke<FileChange[]>("get_worktree_changed_files", {
-              transport: rt,
-              worktreePath,
-            });
+            return getWorktreeChangedFiles(rt, worktreePath);
           }
         }
         return Promise.resolve([] as FileChange[]);
@@ -201,18 +191,15 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const handleIsWorktreeDirty = useCallback(
       (worktreePath: string): Promise<boolean> => {
         if (isWsl) {
-          return invoke<boolean>("is_worktree_dirty", {
-            transport: { Wsl: { distro, project_path: project.path } },
+          return isWorktreeDirty(
+            { Wsl: { distro, project_path: project.path } },
             worktreePath,
-          });
+          );
         }
         if (remoteInvoke) {
           const rt = getRemoteTransport();
           if (rt) {
-            return invoke<boolean>("is_worktree_dirty", {
-              transport: rt,
-              worktreePath,
-            });
+            return isWorktreeDirty(rt, worktreePath);
           }
         }
         return Promise.resolve(false);

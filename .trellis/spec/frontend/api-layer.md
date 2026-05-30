@@ -6,97 +6,258 @@
 
 ## 概述
 
-本项目没有 HTTP API，所有后端通信通过 **Tauri IPC** 进行。调用方式有两种：
-1. **直接调用**：在 hooks/components 中直接使用 `invoke`
-2. **适配器模式**：通过 Adapter 类封装（用于统一项目类型）
+本项目没有 HTTP API，所有后端通信通过 **Tauri IPC** 进行。项目采用 **Feature API Wrapper** 模式组织所有 IPC 调用：
+
+1. **API Wrapper 模式（当前标准）**：每个 feature 域有一个 `<domain>Api.ts` 文件，集中封装 `invoke` 调用
+2. **直接调用（仅限 api/ 目录内部）**：`invoke` 只在 `api/` 文件中使用
 
 ---
 
-## 直接调用模式
+## Feature API Wrapper 模式
 
-### 基本用法
+### 目录结构
 
-```typescript
-import { invoke } from "@tauri-apps/api/core";
-
-// 调用 Rust 命令
-const projects = await invoke<Project[]>("list_projects");
-const agents = await invoke<AgentConfig[]>("list_agents");
-const gitInfo = await invoke<GitInfo>("refresh_git_info", { projectId });
+```
+src/features/
+├── agent/api/agentApi.ts        # Agent 相关 IPC
+├── browser/api/browserApi.ts    # 浏览器相关 IPC
+├── connection/api/connectionApi.ts  # SSH/WSL 连接相关 IPC
+├── file/api/fileApi.ts          # 文件读写相关 IPC
+├── git/api/gitApi.ts            # Git 操作相关 IPC
+├── project/api/projectApi.ts    # 项目管理相关 IPC
+├── session/api/sessionApi.ts    # 会话持久化相关 IPC
+├── settings/api/settingsApi.ts  # 设置相关 IPC
+├── skill/api/skillApi.ts        # Skill 相关 IPC
+├── task/api/taskApi.ts          # Task 相关 IPC
+├── terminal/api/terminalApi.ts  # 终端相关 IPC
+└── theme/api/themeApi.ts        # 主题相关 IPC
 ```
 
-### 类型安全
-
-Tauri 会自动将 camelCase 的 JS 参数转换为 snake_case 的 Rust 参数：
+### 标准文件结构
 
 ```typescript
-// 前端调用
-await invoke<Project>("add_project", {
-  path: "/path/to/project",
-  agentId: null,    // 自动转换为 snake_case: agent_id
-  ide: "vscode"    // 自动转换为 snake_case: ide
-});
+// src/features/project/api/projectApi.ts
+import { invoke } from '@tauri-apps/api/core';
+import type { Project } from '../types';
 
-// 等价 Rust 调用
-#[tauri::command]
-fn add_project(path: String, agent_id: Option<String>, ide: Option<String>) { ... }
+export function addProject(path: string, agentId?: string | null, ide?: string | null, avatarColor?: string | null): Promise<Project> {
+  return invoke<Project>('add_project', { path, agentId, ide, avatarColor });
+}
+
+export function listProjects(): Promise<Project[]> {
+  return invoke<Project[]>('list_projects');
+}
+
+export function removeProject(projectId: string): Promise<void> {
+  return invoke<void>('remove_project', { projectId });
+}
+```
+
+> ⚠️ `invoke` **只允许**在 `api/` 目录内的文件导入。外部文件（hooks、components、store）必须通过 API wrapper 调用。
+
+### 命名约定
+
+| 项目 | 约定 | 示例 |
+|------|------|------|
+| API 文件名 | `<domain>Api.ts` | `projectApi.ts`、`gitApi.ts` |
+| 函数名 | camelCase，动宾结构 | `addProject`、`stageFiles` |
+| 命令名 | snake_case（Rust 约定） | `list_projects`、`refresh_git_info` |
+| 函数签名 | camelCase 参数，自动转 snake_case | `{ agentId, projectPath }` |
+| Rust 参数 | snake_case | `agent_id`、`project_path` |
+
+### API 函数设计原则
+
+1. **每个函数对应一个 Tauri 命令**，函数名使用动宾结构的 camelCase
+2. **函数签名使用 camelCase 参数**（Tauri 自动转换为 Rust 的 snake_case）
+3. **始终提供泛型返回类型**，不使用 `any`
+4. **函数仅做 invoke 封装**，不包含业务逻辑、错误处理或状态管理
+5. **相同的 Rust 命令只在一个 API 文件中暴露**，不重复包装
+
+### 跨 domain 类型依赖
+
+某些 API 文件需要引用其他 domain 的类型：
+
+```typescript
+// src/features/git/api/gitApi.ts
+import type { FileNode, FileContent } from '../../file/types';
+
+// src/features/project/api/projectApi.ts
+import type { GitInfo } from '@/features/git/types';
+```
+
+允许使用 `@/` 别名或相对路径从其他 feature domain 导入类型。
+
+---
+
+## 消费方式
+
+### 在 Feature 内部消费（使用相对路径）
+
+```typescript
+// src/features/project/hooks/useLocalProjects.ts
+import { addProject, removeProject, listProjects } from "../api/projectApi";
+import { listAgents } from "../../agent/api/agentApi";
+import { getWorktreeChangedFiles } from "../../git/api/gitApi";
+```
+
+### 在 Layout 层消费（使用 `@/` 别名）
+
+```typescript
+// src/layout/MainContent.tsx
+import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 ```
 
 ### 错误处理
 
-所有命令返回 `Result<T, String>`，前端需要处理错误：
+所有 API 函数的错误由调用方（hooks / components）通过 try/catch 处理：
 
 ```typescript
 try {
-  const project = await invoke<Project>("add_project", { path, agentId, ide });
+  const project = await addProject("/path/to/project", agentId);
 } catch (e) {
   console.error("[AddProject] Failed:", e);
   showToast("Failed to add project: " + e, "error");
 }
 ```
 
----
-
-## 调用分布
-
-### Hooks 层调用
-
-| Hook | 调用的命令 |
-|------|-----------|
-| `useLocalProjects.ts` | `list_projects`, `add_project`, `remove_project` |
-| `useAppConfig.ts` | `load_config`, `save_config` |
-| `useSessionBootstrap.ts` | `load_session` |
-| `useWslActions.ts` | `refresh_wsl_git_info` |
-| `useRemoteActions.ts` | `refresh_remote_git_info` |
-
-### Components 层调用
-
-| 组件 | 调用的命令 |
-|------|-----------|
-| `TerminalView.tsx` | `create_terminal_session`, `get_agent` |
-| `WSLTerminalView.tsx` | `create_wsl_terminal_session`, `get_agent` |
-| `RemoteTerminalView.tsx` | `create_remote_terminal_session`, `get_agent` |
-| `DiffView.tsx` | `get_file_diff_command`, `get_wsl_file_diff_command`, `get_remote_file_diff_command` |
-| `WSLDialog.tsx` | `get_wsl_distros`, `get_wsl_directories`, `get_wsl_home_dir` |
-| `RemoteDialog.tsx` | `list_remote_directories` |
-| `SettingsPanel.tsx` | `get_system_fonts` |
-| `AgentSelector.tsx` | `list_agents` |
+日志前缀格式统一为 `[模块名]`。
 
 ---
 
-## 适配器模式（已移除）
+## ESLint 约束
 
-> **2026-05-06**: `src/adapters/` 目录与 `useUnifiedProjects` hook 已作为死代码移除。
-> 当前 `useAppContainer` 直接使用三个独立 hook（`useLocalProjects`、`useWslProjects`、`useRemoteProjects`）
-> 来管理不同项目源，不再通过 Adapter 抽象层统一。
+`.eslintrc.cjs` 中配置了 `no-restricted-imports` 规则，禁止在 `api/` 目录之外直接导入 `@tauri-apps/api/core`：
 
-如需在未来重新统一项目源操作，请参考 PRD 中 Phase 1-2 的设计方案（`TerminalBackendAdapter` 接口 + Strategy 模式）。
+```javascript
+'no-restricted-imports': [
+  'warn',
+  {
+    paths: [
+      {
+        name: '@tauri-apps/api/core',
+        importNames: ['invoke'],
+        message: 'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
+      },
+    ],
+    patterns: [
+      {
+        group: ['@tauri-apps/api/core'],
+        message: 'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
+      },
+    ],
+  },
+],
+```
+
+违反规则会触发 ESLint warning，提示使用对应的 API wrapper。
+
+---
+
+## 多 transport 命令模式
+
+部分 Rust 命令（尤其是 Git 和文件操作）需要根据 context（local / WSL / SSH）传入不同的 transport 信息。API 文件中需要同时定义 Transport 类型：
+
+```typescript
+// src/features/git/api/gitApi.ts
+export interface LocalTransport {
+  Local: { project_path: string };
+}
+export interface WslTransport {
+  Wsl: { distro: string; project_path: string };
+}
+export interface RemoteTransport {
+  Remote: {
+    host: string; port: number; username: string;
+    auth: { Password: string } | { KeyFile: string } | { KeyFileWithPassphrase: { ... } };
+    project_path: string;
+  };
+}
+
+export type GitTransportKind = LocalTransport | WslTransport | RemoteTransport;
+export type FileTransportKind = FileTransportLocal | FileTransportWsl | FileTransportRemote;
+
+export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
+  return invoke<GitInfo>('get_git_info', { transport });
+}
+```
+
+`FileTransportKind` 定义在 `src/features/git/api/gitApi.ts` 中，与 `file/` domain 共享。
+
+---
+
+## 调用分布（当前状态）
+
+> 以下列出各 layer 使用的 API wrapper，而非直接调用的 Rust 命令名。
+
+### Feature hooks 使用的 API
+
+| Hook 文件 | 使用的 API |
+|---|---|
+| `features/project/hooks/useLocalProjects.ts` | `projectApi`、`agentApi`、`sessionApi`、`gitApi` |
+| `features/settings/hooks/useAppConfig.ts` | `settingsApi` |
+| `features/session/hooks/useSessionBootstrap.ts` | `sessionApi`、`projectApi`、`gitApi` |
+| `features/session/hooks/useSessionPersistence.ts` | `sessionApi` |
+| `features/connection/hooks/useWslActions.ts` | `projectApi`、`gitApi` |
+| `features/connection/hooks/useRemoteActions.ts` | `projectApi` |
+| `features/editor/hooks/useFileView.ts` | `fileApi` |
+| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `features/agent/hooks/useAgentActions.ts` | `projectApi` |
+| `features/agent/hooks/useAgentClickHandler.ts` | `agentApi` |
+| `features/browser/hooks/useBrowserPicker.ts` | `browserApi` |
+| `features/browser/hooks/useBrowserPanel.ts` | `browserApi` |
+| `features/skill/hooks/useMarketplace.ts` | `skillApi` |
+| `features/project/hooks/useWorktreeActions.ts` | `projectApi` |
+| `features/project/hooks/useProjectSelection.ts` | `projectApi` |
+
+### Feature components 使用的 API
+
+| 组件 | 使用的 API |
+|---|---|
+| `features/settings/components/SettingsView.tsx` | `agentApi` |
+| `features/settings/components/SettingsPanel.tsx` | `agentApi` |
+| `features/settings/components/ProjectPanel.tsx` | `projectApi`、`agentApi` |
+| `features/settings/components/useSettingsPanelState.ts` | `agentApi`、`settingsApi` |
+| `features/terminal/components/terminalCache.ts` | `agentApi`、`terminalApi` |
+| `features/terminal/components/terminalFactory.ts` | `terminalApi`、`agentApi` |
+| `features/terminal/components/terminalCommands.ts` | `terminalApi`、`agentApi` |
+| `features/terminal/strategies/local.ts` | `terminalApi` |
+| `features/terminal/strategies/wsl.ts` | `terminalApi` |
+| `features/terminal/strategies/remote.ts` | `terminalApi` |
+| `features/git/components/GitDialog.tsx` | `gitApi`、`connectionApi` |
+| `features/git/components/CommitDialog.tsx` | `gitApi` |
+| `features/git/components/PullRequestsPanel.tsx` | `gitApi`、`sessionApi` |
+| `features/git/components/diff/useDiffData.ts` | `gitApi` |
+| `features/connection/components/WSLDialog.tsx` | `connectionApi` |
+| `features/connection/components/RemoteDialog.tsx` | `connectionApi` |
+| `features/connection/components/RemoteAuthDialog.tsx` | `connectionApi` |
+| `features/connection/components/ConnectionProjectCard.tsx` | `gitApi` |
+| `features/project/components/ProjectsPanel.tsx` | `gitApi` |
+| `features/project/components/ProjectSettingsDialog.tsx` | `projectApi`、`agentApi` |
+| `features/project/components/ProjectItem.tsx` | `projectApi` |
+| `features/project/components/WorktreeList.tsx` | `gitApi`、`terminalApi` |
+| `features/editor/components/FileViewer.tsx` | `fileApi` |
+| `features/editor/components/HtmlPreview.tsx` | `fileApi` |
+| `features/editor/components/EditorGroupPane.tsx` | `agentApi` |
+| `features/agent/components/AgentBar.tsx` | `agentApi` |
+| `features/agent/components/AgentSelector.tsx` | `agentApi`、`sessionApi` |
+| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `features/task/store.ts` | `taskApi`、`terminalApi` |
+| `features/skill/store.ts` | `skillApi`、`fileApi` |
+| `features/terminal/components/terminalLinks.ts` | `fileApi` |
+
+### Layout 层使用的 API
+
+| 组件 | 使用的 API |
+|---|---|
+| `layout/MainContent.tsx` | `agentApi` |
+| `layout/OpenIdeButton.tsx` | `sessionApi` |
+| `layout/DockLayout/DockPanelWrappers.tsx` | `fileApi` |
 
 ---
 
 ## 事件监听
 
-对于后端推送的事件，使用 Tauri 的 `listen`：
+对于后端推送的事件，使用 Tauri 的 `listen`。这部分不经过 API wrapper（事件是 Tauri `@tauri-apps/api/event` 的职责）：
 
 ```typescript
 import { listen } from "@tauri-apps/api/event";
@@ -104,12 +265,9 @@ import { listen } from "@tauri-apps/api/event";
 useEffect(() => {
   const unlisten = listen<string>("git-changed", (event) => {
     console.log("[Git] Changed:", event.payload);
-    // 触发 Git 信息刷新
   });
 
-  return () => {
-    unlisten.then(fn => fn());
-  };
+  return () => { unlisten.then(fn => fn()); };
 }, []);
 ```
 
@@ -124,7 +282,7 @@ useEffect(() => {
 
 ---
 
-## Scenario: 终端 IME 输入单一状态机契约（xterm.js owning composition）
+## 场景：终端 IME 输入单一状态机契约（xterm.js owning composition）
 
 ### 1. Scope / Trigger
 - Trigger: 终端输入链路属于跨层契约（xterm.js DOM 输入层 -> 前端 IPC 层 -> Rust PTY 写入层），且本次修复涉及输入行为与事件负载约束。
@@ -221,54 +379,66 @@ export function setupTerminalInput({ term, sendInput }: {
 
 ---
 
-## 命名约定
+## 命名约定（汇总）
 
 | 项目 | 约定 | 示例 |
 |------|------|------|
 | 命令名 | snake_case | `list_projects`, `add_project` |
 | 事件名 | kebab-case 带 ID 后缀 | `terminal-output-{id}` |
-| 前端调用 | camelCase 参数 | `{ agentId, projectPath }` |
+| API 函数名 | camelCase | `addProject`、`listProjects` |
+| API 文件名 | `<domain>Api.ts` | `projectApi.ts`、`gitApi.ts` |
+| 前端参数 | camelCase | `{ agentId, projectPath }` |
 | Rust 参数 | snake_case | `agent_id`, `project_path` |
 
 ---
 
 ## 常见错误
 
-### 1. 忘记类型参数
+### 1. 在 api/ 目录外直接使用 `invoke`
+
+```typescript
+// 错误 —— 在 hook 中直接 import invoke
+import { invoke } from "@tauri-apps/api/core";
+const projects = await invoke<Project[]>("list_projects");
+
+// 正确 —— 通过 API wrapper
+import { listProjects } from "../api/projectApi";
+const projects = await listProjects();
+```
+
+### 2. 忘记类型参数
 
 ```typescript
 // 错误 —— any 类型
-const projects = await invoke("list_projects");
+export function listProjects() {
+  return invoke("list_projects");  // 返回 Promise<any>
+}
 
 // 正确 —— 明确返回类型
-const projects = await invoke<Project[]>("list_projects");
-```
-
-### 2. 参数命名不匹配
-
-```typescript
-// 前端
-await invoke("add_project", { projectPath: "/path" });  // 错误
-
-// 正确 —— 转换后的 snake_case
-await invoke("add_project", { path: "/path" });
-```
-
-### 3. 没有处理错误
-
-```typescript
-// 错误 —— 假设调用一定成功
-const result = await invoke("some_command");
-
-// 正确 —— try/catch
-try {
-  const result = await invoke("some_command");
-} catch (e) {
-  console.error("[Command] Failed:", e);
+export function listProjects(): Promise<Project[]> {
+  return invoke<Project[]>("list_projects");
 }
 ```
 
-### 4. 事件监听未清理
+### 3. 参数命名不匹配（在 API 文件内）
+
+```typescript
+// 错误 —— 前端参数名不匹配 Rust 期望的 snake_case 转换
+export function addProject(projectPath: string) {
+  return invoke("add_project", { projectPath });  // 应为 path
+}
+
+// 正确
+export function addProject(path: string) {
+  return invoke("add_project", { path });
+}
+```
+
+### 4. 在纯展示组件中 import invoke
+
+纯展示组件（如 `SessionRow`、`DraggableProjectItem`）不应 import 任何 Tauri API，包括 API wrapper。数据通过 Props 传入，动作通过回调 Props 传入。
+
+### 5. 事件监听未清理
 
 ```typescript
 // 错误 —— 内存泄漏
@@ -285,45 +455,23 @@ useEffect(() => {
 
 ---
 
-## 可选：Services 层模式
+## 变更记录
 
-> 以下是 Tauri 社区推荐模式，本项目当前未采用，仅供参考。
-
-一些项目会创建 `services/` 目录集中封装 `invoke` 调用：
-
-```
-src/services/
-├── project.ts    # 项目相关命令
-├── terminal.ts   # 终端相关命令
-├── git.ts        # Git 相关命令
-└── index.ts      # 导出
-```
-
-```typescript
-// services/project.ts
-import { invoke } from "@tauri-apps/api/core";
-import type { Project } from "../types";
-
-export const projectService = {
-  list: () => invoke<Project[]>("list_projects"),
-  add: (path: string, agentId?: string, ide?: string) =>
-    invoke<Project>("add_project", { path, agentId, ide }),
-  remove: (id: string) => invoke("remove_project", { id }),
-};
-```
-
-**本项目选择直接调用**的原因：
-- 命令数量适中（~50 个）
-- 调用集中在 hooks 中，组件层调用较少
-- 直接调用更直观，减少额外抽象层
-
-如果项目规模增长，可考虑重构为 services 模式。
+| 日期 | 变更 |
+|------|------|
+| 2026-05-30 | 重写为 Feature API Wrapper 模式文档（从直接调用迁移） |
+| 2026-05-06 | `src/adapters/` 移除记录 |
+| 2026-04-17 | 终端分屏 IPC 契约添加 |
+| 2026-04-14 | 初始文档 |
 
 ---
 
 ## 相关文档
 
+- [目录结构](../frontend/directory-structure.md)
+- [质量指南](../frontend/quality-guidelines.md)
 - [Hook 指南](../frontend/hook-guidelines.md)
+- [类型安全](../frontend/type-safety.md)
 - [Tauri v2 invoke API](https://tauri.app/v2/api/js/core/#invoke)
 - [Tauri v2 listen API](https://tauri.app/v2/api/js/event/#listen)
 

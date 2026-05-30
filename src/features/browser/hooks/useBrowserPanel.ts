@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { createBrowserWebview, browserNavigate, browserGoBack, browserGoForward, browserOpenDevtools, browserClose, browserSetVisible, browserSetBounds, openInDefaultBrowser } from '../api/browserApi';
 import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -75,13 +75,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
         setLoading(true);
 
-        await invoke('create_browser_webview', {
-          url: initialUrl,
-          x,
-          y,
-          width,
-          height,
-        });
+        await createBrowserWebview(initialUrl, x, y, width, height);
 
         isCreatedRef.current = true;
         setLabel(BROWSER_WEBVIEW_LABEL);
@@ -91,18 +85,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         // issued browser_set_visible(false) to clean up a post-refresh orphan;
         // issuing set_visible(true) here guarantees the newly-created webview is
         // always shown regardless of IPC arrival order.
-        await invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: true });
+        await browserSetVisible(BROWSER_WEBVIEW_LABEL, true);
 
         // Sync bounds immediately after creation
         if (containerRef.current) {
           const r = containerRef.current.getBoundingClientRect();
-          invoke('browser_set_bounds', {
-            label: BROWSER_WEBVIEW_LABEL,
-            x: r.x,
-            y: r.y,
-            width: r.width,
-            height: r.height,
-          }).catch((err) => {
+          browserSetBounds(BROWSER_WEBVIEW_LABEL, r.x, r.y, r.width, r.height).catch((err) => {
             console.error('[Browser] Failed to sync bounds after creation:', err);
           });
         }
@@ -146,7 +134,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       }
 
       try {
-        await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url: newUrl });
+        await browserNavigate(BROWSER_WEBVIEW_LABEL, newUrl);
       } catch (err) {
         console.error('[Browser] Failed to navigate:', err);
         disarmLoadingTimeout();
@@ -163,7 +151,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     setLoading(true);
     armLoadingTimeout();
     try {
-      await invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url });
+      await browserNavigate(BROWSER_WEBVIEW_LABEL, url);
     } catch (err) {
       console.error('[Browser] Failed to refresh:', err);
       disarmLoadingTimeout();
@@ -194,7 +182,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const goBack = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_go_back', { label: BROWSER_WEBVIEW_LABEL });
+      await browserGoBack(BROWSER_WEBVIEW_LABEL);
     } catch (err) {
       console.error('[Browser] Failed to go back:', err);
     }
@@ -204,7 +192,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const goForward = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_go_forward', { label: BROWSER_WEBVIEW_LABEL });
+      await browserGoForward(BROWSER_WEBVIEW_LABEL);
     } catch (err) {
       console.error('[Browser] Failed to go forward:', err);
     }
@@ -214,7 +202,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const openDevTools = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_open_devtools', { label: BROWSER_WEBVIEW_LABEL });
+      await browserOpenDevtools(BROWSER_WEBVIEW_LABEL);
     } catch (err) {
       console.error('[Browser] Failed to open devtools:', err);
     }
@@ -224,7 +212,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const openExternal = useCallback(async () => {
     if (!url) return;
     try {
-      await invoke('open_in_default_browser', { url });
+      await openInDefaultBrowser(url);
     } catch (err) {
       console.error('[Browser] Failed to open in external browser:', err);
     }
@@ -234,13 +222,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const updateBounds = useCallback(async (rect: DOMRect) => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_set_bounds', {
-        label: BROWSER_WEBVIEW_LABEL,
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-      });
+      await browserSetBounds(BROWSER_WEBVIEW_LABEL, rect.x, rect.y, rect.width, rect.height);
     } catch (err) {
       console.error('[Browser] Failed to update bounds:', err);
     }
@@ -250,7 +232,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   const setVisible = useCallback(async (visible: boolean) => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible });
+      await browserSetVisible(BROWSER_WEBVIEW_LABEL, visible);
     } catch (err) {
       console.error('[Browser] Failed to set visible:', err);
     }
@@ -261,7 +243,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     disarmAutoRefresh();
     if (!isCreatedRef.current) return;
     try {
-      await invoke('browser_close', { label: BROWSER_WEBVIEW_LABEL });
+      await browserClose(BROWSER_WEBVIEW_LABEL);
       isCreatedRef.current = false;
       reset();
     } catch (err) {
@@ -314,7 +296,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     listen<string>('browser://open-url', (event) => {
       const newUrl = event.payload;
       if (isCreatedRef.current) {
-        invoke('browser_navigate', { label: BROWSER_WEBVIEW_LABEL, url: newUrl }).catch((err) => {
+        browserNavigate(BROWSER_WEBVIEW_LABEL, newUrl).catch((err) => {
           console.error('[Browser] Failed to open new-window url:', err);
         });
         setUrl(newUrl);
@@ -485,7 +467,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         navigate(pendingUrl);
       } else {
         // No pending navigation �?hide any orphaned webview from a prior session
-        invoke('browser_set_visible', { label: BROWSER_WEBVIEW_LABEL, visible: false }).catch(() => {});
+        browserSetVisible(BROWSER_WEBVIEW_LABEL, false).catch(() => {});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -496,7 +478,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // in time, but the mount-time safety-net above covers that case.
   useEffect(() => {
     const handleBeforeUnload = () => {
-      invoke('browser_close', { label: BROWSER_WEBVIEW_LABEL }).catch(() => {});
+      browserClose(BROWSER_WEBVIEW_LABEL).catch(() => {});
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);

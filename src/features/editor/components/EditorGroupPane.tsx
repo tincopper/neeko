@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { checkAgentsInstalled } from "../../agent/api/agentApi";
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import TerminalView from '@/features/terminal/components/TerminalView';
 import WSLTerminalView from '@/features/terminal/components/WSLTerminalView';
@@ -124,7 +124,7 @@ function EditorGroupPane({
   useEffect(() => {
     if (agents.length === 0) return;
     const agentIds = agents.map((a) => a.id);
-    invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
+    checkAgentsInstalled(agentIds)
       .then((result) => setInstalledMap(new Map(Object.entries(result))))
       .catch(() => {});
   }, [agents]);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { addAgent, removeAgent } from "../../agent/api/agentApi";
+import { getSystemFonts } from "../api/settingsApi";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AgentConfig, AppConfig, DiffMode } from "../../../types";
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
@@ -58,7 +59,7 @@ export function useSettingsPanelState({
     }
     setFontsLoading(true);
     try {
-      const fonts = await invoke<string[]>("get_system_fonts");
+      const fonts = await getSystemFonts();
       setSystemFonts(fonts);
     } catch (e) {
       console.error("Failed to load system fonts:", e);
@@ -207,7 +208,7 @@ export function useSettingsPanelState({
     });
 
     try {
-      await invoke("add_agent", { agent: newAgent });
+      await addAgent(newAgent);
     } catch (e) {
       console.error("[Settings] Failed to add agent:", e);
     }
@@ -227,7 +228,7 @@ export function useSettingsPanelState({
     nextCustom.splice(idx, 1);
     onConfigChange({ ...config, customAgents: nextCustom });
     try {
-      await invoke("remove_agent", { agentId: agent.id });
+      await removeAgent(agent.id);
     } catch (e) {
       console.error("[Settings] Failed to remove agent:", e);
     }

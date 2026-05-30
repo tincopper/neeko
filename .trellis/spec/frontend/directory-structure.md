@@ -22,6 +22,54 @@ src/
 ├── types.ts                 # 共享 TypeScript 接口
 ├── vite-env.d.ts            # 资源模块声明
 │
+├── features/                # Feature 域（每个域独立状态、组件、逻辑、IPC 封装）
+│   ├── agent/               # Agent 管理域
+│   │   ├── api/agentApi.ts  # Agent 相关 IPC 封装（invoke）
+│   │   ├── hooks/           # Agent 相关 hooks
+│   │   ├── components/      # Agent 相关组件
+│   │   └── types.ts         # Agent 类型定义
+│   ├── browser/
+│   │   └── api/browserApi.ts
+│   ├── connection/
+│   │   └── api/connectionApi.ts
+│   ├── editor/
+│   │   └── hooks/useFileView.ts  # 使用 fileApi
+│   ├── file/
+│   │   ├── api/fileApi.ts
+│   │   └── types.ts          # FileTransportKind, FileContent, FileNode
+│   ├── git/
+│   │   ├── api/gitApi.ts     # Git + 文件操作 IPC（含 GitTransportKind, FileTransportKind）
+│   │   ├── components/diff/  # Diff 组件
+│   │   ├── components/gitlog/
+│   │   └── types.ts          # FileDiffStats, GitInfo, CommitEntry 等
+│   ├── project/
+│   │   ├── api/projectApi.ts
+│   │   ├── hooks/
+│   │   ├── components/
+│   │   └── types.ts
+│   ├── session/
+│   │   ├── api/sessionApi.ts
+│   │   ├── hooks/
+│   │   └── types.ts
+│   ├── settings/
+│   │   ├── api/settingsApi.ts
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   └── types.ts
+│   ├── skill/
+│   │   ├── api/skillApi.ts
+│   │   └── types.ts
+│   ├── task/
+│   │   ├── api/taskApi.ts
+│   │   └── types.ts
+│   ├── terminal/
+│   │   ├── api/terminalApi.ts
+│   │   ├── components/
+│   │   ├── strategies/
+│   │   └── types.ts
+│   └── theme/
+│       └── api/themeApi.ts
+│
 ├── components/              # UI 组件（按领域组织）
 │   ├── DiffView.tsx         # 兼容入口，转发到 components/diff
 │   ├── MainContent.tsx
@@ -197,16 +245,19 @@ export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands
 
 | 新代码类型 | 位置 |
 |-----------|------|
-| 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件 |
+| 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件，或 `features/<domain>/components/` |
 | 独立组件 | `components/<Name>.tsx`（顶层） |
-| 自定义 Hook | `hooks/use<Name>.ts` |
+| 自定义 Hook | `hooks/use<Name>.ts` 或 `features/<domain>/hooks/` |
 | 新的全局基础状态分发 | `context/<domain>-context.tsx` |
 | 新的领域状态分发 | `contexts/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
-| IPC 封装（可选） | `services/<name>.ts`（当前项目直接调用 invoke，暂无此目录） |
-| 共享类型 | `types.ts` |
+| IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个 |
+| 共享类型 | `types.ts`，或 `features/<domain>/types.ts` |
+| Feature 域入口 | `features/<domain>/` 域目录结构参考 features/agent/ |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>/` |
+
+> **IPC 封装规则**：所有 `invoke` 调用必须放在 `features/<domain>/api/` 目录下的文件中。禁止在其他位置直接 import `@tauri-apps/api/core`。ESLint 的 `no-restricted-imports` 规则强制执行此约束。
 
 ---
 

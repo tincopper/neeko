@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { setProjectIde } from "../api/projectApi";
+import { setProjectAgent } from "../../agent/api/agentApi";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "@/shared/utils/idePresets";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
@@ -89,12 +90,12 @@ function ProjectSettingsDialog({
     }
 
     try {
-      await invoke("set_project_agent", { projectId, agentId: selectedAgentId });
+      await setProjectAgent(projectId, selectedAgentId);
     } catch (e) {
       console.error("Failed to set agent:", e);
     }
     try {
-      await invoke("set_project_ide", { projectId, ide: ideCommand });
+      await setProjectIde(projectId, ideCommand);
     } catch (e) {
       console.error("Failed to set IDE:", e);
     }

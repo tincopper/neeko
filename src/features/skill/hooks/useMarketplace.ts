@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { fetchLeaderboard as fetchLeaderboardApi, searchSkillssh, installFromSkillssh } from "../api/skillApi";
 import { listen } from "@tauri-apps/api/event";
 import type { SkillsShSkill, InstallProgress, LeaderboardType } from "../../../types";
 
@@ -45,7 +45,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
 
     setLoading(true);
     try {
-      const result = await invoke<SkillsShSkill[]>("fetch_leaderboard", { board: boardType });
+      const result = await fetchLeaderboardApi(boardType);
       setLeaderboard(result);
       leaderboardCache.current.set(boardType, result);
     } catch (e) {
@@ -65,10 +65,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
 
     setLoading(true);
     try {
-      const result = await invoke<SkillsShSkill[]>("search_skillssh", {
-        query: query.trim(),
-        limit: 100
-      });
+      const result = await searchSkillssh(query.trim(), 100);
       setSearchResults(result);
     } catch (e) {
       console.error("Failed to search marketplace:", e);
@@ -88,7 +85,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     setInstallProgress(prev => new Map(prev).set(fullId, "cloning"));
 
     try {
-      await invoke("install_from_skillssh", { source, skillId });
+      await installFromSkillssh(source, skillId);
     } catch (e) {
       console.error("Failed to install skill:", e);
       setInstallingIds(prev => {

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { setProjectAgent } from "../api/agentApi";
 import type { AgentConfig } from "../../../types";
 import type { TerminalTab } from "../../../types/terminal";
 
@@ -40,10 +40,7 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
       const newTab = handleTabAgentClick(tabKey, agent);
 
       if (activeProject) {
-        invoke("set_project_agent", {
-          projectId: activeProject.id,
-          agentId: agent.id,
-        }).catch((err: unknown) => {
+        setProjectAgent(activeProject.id, agent.id).catch((err: unknown) => {
           console.error("[TitleBar] Failed to set agent:", err);
         });
         if (!newTab) {

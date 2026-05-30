@@ -8,7 +8,7 @@ import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } 
 import { Eye, Save, FileCode, Globe } from "@/shared/components/icons"
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "@/shared/utils/codemirror";
 import { MarkdownPreview } from "@/ui";
-import type { FileTab, AppTheme, Tab, FileTabData, FileContent } from "../../../types";
+import type { FileTab, AppTheme, Tab, FileTabData } from "../../../types";
 import { useAppContext } from "@/shared/contexts/app-context";
 import { useFileActionsContext } from "../file-actions-context";
 import { useEditorContext } from "../context";
@@ -27,7 +27,7 @@ import {
    type SerializedSelection,
 } from "@/shared/utils/editorViewState";
 import InlineHtmlPreview from "./InlineHtmlPreview";
-import { invoke } from "@tauri-apps/api/core";
+import { readFileContent } from "../../file/api/fileApi";
 
 type PreviewMode = "preview" | "source";
 
@@ -175,10 +175,10 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    const handleReload = useCallback(async () => {
       try {
          const projectPath = useProjectStore.getState().projects.find(p => p.id === tab.projectId)?.path ?? tab.projectId;
-         const content = await invoke<FileContent>("read_file_content", {
-            transport: { Local: { project_path: projectPath } },
-            filePath: tab.filePath,
-         });
+         const content = await readFileContent(
+            { Local: { project_path: projectPath } },
+            tab.filePath,
+         );
          useEditorStore.getState().updateTab(tabKey, tabId, {
             kind: "file",
             content,

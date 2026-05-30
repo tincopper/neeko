@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { openRemoteIde } from "../../project/api/projectApi";
 import { invoke } from "@tauri-apps/api/core";
 import {
   refreshRemoteTerminal,
@@ -198,13 +199,7 @@ export function useRemoteActions({
       return;
     }
 
-    invoke("open_remote_ide", {
-      host: entry.host,
-      port: entry.port,
-      username: entry.username,
-      projectPath,
-      ide,
-    }).catch((error) => {
+    openRemoteIde(entry.host, entry.port, entry.username, projectPath, ide).catch((error) => {
       showToast(String(error), "error");
     });
   }, [remoteEntries, showToast]);

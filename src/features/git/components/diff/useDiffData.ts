@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getFileDiff, getCommitFileDiff } from "../../api/gitApi";
 import { useProjectStore } from "@/features/project/store";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
 import type { ProjectCommands } from "../../../../types/activeProject";
@@ -121,10 +121,7 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
 
       if (!ds?.type) {
         const projectPath = lookupLocalProjectPath(projectId ?? "");
-        result = await invoke<DiffResult>("get_file_diff", {
-          transport: buildLocalTransport(projectPath),
-          filePath,
-        });
+        result = await getFileDiff(buildLocalTransport(projectPath) as any, filePath);
       } else if (
         ds.type === "commit" ||
         ds.type === "wsl-commit" ||
@@ -134,25 +131,15 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
           result = await commands.getCommitFileDiff(ds.commitHash, filePath);
         } else {
           const args = buildCommitDiffArgs(ds);
-          result = await invoke<DiffResult>("get_commit_file_diff", {
-            transport: args.transport,
-            commitHash: args.commitHash,
-            filePath,
-          });
+          result = await getCommitFileDiff(args.transport as any, args.commitHash, filePath);
         }
       } else if (ds.type === "worktree") {
-        result = await invoke<DiffResult>("get_file_diff", {
-          transport: buildLocalTransport(ds.worktreePath),
-          filePath,
-        });
+        result = await getFileDiff(buildLocalTransport(ds.worktreePath) as any, filePath);
       } else if (commands) {
         result = await commands.getFileDiff(filePath);
       } else {
         const args = buildFileDiffArgs(ds);
-        result = await invoke<DiffResult>("get_file_diff", {
-          transport: args.transport,
-          filePath,
-        });
+        result = await getFileDiff(args.transport as any, filePath);
       }
 
       setDiffResult(result);

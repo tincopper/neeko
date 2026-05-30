@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { createBranch, createWorktree } from "../api/gitApi";
+import { getWslHomeDir } from "../../connection/api/connectionApi";
 import { homeDir } from "@tauri-apps/api/path";
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
@@ -59,7 +60,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
     if (dialog.type !== "new-worktree") return;
     const src = dialog.source;
     if (src?.type === "wsl" && src.distro) {
-      invoke<string>("get_wsl_home_dir", { distro: src.distro }).then(setHomeDirPath).catch(() => {});
+      getWslHomeDir(src.distro).then(setHomeDirPath).catch(() => {});
     } else if (src?.type === "remote") {
       if (remoteHomeDir) setHomeDirPath(remoteHomeDir);
     } else {
@@ -73,21 +74,18 @@ const GitDialog: React.FC<GitDialogProps> = ({
     setError(null);
     try {
       const src = dialog.source;
+      let transport;
       if (src?.type === "wsl") {
-        await invoke("create_branch", {
-          transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
-          branchName: branchName.trim(),
-        });
+        transport = { Wsl: { distro: src.distro!, project_path: src.projectPath } };
+        await createBranch(transport, branchName.trim());
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
         setError("SSH branch creation not yet supported");
         setSubmitting(false);
         return;
       } else {
-        await invoke("create_branch", {
-          transport: { Local: { project_path: dialog.projectPath ?? "" } },
-          branchName: branchName.trim(),
-        });
+        transport = { Local: { project_path: dialog.projectPath ?? "" } };
+        await createBranch(transport, branchName.trim());
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
@@ -107,24 +105,20 @@ const GitDialog: React.FC<GitDialogProps> = ({
     try {
       const src = dialog.source;
       if (src?.type === "wsl") {
-        await invoke("create_worktree", {
-          transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
-          worktreePath: computedPath,
-          branchName: name,
-          newBranch: true,
-        });
+        await createWorktree(
+          { Wsl: { distro: src.distro!, project_path: src.projectPath } },
+          computedPath, name, true,
+        );
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
         setError("SSH worktree creation not yet supported");
         setSubmitting(false);
         return;
       } else {
-        await invoke("create_worktree", {
-          transport: { Local: { project_path: dialog.projectPath ?? "" } },
-          worktreePath: computedPath,
-          branchName: name,
-          newBranch: true,
-        });
+        await createWorktree(
+          { Local: { project_path: dialog.projectPath ?? "" } },
+          computedPath, name, true,
+        );
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
@@ -142,24 +136,20 @@ const GitDialog: React.FC<GitDialogProps> = ({
     try {
       const src = dialog.source;
       if (src?.type === "wsl") {
-        await invoke("create_worktree", {
-          transport: { Wsl: { distro: src.distro, project_path: src.projectPath } },
-          worktreePath: worktreePath.trim(),
-          branchName: worktreeBranch.trim(),
-          newBranch,
-        });
+        await createWorktree(
+          { Wsl: { distro: src.distro!, project_path: src.projectPath } },
+          worktreePath.trim(), worktreeBranch.trim(), newBranch,
+        );
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
         setError("SSH worktree creation not yet supported");
         setSubmitting(false);
         return;
       } else {
-        await invoke("create_worktree", {
-          transport: { Local: { project_path: dialog.projectPath ?? "" } },
-          worktreePath: worktreePath.trim(),
-          branchName: worktreeBranch.trim(),
-          newBranch,
-        });
+        await createWorktree(
+          { Local: { project_path: dialog.projectPath ?? "" } },
+          worktreePath.trim(), worktreeBranch.trim(), newBranch,
+        );
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();

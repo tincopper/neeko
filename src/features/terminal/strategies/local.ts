@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { createTerminalSession } from "../api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppContext } from '@/shared/contexts';
@@ -50,16 +50,13 @@ export function useLocalTerminalStrategy(
       rebuildCallbacks: terminalRebuildCallbacks,
       wrapperRefs: terminalWrapperRefs,
       createSession: async (cols: number, rows: number, payload?: { command?: string; configId?: string }) => {
-        const session = await invoke<{ id: string }>(
-          "create_terminal_session",
-          {
-            projectId,
-            cols,
-            rows,
-            shell: config.shell || null,
-            workingDir: projectPath || null,
-            command: payload?.command ?? null,
-          },
+        const session = await createTerminalSession(
+          projectId,
+          cols,
+          rows,
+          config.shell || null,
+          projectPath || null,
+          payload?.command ?? null,
         );
         return session.id;
       },

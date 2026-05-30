@@ -17,8 +17,11 @@
 ```tsx
 // 1. 导入
 import React from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { listProjects } from "@/features/project/api/projectApi";  // 通过 API wrapper
 import { SomeType } from "../types";
+
+// 注意：不在组件中直接 import { invoke } from "@tauri-apps/api/core"
+// 所有 IPC 调用通过 features/<domain>/api/<domain>Api.ts 封装
 
 // 2. Props 接口（在同一文件中）
 interface MyComponentProps {
@@ -356,9 +359,11 @@ interface SessionRowProps {
 
 ```tsx
 // src/components/settings/ProjectPanel.tsx
+import { setProjectColor } from "@/features/project/api/projectApi";
+
 const handleAvatarColorChange = useCallback(
   (color: string | null) => {
-    invoke("set_project_color", { projectId, color });
+    setProjectColor(projectId, color);  // 通过 API wrapper
     patchProject({ avatar_color: color }); // store 同步，避免等下一次 listen
   },
   [projectId, patchProject],
@@ -378,8 +383,8 @@ const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAge
 const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
 
 const handleSave = useCallback(async () => {
-  await invoke("set_project_agent", { projectId, agentId: selectedAgentId });
-  await invoke("set_project_ide", { projectId, ide: ideCommand });
+  await setProjectAgent(projectId, selectedAgentId);
+  await setProjectIde(projectId, ideCommand);
   onSave(selectedAgentId, ideCommand);
   onClose();
 }, [...]);

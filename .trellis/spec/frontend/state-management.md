@@ -90,11 +90,14 @@ export const terminalCache = new Map<string, Terminal>();
 
 ### 7. 持久化状态
 
-通过 Tauri IPC 写入本地文件：
+通过 Tauri IPC（经 API wrapper）写入本地文件：
 
 ```tsx
-await invoke("save_config", { config });
-await invoke("save_session", { session: { ... } });
+import { saveConfig } from "@/features/settings/api/settingsApi";
+import { saveSession } from "@/features/session/api/sessionApi";
+
+await saveConfig(config);
+await saveSession(session);
 ```
 
 ---
@@ -118,15 +121,17 @@ await invoke("save_session", { session: { ... } });
 
 ## 服务端状态
 
-没有 HTTP API，所有后端状态通过 Tauri IPC 获取。
+没有 HTTP API，所有后端状态通过 Tauri IPC（经 API wrapper）获取。
 
 ### 加载模式
 
 ```tsx
+import { loadSession } from "@/features/session/api/sessionApi";
+
 useEffect(() => {
   (async () => {
     try {
-      const saved = await invoke<SessionData>("load_session");
+      const saved = await loadSession();
       // 校验并设置状态
     } catch (e) {
       console.error("[App] Failed to load session:", e);
@@ -138,12 +143,14 @@ useEffect(() => {
 ### 保存模式
 
 ```tsx
+import { saveSession } from "@/features/session/api/sessionApi";
+
 const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 const debouncedSave = useCallback(() => {
   if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
   saveTimerRef.current = setTimeout(async () => {
-    await invoke("save_session", { session: buildSessionData() });
+    await saveSession(buildSessionData());
   }, 500);
 }, []);
 ```
@@ -181,9 +188,15 @@ const debouncedSave = useCallback(() => {
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
-│ Consumer Components                             │
-│  AppLayout / ProjectsPanel / MainContent        │
-│  ActivityBar / FilesPanel / SkillsPanel         │
+│ Consumer Components / Hooks / Stores           │
+│  AppLayout / ProjectsPanel / useLocalProjects  │
+└────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────┐
+│ Feature API Wrapper Layer                      │
+│  features/*/api/*Api.ts                        │
+│  (集中封装 invoke 调用)                        │
 └────────────────────────────────────────────────┘
                     │
                     ▼

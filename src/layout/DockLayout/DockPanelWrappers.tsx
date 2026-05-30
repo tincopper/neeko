@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { revealInFileManager, readDirTree } from "@/features/file/api/fileApi";
 import { listen } from "@tauri-apps/api/event";
 import { useAppContext } from "@/shared/contexts";
 import { useFileActionsContext } from "@/features/editor/file-actions-context";
@@ -17,7 +17,7 @@ import { buildDiffSource } from "@/shared/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from "@/types/file";
 import { mergeSubTree } from "@/shared/utils/fileTree";
-import type { Tab, FileNode, FileTreeChangedEvent } from "@/types";
+import type { Tab, FileTreeChangedEvent } from "@/types";
 
 // ── FilesPanelWrapper ──
 
@@ -106,13 +106,13 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!activeProjectId || project_id !== activeProjectId) return;
       // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
       if (!isActive || !fileRootPath) return;
-      // 静默刷新：直接 invoke，不触发 loading 状态，旧树保持可见
-      invoke<FileNode[]>("read_dir_tree", {
-        transport: { Local: { project_path: fileRootPath } },
-        rootPath: null,
-        subPath: null,
-        maxDepth: DEFAULT_TREE_DEPTH,
-      })
+      // 静默刷新：直接调用 API，不触发 loading 状态，旧树保持可见
+      readDirTree(
+        { Local: { project_path: fileRootPath } },
+        null,
+        null,
+        DEFAULT_TREE_DEPTH,
+      )
         .then((tree) => {
           useFileStore.setState({ fileTree: tree });
         })
@@ -167,7 +167,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 在系统文件管理器中显示文件（确保传绝对路径）
   const handleRevealInExplorer = useCallback((filePath: string) => {
     const absPath = projectPath ? resolveAbsolutePath(projectPath, filePath) : filePath;
-    invoke("reveal_in_file_manager", { path: absPath }).catch((err) => {
+    revealInFileManager(absPath).catch((err) => {
       console.error("[FilesPanelWrapper] Failed to reveal in file manager:", err);
     });
   }, [projectPath]);

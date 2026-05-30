@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { closePr, isGhInstalled, listPrs, mergePr, viewPr } from "../api/gitApi";
+import { saveVcsSettings, loadVcsSettings } from "../../session/api/sessionApi";
 import type { PRListItem } from "../../../types";
 import { ChevronRightIcon } from "@/shared/components/icons";
 import { cn } from '@/lib/utils';
@@ -39,14 +40,11 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    invoke<boolean>("is_gh_installed_command")
+    isGhInstalled()
       .then(setGhInstalled)
       .catch(() => setGhInstalled(false));
     // Restore persisted VCS settings
-    invoke<{ auto_sync?: number; expanded?: boolean }>(
-      "load_vcs_settings_command",
-      { projectId }
-    )
+    (loadVcsSettings(projectId) as Promise<{ auto_sync?: number; expanded?: boolean }>)
       .then((s) => {
         if (typeof s.auto_sync === "number") setAutoSync(s.auto_sync);
         if (typeof s.expanded === "boolean") setExpanded(s.expanded);
@@ -56,21 +54,14 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
 
   // Persist settings when they change
   useEffect(() => {
-    invoke("save_vcs_settings_command", {
-      projectId,
-      settings: { auto_sync: autoSync, expanded },
-    }).catch(() => {});
+    saveVcsSettings(projectId, { auto_sync: autoSync, expanded }).catch(() => {});
   }, [autoSync, expanded, projectId]);
 
   const loadPRs = useCallback(async () => {
     if (!ghInstalled || !expanded) return;
     setLoading(true);
     try {
-      const prs = await invoke<PRListItem[]>("list_prs_command", {
-        projectId,
-        state: filter,
-        limit: 20,
-      });
+      const prs = await listPrs(projectId, filter, 20);
       setPrList(prs);
     } catch {
       // gh not authenticated or no remote
@@ -83,7 +74,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     loadPRs();
   }, [loadPRs]);
 
-  // Auto-sync interval (参�?Muxy VCSTabState PR auto-sync)
+  // Auto-sync interval (参�?Muxy VCSTabState PR auto-sync)
   useEffect(() => {
     if (autoSyncRef.current) {
       clearInterval(autoSyncRef.current);
@@ -106,10 +97,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     async (number: number) => {
       setLoading(true);
       try {
-        const result = await invoke<{ success: boolean; message: string }>(
-          "merge_pr_command",
-          { projectId, prNumber: number, method: "squash" }
-        );
+        const result = await mergePr(projectId, number, "squash");
         onShowToast?.(result.message, "info");
         loadPRs();
         onRefreshGit(projectId);
@@ -126,7 +114,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     async (number: number) => {
       setLoading(true);
       try {
-        await invoke("close_pr_command", { projectId, prNumber: number });
+        await closePr(projectId, number);
         onShowToast?.("PR closed", "info");
         loadPRs();
       } catch (e: unknown) {
@@ -141,10 +129,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const handleOpenUrl = useCallback(
     async (number: number) => {
       try {
-        const info = await invoke<{ url: string }>("view_pr_command", {
-          projectId,
-          prNumber: number,
-        });
+        const info = await viewPr(projectId, number);
         window.open(info.url, "_blank");
       } catch {
         // ignore

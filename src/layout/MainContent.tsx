@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 import ProjectGuidePage from "@/features/project/components/ProjectGuidePage";
 import EditorGroupLayout from "@/features/editor/components/EditorGroupLayout";
 import { Button } from "@/ui/button";
@@ -100,7 +100,7 @@ function MainContent() {
       if (ids.length === 0) return;
       const newIds = ids.filter((id) => !agentInstalledCache.has(id));
       if (newIds.length === 0) return;
-      invoke<Record<string, boolean>>("check_agents_installed", { agentIds: newIds })
+      checkAgentsInstalled(newIds)
          .then((result) => {
             for (const [id, installed] of Object.entries(result)) {
                agentInstalledCache.set(id, installed);

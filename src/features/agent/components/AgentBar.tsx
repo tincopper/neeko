@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { checkAgentsInstalled } from "../api/agentApi";
 import AgentIcon from "./AgentIcon";
 import type { AgentConfig } from "../../../types";
 
@@ -53,7 +53,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
     useEffect(() => {
       if (agents.length === 0) return;
       const agentIds = agents.map((a) => a.id);
-      invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
+      checkAgentsInstalled(agentIds)
         .then((result) => {
           setInstalledMap(new Map(Object.entries(result)));
         })

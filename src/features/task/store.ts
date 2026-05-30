@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { getTaskConfigs, saveTaskConfig as saveTaskConfigApi, deleteTaskConfig as deleteTaskConfigApi } from "./api/taskApi";
+import { closeTerminalSession } from "../terminal/api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/features/editor/store';
 import { destroyTerminalCache, terminalCache } from "../terminal/components/terminalCache";
@@ -34,9 +35,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   loadConfigs: async (projectPath?: string) => {
     try {
-      const configs = await invoke<TaskConfig[]>("get_task_configs", {
-        projectPath: projectPath ?? null,
-      });
+      const configs = await getTaskConfigs(projectPath);
       set({ configs });
       const state = get();
       if (!state.selectedConfigId && configs.length > 0) {
@@ -49,7 +48,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   addConfig: async (config: TaskConfig, projectPath?: string) => {
     try {
-      await invoke("save_task_config", { config, projectPath: projectPath ?? null });
+      await saveTaskConfigApi(config, projectPath ?? null);
       await get().loadConfigs(projectPath);
       set({ selectedConfigId: config.id });
     } catch (e) {
@@ -59,7 +58,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   updateConfig: async (config: TaskConfig, projectPath?: string) => {
     try {
-      await invoke("save_task_config", { config, projectPath: projectPath ?? null });
+      await saveTaskConfigApi(config, projectPath ?? null);
       await get().loadConfigs(projectPath);
     } catch (e) {
       console.error("Failed to update task config:", e);
@@ -68,7 +67,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   deleteConfig: async (id: string, scope: string, projectPath?: string) => {
     try {
-      await invoke("delete_task_config", { id, scope, projectPath: projectPath ?? null });
+      await deleteTaskConfigApi(id, scope, projectPath ?? null);
       await get().loadConfigs(projectPath);
       const state = get();
       if (state.selectedConfigId === id) {
@@ -226,9 +225,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     })();
 
     if (sessionIdToClose) {
-      invoke("close_terminal_session", {
-        sessionId: sessionIdToClose,
-      }).catch((e) => console.error("Failed to stop task:", e));
+      closeTerminalSession(sessionIdToClose).catch((e) => console.error("Failed to stop task:", e));
     } else {
       console.warn("[TaskStore] stopTask: no PTY session ID found �?process may not be killed");
     }

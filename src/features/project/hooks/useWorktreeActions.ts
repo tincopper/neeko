@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { setActiveProject, setViewTerminal } from "../api/projectApi";
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/features/editor/store';
@@ -40,7 +40,7 @@ export function useWorktreeActions({
       setActiveWorktreeBranch("");
       saveWorktreeState(projectId, null);
     }
-    invoke("set_view_terminal", { projectId }).catch(() => { });
+    setViewTerminal(projectId).catch(() => { });
   }, [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, saveWorktreeState]);
 
   const handleOpenWorktreeTerminal = useCallback(async (
@@ -57,7 +57,7 @@ export function useWorktreeActions({
       useEditorStore.setState({
         activeTabId: targetProjectTabs?.activeTabId ?? null,
       });
-      invoke("set_active_project", { projectId }).catch(console.error);
+      setActiveProject(projectId).catch(console.error);
     }
 
     setActiveWorktreePath(worktreePath);
@@ -69,7 +69,7 @@ export function useWorktreeActions({
       return [...prev, { path: worktreePath, branch }];
     });
     saveWorktreeState(projectId, worktreePath);
-    invoke("set_view_terminal", { projectId }).catch(() => { });
+    setViewTerminal(projectId).catch(() => { });
   }, [
     activeProjectId,
     setActiveWorktreePath,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { listAgents } from "../../agent/api/agentApi";
 import { useAppContext } from '@/shared/contexts';
 import { cn } from '@/lib/utils';
 import type { AgentConfig, AppConfig, DiffMode } from "../../../types";
@@ -33,7 +33,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
          let alive = true;
          (async () => {
             try {
-               const all = await invoke<AgentConfig[]>("list_agents");
+               const all = await listAgents();
                if (alive) {
                   setBuiltinAgents(all.filter((a) => a.is_builtin === true));
                }

@@ -1,8 +1,9 @@
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
+import { createTerminalSession } from "../api/terminalApi";
+import { getAgent } from "../../agent/api/agentApi";
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 import type { AgentConfig } from "../../../types";
 import { useEditorStore } from '@/features/editor/store';
@@ -89,16 +90,13 @@ export async function createTerminalForProject(
   term.write("\x1b[33m[Terminal] Connecting...\x1b[0m\r\n");
 
   try {
-    const session = await invoke<{ id: string; pid: number | null }>(
-      "create_terminal_session",
-      {
-        projectId: backendProjectId,
-        cols: initCols,
-        rows: initRows,
-        shell: shell || null,
-        workingDir: projectPath || null,
-        command: taskCommand || null,
-      },
+    const session = await createTerminalSession(
+      backendProjectId,
+      initCols,
+      initRows,
+      shell || null,
+      projectPath || null,
+      taskCommand || null,
     );
 
     const sid = session.id;
@@ -203,7 +201,7 @@ export async function createTerminalForProject(
 
 export async function getAgentById(agentId: string): Promise<AgentConfig | null> {
   try {
-    return await invoke<AgentConfig>("get_agent", { agentId });
+    return await getAgent(agentId);
   } catch {
     return null;
   }

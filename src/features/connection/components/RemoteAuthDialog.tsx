@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { AuthMethod } from "../../../types";
+import { testRemoteConnection } from "../api/connectionApi";
+import type { AuthMethod } from "../../../types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";
@@ -51,7 +51,7 @@ export function RemoteAuthDialog({
     setError(null);
     setConnecting(true);
     try {
-      await invoke("test_remote_connection", { host, port, username, auth });
+      await testRemoteConnection(host, port, username, auth);
       const encodedAuth = saveCredentials ? btoa(JSON.stringify(auth)) : null;
       reset();
       onSuccess(auth, encodedAuth);

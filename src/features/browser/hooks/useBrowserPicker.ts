@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, type RefObject } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { browserStartPicker, browserStopPicker } from "../api/browserApi";
 import { listen } from "@tauri-apps/api/event";
 import { BROWSER_WEBVIEW_LABEL } from "./useBrowserConstants";
 
@@ -20,10 +20,7 @@ export function useBrowserPicker(params: {
   const startPicker = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke("browser_start_picker", {
-        label: BROWSER_WEBVIEW_LABEL,
-        themeColors: getThemeColors(),
-      });
+      await browserStartPicker(BROWSER_WEBVIEW_LABEL, getThemeColors() as unknown as Record<string, string>);
       setIsPicking(true);
     } catch (err) {
       console.error("[Browser] Failed to start picker:", err);
@@ -34,7 +31,7 @@ export function useBrowserPicker(params: {
   const stopPicker = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await invoke("browser_stop_picker", { label: BROWSER_WEBVIEW_LABEL });
+      await browserStopPicker(BROWSER_WEBVIEW_LABEL);
     } catch (err) {
       console.error("[Browser] Failed to stop picker:", err);
     }
@@ -43,10 +40,7 @@ export function useBrowserPicker(params: {
 
   // Re-inject picker script (called on navigation, prompt-submit, etc.)
   const reinjectPicker = useCallback(() => {
-    invoke("browser_start_picker", {
-      label: BROWSER_WEBVIEW_LABEL,
-      themeColors: getThemeColors(),
-    }).catch(() => {});
+    browserStartPicker(BROWSER_WEBVIEW_LABEL, getThemeColors() as unknown as Record<string, string>).catch(() => {});
   }, [getThemeColors]);
 
   // Listen: picker cancelled (Escape / ×) — re-inject picker

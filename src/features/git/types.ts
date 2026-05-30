@@ -5,6 +5,12 @@ export interface FileChange {
   deletions: number;
 }
 
+export interface FileDiffStats {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface Worktree {
   path: string;
   branch: string;

@@ -1,6 +1,6 @@
 import { emit } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import type { AgentConfig } from "../../../types";
+import { resizeTerminal, closeTerminalSession } from "../api/terminalApi";
+import { getAgent } from "../../agent/api/agentApi";
 import {
   terminalCache,
   terminalCacheKey,
@@ -77,7 +77,7 @@ export async function switchAgentInTerminal(
 
   const wrapper = terminalWrapperRefs.get(resolvedKey);
   if (!wrapper) {
-    const agent = await invoke<AgentConfig>("get_agent", { agentId }).catch(
+    const agent = await getAgent(agentId).catch(
       () => null,
     );
     if (agent) {
@@ -118,17 +118,13 @@ export async function switchAgentInTerminal(
     requestAnimationFrame(() => {
       newCache.fitAddon.fit();
       if (newCache.sessionId) {
-        invoke("resize_terminal", {
-          sessionId: newCache.sessionId,
-          cols: newCache.term.cols,
-          rows: newCache.term.rows,
-        }).catch(() => {});
+        resizeTerminal(newCache.sessionId, newCache.term.cols, newCache.term.rows).catch(() => {});
       }
       newCache.term.focus();
     });
 
     if (oldCache?.sessionId) {
-      invoke("close_terminal_session", { sessionId: oldCache.sessionId }).catch(
+      closeTerminalSession(oldCache.sessionId).catch(
         () => {},
       );
     }

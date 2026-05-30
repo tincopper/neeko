@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { push, pull } from "../../git/api/gitApi";
 import { IS_WINDOWS } from "@/shared/utils/platform";
 import { useAppContext } from "@/shared/contexts/app-context";
 import { useProjectActionsContext } from "@/features/project/context";
@@ -89,10 +89,7 @@ const ProjectsPanel: React.FC = () => {
    const handlePush = useCallback(async (projectId: string) => {
       try {
          const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-         await invoke("push", {
-            transport: { Local: { project_path: projectPath } },
-            setUpstream: false,
-         });
+         await push({ Local: { project_path: projectPath } }, false);
          onRefreshGit(projectId);
       } catch (e) {
          showToast?.(String(e), "error");
@@ -102,9 +99,7 @@ const ProjectsPanel: React.FC = () => {
    const handlePull = useCallback(async (projectId: string) => {
       try {
          const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-         await invoke("pull", {
-            transport: { Local: { project_path: projectPath } },
-         });
+         await pull({ Local: { project_path: projectPath } });
          onRefreshGit(projectId);
       } catch (e) {
          showToast?.(String(e), "error");

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { readFileContent } from "../../file/api/fileApi";
 import { Globe, RefreshCw } from "@/shared/components/icons"
-import type { FileContent, FileChangedEvent } from "../../../types";
+import type { FileChangedEvent } from "../../../types";
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 import { useProjectStore } from '@/features/project/store';
 
@@ -13,7 +14,7 @@ interface HtmlPreviewProps {
 
 /**
  * HTML 文件预览组件
- * 使用 invoke 读取 HTML 源码，iframe sandbox 渲染（含相对路径资源�?CDN 资源�?
+ * 使用 invoke 读取 HTML 源码，iframe sandbox 渲染（含相对路径资源�?CDN 资源�?
  */
 function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -21,7 +22,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 计算文件所在目录的 asset URL（用�?<base href> 注入，使相对路径资源正确加载�?
+  // 计算文件所在目录的 asset URL（用�?<base href> 注入，使相对路径资源正确加载�?
   const dirAssetUrl = useMemo(() => {
     const dirPath = filePath.replace(/[\\/][^\\/]*$/, "");
     return convertFileSrc(dirPath, "asset");
@@ -34,10 +35,10 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
     try {
       const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? projectId;
-      const fileContent = await invoke<FileContent>("read_file_content", {
-        transport: { Local: { project_path: projectPath } },
+      const fileContent = await readFileContent(
+        { Local: { project_path: projectPath } },
         filePath,
-      });
+      );
 
       if (fileContent.is_binary) {
         throw new Error("Cannot preview binary file");
@@ -45,7 +46,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
       let htmlContent = fileContent.content;
 
-      // 注入 <base href="..."> 标签�?HTML 头部，使相对路径�?CSS/JS/图片能正确解�?
+      // 注入 <base href="..."> 标签�?HTML 头部，使相对路径�?CSS/JS/图片能正确解�?
       const baseTag = `<base href="${dirAssetUrl}/">`;
 
       if (htmlContent.includes("<head>")) {
@@ -60,7 +61,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
         htmlContent = `${baseTag}${htmlContent}`;
       }
 
-      // 注入锚点导航拦截脚本，防�?<base href> 导致 href="#..." 变成外部导航
+      // 注入锚点导航拦截脚本，防�?<base href> 导致 href="#..." 变成外部导航
       const anchorFixScript =
         `<script>(function(){` +
         `document.addEventListener('click',function(e){` +
@@ -96,7 +97,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   useEffect(() => {
     loadHtmlContent();
 
-    // 组件卸载时清�?
+    // 组件卸载时清�?
     return () => {
       setHtmlContent(null);
     };
@@ -104,7 +105,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
   const normalizedFilePath = filePath.replace(/\\/g, "/");
 
-  // 使用共享�?file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听�?
+  // 使用共享�?file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听�?
   useFileChangedEvent(useCallback((event: FileChangedEvent) => {
     const { paths } = event;
     const matched = paths.some((p) => p === normalizedFilePath || p.endsWith("/" + normalizedFilePath));

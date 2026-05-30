@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { listAgents } from "../../agent/api/agentApi";
 import { ArrowLeft, Search, FolderOpen } from "@/shared/components/icons"
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useProjectStore } from '@/features/project/store';
@@ -29,7 +29,7 @@ function SettingsView() {
     let alive = true;
     (async () => {
       try {
-        const all = await invoke<AgentConfig[]>("list_agents");
+        const all = await listAgents();
         if (alive) {
           setBuiltinAgents(all.filter((a) => a.is_builtin === true));
         }

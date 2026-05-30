@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { createRemoteTerminalSession } from "../api/terminalApi";
 import {
   remoteCacheKey,
   remoteRebuildCallbacks,
@@ -57,17 +57,14 @@ export function useRemoteTerminalStrategy(
       rebuildCallbacks: remoteRebuildCallbacks,
       wrapperRefs: remoteWrapperRefs,
       createSession: async (cols: number, rows: number) => {
-        const session = await invoke<{ id: string }>(
-          "create_remote_terminal_session",
-          {
-            host,
-            port,
-            username,
-            auth,
-            projectPath,
-            cols,
-            rows,
-          },
+        const session = await createRemoteTerminalSession(
+          host,
+          port,
+          username,
+          auth,
+          projectPath,
+          cols,
+          rows,
         );
         return session.id;
       },

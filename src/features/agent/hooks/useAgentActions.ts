@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { setProjectIde } from "../../project/api/projectApi";
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
 import { useProjectStore } from '@/features/project/store';
@@ -204,7 +204,7 @@ export function useAgentActions({
       });
 
       // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错�?
-      invoke("set_project_ide", { projectId, ide: ideCommand }).catch(() => {
+      setProjectIde(projectId, ideCommand).catch(() => {
         // ignore: WSL/remote projects are not tracked by local project_manager
       });
 

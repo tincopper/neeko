@@ -1,9 +1,11 @@
 ﻿import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { getAgent } from "../../agent/api/agentApi";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalInputController } from "./terminalInput";
 import type { TerminalCache } from "./terminalTypes";
+import { closeTerminalSession, closeRemoteTerminalSession } from "../api/terminalApi";
 
 // =============================================================================
 // Factory — shared by local / WSL / remote cache modules
@@ -306,10 +308,7 @@ export async function switchAgentInWslTerminal(
   const resolved = wslBackend.resolveCacheKey(cacheKey) ?? cacheKey;
   const wrapper = wslWrapperRefs.get(resolved);
   if (!wrapper) {
-    const agent = await invoke<{ id: string; command: string; args: string[] }>(
-      "get_agent",
-      { agentId },
-    ).catch(() => null);
+    const agent = await getAgent(agentId).catch(() => null);
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
       launchAgentInWslTerminal(cacheKey, cmd, agent.args);
@@ -332,9 +331,7 @@ export async function switchAgentInWslTerminal(
   wslRebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    invoke("close_terminal_session", {
-      sessionId: oldCache.sessionId,
-    }).catch(() => {});
+    closeTerminalSession(oldCache.sessionId).catch(() => {});
   }
   oldCache?.term.dispose();
 }
@@ -397,10 +394,7 @@ export async function switchAgentInRemoteTerminal(
   const resolved = remoteBackend.resolveCacheKey(cacheKey) ?? cacheKey;
   const wrapper = remoteWrapperRefs.get(resolved);
   if (!wrapper) {
-    const agent = await invoke<{ id: string; command: string; args: string[] }>(
-      "get_agent",
-      { agentId },
-    ).catch(() => null);
+    const agent = await getAgent(agentId).catch(() => null);
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
       launchAgentInRemoteTerminal(cacheKey, cmd, agent.args);
@@ -423,9 +417,7 @@ export async function switchAgentInRemoteTerminal(
   remoteRebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    invoke("close_remote_terminal_session", {
-      sessionId: oldCache.sessionId,
-    }).catch(() => {});
+    closeRemoteTerminalSession(oldCache.sessionId).catch(() => {});
   }
   oldCache?.term.dispose();
 }

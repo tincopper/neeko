@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { createWslTerminalSession } from "../api/terminalApi";
 import {
   wslCacheKey,
   wslRebuildCallbacks,
@@ -36,12 +36,12 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       rebuildCallbacks: wslRebuildCallbacks,
       wrapperRefs: wslWrapperRefs,
       createSession: async (cols: number, rows: number) => {
-        const session = await invoke<{ id: string }>("create_wsl_terminal_session", {
+        const session = await createWslTerminalSession(
           distro,
           projectPath,
           cols,
           rows,
-        });
+        );
         return session.id;
       },
       resizeCmd: "resize_terminal",

@@ -6,7 +6,7 @@
 
 ## 概述
 
-所有自定义 Hooks 位于 `src/hooks/` 扁平目录中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** `invoke` 进行。
+所有自定义 Hooks 位于 `src/hooks/` 扁平目录或 `src/features/<domain>/hooks/` 中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** 进行，通过 `src/features/<domain>/api/<domain>Api.ts` 中的 API wrapper 封装。
 
 Hook 分两类：
 - **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
@@ -254,14 +254,32 @@ useAheadBehindSync();
 
 ### 所有数据通过 Tauri IPC 传输
 
-没有 HTTP 客户端、REST API 或 GraphQL。所有后端通信使用 Tauri 的 `invoke`：
+没有 HTTP 客户端、REST API 或 GraphQL。所有后端通信使用 Tauri 的 `invoke`，通过 **Feature API Wrapper** 封装：
 
 ```tsx
-import { invoke } from "@tauri-apps/api/core";
+import { listProjects } from "@/features/project/api/projectApi";
 
-// 带类型的 invoke 调用
-const result = await invoke<SomeType>("command_name", { param1, param2 });
+// 带类型的 API wrapper 调用
+const projects = await listProjects();
 ```
+
+API wrapper 文件位于 `src/features/<domain>/api/<domain>Api.ts`，集中封装 `invoke` 调用：
+
+```typescript
+// src/features/project/api/projectApi.ts
+import { invoke } from '@tauri-apps/api/core';
+import type { Project } from '../types';
+
+export function listProjects(): Promise<Project[]> {
+  return invoke<Project[]>('list_projects');
+}
+
+export function addProject(path: string, agentId?: string | null): Promise<Project> {
+  return invoke<Project>('add_project', { path, agentId });
+}
+```
+
+> ⚠️ Hooks 和组件**禁止**直接 import `invoke`，必须通过 API wrapper。ESLint 的 `no-restricted-imports` 规则强制执行此约束。
 
 ### 事件监听
 
@@ -298,7 +316,7 @@ export function useAppConfig() {
   // 挂载时加载（含旧字段迁移：fontSize → terminalFontSize）
   useEffect(() => {
     (async () => {
-      const saved = await invoke<Record<string, any>>("load_config");
+      const saved = await loadConfigApi();
       // 校验并与默认值合并
       setConfig({ ... });
     })();
@@ -307,7 +325,7 @@ export function useAppConfig() {
   // 保存时浅比较，避免不必要的写入
   const saveConfig = useCallback(async (next: AppConfig) => {
     setConfig(prev => { /* 浅比较 */ });
-    await invoke("save_config", { config: next });
+    await saveConfigApi(next);
   }, []);
 
   return { config, saveConfig };

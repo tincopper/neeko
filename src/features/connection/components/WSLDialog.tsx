@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { getWslDistros, getWslDirectories, getWslHomeDir } from "../api/connectionApi";
 import { WSLProject, WSLEntrySession } from "../../../types";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { useAppContext } from "@/shared/contexts/app-context";
@@ -68,7 +68,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
       try {
          setLoadingDistros(true);
          setError(null);
-         const result = await invoke<string[]>("get_wsl_distros");
+         const result = await getWslDistros();
          setDistros(result);
       } catch (err) {
          setError(`Failed to load WSL distros: ${err}`);
@@ -93,10 +93,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
 
       setLoadingSuggestions(true);
       try {
-         const dirs = await invoke<string[]>("get_wsl_directories", {
-            distro,
-            path: parentDir,
-         });
+        const dirs = await getWslDirectories(distro, parentDir);
          if (seq !== fetchSeq.current) return; // 过期，丢弃
          const base = parentDir === "/" ? "" : parentDir;
          const filtered = dirs
@@ -118,7 +115,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
       setSelectedDistro(distro);
       let homeDir = "/home";
       try {
-         homeDir = await invoke<string>("get_wsl_home_dir", { distro });
+         homeDir = await getWslHomeDir(distro);
       } catch { /* ignore */ }
       setInputPath(homeDir);
       setStep("select-path");

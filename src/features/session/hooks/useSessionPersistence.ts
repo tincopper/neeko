@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { saveSession as saveSessionApi } from "../api/sessionApi";
 import type { WSLEntrySession, RemoteEntrySession } from "../../../types";
 import type { SaveSessionFn } from "../../connection/hooks/useWslProjects";
 import { useConnectionStore } from '@/features/connection/store';
@@ -19,7 +19,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
    const persistWorktreeState = useCallback((next: Record<string, string>) => {
       if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
       wtSaveTimerRef.current = setTimeout(() => {
-         invoke("save_session", { worktreeState: next }).catch(() => { });
+         saveSessionApi([], [], null, next).catch(() => { });
       }, 500);
    }, []);
 
@@ -44,18 +44,14 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
       const snapshot = useConnectionStore.getState();
       const wsl = wslEntriesParam ?? snapshot.wslEntries;
       const remote = remoteEntriesParam ?? snapshot.remoteEntries;
-      await invoke("save_session", { wslEntries: wsl, remoteEntries: remote });
+      await saveSessionApi(wsl, remote);
    }, []);
 
    const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
    const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
       const snapshot = useConnectionStore.getState();
-      invoke("save_session", {
-         wslEntries: snapshot.wslEntries,
-         remoteEntries: snapshot.remoteEntries,
-         sidebarWidth: opts.sidebarWidth ?? null,
-      }).catch(console.error);
+      saveSessionApi(snapshot.wslEntries, snapshot.remoteEntries, opts.sidebarWidth ?? null).catch(console.error);
    }, []);
 
    const saveSidebarWidth = useCallback((width: number) => {

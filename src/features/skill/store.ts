@@ -1,6 +1,19 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import {
+  getManagedSkills,
+  deleteManagedSkill,
+  getSkillDocument as getSkillDocumentApi,
+  getTagGroups as getTagGroupsApi,
+  createTagGroup as createTagGroupApi,
+  deleteTagGroup as deleteTagGroupApi,
+  installLocalSkill as installLocalSkillApi,
+  scanLocalSkills as scanLocalSkillsApi,
+  createSkill as createSkillApi,
+  importDiscoveredSkill as importDiscoveredSkillApi,
+  getSkillsForTagGroup as getSkillsForTagGroupApi,
+} from './api/skillApi';
+import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
 import type {
   ManagedSkillDto,
   TagGroup,
@@ -78,7 +91,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   refreshSkills: async () => {
     try {
-      const skills = await invoke<ManagedSkillDto[]>('get_managed_skills');
+      const skills = await getManagedSkills();
       set({ skills, loading: false });
     } catch (e) {
       console.error('[skillStore] refreshSkills failed:', e);
@@ -88,7 +101,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   deleteSkill: async (id: string) => {
     try {
-      await invoke('delete_managed_skill', { skillId: id });
+      await deleteManagedSkill(id);
       set(state => ({ skills: state.skills.filter(s => s.id !== id) }));
     } catch (e) {
       console.error('[skillStore] deleteSkill failed:', e);
@@ -96,7 +109,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   },
 
   getSkillDocument: async (skillId: string): Promise<string> => {
-    const result = await invoke<{ content: string }>('get_skill_document', { skillId });
+    const result = await getSkillDocumentApi(skillId);
     return result.content;
   },
 
@@ -104,7 +117,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   refreshTagGroups: async () => {
     try {
-      const tagGroups = await invoke<TagGroup[]>('get_tag_groups');
+      const tagGroups = await getTagGroupsApi();
       set({ tagGroups });
     } catch (e) {
       console.error('[skillStore] refreshTagGroups failed:', e);
@@ -113,7 +126,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   createTagGroup: async (name: string, description?: string, icon?: string) => {
     try {
-      const group = await invoke<TagGroup>('create_tag_group', { name, description, icon });
+      const group = await createTagGroupApi(name, description, icon);
       set(state => ({ tagGroups: [...state.tagGroups, group] }));
     } catch (e) {
       console.error('[skillStore] createTagGroup failed:', e);
@@ -122,7 +135,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   deleteTagGroup: async (id: string) => {
     try {
-      await invoke('delete_tag_group_cmd', { id });
+      await deleteTagGroupApi(id);
       set(state => ({ tagGroups: state.tagGroups.filter(g => g.id !== id) }));
     } catch (e) {
       console.error('[skillStore] deleteTagGroup failed:', e);
@@ -137,7 +150,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     });
     if (!filePath) return;
     try {
-      await invoke('install_local_skill', { sourcePath: filePath });
+      await installLocalSkillApi(filePath);
       await get().refreshSkills();
     } catch (e) {
       console.error('[skillStore] installLocal failed:', e);
@@ -146,7 +159,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   scanSkills: async (): Promise<DiscoveredSkillDto[]> => {
     try {
-      return await invoke<DiscoveredSkillDto[]>('scan_local_skills');
+      return await scanLocalSkillsApi();
     } catch (e) {
       console.error('[skillStore] scanSkills failed:', e);
       return [];
@@ -155,7 +168,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   createSkill: async (name: string, content: string) => {
     try {
-      await invoke('create_skill', { name, skillContent: content });
+      await createSkillApi(name, content);
       await get().refreshSkills();
     } catch (e) {
       console.error('[skillStore] createSkill failed:', e);
@@ -164,7 +177,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   importDiscoveredSkill: async (discoveredPath: string, name?: string) => {
     try {
-      await invoke('import_discovered_skill', { discoveredPath, name });
+      await importDiscoveredSkillApi(discoveredPath, name);
       await get().refreshSkills();
     } catch (e) {
       console.error('[skillStore] importDiscoveredSkill failed:', e);
@@ -181,11 +194,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       return;
     }
     // 复用 unified_write_file_content，通过 transport.project_path 指定 central_path
-    await invoke('write_file_content', {
-      transport: { Local: { project_path: skill.central_path } },
-      filePath: SKILL_DOC_FILENAME,
+    await writeFileContentApi(
+      { Local: { project_path: skill.central_path } },
+      SKILL_DOC_FILENAME,
       content,
-    });
+    );
     // 刷新 skills 列表以同步 metadata（description 可能从 frontmatter 更新）
     await get().refreshSkills();
   },
@@ -194,7 +207,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   fetchSkillsForTagGroup: async (tagGroupId: string): Promise<ManagedSkillDto[]> => {
     try {
-      return await invoke<ManagedSkillDto[]>('get_skills_for_tag_group_cmd', { tagGroupId });
+      return await getSkillsForTagGroupApi(tagGroupId);
     } catch (e) {
       console.error('[skillStore] fetchSkillsForTagGroup failed:', e);
       return [];

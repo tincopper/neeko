@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Play } from "@/shared/components/icons"
-import { invoke } from "@tauri-apps/api/core";
+import { loadConfig } from "@/features/session/api/sessionApi";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import {
@@ -32,8 +32,8 @@ function OpenIdeButton() {
 
   // 加载 AppConfig（用于获取 customIdes / ideCommandOverrides）
   useEffect(() => {
-    invoke<AppConfig>("load_config")
-      .then((cfg) => setConfig(cfg))
+    loadConfig()
+      .then((cfg) => setConfig(cfg as unknown as AppConfig))
       .catch((e) => console.error("[OpenIdeButton] Failed to load config:", e));
   }, []);
 

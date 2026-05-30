@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { checkAgentsInstalled, listAgents, setProjectAgent } from "../api/agentApi";
+import { loadConfig as loadSessionConfig, saveConfig as saveSessionConfig } from "../../session/api/sessionApi";
 import AgentIcon from "./AgentIcon";
 import type { AppConfig, AgentConfig } from "../../../types";
 import { useDockStore } from '@/shared/store/dockStore';
@@ -10,7 +11,7 @@ interface AgentSelectorProps {
   projectId: string;
   currentAgentId: string | null;
   onSelectAgent: (agent: AgentConfig | null) => void;
-  /** WSL/SSH ÏîÄ¿´« true£¬Ìø¹ýºó¶Ë set_project_agent£¬ÓÉÍâ²¿»Øµ÷×ÔÐÐ³Ö¾Ã»¯ */
+  /** WSL/SSH ï¿½ï¿½Ä¿ï¿½ï¿½ trueï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ set_project_agentï¿½ï¿½ï¿½ï¿½ï¿½â²¿ï¿½Øµï¿½ï¿½ï¿½ï¿½Ð³Ö¾Ã»ï¿½ */
   skipBackendPersist?: boolean;
   onShowToast?: (message: string, type?: "info" | "error") => void;
 }
@@ -176,7 +177,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   useEffect(() => {
     if (!isAddMenuOpen || agents.length === 0) return;
     const agentIds = agents.map((a) => a.id);
-    invoke<Record<string, boolean>>("check_agents_installed", { agentIds })
+      checkAgentsInstalled(agentIds)
       .then((result) => {
         setInstalledMap(new Map(Object.entries(result)));
       })
@@ -187,7 +188,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   const loadAgents = async () => {
     try {
-      const agentList = await invoke<AgentConfig[]>("list_agents");
+      const agentList = await listAgents();
       setAgents(agentList);
     } catch (error) {
       console.error("Failed to load agents:", error);
@@ -196,11 +197,12 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   const loadConfig = async () => {
     try {
-      const saved = await invoke<AppConfig>("load_config");
+      const saved = await loadSessionConfig();
       if (saved && typeof saved === "object") {
-        setShowPresetBar(saved.agentSelectorShowPresetBar ?? true);
-        setCompactMode(saved.agentSelectorCompactMode ?? false);
-        setHiddenAgentIds(Array.isArray(saved.hiddenAgentIds) ? saved.hiddenAgentIds.filter((id: unknown) => typeof id === "string") : []);
+        const typed = saved as unknown as AppConfig;
+        setShowPresetBar(typed.agentSelectorShowPresetBar ?? true);
+        setCompactMode(typed.agentSelectorCompactMode ?? false);
+        setHiddenAgentIds(Array.isArray(typed.hiddenAgentIds) ? typed.hiddenAgentIds.filter((id: unknown) => typeof id === "string") : []);
       }
     } catch (e) {
       console.error("[AgentSelector] Failed to load config:", e);
@@ -211,9 +213,9 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   const saveConfigToBackend = useCallback(async (updates: Partial<AppConfig>) => {
     try {
-      const current = await invoke<AppConfig>("load_config");
-      const next = { ...current, ...updates };
-      await invoke("save_config", { config: next });
+      const current = await loadSessionConfig();
+      const next = { ...current, ...updates } as unknown as AppConfig;
+      await saveSessionConfig(next as unknown as Record<string, unknown>);
     } catch (e) {
       console.error("[AgentSelector] Failed to save config:", e);
     }
@@ -241,7 +243,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
     
     if (!skipBackendPersist) {
       try {
-        await invoke("set_project_agent", { projectId, agentId });
+        await setProjectAgent(projectId, agentId);
       } catch (error) {
         console.error("Failed to set agent:", error);
       }

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { readFileContent } from "../../file/api/fileApi";
 import type { FileChangedEvent, FileContent } from "../../../types";
 import { useEditorStore } from "../store";
 import { useProjectStore } from '@/features/project/store';
@@ -9,7 +9,7 @@ interface FileRefreshCommands {
 }
 
 /**
- * useFileTabRefresh â€?listens for file-changed events and refreshes open file tabs.
+ * useFileTabRefresh ï¿½?listens for file-changed events and refreshes open file tabs.
  * Accepts optional commands for WSL/Remote file reading (from useActiveProject).
  * Falls back to unified_read_file_content for local when commands is null.
  */
@@ -39,10 +39,10 @@ export function useFileTabRefresh(commands?: FileRefreshCommands | null) {
                 content = await commands.readFileContent(tab.data.filePath);
               } else {
                 const projectPath = useProjectStore.getState().projects.find(p => p.id === project_id)?.path ?? project_id;
-                content = await invoke<FileContent>("read_file_content", {
-                  transport: { Local: { project_path: projectPath } },
-                  filePath: tab.data.filePath,
-                });
+                content = await readFileContent(
+                  { Local: { project_path: projectPath } },
+                  tab.data.filePath,
+                );
               }
               useEditorStore.getState().updateTab(tabKey, tab.id, {
                 kind: "file",
