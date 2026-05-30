@@ -3,8 +3,15 @@
     clippy::todo,
     clippy::print_stdout,
     clippy::wildcard_imports,
+    clippy::unwrap_used,
     unused_must_use
 )]
+// Notes on lints omitted from this deny block:
+// - missing_docs: set to "warn" in Cargo.toml [lints.rust] instead; too many
+//   undocumented public items for a blanket deny — needs a dedicated doc sprint.
+// - rust_2018_idioms: set to "warn" in Cargo.toml (default for edition 2021);
+//   the elided_lifetimes_in_paths sub-lint fires ~46 times across the codebase,
+//   requiring a separate cleanup pass before promoting to deny.
 
 pub mod agent;
 mod app;

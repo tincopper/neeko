@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "ESLint rule levels — which rules should be error vs warn"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Clippy lint levels and lib.rs deny list"}
+{"file": ".eslintrc.cjs", "reason": "Current ESLint config to modify"}
+{"file": "src-tauri/src/lib.rs", "reason": "deny attributes to sync"}

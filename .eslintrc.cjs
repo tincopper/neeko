@@ -84,9 +84,9 @@ module.exports = {
             ],
           },
         ],
-        'import/no-cycle': 'warn',
+        'import/no-cycle': 'error',
         'import/order': [
-          'warn',
+          'error',
           {
             groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
             'newlines-between': 'always',
@@ -114,7 +114,7 @@ module.exports = {
         ],
         // .tsx files: PascalCase (React convention); exempt entry points
         'check-file/filename-naming-convention': [
-          'warn',
+          'error',
           {
             '**/*.tsx': 'PASCAL_CASE',
             'src/app/main.tsx': 'CAMEL_CASE',
@@ -202,9 +202,9 @@ module.exports = {
             ],
           },
         ],
-        'import/no-cycle': 'warn',
+        'import/no-cycle': 'error',
         'import/order': [
-          'warn',
+          'error',
           {
             groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
             'newlines-between': 'always',
@@ -232,7 +232,7 @@ module.exports = {
         ],
         // .ts files: camelCase; exempt Vite convention files
         'check-file/filename-naming-convention': [
-          'warn',
+          'error',
           {
             '**/*.ts': 'CAMEL_CASE',
             'src/app/vite-env.d.ts': 'KEBAB_CASE',

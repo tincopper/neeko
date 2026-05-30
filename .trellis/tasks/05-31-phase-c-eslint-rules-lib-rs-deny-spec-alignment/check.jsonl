@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify ESLint rule levels match spec"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Verify lib.rs deny list matches spec"}

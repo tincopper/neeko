@@ -243,7 +243,7 @@ Rust 通过**编译期模块可见性 + Clippy lint + rustfmt** 实现与前端 
 ```toml
 [lints.clippy]
 # --- 正确性（对应 §7.3 错误冒泡规范）---
-unwrap_used = "deny"                  # 禁止 unwrap，强制使用 ? 或 expect
+unwrap_used = "warn"                  # 禁止 unwrap（由 lib.rs deny 强制执行）
 expect_used = "warn"                  # 允许 expect 但提醒审查
 cast_possible_truncation = "deny"     # 禁止隐式数字截断
 cast_sign_loss = "deny"               # 禁止有符号→无符号隐式转换
@@ -277,16 +277,18 @@ redundant_else = "warn"
 ```rust
 // 全局禁止项（在 crate 根模块顶部声明）
 #![deny(
-    clippy::unwrap_used,
     clippy::dbg_macro,
     clippy::todo,
     clippy::print_stdout,
     clippy::wildcard_imports,
-    rust_2018_idioms,
-    unused_must_use,
-    missing_docs,
+    clippy::unwrap_used,
+    unused_must_use
 )]
 ```
+
+> **未能纳入 deny 的 lints**：
+> - `missing_docs`：当前设为 `warn`；代码库中大量公开项缺少文档，需要文档冲刺才能升为 deny。
+> - `rust_2018_idioms`：当前 edition 2021 默认已包含；`elided_lifetimes_in_paths` 子 lint 约 46 处违反，需单独清理。
 
 ### 4.4 模块可见性约定（落地方案：编译期强制 §7.1）
 
