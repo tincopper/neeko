@@ -9,7 +9,7 @@ import { Badge } from "@/ui/badge";
 import { useDockStore } from "@/shared/store/dockStore";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
-import { useEditorStore } from "@/features/editor/store";
+import { useEditorStore } from "@/app/editor/store";
 import {
   dockPanelRegistry,
   dockPanelIcons,

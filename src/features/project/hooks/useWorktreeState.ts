@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 

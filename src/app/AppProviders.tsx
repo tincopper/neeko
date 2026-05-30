@@ -8,7 +8,7 @@ import {
 } from "@/features/project/context";
 import {
    FileActionsProvider,
-} from "@/features/editor/file-actions-context";
+} from "@/app/editor/file-actions-context";
 import {
    WslProvider,
 } from "@/features/connection/contexts/wsl-context";
@@ -17,7 +17,7 @@ import {
 } from "@/features/connection/contexts/remote-context";
 import {
    EditorProvider,
-} from "@/features/editor/context";
+} from "@/app/editor/context";
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>["value"];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>["value"];

@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { setActiveProject, setViewTerminal } from "../api/projectApi";
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 import type { Tab } from "../../../types";
 import type { WorktreeItem } from "./useWorktreeState";
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';

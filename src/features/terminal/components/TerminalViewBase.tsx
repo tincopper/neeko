@@ -2,9 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
-import type { AgentConfig } from "../../../types";
+import { getAgent } from "../../agent/api/agentApi";
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 import { setupTerminalInput } from "./terminalInput";
 import { tryLoadWebgl } from "./terminalFactory";
@@ -37,7 +36,7 @@ export default React.memo(function TerminalViewBase({
     rebuildCallbacks,
     wrapperRefs,
     createSession,
-    resizeCmd,
+    resize,
     agentDelayMs,
     connectingMessage,
     fontSize,
@@ -84,11 +83,7 @@ export default React.memo(function TerminalViewBase({
         if (currentKeyRef.current !== cacheKey) return;
         entry.fitAddon.fit();
         if (entry.sessionId) {
-          invoke(resizeCmd, {
-            sessionId: entry.sessionId,
-            cols: entry.term.cols,
-            rows: entry.term.rows,
-          }).catch(() => {});
+          resize(entry.sessionId, entry.term.cols, entry.term.rows).catch(() => {});
         }
         entry.term.focus();
       });
@@ -168,7 +163,7 @@ export default React.memo(function TerminalViewBase({
             setTimeout(async () => {
               if (!entry.sessionId) return;
               try {
-                const agent = await invoke<AgentConfig>("get_agent", { agentId: tabAgentId });
+                const agent = await getAgent(tabAgentId);
                 const cmd = cmdOverride ?? agent.command;
                 const cmdStr = [cmd, ...agent.args].join(" ") + "\r";
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
@@ -199,11 +194,7 @@ export default React.memo(function TerminalViewBase({
           requestAnimationFrame(() => {
             if (currentKeyRef.current !== cacheKey) return;
             fitAddon.fit();
-            invoke(resizeCmd, {
-              sessionId,
-              cols: term.cols,
-              rows: term.rows,
-            }).catch(() => {});
+            resize(sessionId, term.cols, term.rows).catch(() => {});
             term.focus();
           });
         } catch (err) {
@@ -227,11 +218,7 @@ export default React.memo(function TerminalViewBase({
         if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
           prevCols = c.term.cols;
           prevRows = c.term.rows;
-          invoke(resizeCmd, {
-            sessionId: c.sessionId,
-            cols: c.term.cols,
-            rows: c.term.rows,
-          }).catch(() => {});
+          resize(c.sessionId, c.term.cols, c.term.rows).catch(() => {});
         }
       });
     });

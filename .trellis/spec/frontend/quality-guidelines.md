@@ -27,7 +27,7 @@ CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmi
 | `import/order` | warn | import 语句分组排序 |
 | `check-file/filename-naming-convention` | warn | `.tsx` 使用 PascalCase，`.ts` 使用 camelCase |
 | `check-file/folder-naming-convention` | error | 目录使用 kebab-case（`__tests__` 除外） |
-| `no-restricted-imports` | warn | 禁止在 `api/` 目录外直接 `import { invoke } from "@tauri-apps/api/core"` |
+| `no-restricted-imports` | error | 禁止在 `api/` 目录外直接 `import { invoke } from "@tauri-apps/api/core"` |
 | `prettier/prettier` | error | 代码格式统一 |
 
 注意：ESLint 10+ 移除了 `.eslintrc.*` 支持，仅支持 flat config。本项目使用 ESLint 8 以兼容插件生态。
@@ -95,7 +95,7 @@ import { listProjects } from "../api/projectApi";
 const projects = await listProjects();
 ```
 
-ESLint 的 `no-restricted-imports` 规则会检测并 warning 违反此约定的导入。
+ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此约定的导入。
 
 ---
 
@@ -163,7 +163,7 @@ try {
 - [ ] Tauri `invoke` 调用有错误处理
 - [ ] 领域模型类型从 `types.ts` 导入（没有本地重复声明）
 - [ ] 新的组件子目录有桶文件 `index.ts`
-- [ ] 没有在 `api/` 目录外直接 import `invoke`（使用对应域的 API wrapper）
+- [ ] 没有在 `api/` 目录外直接 import `invoke`（使用对应域的 API wrapper 或 `connectionApi` 再导出）
 - [ ] Tauri 事件监听器在 `useEffect` 返回函数中清理
 - [ ] 没有未使用的导入或变量（`noUnusedLocals` 强制执行）
 

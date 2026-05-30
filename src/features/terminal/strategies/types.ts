@@ -18,7 +18,8 @@ export interface TerminalStrategy {
   rebuildCallbacks: Map<string, () => void>;
   wrapperRefs: Map<string, HTMLDivElement>;
   createSession: (cols: number, rows: number, payload?: { command?: string; configId?: string }) => Promise<string>;
-  resizeCmd: string;
+  resize: (sessionId: string, cols: number, rows: number) => Promise<void>;
+  closeSession: (sessionId: string) => Promise<void>;
   agentDelayMs: number;
   connectingMessage: string;
   fontSize: number;

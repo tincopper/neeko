@@ -53,7 +53,7 @@ module.exports = {
               { target: './src/features/agent', from: './src/features', except: ['./agent'] },
               { target: './src/features/browser', from: './src/features', except: ['./browser'] },
               { target: './src/features/connection', from: './src/features', except: ['./connection'] },
-              { target: './src/features/editor', from: './src/features', except: ['./editor'] },
+              { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
               { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
               { target: './src/features/project', from: './src/features', except: ['./project'] },
@@ -62,7 +62,7 @@ module.exports = {
               { target: './src/features/skill', from: './src/features', except: ['./skill'] },
               { target: './src/features/task', from: './src/features', except: ['./task'] },
               { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
-              { target: './src/features', from: './src/app' },
+              { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
                 target: [
                   './src/shared/components',
@@ -95,7 +95,7 @@ module.exports = {
         ],
         // Block direct @tauri-apps/api/core imports outside api/ directories
         'no-restricted-imports': [
-          'warn',
+          'error',
           {
             paths: [
               {
@@ -171,7 +171,7 @@ module.exports = {
               { target: './src/features/agent', from: './src/features', except: ['./agent'] },
               { target: './src/features/browser', from: './src/features', except: ['./browser'] },
               { target: './src/features/connection', from: './src/features', except: ['./connection'] },
-              { target: './src/features/editor', from: './src/features', except: ['./editor'] },
+              { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
               { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
               { target: './src/features/project', from: './src/features', except: ['./project'] },
@@ -180,7 +180,7 @@ module.exports = {
               { target: './src/features/skill', from: './src/features', except: ['./skill'] },
               { target: './src/features/task', from: './src/features', except: ['./task'] },
               { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
-              { target: './src/features', from: './src/app' },
+              { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
                 target: [
                   './src/shared/components',
@@ -213,7 +213,7 @@ module.exports = {
         ],
         // Block direct @tauri-apps/api/core imports outside api/ directories
         'no-restricted-imports': [
-          'warn',
+          'error',
           {
             paths: [
               {
@@ -255,7 +255,7 @@ module.exports = {
     },
     // ── API files: allow @tauri-apps/api/core import ──────────────────────
     {
-      files: ['src/features/*/api/*.ts'],
+      files: ['src/features/*/api/*.ts', 'src/app/*/api/*.ts'],
       rules: {
         'no-restricted-imports': 'off',
       },

@@ -27,7 +27,7 @@ import {
    type SerializedSelection,
 } from "@/shared/utils/editorViewState";
 import InlineHtmlPreview from "./InlineHtmlPreview";
-import { readFileContent } from "../../file/api/fileApi";
+import { readFileContent } from "@/features/file/api/fileApi";
 
 type PreviewMode = "preview" | "source";
 

@@ -6,7 +6,7 @@ import { createTerminalSession } from "../api/terminalApi";
 import { getAgent } from "../../agent/api/agentApi";
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 import type { AgentConfig } from "../../../types";
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 import {
   terminalCache,
   destroyTerminalCache,

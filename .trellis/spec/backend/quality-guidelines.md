@@ -308,6 +308,16 @@ pnpm lint              # 运行所有质量检查（cargo fmt + clippy + eslint 
 
 部分 deny 级别的 lint（如 `cast_possible_truncation`、`wildcard_imports`）在现有代码中存在大量违反，当前使用 `#[allow(...)]` 逐处豁免。新代码应避免引入新违规。
 
+#### 已知 spec drift：`unwrap_used`
+
+| 来源 | 级别 | 说明 |
+|------|------|------|
+| 本 spec 期望 | `deny` | 禁止所有 `.unwrap()` 调用 |
+| `Cargo.toml` 实际 | `warn` | 因大量 `Mutex::lock().unwrap()` 遗留代码无法一次性清除 |
+| 状态 | ⚠️ 已确认 drift，渐进式清理中 | 新代码不得引入新的 `.unwrap()`；使用 `.expect("infallible: ...")` 或 `?` 传播 |
+
+Phase 4 已将大部分 production `.lock().unwrap()` 替换为 `.expect(...)`（见下文"禁止模式"中的内部锁例外规则）。待全部清理完成后可将级别升为 `deny`。
+
 注意：`missing_docs` 是 rustc lint，必须放在 `[lints.rust]` 而非 `[lints.clippy]` 段。
 
 ### `#![deny(...)]` 属性

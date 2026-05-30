@@ -1,5 +1,4 @@
-﻿import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+﻿import { emit } from "@tauri-apps/api/event";
 import { getAgent } from "../../agent/api/agentApi";
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
@@ -24,10 +23,8 @@ interface CacheEntry {
 export interface CacheBackendOptions {
   /** Cache key prefix, e.g. "wsl:", "remote:", "" */
   prefix: string;
-  /** Invoke command to close a session */
-  closeSessionCmd: string;
-  /** Invoke command to resize a session */
-  resizeSessionCmd: string;
+  /** Close a terminal session */
+  closeSession: (sessionId: string) => Promise<void>;
   /** Log prefix, e.g. "[WSL]", "[SSH]", "[Terminal]" */
   logPrefix: string;
   /** Whether to track executed agent keys (local only) */
@@ -37,7 +34,7 @@ export interface CacheBackendOptions {
 export function createTerminalCacheBackend<TCache extends CacheEntry>(
   options: CacheBackendOptions,
 ) {
-  const { prefix, closeSessionCmd, logPrefix, trackExecutedAgents } = options;
+  const { prefix, closeSession, logPrefix, trackExecutedAgents } = options;
 
   // ---- internal maps ----
   const cache = new Map<string, TCache>();
@@ -78,7 +75,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     entry.term.dispose();
 
     if (entry.sessionId) {
-      invoke(closeSessionCmd, { sessionId: entry.sessionId }).catch(() => {});
+      closeSession(entry.sessionId).catch(() => {});
     }
 
     cache.delete(key);
@@ -113,7 +110,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     entry.inputController?.dispose();
 
     if (entry.sessionId) {
-      invoke(closeSessionCmd, { sessionId: entry.sessionId }).catch(() => {});
+      closeSession(entry.sessionId).catch(() => {});
     }
 
     entry.term.dispose();
@@ -176,8 +173,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
 
 const backend = createTerminalCacheBackend<TerminalCache>({
   prefix: "",
-  closeSessionCmd: "close_terminal_session",
-  resizeSessionCmd: "resize_terminal",
+  closeSession: closeTerminalSession,
   logPrefix: "[Terminal]",
   trackExecutedAgents: true,
 });
@@ -226,8 +222,7 @@ export interface WslTerminalCache {
 
 const wslBackend = createTerminalCacheBackend<WslTerminalCache>({
   prefix: "wsl:",
-  closeSessionCmd: "close_terminal_session",
-  resizeSessionCmd: "resize_terminal",
+  closeSession: closeTerminalSession,
   logPrefix: "[WSL]",
 });
 
@@ -351,8 +346,7 @@ export interface RemoteTerminalCache {
 
 const remoteBackend = createTerminalCacheBackend<RemoteTerminalCache>({
   prefix: "remote:",
-  closeSessionCmd: "close_remote_terminal_session",
-  resizeSessionCmd: "resize_remote_terminal",
+  closeSession: closeRemoteTerminalSession,
   logPrefix: "[SSH]",
 });
 

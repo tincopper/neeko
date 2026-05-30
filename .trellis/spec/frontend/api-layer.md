@@ -54,6 +54,8 @@ export function removeProject(projectId: string): Promise<void> {
 ```
 
 > ⚠️ `invoke` **只允许**在 `api/` 目录内的文件导入。外部文件（hooks、components、store）必须通过 API wrapper 调用。
+>
+> **例外：`invoke` 再导出**。`src/features/connection/api/connectionApi.ts` 同时再导出 `invoke` 本身，供 `features/terminal/strategies/` 等非组件脚本文件（无法 import API wrapper）使用。此模式仅限确需直接调用 `invoke` 的策略/脚本层使用，且必须通过 `connectionApi` 这一已知中介再导出，不得随意新增 `invoke` 直接导入点。
 
 ### 命名约定
 
@@ -130,7 +132,7 @@ try {
 
 ```javascript
 'no-restricted-imports': [
-  'warn',
+  'error',
   {
     paths: [
       {
@@ -149,7 +151,9 @@ try {
 ],
 ```
 
-违反规则会触发 ESLint warning，提示使用对应的 API wrapper。
+违反规则会触发 ESLint error，提示使用对应的 API wrapper。
+
+> **注**：ESLint config 中的 `no-restricted-imports` 已同时为 `.tsx` 和 `.ts` override 块配置为 `'error'`。`api/` 目录（`src/features/*/api/*.ts` 及 `src/app/*/api/*.ts`）通过 override 豁免此约束。
 
 ---
 
@@ -199,8 +203,8 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/session/hooks/useSessionPersistence.ts` | `sessionApi` |
 | `features/connection/hooks/useWslActions.ts` | `projectApi`、`gitApi` |
 | `features/connection/hooks/useRemoteActions.ts` | `projectApi` |
-| `features/editor/hooks/useFileView.ts` | `fileApi` |
-| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `app/editor/hooks/useFileView.ts` | `fileApi` |
+| `app/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
 | `features/agent/hooks/useAgentActions.ts` | `projectApi` |
 | `features/agent/hooks/useAgentClickHandler.ts` | `agentApi` |
 | `features/browser/hooks/useBrowserPicker.ts` | `browserApi` |
@@ -235,12 +239,12 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/project/components/ProjectSettingsDialog.tsx` | `projectApi`、`agentApi` |
 | `features/project/components/ProjectItem.tsx` | `projectApi` |
 | `features/project/components/WorktreeList.tsx` | `gitApi`、`terminalApi` |
-| `features/editor/components/FileViewer.tsx` | `fileApi` |
-| `features/editor/components/HtmlPreview.tsx` | `fileApi` |
-| `features/editor/components/EditorGroupPane.tsx` | `agentApi` |
+| `app/editor/components/FileViewer.tsx` | `fileApi` |
+| `app/editor/components/HtmlPreview.tsx` | `fileApi` |
+| `app/editor/components/EditorGroupPane.tsx` | `agentApi` |
 | `features/agent/components/AgentBar.tsx` | `agentApi` |
 | `features/agent/components/AgentSelector.tsx` | `agentApi`、`sessionApi` |
-| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `app/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
 | `features/task/store.ts` | `taskApi`、`terminalApi` |
 | `features/skill/store.ts` | `skillApi`、`fileApi` |
 | `features/terminal/components/terminalLinks.ts` | `fileApi` |

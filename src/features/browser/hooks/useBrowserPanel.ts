@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/features/project/store';
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 import { useBrowserPicker } from './useBrowserPicker';

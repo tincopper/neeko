@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { openRemoteIde } from "../../project/api/projectApi";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../api/connectionApi";
 import {
   refreshRemoteTerminal,
   remoteCacheKey,

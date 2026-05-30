@@ -5,7 +5,7 @@ import {
   countPanes,
   updateSplitRatio,
   useSplitLayout,
-} from '@/features/editor/hooks/useSplitLayout';
+} from '@/app/editor/hooks/useSplitLayout';
 import type { PaneNode } from '@/types';
 
 describe('useSplitLayout helpers', () => {

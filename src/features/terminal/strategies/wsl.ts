@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { createWslTerminalSession } from "../api/terminalApi";
+import { createWslTerminalSession, resizeTerminal, closeTerminalSession } from "../api/terminalApi";
 import {
   wslCacheKey,
   wslRebuildCallbacks,
@@ -7,7 +7,7 @@ import {
   wslWrapperRefs,
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/features/editor/context';
+import { useEditorContext } from '@/app/editor/context';
 import { useWslContext } from '@/features/connection/contexts/wsl-context';
 import type { TerminalStrategy } from "./types";
 
@@ -44,7 +44,8 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
         );
         return session.id;
       },
-      resizeCmd: "resize_terminal",
+      resize: resizeTerminal,
+      closeSession: closeTerminalSession,
       agentDelayMs: 500,
       connectingMessage: `\x1b[33m[WSL] Connecting to ${distro}:${projectPath}...\x1b[0m\r\n`,
       fontSize: config.terminalFontSize,

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { createTerminalSession } from "../api/terminalApi";
+import { createTerminalSession, resizeTerminal, closeTerminalSession } from "../api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/features/editor/context';
+import { useEditorContext } from '@/app/editor/context';
 import {
   terminalCache,
   terminalRebuildCallbacks,
@@ -60,7 +60,8 @@ export function useLocalTerminalStrategy(
         );
         return session.id;
       },
-      resizeCmd: "resize_terminal",
+      resize: resizeTerminal,
+      closeSession: closeTerminalSession,
       agentDelayMs: 0,
       connectingMessage: `\x1b[33m[Terminal] Connecting to ${projectName ?? projectPath}...\x1b[0m\r\n`,
       fontSize: config.terminalFontSize,

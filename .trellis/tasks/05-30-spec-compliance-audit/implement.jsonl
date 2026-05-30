@@ -1,0 +1,5 @@
+{"file": ".trellis/tasks/05-30-spec-compliance-audit/research/compliance-report.md", "reason": "Full gap analysis — identifies specific files to move and import paths to update"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Where app/ layer sits and how to structure app/editor/"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "How api/ layer interacts with app/ features"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Import rules and ESLint zone patterns"}
+{"file": ".eslintrc.cjs", "reason": "Current ESLint zones — need to update for editor move"}

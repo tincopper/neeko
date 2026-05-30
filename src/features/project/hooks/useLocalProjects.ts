@@ -9,7 +9,7 @@ import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi"
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from "../../../types";
 import { useProjectStore } from '@/features/project/store';
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 import { getMacAppNameByCommand } from '@/shared/utils/idePresets';

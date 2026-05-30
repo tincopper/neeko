@@ -1,5 +1,5 @@
 import React from "react";
-import { useEditorContext } from '@/features/editor/context';
+import { useEditorContext } from '@/app/editor/context';
 import TerminalViewBase from "./TerminalViewBase";
 import { useWslTerminalStrategy } from "../strategies";
 

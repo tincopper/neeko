@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import { useFileView } from "@/features/editor/hooks/useFileView";
-import { useFileTabRefresh } from "@/features/editor/hooks/useFileTabRefresh";
-import { useTabManagement } from "@/features/editor/hooks/useTabManagement";
+import { useFileView } from "./useFileView";
+import { useFileTabRefresh } from "./useFileTabRefresh";
+import { useTabManagement } from "./useTabManagement";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";

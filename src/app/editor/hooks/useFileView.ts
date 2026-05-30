@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from "react";
-import { readDirTree, readFileContent, writeFileContent } from "../../file/api/fileApi";
+import { readDirTree, readFileContent, writeFileContent } from "@/features/file/api/fileApi";
 import type { FileNode, FileContent, Tab } from "../../../types";
 import { DEFAULT_TREE_DEPTH } from "../../../types/file";
 import type { ProjectCommands } from "../../../types/activeProject";

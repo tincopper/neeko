@@ -1,4 +1,4 @@
-import { readFileContent } from "../../file/api/fileApi";
+import { readFileContent } from "@/features/file/api/fileApi";
 import type { FileChangedEvent, FileContent } from "../../../types";
 import { useEditorStore } from "../store";
 import { useProjectStore } from '@/features/project/store';

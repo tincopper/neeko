@@ -509,3 +509,34 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     - 前端目录采用 **短横线命名 (kebab-case)**，如：`components/title-bar/`、`features/finance-report/`。
     - 前端文件统一使用 **小驼峰 (camelCase)** 命名，如：`titleBar.tsx`、`useFinanceStore.ts`、`getTransactions.ts`。
     - Rust 侧的方法、变量命名遵循 Rust 官方规范采用 **蛇形命名 (snake_case)**，如：`get_all_transactions_command`。
+
+---
+
+## 8. Neeko 领域映射（实际项目）
+
+> 以下为 Neeko 实际项目的域位置映射。`features/` 对应标准 Feature-Based 域，`app/` 对应应用层组合域。
+
+### 前端域位置
+
+| 业务域 | 位置 | 所属层 | 说明 |
+|--------|------|--------|------|
+| Agent 管理 | `src/features/agent/` | features | 标准 feature 域 |
+| 浏览器集成 | `src/features/browser/` | features | 标准 feature 域 |
+| 连接管理 (SSH/WSL) | `src/features/connection/` | features | 标准 feature 域 |
+| 文件操作 | `src/features/file/` | features | 标准 feature 域 |
+| Git 操作 | `src/features/git/` | features | 标准 feature 域 |
+| 项目管理 | `src/features/project/` | features | 标准 feature 域 |
+| 会话管理 | `src/features/session/` | features | 标准 feature 域 |
+| 设置 | `src/features/settings/` | features | 标准 feature 域 |
+| Skill 管理 | `src/features/skill/` | features | 标准 feature 域 |
+| Task 管理 | `src/features/task/` | features | 标准 feature 域 |
+| 终端 | `src/features/terminal/` | features | 标准 feature 域 |
+| 主题 | `src/features/theme/` | features | 标准 feature 域 |
+| **编辑器** | **`src/app/editor/`** | **app** | **原位于 features/，后迁至 app 层** |
+| 应用壳层 | `src/app/` | app | 组合各 feature 与 app 域 |
+
+### 迁移说明
+
+- 编辑器（Editor）原在 `src/features/editor/`，因架构重构迁至 `src/app/editor/`。此举使 `app/` 层承担部分领域责任，而非仅组合。这是对标准 Feature-Based 架构的有意偏离。
+- `app/` 下的域与 `features/` 下的域遵循相同的内部结构（`api/`、`hooks/`、`components/`、`types.ts`），并同样受 ESLint `no-restricted-imports` 约束。
+- `app/` 域可引用 `features/` 域，反之禁止。

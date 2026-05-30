@@ -4,7 +4,7 @@ import { useWslActions } from "@/features/connection/hooks/useWslActions";
 import { useConnectionStore } from "@/features/connection/store";
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useEditorStore } from "@/features/editor/store";
+import { useEditorStore } from "@/app/editor/store";
 import type { WSLEntrySession } from "@/types";
 import {
   switchAgentInWslTerminal,

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { createRemoteTerminalSession } from "../api/terminalApi";
+import { createRemoteTerminalSession, resizeRemoteTerminal, closeRemoteTerminalSession } from "../api/terminalApi";
 import {
   remoteCacheKey,
   remoteRebuildCallbacks,
@@ -7,7 +7,7 @@ import {
   remoteWrapperRefs,
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/features/editor/context';
+import { useEditorContext } from '@/app/editor/context';
 import type { AuthMethod } from "../../../types";
 import type { TerminalStrategy } from "./types";
 
@@ -68,7 +68,8 @@ export function useRemoteTerminalStrategy(
         );
         return session.id;
       },
-      resizeCmd: "resize_remote_terminal",
+      resize: resizeRemoteTerminal,
+      closeSession: closeRemoteTerminalSession,
       agentDelayMs: 800,
       connectingMessage: `\x1b[33m[SSH] Connecting to ${username}@${host}:${port}${projectPath}...\x1b[0m\r\n`,
       fontSize,

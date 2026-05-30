@@ -14,13 +14,24 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 
 ```
 src/
-├── App.tsx                  # 根组件壳层（TitleBar + AppProviders + AppLayout + AppModals）
-├── AppProviders.tsx         # Provider 组合层
-├── AppModals.tsx            # 模态框组合层
-├── main.tsx                 # 入口文件（ReactDOM.createRoot）
+├── app/                     # 应用壳层与组合层
+│   ├── App.tsx              # 根组件壳层（TitleBar + AppProviders + AppLayout + AppModals）
+│   ├── AppProviders.tsx     # Provider 组合层
+│   ├── AppModals.tsx        # 模态框组合层
+│   ├── main.tsx             # 入口文件（ReactDOM.createRoot）
+│   ├── vite-env.d.ts        # 资源模块声明
+│   ├── components/          # app 级复用组件
+│   ├── hooks/               # app 级共享 hooks
+│   └── editor/              # 编辑器域（原 features/editor，后迁至 app 层）
+│       ├── components/
+│       ├── hooks/
+│       ├── context.tsx
+│       ├── file-actions-context.tsx
+│       ├── store.ts
+│       └── types.ts
+│
 ├── tailwind.css             # Tailwind CSS v4 入口 + @theme + @layer components
 ├── types.ts                 # 共享 TypeScript 接口
-├── vite-env.d.ts            # 资源模块声明
 │
 ├── features/                # Feature 域（每个域独立状态、组件、逻辑、IPC 封装）
 │   ├── agent/               # Agent 管理域
@@ -32,8 +43,6 @@ src/
 │   │   └── api/browserApi.ts
 │   ├── connection/
 │   │   └── api/connectionApi.ts
-│   ├── editor/
-│   │   └── hooks/useFileView.ts  # 使用 fileApi
 │   ├── file/
 │   │   ├── api/fileApi.ts
 │   │   └── types.ts          # FileTransportKind, FileContent, FileNode
@@ -245,19 +254,20 @@ export { launchAgentInTerminal, switchAgentInTerminal } from "./terminalCommands
 
 | 新代码类型 | 位置 |
 |-----------|------|
-| 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件，或 `features/<domain>/components/` |
+| 新的领域组件组 | `components/<domain>/` 配合 `index.ts` 桶文件，或 `features/<domain>/components/`，或 `app/<domain>/components/` |
 | 独立组件 | `components/<Name>.tsx`（顶层） |
-| 自定义 Hook | `hooks/use<Name>.ts` 或 `features/<domain>/hooks/` |
+| 自定义 Hook | `hooks/use<Name>.ts` 或 `features/<domain>/hooks/` 或 `app/<domain>/hooks/` |
 | 新的全局基础状态分发 | `context/<domain>-context.tsx` |
 | 新的领域状态分发 | `contexts/<domain>-context.tsx` |
 | 纯工具函数 | `utils/<name>.ts` |
-| IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个 |
-| 共享类型 | `types.ts`，或 `features/<domain>/types.ts` |
+| IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个；或 `app/<domain>/api/<domain>Api.ts`（如 editor 域） |
+| 共享类型 | `types.ts`，或 `features/<domain>/types.ts`，或 `app/<domain>/types.ts` |
 | Feature 域入口 | `features/<domain>/` 域目录结构参考 features/agent/ |
+| App 域入口 | `app/<domain>/` 域目录结构参考 app/editor/ |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
-| 静态资源 | `assets/<category>/` |
+| 静态资源 | `assets/<category>` |
 
-> **IPC 封装规则**：所有 `invoke` 调用必须放在 `features/<domain>/api/` 目录下的文件中。禁止在其他位置直接 import `@tauri-apps/api/core`。ESLint 的 `no-restricted-imports` 规则强制执行此约束。
+> **IPC 封装规则**：所有 `invoke` 调用必须放在 `features/<domain>/api/` 或 `app/<domain>/api/` 目录下的文件中。禁止在其他位置直接 import `@tauri-apps/api/core`。ESLint 的 `no-restricted-imports` 规则强制执行此约束。
 
 ---
 

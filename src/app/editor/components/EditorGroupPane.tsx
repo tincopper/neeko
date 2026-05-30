@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from "react";
-import { checkAgentsInstalled } from "../../agent/api/agentApi";
+import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import TerminalView from '@/features/terminal/components/TerminalView';
 import WSLTerminalView from '@/features/terminal/components/WSLTerminalView';

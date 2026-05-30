@@ -4,4 +4,4 @@ export type {
   SplitPathStep,
   PaneNode,
   SplitState,
-} from "@/features/editor/types";
+} from "@/app/editor/types";

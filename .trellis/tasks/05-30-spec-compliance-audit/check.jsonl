@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Lint/typecheck rules to verify against"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Directory structure to verify"}

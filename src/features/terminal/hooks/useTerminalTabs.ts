@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../../../types";
 import { destroyTerminalCachesByPrefix } from "../components/terminalCache";
-import { useEditorStore } from '@/features/editor/store';
+import { useEditorStore } from '@/app/editor/store';
 
 function generateTabId(): string {
   return `tab_${crypto.randomUUID()}`;
