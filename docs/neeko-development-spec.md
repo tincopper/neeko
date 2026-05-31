@@ -560,67 +560,69 @@ export const useFinanceStore = create<FinanceState>((set) => ({
 
 ---
 
-## 8. Neeko 领域映射（实际项目）
+## 8. 后端分层规范
 
-> 以下为 Neeko 实际项目的域位置映射。`features/` 对应标准 Feature-Based 域，`app/` 对应应用层组合域。
+> 后端采用三层架构：**基础设施层 → 业务域层 → 命令层**。下层不允许引用上层。
 
-### 前端域位置
+### 8.1 基础设施层（`common/`）
 
-| 业务域 | 位置 | 所属层 | 说明 |
-|--------|------|--------|------|
-| Agent 管理 | `src/features/agent/` | features | 标准 feature 域 |
-| 浏览器集成 | `src/features/browser/` | features | 标准 feature 域 |
-| 连接管理 (SSH/WSL) | `src/features/connection/` | features | 标准 feature 域 |
-| 文件操作 | `src/features/file/` | features | 标准 feature 域 |
-| Git 操作 | `src/features/git/` | features | 标准 feature 域 |
-| 项目管理 | `src/features/project/` | features | 标准 feature 域 |
-| 会话管理 | `src/features/session/` | features | 标准 feature 域 |
-| 设置 | `src/features/settings/` | features | 标准 feature 域 |
-| Skill 管理 | `src/features/skill/` | features | 标准 feature 域 |
-| Task 管理 | `src/features/task/` | features | 标准 feature 域 |
-| 终端 | `src/features/terminal/` | features | 标准 feature 域 |
-| 主题 | `src/features/theme/` | features | 标准 feature 域 |
-| **编辑器** | **`src/app/editor/`** | **app** | **原位于 features/，后迁至 app 层** |
-| 应用壳层 | `src/app/` | app | 组合各 feature 与 app 域 |
+`src-tauri/src/common/` 为纯基础设施层，存放不包含 Tauri 上下文和业务逻辑的通用操作代码。
 
-### 后端域位置
+**准入规则**：
+- 模块必须不包含 `#[tauri::command]`
+- 模块不能引用任何业务域模块（project, session, skill...）
+- 模块内部可以自由互相引用
 
-| 模块 | 位置 | 所属层 | 说明 |
-|------|------|--------|------|
-| Git 操作 | `src-tauri/src/common/git/` | infrastructure | 纯操作层，无 Tauri 命令 |
-| Agent (LLM) | `src-tauri/src/common/agent/` | infrastructure | 纯调用层，无 Tauri 命令 |
-| 终端底层 | `src-tauri/src/common/terminal/` | infrastructure | PTY 实现，无 Tauri 命令 |
-| 连接传输层 | `src-tauri/src/common/connection/` | infrastructure | SSH/WSL 传输，无 Tauri 命令 |
-| 文件底层 | `src-tauri/src/common/file/` | infrastructure | 文件操作 + watcher，无 Tauri 命令 |
-| 通用工具 | `src-tauri/src/common/utils/` | infrastructure | 命令执行、字体、路径工具 |
-| 错误/日志/DB | `src-tauri/src/common/` | infrastructure | error, logger, db 基础设施 |
-| Git 命令入口 | `src-tauri/src/git/` | feature | 仅 commands.rs |
-| Agent 命令入口 | `src-tauri/src/agent/` | feature | commands.rs + manager.rs |
-| 终端管理 | `src-tauri/src/terminal/` | feature | commands.rs + services.rs + TerminalManager |
-| 连接管理 | `src-tauri/src/connection/` | feature | commands.rs + services.rs |
-| 文件命令入口 | `src-tauri/src/file/` | feature | 仅 commands.rs |
-| **项目管理** | `src-tauri/src/project/` | **business domain** | commands + services + ProjectManager |
-| 会话管理 | `src-tauri/src/session/` | business domain | commands + StorageManager |
-| Skill 管理 | `src-tauri/src/skill/` | business domain | commands + scanner + installer |
-| 主题管理 | `src-tauri/src/theme/` | business domain | commands + service |
-| 设置管理 | `src-tauri/src/settings/` | business domain | 仅 commands |
-| Task 管理 | `src-tauri/src/task/` | business domain | commands + services |
-| 浏览器控制 | `src-tauri/src/browser/` | feature | commands + uri_scheme |
+**可放入的类型**：
+- Git 底层操作（operations, transport, parsers）
+- LLM/Agent 纯函数调用（services/commit）
+- PTY 底层实现（remote）
+- SSH/WSL 传输层实现
+- 文件系统操作 + watcher
+- 通用工具函数（command 执行、字体、路径解析）
+- 跨域共享的数据类型（types）
+- 基础设施（error, logger, db）
 
-### 后端分层规则
+### 8.2 业务域层（根级模块）
 
-| 方向 | 允许 | 禁止 |
-|------|------|------|
-| `common/` 内部 | 自由引用 | — |
-| `common/` → 外部 | — | `common/` 不能引用业务域模块（project, session...） |
-| `business domain` → `common/` | ✅ 业务域可引用基础设施 | — |
-| `business domain` ↔ `business domain` | — | 业务域之间不能互相引用，通过 `app_state.rs` 编排 |
-| `feature` → `common/` | ✅ 命令入口可引用基础设施 | — |
+`src-tauri/src/` 根级模块存放 Tauri 命令入口和各域的业务逻辑。
 
-### 迁移说明
+**组织规则**：
+- `commands.rs`：Tauri 命令胶水层，必须委托 `common/` 或域内 services 完成实际逻辑
+- `services.rs` / `manager.rs`：业务逻辑编排层（如有），可引用 `common/`
+- 业务域之间**严禁互相引用**，跨域协作通过 `app_state.rs` 编排
 
-- 编辑器（Editor）原在 `src/features/editor/`，因架构重构迁至 `src/app/editor/`。此举使 `app/` 层承担部分领域责任，而非仅组合。这是对标准 Feature-Based 架构的有意偏离。
-- `app/` 下的域与 `features/` 下的域遵循相同的内部结构（`api/`、`hooks/`、`components/`、`types.ts`），并同样受 ESLint `no-restricted-imports` 约束。
-- `app/` 域可引用 `features/` 域，反之禁止。
-- **跨域状态下沉**：编辑器的 Zustand store（`useEditorStore`）从 `app/editor/store` 迁至 `shared/store/editorStore`，editor context（`EditorProvider`/`useEditorContext`）迁至 `shared/contexts/editorContext`，`useSplitLayout` 迁至 `shared/hooks/useSplitLayout`。此举解决 features 反向引用 app 的规范违反，使跨域共享状态位于 shared 层，features 可合法引用。
-- **后端基础设施分层**：`common/` 作为纯基础设施层从业务模块中拆分出来，git、agent、terminal、connection、file、utils 的基础操作迁入 `common/`（不含 commands）。各根级模块仅保留 commands 胶水层和业务逻辑（services, manager）。`common/` 内部自由引用，禁止引用业务域模块。
+**模块职责分配**：
+
+| 模块职责 | 基础设施（`common/`） | 业务域（根级） |
+|---------|----------------------|--------------|
+| Git | `common/git/` 操作实现 | `git/commands.rs` 命令入口 |
+| Agent | `common/agent/` LLM 调用 | `agent/commands.rs` + `manager.rs` |
+| Terminal | `common/terminal/` PTY 实现 | `terminal/commands.rs` + `services.rs` + `TerminalManager` |
+| Connection | `common/connection/` 传输层 | `connection/commands.rs` + `services.rs` |
+| File | `common/file/` watcher + services | `file/commands.rs` |
+| Project | — | `project/` 完整业务域（commands + services + ProjectManager） |
+| Session | — | `session/` 完整业务域 |
+| Skill | — | `skill/` 完整业务域 |
+| Theme | — | `theme/` 完整业务域 |
+| Settings | — | `settings/` 命令入口 |
+| Task | — | `task/` 完整业务域 |
+| Browser | — | `browser/` 命令入口 |
+
+### 8.3 依赖规则
+
+```
+common/ 内部       — 自由引用
+common/ → 外部     — ❌ 禁止
+业务域 → common/   — ✅ 允许
+业务域 ↔ 业务域    — ❌ 禁止（通过 app_state.rs 编排）
+core/ → common/    — ✅ 允许（core 为可选跨域编排层）
+```
+
+### 8.4 架构决策记录
+
+以下为对标准 Feature-Based 架构的有意偏离：
+
+- **编辑器在 app 层**：编辑器（Editor）因架构重构迁至 `src/app/editor/`，使 `app/` 层承担部分领域责任。`app/` 域可引用 `features/` 域，反之禁止。
+- **前端跨域状态下沉**：`useEditorStore`、`useEditorContext`、`useSplitLayout` 从 `app/editor/` 迁至 `shared/` 层，使 features 可合法引用。
+- **后端基础设施拆分**：`common/` 从业务模块中拆分，git/agent/terminal/connection/file/utils 的基础操作迁入 `common/`（不含 commands）。根级模块仅保留命令胶水层和业务逻辑。
