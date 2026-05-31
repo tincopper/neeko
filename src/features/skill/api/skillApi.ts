@@ -154,7 +154,12 @@ export function previewGitInstall(
   branch: string | null;
   available_skills: Array<{ name: string; path: string; description?: string }>;
 }> {
-  return invoke('preview_git_install', { cloneUrl, branch, subpath }) as any;
+  return invoke<{
+    id: string;
+    clone_url: string;
+    branch: string | null;
+    available_skills: Array<{ name: string; path: string; description?: string }>;
+  }>('preview_git_install', { cloneUrl, branch, subpath });
 }
 
 export function confirmGitInstall(

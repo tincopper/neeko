@@ -24,47 +24,52 @@ my-tauri-app/
 │   │   │   ├── db.rs               # 数据库连接池初始化、管理及 Migrations
 │   │   │   ├── logger.rs           # 全局日志追踪配置 (如 log/tracing 插件)
 │   │   │   └── error.rs            # 统一错误处理（自定义 AppError 并实现 Serialize）
-│   │   ├── finance/                # 💰 领域模块 A：财务记账模块
+│   │   ├── agent/                  # 💰 领域模块 A：Agent 管理
 │   │   │   ├── mod.rs              # 模块入口：声明并一键导出本领域的 Commands
 │   │   │   ├── model.rs            # 数据结构：纯领域模型/结构体 (与前端 TS 严格对齐)
-│   │   │   ├── services.rs         # 【可选】纯业务逻辑层：处理计算、校验、加密 (禁写 SQL)
-│   │   │   ├── repository.rs       # 【可选】持久层：负责底层 SQL 语句编写 (禁写 Tauri 上下文)
+│   │   │   ├── manager.rs          # 业务逻辑：Agent 生命周期管理
 │   │   │   └── commands.rs         # 接口层：对接前端，解包参数，调用 service 并返回
-│   │   ├── settings/               # ⚙️ 领域模块 B：通用设置模块
+│   │   ├── git/                    # 📊 领域模块 B：Git 操作
 │   │   │   ├── mod.rs
+│   │   │   ├── model.rs
+│   │   │   ├── commands.rs
 │   │   │   └── ...
 │   │   └── main.rs                 # 🚀 总入口：初始化 core，挂载所有业务领域的 Commands
-│   ├── Cargo.toml                  # Rust 依赖配置 (rusqlite, serde, r2d2, tauri 等)
+│   ├── Cargo.toml                  # Rust 依赖配置
 │   └── tauri.conf.json             # Tauri 2.0 窗体与核心能力权限配置
 │
 ├── src/                            # ⚛️ 前端 React 世界 (Feature-Based 架构)
-│   ├── app/                        # 组合各 feature 模块（不同 feature 之间不能互相引用，统一在 app 层拼接）
+│   ├── app/                        # 组合各 feature 模块（含 editor 子域）
+│   │   ├── App.tsx                 # 前端根组件 (挂载 Providers)
+│   │   ├── AppProviders.tsx        # 注入各 Context Provider
+│   │   └── editor/                 # 编辑器子域 (app/ 层域，含组件/hooks/types)
 │   ├── assets/                     # 全局静态资源 (图片、字体、全局样式)
-│   ├── components/                 # 全局通用基础 UI 组件 (不含业务逻辑，如 Button, TitleBar)
-│   ├── config/                     # 全局静态配置 (环境变量、全局常量定义)
 │   ├── features/                   # 🧩 核心：按业务功能领域拆分
-│   │   ├── finance/                # 📊 前端业务模块 A：财务记账 (与后端完全映射)
+│   │   ├── agent/                  # Agent 管理域 (与后端完全映射)
 │   │   │   ├── api/                # 接口调用：内部触发对应的 invoke('command')
-│   │   │   ├── components/         # 局部组件：TransactionList.tsx 等
-│   │   │   ├── stores/             # 局部状态：Zustand 驱动本页/本模块数据流
-│   │   │   ├── types/              # 类型定义：TypeScript 接口 (与 Rust Struct 对齐)
+│   │   │   ├── components/         # 局部组件
+│   │   │   ├── hooks/              # 局部 hooks
+│   │   │   ├── types/              # 类型定义 (与 Rust Struct 对齐)
 │   │   │   └── index.ts            # 模块唯一出口：桶文件 (Barrel File)
-│   │   └── settings/               # ⚙️ 前端业务模块 B：通用设置 (与后端完全映射)
-│   │       └── ...
+│   │   └── ...                     # 其余 feature 同此结构
+│   ├── shared/                     # 跨域共享层
+│   │   ├── components/             # 全局通用 UI 组件（AppToast 等）
+│   │   ├── contexts/               # 全局 Context Provider（含 editorContext）
+│   │   ├── hooks/                  # 全局通用 hooks（含 useSplitLayout）
+│   │   ├── store/                  # 跨域 Zustand store（含 editorStore）
+│   │   ├── types/                  # 全局通用类型
+│   │   └── utils/                  # 全局通用工具函数
+│   ├── ui/                         # shadcn/ui 设计系统原子组件
+│   ├── layout/                     # 布局骨架 (TitleBar, AppLayout)
+│   ├── types/                      # 全局 TypeScript 类型 (PaneNode 等)
 │   ├── lib/                        # 第三方库初始化
-│   │   └── tauri.ts                # 封装全局性的 Tauri 事件监听或底层特殊 API
-│   ├── routes/                     # 路由配置 (必须使用 HashRouter 或 MemoryRouter)
-│   ├── stores/                     # 全局状态管理 (仅存放跨领域的极少数状态，如主题模式)
-│   ├── layout/                     # 布局骨架 (无业务逻辑)
-│   ├── types/                      # 全局通用 TypeScript 类型定义
-│   ├── utils/                      # 全局通用工具函数 (日期格式化、高精度数字计算等)
-│   ├── App.tsx                     # 前端根组件 (挂载 Providers 与 Router)
-│   └── main.tsx                    # 前端入口文件
+│   └── styles/                     # 全局样式 (CSS 变量、主题)
 ├── package.json                    # 前端依赖配置
 └── tsconfig.json                   # TypeScript 配置文件
 ```
 
 > **结构原则：**
+> - 上图反映 Neeko 实际项目结构，与 §2 的通用模板不同。`shared/`、`ui/`、`layout/`、`styles/` 替换了根级 `components/`、`utils/`、`stores/` 等目录。
 > - 并非每个功能都需要所有这些文件夹，仅包含该功能必需的文件夹。
 > - 后端模块最小骨架为 `mod.rs` + `commands.rs`，根据复杂度按需扩展，不一定非要有 `services.rs` 和 `repository.rs`；
 > - 前端 feature 子目录按需创建，不强制预埋空白目录；
@@ -94,93 +99,74 @@ pnpm add -D \
   eslint-plugin-vitest
 ```
 
-### 3.2 `.eslintrc.cjs` 完整配置
+### 3.2 `.eslintrc.cjs` 完整配置（Neeko 实际配置）
 
 ```js
 module.exports = {
   root: true,
-  env: {
-    node: true,
-    es6: true,
-  },
+  env: { node: true, es6: true },
   parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
-  ignorePatterns: [
-    'node_modules/*',
-    'public/mockServiceWorker.js',
-    'generators/*',
-  ],
+  ignorePatterns: ['node_modules/*', 'dist/*', 'src-tauri/*'],
   extends: ['eslint:recommended'],
   plugins: ['check-file'],
   overrides: [
+    // ── .tsx files (React components) ──────────────────────────────────────
     {
-      files: ['**/*.ts', '**/*.tsx'],
+      files: ['**/*.tsx'],
       parser: '@typescript-eslint/parser',
-      settings: {
-        react: { version: 'detect' },
-        'import/resolver': {
-          typescript: {},
-        },
-      },
-      env: {
-        browser: true,
-        node: true,
-        es6: true,
-      },
+      env: { browser: true, node: true, es6: true },
       extends: [
         'eslint:recommended',
-        'plugin:import/errors',
-        'plugin:import/warnings',
-        'plugin:import/typescript',
+        'plugin:import/errors', 'plugin:import/warnings', 'plugin:import/typescript',
         'plugin:@typescript-eslint/recommended',
-        'plugin:react/recommended',
-        'plugin:react-hooks/recommended',
+        'plugin:react/recommended', 'plugin:react-hooks/recommended',
         'plugin:jsx-a11y/recommended',
         'plugin:prettier/recommended',
-        'plugin:testing-library/react',
-        'plugin:jest-dom/recommended',
-        'plugin:tailwindcss/recommended',
-        'plugin:vitest/legacy-recommended',
+        'plugin:testing-library/react', 'plugin:jest-dom/recommended',
+        'plugin:tailwindcss/recommended', 'plugin:vitest/legacy-recommended',
       ],
       rules: {
-        // --- 架构层：禁止跨 feature 引用（映射 spec §1.4 单向代码流 + §7.2 桶文件规范） ---
-        'import/no-restricted-paths': [
-          'error',
-          {
-            zones: [
-              // feature 之间互相隔离
-              { target: './src/features/auth', from: './src/features', except: ['./auth'] },
-              { target: './src/features/comments', from: './src/features', except: ['./comments'] },
-              { target: './src/features/discussions', from: './src/features', except: ['./discussions'] },
-              { target: './src/features/teams', from: './src/features', except: ['./teams'] },
-              { target: './src/features/users', from: './src/features', except: ['./users'] },
-              // feature 不允许引用 app（单向依赖：app → features）
-              { target: './src/features', from: './src/app' },
-              // shared 层不允许引用 features 或 app（单向依赖：shared → features/app）
-              {
-                target: ['./src/components', './src/hooks', './src/lib', './src/types', './src/utils'],
-                from: ['./src/features', './src/app'],
-              },
-            ],
-          },
-        ],
-        // --- 禁止循环引用（映射 spec §1.3 单向依赖流） ---
+        // 架构层：禁止跨 feature 引用 + 禁止 app→features 反向
+        'import/no-restricted-paths': ['error', {
+          zones: [
+            { target: './src/features/agent',      from: './src/features', except: ['./agent'] },
+            { target: './src/features/browser',    from: './src/features', except: ['./browser'] },
+            { target: './src/features/connection', from: './src/features', except: ['./connection'] },
+            { target: './src/app/editor',           from: './src/app',      except: ['./editor'] },
+            { target: './src/features/file',       from: './src/features', except: ['./file'] },
+            { target: './src/features/git',        from: './src/features', except: ['./git', './file'] },
+            { target: './src/features/project',    from: './src/features', except: ['./project'] },
+            { target: './src/features/session',    from: './src/features', except: ['./session'] },
+            { target: './src/features/settings',   from: './src/features', except: ['./settings'] },
+            { target: './src/features/skill',      from: './src/features', except: ['./skill'] },
+            { target: './src/features/task',       from: './src/features', except: ['./task'] },
+            { target: './src/features/terminal',   from: './src/features', except: ['./terminal'] },
+            { target: './src/features',             from: './src/app',      except: ['./app/editor'] },
+            { target: ['./src/shared/components', './src/shared/hooks',
+                       './src/shared/store',   './src/shared/types',
+                       './src/shared/utils',   './src/shared/contexts',
+                       './src/lib', './src/types', './src/ui', './src/layout'],
+              from: ['./src/features', './src/app'] },
+          ],
+        }],
         'import/no-cycle': 'error',
-        // --- 导入顺序强制分组排序 ---
-        'import/order': [
-          'error',
-          {
-            groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
-            'newlines-between': 'always',
-            alphabetize: { order: 'asc', caseInsensitive: true },
-          },
-        ],
-        // --- 文件命名：camelCase；目录命名：kebab-case ---
-        'check-file/filename-naming-convention': [
-          'error',
-          { '**/*.{ts,tsx}': 'CAMEL_CASE' },
+        'import/order': ['error', {
+          groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
+          'newlines-between': 'always',
+          alphabetize: { order: 'asc', caseInsensitive: true },
+        }],
+        // API 层隔离：禁止在 api/ 目录外直接调用 invoke
+        'no-restricted-imports': ['error', {
+          paths: [{ name: '@tauri-apps/api/core', importNames: ['invoke'],
+                    message: 'Use feature-specific API wrapper instead of invoke directly.' }],
+          patterns: [{ group: ['@tauri-apps/api/core'],
+                       message: 'Use feature-specific API wrapper instead of @tauri-apps/api/core.' }],
+        }],
+        // .tsx 文件：PascalCase（React 组件约定）
+        'check-file/filename-naming-convention': ['error',
+          { '**/*.tsx': 'PASCAL_CASE', 'src/app/main.tsx': 'CAMEL_CASE' },
           { ignoreMiddleExtensions: true },
         ],
-        // --- 其他规则 ---
         'import/default': 'off',
         'import/no-named-as-default-member': 'off',
         'import/no-named-as-default': 'off',
@@ -196,16 +182,63 @@ module.exports = {
         'prettier/prettier': ['error', {}, { usePrettierrc: true }],
       },
     },
-    // 目录命名：kebab-case（__tests__ 目录除外）
+    // ── .ts files (hooks, utils, types, stores) ────────────────────────────
+    {
+      files: ['**/*.ts'],
+      parser: '@typescript-eslint/parser',
+      env: { browser: true, node: true, es6: true },
+      extends: [
+        'eslint:recommended',
+        'plugin:import/errors', 'plugin:import/warnings', 'plugin:import/typescript',
+        'plugin:@typescript-eslint/recommended',
+        'plugin:react-hooks/recommended',
+        'plugin:prettier/recommended',
+        'plugin:vitest/legacy-recommended',
+      ],
+      rules: {
+        'import/no-restricted-paths': ['error', {
+          zones: [/* 同 .tsx 覆盖的 zones — 保持同步 */],
+        }],
+        'import/no-cycle': 'error',
+        'import/order': ['error', {
+          groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object'],
+          'newlines-between': 'always',
+          alphabetize: { order: 'asc', caseInsensitive: true },
+        }],
+        'no-restricted-imports': ['error', {
+          paths: [{ name: '@tauri-apps/api/core', importNames: ['invoke'],
+                    message: 'Use feature-specific API wrapper instead of invoke directly.' }],
+          patterns: [{ group: ['@tauri-apps/api/core'],
+                       message: 'Use feature-specific API wrapper instead of @tauri-apps/api/core.' }],
+        }],
+        // .ts 文件：camelCase
+        'check-file/filename-naming-convention': ['error',
+          { '**/*.ts': 'CAMEL_CASE', 'src/app/vite-env.d.ts': 'KEBAB_CASE' },
+          { ignoreMiddleExtensions: true },
+        ],
+        'import/default': 'off',
+        'import/no-named-as-default-member': 'off',
+        'import/no-named-as-default': 'off',
+        'react/prop-types': 'off',
+        'linebreak-style': ['error', 'unix'],
+        '@typescript-eslint/no-unused-vars': ['error'],
+        '@typescript-eslint/explicit-function-return-type': ['off'],
+        '@typescript-eslint/explicit-module-boundary-types': ['off'],
+        '@typescript-eslint/no-empty-function': ['off'],
+        '@typescript-eslint/no-explicit-any': ['off'],
+        'prettier/prettier': ['error', {}, { usePrettierrc: true }],
+      },
+    },
+    // ── API 文件豁免：允许 @tauri-apps/api/core ──────────────────────────
+    {
+      files: ['src/features/*/api/*.ts', 'src/app/*/api/*.ts'],
+      rules: { 'no-restricted-imports': 'off' },
+    },
+    // ── 目录命名：kebab-case ───────────────────────────────────────────────
     {
       plugins: ['check-file'],
       files: ['src/**/!(__tests__)/*'],
-      rules: {
-        'check-file/folder-naming-convention': [
-          'error',
-          { '**/*': 'KEBAB_CASE' },
-        ],
-      },
+      rules: { 'check-file/folder-naming-convention': ['error', { 'src/**/!(__tests__)/**': 'KEBAB_CASE' }] },
     },
   ],
 };
@@ -221,7 +254,7 @@ module.exports = {
 | `check-file/filename-naming-convention` | 文件命名强制 camelCase | §7.5 命名空间规范 |
 | `check-file/folder-naming-convention` | 目录命名强制 kebab-case | §7.5 命名空间规范 |
 
-> **命名策略**：ESLint `check-file` 文件级 `CAMEL_CASE`，目录级 `KEBAB_CASE`。与 §7.5 保持一致。
+> **命名策略**：ESLint `check-file` 文件级 `.tsx`→`PASCAL_CASE`、`.ts`→`CAMEL_CASE`，目录级 `KEBAB_CASE`。与 §7.5 保持一致。
 
 ---
 
@@ -445,7 +478,7 @@ pub use commands::__cmd__get_all_transactions_command; // 供 main.rs 挂载
 
 ---
 
-### 4.2 前端 React 侧按业务功能实现
+### 6.2 前端 React 侧按业务功能实现
 
 #### ① 接口调用层 (`features/finance/api/getTransactions.ts`)
 
@@ -508,7 +541,7 @@ export const useFinanceStore = create<FinanceState>((set) => ({
 
 5. **命名空间与规范**：
     - 前端目录采用 **短横线命名 (kebab-case)**，如：`components/title-bar/`、`features/finance-report/`。
-    - 前端文件统一使用 **小驼峰 (camelCase)** 命名，如：`titleBar.tsx`、`useFinanceStore.ts`、`getTransactions.ts`。
+    - 前端文件按类型区分：`.tsx` 文件使用 **大驼峰 (PascalCase)**（React 组件约定，如 `TitleBar.tsx`、`AppLayout.tsx`），`.ts` 文件使用 **小驼峰 (camelCase)**（如 `useFinanceStore.ts`、`getTransactions.ts`）。
     - Rust 侧的方法、变量命名遵循 Rust 官方规范采用 **蛇形命名 (snake_case)**，如：`get_all_transactions_command`。
 
 ---
