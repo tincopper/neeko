@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 import ProjectGuidePage from "@/features/project/components/ProjectGuidePage";
-import EditorGroupLayout from "@/app/editor/components/EditorGroupLayout";
+import EditorGroupLayout from "@/features/editor/components/EditorGroupLayout";
 import { Button } from "@/ui/button";
 import { useAppContext } from "@/shared/contexts";
 import { useProjectActionsContext } from "@/features/project/context";

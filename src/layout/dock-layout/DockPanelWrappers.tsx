@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { revealInFileManager, readDirTree } from "@/features/file/api/fileApi";
 import { listen } from "@tauri-apps/api/event";
 import { useAppContext } from "@/shared/contexts";
-import { useFileActionsContext } from "@/app/editor/FileActionsContext";
+import { useFileActionsContext } from "@/features/editor/FileActionsContext";
 import { useFileStore } from "@/features/file/store";
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";

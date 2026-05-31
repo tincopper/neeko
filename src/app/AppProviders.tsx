@@ -8,7 +8,7 @@ import {
 } from "@/features/project/context";
 import {
    FileActionsProvider,
-} from "@/app/editor/FileActionsContext";
+} from "@/features/editor/FileActionsContext";
 import {
    WslProvider,
 } from "@/features/connection/contexts/WslContext";

@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod services;
 
 // Re-export from common::git for backward compatibility
 pub use crate::common::git::cache::*;

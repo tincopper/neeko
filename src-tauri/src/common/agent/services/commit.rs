@@ -1,1 +1,1 @@
-pub use crate::core::services::commit::*;
+pub use crate::git::services::commit::*;

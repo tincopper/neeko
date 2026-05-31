@@ -20,14 +20,14 @@ import { useRemoteAuthActions } from "@/features/connection/hooks/useRemoteAuthA
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useFileView } from "@/app/editor/hooks/useFileView";
+import { useFileView } from "@/features/editor/hooks/useFileView";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
-import { useFileTabRefresh } from "@/app/editor/hooks/useFileTabRefresh";
+import { useFileTabRefresh } from "@/features/editor/hooks/useFileTabRefresh";
 import { useAppLayoutProps } from "@/layout/hooks/useAppLayoutProps";
 import { useTitleBarProps } from "@/layout/hooks/useTitleBarProps";
 import { useProjectSelection } from "@/features/project/hooks/useProjectSelection";
-import { useTabManagement } from "@/app/editor/hooks/useTabManagement";
+import { useTabManagement } from "@/features/editor/hooks/useTabManagement";
 import { useAgentClickHandler } from "@/features/agent/hooks/useAgentClickHandler";
 import { useUnifiedProjectList } from "@/features/project/hooks/useUnifiedProjectList";
 import { useCrossTypeSelection } from "@/features/project/hooks/useCrossTypeSelection";

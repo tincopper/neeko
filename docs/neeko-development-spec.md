@@ -52,10 +52,9 @@ my-tauri-app/
 │   └── tauri.conf.json             # Tauri 2.0 窗体与核心能力权限配置
 │
 ├── src/                            # ⚛️ 前端 React 世界 (Feature-Based 架构)
-│   ├── app/                        # 组合各 feature 模块（含 editor 子域）
+│   ├── app/                        # 组合各 feature 模块
 │   │   ├── App.tsx                 # 前端根组件 (挂载 Providers)
 │   │   ├── AppProviders.tsx        # 注入各 Context Provider
-│   │   └── editor/                 # 编辑器子域 (app/ 层域，含组件/hooks/types)
 │   ├── assets/                     # 全局静态资源 (图片、字体、全局样式)
 │   ├── features/                   # 🧩 核心：按业务功能领域拆分
 │   │   ├── agent/                  # Agent 管理域 (与后端完全映射)
@@ -64,6 +63,7 @@ my-tauri-app/
 │   │   │   ├── hooks/              # 局部 hooks
 │   │   │   ├── types/              # 类型定义 (与 Rust Struct 对齐)
 │   │   │   └── index.ts            # 模块唯一出口：桶文件 (Barrel File)
+│   │   ├── editor/                 # 编辑器子域 (标准 feature 域，含组件/hooks/types)
 │   │   └── ...                     # 其余 feature 同此结构
 │   ├── shared/                     # 跨域共享层
 │   │   ├── components/             # 全局通用 UI 组件（AppToast 等）
@@ -623,6 +623,5 @@ core/ → common/    — ✅ 允许（core 为可选跨域编排层）
 
 以下为对标准 Feature-Based 架构的有意偏离：
 
-- **编辑器在 app 层**：编辑器（Editor）因架构重构迁至 `src/app/editor/`，使 `app/` 层承担部分领域责任。`app/` 域可引用 `features/` 域，反之禁止。
-- **前端跨域状态下沉**：`useEditorStore`、`useEditorContext`、`useSplitLayout` 从 `app/editor/` 迁至 `shared/` 层，使 features 可合法引用。
+- **前端跨域状态下沉**：`useEditorStore`、`useEditorContext`、`useSplitLayout` 从 `features/editor/` 迁至 `shared/` 层，解决 features 之间的反向依赖。
 - **后端基础设施拆分**：`common/` 从业务模块中拆分，git/agent/terminal/connection/file/utils 的基础操作迁入 `common/`（不含 commands）。根级模块仅保留命令胶水层和业务逻辑。

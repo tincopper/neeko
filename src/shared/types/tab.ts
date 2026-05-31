@@ -8,4 +8,4 @@ export type {
   TabData,
   Tab,
   ProjectTabs,
-} from "@/app/editor/types";
+} from "@/features/editor/types";

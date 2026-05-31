@@ -2,5 +2,5 @@ export type {
   EditorGroupId,
   EditorGroupState,
   EditorSplitLayout,
-} from "@/app/editor/types";
-export { createDefaultEditorLayout, findGroupIdForTab, oppositeGroup } from "@/app/editor/types";
+} from "@/features/editor/types";
+export { createDefaultEditorLayout, findGroupIdForTab, oppositeGroup } from "@/features/editor/types";
