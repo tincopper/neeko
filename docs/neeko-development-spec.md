@@ -57,13 +57,13 @@ my-tauri-app/
 │   │   ├── contexts/               # 全局 Context Provider（含 editorContext）
 │   │   ├── hooks/                  # 全局通用 hooks（含 useSplitLayout）
 │   │   ├── store/                  # 跨域 Zustand store（含 editorStore）
-│   │   ├── types/                  # 全局通用类型
 │   │   └── utils/                  # 全局通用工具函数
 │   ├── ui/                         # shadcn/ui 设计系统原子组件
 │   ├── layout/                     # 布局骨架 (TitleBar, AppLayout)
 │   ├── types/                      # 全局 TypeScript 类型 (PaneNode 等)
 │   ├── lib/                        # 第三方库初始化
-│   └── styles/                     # 全局样式 (CSS 变量、主题)
+│   ├── styles/                     # 全局样式 (CSS 变量、主题)
+│   └── main.tsx                    # 前端入口文件
 ├── package.json                    # 前端依赖配置
 └── tsconfig.json                   # TypeScript 配置文件
 ```
