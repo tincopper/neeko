@@ -28,7 +28,7 @@ export type TerminalEntry =
 
 export type ProjectType = "local" | "wsl" | "remote";
 
-export interface UnifiedProject {
+export interface ProjectData {
   type: ProjectType;
   id: string;
   name: string;
@@ -72,7 +72,7 @@ export type ConnectionContext =
   | WslConnectionContext
   | RemoteConnectionContext;
 
-export interface UnifiedProjectView {
+export interface ProjectView {
   readonly type: ProjectType;
   readonly id: string;
   readonly name: string;
@@ -128,7 +128,7 @@ export interface ProjectCapabilities {
 }
 
 export interface ActiveProjectContext {
-  project: UnifiedProjectView | null;
+  project: ProjectView | null;
   commands: ProjectCommands | null;
   capabilities: ProjectCapabilities | null;
   connectionContext: ConnectionContext | null;

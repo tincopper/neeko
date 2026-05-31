@@ -1,19 +1,19 @@
 import type { RemoteEntrySession } from "@/features/connection/types";
-import type { UnifiedProject } from "@/features/project/types";
+import type { ProjectData } from "@/features/project/types";
 
 export interface WslProjectAdapter {
   type: "wsl";
   distro: string;
-  project: UnifiedProject;
+  project: ProjectData;
 }
 
 export interface RemoteProjectAdapter {
   type: "remote";
   entry: RemoteEntrySession;
-  project: UnifiedProject;
+  project: ProjectData;
 }
 
 export type ActiveProjectAdapter =
-  | { type: "local"; project: UnifiedProject }
+  | { type: "local"; project: ProjectData }
   | WslProjectAdapter
   | RemoteProjectAdapter;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import type { AheadBehind, CommitResult } from '@/shared/types';
 import type {
-  UnifiedProjectView,
+  ProjectView,
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
@@ -19,7 +19,7 @@ const TIMEOUT_LOCAL_MS = 30_000;  // discard, stage, commit
 const TIMEOUT_NETWORK_MS = 60_000; // fetch, pull, push
 
 interface GitCommitPanelProps {
-  project: UnifiedProjectView;
+  project: ProjectView;
   commands: ProjectCommands;
   capabilities: ProjectCapabilities;
   onRefreshGit: () => Promise<void>;

@@ -59,7 +59,7 @@ function fileTransportArg(t: GitTransportKind): Record<string, unknown> {
   }
 }
 
-export function createUnifiedCommands(transport: GitTransportKind): ProjectCommands {
+export function createProjectCommands(transport: GitTransportKind): ProjectCommands {
   const tp = () => transportArg(transport);
 
   return {

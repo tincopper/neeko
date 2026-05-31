@@ -5,20 +5,20 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { createUnifiedCommands } from "../commandFactory";
+import { createProjectCommands } from "../commandFactory";
 import type { GitTransportKind } from "../commandFactory";
 
 // ────────────────────────────────────────────────────────────────────────────
-// createUnifiedCommands — Local
+// createProjectCommands — Local
 // ────────────────────────────────────────────────────────────────────────────
 
-describe("createUnifiedCommands (Local)", () => {
+describe("createProjectCommands (Local)", () => {
   const transport: GitTransportKind = {
     type: "Local",
     projectId: "proj-123",
     projectPath: "/home/user/project",
   };
-  const commands = createUnifiedCommands(transport);
+  const commands = createProjectCommands(transport);
   const mockInvoke = vi.mocked(invoke);
   const tp = () => ({ transport: { Local: { project_path: "/home/user/project" } } });
 
@@ -227,16 +227,16 @@ describe("createUnifiedCommands (Local)", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// createUnifiedCommands — WSL
+// createProjectCommands — WSL
 // ────────────────────────────────────────────────────────────────────────────
 
-describe("createUnifiedCommands (WSL)", () => {
+describe("createProjectCommands (WSL)", () => {
   const transport: GitTransportKind = {
     type: "Wsl",
     distro: "Ubuntu-22.04",
     projectPath: "/home/user/project",
   };
-  const commands = createUnifiedCommands(transport);
+  const commands = createProjectCommands(transport);
   const mockInvoke = vi.mocked(invoke);
   const tp = () => ({ transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } } });
 
@@ -340,10 +340,10 @@ describe("createUnifiedCommands (WSL)", () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// createUnifiedCommands — Remote
+// createProjectCommands — Remote
 // ────────────────────────────────────────────────────────────────────────────
 
-describe("createUnifiedCommands (Remote)", () => {
+describe("createProjectCommands (Remote)", () => {
   const transport: GitTransportKind = {
     type: "Remote",
     host: "192.168.1.100",
@@ -352,7 +352,7 @@ describe("createUnifiedCommands (Remote)", () => {
     auth: { Password: "secret" },
     projectPath: "/home/user/project",
   };
-  const commands = createUnifiedCommands(transport);
+  const commands = createProjectCommands(transport);
   const mockInvoke = vi.mocked(invoke);
   const tp = () => ({
     transport: {

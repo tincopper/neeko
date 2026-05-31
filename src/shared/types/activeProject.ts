@@ -4,7 +4,7 @@ export type {
   WslConnectionContext,
   RemoteConnectionContext,
   ConnectionContext,
-  UnifiedProjectView,
+  ProjectView,
   ProjectCommands,
   ProjectCapabilities,
   ActiveProjectContext,

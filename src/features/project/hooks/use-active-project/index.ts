@@ -11,8 +11,8 @@ import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { getCapabilities } from "./capabilities";
-import { toLocalUnifiedView, toWslUnifiedView, toRemoteUnifiedView } from "./adapters";
-import { createUnifiedCommands } from "./commandFactory";
+import { toLocalView, toWslView, toRemoteView } from "./adapters";
+import { createProjectCommands } from "./commandFactory";
 import type { GitTransportKind } from "./commandFactory";
 
 /**
@@ -46,7 +46,7 @@ export function useActiveProject(): ActiveProjectContext {
         auth: savedAuth,
         projectPath: project.path,
       };
-      return createUnifiedCommands(transport);
+      return createProjectCommands(transport);
     }
     if (activeWslProject !== null) {
       const transport: GitTransportKind = {
@@ -54,7 +54,7 @@ export function useActiveProject(): ActiveProjectContext {
         distro: activeWslProject.distro,
         projectPath: activeWslProject.project.path,
       };
-      return createUnifiedCommands(transport);
+      return createProjectCommands(transport);
     }
     if (activeProject !== null) {
       const transport: GitTransportKind = {
@@ -62,7 +62,7 @@ export function useActiveProject(): ActiveProjectContext {
         projectId: activeProject.id,
         projectPath: activeProject.path,
       };
-      return createUnifiedCommands(transport);
+      return createProjectCommands(transport);
     }
     return null;
   }, [
@@ -84,7 +84,7 @@ export function useActiveProject(): ActiveProjectContext {
 
       if (commands === null) {
         return {
-          project: toRemoteUnifiedView(entry, project),
+          project: toRemoteView(entry, project),
           commands: null,
           capabilities: null,
           connectionContext: null,
@@ -103,7 +103,7 @@ export function useActiveProject(): ActiveProjectContext {
       };
 
       return {
-        project: toRemoteUnifiedView(entry, project),
+        project: toRemoteView(entry, project),
         commands,
         capabilities: getCapabilities("remote"),
         connectionContext,
@@ -122,7 +122,7 @@ export function useActiveProject(): ActiveProjectContext {
       };
 
       return {
-        project: toWslUnifiedView(distro, project),
+        project: toWslView(distro, project),
         commands,
         capabilities: getCapabilities("wsl"),
         connectionContext,
@@ -138,7 +138,7 @@ export function useActiveProject(): ActiveProjectContext {
       };
 
       return {
-        project: toLocalUnifiedView(activeProject),
+        project: toLocalView(activeProject),
         commands,
         capabilities: getCapabilities("local"),
         connectionContext,
