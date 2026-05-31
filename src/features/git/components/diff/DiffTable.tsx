@@ -5,12 +5,12 @@ import { renderHighlightedHtml, renderWordDiffHtml } from "./highlight";
 import type { DiffResult } from "./types";
 import { getLineContent, getLineType } from "./useDiffData";
 
-interface UnifiedDiffTableProps {
+interface DiffTableProps {
   diffResult: DiffResult;
   language: string;
 }
 
-const UnifiedDiffTable: React.FC<UnifiedDiffTableProps> = ({
+const DiffTable: React.FC<DiffTableProps> = ({
   diffResult,
   language,
 }) => {
@@ -123,4 +123,4 @@ const UnifiedDiffTable: React.FC<UnifiedDiffTableProps> = ({
   );
 };
 
-export default React.memo(UnifiedDiffTable);
+export default React.memo(DiffTable);

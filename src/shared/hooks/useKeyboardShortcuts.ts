@@ -7,7 +7,7 @@ import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { resolveBindings, matchesBinding, SHORTCUT_ACTIONS } from "@/shared/utils/shortcutRegistry";
-import type { UnifiedProjectItem } from "@/features/project/hooks/useUnifiedProjectList";
+import type { ProjectListItem } from "@/features/project/hooks/useProjectList";
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;
@@ -18,7 +18,7 @@ interface UseKeyboardShortcutsParams {
   activeTabId: string | null;
   onCloseTab: (tabId: string) => void;
   shortcuts: Record<string, string>;
-  unifiedItems: UnifiedProjectItem[];
+  unifiedItems: ProjectListItem[];
 }
 
 export function useKeyboardShortcuts({
@@ -190,7 +190,7 @@ export function useKeyboardShortcuts({
 }
 
 /** Find current position in the unified project list */
-function findCurrentIndex(items: UnifiedProjectItem[]): number {
+function findCurrentIndex(items: ProjectListItem[]): number {
   const proj = useProjectStore.getState();
   const conn = useConnectionStore.getState();
   return items.findIndex((item) => {
@@ -203,7 +203,7 @@ function findCurrentIndex(items: UnifiedProjectItem[]): number {
 }
 
 /** Dispatch selection to the correct store callback */
-function switchToItem(item: UnifiedProjectItem) {
+function switchToItem(item: ProjectListItem) {
   if (item.kind === "local") {
     const store = useProjectStore.getState();
     store.selectProject?.(item.id);

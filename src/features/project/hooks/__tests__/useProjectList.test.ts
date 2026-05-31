@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { useUnifiedProjectListFromData } from "@/features/project/hooks/useUnifiedProjectList";
+import { useProjectListFromData } from "@/features/project/hooks/useProjectList";
 
 function proj(id: string, overrides: Partial<{ name: string; path: string; git_info: unknown; selected_agent: string | null }> = {}) {
   return { id, name: overrides.name ?? id, path: overrides.path ?? `/tmp/${id}`, git_info: overrides.git_info ?? null, selected_agent: overrides.selected_agent ?? null };
 }
 
-describe("useUnifiedProjectList", () => {
+describe("useProjectList", () => {
   it("returns empty for no projects", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData([], [], [])
+      useProjectListFromData([], [], [])
     );
     expect(result.current.items).toHaveLength(0);
     expect(result.current.isEmpty).toBe(true);
@@ -17,7 +17,7 @@ describe("useUnifiedProjectList", () => {
 
   it("returns local projects in order", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData([proj("p1"), proj("p2")], [], [])
+      useProjectListFromData([proj("p1"), proj("p2")], [], [])
     );
     expect(result.current.items).toHaveLength(2);
     expect(result.current.items[0].kind).toBe("local");
@@ -28,7 +28,7 @@ describe("useUnifiedProjectList", () => {
 
   it("marks last item with isLast", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData([proj("p1"), proj("p2")], [], [])
+      useProjectListFromData([proj("p1"), proj("p2")], [], [])
     );
     expect(result.current.items[0].isLast).toBe(false);
     expect(result.current.items[1].isLast).toBe(true);
@@ -36,7 +36,7 @@ describe("useUnifiedProjectList", () => {
 
   it("sets has_git_info based on git_info field", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData(
+      useProjectListFromData(
         [proj("p1"), proj("p2", { git_info: {} })],
         [],
         [],
@@ -48,7 +48,7 @@ describe("useUnifiedProjectList", () => {
 
   it("sets selected_agent from project", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData(
+      useProjectListFromData(
         [proj("p1", { selected_agent: "agent-1" })],
         [],
         [],
@@ -59,7 +59,7 @@ describe("useUnifiedProjectList", () => {
 
   it("includes remote projects", () => {
     const { result } = renderHook(() =>
-      useUnifiedProjectListFromData(
+      useProjectListFromData(
         [proj("local1")],
         [],
         [{ id: "e2", host: "server.com", projects: [proj("rm1")] }],

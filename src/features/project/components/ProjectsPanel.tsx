@@ -11,7 +11,7 @@ import CommitDialog from "@/features/git/components/CommitDialog";
 import { WSLItem, RemoteItem } from "@/features/connection/components/RemoteItems";
 import { useProjectStore } from "@/features/project/store";
 import { useAheadBehindSync } from "@/features/git/hooks/useAheadBehindSync";
-import { useUnifiedProjectList } from "@/features/project/hooks/useUnifiedProjectList";
+import { useProjectList } from "@/features/project/hooks/useProjectList";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
 
 const ProjectsPanel: React.FC = () => {
@@ -60,7 +60,7 @@ const ProjectsPanel: React.FC = () => {
    const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
    const [remoteHomeDir, setRemoteHomeDir] = useState<string>("");
 
-   const { items: unifiedItems, isEmpty: isEmpty } = useUnifiedProjectList();
+   const { items: unifiedItems, isEmpty: isEmpty } = useProjectList();
    const { commands } = useActiveProject();
 
    useAheadBehindSync(commands);

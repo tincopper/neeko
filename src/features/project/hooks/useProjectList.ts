@@ -3,7 +3,7 @@ import { IS_WINDOWS } from '@/shared/utils/platform';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 
-export interface UnifiedProjectItem {
+export interface ProjectListItem {
   kind: "local" | "wsl" | "remote";
   id: string;
   name: string;
@@ -17,25 +17,25 @@ export interface UnifiedProjectItem {
   isFirstInSection: boolean;
 }
 
-export function useUnifiedProjectList(): {
-  items: UnifiedProjectItem[];
+export function useProjectList(): {
+  items: ProjectListItem[];
   isEmpty: boolean;
 } {
   const projects = useProjectStore((state) => state.projects);
   const wslEntries = useConnectionStore((state) => state.wslEntries);
   const remoteEntries = useConnectionStore((state) => state.remoteEntries);
 
-  return useUnifiedProjectListFromData(projects, wslEntries, remoteEntries);
+  return useProjectListFromData(projects, wslEntries, remoteEntries);
 }
 
 /** Pure function version â€?testable without React context */
-export function useUnifiedProjectListFromData(
+export function useProjectListFromData(
   projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[],
   wslEntries: { id: string; distro: string; projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[] }[],
   remoteEntries: { id: string; host: string; projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null }[] }[],
-): { items: UnifiedProjectItem[]; isEmpty: boolean } {
+): { items: ProjectListItem[]; isEmpty: boolean } {
   return useMemo(() => {
-    const items: UnifiedProjectItem[] = [];
+    const items: ProjectListItem[] = [];
 
     for (const p of projects) {
       items.push({

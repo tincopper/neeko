@@ -21,7 +21,7 @@ export type { DragOffset, DropIndicator } from "./components/useProjectItemDrag"
 
 // Hooks
 export { useLocalProjects } from "./hooks/useLocalProjects";
-export { useUnifiedProjectList, useUnifiedProjectListFromData, type UnifiedProjectItem } from "./hooks/useUnifiedProjectList";
+export { useProjectList, useProjectListFromData, type ProjectListItem } from "./hooks/useProjectList";
 export { useProjectSelection } from "./hooks/useProjectSelection";
 export { useCrossTypeSelection } from "./hooks/useCrossTypeSelection";
 export { useWorktreeActions } from "./hooks/useWorktreeActions";

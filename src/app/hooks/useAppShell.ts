@@ -29,7 +29,7 @@ import { useTitleBarProps } from "@/layout/hooks/useTitleBarProps";
 import { useProjectSelection } from "@/features/project/hooks/useProjectSelection";
 import { useTabManagement } from "@/features/editor/hooks/useTabManagement";
 import { useAgentClickHandler } from "@/features/agent/hooks/useAgentClickHandler";
-import { useUnifiedProjectList } from "@/features/project/hooks/useUnifiedProjectList";
+import { useProjectList } from "@/features/project/hooks/useProjectList";
 import { useCrossTypeSelection } from "@/features/project/hooks/useCrossTypeSelection";
 
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
@@ -87,7 +87,7 @@ export function useAppShell(): UseAppShellResult {
   useEffect(() => { useProjectStore.setState({ isTerminalView: isTerminalView || activeWorktreePath !== null, selectProject: cross.handleSelectProject, openIde: agentActionsWrap.handleOpenIdeCallback, setProjectIde: agentActionsWrap.handleSetProjectIde }); }, [isTerminalView, activeWorktreePath, cross.handleSelectProject, agentActionsWrap.handleOpenIdeCallback, agentActionsWrap.handleSetProjectIde]);
   useEffect(() => { useConnectionStore.setState({ selectWslProject: cross.handleSelectWslProject, selectRemoteProject: cross.handleSelectRemoteProject }); }, [cross.handleSelectWslProject, cross.handleSelectRemoteProject]);
 
-  useKeyboardShortcuts({ updateWtPath, setWslWorktreePath: wslActionsWrap.setActiveWslWorktreePath, setWslWtBranch: wslActionsWrap.setWslActiveWtBranch, setRemoteWorktreePath: remoteActionsWrap.setActiveRemoteWorktreePath, setRemoteWtBranch: remoteActionsWrap.setRemoteActiveWtBranch, activeTabId, onCloseTab: handleCloseTab, shortcuts: config.shortcuts, unifiedItems: useUnifiedProjectList().items });
+  useKeyboardShortcuts({ updateWtPath, setWslWorktreePath: wslActionsWrap.setActiveWslWorktreePath, setWslWtBranch: wslActionsWrap.setWslActiveWtBranch, setRemoteWorktreePath: remoteActionsWrap.setActiveRemoteWorktreePath, setRemoteWtBranch: remoteActionsWrap.setRemoteActiveWtBranch, activeTabId, onCloseTab: handleCloseTab, shortcuts: config.shortcuts, unifiedItems: useProjectList().items });
   const { handleAgentClick } = useAgentClickHandler({ tabKey, handleTabAgentClick, activeProject, activeWslProject, activeRemoteProject, agentActions: agentActionsWrap, wslActions: wslActionsWrap, remoteActions: remoteActionsWrap });
   const handleToggleHiddenAgent = useCallback((agentId: string) => { const current = config.hiddenAgentIds ?? []; const next = current.includes(agentId) ? current.filter((id) => id !== agentId) : [...current, agentId]; saveConfig({ ...config, hiddenAgentIds: next }); }, [config, saveConfig]);
 
