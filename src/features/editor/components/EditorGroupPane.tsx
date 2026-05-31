@@ -9,7 +9,7 @@ import DiffView from "@/features/git/components/diff";
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
 import { GitLogPanel } from '@/features/git/components/gitlog';
-import UnifiedTabBar from "./UnifiedTabBar";
+import TabBar from "./TabBar";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import ContextMenu from "@/features/project/components/ContextMenu";
 import type { ContextMenuItem } from "@/features/project/components/ContextMenu";
@@ -237,7 +237,7 @@ function EditorGroupPane({
         <div className="shrink-0 bg-bg-secondary">
           <div className="h-8 flex items-center px-2 gap-1">
             <div className="flex-1 min-w-0">
-              <UnifiedTabBar
+              <TabBar
                 tabs={tabs}
                 activeTabId={activeTabId}
                 pinnedTabId={pinnedTab?.id ?? null}

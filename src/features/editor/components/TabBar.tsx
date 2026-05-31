@@ -1,12 +1,12 @@
 import React, { useCallback, useRef, useMemo } from "react";
 import { Plus } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
-import UnifiedTabItem from "./UnifiedTabItem";
+import TabItem from "./TabItem";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import type { Tab } from '@/shared/types/tab';
 import type { AgentConfig } from '@/shared/types';
 
-interface UnifiedTabBarProps {
+interface TabBarProps {
   tabs: Tab[];
   activeTabId: string | null;
   /** The id of the currently-pinned tab, if any. Used to render the pin indicator. */
@@ -57,7 +57,7 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
 
 AgentBarButton.displayName = "AgentBarButton";
 
-const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
+const TabBar: React.FC<TabBarProps> = React.memo(
   ({
     tabs,
     activeTabId,
@@ -122,7 +122,7 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
           onWheel={handleWheel}
         >
           {tabs.map((tab) => (
-            <UnifiedTabItem
+            <TabItem
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
@@ -169,6 +169,6 @@ const UnifiedTabBar: React.FC<UnifiedTabBarProps> = React.memo(
   }
 );
 
-UnifiedTabBar.displayName = "UnifiedTabBar";
+TabBar.displayName = "TabBar";
 
-export default UnifiedTabBar;
+export default TabBar;

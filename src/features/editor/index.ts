@@ -4,8 +4,8 @@ export { default as HtmlPreview } from "./components/HtmlPreview";
 export { default as InlineHtmlPreview } from "./components/InlineHtmlPreview";
 export { default as EditorGroupLayout } from "./components/EditorGroupLayout";
 export { default as EditorGroupPane } from "./components/EditorGroupPane";
-export { default as UnifiedTabBar } from "./components/UnifiedTabBar";
-export { default as UnifiedTabItem } from "./components/UnifiedTabItem";
+export { default as TabBar } from "./components/TabBar";
+export { default as TabItem } from "./components/TabItem";
 
 // Hooks
 export { useFileView } from "./hooks/useFileView";

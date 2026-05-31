@@ -6,7 +6,7 @@ import { fileIconSrc } from '@/shared/utils/fileIcons';
 import type { Tab } from '@/shared/types/tab';
 import type { AgentConfig } from '@/shared/types';
 
-interface UnifiedTabItemProps {
+interface TabItemProps {
   tab: Tab;
   isActive: boolean;
   isPinned?: boolean;
@@ -32,7 +32,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
   }
 }
 
-const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
+const TabItem: React.FC<TabItemProps> = React.memo(
   ({ tab, isActive, isPinned = false, onActivate, onClose, onContextMenu, agents = [] }) => {
     const handleClick = useCallback(() => {
       onActivate(tab.id);
@@ -163,6 +163,6 @@ const UnifiedTabItem: React.FC<UnifiedTabItemProps> = React.memo(
   }
 );
 
-UnifiedTabItem.displayName = "UnifiedTabItem";
+TabItem.displayName = "TabItem";
 
-export default UnifiedTabItem;
+export default TabItem;
