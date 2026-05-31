@@ -1,7 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
-export { invoke };
-
 import type { AuthMethod } from '../types';
+
+export function invokeRemoteGitCommand(
+  command: string,
+  host: string,
+  port: number,
+  username: string,
+  auth: AuthMethod,
+  extra: Record<string, unknown>,
+): Promise<unknown> {
+  return invoke(command, { host, port, username, auth, ...extra });
+}
 
 export function getWslDistros(): Promise<string[]> {
   return invoke<string[]>('get_wsl_distros');

@@ -7,7 +7,7 @@ import {
   remoteWrapperRefs,
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/app/editor/context';
+import { useEditorContext } from '@/shared/contexts';
 import type { AuthMethod } from "../../../types";
 import type { TerminalStrategy } from "./types";
 

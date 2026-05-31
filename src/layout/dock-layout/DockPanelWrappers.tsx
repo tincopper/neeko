@@ -6,7 +6,7 @@ import { useFileActionsContext } from "@/app/editor/FileActionsContext";
 import { useFileStore } from "@/features/file/store";
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useEditorStore } from "@/app/editor/store";
+import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from "@/features/connection/store";
 import { useDockStore } from "@/shared/store/dockStore";
 import FilesPanel from "@/features/file/components/FilesPanel";

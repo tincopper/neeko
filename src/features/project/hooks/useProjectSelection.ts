@@ -3,7 +3,7 @@ import { setActiveProject } from "../api/projectApi";
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore, type WorktreeSnapshotItem } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/app/editor/store';
+import { useEditorStore } from '@/shared/store';
 
 /**
  * useProjectSelection �?extract project selection logic from useAppContainer.

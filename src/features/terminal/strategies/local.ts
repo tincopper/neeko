@@ -3,7 +3,7 @@ import { createTerminalSession, resizeTerminal, closeTerminalSession } from "../
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/app/editor/context';
+import { useEditorContext } from '@/shared/contexts';
 import {
   terminalCache,
   terminalRebuildCallbacks,

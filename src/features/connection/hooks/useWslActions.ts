@@ -10,7 +10,7 @@ import {
 import { useConnectionStore } from "../store";
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useProjectStore } from '@/features/project/store';
-import { useEditorStore } from '@/app/editor/store';
+import { useEditorStore } from '@/shared/store';
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,

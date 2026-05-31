@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
-import { useEditorStore } from "@/app/editor/store";
+import { useEditorStore } from '@/shared/store';
 import { useAppContext } from "@/shared/contexts/AppContext";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import { useGitLog } from "./useGitLog";

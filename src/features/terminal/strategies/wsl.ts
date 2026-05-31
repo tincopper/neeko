@@ -7,7 +7,7 @@ import {
   wslWrapperRefs,
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/app/editor/context';
+import { useEditorContext } from '@/shared/contexts';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
 import type { TerminalStrategy } from "./types";
 

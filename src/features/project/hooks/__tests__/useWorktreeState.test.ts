@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/app/editor/store';
+import { useEditorStore } from '@/shared/store';
 
 describe('useWorktreeState', () => {
   let activeProjectId: string | null;

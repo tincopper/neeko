@@ -17,7 +17,7 @@ import {
 } from "@/features/connection/contexts/RemoteContext";
 import {
    EditorProvider,
-} from "@/app/editor/context";
+} from '@/shared/contexts';
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>["value"];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>["value"];

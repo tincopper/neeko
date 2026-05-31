@@ -4,7 +4,7 @@ import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCac
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useEditorStore } from "@/app/editor/store";
+import { useEditorStore } from '@/shared/store';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { resolveBindings, matchesBinding, SHORTCUT_ACTIONS } from "@/shared/utils/shortcutRegistry";
 import type { UnifiedProjectItem } from "@/features/project/hooks/useUnifiedProjectList";

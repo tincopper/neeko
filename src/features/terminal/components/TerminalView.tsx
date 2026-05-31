@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/app/editor/context';
-import { useEditorStore } from '@/app/editor/store';
+import { useEditorContext } from '@/shared/contexts';
+import { useEditorStore } from '@/shared/store';
 import TerminalViewBase from "./TerminalViewBase";
 import { useLocalTerminalStrategy } from "../strategies";
 import type { TerminalViewProps } from "./terminalTypes";

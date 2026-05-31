@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { getTaskConfigs, saveTaskConfig as saveTaskConfigApi, deleteTaskConfig as deleteTaskConfigApi } from "./api/taskApi";
 import { closeTerminalSession } from "../terminal/api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
-import { useEditorStore } from '@/app/editor/store';
+import { useEditorStore } from '@/shared/store';
 import { destroyTerminalCache, terminalCache } from "../terminal/components/terminalCache";
 import type { Tab } from "../../types/tab";
 import type { TaskConfig, TaskState } from "../../types/task";

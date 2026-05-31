@@ -13,10 +13,10 @@ export { useFileTabRefresh } from "./hooks/useFileTabRefresh";
 export { useTabManagement } from "./hooks/useTabManagement";
 export { useEditorGroupLayout } from "./hooks/useEditorGroupLayout";
 export type { EditorGroupLayoutResult } from "./hooks/useEditorGroupLayout";
-export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from "./hooks/useSplitLayout";
+export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from "@/shared/hooks";
 
 // Store
-export { useEditorStore } from "./store";
+export { useEditorStore } from "@/shared/store";
 
 // Types
 export type {
@@ -41,7 +41,7 @@ export type {
 export { createDefaultEditorLayout, findGroupIdForTab, oppositeGroup } from "./types";
 
 // Context
-export { EditorProvider, useEditorContext } from "./context";
+export { EditorProvider, useEditorContext } from "@/shared/contexts";
 export type { EditorContextValue } from "./context";
 export { FileActionsProvider, useFileActionsContext } from "./FileActionsContext";
 export type { FileActionsContextValue } from "./FileActionsContext";

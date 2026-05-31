@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { openRemoteIde } from "../../project/api/projectApi";
-import { invoke } from "../api/connectionApi";
+import { invokeRemoteGitCommand } from "../api/connectionApi";
 import {
   refreshRemoteTerminal,
   remoteCacheKey,
@@ -102,13 +102,7 @@ export function useRemoteActions({
       if (!entry || !auth) {
         throw new Error("No auth for entry");
       }
-      return invoke(command, {
-        host: entry.host,
-        port: entry.port,
-        username: entry.username,
-        auth,
-        ...extra,
-      });
+      return invokeRemoteGitCommand(command, entry.host, entry.port, entry.username, auth, extra);
     },
     [remoteEntries, remoteAuthStore],
   );
