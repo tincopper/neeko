@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AuthMethod } from "@/types/connection";
-import type { ProjectCommands } from "@/types/activeProject";
+import type { AuthMethod } from '@/shared/types/connection";
+import type { ProjectCommands } from '@/shared/types/activeProject";
 import type {
   GitInfo,
   AheadBehind,
@@ -9,8 +9,8 @@ import type {
   CommitFileChange,
   CommitResult,
   DiffResult,
-} from "@/types/git";
-import type { FileNode, FileContent } from "@/types/file";
+} from '@/shared/types/git";
+import type { FileNode, FileContent } from '@/shared/types/file";
 
 export type GitTransportKind =
   | { type: "Local"; projectId: string; projectPath: string }

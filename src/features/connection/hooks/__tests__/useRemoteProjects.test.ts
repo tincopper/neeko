@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
-import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/types';
+import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';

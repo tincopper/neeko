@@ -57,10 +57,10 @@ my-tauri-app/
 │   │   ├── contexts/               # 全局 Context Provider（含 editorContext）
 │   │   ├── hooks/                  # 全局通用 hooks（含 useSplitLayout）
 │   │   ├── store/                  # 跨域 Zustand store（含 editorStore）
+│   │   ├── types/                  # 全局 TypeScript 类型（领域模型映射）
 │   │   └── utils/                  # 全局通用工具函数
 │   ├── ui/                         # shadcn/ui 设计系统原子组件
 │   ├── layout/                     # 布局骨架 (TitleBar, AppLayout)
-│   ├── types/                      # 全局 TypeScript 类型 (PaneNode 等)
 │   ├── lib/                        # 第三方库初始化
 │   ├── styles/                     # 全局样式 (CSS 变量、主题)
 │   └── main.tsx                    # 前端入口文件
@@ -69,7 +69,6 @@ my-tauri-app/
 ```
 
 > **结构原则：**
-> - 上图反映 Neeko 实际项目结构，与 §2 的通用模板不同。`shared/`、`ui/`、`layout/`、`styles/` 替换了根级 `components/`、`utils/`、`stores/` 等目录。
 > - 并非每个功能都需要所有这些文件夹，仅包含该功能必需的文件夹。
 > - 后端模块最小骨架为 `mod.rs` + `commands.rs`，根据复杂度按需扩展，不一定非要有 `services.rs` 和 `repository.rs`；
 > - 前端 feature 子目录按需创建，不强制预埋空白目录；

@@ -9,7 +9,7 @@ import {
   getIdeIconSrc,
   IDE_PRESETS,
 } from "@/shared/utils/idePresets";
-import type { AppConfig } from "@/types";
+import type { AppConfig } from '@/shared/types';
 
 /**
  * OpenIdeButton — 标题栏中 TaskRunButton 左侧的 IDE 打开/选择按钮

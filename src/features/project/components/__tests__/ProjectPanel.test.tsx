@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import ProjectPanel from "@/features/settings/components/ProjectPanel";
 import { useProjectStore } from "@/features/project/store";
 import { AVATAR_COLORS } from "@/shared/utils/projectAvatar";
-import type { Project } from "@/types";
+import type { Project } from '@/shared/types';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {

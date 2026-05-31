@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import type { ActiveProjectContext } from "@/types/activeProject";
+import type { ActiveProjectContext } from '@/shared/types/activeProject";
 import { getCapabilities } from "./capabilities";
 import { toLocalUnifiedView, toWslUnifiedView, toRemoteUnifiedView } from "./adapters";
 import { createUnifiedCommands } from "./commandFactory";

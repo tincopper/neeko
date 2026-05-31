@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import ConnectionProjectCard from "@/features/connection/components/ConnectionProjectCard";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useGitStore } from "@/features/git/store";
-import type { WSLProject } from "@/types";
+import type { WSLProject } from '@/shared/types';
 
 function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
   return {

@@ -5,7 +5,7 @@ import { useConnectionStore } from "@/features/connection/store";
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
-import type { WSLEntrySession } from "@/types";
+import type { WSLEntrySession } from '@/shared/types';
 import {
   switchAgentInWslTerminal,
   refreshWslTerminal,

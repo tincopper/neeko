@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SettingsPanel from "@/features/settings";
 import { AppProvider } from "@/shared/contexts";
-import type { AppConfig } from "@/types";
+import type { AppConfig } from '@/shared/types';
 import { invoke } from "@tauri-apps/api/core";
 
 const mockInvoke = vi.mocked(invoke);

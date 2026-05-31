@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import OpenIdeButton from "@/layout/OpenIdeButton";
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
-import type { Project } from "@/types";
+import type { Project } from '@/shared/types';
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 

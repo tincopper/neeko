@@ -6,7 +6,7 @@ import {
   updateSplitRatio,
   useSplitLayout,
 } from '@/app/editor/hooks/useSplitLayout';
-import type { PaneNode } from '@/types';
+import type { PaneNode } from '@/shared/types';
 
 describe('useSplitLayout helpers', () => {
   it('clampRatio 限制在 0.2~0.8', () => {

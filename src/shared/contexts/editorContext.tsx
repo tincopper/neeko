@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import type { AgentConfig, TerminalTab } from "@/types";
+import type { AgentConfig, TerminalTab } from '@/shared/types';
 
 export interface EditorContextValue {
   tabs: TerminalTab[];

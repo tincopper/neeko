@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWslProjects } from '@/features/connection/hooks/useWslProjects';
-import type { WSLEntrySession } from '@/types';
+import type { WSLEntrySession } from '@/shared/types';
 
 // mock terminal functions
 vi.mock('@/features/terminal/components/terminalCache', () => ({

@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from "@/types";
-import type { FileTabData } from "@/types/tab";
-import { createDefaultEditorLayout } from "@/types/editorGroup";
+import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
+import type { FileTabData } from '@/shared/types/tab";
+import { createDefaultEditorLayout } from '@/shared/types/editorGroup";
 
 function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string, allTabIds: string[], activeTabId: string | null): EditorSplitLayout {
   if (layouts[tabKey]) return layouts[tabKey];

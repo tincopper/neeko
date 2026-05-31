@@ -4,7 +4,7 @@ import AddProjectModal from "@/features/project/components/AddProjectModal";
 import { WSLDialog } from "@/features/connection/components/WSLDialog";
 import { RemoteDialog } from "@/features/connection/components/RemoteDialog";
 import { RemoteAuthDialog } from "@/features/connection/components/RemoteAuthDialog";
-import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "@/types";
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 
 interface AppModalsProps {
   pendingPath: string | null;

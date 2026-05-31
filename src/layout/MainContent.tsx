@@ -8,7 +8,7 @@ import { useProjectActionsContext } from "@/features/project/context";
 import { useWslContext } from "@/features/connection/contexts/WslContext";
 import { useRemoteContext } from "@/features/connection/contexts/RemoteContext";
 import { useEditorContext } from '@/shared/contexts';
-import type { AgentConfig, Tab } from "@/types";
+import type { AgentConfig, Tab } from '@/shared/types';
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';

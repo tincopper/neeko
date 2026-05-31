@@ -15,9 +15,9 @@ import GitCommitPanel from "@/features/git/components/GitCommitPanel";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import { buildDiffSource } from "@/shared/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
-import { DEFAULT_TREE_DEPTH } from "@/types/file";
+import { DEFAULT_TREE_DEPTH } from '@/shared/types/file";
 import { mergeSubTree } from "@/shared/utils/fileTree";
-import type { Tab, FileTreeChangedEvent } from "@/types";
+import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 
 // ── FilesPanelWrapper ──
 

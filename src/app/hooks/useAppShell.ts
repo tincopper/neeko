@@ -22,7 +22,7 @@ import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useFileView } from "@/app/editor/hooks/useFileView";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
-import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "@/types";
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { useFileTabRefresh } from "@/app/editor/hooks/useFileTabRefresh";
 import { useAppLayoutProps } from "@/layout/hooks/useAppLayoutProps";
 import { useTitleBarProps } from "@/layout/hooks/useTitleBarProps";
