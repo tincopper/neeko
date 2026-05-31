@@ -110,6 +110,10 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "d3-array": "^3.2.4",
+      "d3-shape": "^3.2.0"
+    }
   }
 }
