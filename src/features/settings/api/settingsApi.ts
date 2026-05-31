@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { ThemeListItem, CustomThemeData } from '@/features/settings/types';
 
 export function getSystemFonts(): Promise<string[]> {
   return invoke<string[]>('get_system_fonts');
@@ -24,4 +25,12 @@ export interface ProjectThemeTargets {
 
 export function syncAgentTheme(theme: string, targets: ProjectThemeTargets): Promise<void> {
   return invoke<void>('sync_agent_theme', { theme, targets });
+}
+
+export function listCustomThemes(): Promise<ThemeListItem[]> {
+  return invoke<ThemeListItem[]>('list_custom_themes');
+}
+
+export function getCustomTheme(themeName: string): Promise<CustomThemeData | null> {
+  return invoke<CustomThemeData | null>('get_custom_theme', { themeName });
 }

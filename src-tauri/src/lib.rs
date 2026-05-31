@@ -202,6 +202,8 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::install_from_skillssh,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
+            $crate::theme::commands::list_custom_themes,
+            $crate::theme::commands::get_custom_theme,
             // ── settings ─────────────────────────────────────────────────────
             $crate::settings::commands::get_system_fonts,
         ]

@@ -25,7 +25,7 @@ interface SettingsPanelProps {
 
 const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
    ({ onConfigChange, onClose, fullPage = false }) => {
-      const { config } = useAppContext();
+      const { config, customThemes } = useAppContext();
       const [activeNav, setActiveNav] = useState<NavCategory>("appearance");
       const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
 
@@ -58,16 +58,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
          switch (activeNav) {
             case "appearance":
                return (
-                  <AppearancePanel
-                     appearanceFontSize={config.appearanceFontSize}
-                     theme={config.theme}
-                     enablePiThemeSync={config.enablePiThemeSync}
-                     enableOpenCodeThemeSync={config.enableOpenCodeThemeSync}
-                     onAppearanceFontSizeChange={state.setAppearanceFontSize}
-                     onThemeChange={(theme) => onConfigChange({ ...config, theme })}
-                     onPiThemeSyncChange={(enabled) => onConfigChange({ ...config, enablePiThemeSync: enabled })}
-                     onOpenCodeThemeSyncChange={(enabled) => onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })}
-                  />
+                   <AppearancePanel
+                      appearanceFontSize={config.appearanceFontSize}
+                      theme={config.theme}
+                      enablePiThemeSync={config.enablePiThemeSync}
+                      enableOpenCodeThemeSync={config.enableOpenCodeThemeSync}
+                      customThemes={customThemes}
+                      onAppearanceFontSizeChange={state.setAppearanceFontSize}
+                      onThemeChange={(theme) => onConfigChange({ ...config, theme })}
+                      onPiThemeSyncChange={(enabled) => onConfigChange({ ...config, enablePiThemeSync: enabled })}
+                      onOpenCodeThemeSyncChange={(enabled) => onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })}
+                   />
                );
 
             case "editor":

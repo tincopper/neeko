@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppTheme } from '@/shared/types';
+import type { AppTheme, ThemeListItem } from '@/features/settings/types';
 import { cn } from '@/lib/utils';
 import { Switch } from "@/ui";
 
@@ -8,17 +8,26 @@ interface AppearancePanelProps {
   theme: AppTheme;
   enablePiThemeSync: boolean;
   enableOpenCodeThemeSync: boolean;
+  customThemes: ThemeListItem[];
   onAppearanceFontSizeChange: (size: number) => void;
   onThemeChange: (theme: AppTheme) => void;
   onPiThemeSyncChange: (enabled: boolean) => void;
   onOpenCodeThemeSyncChange: (enabled: boolean) => void;
 }
 
+const BUILTIN_THEME_SWATCHES: { id: string; label: string; bg: string; textColor: string }[] = [
+  { id: "dark",          label: "Dark",         bg: "#000000", textColor: "#61afef" },
+  { id: "one-dark-pro",  label: "One Dark Pro", bg: "#282c34", textColor: "#61afef" },
+  { id: "claude",        label: "Claude",        bg: "#f5f0e8", textColor: "#c96442" },
+  { id: "light",         label: "Light",         bg: "#ffffff", textColor: "#2f7cd3" },
+];
+
 const AppearancePanel: React.FC<AppearancePanelProps> = ({
   appearanceFontSize,
   theme,
   enablePiThemeSync,
   enableOpenCodeThemeSync,
+  customThemes,
   onAppearanceFontSizeChange,
   onThemeChange,
   onPiThemeSyncChange,
@@ -61,57 +70,53 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
         Theme
       </label>
       <div className="flex gap-3 flex-wrap">
-        <button
-          className={cn(
-            "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-            theme === "dark" ? "border-accent-blue" : "border-transparent",
-          )}
-          onClick={() => onThemeChange("dark")}
-        >
-          <div className="w-16 h-10 rounded border border-white/10 bg-[#000000] flex items-center justify-center">
-            <span className="text-[#61afef] text-xs font-semibold">Aa</span>
-          </div>
-          <span className="text-sm text-text-primary">Dark</span>
-        </button>
+        {BUILTIN_THEME_SWATCHES.map((s) => (
+          <button
+            key={s.id}
+            className={cn(
+              "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+              theme === s.id ? "border-accent-blue" : "border-transparent",
+            )}
+            onClick={() => onThemeChange(s.id)}
+          >
+            <div
+              className="w-16 h-10 rounded border border-white/10 flex items-center justify-center"
+              style={{ backgroundColor: s.bg }}
+            >
+              <span className="text-xs font-semibold" style={{ color: s.textColor }}>Aa</span>
+            </div>
+            <span className="text-sm text-text-primary">{s.label}</span>
+          </button>
+        ))}
+      </div>
 
-        <button
-          className={cn(
-            "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-            theme === "one-dark-pro" ? "border-accent-blue" : "border-transparent",
-          )}
-          onClick={() => onThemeChange("one-dark-pro")}
-        >
-          <div className="w-16 h-10 rounded border border-white/10 bg-[#282c34] flex items-center justify-center">
-            <span className="text-[#61afef] text-xs font-semibold">Aa</span>
+      {customThemes.length > 0 && (
+        <>
+          <label className="text-xs font-medium text-text-secondary mt-4 mb-1.5 uppercase tracking-wide">
+            Custom Themes
+          </label>
+          <div className="flex gap-3 flex-wrap">
+            {customThemes.map((ct) => (
+              <button
+                key={ct.name}
+                className={cn(
+                  "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
+                  theme === ct.name ? "border-accent-blue" : "border-transparent",
+                )}
+                onClick={() => onThemeChange(ct.name)}
+              >
+                <div className="w-16 h-10 rounded border border-white/10 bg-bg-primary flex items-center justify-center">
+                  <span className="text-accent-blue text-xs font-semibold">Aa</span>
+                </div>
+                <span className="text-sm text-text-primary">{ct.label}</span>
+              </button>
+            ))}
           </div>
-          <span className="text-sm text-text-primary">One Dark Pro</span>
-        </button>
+        </>
+      )}
 
-        <button
-          className={cn(
-            "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-            theme === "claude" ? "border-accent-blue" : "border-transparent",
-          )}
-          onClick={() => onThemeChange("claude")}
-        >
-          <div className="w-16 h-10 rounded border border-black/10 bg-[#f5f0e8] flex items-center justify-center">
-            <span className="text-[#c96442] text-xs font-semibold">Aa</span>
-          </div>
-          <span className="text-sm text-text-primary">Claude</span>
-        </button>
-
-        <button
-          className={cn(
-            "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-            theme === "light" ? "border-accent-blue" : "border-transparent",
-          )}
-          onClick={() => onThemeChange("light")}
-        >
-          <div className="w-16 h-10 rounded border border-black/10 bg-[#ffffff] flex items-center justify-center">
-            <span className="text-[#2f7cd3] text-xs font-semibold">Aa</span>
-          </div>
-          <span className="text-sm text-text-primary">Light</span>
-        </button>
+      <div className="text-[0.72em] text-text-muted mt-3">
+        Theme files location: ~/.neeko/themes/*.json
       </div>
 
       {/* Pi Theme Sync Toggle */}

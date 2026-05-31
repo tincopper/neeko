@@ -1,3 +1,4 @@
+use crate::common::theme_types::{CustomTheme, ThemeListItem};
 use crate::AppError;
 
 #[derive(serde::Deserialize)]
@@ -43,4 +44,14 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_custom_themes() -> Vec<ThemeListItem> {
+    crate::theme::custom::scan_custom_themes()
+}
+
+#[tauri::command]
+pub fn get_custom_theme(theme_name: String) -> Result<Option<CustomTheme>, AppError> {
+    Ok(crate::theme::custom::read_custom_theme(&theme_name))
 }

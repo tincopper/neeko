@@ -19,7 +19,7 @@ import type { AgentConfig, AppConfig } from '@/shared/types';
 
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);
-  const { config, saveConfig } = useAppContext();
+  const { config, customThemes, saveConfig } = useAppContext();
   const projects = useProjectStore((s) => s.projects);
   const [activeNav, setActiveNav] = useState<SettingsNavId>("appearance");
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,6 +91,7 @@ function SettingsView() {
             theme={config.theme}
             enablePiThemeSync={config.enablePiThemeSync}
             enableOpenCodeThemeSync={config.enableOpenCodeThemeSync}
+            customThemes={customThemes}
             onAppearanceFontSizeChange={state.setAppearanceFontSize}
             onThemeChange={(theme) => onConfigChange({ ...config, theme })}
             onPiThemeSyncChange={(enabled) => onConfigChange({ ...config, enablePiThemeSync: enabled })}

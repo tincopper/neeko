@@ -47,7 +47,7 @@ interface UseAppShellResult {
 }
 
 export function useAppShell(): UseAppShellResult {
-  const { config, saveConfig } = useAppConfig();
+  const { config, saveConfig, customThemes } = useAppConfig();
   const { toast, showToast } = useToast();
   const local = useLocalProjects();
   const session = useSessionPersistence();
@@ -98,7 +98,7 @@ export function useAppShell(): UseAppShellResult {
   const editorValue = { tabs, activeTabId, onActivateTab: handleActivateTab, onCloseTab: handleCloseTab, onAddTab: handleAddTab, onTabStatusChange: handleTabStatusChange, agents: agents ?? [], compactMode: config.agentSelectorCompactMode ?? false, showAgentBar: config.agentSelectorShowPresetBar !== false, hiddenAgentIds: config.hiddenAgentIds ?? [], onToggleHiddenAgent: handleToggleHiddenAgent, onAgentClick: handleAgentClick };
 
   const titleBarProps = useTitleBarProps({ activeProject, activeWslProject, activeRemoteProject, activeWorktreeBranch, handleRefreshGit, handleRefreshWslGit: wslActionsWrap.handleRefreshWslGit, handleRefreshRemoteGit: remoteActionsWrap.handleRefreshRemoteGit, wslActiveWtBranch: wslActionsWrap.wslActiveWtBranch, remoteActiveWtBranch: remoteActionsWrap.remoteActiveWtBranch, checkoutBranch: activeContext.commands?.checkoutBranch ?? null, showToast });
-  const appProvidersProps: AppProvidersProps = { appValue: { config, agents: agents ?? [], agentInstalledMap: {}, loading, ideCommandOverrides: config.ideCommandOverrides ?? {}, showToast, saveConfig }, projectActionsValue, fileActionsValue, wslValue, remoteValue, editorValue };
+  const appProvidersProps: AppProvidersProps = { appValue: { config, customThemes, agents: agents ?? [], agentInstalledMap: {}, loading, ideCommandOverrides: config.ideCommandOverrides ?? {}, showToast, saveConfig }, projectActionsValue, fileActionsValue, wslValue, remoteValue, editorValue };
   const appLayoutProps = useAppLayoutProps({ onAddProject: handleAddProject, onOpenWslDialog: () => setWslDialogOpen(true), onOpenRemoteDialog: () => setRemoteDialogOpen(true) });
 
   const handleWslEntryAddRefresh = useCallback(async (entry: WSLEntrySession) => { await handleWSLEntryAdd(entry); for (const project of entry.projects) { if (!project.git_info) void wslActionsWrap.handleRefreshWslGit(entry.distro, project.id, project.path); } }, [handleWSLEntryAdd, wslActionsWrap]);

@@ -1,6 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
-import { saveConfig as saveConfigApi, loadConfig as loadConfigApi, syncAgentTheme } from "../api/settingsApi";
-import type { AppConfig } from '@/shared/types';
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  saveConfig as saveConfigApi,
+  loadConfig as loadConfigApi,
+  syncAgentTheme,
+  listCustomThemes,
+  getCustomTheme,
+} from "../api/settingsApi";
+import type { AppConfig, ThemeListItem, CustomThemeData } from '@/features/settings/types';
+import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
@@ -27,15 +34,60 @@ const DEFAULT_CONFIG: AppConfig = {
    enableOpenCodeThemeSync: false,
 };
 
-
 type PartialLoadedConfig = Partial<AppConfig> & {
    fontSize?: number;
    theme?: unknown;
 };
+
+function isBuiltinTheme(theme: string): boolean {
+  return (BUILTIN_THEMES as readonly string[]).includes(theme);
+}
+
+const CUSTOM_CSS_VARS = [
+  "bg-primary", "bg-secondary", "bg-tertiary", "bg-hover", "bg-selected",
+  "bg-gradient-start", "bg-gradient-end",
+  "text-primary", "text-secondary", "text-muted",
+  "border-color", "terminal-selection",
+  "titlebar-gradient-start",
+  "accent-blue", "accent-blue-rgb", "accent-green", "accent-yellow", "accent-red",
+  "text-on-accent",
+  "status-idle", "status-running", "status-failed",
+  "diff-added", "diff-removed", "diff-added-text", "diff-removed-text",
+];
+
+let _previousCustomVars: string[] | null = null;
+
+function applyCustomCssVars(variables: Record<string, string>) {
+  if (_previousCustomVars) {
+    for (const name of _previousCustomVars) {
+      document.documentElement.style.removeProperty(`--${name}`);
+    }
+  }
+  const applied: string[] = [];
+  for (const name of CUSTOM_CSS_VARS) {
+    const val = variables[name];
+    if (val !== undefined) {
+      document.documentElement.style.setProperty(`--${name}`, val);
+      applied.push(name);
+    }
+  }
+  _previousCustomVars = applied;
+}
+
+function clearCustomCssVars() {
+  if (_previousCustomVars) {
+    for (const name of _previousCustomVars) {
+      document.documentElement.style.removeProperty(`--${name}`);
+    }
+    _previousCustomVars = null;
+  }
+}
+
 export function useAppConfig() {
    const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
+   const [customThemes, setCustomThemes] = useState<ThemeListItem[]>([]);
+   const themeDataCache = useRef<Map<string, CustomThemeData>>(new Map());
 
-   // 同步 UI 字体大小�?CSS 变量 --font-size（由 appearanceFontSize 驱动�?
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--font-size",
@@ -43,7 +95,6 @@ export function useAppConfig() {
       );
    }, [config.appearanceFontSize]);
 
-   // 同步终端字体大小�?CSS 变量 --terminal-font-size
    useEffect(() => {
       document.documentElement.style.setProperty(
          "--terminal-font-size",
@@ -51,14 +102,22 @@ export function useAppConfig() {
       );
    }, [config.terminalFontSize]);
 
-   // 同步主题�?data-theme 属性，并更�?OpenCode tui.json
    useEffect(() => {
       document.documentElement.setAttribute("data-theme", config.theme);
+
+      if (isBuiltinTheme(config.theme)) {
+        clearCustomCssVars();
+      } else {
+        const cached = themeDataCache.current.get(config.theme);
+        if (cached) {
+          applyCustomCssVars(cached.variables);
+        }
+      }
+
       requestAnimationFrame(() => {
          updateAllTerminalThemes();
       });
 
-      // 同步所有项目的 OpenCode tui.json 主题配置
       const { projects } = useProjectStore.getState();
       const { wslEntries } = useConnectionStore.getState();
       const localPaths = projects.map((p) => p.path);
@@ -72,10 +131,23 @@ export function useAppConfig() {
       }
    }, [config.theme]);
 
-   // 持久化保存配�?
+   const loadCustomThemeVars = useCallback(async (themeName: string) => {
+     if (themeDataCache.current.has(themeName)) return;
+     try {
+       const data = await getCustomTheme(themeName);
+       if (data) {
+         themeDataCache.current.set(themeName, data);
+         if (config.theme === themeName) {
+           applyCustomCssVars(data.variables);
+         }
+       }
+     } catch (e) {
+       console.error(`[App] Failed to load custom theme "${themeName}":`, e);
+     }
+   }, [config.theme]);
+
    const saveConfig = useCallback(async (next: AppConfig) => {
       setConfig(prev => {
-         // 浅比较：所有字段相同则返回旧引用，避免不必要的重渲�?
          if (
             prev.theme === next.theme &&
             prev.appearanceFontSize === next.appearanceFontSize &&
@@ -99,28 +171,44 @@ export function useAppConfig() {
          ) return prev;
          return next;
       });
+      if (!isBuiltinTheme(next.theme)) {
+        await loadCustomThemeVars(next.theme);
+      }
       try {
          await saveConfigApi(next as unknown as Record<string, unknown>);
       } catch (e) {
          console.error("[App] Failed to save config:", e);
       }
+   }, [loadCustomThemeVars]);
+
+   useEffect(() => {
+      (async () => {
+         try {
+            const loaded = await listCustomThemes();
+            setCustomThemes(loaded);
+         } catch (e) {
+            console.error("[App] Failed to load custom themes:", e);
+         }
+      })();
    }, []);
 
-   // 应用启动时加载配�?
    useEffect(() => {
       (async () => {
          try {
             const loaded = await loadConfigApi();
             if (loaded && typeof loaded === "object") {
                const saved = loaded as PartialLoadedConfig;
+
                if (typeof saved.fontSize === "number" && typeof saved.terminalFontSize !== "number") {
                   saved.terminalFontSize = saved.fontSize;
                }
 
                const theme =
-                  saved.theme === "light" || saved.theme === "one-dark-pro" || saved.theme === "claude"
-                     ? saved.theme
-                     : "dark";
+                  typeof saved.theme === "string" ? saved.theme : "dark";
+
+               if (!isBuiltinTheme(theme)) {
+                 await loadCustomThemeVars(theme);
+               }
 
                setConfig({
                   theme,
@@ -199,7 +287,7 @@ export function useAppConfig() {
             console.error("[App] Failed to load config:", e);
          }
       })();
-   }, []);
+   }, [loadCustomThemeVars]);
 
-   return { config, saveConfig };
+   return { config, saveConfig, customThemes };
 }

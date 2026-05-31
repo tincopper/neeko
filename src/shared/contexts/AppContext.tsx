@@ -1,8 +1,10 @@
 import React, { createContext, useContext } from "react";
-import type { AppConfig, AgentConfig } from '@/shared/types';
+import type { AppConfig, ThemeListItem } from '@/features/settings/types';
+import type { AgentConfig } from '@/features/agent/types';
 
 interface AppContextValue {
   config: AppConfig;
+  customThemes: ThemeListItem[];
   agents: AgentConfig[];
   agentInstalledMap: Record<string, boolean>;
   loading: boolean;
