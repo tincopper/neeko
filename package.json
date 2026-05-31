@@ -109,7 +109,9 @@
   "packageManager": "pnpm@10.33.4",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "unrs-resolver"
+      "unrs-resolver",
+      "esbuild",
+      "@parcel/watcher"
     ],
     "overrides": {
       "d3-array": "^3.2.4",
