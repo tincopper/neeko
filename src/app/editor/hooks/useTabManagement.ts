@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useEditorStore } from "../store";
+import { useEditorStore } from '@/shared/store';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 

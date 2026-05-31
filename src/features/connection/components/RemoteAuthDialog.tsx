@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { testRemoteConnection } from "../api/connectionApi";
-import type { AuthMethod } from "../../../types";
+import type { AuthMethod } from '@/shared/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Input } from "@/ui/input";
 import { Button } from "@/ui/button";

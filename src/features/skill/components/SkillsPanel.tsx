@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Package, Store, FolderOpen, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useSkillStore } from '@/features/skill/store';
-import type { SkillView } from '../../../types';
+import type { SkillView } from '@/shared/types';
 import { cn } from '@/lib/utils';
 
 // ─── Nav items ───────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import type { GitInfo, AheadBehind } from "../../../types";
+import type { GitInfo, AheadBehind } from '@/shared/types';
 import { BranchIcon, PlusIcon } from "@/shared/components/icons";
 import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "@/shared/components/icons"
 import BranchDropdownContent from "@/shared/components/BranchDropdownContent";

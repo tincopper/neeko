@@ -18,7 +18,7 @@ import type {
   Tab,
   WSLProject,
   WSLEntrySession,
-} from "../../../types";
+} from '@/shared/types';
 import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
 import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";

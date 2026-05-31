@@ -4,7 +4,7 @@ import { Button, Input } from "@/ui";
 import { ResizablePanel } from "@/ui/ResizablePanel";
 import MarkdownEditor from "./MarkdownEditor";
 import { useSkillStore } from '@/features/skill/store';
-import type { ManagedSkillDto } from '../../../types';
+import type { ManagedSkillDto } from '@/shared/types';
 
 interface EditSkillDialogProps {
   open: boolean;

@@ -3,8 +3,8 @@ import { Plus } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 import UnifiedTabItem from "./UnifiedTabItem";
 import AgentIcon from "@/features/agent/components/AgentIcon";
-import type { Tab } from "../../../types/tab";
-import type { AgentConfig } from "../../../types";
+import type { Tab } from '@/shared/types/tab';
+import type { AgentConfig } from '@/shared/types';
 
 interface UnifiedTabBarProps {
   tabs: Tab[];

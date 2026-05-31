@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { ActiveRemoteKey, ActiveWslKey } from "./components/types";
-import type { AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from "../../types";
+import type { AuthMethod, RemoteEntrySession, RemoteProject, WSLEntrySession, WSLProject } from '@/shared/types';
 
 const noop = () => {};
 

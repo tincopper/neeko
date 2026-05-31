@@ -1,4 +1,4 @@
-import type { ProjectTabs } from '../../../types/tab';
+import type { ProjectTabs } from '@/shared/types/tab';
 
 /** Theme color map passed to the browser_start_picker Rust command. */
 export interface PickerThemeColors {

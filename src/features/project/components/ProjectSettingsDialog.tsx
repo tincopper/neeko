@@ -5,7 +5,7 @@ import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "@/shared/utils/idePre
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Button } from "@/ui/button";
-import type { AppConfig, AgentConfig } from "../../../types";
+import type { AppConfig, AgentConfig } from '@/shared/types';
 import { cn } from "@/lib/utils";
 
 interface ProjectSettingsDialogProps {

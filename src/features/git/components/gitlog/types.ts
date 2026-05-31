@@ -1,8 +1,8 @@
-import type { CommitDetail, CommitFileChange } from "../../../../types";
+import type { CommitDetail, CommitFileChange } from '@/shared/types';
 
 /** Data returned by useGitLog hook */
 export interface GitLogData {
-  commits: import("../../../../types").CommitEntry[];
+  commits: import("@/shared/types").CommitEntry[];
   loading: boolean;
   error: string | null;
   hasMore: boolean;

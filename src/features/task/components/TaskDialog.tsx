@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "@/shared/components/icons"
-import type { TaskConfig } from "../../../types/task";
+import type { TaskConfig } from '@/shared/types/task';
 
 interface TaskDialogProps {
   onClose: () => void;

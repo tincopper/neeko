@@ -1,7 +1,7 @@
 import React from "react";
 import { Trash2, FileText, Edit3, MoreHorizontal } from "@/shared/components/icons"
 import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Badge } from "@/ui";
-import type { ManagedSkillDto } from "../../../types";
+import type { ManagedSkillDto } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 

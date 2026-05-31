@@ -5,7 +5,7 @@ import { listen, emit } from "@tauri-apps/api/event";
 import { createTerminalSession } from "../api/terminalApi";
 import { getAgent } from "../../agent/api/agentApi";
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
-import type { AgentConfig } from "../../../types";
+import type { AgentConfig } from '@/shared/types';
 import { useEditorStore } from '@/shared/store';
 import {
   terminalCache,

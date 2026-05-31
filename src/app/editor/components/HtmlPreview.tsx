@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFileContent } from "@/features/file/api/fileApi";
 import { Globe, RefreshCw } from "@/shared/components/icons"
-import type { FileChangedEvent } from "../../../types";
+import type { FileChangedEvent } from '@/shared/types';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 import { useProjectStore } from '@/features/project/store';
 

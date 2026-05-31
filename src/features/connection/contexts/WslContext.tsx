@@ -1,6 +1,6 @@
 import React, { createContext, useContext } from "react";
 import type { ActiveWslKey } from "../components/types";
-import type { WSLEntrySession, WSLProject } from "../../../types";
+import type { WSLEntrySession, WSLProject } from '@/shared/types';
 
 export interface WslContextValue {
   wslEntries: WSLEntrySession[];

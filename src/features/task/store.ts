@@ -4,8 +4,8 @@ import { closeTerminalSession } from "../terminal/api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { destroyTerminalCache, terminalCache } from "../terminal/components/terminalCache";
-import type { Tab } from "../../types/tab";
-import type { TaskConfig, TaskState } from "../../types/task";
+import type { Tab } from '@/shared/types/tab';
+import type { TaskConfig, TaskState } from '@/shared/types/task';
 
 interface TaskStoreState {
   configs: TaskConfig[];

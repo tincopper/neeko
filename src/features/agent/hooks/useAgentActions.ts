@@ -4,7 +4,7 @@ import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
-import type { AgentConfig } from "../../../types";
+import type { AgentConfig } from '@/shared/types';
 import type { SaveSessionFn } from "@/features/connection/hooks/useWslProjects";
 
 interface TerminalSettings {

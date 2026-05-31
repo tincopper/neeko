@@ -19,7 +19,7 @@ import type {
   TagGroup,
   DiscoveredSkillDto,
   SkillView,
-} from '../../types';
+} from '@/shared/types';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 

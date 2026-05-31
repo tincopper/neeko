@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { FileChange } from "../../../types";
+import { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { Badge } from "@/ui/badge";
 

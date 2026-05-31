@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type { WSLEntrySession, RemoteEntrySession } from '@/features/connection/types';
 
-import type { SessionStore } from '../types';
+import type { SessionStore } from '@/shared/types';
 
 export function saveConfig(config: Record<string, unknown>): Promise<void> {
   return invoke<void>('save_config', { config });

@@ -15,7 +15,7 @@ import IdePanel from "./IdePanel";
 import GitPanel from "./GitPanel";
 import ShortcutPanel from "./ShortcutPanel";
 import ProjectPanel from "./ProjectPanel";
-import type { AgentConfig, AppConfig } from "../../../types";
+import type { AgentConfig, AppConfig } from '@/shared/types';
 
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);

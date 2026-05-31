@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { removeWorktree, deleteBranch, renameWorktree, getWorktreeChangedFiles, isWorktreeDirty } from "../../git/api/gitApi";
 import { closeTerminalSession } from "../../terminal/api/terminalApi";
-import { Worktree } from "../../../types";
+import { Worktree } from '@/shared/types';
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
 import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
 import { cn } from '@/lib/utils';

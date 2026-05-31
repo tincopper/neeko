@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addAgent, removeAgent } from "../../agent/api/agentApi";
 import { getSystemFonts } from "../api/settingsApi";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AgentConfig, AppConfig, DiffMode } from "../../../types";
+import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
 import {

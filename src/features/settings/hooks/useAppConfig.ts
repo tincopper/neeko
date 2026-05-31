@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { saveConfig as saveConfigApi, loadConfig as loadConfigApi, syncAgentTheme } from "../api/settingsApi";
-import type { AppConfig } from "../../../types";
+import type { AppConfig } from '@/shared/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';

@@ -13,13 +13,13 @@ import UnifiedTabBar from "./UnifiedTabBar";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import ContextMenu from "@/features/project/components/ContextMenu";
 import type { ContextMenuItem } from "@/features/project/components/ContextMenu";
-import type { AgentConfig, AuthMethod, EditorGroupId } from "../../../types";
+import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import { cn } from '@/lib/utils';
-import { useEditorContext, EditorProvider } from "../context";
+import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
-import { useEditorStore } from "../store";
+import { useEditorStore } from '@/shared/store';
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */

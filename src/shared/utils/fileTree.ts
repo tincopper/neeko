@@ -1,4 +1,4 @@
-import type { FileNode, Tab, FileTabData } from "../../types";
+import type { FileNode, Tab, FileTabData } from '@/shared/types';
 
 /**
  * Merge new children into a file tree at a specific directory path.

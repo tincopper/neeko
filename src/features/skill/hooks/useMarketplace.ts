@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { fetchLeaderboard as fetchLeaderboardApi, searchSkillssh, installFromSkillssh } from "../api/skillApi";
 import { listen } from "@tauri-apps/api/event";
-import type { SkillsShSkill, InstallProgress, LeaderboardType } from "../../../types";
+import type { SkillsShSkill, InstallProgress, LeaderboardType } from '@/shared/types';
 
 export type { LeaderboardType };
 

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { openRemoteIde } from "../../project/api/projectApi";
-import { invokeRemoteGitCommand } from "../api/connectionApi";
+import { invokeRemoteGitCommand, getRemoteGitInfo } from "../api/connectionApi";
 import {
   refreshRemoteTerminal,
   remoteCacheKey,
@@ -14,10 +14,9 @@ import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
   AppConfig,
-  GitInfo,
   RemoteEntrySession,
   RemoteProject,
-} from "../../../types";
+} from '@/shared/types';
 import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
 import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";
@@ -120,15 +119,13 @@ export function useRemoteActions({
         console.error("[SSH] No auth for entry");
         return null;
       }
-      const result = await invoke<GitInfo>("get_git_info", {
-        transport: {
-          Remote: {
-            host: entry.host,
-            port: entry.port,
-            username: entry.username,
-            auth,
-            project_path: projectPath,
-          },
+      const result = await getRemoteGitInfo({
+        Remote: {
+          host: entry.host,
+          port: entry.port,
+          username: entry.username,
+          auth,
+          project_path: projectPath,
         },
       }).catch((e) => {
         console.error("[SSH] Failed to refresh git info:", e);

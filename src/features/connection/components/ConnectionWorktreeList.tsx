@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import type { FileChange, Worktree } from "../../../types";
+import type { FileChange, Worktree } from '@/shared/types';
 import { BranchIcon, CloseIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
 import { cn } from '@/lib/utils';
 import SessionChips from "@/features/project/components/SessionChips";

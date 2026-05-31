@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { FileTransportKind, FileContent, FileNode } from '../types';
+import type { FileTransportKind, FileContent, FileNode } from '@/shared/types';
 
 export function revealInFileManager(path: string): Promise<void> {
   return invoke<void>('reveal_in_file_manager', { path });

@@ -1,13 +1,13 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { readDirTree, readFileContent, writeFileContent } from "@/features/file/api/fileApi";
-import type { FileNode, FileContent, Tab } from "../../../types";
-import { DEFAULT_TREE_DEPTH } from "../../../types/file";
-import type { ProjectCommands } from "../../../types/activeProject";
+import type { FileNode, FileContent, Tab } from '@/shared/types';
+import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
+import type { ProjectCommands } from '@/shared/types/activeProject';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useFileStore } from '@/features/file/store';
-import { useEditorStore } from "../store";
+import { useEditorStore } from '@/shared/store';
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';

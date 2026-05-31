@@ -7,7 +7,7 @@ import { listAgents } from "../../agent/api/agentApi";
 import { saveSession } from "../../session/api/sessionApi";
 import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
-import type { Project, AgentConfig, Tab, FileChange, Worktree } from "../../../types";
+import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { applyStateAction } from '@/shared/utils/entryUpdates';

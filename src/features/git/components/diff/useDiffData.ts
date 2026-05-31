@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getFileDiff, getCommitFileDiff } from "../../api/gitApi";
 import { useProjectStore } from "@/features/project/store";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
-import type { ProjectCommands } from "../../../../types/activeProject";
+import type { ProjectCommands } from '@/shared/types/activeProject';
 
 function lookupLocalProjectPath(projectId: string): string {
   const project = useProjectStore.getState().projects.find((p) => p.id === projectId);

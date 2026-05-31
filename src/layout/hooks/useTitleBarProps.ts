@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import type { Project, WSLProject, RemoteProject, RemoteEntrySession } from "../../types";
+import type { Project, WSLProject, RemoteProject, RemoteEntrySession } from '@/shared/types';
 import type TitleBar from "@/layout/TitleBar";
 
 interface UseTitleBarPropsInput {

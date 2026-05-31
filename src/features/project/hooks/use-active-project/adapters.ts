@@ -1,6 +1,6 @@
-import type { Project } from '@/shared/types/project";
-import type { WSLProject, RemoteProject, RemoteEntrySession } from '@/shared/types/connection";
-import type { UnifiedProjectView } from '@/shared/types/activeProject";
+import type { Project } from '@/shared/types/project';
+import type { WSLProject, RemoteProject, RemoteEntrySession } from '@/shared/types/connection';
+import type { UnifiedProjectView } from '@/shared/types/activeProject';
 
 export function toLocalUnifiedView(project: Project): UnifiedProjectView {
   return {

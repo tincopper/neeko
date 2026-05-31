@@ -6,7 +6,7 @@ import type {
   SkillDocumentDto,
   DiscoveredSkillDto,
   SkillsShSkill,
-} from '../types';
+} from '@/shared/types';
 
 // ─── Managed Skills ──────────────────────────────────────────────────────────
 

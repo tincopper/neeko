@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import type { CommitEntry } from "../../../../types";
+import type { CommitEntry } from '@/shared/types';
 import type { CommitMenuAction } from "./types";
 import CommitGraph, { ROW_HEIGHT } from "./CommitGraph";
 import {

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { AuthMethod } from "../../../types";
+import type { AuthMethod } from '@/shared/types';
 import { useConnectionStore } from "../store";
 import type { SaveSessionFn } from "./useWslProjects";
 

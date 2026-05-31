@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import type { Project } from "../../../types";
+import type { Project } from '@/shared/types';
 import type { DialogType } from "@/features/git/components/GitDialog";
 import { FolderGitIcon, GitLogoIcon } from "@/shared/components/icons";
 

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import type { AheadBehind, CommitResult } from "../../../types";
+import type { AheadBehind, CommitResult } from '@/shared/types';
 import type {
   UnifiedProjectView,
   ProjectCommands,
   ProjectCapabilities,
-} from "../../../types/activeProject";
+} from '@/shared/types/activeProject';
 import { useAppContext } from '@/shared/contexts';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import BranchInfo from "./BranchInfo";

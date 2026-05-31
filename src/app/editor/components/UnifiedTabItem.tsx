@@ -3,8 +3,8 @@ import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, Pin } from "@/sha
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import type { Tab } from "../../../types/tab";
-import type { AgentConfig } from "../../../types";
+import type { Tab } from '@/shared/types/tab';
+import type { AgentConfig } from '@/shared/types';
 
 interface UnifiedTabItemProps {
   tab: Tab;

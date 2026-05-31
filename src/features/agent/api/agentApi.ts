@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { AgentConfig } from '../types';
+import type { AgentConfig } from '@/shared/types';
 
 export function listAgents(): Promise<AgentConfig[]> {
   return invoke<AgentConfig[]>('list_agents');

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { checkAgentsInstalled, listAgents, setProjectAgent } from "../api/agentApi";
 import { loadConfig as loadSessionConfig, saveConfig as saveSessionConfig } from "../../session/api/sessionApi";
 import AgentIcon from "./AgentIcon";
-import type { AppConfig, AgentConfig } from "../../../types";
+import type { AppConfig, AgentConfig } from '@/shared/types';
 import { useDockStore } from '@/shared/store/dockStore';
 
 type MenuMode = "none" | "main" | "terminal" | "chat" | "browser";

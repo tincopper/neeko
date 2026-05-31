@@ -2,9 +2,9 @@ import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "
 import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
-import type { FileNode, FileChange } from "../../../types";
+import type { FileNode, FileChange } from '@/shared/types';
 import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
-import type { ProjectType } from "../../../types/project";
+import type { ProjectType } from '@/shared/types/project';
 
 /** git status �?文件名颜�?class */
 const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {

@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppTheme } from "../../../types";
+import type { AppTheme } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { Switch } from "@/ui";
 

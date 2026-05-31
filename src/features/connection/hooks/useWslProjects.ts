@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { wslCacheKey, destroyWslCachesByPrefix } from "@/features/terminal/components/terminalCache";
-import type { WSLEntrySession, RemoteEntrySession, WSLProject } from "../../../types";
+import type { WSLEntrySession, RemoteEntrySession, WSLProject } from '@/shared/types';
 import type { ActiveWslKey } from "../components/types";
 import { useConnectionStore } from "../store";
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';

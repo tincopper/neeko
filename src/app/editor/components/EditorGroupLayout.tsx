@@ -6,7 +6,7 @@ import {
 } from "@/ui/resizable";
 import EditorGroupPane from "./EditorGroupPane";
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
-import type { AuthMethod } from "../../../types";
+import type { AuthMethod } from '@/shared/types';
 
 interface EditorGroupLayoutProps {
   tabKey: string;

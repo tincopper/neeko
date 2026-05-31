@@ -1,6 +1,6 @@
 import { readFileContent } from "@/features/file/api/fileApi";
-import type { FileChangedEvent, FileContent } from "../../../types";
-import { useEditorStore } from "../store";
+import type { FileChangedEvent, FileContent } from '@/shared/types';
+import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/features/project/store';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 

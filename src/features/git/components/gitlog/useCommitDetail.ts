@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { CommitDetail, CommitFileChange } from "../../../../types";
-import type { ProjectCommands } from "../../../../types/activeProject";
+import type { CommitDetail, CommitFileChange } from '@/shared/types';
+import type { ProjectCommands } from '@/shared/types/activeProject';
 import type { CommitDetailData } from "./types";
 
 export function useCommitDetail(

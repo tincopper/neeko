@@ -8,7 +8,7 @@ import {
 } from "../components/terminalCache";
 import { useAppContext } from '@/shared/contexts';
 import { useEditorContext } from '@/shared/contexts';
-import type { AuthMethod } from "../../../types";
+import type { AuthMethod } from '@/shared/types';
 import type { TerminalStrategy } from "./types";
 
 interface RemoteStrategyParams {

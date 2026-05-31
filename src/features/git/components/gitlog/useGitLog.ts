@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { CommitEntry } from "../../../../types";
-import type { ProjectCommands } from "../../../../types/activeProject";
+import type { CommitEntry } from '@/shared/types';
+import type { ProjectCommands } from '@/shared/types/activeProject';
 import type { GitLogData } from "./types";
 
 const PAGE_SIZE = 50;

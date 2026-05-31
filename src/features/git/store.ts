@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AheadBehind } from "../../types";
+import type { AheadBehind } from '@/shared/types';
 
 interface GitStoreState {
   aheadBehind: Record<string, AheadBehind>;

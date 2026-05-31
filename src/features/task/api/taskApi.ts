@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { TaskConfig } from '../types';
+import type { TaskConfig } from '@/shared/types';
 
 export function getTaskConfigs(projectPath?: string | null): Promise<TaskConfig[]> {
   return invoke<TaskConfig[]>('get_task_configs', { projectPath });

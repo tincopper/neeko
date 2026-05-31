@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import type { Project } from "../../../types";
+import type { Project } from '@/shared/types';
 import WorktreeList from "./WorktreeList";
 import SessionRow from "./SessionRow";
 import { useWorktreeStore } from '@/features/project/worktreeStore';

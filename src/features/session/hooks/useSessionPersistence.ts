@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { saveSession as saveSessionApi } from "../api/sessionApi";
-import type { WSLEntrySession, RemoteEntrySession } from "../../../types";
+import type { WSLEntrySession, RemoteEntrySession } from '@/shared/types';
 import type { SaveSessionFn } from "../../connection/hooks/useWslProjects";
 import { useConnectionStore } from '@/features/connection/store';
 

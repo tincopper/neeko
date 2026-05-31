@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { listProjects } from "../../project/api/projectApi";
 import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
 import { loadSession } from "../api/sessionApi";
-import type { WSLEntrySession, RemoteEntrySession, FileChange, Worktree, GitStatusDiff } from "../../../types";
+import type { WSLEntrySession, RemoteEntrySession, FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 
 /** 将后�?git status 字符串映射为前端 FileChange.status */

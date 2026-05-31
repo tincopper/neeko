@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import type { AppConfig, AgentConfig } from "../../types";
+import type { AppConfig, AgentConfig } from '@/shared/types';
 
 interface AppContextValue {
   config: AppConfig;

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { remoteCacheKey, destroyRemoteCachesByPrefix } from "@/features/terminal/components/terminalCache";
-import type { RemoteEntrySession, RemoteProject, AuthMethod } from "../../../types";
+import type { RemoteEntrySession, RemoteProject, AuthMethod } from '@/shared/types';
 import type { SaveSessionFn } from "./useWslProjects";
 import type { ActiveRemoteKey } from "../components/types";
 import { useConnectionStore } from "../store";

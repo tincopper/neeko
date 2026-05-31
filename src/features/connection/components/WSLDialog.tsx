@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { getWslDistros, getWslDirectories, getWslHomeDir } from "../api/connectionApi";
-import { WSLProject, WSLEntrySession } from "../../../types";
+import { WSLProject, WSLEntrySession } from '@/shared/types';
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { useAppContext } from "@/shared/contexts/AppContext";
 import { getDistroIcon } from "@/shared/utils/distros";

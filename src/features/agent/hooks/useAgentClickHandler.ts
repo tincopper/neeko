@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { setProjectAgent } from "../api/agentApi";
-import type { AgentConfig } from "../../../types";
-import type { TerminalTab } from "../../../types/terminal";
+import type { AgentConfig } from '@/shared/types';
+import type { TerminalTab } from '@/shared/types/terminal';
 
 interface UseAgentClickHandlerOptions {
   tabKey: string | null;

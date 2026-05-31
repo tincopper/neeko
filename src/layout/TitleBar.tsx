@@ -10,7 +10,7 @@ import type {
    WSLProject,
    RemoteEntrySession,
    RemoteProject,
-} from "../types";
+} from '@/shared/types';
 import { IS_MACOS } from "@/shared/utils/platform";
 import { useDockStore } from "@/shared/store/dockStore";
 import { getAvatarStyle, getProjectInitials } from "@/shared/utils/projectAvatar";

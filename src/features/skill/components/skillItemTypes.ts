@@ -1,4 +1,4 @@
-import type { ManagedSkillDto } from '../../../types';
+import type { ManagedSkillDto } from '@/shared/types';
 
 // ─── Dialog State ────────────────────────────────────────────────────────────
 

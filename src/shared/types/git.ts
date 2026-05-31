@@ -17,4 +17,5 @@ export type {
   PRMergeResult,
   GitStatusFile,
   GitStatusDiff,
+  FileDiffStats,
 } from "@/features/git/types";

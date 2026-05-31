@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { GitInfo } from "../../types";
+import type { GitInfo } from '@/shared/types';
 
 type ProjectWithId = {
   id: string;

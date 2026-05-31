@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppConfig } from "../../../types";
+import type { AppConfig } from '@/shared/types';
 import type { IdePreset } from '@/shared/utils/idePresets';
 import { IDE_PRESETS, getIdeIconSrc } from '@/shared/utils/idePresets';
 import { cn } from '@/lib/utils';

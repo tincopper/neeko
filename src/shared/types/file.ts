@@ -6,4 +6,5 @@ export type {
   FileTab,
   FileChangedEvent,
   FileTreeChangedEvent,
+  FileTransportKind,
 } from "@/features/file/types";

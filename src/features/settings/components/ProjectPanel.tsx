@@ -13,8 +13,8 @@ import {
   Input, Button, Separator,
 } from "@/ui";
 import TaskDialog from "@/features/task/components/TaskDialog";
-import type { TaskConfig } from "../../../types/task";
-import type { Project } from "../../../types";
+import type { TaskConfig } from '@/shared/types/task';
+import type { Project } from '@/shared/types';
 
 interface ProjectPanelProps {
   projectId: string;

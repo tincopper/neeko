@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
-import { useEditorStore } from "../store";
-import type { EditorGroupId, EditorSplitLayout, Tab } from "../../../types";
-import { createDefaultEditorLayout, findGroupIdForTab } from "../../../types/editorGroup";
+import { useEditorStore } from '@/shared/store';
+import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
+import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
 
 export interface EditorGroupLayoutResult {
   layout: EditorSplitLayout;

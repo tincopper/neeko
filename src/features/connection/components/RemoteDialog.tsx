@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { testRemoteConnection, listRemoteDirectories } from "../api/connectionApi";
-import { RemoteProject, RemoteEntrySession, AuthMethod } from "../../../types";
+import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { useAppContext } from "@/shared/contexts/AppContext";
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from "@/shared/utils/idePresets";

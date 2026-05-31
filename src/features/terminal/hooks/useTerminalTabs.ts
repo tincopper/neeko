@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
-import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from "../../../types";
+import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
 import { destroyTerminalCachesByPrefix } from "../components/terminalCache";
 import { useEditorStore } from '@/shared/store';
 

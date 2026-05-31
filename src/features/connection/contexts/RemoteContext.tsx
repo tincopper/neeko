@@ -1,6 +1,6 @@
 import React, { createContext, useContext } from "react";
 import type { ActiveRemoteKey } from "../components/types";
-import type { AuthMethod, RemoteEntrySession, RemoteProject } from "../../../types";
+import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/shared/types';
 
 export interface RemoteContextValue {
   remoteEntries: RemoteEntrySession[];

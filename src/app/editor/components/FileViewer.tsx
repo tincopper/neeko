@@ -8,14 +8,14 @@ import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } 
 import { Eye, Save, FileCode, Globe } from "@/shared/components/icons"
 import { getLanguageExtension, createCmTheme, isMarkdownFile } from "@/shared/utils/codemirror";
 import { MarkdownPreview } from "@/ui";
-import type { FileTab, AppTheme, Tab, FileTabData } from "../../../types";
+import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { useAppContext } from "@/shared/contexts/AppContext";
 import { useFileActionsContext } from "../FileActionsContext";
-import { useEditorContext } from "../context";
+import { useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useEditorStore } from "../store";
+import { useEditorStore } from '@/shared/store';
 import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";

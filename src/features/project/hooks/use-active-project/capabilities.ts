@@ -1,4 +1,4 @@
-import type { ProjectType, ProjectCapabilities } from '@/shared/types/activeProject";
+import type { ProjectType, ProjectCapabilities } from '@/shared/types/activeProject';
 
 export function getCapabilities(type: ProjectType): ProjectCapabilities {
   switch (type) {

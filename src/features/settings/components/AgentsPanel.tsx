@@ -1,5 +1,5 @@
 import React from "react";
-import type { AgentConfig, AppConfig } from "../../../types";
+import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Switch } from "@/ui";
 import BuiltInAgentsSection from "./BuiltInAgentsSection";
 import CustomAgentsSection from "./CustomAgentsSection";

@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import type { AppConfig } from "../../../types";
+import type { AppConfig } from '@/shared/types';
 import {
   SHORTCUT_ACTIONS,
   resolveBindings,

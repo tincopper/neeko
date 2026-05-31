@@ -15,7 +15,7 @@ import {
   dockPanelIcons,
 } from "../dockPanels";
 import { cn } from "@/lib/utils";
-import type { TabKind } from '@/shared/types/tab";
+import type { TabKind } from '@/shared/types/tab';
 
 /** Map panel IDs to TabKind values for panels that open as tabs */
 const PANEL_TO_TAB_KIND: Record<string, TabKind> = {

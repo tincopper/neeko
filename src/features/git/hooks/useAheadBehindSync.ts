@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { AheadBehind } from "../../../types";
+import type { AheadBehind } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useGitStore } from '@/features/git/store';

@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import type { CommitDetail, CommitFileChange } from "../../../../types";
+import type { CommitDetail, CommitFileChange } from '@/shared/types';
 import {
   GitCommitHorizontal,
   FileText,

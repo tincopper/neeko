@@ -1,5 +1,5 @@
-import type { Project, AgentConfig } from '../types';
-import type { ManagedSkillDto, TagGroup, DiscoveredSkillDto } from '../types';
+import type { Project, AgentConfig } from '@/shared/types';
+import type { ManagedSkillDto, TagGroup, DiscoveredSkillDto } from '@/shared/types';
 
 export function createProject(overrides?: Partial<Project>): Project {
   return {

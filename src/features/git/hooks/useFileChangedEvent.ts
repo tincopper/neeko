@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import type { FileChangedEvent } from "../../../types";
+import type { FileChangedEvent } from '@/shared/types';
 
 type Callback = (event: FileChangedEvent) => void;
 

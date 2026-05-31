@@ -12,7 +12,7 @@ import type {
   CommitFileChange,
   CommitResult,
   AheadBehind,
-} from '../types';
+} from '@/shared/types';
 
 // The transport types used by git commands
 export interface LocalTransport {

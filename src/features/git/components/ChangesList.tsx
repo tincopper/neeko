@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
-import type { FileChange } from "../../../types";
+import type { FileChange } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { Checkbox } from "@/ui/checkbox";
 import { Badge } from "@/ui/badge";

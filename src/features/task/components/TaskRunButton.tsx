@@ -3,7 +3,7 @@ import { Play, Square, ChevronDown, Plus, Pencil, X } from "@/shared/components/
 import { useTaskStore } from "../store";
 import { useProjectStore } from '@/features/project/store';
 import TaskDialog from "./TaskDialog";
-import type { TaskConfig } from "../../../types/task";
+import type { TaskConfig } from '@/shared/types/task';
 
 // ── TaskRunButton ────────────────────────────────────────────────────────────
 

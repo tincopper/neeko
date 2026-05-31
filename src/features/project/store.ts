@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { FileChange, Project } from "../../types";
+import type { FileChange, Project } from '@/shared/types';
 
 const noop = () => {};
 
@@ -45,8 +45,8 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
       const gitInfo = project.git_info ?? {
         current_branch: "",
         branches: [] as string[],
-        worktrees: [] as import("../../types").Worktree[],
-        changed_files: [] as import("../../types").FileChange[],
+        worktrees: [] as import("@/shared/types").Worktree[],
+        changed_files: [] as import("@/shared/types").FileChange[],
         is_clean: true,
       };
 

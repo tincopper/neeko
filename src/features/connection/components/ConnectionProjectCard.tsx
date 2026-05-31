@@ -10,7 +10,7 @@ import ContextMenu, { type ContextMenuItem } from "@/features/project/components
 import ProjectSettingsDialog from "@/features/project/components/ProjectSettingsDialog";
 import ConnectionWorktreeList from "./ConnectionWorktreeList";
 import type { ConnectionProjectCardProps } from "./types";
-import type { FileChange } from "../../../types";
+import type { FileChange } from '@/shared/types';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useGitStore } from '@/features/git/store';

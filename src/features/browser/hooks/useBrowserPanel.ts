@@ -11,7 +11,7 @@ import { useBrowserPicker } from './useBrowserPicker';
 import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/pickerUtils';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
-import type { FileChangedEvent } from '../../../types';
+import type { FileChangedEvent } from '@/shared/types';
 
 /** Safety-net timeout: auto-refresh even if no git-changed event arrives */
 const AUTO_REFRESH_TIMEOUT_MS = 30_000;

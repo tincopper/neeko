@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { closePr, isGhInstalled, listPrs, mergePr, viewPr } from "../api/gitApi";
 import { saveVcsSettings, loadVcsSettings } from "../../session/api/sessionApi";
-import type { PRListItem } from "../../../types";
+import type { PRListItem } from '@/shared/types';
 import { ChevronRightIcon } from "@/shared/components/icons";
 import { cn } from '@/lib/utils';
 import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/shared/components/icons"

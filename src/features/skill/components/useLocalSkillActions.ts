@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useSkillStore } from '@/features/skill/store';
-import type { ManagedSkillDto, DiscoveredSkillDto } from '../../../types';
+import type { ManagedSkillDto, DiscoveredSkillDto } from '@/shared/types';
 import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
 
 // ─── Hook ────────────────────────────────────────────────────────────────────

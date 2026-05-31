@@ -4,7 +4,7 @@ import { Button, Badge } from "@/ui";
 import { ResizablePanel } from "@/ui/ResizablePanel";
 import { MarkdownPreview } from "@/ui/MarkdownPreview";
 import { useSkillStore } from '@/features/skill/store';
-import type { ManagedSkillDto } from '../../../types';
+import type { ManagedSkillDto } from '@/shared/types';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 
 interface ViewSkillDialogProps {

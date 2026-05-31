@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppConfig } from "../../../types";
+import type { AppConfig } from '@/shared/types';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from "@/shared/components/icons";

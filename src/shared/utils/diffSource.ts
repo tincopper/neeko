@@ -6,7 +6,7 @@
  */
 
 import type { DiffSource } from "@/features/git/components/diff/types";
-import type { ConnectionContext } from "../../types/activeProject";
+import type { ConnectionContext } from '@/shared/types/activeProject';
 
 /**
  * buildDiffSource — 根据 ConnectionContext 构造 DiffSource

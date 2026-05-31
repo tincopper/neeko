@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { FileNode } from "../../types";
+import type { FileNode } from '@/shared/types';
 
 interface FileStoreState {
   fileTree: FileNode[];

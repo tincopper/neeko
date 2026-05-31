@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import type { WSLProject, RemoteProject } from "../../../types";
+import type { WSLProject, RemoteProject } from '@/shared/types';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 
 interface WslActions {

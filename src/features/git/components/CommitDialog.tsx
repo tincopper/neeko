@@ -3,7 +3,7 @@ import { commitFiles, push, pull, getWorktreeChangedFiles, getCommitLog } from "
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
 import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
-import type { FileChange } from "../../../types";
+import type { FileChange } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 
 interface CommitDialogProps {
