@@ -19,22 +19,35 @@
 my-tauri-app/
 ├── src-tauri/                      # 🦀 Rust 后端世界 (Domain-Driven / Feature 架构)
 │   ├── src/
-│   │   ├── core/                   # ⚙️ 核心公共层（技术基础设施，不含任何业务逻辑）
-│   │   │   ├── mod.rs
-│   │   │   ├── db.rs               # 数据库连接池初始化、管理及 Migrations
+│   │   ├── common/                 # 🔧 基础设施层（纯操作，无 Tauri 命令，无业务逻辑）
+│   │   │   ├── mod.rs              # 模块入口，声明所有基础设施子模块
+│   │   │   ├── types.rs            # 跨域共享类型
+│   │   │   ├── error.rs            # 统一错误处理（自定义 AppError 并实现 Serialize）
 │   │   │   ├── logger.rs           # 全局日志追踪配置 (如 log/tracing 插件)
-│   │   │   └── error.rs            # 统一错误处理（自定义 AppError 并实现 Serialize）
-│   │   ├── agent/                  # 💰 领域模块 A：Agent 管理
-│   │   │   ├── mod.rs              # 模块入口：声明并一键导出本领域的 Commands
-│   │   │   ├── model.rs            # 数据结构：纯领域模型/结构体 (与前端 TS 严格对齐)
-│   │   │   ├── manager.rs          # 业务逻辑：Agent 生命周期管理
-│   │   │   └── commands.rs         # 接口层：对接前端，解包参数，调用 service 并返回
-│   │   ├── git/                    # 📊 领域模块 B：Git 操作
-│   │   │   ├── mod.rs
-│   │   │   ├── model.rs
-│   │   │   ├── commands.rs
-│   │   │   └── ...
-│   │   └── main.rs                 # 🚀 总入口：初始化 core，挂载所有业务领域的 Commands
+│   │   │   ├── db.rs               # 数据库连接池初始化、管理及 Migrations
+│   │   │   ├── git/                # Git 底层操作（operations, transport, parsers...）
+│   │   │   ├── agent/              # LLM/Agent 底层调用（model/types, services）
+│   │   │   ├── terminal/           # PTY 终端底层（model/types, remote）
+│   │   │   ├── connection/         # SSH/WSL 传输层（model/types）
+│   │   │   ├── file/               # 文件底层操作 + watcher
+│   │   │   └── utils/              # 通用工具（command, fonts, path_resolver...）
+│   │   ├── project/                # 📦 业务域：项目管理（含 commands, services, 业务逻辑）
+│   │   ├── session/                # 会话管理
+│   │   ├── skill/                  # Skill 管理
+│   │   ├── theme/                  # 主题管理
+│   │   ├── settings/               # 设置管理
+│   │   ├── task/                   # Task 管理
+│   │   ├── browser/                # 浏览器 WebView 控制
+│   │   ├── git/                    # 仅 Tauri 命令入口（commands.rs），逻辑委托 common/git/
+│   │   ├── agent/                  # 仅命令 + manager（命令入口，Agent 生命周期管理）
+│   │   ├── terminal/               # 仅命令 + services（命令入口，TerminalManager 业务逻辑）
+│   │   ├── connection/             # 仅命令 + services（命令入口，连接业务逻辑）
+│   │   ├── file/                   # 仅命令入口
+│   │   ├── core/                   # [预留] 跨域业务编排（暂空）
+│   │   ├── app.rs                  # Tauri 应用组装
+│   │   ├── app_state.rs            # 组合根（关联各模块 Manager/Store）
+│   │   ├── lib.rs                  # crate 根，neeko_invoke_handler!
+│   │   └── main.rs                 # 🚀 总入口
 │   ├── Cargo.toml                  # Rust 依赖配置
 │   └── tauri.conf.json             # Tauri 2.0 窗体与核心能力权限配置
 │
@@ -69,9 +82,11 @@ my-tauri-app/
 ```
 
 > **结构原则：**
+> - 上图反映 Neeko 实际项目结构，与 §2 的通用模板不同。`shared/`、`ui/`、`layout/`、`styles/` 替换了根级 `components/`、`utils/`、`stores/` 等目录。
 > - 并非每个功能都需要所有这些文件夹，仅包含该功能必需的文件夹。
-> - 后端模块最小骨架为 `mod.rs` + `commands.rs`，根据复杂度按需扩展，不一定非要有 `services.rs` 和 `repository.rs`；
-> - 前端 feature 子目录按需创建，不强制预埋空白目录；
+> - 后端 `common/` 是纯基础设施层：不包含 `#[tauri::command]`，不引用业务域模块，内部可自由引用。
+> - 后端根级模块（`git/`, `agent/`, `terminal/`...）仅保留 `commands.rs` + 业务逻辑（services, manager），实现委托 `common/`。
+> - 前/后端 feature 子目录按需创建，不强制预埋空白目录；
 
 ---
 
@@ -430,7 +445,7 @@ pub fn find_all_records(conn: &Connection) -> Result<Vec<Transaction>> {
 use rusqlite::Connection;
 use super::model::Transaction;
 use super::repository;
-use crate::core::error::AppError;
+use crate::common::error::AppError;
 
 pub fn get_processed_transactions(conn: &Connection) -> Result<Vec<Transaction>, AppError> {
     // 1. 调用持久层拿原数据
@@ -453,8 +468,8 @@ pub fn get_processed_transactions(conn: &Connection) -> Result<Vec<Transaction>,
 ```rust
 // commands.rs
 use tauri::State;
-use crate::core::db::DbPool;
-use crate::core::error::AppError;
+use crate::common::db::DbPool;
+use crate::common::error::AppError;
 use super::model::Transaction;
 use super::services;
 
@@ -533,7 +548,7 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     - 前端其他模块如果要引入财务模块的内容，只允许写 `import { ... } from '@/features/finance'`。**绝对禁止**团队成员跨越目录深度写出形如 `from '@/features/finance/components/X'` 的路径。
 
 3. **错误冒泡规范（全栈）**：
-    - Rust 底层的原生错误（如 `rusqlite::Error`），必须在 `services.rs` 或 `commands.rs` 这一层通过 `map_err` 拦截并包装为 `core/error.rs` 中前端可读的友好自定义错误，严禁将未捕获的底层崩溃信息抛给前端。
+    - Rust 底层的原生错误（如 `rusqlite::Error`），必须在 `services.rs` 或 `commands.rs` 这一层通过 `map_err` 拦截并包装为 `common/error.rs` 中前端可读的友好自定义错误，严禁将未捕获的底层崩溃信息抛给前端。
 
 4. **强力禁止浏览器 History 路由**：
     - 前端路由**必须且只能**采用 `HashRouter` 或 `MemoryRouter`。桌面端应用通过本地 `file://` 协议分发资源，传统的 `BrowserRouter` 会导致页面在手动刷新或二级跳转时触发致命的白屏 404。
@@ -568,9 +583,44 @@ export const useFinanceStore = create<FinanceState>((set) => ({
 | **编辑器** | **`src/app/editor/`** | **app** | **原位于 features/，后迁至 app 层** |
 | 应用壳层 | `src/app/` | app | 组合各 feature 与 app 域 |
 
+### 后端域位置
+
+| 模块 | 位置 | 所属层 | 说明 |
+|------|------|--------|------|
+| Git 操作 | `src-tauri/src/common/git/` | infrastructure | 纯操作层，无 Tauri 命令 |
+| Agent (LLM) | `src-tauri/src/common/agent/` | infrastructure | 纯调用层，无 Tauri 命令 |
+| 终端底层 | `src-tauri/src/common/terminal/` | infrastructure | PTY 实现，无 Tauri 命令 |
+| 连接传输层 | `src-tauri/src/common/connection/` | infrastructure | SSH/WSL 传输，无 Tauri 命令 |
+| 文件底层 | `src-tauri/src/common/file/` | infrastructure | 文件操作 + watcher，无 Tauri 命令 |
+| 通用工具 | `src-tauri/src/common/utils/` | infrastructure | 命令执行、字体、路径工具 |
+| 错误/日志/DB | `src-tauri/src/common/` | infrastructure | error, logger, db 基础设施 |
+| Git 命令入口 | `src-tauri/src/git/` | feature | 仅 commands.rs |
+| Agent 命令入口 | `src-tauri/src/agent/` | feature | commands.rs + manager.rs |
+| 终端管理 | `src-tauri/src/terminal/` | feature | commands.rs + services.rs + TerminalManager |
+| 连接管理 | `src-tauri/src/connection/` | feature | commands.rs + services.rs |
+| 文件命令入口 | `src-tauri/src/file/` | feature | 仅 commands.rs |
+| **项目管理** | `src-tauri/src/project/` | **business domain** | commands + services + ProjectManager |
+| 会话管理 | `src-tauri/src/session/` | business domain | commands + StorageManager |
+| Skill 管理 | `src-tauri/src/skill/` | business domain | commands + scanner + installer |
+| 主题管理 | `src-tauri/src/theme/` | business domain | commands + service |
+| 设置管理 | `src-tauri/src/settings/` | business domain | 仅 commands |
+| Task 管理 | `src-tauri/src/task/` | business domain | commands + services |
+| 浏览器控制 | `src-tauri/src/browser/` | feature | commands + uri_scheme |
+
+### 后端分层规则
+
+| 方向 | 允许 | 禁止 |
+|------|------|------|
+| `common/` 内部 | 自由引用 | — |
+| `common/` → 外部 | — | `common/` 不能引用业务域模块（project, session...） |
+| `business domain` → `common/` | ✅ 业务域可引用基础设施 | — |
+| `business domain` ↔ `business domain` | — | 业务域之间不能互相引用，通过 `app_state.rs` 编排 |
+| `feature` → `common/` | ✅ 命令入口可引用基础设施 | — |
+
 ### 迁移说明
 
 - 编辑器（Editor）原在 `src/features/editor/`，因架构重构迁至 `src/app/editor/`。此举使 `app/` 层承担部分领域责任，而非仅组合。这是对标准 Feature-Based 架构的有意偏离。
 - `app/` 下的域与 `features/` 下的域遵循相同的内部结构（`api/`、`hooks/`、`components/`、`types.ts`），并同样受 ESLint `no-restricted-imports` 约束。
 - `app/` 域可引用 `features/` 域，反之禁止。
 - **跨域状态下沉**：编辑器的 Zustand store（`useEditorStore`）从 `app/editor/store` 迁至 `shared/store/editorStore`，editor context（`EditorProvider`/`useEditorContext`）迁至 `shared/contexts/editorContext`，`useSplitLayout` 迁至 `shared/hooks/useSplitLayout`。此举解决 features 反向引用 app 的规范违反，使跨域共享状态位于 shared 层，features 可合法引用。
+- **后端基础设施分层**：`common/` 作为纯基础设施层从业务模块中拆分出来，git、agent、terminal、connection、file、utils 的基础操作迁入 `common/`（不含 commands）。各根级模块仅保留 commands 胶水层和业务逻辑（services, manager）。`common/` 内部自由引用，禁止引用业务域模块。
