@@ -35,7 +35,6 @@ export { useWslActions } from "./hooks/useWslActions";
 export { useRemoteProjects } from "./hooks/useRemoteProjects";
 export { useRemoteActions } from "./hooks/useRemoteActions";
 export { useRemoteAuthActions } from "./hooks/useRemoteAuthActions";
-export { useConnectionOrchestrator } from "./hooks/useConnectionOrchestrator";
 
 // Contexts
 export { WslProvider, useWslContext } from "./contexts/WslContext";

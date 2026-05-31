@@ -65,8 +65,8 @@ my-tauri-app/
 ```
 
 > **结构原则：**
-> - 并非每个功能都需要所有这些文件夹。仅包含该功能必需的文件夹。
-> - 后端模块最小骨架为 `mod.rs` + `commands.rs`，根据复杂度按需扩展；
+> - 并非每个功能都需要所有这些文件夹，仅包含该功能必需的文件夹。
+> - 后端模块最小骨架为 `mod.rs` + `commands.rs`，根据复杂度按需扩展，不一定非要有 `services.rs` 和 `repository.rs`；
 > - 前端 feature 子目录按需创建，不强制预埋空白目录；
 
 ---
@@ -243,7 +243,7 @@ Rust 通过**编译期模块可见性 + Clippy lint + rustfmt** 实现与前端 
 ```toml
 [lints.clippy]
 # --- 正确性（对应 §7.3 错误冒泡规范）---
-unwrap_used = "warn"                  # 禁止 unwrap（由 lib.rs deny 强制执行）
+unwrap_used = "warn"                  # 禁止 unwrap（生产代码已消除，warn 保留给测试代码）
 expect_used = "warn"                  # 允许 expect 但提醒审查
 cast_possible_truncation = "deny"     # 禁止隐式数字截断
 cast_sign_loss = "deny"               # 禁止有符号→无符号隐式转换
@@ -281,7 +281,6 @@ redundant_else = "warn"
     clippy::todo,
     clippy::print_stdout,
     clippy::wildcard_imports,
-    clippy::unwrap_used,
     unused_must_use
 )]
 ```
@@ -344,7 +343,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 应用遵循 **"纵向不越级，横向不对齐"** 的分层原则。通过一个完整的"获取财务列表"链路来演示各层的具体实现。
 
-### 4.1 后端 Rust 侧四层模型实现
+### 6.1 后端 Rust 侧四层模型实现
 
 #### ① 数据模型层 (`finance/model.rs`)
 

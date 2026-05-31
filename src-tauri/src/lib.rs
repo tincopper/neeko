@@ -3,7 +3,6 @@
     clippy::todo,
     clippy::print_stdout,
     clippy::wildcard_imports,
-    clippy::unwrap_used,
     unused_must_use
 )]
 // Notes on lints omitted from this deny block:

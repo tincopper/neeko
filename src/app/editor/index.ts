@@ -14,7 +14,6 @@ export { useTabManagement } from "./hooks/useTabManagement";
 export { useEditorGroupLayout } from "./hooks/useEditorGroupLayout";
 export type { EditorGroupLayoutResult } from "./hooks/useEditorGroupLayout";
 export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from "./hooks/useSplitLayout";
-export { useEditorOrchestrator } from "./hooks/useEditorOrchestrator";
 
 // Store
 export { useEditorStore } from "./store";
