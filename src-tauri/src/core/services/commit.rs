@@ -204,9 +204,9 @@ pub fn execute_agent_cli(
     prompt_content: &str,
     project_path: &Path,
 ) -> Result<AgentOutput, AppError> {
-    let full_path = crate::utils::command::local::resolve_full_path();
+    let full_path = crate::common::utils::command::local::resolve_full_path();
     let resolved_command =
-        crate::utils::command::local::resolve_command_path(&config.command, &full_path);
+        crate::common::utils::command::local::resolve_command_path(&config.command, &full_path);
 
     let uses_file_mode = config
         .prompt_args
@@ -316,7 +316,7 @@ fn write_prompt_file(project_path: &Path, content: &str) -> Result<PathBuf, AppE
 fn build_platform_command(resolved_command: &str, path_env: &str) -> std::process::Command {
     #[cfg(target_os = "windows")]
     {
-        let mut c = crate::utils::command::local::exec("cmd.exe");
+        let mut c = crate::common::utils::command::local::exec("cmd.exe");
         c.env("PATH", path_env);
         c.env("NO_COLOR", "1");
         c.arg("/C");
@@ -325,7 +325,7 @@ fn build_platform_command(resolved_command: &str, path_env: &str) -> std::proces
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let mut c = crate::utils::command::local::exec(resolved_command);
+        let mut c = crate::common::utils::command::local::exec(resolved_command);
         c.env("PATH", path_env);
         c.env("NO_COLOR", "1");
         c

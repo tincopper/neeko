@@ -1,4 +1,4 @@
-use crate::git::types::DiffResult;
+use crate::common::git::types::DiffResult;
 use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;

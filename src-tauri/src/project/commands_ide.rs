@@ -1,4 +1,4 @@
-use crate::utils::command::local;
+use crate::common::utils::command::local;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;

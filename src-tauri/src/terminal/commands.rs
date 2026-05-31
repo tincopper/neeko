@@ -1,5 +1,5 @@
 #[allow(clippy::wildcard_imports)]
-use crate::terminal::types::*;
+use crate::common::terminal::types::*;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
@@ -116,7 +116,7 @@ pub async fn create_remote_terminal_session(
     host: String,
     port: u16,
     username: String,
-    auth: crate::connection::types::AuthMethod,
+    auth: crate::common::connection::types::AuthMethod,
     project_path: String,
     cols: u16,
     rows: u16,

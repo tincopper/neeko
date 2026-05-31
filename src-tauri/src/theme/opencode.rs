@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use super::common::{base64_encode, map_theme_name, read_config_bool, shell_escape};
-use crate::utils::command::ssh::exec;
-use crate::utils::command::wsl;
+use crate::common::utils::command::ssh::exec;
+use crate::common::utils::command::wsl;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具

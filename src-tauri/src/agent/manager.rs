@@ -1,4 +1,4 @@
-use crate::agent::types::AgentConfig;
+use crate::common::agent::types::AgentConfig;
 use std::collections::HashMap;
 
 pub struct AgentManager {
@@ -44,7 +44,7 @@ impl AgentManager {
                     .agents
                     .iter()
                     .find(|a| a.id == *id)
-                    .map(|a| crate::utils::command::local::check_command_exists(&a.command))
+                    .map(|a| crate::common::utils::command::local::check_command_exists(&a.command))
                     .unwrap_or(false);
                 (id.clone(), installed)
             })

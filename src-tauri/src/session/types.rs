@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::terminal::types::TerminalStatus;
+use crate::common::terminal::types::TerminalStatus;
 
 fn default_collapsed() -> bool {
     true

@@ -16,6 +16,7 @@ pub mod agent;
 mod app;
 mod app_state;
 pub mod browser;
+pub mod common;
 pub mod connection;
 pub mod core;
 pub mod file;
@@ -27,11 +28,10 @@ pub mod skill;
 pub mod task;
 pub mod terminal;
 pub mod theme;
-pub mod utils;
 
 pub use app::run;
 pub use app_state::AppStateWrapper;
-pub use core::error::AppError;
+pub use common::error::AppError;
 
 /// 聚合所有 Tauri 命令到 invoke_handler
 #[macro_export]

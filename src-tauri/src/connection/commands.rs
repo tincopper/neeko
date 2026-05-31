@@ -23,7 +23,7 @@ pub async fn test_remote_connection(
     host: String,
     port: u16,
     username: String,
-    auth: crate::connection::types::AuthMethod,
+    auth: crate::common::connection::types::AuthMethod,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     state
@@ -38,7 +38,7 @@ pub async fn list_remote_directories(
     host: String,
     port: u16,
     username: String,
-    auth: crate::connection::types::AuthMethod,
+    auth: crate::common::connection::types::AuthMethod,
     path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<String>, AppError> {

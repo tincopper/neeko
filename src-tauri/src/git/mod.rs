@@ -1,23 +1,12 @@
-pub mod cache;
 pub mod commands;
-mod local;
-pub mod model;
-pub mod operations;
-pub mod parsers;
-pub mod pr;
-pub mod remote;
-pub mod transport;
-pub mod types;
-pub mod worker;
-#[cfg(target_os = "windows")]
-mod wsl;
 
-pub use cache::*;
-pub use local::*;
-pub use parsers::*;
-pub use pr::*;
-pub use remote::*;
-pub use types::*;
-pub use worker::*;
+// Re-export from common::git for backward compatibility
+pub use crate::common::git::cache::*;
+pub use crate::common::git::local::*;
+pub use crate::common::git::parsers::*;
+pub use crate::common::git::pr::*;
+pub use crate::common::git::remote::*;
+pub use crate::common::git::types::*;
+pub use crate::common::git::worker::*;
 #[cfg(target_os = "windows")]
-pub use wsl::*;
+pub use crate::common::git::wsl::*;

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 
-use crate::agent::types::AgentConfig;
+use crate::common::agent::types::AgentConfig;
 use crate::app_state::AppStateWrapper;
 
 #[cfg(unix)]
@@ -19,7 +19,7 @@ fn resolve_user_path() -> Option<String> {
 }
 
 pub fn run() {
-    crate::core::logger::init_logger();
+    crate::common::logger::init_logger();
     log::info!("Neeko starting");
 
     // Ensure skill central repo directories exist

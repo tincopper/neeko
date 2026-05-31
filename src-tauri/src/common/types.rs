@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::common::terminal::types::TerminalSession;
+// ─── File types ───────────────────────────────────────────────────────────────
 
-/// 文件状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum FileStatus {
     Modified,
@@ -13,7 +12,6 @@ pub enum FileStatus {
     Untracked,
 }
 
-/// 文件变更信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileChange {
     pub path: PathBuf,
@@ -22,7 +20,6 @@ pub struct FileChange {
     pub deletions: usize,
 }
 
-/// 文件 diff 统计信息（仅 additions / deletions，不含 diff 内容）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileDiffStats {
     pub path: PathBuf,
@@ -30,22 +27,24 @@ pub struct FileDiffStats {
     pub deletions: usize,
 }
 
-/// Git 分支信息（轻量级，不含 changed_files）
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GitBranchInfo {
-    pub current_branch: String,
-    pub branches: Vec<String>,
-    pub worktrees: Vec<Worktree>,
+pub struct FileContent {
+    pub path: String,
+    pub content: String,
+    pub size: u64,
+    pub is_binary: bool,
 }
 
-/// 视图模式
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ViewMode {
-    Terminal,
-    Diff { file_path: PathBuf },
+pub struct FileNode {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Vec<FileNode>,
 }
 
-/// Git Worktree 信息
+// ─── Git types ────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
     pub path: PathBuf,
@@ -53,7 +52,13 @@ pub struct Worktree {
     pub head: String,
 }
 
-/// Git 仓库信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitBranchInfo {
+    pub current_branch: String,
+    pub branches: Vec<String>,
+    pub worktrees: Vec<Worktree>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitInfo {
     pub current_branch: String,
@@ -63,43 +68,6 @@ pub struct GitInfo {
     pub is_clean: bool,
 }
 
-/// 项目信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Project {
-    pub id: String,
-    pub name: String,
-    pub path: PathBuf,
-    pub git_info: Option<GitInfo>,
-    pub terminal: TerminalSession,
-    pub selected_agent: Option<String>,
-    pub selected_ide: Option<String>,
-    pub active_view: ViewMode,
-    pub collapsed: bool,
-    /// 用户在 ProjectSettingsDialog 中选择的 avatar 颜色（十六进制 hex 字符串，如 "#61afef"）。
-    /// `None` 表示走前端 DJB2 hash 兜底。
-    #[serde(default)]
-    pub avatar_color: Option<String>,
-}
-
-/// 文件树节点（目录树返回类型）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileNode {
-    pub name: String,
-    pub path: String,
-    pub is_dir: bool,
-    pub children: Vec<FileNode>,
-}
-
-/// 文件内容（读取文件返回类型）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileContent {
-    pub path: String,
-    pub content: String,
-    pub size: u64,
-    pub is_binary: bool,
-}
-
-/// Commit 记录
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitEntry {
     pub hash: String,
@@ -112,7 +80,6 @@ pub struct CommitEntry {
     pub parents: Vec<String>,
 }
 
-/// Commit 详细信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitDetail {
     pub hash: String,
@@ -125,7 +92,6 @@ pub struct CommitDetail {
     pub refs: String,
 }
 
-/// Commit 改动的文件
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitFileChange {
     pub path: String,
@@ -134,7 +100,6 @@ pub struct CommitFileChange {
     pub deletions: usize,
 }
 
-/// Commit 结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitResult {
     pub success: bool,
@@ -142,14 +107,14 @@ pub struct CommitResult {
     pub message: String,
 }
 
-/// Ahead/Behind 计数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AheadBehind {
     pub ahead: usize,
     pub behind: usize,
 }
 
-/// gh --json author 返回 {"login":"xxx",...}，提取 login 字段
+// ─── PR types ─────────────────────────────────────────────────────────────────
+
 fn extract_author_login(val: &serde_json::Value) -> String {
     val.get("login")
         .and_then(|v| v.as_str())
@@ -167,7 +132,6 @@ fn deserialize_author<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, 
     }
 }
 
-/// PR 列表项（对应 gh pr list --json）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PRListItem {
@@ -185,7 +149,6 @@ pub struct PRListItem {
     pub head_repository_owner: String,
 }
 
-/// PR 详细信息（对应 gh pr view --json）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PRInfo {
@@ -211,9 +174,26 @@ pub struct PRInfo {
     pub status_check_rollup: Option<serde_json::Value>,
 }
 
-/// PR 合并结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PRMergeResult {
     pub success: bool,
     pub message: String,
+}
+
+// ─── Watcher types ────────────────────────────────────────────────────────────
+
+/// 增量状态差异：与上次 git status 对比后的变化
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct GitStatusDiff {
+    pub project_id: String,
+    pub added: Vec<GitStatusFile>,
+    pub removed: Vec<String>,
+    pub modified: Vec<GitStatusFile>,
+}
+
+/// 单个文件的 git status 信息
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitStatusFile {
+    pub path: String,
+    pub status: String,
 }

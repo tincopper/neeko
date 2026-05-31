@@ -1,9 +1,9 @@
-use crate::git::types::{DiffHunk, DiffLine, DiffResult};
+use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::project::types::{
     CommitDetail, CommitEntry, CommitFileChange, FileChange, FileDiffStats, FileStatus,
     GitBranchInfo, GitInfo, Worktree,
 };
-use crate::utils::command::local::exec;
+use crate::common::utils::command::local::exec;
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
 use std::path::{Path, PathBuf};

@@ -26,10 +26,10 @@ pub(super) fn spawn_pty_pipeline(
     pair: PtyPair,
     child: Box<dyn Child + Send + Sync>,
     config: &PipelineConfig,
-    sessions: &Arc<Mutex<HashMap<String, crate::terminal::types::TerminalSession>>>,
+    sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
     app_handle: &tauri::AppHandle,
-) -> Result<crate::terminal::types::TerminalSession> {
+) -> Result<crate::common::terminal::types::TerminalSession> {
     let pid = child.process_id();
     log_info(&format!("{} Shell spawned, PID: {:?}", config.prefix, pid));
 
@@ -40,7 +40,7 @@ pub(super) fn spawn_pty_pipeline(
     #[cfg(windows)]
     let job_handle = {
         match child.as_raw_handle() {
-            Some(raw) => match crate::utils::job_object::create_job_for_process(raw) {
+            Some(raw) => match crate::common::utils::job_object::create_job_for_process(raw) {
                 Ok(jh) => {
                     log_info(&format!(
                         "{} Job Object created for PID {:?}",
@@ -82,10 +82,10 @@ pub(super) fn spawn_pty_pipeline(
         .take_writer()
         .map_err(|e| anyhow::anyhow!("Failed to take writer: {}", e))?;
 
-    let session = crate::terminal::types::TerminalSession {
+    let session = crate::common::terminal::types::TerminalSession {
         id: id.to_string(),
         pid,
-        status: crate::terminal::types::TerminalStatus::Idle,
+        status: crate::common::terminal::types::TerminalStatus::Idle,
         history: Vec::new(),
         agent: None,
     };
@@ -159,7 +159,7 @@ fn spawn_watcher_thread(
     id: &str,
     config: &PipelineConfig,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
-    sessions: &Arc<Mutex<HashMap<String, crate::terminal::types::TerminalSession>>>,
+    sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     let watch_id = id.to_string();

@@ -1,7 +1,7 @@
-use crate::connection::types::AuthMethod;
-use crate::terminal::types::{TerminalSession, TerminalStatus};
+use crate::common::connection::types::AuthMethod;
+use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
-use crate::utils::command::ssh_auth;
+use crate::common::utils::command::ssh_auth;
 use anyhow::{Context, Result};
 #[allow(clippy::wildcard_imports)]
 use russh::*;

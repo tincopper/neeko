@@ -1,4 +1,4 @@
-use crate::core::watcher::{GitStatusDiff, GitStatusWorker};
+use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,

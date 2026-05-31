@@ -1,4 +1,4 @@
-use crate::agent::types::AgentConfig;
+use crate::common::agent::types::AgentConfig;
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::collections::HashMap;
@@ -135,7 +135,7 @@ pub async fn check_agents_installed(
             .map(|a| a.command.clone());
         let installed = match command {
             Some(cmd) => match tokio::task::spawn_blocking(move || {
-                crate::utils::command::local::check_command_exists(&cmd)
+                crate::common::utils::command::local::check_command_exists(&cmd)
             })
             .await
             {

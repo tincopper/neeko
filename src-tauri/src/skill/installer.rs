@@ -234,7 +234,7 @@ pub fn preview_git_install(
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::utils::command::local::exec("git")
+    let git_clone_result = crate::common::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -250,7 +250,7 @@ pub fn preview_git_install(
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
             // Try 'master' branch if 'main' fails
-            crate::utils::command::local::exec("git")
+            crate::common::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -398,7 +398,7 @@ pub fn install_from_git(
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::utils::command::local::exec("git")
+    let git_clone_result = crate::common::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -413,7 +413,7 @@ pub fn install_from_git(
     let _repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            crate::utils::command::local::exec("git")
+            crate::common::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -466,7 +466,7 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::utils::command::local::exec("git")
+    let git_clone_result = crate::common::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -481,7 +481,7 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            crate::utils::command::local::exec("git")
+            crate::common::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",
@@ -536,7 +536,7 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::utils::command::local::exec("git")
+    let git_clone_result = crate::common::utils::command::local::exec("git")
         .args([
             "clone",
             "--depth",
@@ -551,7 +551,7 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
     let repo = match git_clone_result {
         Ok(output) if output.status.success() => Repository::open(&clone_path)?,
         _ => {
-            crate::utils::command::local::exec("git")
+            crate::common::utils::command::local::exec("git")
                 .args([
                     "clone",
                     "--depth",

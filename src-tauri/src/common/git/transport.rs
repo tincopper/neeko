@@ -1,11 +1,11 @@
 use anyhow::Result;
 
-use crate::connection::types::AuthMethod;
-use crate::utils::command::local::exec as local_exec;
-use crate::utils::command::local::safe_path;
-use crate::utils::command::ssh::exec_command;
+use crate::common::connection::types::AuthMethod;
+use crate::common::utils::command::local::exec as local_exec;
+use crate::common::utils::command::local::safe_path;
+use crate::common::utils::command::ssh::exec_command;
 #[cfg(target_os = "windows")]
-use crate::utils::command::wsl;
+use crate::common::utils::command::wsl;
 
 pub enum GitTransport {
     Local,

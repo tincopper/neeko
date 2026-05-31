@@ -12,7 +12,7 @@ pub struct SkillRepository {
 
 impl SkillRepository {
     pub fn open(db_path: &Path) -> Result<Self> {
-        let conn = crate::core::db::open(db_path)?;
+        let conn = crate::common::db::open(db_path)?;
         super::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
@@ -20,7 +20,7 @@ impl SkillRepository {
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        let conn = crate::core::db::open_in_memory()?;
+        let conn = crate::common::db::open_in_memory()?;
         super::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),

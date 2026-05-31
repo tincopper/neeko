@@ -1,9 +1,9 @@
 use serde::Deserialize;
 
-use crate::connection::types::AuthMethod;
-use crate::git::operations;
-use crate::git::transport::GitTransport;
-use crate::git::types::DiffResult;
+use crate::common::connection::types::AuthMethod;
+use crate::common::git::operations;
+use crate::common::git::transport::GitTransport;
+use crate::common::git::types::DiffResult;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRInfo, PRListItem,
@@ -337,9 +337,9 @@ pub async fn get_git_info(transport: GitTransportKind) -> Result<GitInfo, AppErr
             .open_repo(wd)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
         let branch_info =
-            crate::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)?;
+            crate::common::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)?;
         let changed_files =
-            crate::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)?;
+            crate::common::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)?;
         let is_clean = changed_files.is_empty();
         Ok(GitInfo {
             current_branch: branch_info.current_branch,
@@ -362,7 +362,7 @@ pub async fn get_git_branch_info(transport: GitTransportKind) -> Result<GitBranc
         let repo = t
             .open_repo(wd)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        crate::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)
+        crate::common::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)
     } else {
         operations::get_git_branch_info_shell(&t, wd)
             .await
@@ -380,7 +380,7 @@ pub async fn get_worktree_changed_files(
         let repo = t
             .open_repo(&worktree_path)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        crate::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)
+        crate::common::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)
     } else {
         operations::get_worktree_changed_files(&t, &worktree_path)
             .await
@@ -395,7 +395,7 @@ pub async fn get_changed_files_diff_stats(
     let (t, wd) = into_transport_and_dir(&transport);
     if t.supports_git2() {
         let repo_path = std::path::Path::new(wd);
-        crate::git::local::get_changed_files_diff_stats(repo_path).map_err(AppError::from)
+        crate::common::git::local::get_changed_files_diff_stats(repo_path).map_err(AppError::from)
     } else {
         operations::get_changed_files_diff_stats_local(wd)
             .await
@@ -410,7 +410,7 @@ pub async fn get_file_diff(
 ) -> Result<DiffResult, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     if t.supports_git2() {
-        crate::git::local::get_file_diff(std::path::Path::new(wd), &file_path)
+        crate::common::git::local::get_file_diff(std::path::Path::new(wd), &file_path)
             .map_err(AppError::from)
     } else {
         operations::get_file_diff(&t, wd, &file_path)
@@ -508,7 +508,7 @@ pub async fn read_dir_tree(
         FileTransportKind::Local { project_path } => {
             let base = std::path::PathBuf::from(root_path.unwrap_or(project_path));
             tokio::task::spawn_blocking(move || {
-                crate::file::services::read_dir_tree(&base, sub_path.as_deref(), depth)
+                crate::common::file::services::read_dir_tree(&base, sub_path.as_deref(), depth)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -521,7 +521,7 @@ pub async fn read_dir_tree(
         } => {
             let base = root_path.unwrap_or(project_path);
             tokio::task::spawn_blocking(move || {
-                crate::git::wsl_read_dir_tree(&distro, &base, sub_path.as_deref(), depth)
+                crate::common::git::wsl_read_dir_tree(&distro, &base, sub_path.as_deref(), depth)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -535,7 +535,7 @@ pub async fn read_dir_tree(
             project_path,
         } => {
             let base = root_path.unwrap_or(project_path);
-            crate::git::remote::remote_read_dir_tree_fn(
+            crate::common::git::remote::remote_read_dir_tree_fn(
                 &host,
                 port,
                 &username,
@@ -559,12 +559,12 @@ async fn read_file_content_shell(
     #[cfg(not(target_os = "windows"))] _distro: &str,
     host: Option<(&str, u16, &str, &AuthMethod)>,
 ) -> Result<FileContent, AppError> {
-    let safe_fp = crate::utils::command::local::safe_path(full_path);
+    let safe_fp = crate::common::utils::command::local::safe_path(full_path);
 
     // 文件大小
     let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
     let size: u64 = if let Some((h, p, u, a)) = &host {
-        crate::utils::command::ssh::exec_command(h, *p, u, a, &stat_cmd)
+        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &stat_cmd)
             .await
             .ok()
             .and_then(|s| s.trim().parse().ok())
@@ -575,7 +575,7 @@ async fn read_file_content_shell(
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = stat_cmd.clone();
-                move || crate::utils::command::wsl::exec(&d, &c)
+                move || crate::common::utils::command::wsl::exec(&d, &c)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -593,7 +593,7 @@ async fn read_file_content_shell(
     let binary_cmd =
         format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
     let is_binary = if let Some((h, p, u, a)) = &host {
-        crate::utils::command::ssh::exec_command(h, *p, u, a, &binary_cmd)
+        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &binary_cmd)
             .await
             .map(|out| out.trim() == "1")
             .unwrap_or(false)
@@ -603,7 +603,7 @@ async fn read_file_content_shell(
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = binary_cmd.clone();
-                move || crate::utils::command::wsl::exec(&d, &c)
+                move || crate::common::utils::command::wsl::exec(&d, &c)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -628,7 +628,7 @@ async fn read_file_content_shell(
     // 读取文件内容
     let cat_cmd = format!("cat '{safe_fp}'");
     let content = if let Some((h, p, u, a)) = &host {
-        crate::utils::command::ssh::exec_command(h, *p, u, a, &cat_cmd)
+        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &cat_cmd)
             .await
             .map_err(AppError::from)?
     } else {
@@ -637,7 +637,7 @@ async fn read_file_content_shell(
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = cat_cmd.clone();
-                move || crate::utils::command::wsl::exec(&d, &c)
+                move || crate::common::utils::command::wsl::exec(&d, &c)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -669,7 +669,7 @@ pub async fn read_file_content(
             let base = Box::new(base);
             let fp = file_path.clone();
             tokio::task::spawn_blocking(move || {
-                crate::file::services::read_file_content(&base, &fp)
+                crate::common::file::services::read_file_content(&base, &fp)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -721,7 +721,7 @@ pub async fn write_file_content(
             let fp = file_path.clone();
             let c = content.clone();
             tokio::task::spawn_blocking(move || {
-                crate::file::services::write_file_content(&base, &fp, &c)
+                crate::common::file::services::write_file_content(&base, &fp, &c)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -734,16 +734,16 @@ pub async fn write_file_content(
         } => {
             let base = root_path.unwrap_or(project_path);
             let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = crate::utils::command::local::safe_path(&full_path);
+            let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
                 let safe_parent =
-                    crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
+                    crate::common::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let d = distro.clone();
                 let _ = tokio::task::spawn_blocking(move || {
-                    crate::utils::command::wsl::exec(&d, &mkdir_cmd)
+                    crate::common::utils::command::wsl::exec(&d, &mkdir_cmd)
                 })
                 .await
                 .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?;
@@ -754,7 +754,7 @@ pub async fn write_file_content(
             let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
             let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
             tokio::task::spawn_blocking(move || {
-                crate::utils::command::wsl::exec(&distro, &write_cmd)
+                crate::common::utils::command::wsl::exec(&distro, &write_cmd)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -769,16 +769,16 @@ pub async fn write_file_content(
             auth,
             project_path,
         } => {
-            use crate::utils::command::ssh::exec_command;
+            use crate::common::utils::command::ssh::exec_command;
 
             let base = root_path.unwrap_or(project_path);
             let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = crate::utils::command::local::safe_path(&full_path);
+            let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
 
             // 确保父目录存在
             if let Some(parent) = std::path::Path::new(&full_path).parent() {
                 let safe_parent =
-                    crate::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
+                    crate::common::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let _ = exec_command(&host, port, &username, &auth, &mkdir_cmd).await;
             }
@@ -803,8 +803,8 @@ fn resolve_agent_config(
     state: &AppStateWrapper,
     agent_id: &str,
     command_override: Option<&str>,
-) -> Result<crate::core::services::commit::AgentInvokeConfig, AppError> {
-    use crate::core::services::commit as ai_svc;
+) -> Result<crate::common::agent::services::commit::AgentInvokeConfig, AppError> {
+    use crate::common::agent::services::commit as ai_svc;
 
     let agent_manager = state.agent_manager.lock().map_err(AppError::from)?;
     let agent = agent_manager
@@ -911,7 +911,7 @@ pub async fn generate_commit_message(
     file_paths: Vec<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
-    use crate::core::services::commit as ai_svc;
+    use crate::common::agent::services::commit as ai_svc;
     let _ = agent_command_override; // Remote/WSL 不使用宿主机 override
 
     // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
@@ -935,9 +935,9 @@ pub async fn generate_commit_message(
             auth,
             project_path,
         } => {
-            use crate::utils::command::ssh;
+            use crate::common::utils::command::ssh;
 
-            let sp = crate::utils::command::local::safe_path(&project_path);
+            let sp = crate::common::utils::command::local::safe_path(&project_path);
             let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
@@ -997,7 +997,7 @@ pub async fn generate_commit_message(
             distro,
             project_path,
         } => {
-            let sp = crate::utils::command::local::safe_path(&project_path);
+            let sp = crate::common::utils::command::local::safe_path(&project_path);
             let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
@@ -1010,7 +1010,7 @@ pub async fn generate_commit_message(
             let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
 
             // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
-            let wsl_user = crate::utils::command::local::exec("wsl.exe")
+            let wsl_user = crate::common::utils::command::local::exec("wsl.exe")
                 .arg("-d")
                 .arg(&distro)
                 .arg("whoami")
@@ -1023,7 +1023,7 @@ pub async fn generate_commit_message(
             //    -u <user>: 确保 HOME=/home/<user>，profile 路径正确
             //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
             let wsl_output = tokio::task::spawn_blocking(move || {
-                crate::utils::command::local::exec("wsl.exe")
+                crate::common::utils::command::local::exec("wsl.exe")
                     .arg("-d")
                     .arg(&distro)
                     .arg("-u")
@@ -1097,7 +1097,7 @@ pub async fn get_remote_home_dir(
     username: String,
     auth: AuthMethod,
 ) -> Result<String, AppError> {
-    crate::utils::command::ssh::exec_command(&host, port, &username, &auth, "echo $HOME")
+    crate::common::utils::command::ssh::exec_command(&host, port, &username, &auth, "echo $HOME")
         .await
         .map(|s| s.trim().to_string())
         .map_err(AppError::from)

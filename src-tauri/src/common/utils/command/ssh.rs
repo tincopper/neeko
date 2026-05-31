@@ -1,5 +1,5 @@
-use crate::connection::types::AuthMethod;
-use crate::utils::command::ssh_auth;
+use crate::common::connection::types::AuthMethod;
+use crate::common::utils::command::ssh_auth;
 use anyhow::Result;
 
 /// 通过 SSH 通道执行命令并等待完成（验证 exit code）

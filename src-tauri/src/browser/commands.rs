@@ -1,4 +1,4 @@
-use crate::utils::command::local;
+use crate::common::utils::command::local;
 use crate::AppError;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};

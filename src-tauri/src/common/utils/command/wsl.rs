@@ -1,4 +1,4 @@
-use crate::utils::command::local;
+use crate::common::utils::command::local;
 use anyhow::Result;
 
 /// 通过 WSL bash 执行命令并返回 stdout
