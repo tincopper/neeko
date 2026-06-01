@@ -1,5 +1,17 @@
 use crate::common::utils::command::local;
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 use std::{path::PathBuf, sync::mpsc, thread};
+
+/// 提取 git 进程退出码与信号，便于诊断 exit status: 129 (SIGHUP) 等异常
+fn exit_diagnostics(status: &std::process::ExitStatus) -> (Option<i32>, Option<i32>) {
+    let code = status.code();
+    #[cfg(unix)]
+    let signal = status.signal();
+    #[cfg(not(unix))]
+    let signal = None;
+    (code, signal)
+}
 
 /// 增量状态差异：与上次 git status 对比后的变化
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -153,10 +165,12 @@ fn git_status_porcelain(repo_path: &PathBuf, supports_no_optional_locks: &mut bo
                     // fall through to retry without the flag
                 } else {
                     // 其他错误（权限、非 git 仓库等），直接返回空 stdout
+                    let (code, signal) = exit_diagnostics(&output.status);
                     log::warn!(
-                        "[GitWorker] git status failed (exit {}) at {}: {}",
-                        output.status,
+                        "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
                         repo_path.display(),
+                        code,
+                        signal,
                         stderr.trim()
                     );
                     return String::from_utf8_lossy(&output.stdout).to_string();
@@ -181,10 +195,12 @@ fn git_status_porcelain(repo_path: &PathBuf, supports_no_optional_locks: &mut bo
         Ok(output) => {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
+                let (code, signal) = exit_diagnostics(&output.status);
                 log::warn!(
-                    "[GitWorker] git status failed (exit {}) at {}: {}",
-                    output.status,
+                    "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
                     repo_path.display(),
+                    code,
+                    signal,
                     stderr.trim()
                 );
             }

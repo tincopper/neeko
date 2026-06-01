@@ -11,7 +11,6 @@ pub fn add_project(
     ide: Option<String>,
     avatar_color: Option<String>,
     state: State<AppStateWrapper>,
-    app_handle: tauri::AppHandle,
 ) -> Result<Project, AppError> {
     let project = state
         .project_manager
@@ -20,10 +19,7 @@ pub fn add_project(
         .add_project(PathBuf::from(path), agent_id, ide, avatar_color)
         .map_err(AppError::from)?;
 
-    state
-        .watcher_manager
-        .watch(project.id.clone(), project.path.clone(), app_handle);
-
+    // 不自动挂 watcher —— 由 set_active_project 显式激活时挂载
     Ok(project)
 }
 
@@ -37,6 +33,14 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Resu
 
     state.terminal_manager.close_session(&project_id);
     state.watcher_manager.unwatch(&project_id);
+
+    // 若被删的是激活项目，清空 active_project_id（前端 useLocalProjects 会选出下一个并触发 set_active_project）
+    if let Ok(mut active) = state.active_project_id.lock() {
+        if active.as_deref() == Some(project_id.as_str()) {
+            *active = None;
+        }
+    }
+
     Ok(())
 }
 
@@ -79,12 +83,40 @@ pub fn refresh_git_info(
 pub fn set_active_project(
     project_id: String,
     state: State<AppStateWrapper>,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
-    state
+    // 与当前 active 比对，相同则 no-op（避免重复 unwatch/watch 抖动）
+    let current = state
         .active_project_id
         .lock()
         .map_err(AppError::from)?
-        .replace(project_id);
+        .clone();
+    if current.as_deref() == Some(project_id.as_str()) {
+        return Ok(());
+    }
+
+    // 校验新 id 存在于 project_manager
+    let new_path = {
+        let pm = state.project_manager.lock().map_err(AppError::from)?;
+        pm.get_project(&project_id)
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
+            .path
+            .clone()
+    };
+
+    // unwatch 旧激活项目
+    if let Some(old_id) = current.as_deref() {
+        state.watcher_manager.unwatch(old_id);
+    }
+
+    // watch 新激活项目（watch 内部会立即 worker.check() 一次获取初始状态）
+    state
+        .watcher_manager
+        .watch(project_id.clone(), new_path, app_handle);
+
+    // 更新 active_project_id
+    *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id);
+
     Ok(())
 }
 
@@ -175,10 +207,19 @@ pub fn change_project_path(
         pm.refresh_git_info(&project_id).map_err(AppError::from)?;
     }
 
-    state.watcher_manager.unwatch(&project_id);
-    state
-        .watcher_manager
-        .watch(project_id, PathBuf::from(new_path), app_handle);
+    // 只有激活项目才需要迁移 watcher；非激活项目的路径变更延后到下次 set_active_project
+    let is_active = state
+        .active_project_id
+        .lock()
+        .map_err(AppError::from)?
+        .as_deref()
+        == Some(project_id.as_str());
+    if is_active {
+        state.watcher_manager.unwatch(&project_id);
+        state
+            .watcher_manager
+            .watch(project_id, PathBuf::from(new_path), app_handle);
+    }
 
     Ok(())
 }

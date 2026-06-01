@@ -61,7 +61,9 @@ pub fn run() {
         .manage(AppStateWrapper::new_with_skill_store(skill_store))
         .setup(|app| {
             let state = app.handle().state::<AppStateWrapper>();
+            let mut active_id_from_session: Option<String> = None;
             if let Ok(session) = state.storage_manager.load_session() {
+                active_id_from_session = session.active_project_id;
                 if let Ok(mut pm) = state.project_manager.lock() {
                     for p in &session.projects {
                         let _ = pm.add_project_from_session(
@@ -85,8 +87,25 @@ pub fn run() {
                         .collect()
                 })
                 .unwrap_or_default();
-            for (id, path) in projects {
-                state.watcher_manager.watch(id, path, app.handle().clone());
+
+            // 校验 session.active_project_id 仍指向已加载的项目之一；否则视为 None
+            let active_id =
+                active_id_from_session.filter(|id| projects.iter().any(|(pid, _)| pid == id));
+
+            // 设置到 AppState，供后续命令读取
+            if let Some(id) = active_id.as_ref() {
+                if let Ok(mut active) = state.active_project_id.lock() {
+                    *active = Some(id.clone());
+                }
+            }
+
+            // 只为激活项目挂 watcher；非激活项目由 set_active_project 触发时再挂
+            if let Some(id) = active_id {
+                if let Some((_, path)) = projects.iter().find(|(pid, _)| pid == &id) {
+                    state
+                        .watcher_manager
+                        .watch(id, path.clone(), app.handle().clone());
+                }
             }
 
             if let Ok(config) = state.storage_manager.load_config() {
