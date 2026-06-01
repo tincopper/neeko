@@ -22,7 +22,7 @@ export function getThemeColors(): PickerThemeColors {
   const v = (name: string, fallback: string): string =>
     style.getPropertyValue(name).trim() || fallback;
   return {
-    bgSecondary: v('--bg-secondary', '#2c2c2e'),
+    bgSecondary: v('--bg-secondary', '#272A30'),
     bgTertiary: v('--bg-tertiary', '#333337'),
     textPrimary: v('--text-primary', '#ffffff'),
     textMuted: v('--text-muted', '#999999'),

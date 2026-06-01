@@ -36,10 +36,10 @@
   --titlebar-gradient-start: #000000;
 
   /* Background layers */
-  --bg-primary:   #151518;
-  --bg-gradient-start: #151518;
-  --bg-gradient-end:   #151518;
-  --bg-secondary: #2c2c2e;
+  --bg-primary:   #181A1C;
+  --bg-gradient-start: #181A1C;
+  --bg-gradient-end:   #181A1C;
+  --bg-secondary: #272A30;
   --bg-tertiary:  #333337;
   --bg-hover:     #3b3b40;
   --bg-selected:  #44444a;
