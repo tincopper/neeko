@@ -22,12 +22,12 @@ export function getThemeColors(): PickerThemeColors {
   const v = (name: string, fallback: string): string =>
     style.getPropertyValue(name).trim() || fallback;
   return {
-    bgSecondary: v('--bg-secondary', '#252528'),
-    bgTertiary: v('--bg-tertiary', '#2d2e32'),
-    textPrimary: v('--text-primary', '#ededed'),
-    textMuted: v('--text-muted', '#666666'),
-    borderColor: v('--border-color', '#2f3035'),
-    accentBlue: v('--accent-blue', '#61afef'),
+    bgSecondary: v('--bg-secondary', '#2c2c2e'),
+    bgTertiary: v('--bg-tertiary', '#333337'),
+    textPrimary: v('--text-primary', '#ffffff'),
+    textMuted: v('--text-muted', '#999999'),
+    borderColor: v('--border-color', '#3b3b40'),
+    accentBlue: v('--accent-blue', '#2997ff'),
   };
 }
 
