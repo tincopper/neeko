@@ -339,3 +339,36 @@ Completed all 3 phases of remaining compliance gaps: Phase A (cross-domain Rust 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 68: watcher: only watch active project
+
+**Date**: 2026-06-01
+**Task**: watcher: only watch active project
+**Branch**: `refactor/architecture-optimization`
+
+### Summary
+
+WatcherManager 退化为只挂激活项目；消除 30s 全项目 heartbeat 噪声；status_worker 日志拆出 exit code + signal 便于诊断 SIGHUP
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `688d27b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
