@@ -2,7 +2,6 @@ import React, { useCallback, useEffect } from "react";
 import type AppProviders from "../../app/AppProviders";
 import type AppModals from "../../app/AppModals";
 import type AppLayout from "../../layout/AppLayout";
-import type { TitleBar } from "../../layout";
 import { useToast } from "@/shared/hooks/useToast";
 import { useWorktreeState } from "@/features/project/hooks/useWorktreeState";
 import { useKeyboardShortcuts } from "@/shared/hooks/useKeyboardShortcuts";
@@ -25,7 +24,6 @@ import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { useFileTabRefresh } from "@/features/editor/hooks/useFileTabRefresh";
 import { useAppLayoutProps } from "@/layout/hooks/useAppLayoutProps";
-import { useTitleBarProps } from "@/layout/hooks/useTitleBarProps";
 import { useProjectSelection } from "@/features/project/hooks/useProjectSelection";
 import { useTabManagement } from "@/features/editor/hooks/useTabManagement";
 import { useAgentClickHandler } from "@/features/agent/hooks/useAgentClickHandler";
@@ -35,12 +33,10 @@ import { useCrossTypeSelection } from "@/features/project/hooks/useCrossTypeSele
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, "children">;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
 type AppModalsProps = React.ComponentProps<typeof AppModals>;
-type TitleBarProps = React.ComponentProps<typeof TitleBar>;
 
 interface UseAppShellResult {
   initializing: boolean;
   toast: ReturnType<typeof useToast>["toast"];
-  titleBarProps: TitleBarProps;
   appProvidersProps: AppProvidersProps;
   appLayoutProps: AppLayoutProps;
   appModalsProps: AppModalsProps;
@@ -58,7 +54,7 @@ export function useAppShell(): UseAppShellResult {
   const { wslEntries, setWslEntries, activeWslKey, activeWslProject, wslOpenSessions, setWslOpenSessions, wslDialogOpen, setWslDialogOpen, wslAddToEntryId, handleWSLEntryAdd, handleCloseWslProject, handleRemoveWslProject, handleRemoveWslEntry, handleAddWslProject, handleWslDialogClose, handleWslDragEnd } = wsl;
   const { remoteEntries, setRemoteEntries, activeRemoteKey, activeRemoteProject, remoteOpenSessions, setRemoteOpenSessions, remoteDialogOpen, setRemoteDialogOpen, remoteAddToEntryId, remoteAuthStore, pendingAuthEntry, setPendingAuthEntry, handleRemoteEntryAdd, handleCloseRemoteProject, handleRemoveRemoteProject, handleRemoveRemoteEntry, handleAddRemoteProject, handleRemoteDialogClose, handleRemoteDragEnd, restoreAuthFromEntries } = remote;
 
-  const { activeWorktreePath, activeWorktreeBranch, updateWtPath, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees } = useWorktreeState(activeProjectId);
+  const { activeWorktreePath, updateWtPath, setActiveWorktreePath, setActiveWorktreeBranch, setOpenedWorktrees } = useWorktreeState(activeProjectId);
   useEffect(() => { if (!activeWorktreePath || !activeProject?.git_info) return; if (!activeProject.git_info.worktrees.some((wt) => wt.path === activeWorktreePath)) { setActiveWorktreePath(null); setActiveWorktreeBranch(""); } }, [activeProject?.git_info?.worktrees, activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, activeProject?.git_info]);
 
   const remoteActionsWrap = useRemoteActions({ config, showToast, saveSession: session.saveSession });
@@ -97,7 +93,6 @@ export function useAppShell(): UseAppShellResult {
   const remoteValue = { remoteEntries, activeRemoteKey, remoteOpenSessions, activeRemoteProject, activeRemoteWorktreePath: remoteActionsWrap.activeRemoteWorktreePath, remoteAuthStore, setRemoteOpenSessions, onSelectRemoteProject: cross.handleSelectRemoteProject, onCloseRemoteProject: handleCloseRemoteProject, onRemoveRemoteProject: handleRemoveRemoteProject, onRemoveRemoteEntry: handleRemoveRemoteEntry, onAddRemoteProject: handleAddRemoteProject, onRefreshRemoteGit: remoteActionsWrap.handleRefreshRemoteGit, onOpenRemoteIde: remoteActionsWrap.handleOpenRemoteIde, onOpenRemoteWorktreeTerminal: cross.handleOpenRemoteWorktreeTerminal, invokeRemoteGit: remoteActionsWrap.invokeRemoteGit, onRemoteDragEnd: handleRemoteDragEnd, setPendingAuthEntry };
   const editorValue = { tabs, activeTabId, onActivateTab: handleActivateTab, onCloseTab: handleCloseTab, onAddTab: handleAddTab, onTabStatusChange: handleTabStatusChange, agents: agents ?? [], compactMode: config.agentSelectorCompactMode ?? false, showAgentBar: config.agentSelectorShowPresetBar !== false, hiddenAgentIds: config.hiddenAgentIds ?? [], onToggleHiddenAgent: handleToggleHiddenAgent, onAgentClick: handleAgentClick };
 
-  const titleBarProps = useTitleBarProps({ activeProject, activeWslProject, activeRemoteProject, activeWorktreeBranch, handleRefreshGit, handleRefreshWslGit: wslActionsWrap.handleRefreshWslGit, handleRefreshRemoteGit: remoteActionsWrap.handleRefreshRemoteGit, wslActiveWtBranch: wslActionsWrap.wslActiveWtBranch, remoteActiveWtBranch: remoteActionsWrap.remoteActiveWtBranch, checkoutBranch: activeContext.commands?.checkoutBranch ?? null, showToast });
   const appProvidersProps: AppProvidersProps = { appValue: { config, customThemes, agents: agents ?? [], agentInstalledMap: {}, loading, ideCommandOverrides: config.ideCommandOverrides ?? {}, showToast, saveConfig }, projectActionsValue, fileActionsValue, wslValue, remoteValue, editorValue };
   const appLayoutProps = useAppLayoutProps({ onAddProject: handleAddProject, onOpenWslDialog: () => setWslDialogOpen(true), onOpenRemoteDialog: () => setRemoteDialogOpen(true) });
 
@@ -106,5 +101,5 @@ export function useAppShell(): UseAppShellResult {
 
   const appModalsProps: AppModalsProps = { pendingPath, onConfirmAddProject: handleConfirmAddProject, onCancelAddProject: () => setPendingPath(null), loading, wslDialogOpen, wslAddToEntryId, wslEntries, onWslDialogClose: handleWslDialogClose, onAddWslEntry: handleWslEntryAddRefresh, remoteDialogOpen, remoteAddToEntryId, remoteEntries, onRemoteDialogClose: handleRemoteDialogClose, onAddRemoteEntry: handleRemoteEntryAddRefresh, remoteAuthStore, pendingAuthEntry, onRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel, onRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess };
 
-  return { initializing, toast, titleBarProps, appProvidersProps, appLayoutProps, appModalsProps };
+  return { initializing, toast, appProvidersProps, appLayoutProps, appModalsProps };
 }

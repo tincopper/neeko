@@ -12,7 +12,6 @@ function App() {
   const {
     initializing,
     toast,
-    titleBarProps,
     appProvidersProps,
     appLayoutProps,
     appModalsProps,
@@ -29,9 +28,7 @@ function App() {
         background: `linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))`,
       }}
     >
-      <TitleBar
-        {...titleBarProps}
-      />
+      <TitleBar />
 
       <AppProviders {...appProvidersProps}>
         <AppLayout {...appLayoutProps} />

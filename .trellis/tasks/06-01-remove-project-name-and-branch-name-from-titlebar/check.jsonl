@@ -1,5 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证无未使用 import / props 残留"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "验证 TitleBar 改动后 props 契约一致"}
-{"file": "src/layout/TitleBar.tsx", "reason": "验证项目名 span + 分支切换器已被移除，TypeScript 通过"}
-{"file": "src/App.tsx", "reason": "验证调用方传参与 TitleBar 新签名一致"}
-{"file": "src/hooks/useAppContainer.ts", "reason": "验证 TitleBar 相关 state / callback 仍正确提供"}

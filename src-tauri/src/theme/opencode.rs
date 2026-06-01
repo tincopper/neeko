@@ -434,7 +434,7 @@ fn generate_dark_theme() -> serde_json::Value {
         text_secondary: "#cccccc",
         text_muted: "#999999",
         background: "#181A1C",
-        background_panel: "#272A30",
+        background_panel: "#181A1C",
         background_element: "#333337",
         border: "#3b3b40",
         border_active: "#2997ff",
