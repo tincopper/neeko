@@ -444,7 +444,7 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
          {/* 外部文件修改 Modal */}
          {externallyModified && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-               <div className="bg-bg-primary border border-border rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
+               <div className="bg-bg-primary border border-border rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw] overflow-hidden">
                   <h3 className="text-sm font-semibold text-text-primary mb-2">文件已在外部修改</h3>
                   <p className="text-sm text-text-secondary mb-1">
                      <span className="font-medium text-text-primary">{tab.fileName}</span> 已被外部程序修改。

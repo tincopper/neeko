@@ -175,7 +175,7 @@ function EditorGroupLayout({
       id={`editor-group-${tabKey}`}
       defaultLayout={defaultLayout}
       onLayoutChanged={handleLayoutChange}
-      className="flex-1 rounded-lg bg-bg-primary"
+      className="flex-1 rounded-lg overflow-hidden bg-bg-primary"
     >
       {/* ── Pinned panel (leftmost, Cases B & C) ── */}
       {hasPinned && (

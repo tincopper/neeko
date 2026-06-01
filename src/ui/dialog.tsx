@@ -49,7 +49,7 @@ function DialogContent({
         className={cn(
           "fixed z-[1000] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
           "w-full max-w-[480px] p-6",
-          "bg-bg-secondary border border-border rounded-lg shadow-xl",
+          "bg-bg-secondary border border-border rounded-lg shadow-xl overflow-hidden",
           "outline-none",
           "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",

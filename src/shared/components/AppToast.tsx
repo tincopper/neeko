@@ -10,7 +10,7 @@ export function AppToast({ toast }: AppToastProps) {
   return (
     <div className={cn(
       "app-toast",
-      "fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2.5 rounded-lg text-sm font-medium shadow-lg z-[9999] pointer-events-none max-w-md",
+      "fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 p-2.5 rounded-lg text-sm font-medium shadow-lg z-[9999] pointer-events-none max-w-md overflow-hidden",
       toast.type === "info" && "app-toast--info",
       toast.type === "error" && "app-toast--error",
     )}>
