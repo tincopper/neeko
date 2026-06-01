@@ -193,7 +193,7 @@ function MainContent() {
    }, [activeRemoteProject, activeProject, activeWslProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
 
    return (
-      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full rounded-lg shadow-sm bg-bg-secondary">
+      <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full">
           {needsRemoteAuth ? (
             <div className="empty-state flex-1 flex flex-col text-text-secondary">
                <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">

@@ -1,15 +1,13 @@
-import React, { useCallback, useEffect, useRef } from "react";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/ui/resizable";
-import { usePanelRef, type PanelSize } from "react-resizable-panels";
-import DockBar from "./DockBar";
-import DockZone from "./DockZone";
-import { useDockStore } from "@/shared/store/dockStore";
+import React, { useCallback, useEffect, useRef } from 'react';
+import { usePanelRef, type PanelSize } from 'react-resizable-panels';
 
-import { dockPanelRegistry } from "../dockPanels";
+import { useDockStore } from '@/shared/store/dockStore';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
+
+import { dockPanelRegistry } from '../dockPanels';
+
+import DockBar from './DockBar';
+import DockZone from './DockZone';
 
 interface DockLayoutProps {
   children: React.ReactNode;
@@ -21,10 +19,7 @@ interface DockLayoutProps {
  * Keyboard shortcut panel index. Ctrl+1..2 toggle left-side panels.
  * Extend this list as left panels are added.
  */
-const SHORTCUT_PANEL_IDS: string[] = [
-  "projects",
-  "skills",
-];
+const SHORTCUT_PANEL_IDS: string[] = ['projects', 'skills'];
 
 /**
  * Top-level dock layout container.
@@ -43,32 +38,21 @@ const SHORTCUT_PANEL_IDS: string[] = [
  * This fixes the bug where pinning a tab then opening a side panel caused
  * unresponsive drag handles.
  */
-const DockLayout: React.FC<DockLayoutProps> = ({
-  children,
-  toolbarFooterLeft,
-}) => {
+const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) => {
   const togglePanel = useDockStore((s) => s.togglePanel);
 
-  const leftExpanded = useDockStore(
-    (s) => s.zones.left?.expanded ?? true,
-  );
+  const leftExpanded = useDockStore((s) => s.zones.left?.expanded ?? true);
 
-  const rightExpanded = useDockStore(
-    (s) => s.zones.right?.expanded ?? false,
-  );
+  const rightExpanded = useDockStore((s) => s.zones.right?.expanded ?? false);
 
-  const rightActivePanelId = useDockStore(
-    (s) => s.zones.right?.activePanelId ?? null,
-  );
+  const rightActivePanelId = useDockStore((s) => s.zones.right?.activePanelId ?? null);
 
   const rightPanelSizes = useDockStore((s) => s.rightPanelSizes);
   const setRightPanelSize = useDockStore((s) => s.setRightPanelSize);
   const leftPanelSize = useDockStore((s) => s.leftPanelSize);
   const setLeftPanelSize = useDockStore((s) => s.setLeftPanelSize);
 
-  const rightPanelIds = useDockStore(
-    (s) => s.zones.right?.panels ?? [],
-  );
+  const rightPanelIds = useDockStore((s) => s.zones.right?.panels ?? []);
 
   const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
@@ -79,7 +63,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const getRightPanelSize = useCallback(
     (panelId: string | null): number => {
       if (!panelId) return 18;
-      if (rightPanelSizes[panelId] != null) return Math.max(rightPanelSizes[panelId], MIN_RIGHT_ZONE_SIZE);
+      if (rightPanelSizes[panelId] != null)
+        return Math.max(rightPanelSizes[panelId], MIN_RIGHT_ZONE_SIZE);
       const def = dockPanelRegistry[panelId];
       return Math.max(def?.defaultZoneSize ?? 18, MIN_RIGHT_ZONE_SIZE);
     },
@@ -218,8 +203,8 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   );
 
   useEffect(() => {
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
   return (
@@ -232,9 +217,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
             <div className="flex justify-center py-1.5">
               <div className="w-5 h-px bg-border" />
             </div>
-            <div className="flex flex-col items-center gap-0.5 pb-1">
-              {toolbarFooterLeft}
-            </div>
+            <div className="flex flex-col items-center gap-0.5 pb-1">{toolbarFooterLeft}</div>
           </>
         )}
       </div>
@@ -242,15 +225,11 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       {/* Resizable layout: left dock | center editor | right dock
           Uses collapsible panels instead of key-based remount to prevent
           react-resizable-panels internal state corruption with nested groups. */}
-      <ResizablePanelGroup
-        orientation="horizontal"
-        id="neeko-main"
-        className="flex-1"
-      >
+      <ResizablePanelGroup orientation="horizontal" id="neeko-main" className="flex-1">
         {/* Left dock zone (island) — collapsible, not conditionally rendered */}
         <ResizablePanel
           id="left-zone"
-          defaultSize={leftExpanded ? `${leftPanelSize}%` : "0%"}
+          defaultSize={leftExpanded ? `${leftPanelSize}%` : '0%'}
           collapsible
           collapsedSize="0%"
           minSize="12%"
@@ -267,15 +246,11 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           id="handle-left-center"
           withHandle
           disabled={!leftExpanded}
-          className={leftExpanded ? undefined : "!w-0 !cursor-default"}
+          className={leftExpanded ? undefined : '!w-0 !cursor-default'}
         />
 
         {/* Center area: editor content (island) */}
-        <ResizablePanel
-          id="center-area"
-          minSize="20%"
-          className="py-1 px-0.5 overflow-hidden"
-        >
+        <ResizablePanel id="center-area" minSize="20%" className="py-1 px-0.5 overflow-hidden">
           {children}
         </ResizablePanel>
 
@@ -284,11 +259,11 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           id="handle-center-right"
           withHandle
           disabled={!rightVisible}
-          className={rightVisible ? undefined : "!w-0 !cursor-default"}
+          className={rightVisible ? undefined : '!w-0 !cursor-default'}
         />
         <ResizablePanel
           id="right-zone"
-          defaultSize={rightVisible ? `${getRightPanelSize(rightActivePanelId)}%` : "0%"}
+          defaultSize={rightVisible ? `${getRightPanelSize(rightActivePanelId)}%` : '0%'}
           collapsible
           collapsedSize="0%"
           minSize="12%"
