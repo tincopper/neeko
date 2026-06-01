@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令签名变更需保持 Result<T, AppError> 模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "校验失败需返回合适 AppError 变体"}
