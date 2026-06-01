@@ -9,14 +9,14 @@
   --popover-foreground: var(--text-primary);
   --primary: var(--accent-blue);
   --primary-foreground: var(--text-on-accent);
-  --secondary: var(--bg-tertiary);
+  --secondary: var(--bg-secondary);
   --secondary-foreground: var(--text-primary);
   --muted: var(--bg-tertiary);
   --muted-foreground: var(--text-muted);
-  --accent: var(--bg-tertiary);
-  --accent-foreground: var(--text-primary);
+  --accent: rgba(var(--accent-blue-rgb), 0.12);
+  --accent-foreground: #2997ff;
   --destructive: var(--accent-red);
-  --destructive-foreground: #ffffff;
+  --destructive-foreground: var(--text-on-accent);
   --border: var(--border-color);
   --input: var(--border-color);
   --ring: var(--accent-blue);

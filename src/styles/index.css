@@ -31,6 +31,23 @@
   --animate-wt-spin: wt-spin 0.6s linear infinite;
   --animate-wt-fade: wt-fade-out 0.5s ease-in forwards;
   --animate-toast-in: toast-in 0.18s ease;
+
+  /* Apple design tokens */
+  --spacing-apple-xxs: 4px;
+  --spacing-apple-xs:  8px;
+  --spacing-apple-sm:  12px;
+  --spacing-apple-md:  17px;
+  --spacing-apple-lg:  24px;
+  --spacing-apple-xl:  32px;
+  --spacing-apple-xxl: 48px;
+  --spacing-apple-section: 80px;
+  --radius-apple-none: 0px;
+  --radius-apple-xs:   5px;
+  --radius-apple-sm:   8px;
+  --radius-apple-md:   11px;
+  --radius-apple-lg:   18px;
+  --radius-apple-pill: 9999px;
+  --radius-apple-full: 9999px;
 }
 
 /* -- Global base -- */
