@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "TitleBar 组件 props 收敛与 JSX 简化遵循组件设计规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "移除代码后必须清理未使用 import 与 props，避免 dead code"}
+{"file": "src/layout/TitleBar.tsx", "reason": "移除项目名 span + TitleBarBranchSwitcher，清理 props/state/handlers/imports"}
+{"file": "src/App.tsx", "reason": "同步更新调用方传参"}
+{"file": "src/hooks/useAppContainer.ts", "reason": "检查 useAppContainer 是否仍向 TitleBar 传入被移除的 props"}

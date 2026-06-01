@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 68
+- **Total Sessions**: 69
 - **Last Active**: 2026-06-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~374 | Active |
+| `journal-2.md` | ~407 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 69 | 2026-06-01 | Remove project name and branch name from TitleBar | `59654bbcb099640ae1b72f7ff8d280e7a8ec33b7` | `refactor/architecture-optimization` |
 | 68 | 2026-06-01 | watcher: only watch active project | `688d27b` | `refactor/architecture-optimization` |
 | 67 | 2026-05-31 | Spec compliance refactor complete - Phases A, B, C | `f72ba98`, `0e0c84d`, `23c4588` | `refactor/architecture-optimization` |
 | 66 | 2026-05-31 | Spec compliance audit fixes: editor to app/, invoke isolation, ESLint rules | `b6a537f` | `refactor/architecture-optimization` |
