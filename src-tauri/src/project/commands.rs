@@ -80,9 +80,9 @@ pub fn refresh_git_info(
 }
 
 #[tauri::command]
-pub fn set_active_project(
+pub async fn set_active_project(
     project_id: String,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
     // 与当前 active 比对，相同则 no-op（避免重复 unwatch/watch 抖动）
@@ -104,15 +104,21 @@ pub fn set_active_project(
             .clone()
     };
 
-    // unwatch 旧激活项目
+    // unwatch 旧激活项目（轻量，保留在主线程）
     if let Some(old_id) = current.as_deref() {
         state.watcher_manager.unwatch(old_id);
     }
 
-    // watch 新激活项目（watch 内部会立即 worker.check() 一次获取初始状态）
-    state
-        .watcher_manager
-        .watch(project_id.clone(), new_path, app_handle);
+    // watch 新激活项目：notify::RecommendedWatcher 在 Linux 上对 RecursiveMode
+    // 会同步遍历整树并逐个 inotify_add_watch，阻塞 Tauri IPC 线程会引发 UI 冻结
+    // → 移入 spawn_blocking，避免阻塞当前 tokio worker 与 WebView IPC 通道
+    let watcher_manager = state.watcher_manager.clone();
+    let pid = project_id.clone();
+    tokio::task::spawn_blocking(move || {
+        watcher_manager.watch(pid, new_path, app_handle);
+    })
+    .await
+    .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
 
     // 更新 active_project_id
     *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id);
