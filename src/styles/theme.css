@@ -1,6 +1,6 @@
 /* Theme — CSS Custom Properties
- * Dark (One Dark Pro) + Light variants
- * Switched via :root[data-theme="dark"] / [data-theme="light"]
+ * OKLCH Dark (default) + Classic Dark + One Dark Pro + Claude + Light variants
+ * Switched via :root[data-theme="dark"] / [data-theme="classic-dark"] / [data-theme="light"]
  */
 
 :root {
@@ -30,8 +30,7 @@
   --cm-bracket: #abb2bf;
 }
 
-:root[data-theme="dark"],
-:root:not([data-theme]) {
+:root[data-theme="classic-dark"] {
   /* Titlebar gradient */
   --titlebar-gradient-start: #000000;
 
@@ -98,73 +97,46 @@
   --cm-bracket: #abb2bf;
 }
 
-/* Dark + One Dark Pro hljs (One Dark Pro palette) */
-:root[data-theme="dark"] .markdown-preview .hljs-keyword,
-:root[data-theme="dark"] .markdown-preview .hljs-selector-tag,
-:root:not([data-theme]) .markdown-preview .hljs-keyword,
-:root:not([data-theme]) .markdown-preview .hljs-selector-tag { color: #c678dd; }
+/* Classic Dark hljs */
+:root[data-theme="classic-dark"] .markdown-preview .hljs-keyword,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-selector-tag { color: #c678dd; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-built_in,
-:root[data-theme="dark"] .markdown-preview .hljs-type,
-:root[data-theme="dark"] .markdown-preview .hljs-literal,
-:root[data-theme="dark"] .markdown-preview .hljs-number,
-:root[data-theme="dark"] .markdown-preview .hljs-params,
-:root:not([data-theme]) .markdown-preview .hljs-built_in,
-:root:not([data-theme]) .markdown-preview .hljs-type,
-:root:not([data-theme]) .markdown-preview .hljs-literal,
-:root:not([data-theme]) .markdown-preview .hljs-number,
-:root:not([data-theme]) .markdown-preview .hljs-params { color: #e5c07b; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-built_in,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-type,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-literal,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-number,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-params { color: #e5c07b; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-string,
-:root[data-theme="dark"] .markdown-preview .hljs-doctag,
-:root[data-theme="dark"] .markdown-preview .hljs-regexp,
-:root:not([data-theme]) .markdown-preview .hljs-string,
-:root:not([data-theme]) .markdown-preview .hljs-doctag,
-:root:not([data-theme]) .markdown-preview .hljs-regexp { color: #98c379; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-string,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-doctag,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-regexp { color: #98c379; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-title,
-:root[data-theme="dark"] .markdown-preview .hljs-title.class_,
-:root[data-theme="dark"] .markdown-preview .hljs-title.function_,
-:root:not([data-theme]) .markdown-preview .hljs-title,
-:root:not([data-theme]) .markdown-preview .hljs-title.class_,
-:root:not([data-theme]) .markdown-preview .hljs-title.function_ { color: #61afef; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-title,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-title.class_,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-title.function_ { color: #61afef; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-name,
-:root[data-theme="dark"] .markdown-preview .hljs-selector-id,
-:root[data-theme="dark"] .markdown-preview .hljs-selector-class,
-:root:not([data-theme]) .markdown-preview .hljs-name,
-:root:not([data-theme]) .markdown-preview .hljs-selector-id,
-:root:not([data-theme]) .markdown-preview .hljs-selector-class { color: #e06c75; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-name,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-selector-id,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-selector-class { color: #e06c75; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-attr,
-:root:not([data-theme]) .markdown-preview .hljs-attr { color: #d19a66; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-attr { color: #d19a66; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-attribute,
-:root:not([data-theme]) .markdown-preview .hljs-attribute { color: #98c379; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-attribute { color: #98c379; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-variable,
-:root[data-theme="dark"] .markdown-preview .hljs-template-variable,
-:root:not([data-theme]) .markdown-preview .hljs-variable,
-:root:not([data-theme]) .markdown-preview .hljs-template-variable { color: #e06c75; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-variable,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-template-variable { color: #e06c75; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-comment,
-:root[data-theme="dark"] .markdown-preview .hljs-quote,
-:root:not([data-theme]) .markdown-preview .hljs-comment,
-:root:not([data-theme]) .markdown-preview .hljs-quote { color: #5c6370; font-style: italic; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-comment,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-quote { color: #5c6370; font-style: italic; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-meta,
-:root:not([data-theme]) .markdown-preview .hljs-meta { color: #61afef; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-meta { color: #61afef; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-symbol,
-:root[data-theme="dark"] .markdown-preview .hljs-bullet,
-:root:not([data-theme]) .markdown-preview .hljs-symbol,
-:root:not([data-theme]) .markdown-preview .hljs-bullet { color: #e06c75; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-symbol,
+:root[data-theme="classic-dark"] .markdown-preview .hljs-bullet { color: #e06c75; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-section,
-:root:not([data-theme]) .markdown-preview .hljs-section { color: #e5c07b; font-weight: bold; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-section { color: #e5c07b; font-weight: bold; }
 
-:root[data-theme="dark"] .markdown-preview .hljs-tag,
-:root:not([data-theme]) .markdown-preview .hljs-tag { color: #e06c75; }
+:root[data-theme="classic-dark"] .markdown-preview .hljs-tag { color: #e06c75; }
 
 :root[data-theme="one-dark-pro"] {
   /* Titlebar gradient */
@@ -357,6 +329,130 @@
 :root[data-theme="claude"] .markdown-preview .hljs-bullet { color: #c0392b; }
 :root[data-theme="claude"] .markdown-preview .hljs-section { color: #b8860b; font-weight: bold; }
 :root[data-theme="claude"] .markdown-preview .hljs-tag { color: #c0392b; }
+
+:root[data-theme="dark"],
+:root:not([data-theme]) {
+  /* Titlebar gradient */
+  --titlebar-gradient-start: oklch(0.178 0 0);
+
+  /* Background layers */
+  --bg-primary:   oklch(0.178 0 0);
+  --bg-gradient-start: oklch(0.178 0 0);
+  --bg-gradient-end:   oklch(0.178 0 0);
+  --bg-secondary: oklch(0.205 0 0);
+  --bg-tertiary:  oklch(0.269 0 0);
+  --bg-hover:     oklch(0.3 0 0);
+  --bg-selected:  oklch(0.35 0 0);
+
+  /* Text */
+  --text-primary:   oklch(0.985 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --text-muted:     oklch(0.708 0 0);
+
+  /* Border */
+  --border-color: oklch(1 0 0 / 10%);
+
+  /* Terminal selection */
+  --terminal-selection: oklch(0.7 0.1 250 / 0.3);
+
+  /* Accent colors — neutral blue-gray palette */
+  --accent-blue:       oklch(0.7 0.1 250);
+  --accent-blue-rgb:   120, 160, 220;
+  --accent-green:  oklch(0.7 0.15 150);
+  --accent-yellow: oklch(0.8 0.15 85);
+  --accent-red:    oklch(0.704 0.191 22.216);
+
+  /* Text on accent backgrounds */
+  --text-on-accent: oklch(0.205 0 0);
+
+  /* Status */
+  --status-idle:    oklch(0.7 0.15 150);
+  --status-running: oklch(0.8 0.15 85);
+  --status-failed:  oklch(0.704 0.191 22.216);
+
+  /* Diff */
+  --diff-added:        oklch(0.7 0.15 150 / 0.12);
+  --diff-removed:      oklch(0.704 0.191 22.216 / 0.12);
+  --diff-added-text:   oklch(0.7 0.15 150);
+  --diff-removed-text: oklch(0.704 0.191 22.216);
+
+  /* CodeMirror 语法高亮 (OKLCH Dark) */
+  --cm-keyword: oklch(0.7 0.15 300);
+  --cm-comment: oklch(0.556 0 0);
+  --cm-string: oklch(0.7 0.15 150);
+  --cm-number: oklch(0.75 0.12 70);
+  --cm-operator: oklch(0.65 0.1 220);
+  --cm-variableName: oklch(0.7 0.15 20);
+  --cm-typeName: oklch(0.75 0.12 70);
+  --cm-propertyName: oklch(0.7 0.15 20);
+  --cm-function: oklch(0.7 0.1 250);
+  --cm-className: oklch(0.75 0.12 70);
+  --cm-definition: oklch(0.7 0.1 250);
+  --cm-string2: oklch(0.7 0.15 150);
+  --cm-meta: oklch(0.7 0.1 250);
+  --cm-attribute: oklch(0.75 0.12 70);
+  --cm-tag: oklch(0.7 0.15 20);
+  --cm-atom: oklch(0.75 0.12 70);
+  --cm-bool: oklch(0.75 0.12 70);
+  --cm-punctuation: oklch(0.85 0 0);
+  --cm-bracket: oklch(0.85 0 0);
+}
+
+/* OKLCH Dark (now default) hljs */
+:root[data-theme="dark"] .markdown-preview .hljs-keyword,
+:root[data-theme="dark"] .markdown-preview .hljs-selector-tag,
+:root:not([data-theme]) .markdown-preview .hljs-keyword,
+:root:not([data-theme]) .markdown-preview .hljs-selector-tag { color: oklch(0.7 0.15 300); }
+:root[data-theme="dark"] .markdown-preview .hljs-built_in,
+:root[data-theme="dark"] .markdown-preview .hljs-type,
+:root[data-theme="dark"] .markdown-preview .hljs-literal,
+:root[data-theme="dark"] .markdown-preview .hljs-number,
+:root[data-theme="dark"] .markdown-preview .hljs-params,
+:root:not([data-theme]) .markdown-preview .hljs-built_in,
+:root:not([data-theme]) .markdown-preview .hljs-type,
+:root:not([data-theme]) .markdown-preview .hljs-literal,
+:root:not([data-theme]) .markdown-preview .hljs-number,
+:root:not([data-theme]) .markdown-preview .hljs-params { color: oklch(0.75 0.12 70); }
+:root[data-theme="dark"] .markdown-preview .hljs-string,
+:root[data-theme="dark"] .markdown-preview .hljs-doctag,
+:root[data-theme="dark"] .markdown-preview .hljs-regexp,
+:root:not([data-theme]) .markdown-preview .hljs-string,
+:root:not([data-theme]) .markdown-preview .hljs-doctag,
+:root:not([data-theme]) .markdown-preview .hljs-regexp { color: oklch(0.7 0.15 150); }
+:root[data-theme="dark"] .markdown-preview .hljs-title,
+:root[data-theme="dark"] .markdown-preview .hljs-title.class_,
+:root[data-theme="dark"] .markdown-preview .hljs-title.function_,
+:root:not([data-theme]) .markdown-preview .hljs-title,
+:root:not([data-theme]) .markdown-preview .hljs-title.class_,
+:root:not([data-theme]) .markdown-preview .hljs-title.function_ { color: oklch(0.7 0.1 250); }
+:root[data-theme="dark"] .markdown-preview .hljs-name,
+:root[data-theme="dark"] .markdown-preview .hljs-selector-id,
+:root[data-theme="dark"] .markdown-preview .hljs-selector-class,
+:root:not([data-theme]) .markdown-preview .hljs-name,
+:root:not([data-theme]) .markdown-preview .hljs-selector-id,
+:root:not([data-theme]) .markdown-preview .hljs-selector-class { color: oklch(0.7 0.15 20); }
+:root[data-theme="dark"] .markdown-preview .hljs-attr,
+:root:not([data-theme]) .markdown-preview .hljs-attr { color: oklch(0.75 0.12 70); }
+:root[data-theme="dark"] .markdown-preview .hljs-attribute,
+:root:not([data-theme]) .markdown-preview .hljs-attribute { color: oklch(0.7 0.15 150); }
+:root[data-theme="dark"] .markdown-preview .hljs-variable,
+:root[data-theme="dark"] .markdown-preview .hljs-template-variable,
+:root:not([data-theme]) .markdown-preview .hljs-variable,
+:root:not([data-theme]) .markdown-preview .hljs-template-variable { color: oklch(0.7 0.15 20); }
+:root[data-theme="dark"] .markdown-preview .hljs-comment,
+:root[data-theme="dark"] .markdown-preview .hljs-quote,
+:root:not([data-theme]) .markdown-preview .hljs-comment,
+:root:not([data-theme]) .markdown-preview .hljs-quote { color: oklch(0.556 0 0); font-style: italic; }
+:root[data-theme="dark"] .markdown-preview .hljs-meta,
+:root:not([data-theme]) .markdown-preview .hljs-meta { color: oklch(0.7 0.1 250); }
+:root[data-theme="dark"] .markdown-preview .hljs-symbol,
+:root[data-theme="dark"] .markdown-preview .hljs-bullet,
+:root:not([data-theme]) .markdown-preview .hljs-symbol,
+:root:not([data-theme]) .markdown-preview .hljs-bullet { color: oklch(0.7 0.15 20); }
+:root[data-theme="dark"] .markdown-preview .hljs-section,
+:root:not([data-theme]) .markdown-preview .hljs-section { color: oklch(0.75 0.12 70); font-weight: bold; }
+:root[data-theme="dark"] .markdown-preview .hljs-tag,
+:root:not([data-theme]) .markdown-preview .hljs-tag { color: oklch(0.7 0.15 20); }
 
 :root[data-theme="light"] {
   /* Titlebar gradient */

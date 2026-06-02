@@ -28,10 +28,11 @@ pub fn install_pi_theme_files() -> Result<()> {
     fs::create_dir_all(&themes_dir)?;
 
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     for (name, theme_json) in &themes {
@@ -119,10 +120,11 @@ pub fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
     log::debug!("[WSL][PiTheme] mkdir -p {} (distro={})", themes_dir, distro);
 
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     for (name, theme_json) in &themes {
@@ -212,16 +214,17 @@ pub fn write_wsl_pi_settings(distro: &str, project_path: &str, neeko_theme: &str
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// 通过 SSH 在远程服务器上安装 Pi 主题文件
-/// 将 4 个主题 JSON 写入远程 ~/.pi/agent/themes/
+/// 将 5 个主题 JSON 写入远程 ~/.pi/agent/themes/
 /// 合并为单条 shell 命令（一个 channel 只能 exec 一次）
 pub async fn install_remote_pi_theme_files(
     channel: &mut russh::Channel<russh::client::Msg>,
 ) -> Result<()> {
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     let themes_dir = "$HOME/.pi/agent/themes";
@@ -455,7 +458,7 @@ fn build_pi_theme_json(c: &PiThemeColors) -> serde_json::Value {
 
 fn generate_dark_theme() -> serde_json::Value {
     build_pi_theme_json(&PiThemeColors {
-        name: "neeko-dark",
+        name: "neeko-classic-dark",
         vars: &[
             ("blue", "#61afef"),
             ("green", "#98c379"),
@@ -760,5 +763,83 @@ fn generate_light_theme() -> serde_json::Value {
         export_page_bg: "#ebecf0",
         export_card_bg: "#ffffff",
         export_info_bg: "#fffae6",
+    })
+}
+
+fn generate_oklch_dark_theme() -> serde_json::Value {
+    build_pi_theme_json(&PiThemeColors {
+        name: "neeko-dark",
+        vars: &[
+            ("blue", "#78a0dc"),
+            ("green", "#6dbd6d"),
+            ("yellow", "#c9b458"),
+            ("red", "#c0392b"),
+            ("cyan", "#56b6c2"),
+            ("gray", "#888888"),
+            ("dimGray", "#666666"),
+            ("darkGray", "#333333"),
+        ],
+        // Core UI
+        accent: "blue",
+        border: "blue",
+        border_accent: "cyan",
+        border_muted: "darkGray",
+        success: "green",
+        error: "red",
+        warning: "yellow",
+        muted: "gray",
+        dim: "dimGray",
+        text: "",
+        thinking_text: "gray",
+        // Backgrounds
+        selected_bg: "#2a2a2a",
+        user_message_bg: "#1f1f1f",
+        user_message_text: "",
+        custom_message_bg: "#262626",
+        custom_message_text: "",
+        custom_message_label: "blue",
+        tool_pending_bg: "#262626",
+        tool_success_bg: "#1f2a1f",
+        tool_error_bg: "#2a1f1f",
+        tool_title: "",
+        tool_output: "gray",
+        // Markdown
+        md_heading: "yellow",
+        md_link: "blue",
+        md_link_url: "dimGray",
+        md_code: "blue",
+        md_code_block: "green",
+        md_code_block_border: "gray",
+        md_quote: "gray",
+        md_quote_border: "gray",
+        md_hr: "gray",
+        md_list_bullet: "blue",
+        // Diffs
+        tool_diff_added: "green",
+        tool_diff_removed: "red",
+        tool_diff_context: "gray",
+        // Syntax (OKLCH Dark palette)
+        syntax_comment: "#666666",
+        syntax_keyword: "#9b7edb",
+        syntax_function: "#78a0dc",
+        syntax_variable: "#c0392b",
+        syntax_string: "#6dbd6d",
+        syntax_number: "#c9b458",
+        syntax_type: "#c9b458",
+        syntax_operator: "#56b6c2",
+        syntax_punctuation: "#cccccc",
+        // Thinking
+        thinking_off: "darkGray",
+        thinking_minimal: "#555555",
+        thinking_low: "#5f87af",
+        thinking_medium: "blue",
+        thinking_high: "#9b7edb",
+        thinking_xhigh: "red",
+        // Bash
+        bash_mode: "green",
+        // Export
+        export_page_bg: "#141414",
+        export_card_bg: "#1f1f1f",
+        export_info_bg: "#2a2a1f",
     })
 }

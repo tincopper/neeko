@@ -6,5 +6,6 @@ export * from "./entryUpdates";
 export * from "./fileIcons";
 export * from "./idePresets";
 export * from "./platform";
+export * from "./theme";
 export * from "./terminal";
 export * from "./withTimeout";

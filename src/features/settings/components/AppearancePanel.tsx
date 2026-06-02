@@ -16,7 +16,8 @@ interface AppearancePanelProps {
 }
 
 const BUILTIN_THEME_SWATCHES: { id: string; label: string; bg: string; textColor: string }[] = [
-  { id: "dark",          label: "Dark",         bg: "#26292F", textColor: "#2997ff" },
+  { id: "dark",          label: "Dark",         bg: "#1f1f1f", textColor: "#78a0dc" },
+  { id: "classic-dark",  label: "Classic Dark", bg: "#26292F", textColor: "#2997ff" },
   { id: "one-dark-pro",  label: "One Dark Pro", bg: "#282c34", textColor: "#61afef" },
   { id: "claude",        label: "Claude",        bg: "#f5f0e8", textColor: "#c96442" },
   { id: "light",         label: "Light",         bg: "#ffffff", textColor: "#2f7cd3" },

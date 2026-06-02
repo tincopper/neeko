@@ -28,10 +28,11 @@ pub fn install_theme_files() -> Result<()> {
     fs::create_dir_all(&themes_dir)?;
 
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     for (name, theme_json) in &themes {
@@ -119,10 +120,11 @@ pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
     log::debug!("[WSL][Theme] mkdir -p {} (distro={})", themes_dir, distro);
 
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     for (name, theme_json) in &themes {
@@ -228,16 +230,17 @@ pub use super::common::get_current_theme;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// 通过 SSH 在远程服务器上安装主题文件
-/// 将 4 个主题 JSON 写入远程 ~/.config/opencode/themes/
+/// 将 5 个主题 JSON 写入远程 ~/.config/opencode/themes/
 /// 合并为单条 shell 命令（一个 channel 只能 exec 一次）
 pub async fn install_remote_theme_files(
     channel: &mut russh::Channel<russh::client::Msg>,
 ) -> Result<()> {
     let themes = [
-        ("neeko-dark", generate_dark_theme()),
+        ("neeko-classic-dark", generate_dark_theme()),
         ("neeko-one-dark-pro", generate_one_dark_pro_theme()),
         ("neeko-claude", generate_claude_theme()),
         ("neeko-light", generate_light_theme()),
+        ("neeko-dark", generate_oklch_dark_theme()),
     ];
 
     let themes_dir = "$HOME/.config/opencode/themes";
@@ -554,5 +557,39 @@ fn generate_light_theme() -> serde_json::Value {
         syntax_type: "#986801",
         syntax_operator: "#4078f2",
         syntax_punctuation: "#383a42",
+    })
+}
+
+fn generate_oklch_dark_theme() -> serde_json::Value {
+    build_theme_json(&ThemeColors {
+        primary: "#78a0dc",
+        secondary: "#6dbd6d",
+        accent: "#c9b458",
+        error: "#c0392b",
+        warning: "#c9b458",
+        success: "#6dbd6d",
+        info: "#78a0dc",
+        text: "#fafafa",
+        text_secondary: "#d9d9d9",
+        text_muted: "#888888",
+        background: "#1f1f1f",
+        background_panel: "#1f1f1f",
+        background_element: "#2a2a2a",
+        border: "#333333",
+        border_active: "#78a0dc",
+        border_subtle: "#262626",
+        diff_added: "#6dbd6d",
+        diff_removed: "#c0392b",
+        diff_added_bg: "#6dbd6d18",
+        diff_removed_bg: "#c0392b18",
+        syntax_comment: "#666666",
+        syntax_keyword: "#9b7edb",
+        syntax_function: "#78a0dc",
+        syntax_variable: "#c0392b",
+        syntax_string: "#6dbd6d",
+        syntax_number: "#c9b458",
+        syntax_type: "#c9b458",
+        syntax_operator: "#56b6c2",
+        syntax_punctuation: "#cccccc",
     })
 }

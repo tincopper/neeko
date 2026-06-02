@@ -4,7 +4,7 @@ export type SkillView = "local" | "marketplace" | "project";
 export type DiffMode = "unified" | "split";
 export type AppTheme = string;
 
-export const BUILTIN_THEMES = ["dark", "light", "one-dark-pro", "claude"] as const;
+export const BUILTIN_THEMES = ["dark", "light", "one-dark-pro", "claude", "classic-dark"] as const;
 
 export interface ThemeListItem {
   name: string;
