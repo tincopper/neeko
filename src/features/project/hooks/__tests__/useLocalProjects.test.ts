@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useEditorStore } from '@/shared/store';
 import { createProject } from '@/testing/factories';
@@ -48,7 +49,9 @@ describe('useLocalProjects', () => {
   });
 
   it('loadAgents 获取 agent 列表', async () => {
-    const agents = [{ id: 'claude', name: 'Claude', command: 'claude', args: [], icon: null, enabled: true }];
+    const agents = [
+      { id: 'claude', name: 'Claude', command: 'claude', args: [], icon: null, enabled: true },
+    ];
     mockInvoke.mockResolvedValue(agents);
 
     const { result } = renderHook(() => useLocalProjects());
@@ -61,26 +64,23 @@ describe('useLocalProjects', () => {
     expect(mockInvoke).toHaveBeenCalledWith('list_agents');
   });
 
-  it('handleConfirmAddProject 添加项目', async () => {
+  it('handleAddProject 选择目录后直接添加项目', async () => {
     const newProject = createProject({ id: 'new-1', name: 'new-project' });
+    mockOpen.mockResolvedValue('/tmp/new-project');
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'add_project') return newProject;
       if (cmd === 'save_session') return undefined;
-      if (cmd === 'list_projects') return [newProject];
+      if (cmd === 'set_active_project') return undefined;
       return undefined;
     });
 
     const { result } = renderHook(() => useLocalProjects());
 
-    // 模拟 pendingPath 已设置
-    act(() => {
-      result.current.setPendingPath('/tmp/new-project');
-    });
-
     await act(async () => {
-      await result.current.handleConfirmAddProject(null, null);
+      await result.current.handleAddProject();
     });
 
+    expect(mockOpen).toHaveBeenCalledWith({ multiple: false, directory: true });
     expect(mockInvoke).toHaveBeenCalledWith(
       'add_project',
       expect.objectContaining({
@@ -90,23 +90,35 @@ describe('useLocalProjects', () => {
         avatarColor: expect.stringMatching(/^#[0-9a-f]{6}$/i),
       }),
     );
-    expect(result.current.projects).toContainEqual(
-      expect.objectContaining({ id: 'new-1' }),
-    );
+    expect(result.current.projects).toContainEqual(expect.objectContaining({ id: 'new-1' }));
     expect(result.current.activeProjectId).toBe('new-1');
-    expect(result.current.pendingPath).toBeNull();
+    expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'new-1' });
   });
 
-  it('没有 pendingPath 时不调用 add_project', async () => {
-    mockInvoke.mockResolvedValue([]);
+  it('handleAddProject 目录已存在时弹窗提示', async () => {
+    const existingProject = createProject({ id: 'existing', path: '/tmp/existing' });
+    mockOpen.mockResolvedValue('/tmp/existing');
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_projects') return [existingProject];
+      return undefined;
+    });
 
     const { result } = renderHook(() => useLocalProjects());
 
     await act(async () => {
-      await result.current.handleConfirmAddProject('agent', 'code');
+      await result.current.loadProjects();
     });
 
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    mockInvoke.mockClear();
+
+    await act(async () => {
+      await result.current.handleAddProject();
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('already added'));
     expect(mockInvoke).not.toHaveBeenCalledWith('add_project', expect.anything());
+    alertSpy.mockRestore();
   });
 
   it('handleRemoveProject 移除项目', async () => {
@@ -134,10 +146,7 @@ describe('useLocalProjects', () => {
   });
 
   it('移除活跃项目时切换到第一个项目', async () => {
-    const projects = [
-      createProject({ id: 'p1' }),
-      createProject({ id: 'p2' }),
-    ];
+    const projects = [createProject({ id: 'p1' }), createProject({ id: 'p2' })];
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_projects') return projects;
       if (cmd === 'remove_project') return undefined;
@@ -176,7 +185,6 @@ describe('useLocalProjects', () => {
 
     expect(result.current.activeProjectId).toBe('sel-1');
     expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'sel-1' });
-
   });
 
   it('handleRefreshGit 刷新 git 信息', async () => {
@@ -340,7 +348,7 @@ describe('useLocalProjects', () => {
         result.current.handleDragEnd('p1', 'p3');
       });
 
-      expect(result.current.projects.map(p => p.id)).toEqual(['p2', 'p3', 'p1']);
+      expect(result.current.projects.map((p) => p.id)).toEqual(['p2', 'p3', 'p1']);
       expect(mockInvoke).toHaveBeenCalledWith('reorder_projects', {
         orderedIds: ['p2', 'p3', 'p1'],
       });
@@ -365,7 +373,7 @@ describe('useLocalProjects', () => {
         result.current.handleDragEnd('p1', 'p1');
       });
 
-      expect(result.current.projects.map(p => p.id)).toEqual(['p1', 'p2']);
+      expect(result.current.projects.map((p) => p.id)).toEqual(['p1', 'p2']);
       expect(mockInvoke).not.toHaveBeenCalledWith('reorder_projects', expect.anything());
     });
 

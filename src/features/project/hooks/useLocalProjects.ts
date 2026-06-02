@@ -1,18 +1,27 @@
-import { useState, useCallback } from "react";
-import type { Dispatch, SetStateAction } from "react";
-import { useShallow } from "zustand/shallow";
-import { open } from "@tauri-apps/plugin-dialog";
-import { addProject, removeProject, setActiveProject as setActiveProjectApi, openIde, reorderProjects, listProjects } from "../api/projectApi";
-import { listAgents } from "../../agent/api/agentApi";
-import { saveSession } from "../../session/api/sessionApi";
-import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
-import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
-import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
+import { open } from '@tauri-apps/plugin-dialog';
+import type { Dispatch, SetStateAction } from 'react';
+import { useState, useCallback } from 'react';
+import { useShallow } from 'zustand/shallow';
+
 import { useProjectStore } from '@/features/project/store';
+import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
+import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
-import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 import { getMacAppNameByCommand } from '@/shared/utils/idePresets';
+import { randomAvatarColor } from '@/shared/utils/projectAvatar';
+
+import { listAgents } from '../../agent/api/agentApi';
+import { getWorktreeChangedFiles, getGitBranchInfo } from '../../git/api/gitApi';
+import { saveSession } from '../../session/api/sessionApi';
+import {
+  addProject,
+  removeProject,
+  setActiveProject as setActiveProjectApi,
+  openIde,
+  reorderProjects,
+  listProjects,
+} from '../api/projectApi';
 
 export function useLocalProjects() {
   const projects = useProjectStore(useShallow((state) => state.projects));
@@ -23,7 +32,7 @@ export function useLocalProjects() {
     useProjectStore.setState((state) => {
       const nextProjects = applyStateAction(state.projects, updater);
       const nextActiveProject = state.activeProjectId
-        ? nextProjects.find((project) => project.id === state.activeProjectId) ?? null
+        ? (nextProjects.find((project) => project.id === state.activeProjectId) ?? null)
         : null;
       return {
         projects: nextProjects,
@@ -40,7 +49,7 @@ export function useLocalProjects() {
     useProjectStore.setState((state) => ({
       activeProjectId: projectId,
       activeProject: projectId
-        ? state.projects.find((project) => project.id === projectId) ?? null
+        ? (state.projects.find((project) => project.id === projectId) ?? null)
         : null,
     }));
 
@@ -54,7 +63,6 @@ export function useLocalProjects() {
   }, []);
 
   const [loading, setLoading] = useState(false);
-  const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
 
   const loadProjects = useCallback(async () => {
@@ -65,24 +73,26 @@ export function useLocalProjects() {
       // list_projects 返回的项�?changed_files 为空（轻量版�?
       // changed_files �?watcher/handleRefreshGit 维护
       setProjects((prev) => {
-        const prevMap = new Map(prev.map(p => [p.id, p]));
+        const prevMap = new Map(prev.map((p) => [p.id, p]));
         return projectList.map((newProject) => {
           const existing = prevMap.get(newProject.id);
           if (existing?.git_info?.changed_files && existing.git_info.changed_files.length > 0) {
             // 保留已有�?changed_files
             return {
               ...newProject,
-              git_info: newProject.git_info ? {
-                ...newProject.git_info,
-                changed_files: existing.git_info.changed_files,
-              } : existing.git_info,
+              git_info: newProject.git_info
+                ? {
+                    ...newProject.git_info,
+                    changed_files: existing.git_info.changed_files,
+                  }
+                : existing.git_info,
             };
           }
           return newProject;
         });
       });
     } catch (error) {
-      console.error("[App] Failed to load projects:", error);
+      console.error('[App] Failed to load projects:', error);
     }
   }, []);
 
@@ -91,14 +101,13 @@ export function useLocalProjects() {
       const agentList = await listAgents();
       setAgents(agentList);
     } catch (error) {
-      console.error("[App] Failed to load agents:", error);
+      console.error('[App] Failed to load agents:', error);
     }
   }, []);
 
   const handleAddProject = useCallback(async () => {
     try {
       setLoading(true);
-      await loadAgents();
       const selected = await open({ multiple: false, directory: true });
       if (selected) {
         const exists = projects.some((p) => p.path === selected);
@@ -106,36 +115,19 @@ export function useLocalProjects() {
           alert(`Project already added: ${selected}`);
           return;
         }
-        setPendingPath(selected);
+        const project = await addProject(selected, null, null, randomAvatarColor());
+        await saveSession([], []).catch((e) => console.error('[App] Failed to save session:', e));
+        setProjects((prev) => [...prev, project]);
+        setActiveProjectId(project.id);
+        setActiveProject(project);
+        setActiveProjectApi(project.id).catch(console.error);
       }
     } catch (error) {
-      console.error("[App] Failed to open dialog:", error);
+      console.error('[App] Failed to add project:', error);
     } finally {
       setLoading(false);
     }
-  }, [projects, loadAgents]);
-
-  const handleConfirmAddProject = useCallback(async (agentId: string | null, ideCommand: string | null) => {
-    if (!pendingPath) return;
-    try {
-      setLoading(true);
-      const project = await addProject(
-        pendingPath,
-        agentId,
-        ideCommand,
-        randomAvatarColor(),
-      );
-      await saveSession([], []).catch(() => {});
-      setProjects((prev) => [...prev, project]);
-      setActiveProjectId(project.id);
-      setActiveProject(project);
-    } catch (error) {
-      console.error("[App] Failed to add project:", error);
-    } finally {
-      setLoading(false);
-      setPendingPath(null);
-    }
-  }, [pendingPath]);
+  }, [projects]);
 
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
@@ -145,11 +137,12 @@ export function useLocalProjects() {
       const editorState = useEditorStore.getState();
 
       const nextProjects = projState.projects.filter((project) => project.id !== projectId);
-      const nextActiveProjectId = projState.activeProjectId === projectId
-        ? (nextProjects[0]?.id ?? null)
-        : projState.activeProjectId;
+      const nextActiveProjectId =
+        projState.activeProjectId === projectId
+          ? (nextProjects[0]?.id ?? null)
+          : projState.activeProjectId;
       const nextActiveProject = nextActiveProjectId
-        ? nextProjects.find((project) => project.id === nextActiveProjectId) ?? null
+        ? (nextProjects.find((project) => project.id === nextActiveProjectId) ?? null)
         : null;
       const nextActiveTabId = nextActiveProjectId
         ? (editorState.tabs[nextActiveProjectId]?.activeTabId ?? null)
@@ -164,7 +157,7 @@ export function useLocalProjects() {
 
       destroyTerminalCachesByPrefix(projectId);
     } catch (error) {
-      console.error("[App] Failed to remove project:", error);
+      console.error('[App] Failed to remove project:', error);
     }
   }, []);
 
@@ -174,42 +167,45 @@ export function useLocalProjects() {
     setActiveProjectApi(projectId).catch(console.error);
   }, []);
 
-  const handleSelectFile = useCallback(async (projectId: string, filePath: string) => {
-    if (activeProjectId !== projectId) {
-      setActiveProjectId(projectId);
-      await setActiveProjectApi(projectId);
-    }
+  const handleSelectFile = useCallback(
+    async (projectId: string, filePath: string) => {
+      if (activeProjectId !== projectId) {
+        setActiveProjectId(projectId);
+        await setActiveProjectApi(projectId);
+      }
 
-    const existingTabs = useEditorStore.getState().tabs[projectId];
-    const existingDiffTab = existingTabs?.tabs.find(
-      (t) => t.data.kind === "diff" && t.data.filePath === filePath
-    );
-    if (existingDiffTab) {
-      useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
-      return;
-    }
+      const existingTabs = useEditorStore.getState().tabs[projectId];
+      const existingDiffTab = existingTabs?.tabs.find(
+        (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
+      );
+      if (existingDiffTab) {
+        useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
+        return;
+      }
 
-    const fileName = filePath.split(/[\\/]/).pop() || filePath;
-    const tabId = `tab_${crypto.randomUUID()}`;
-    const tab: Tab = {
-      id: tabId,
-      projectId,
-      title: fileName,
-      order: existingTabs?.tabs.length ?? 0,
-      data: {
-        kind: "diff",
-        filePath,
-        fileName,
-        diffSource: { type: "local", projectId },
-      },
-    };
-    useEditorStore.getState().addTab(projectId, tab);
-    useEditorStore.getState().activateTab(projectId, tabId);
-  }, [activeProjectId]);
+      const fileName = filePath.split(/[\\/]/).pop() || filePath;
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+        id: tabId,
+        projectId,
+        title: fileName,
+        order: existingTabs?.tabs.length ?? 0,
+        data: {
+          kind: 'diff',
+          filePath,
+          fileName,
+          diffSource: { type: 'local', projectId },
+        },
+      };
+      useEditorStore.getState().addTab(projectId, tab);
+      useEditorStore.getState().activateTab(projectId, tabId);
+    },
+    [activeProjectId],
+  );
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
     const defaultGitInfo = {
-      current_branch: "",
+      current_branch: '',
       branches: [] as string[],
       worktrees: [] as Worktree[],
       changed_files: [] as FileChange[],
@@ -224,18 +220,19 @@ export function useLocalProjects() {
         });
         return {
           projects: nextProjects,
-          activeProject: state.activeProjectId === projectId
-            ? nextProjects.find(p => p.id === projectId) ?? state.activeProject
-            : state.activeProject,
+          activeProject:
+            state.activeProjectId === projectId
+              ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
+              : state.activeProject,
         };
       });
     };
 
     try {
-      const projectPath = projects.find(p => p.id === projectId)?.path ?? "";
+      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       const changedFiles = await getWorktreeChangedFiles(
         { Local: { project_path: projectPath } },
-        "",
+        '',
       );
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
@@ -247,18 +244,21 @@ export function useLocalProjects() {
             worktrees: branchInfo.worktrees,
           });
         })
-        .catch((error) => console.error("Failed to refresh git branch info:", error));
+        .catch((error) => console.error('Failed to refresh git branch info:', error));
     } catch (error) {
-      console.error("Failed to refresh git info:", error);
+      console.error('Failed to refresh git info:', error);
     }
   }, []);
 
-  const handleOpenIde = useCallback(async (project: { id: string; selected_ide: string | null }) => {
-    if (!project.selected_ide) return;
-    const projectPath = projects.find((item) => item.id === project.id)?.path ?? "";
-    const macAppName = getMacAppNameByCommand(project.selected_ide);
-    await openIde(project.selected_ide, projectPath, macAppName);
-  }, [projects]);
+  const handleOpenIde = useCallback(
+    async (project: { id: string; selected_ide: string | null }) => {
+      if (!project.selected_ide) return;
+      const projectPath = projects.find((item) => item.id === project.id)?.path ?? '';
+      const macAppName = getMacAppNameByCommand(project.selected_ide);
+      await openIde(project.selected_ide, projectPath, macAppName);
+    },
+    [projects],
+  );
 
   const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
@@ -274,7 +274,7 @@ export function useLocalProjects() {
       // Persist the new order
       const orderedIds = newProjects.map((p) => p.id);
       reorderProjects(orderedIds).catch((e) =>
-        console.error("[App] Failed to persist project order:", e)
+        console.error('[App] Failed to persist project order:', e),
       );
 
       return newProjects;
@@ -282,14 +282,23 @@ export function useLocalProjects() {
   }, []);
 
   return {
-    projects, setProjects, activeProjectId, setActiveProjectId,
-    activeProject, setActiveProject,
-    loading, setLoading,
-    pendingPath, setPendingPath,
+    projects,
+    setProjects,
+    activeProjectId,
+    setActiveProjectId,
+    activeProject,
+    setActiveProject,
+    loading,
+    setLoading,
     agents,
-    loadProjects, loadAgents,
-    handleAddProject, handleConfirmAddProject, handleRemoveProject,
-    handleSelectProject, handleSelectFile, handleRefreshGit, handleOpenIde,
+    loadProjects,
+    loadAgents,
+    handleAddProject,
+    handleRemoveProject,
+    handleSelectProject,
+    handleSelectFile,
+    handleRefreshGit,
+    handleOpenIde,
     handleDragEnd,
   };
 }

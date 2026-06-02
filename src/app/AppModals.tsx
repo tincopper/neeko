@@ -1,18 +1,14 @@
-import React from "react";
-import { IS_WINDOWS } from "@/shared/utils/platform";
-import AddProjectModal from "@/features/project/components/AddProjectModal";
-import { WSLDialog } from "@/features/connection/components/WSLDialog";
-import { RemoteDialog } from "@/features/connection/components/RemoteDialog";
-import { RemoteAuthDialog } from "@/features/connection/components/RemoteAuthDialog";
+import React from 'react';
+
+import { RemoteAuthDialog } from '@/features/connection/components/RemoteAuthDialog';
+import { RemoteDialog } from '@/features/connection/components/RemoteDialog';
+import { WSLDialog } from '@/features/connection/components/WSLDialog';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import { IS_WINDOWS } from '@/shared/utils/platform';
 
 interface AppModalsProps {
-  pendingPath: string | null;
-  onConfirmAddProject: (agentId: string | null, ideCommand: string | null) => Promise<void>;
-  onCancelAddProject: () => void;
-  loading: boolean;
-
   wslDialogOpen: boolean;
+
   onWslDialogClose: () => void;
   onAddWslEntry: (entry: WSLEntrySession) => void;
   wslEntries: WSLEntrySession[];
@@ -35,10 +31,6 @@ interface AppModalsProps {
 }
 
 function AppModals({
-  pendingPath,
-  onConfirmAddProject,
-  onCancelAddProject,
-  loading,
   wslDialogOpen,
   onWslDialogClose,
   onAddWslEntry,
@@ -56,15 +48,6 @@ function AppModals({
 }: AppModalsProps) {
   return (
     <>
-      {pendingPath && (
-        <AddProjectModal
-          pendingPath={pendingPath}
-          onConfirm={onConfirmAddProject}
-          onCancel={onCancelAddProject}
-          loading={loading}
-        />
-      )}
-
       {IS_WINDOWS && (
         <WSLDialog
           isOpen={wslDialogOpen}
