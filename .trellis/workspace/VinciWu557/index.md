@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 48
+- **Total Sessions**: 49
 - **Last Active**: 2026-06-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1835 | Active |
+| `journal-1.md` | ~1868 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 49 | 2026-06-02 | Replace custom drag with @dnd-kit | `9c3bdcc` | `fix/project_panel_drag` |
 | 48 | 2026-06-02 | terminal: scroll-to-bottom floating button | `7051e8b` | `enhance/project_manage_0602` |
 | 47 | 2026-06-02 | 添加 ConfirmDialog 组件，统一项目/Worktree 删除确认弹窗 | `72508a3` | `enhance/project_manage_0602` |
 | 46 | 2026-05-19 | Project avatar color customization + spec capture | `5adfe61`, `f00cf6b` | `enhance/setting_panel` |

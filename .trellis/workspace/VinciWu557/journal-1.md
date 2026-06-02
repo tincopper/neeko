@@ -1833,3 +1833,36 @@ TerminalViewBase 新增滚动到底部浮动按钮。在 TerminalViewBase useEff
 ### Next Steps
 
 - None - task complete
+
+
+## Session 49: Replace custom drag with @dnd-kit
+
+**Date**: 2026-06-02
+**Task**: Replace custom drag with @dnd-kit
+**Branch**: `fix/project_panel_drag`
+
+### Summary
+
+Replaced self-implemented Pointer Events drag (useProjectItemDrag + DraggableProjectItem) with @dnd-kit library. Fixed jitter and inability-to-reorder bugs. Cleaned up dead types, as-any casts, non-null assertions. Updated spec docs.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c3bdcc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
