@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 46
-- **Last Active**: 2026-05-19
+- **Total Sessions**: 48
+- **Last Active**: 2026-06-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1769 | Active |
+| `journal-1.md` | ~1835 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 48 | 2026-06-02 | terminal: scroll-to-bottom floating button | `7051e8b` | `enhance/project_manage_0602` |
+| 47 | 2026-06-02 | 添加 ConfirmDialog 组件，统一项目/Worktree 删除确认弹窗 | `72508a3` | `enhance/project_manage_0602` |
 | 46 | 2026-05-19 | Project avatar color customization + spec capture | `5adfe61`, `f00cf6b` | `enhance/setting_panel` |
 | 45 | 2026-05-19 | ProjectsPanel V1 Reference Faithful 重设计 | `a29148f`, `fa75e2d` | `enhance/setting_panel` |
 | 44 | 2026-05-18 | Settings: Project panel + built-in agents backend single source | `43da4b9`, `9785fc2` | `enhance/setting_panel` |

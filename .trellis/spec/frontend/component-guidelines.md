@@ -531,3 +531,72 @@ import { Project, AgentConfig } from "../../types";
 - Tailwind 类语法（推荐用于静态文本）：`className="text-[var(--font-size)]"`
 - 内联 style（用于动态或按钮元素）：`style={{ fontSize: "var(--terminal-font-size)" }}`
 - 新增任何侧边栏/文件树/Tab 组件时，**禁止**使用 `text-xs`、`text-sm`、`text-base` 等固定 Tailwind 字体类
+
+
+---
+
+## 确认弹窗规范：ConfirmDialog
+
+### 约定
+
+所有删除/危险操作的二次确认弹窗，使用 `src/shared/components/ConfirmDialog.tsx`。
+
+基于 Radix UI `Dialog` + `Button` 原语，自动处理遮罩层、ESC 关闭、键盘焦点管理、dark theme 样式。
+
+### Props
+
+```ts
+interface ConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: React.ReactNode;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  danger?: boolean;
+}
+```
+
+### 使用方式
+
+```tsx
+import ConfirmDialog from "@/shared/components/ConfirmDialog";
+
+const [confirmRemove, setConfirmRemove] = useState(false);
+
+<ConfirmDialog
+  open={confirmRemove}
+  onOpenChange={setConfirmRemove}
+  title="Remove Project"
+  description={
+    <>
+      <p>Are you sure you want to remove <strong>{project.name}</strong>?</p>
+      <div>{project.path}</div>
+    </>
+  }
+  confirmLabel="Remove"
+  onConfirm={() => onRemoveProject(project.id)}
+  danger
+/>
+```
+
+- `description` 接受 `ReactNode`，可传入条件内容（如 Worktree 删除时的 `isDirty` 警告）
+- `danger` 为 `true` 时确认按钮使用 `variant="destructive"`（红色背景）
+- 确认按钮文案通过 `confirmLabel` 自定义（如 Worktree 的 "Force Remove" / "Remove"）
+
+### 反模式
+
+❌ **使用裸 `<div className="modal-overlay"> 模拟弹窗**：
+
+```tsx
+// 禁止：这些 class 在项目 CSS 中没有定义，无任何样式
+{confirmDelete && (
+  <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+    <div className="modal" onClick={(e) => e.stopPropagation()}>
+      ...
+    </div>
+  </div>
+)}
+```
+
+✅ **使用 ConfirmDialog**：见上方使用方式。
