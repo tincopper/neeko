@@ -7,6 +7,7 @@ pub fn map_theme_name(neeko_theme: &str) -> &str {
         "one-dark-pro" => "neeko-one-dark-pro",
         "claude" => "neeko-claude",
         "light" => "neeko-light",
+        "classic-dark" => "neeko-classic-dark",
         _ => "neeko-dark",
     }
 }
