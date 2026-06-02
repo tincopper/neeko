@@ -440,7 +440,7 @@ export function addProject(path: string) {
 
 ### 4. 在纯展示组件中 import invoke
 
-纯展示组件（如 `SessionRow`、`DraggableProjectItem`）不应 import 任何 Tauri API，包括 API wrapper。数据通过 Props 传入，动作通过回调 Props 传入。
+纯展示组件（如 `SessionRow`）不应 import 任何 Tauri API，包括 API wrapper。数据通过 Props 传入，动作通过回调 Props 传入。
 
 ### 5. 事件监听未清理
 

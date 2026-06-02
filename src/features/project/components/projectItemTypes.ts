@@ -1,5 +1,5 @@
+import type { DialogState } from '@/features/git/components/GitDialog';
 import type { AgentConfig, AppConfig, Project } from '@/shared/types';
-import type { DialogState } from "@/features/git/components/GitDialog";
 
 export interface ProjectItemActions {
   onSelectProject: (projectId: string) => void;
@@ -17,13 +17,12 @@ export interface ProjectItemActions {
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (projectId: string) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onSaveProjectSettings?: (
     projectId: string,
     agentId: string | null,
     ideCommand: string | null,
   ) => void;
-  onDragEnd?: (draggedId: string, targetId: string) => void;
 }
 
 export interface ProjectItemViewConfig {
