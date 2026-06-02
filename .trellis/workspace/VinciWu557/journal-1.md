@@ -1800,3 +1800,36 @@ Added per-project customizable avatar color (UI + persistence). Captured pattern
 ### Next Steps
 
 - None - task complete
+
+
+## Session 48: terminal: scroll-to-bottom floating button
+
+**Date**: 2026-06-02
+**Task**: terminal: scroll-to-bottom floating button
+**Branch**: `enhance/project_manage_0602`
+
+### Summary
+
+TerminalViewBase 新增滚动到底部浮动按钮。在 TerminalViewBase useEffect 内注册 xterm onScroll 事件监听 viewport 位置，不在底部时显示按钮（opacity fade），点击后 scrollToBottom + focus。覆盖 Local/WSL/Remote 三种终端。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7051e8b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
