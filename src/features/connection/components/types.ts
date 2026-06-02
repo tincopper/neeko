@@ -11,12 +11,16 @@ export type ActiveWslKey = { distro: string; projectId: string } | null;
 export type ActiveRemoteKey = { host: string; projectId: string } | null;
 
 export type ConnectionSource =
-  | { type: "wsl"; distro: string }
+  | { type: 'wsl'; distro: string }
   | {
-      type: "remote";
+      type: 'remote';
       entryId: string;
       host: string;
-      invokeRemoteGit: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
+      invokeRemoteGit: (
+        command: string,
+        entryId: string,
+        extra: Record<string, unknown>,
+      ) => Promise<unknown>;
     };
 
 export interface ConnectionProjectCardProps {
@@ -35,12 +39,8 @@ export interface ConnectionProjectCardProps {
   onRefresh?: () => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (
-    agentId: string | null,
-    ideCommand: string | null,
-  ) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
-  onDragEnd?: (draggedId: string, targetId: string) => void;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 export interface WSLItemProps {
@@ -59,11 +59,8 @@ export interface WSLItemProps {
   onRefresh?: (distro: string, projectId: string) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (
-    agentId: string | null,
-    ideCommand: string | null,
-  ) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }
 
@@ -78,16 +75,17 @@ export interface RemoteItemProps {
   onAddProject: (entryId: string) => void;
   onOpenIde?: (entryId: string, projectPath: string, ide: string) => void;
   onOpenWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
-  invokeRemoteGit?: (command: string, entryId: string, extra: Record<string, unknown>) => Promise<unknown>;
+  invokeRemoteGit?: (
+    command: string,
+    entryId: string,
+    extra: Record<string, unknown>,
+  ) => Promise<unknown>;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (entryId: string, projectId: string) => void;
   agents?: AgentConfig[];
   config?: AppConfig;
-  onSaveProjectSettings?: (
-    agentId: string | null,
-    ideCommand: string | null,
-  ) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onSaveProjectSettings?: (agentId: string | null, ideCommand: string | null) => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
 }

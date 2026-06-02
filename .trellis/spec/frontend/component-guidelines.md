@@ -197,64 +197,56 @@ import { cn } from "../utils/cn";
 
 ---
 
-## 纯表现包装器模式（DraggableProjectItem）
+## 拖拽排序模式（@dnd-kit）
 
-对于需要将交互逻辑与视觉表现分离的场景，使用纯表现包装器组件：
+项目列表拖拽排序使用 `@dnd-kit` 库实现。每个独立排序区域使用一个 `DndContext` + `SortableContext`，卡片组件内部使用 `useSortable` hook。
 
 ```tsx
-// src/components/project/DraggableProjectItem.tsx
-interface DraggableProjectItemProps {
-  dragId: string;                          // data-drag-id 标识
-  isDragging: boolean;                     // 从 useProjectItemDrag 获取
-  dragOffset: DragOffset;                  // 从 useProjectItemDrag 获取
-  dropIndicator: DropIndicator | null;     // 从 useProjectItemDrag 获取
-  isActive?: boolean;
-  onPointerDown: (e: React.PointerEvent) => void;  // 透传 hook handlers
-  onPointerMove: (e: React.PointerEvent) => void;
-  onPointerUp: (e: React.PointerEvent) => void;
-  onPointerCancel: (e: React.PointerEvent) => void;
-  children: React.ReactNode;               // 被包装的实际内容
-  className?: string;
-}
+// 父级容器（ProjectsPanel / WSLItem / RemoteItem）
+<DndContext
+  collisionDetection={closestCenter}
+  modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+  onDragEnd={(event) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      onDragEnd(String(active.id), String(over.id));
+    }
+  }}
+>
+  <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+    {items.map(item => <SortableCard key={item.id} item={item} />)}
+  </SortableContext>
+</DndContext>
 ```
 
-**设计原则**：
-1. **零业务逻辑**：组件不包含任何状态管理或业务逻辑，仅接收 props 并渲染
-2. **样式组合**：通过 `cn()` 组合 Tailwind 类，处理条件样式
-3. **动态样式**：使用内联 `style` 处理运行时计算值（`transform: translate()`）
-4. **指示器叠加**：放置指示器（蓝色边框 + 发光）作为绝对定位元素渲染在 children 前后
-5. **`React.memo` 包裹**：避免在 Props 与 Context 混合分发架构中的不必要重渲染
-
-**使用方式**：
-
 ```tsx
-// 在 ProjectItem 或 ConnectionProjectCard 中
-const { isDragging, dragOffset, dropIndicator, ...handlers } = useProjectItemDrag({
-  projectId: project.id,
-  onDragEnd,
-});
+// 可排序卡片（ProjectItem / ConnectionProjectCard）
+const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+  useSortable({ id: item.id });
+
+const style = {
+  transform: CSS.Transform.toString(transform),
+  transition: transition ?? undefined,
+};
 
 return (
-  <DraggableProjectItem
-    dragId={project.id}
-    isDragging={isDragging}
-    dragOffset={dragOffset}
-    dropIndicator={dropIndicator}
-    isActive={isActive}
-    {...handlers}
+  <div ref={setNodeRef} style={style} {...attributes} {...listeners}
+    className={cn(
+      "relative mb-0.5 rounded-md overflow-visible",
+      isDragging && "opacity-50 scale-[1.02] shadow-lg shadow-black/20 z-50",
+      !isDragging && "cursor-grab",
+    )}
   >
-    {/* 实际项目内容 */}
-    <ProjectItemHeader ... />
-    <ProjectGitSection ... />
-  </DraggableProjectItem>
+    {children}
+  </div>
 );
 ```
 
-**视觉行为**：
-- 拖拽中：`opacity-50 scale-[1.02] rotate-[0.5deg] shadow-lg z-50`
-- 光标跟随：`transform: translate(${dragOffset.x}px, ${dragOffset.y}px)`
-- 放置指示器：蓝色顶部/底部边框 + 发光效果
-- 非拖拽时：`cursor-grab`
+**设计原则**：
+1. **DndContext 按独立列表分布**：每个可排序区域独立，不支持跨区域拖拽
+2. **Modifier 约束**：`restrictToVerticalAxis` 锁定垂直、`restrictToParentElement` 限定范围
+3. **业务逻辑在域 hook**：DndContext.onDragEnd 只提取 id 并调用域 hook handler
+4. **视觉反馈通过 isDragging**：使用 Tailwind class 切换 opacity/scale/shadow
 
 详见 [交互模式指南](./interaction-patterns.md)。
 

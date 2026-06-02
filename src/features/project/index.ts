@@ -7,16 +7,13 @@ export { default as ProjectGroup } from './components/ProjectGroup';
 export { default as SessionRow } from './components/SessionRow';
 export { default as SessionChips } from './components/SessionChips';
 export { default as ProjectGuidePage } from './components/ProjectGuidePage';
-export { default as DraggableProjectItem } from './components/DraggableProjectItem';
 export { default as ProjectsPanel } from './components/ProjectsPanel';
-export { useProjectItemDrag } from './components/useProjectItemDrag';
 export { useProjectItemMenu } from './components/useProjectItemMenu';
 export type {
   ProjectItemProps,
   ProjectItemActions,
   ProjectItemViewConfig,
 } from './components/projectItemTypes';
-export type { DragOffset, DropIndicator } from './components/useProjectItemDrag';
 
 // Hooks
 export { useLocalProjects } from './hooks/useLocalProjects';

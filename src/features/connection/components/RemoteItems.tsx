@@ -1,9 +1,15 @@
-import React from "react";
-import { getDistroIcon } from "@/shared/utils/distros";
-import serverIcon from "../../../assets/server.svg";
-import { PlusIcon, TrashIcon } from "@/shared/components/icons";
-import ConnectionProjectCard from "./ConnectionProjectCard";
-import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from "./types";
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import React from 'react';
+
+import { PlusIcon, TrashIcon } from '@/shared/components/icons';
+import { getDistroIcon } from '@/shared/utils/distros';
+
+import serverIcon from '../../../assets/server.svg';
+
+import ConnectionProjectCard from './ConnectionProjectCard';
+import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from './types';
 
 interface SectionActionButtonProps {
   title: string;
@@ -30,7 +36,7 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
       if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
     }}
     onMouseOut={(e) => {
-      (e.currentTarget as HTMLElement).style.color = "";
+      (e.currentTarget as HTMLElement).style.color = '';
     }}
   >
     {children}
@@ -48,7 +54,7 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
 interface SectionHeaderProps {
   iconSrc: string;
   iconAlt?: string;
-  kindLabel: "WSL" | "SSH";
+  kindLabel: 'WSL' | 'SSH';
   name: string;
   count: number;
   addTitle: string;
@@ -69,7 +75,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
   onRemove,
 }) => (
   <div className="group flex items-center gap-2 px-3 pt-3 pb-1 select-none">
-    <img src={iconSrc} className="w-3.5 h-3.5 shrink-0 opacity-80" alt={iconAlt ?? ""} />
+    <img src={iconSrc} className="w-3.5 h-3.5 shrink-0 opacity-80" alt={iconAlt ?? ''} />
     <span className="text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
       {kindLabel}
     </span>
@@ -106,9 +112,12 @@ export const WSLItem = React.memo<WSLItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
-    const handleDragEnd = onDragEnd
-      ? (draggedId: string, targetId: string) => onDragEnd(entry.id, draggedId, targetId)
-      : undefined;
+    const handleDndEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over && active.id !== over.id && onDragEnd) {
+        onDragEnd(entry.id, String(active.id), String(over.id));
+      }
+    };
 
     return (
       <>
@@ -126,42 +135,51 @@ export const WSLItem = React.memo<WSLItemProps>(
         {entry.projects.length === 0 ? (
           <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
         ) : (
-          entry.projects.map((project) => {
-            const isActive =
-              activeKey?.distro === entry.distro &&
-              activeKey?.projectId === project.id;
-            return (
-              <ConnectionProjectCard
-                key={project.id}
-                project={project}
-                entryId={entry.id}
-                source={{ type: "wsl", distro: entry.distro }}
-                isActive={isActive}
-                isLast={lastProjectId === project.id}
-                onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
-                onRemoveProject={onRemoveProject}
-                onOpenIde={onOpenIde}
-                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                ideCommandOverrides={ideCommandOverrides}
-                onOpenSettings={onOpenSettings}
-                onRefresh={
-                  onRefresh ? () => onRefresh(entry.distro, project.id) : undefined
-                }
-                agents={agents}
-                config={config}
-                onSaveProjectSettings={onSaveProjectSettings}
-                onShowToast={onShowToast}
-                onDragEnd={handleDragEnd}
-              />
-            );
-          })
+          <DndContext
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDndEnd}
+          >
+            <SortableContext
+              items={entry.projects.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {entry.projects.map((project) => {
+                const isActive =
+                  activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
+                return (
+                  <ConnectionProjectCard
+                    key={project.id}
+                    project={project}
+                    entryId={entry.id}
+                    source={{ type: 'wsl', distro: entry.distro }}
+                    isActive={isActive}
+                    isLast={lastProjectId === project.id}
+                    onSelectProject={
+                      onSelectProject as ConnectionProjectCardProps['onSelectProject']
+                    }
+                    onRemoveProject={onRemoveProject}
+                    onOpenIde={onOpenIde}
+                    onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                    ideCommandOverrides={ideCommandOverrides}
+                    onOpenSettings={onOpenSettings}
+                    onRefresh={onRefresh ? () => onRefresh(entry.distro, project.id) : undefined}
+                    agents={agents}
+                    config={config}
+                    onSaveProjectSettings={onSaveProjectSettings}
+                    onShowToast={onShowToast}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
         )}
       </>
     );
   },
 );
 
-WSLItem.displayName = "WSLItem";
+WSLItem.displayName = 'WSLItem';
 
 export const RemoteItem = React.memo<RemoteItemProps>(
   ({
@@ -186,9 +204,14 @@ export const RemoteItem = React.memo<RemoteItemProps>(
   }) => {
     const label = `${entry.host}:${entry.port}`;
 
-    const handleDragEnd = onDragEnd
-      ? (draggedId: string, targetId: string) => onDragEnd(entry.id, draggedId, targetId)
-      : undefined;
+    if (!invokeRemoteGit) return null;
+
+    const handleDndEnd = (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over && active.id !== over.id && onDragEnd) {
+        onDragEnd(entry.id, String(active.id), String(over.id));
+      }
+    };
 
     return (
       <>
@@ -206,43 +229,53 @@ export const RemoteItem = React.memo<RemoteItemProps>(
         {entry.projects.length === 0 ? (
           <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
         ) : (
-          entry.projects.map((project) => {
-            const isActive =
-              activeKey?.host === entry.host && activeKey?.projectId === project.id;
-            return (
-              <ConnectionProjectCard
-                key={project.id}
-                project={project}
-                entryId={entry.id}
-                source={{
-                  type: "remote",
-                  entryId: entry.id,
-                  host: entry.host,
-                  invokeRemoteGit: invokeRemoteGit!,
-                }}
-                isActive={isActive}
-                isLast={lastProjectId === project.id}
-                onSelectProject={onSelectProject as ConnectionProjectCardProps['onSelectProject']}
-                onRemoveProject={onRemoveProject}
-                onOpenIde={onOpenIde}
-                onOpenWorktreeTerminal={onOpenWorktreeTerminal}
-                ideCommandOverrides={ideCommandOverrides}
-                onOpenSettings={onOpenSettings}
-                onRefresh={
-                  onRefresh ? () => onRefresh(entry.id, project.id) : undefined
-                }
-                agents={agents}
-                config={config}
-                onSaveProjectSettings={onSaveProjectSettings}
-                onShowToast={onShowToast}
-                onDragEnd={handleDragEnd}
-              />
-            );
-          })
+          <DndContext
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragEnd={handleDndEnd}
+          >
+            <SortableContext
+              items={entry.projects.map((p) => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {entry.projects.map((project) => {
+                const isActive =
+                  activeKey?.host === entry.host && activeKey?.projectId === project.id;
+                return (
+                  <ConnectionProjectCard
+                    key={project.id}
+                    project={project}
+                    entryId={entry.id}
+                    source={{
+                      type: 'remote',
+                      entryId: entry.id,
+                      host: entry.host,
+                      invokeRemoteGit: invokeRemoteGit,
+                    }}
+                    isActive={isActive}
+                    isLast={lastProjectId === project.id}
+                    onSelectProject={
+                      onSelectProject as ConnectionProjectCardProps['onSelectProject']
+                    }
+                    onRemoveProject={onRemoveProject}
+                    onOpenIde={onOpenIde}
+                    onOpenWorktreeTerminal={onOpenWorktreeTerminal}
+                    ideCommandOverrides={ideCommandOverrides}
+                    onOpenSettings={onOpenSettings}
+                    onRefresh={onRefresh ? () => onRefresh(entry.id, project.id) : undefined}
+                    agents={agents}
+                    config={config}
+                    onSaveProjectSettings={onSaveProjectSettings}
+                    onShowToast={onShowToast}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
         )}
       </>
     );
   },
 );
 
-RemoteItem.displayName = "RemoteItem";
+RemoteItem.displayName = 'RemoteItem';

@@ -7,12 +7,9 @@ export { default as ProjectGroup } from './ProjectGroup';
 export { default as SessionRow } from './SessionRow';
 export { default as SessionChips } from './SessionChips';
 export { default as ProjectGuidePage } from './ProjectGuidePage';
-export { default as DraggableProjectItem } from './DraggableProjectItem';
-export { useProjectItemDrag } from './useProjectItemDrag';
 export { useProjectItemMenu } from './useProjectItemMenu';
 export type {
   ProjectItemProps,
   ProjectItemActions,
   ProjectItemViewConfig,
 } from './projectItemTypes';
-export type { DragOffset, DropIndicator } from './useProjectItemDrag';
