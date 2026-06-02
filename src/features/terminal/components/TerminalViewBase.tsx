@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -10,241 +10,277 @@ import { tryLoadWebgl } from "./terminalFactory";
 import type { TerminalStrategy, CacheEntry } from "../strategies/types";
 
 interface TerminalViewBaseProps {
-  strategy: TerminalStrategy;
-  tabAgentId: string | null;
-  activeTabId: string | null;
-  taskCommand?: string | null;
-  taskConfigId?: string | null;
-  taskRebuildKey?: number;
-  agentCommandOverride?: string;
-  onStatusChange?: (status: "Idle" | "Running" | "Failed") => void;
+   strategy: TerminalStrategy;
+   tabAgentId: string | null;
+   activeTabId: string | null;
+   taskCommand?: string | null;
+   taskConfigId?: string | null;
+   taskRebuildKey?: number;
+   agentCommandOverride?: string;
+   onStatusChange?: (status: "Idle" | "Running" | "Failed") => void;
 }
 
 export default React.memo(function TerminalViewBase({
-  strategy,
-  tabAgentId,
-  activeTabId: _activeTabId,
-  taskCommand,
-  taskConfigId,
-  taskRebuildKey = 0,
-  agentCommandOverride,
-  onStatusChange,
+   strategy,
+   tabAgentId,
+   activeTabId: _activeTabId,
+   taskCommand,
+   taskConfigId,
+   taskRebuildKey = 0,
+   agentCommandOverride,
+   onStatusChange,
 }: TerminalViewBaseProps) {
-  const {
-    cacheKey,
-    cache,
-    rebuildCallbacks,
-    wrapperRefs,
-    createSession,
-    resize,
-    agentDelayMs,
-    connectingMessage,
-    fontSize,
-    fontFamily: fontFamilyProp,
-    gpuAccel,
-    onSessionReady,
-    outputFilter,
-    setupFileLinks,
-  } = strategy;
+   const {
+      cacheKey,
+      cache,
+      rebuildCallbacks,
+      wrapperRefs,
+      createSession,
+      resize,
+      agentDelayMs,
+      connectingMessage,
+      fontSize,
+      fontFamily: fontFamilyProp,
+      gpuAccel,
+      onSessionReady,
+      outputFilter,
+      setupFileLinks,
+   } = strategy;
 
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const currentKeyRef = useRef<string | null>(null);
-  const [rebuildCount, setRebuildCount] = useState(0);
-  const [ready, setReady] = useState(false);
+   const wrapperRef = useRef<HTMLDivElement>(null);
+   const currentKeyRef = useRef<string | null>(null);
+   const currentTermRef = useRef<Terminal | null>(null);
+   const [rebuildCount, setRebuildCount] = useState(0);
+   const [ready, setReady] = useState(false);
+   const [isAtBottom, setIsAtBottom] = useState(true);
 
-  // Sync font changes to existing instance
-  useEffect(() => {
-    const c = cache.get(cacheKey);
-    if (!c) return;
-    c.term.options.fontSize = fontSize;
-    c.term.options.fontFamily = buildFontFamily(fontFamilyProp);
-    c.fitAddon.fit();
-  }, [fontSize, fontFamilyProp, cacheKey, cache]);
+   const handleScrollToBottom = useCallback(() => {
+      const term = currentTermRef.current;
+      if (!term) return;
+      term.scrollToBottom();
+      term.focus();
+   }, []);
 
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
+   // Sync font changes to existing instance
+   useEffect(() => {
+      const c = cache.get(cacheKey);
+      if (!c) return;
+      c.term.options.fontSize = fontSize;
+      c.term.options.fontFamily = buildFontFamily(fontFamilyProp);
+      c.fitAddon.fit();
+   }, [fontSize, fontFamilyProp, cacheKey, cache]);
 
-    currentKeyRef.current = cacheKey;
-    setReady(false);
+   useEffect(() => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
 
-    rebuildCallbacks.set(cacheKey, () => {
-      if (currentKeyRef.current === cacheKey) setRebuildCount((c) => c + 1);
-    });
-    if (wrapperRef.current) {
-      wrapperRefs.set(cacheKey, wrapperRef.current);
-    }
+      currentKeyRef.current = cacheKey;
+      setReady(false);
 
-    const attach = (entry: CacheEntry) => {
-      if (!wrapper.contains(entry.element)) {
-        wrapper.appendChild(entry.element);
-      }
-      requestAnimationFrame(() => {
-        if (currentKeyRef.current !== cacheKey) return;
-        entry.fitAddon.fit();
-        if (entry.sessionId) {
-          resize(entry.sessionId, entry.term.cols, entry.term.rows).catch(() => {});
-        }
-        entry.term.focus();
+      rebuildCallbacks.set(cacheKey, () => {
+         if (currentKeyRef.current === cacheKey) setRebuildCount((c) => c + 1);
       });
-    };
-
-    const detachAll = () => {
-      while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
-    };
-
-    detachAll();
-
-    // Task rebuild guard: destroy stale task cache when rebuildKey bumps
-    if (taskCommand && taskRebuildKey > 0) {
-      const stale = cache.get(cacheKey);
-      if (stale && stale.sessionId === null) {
-        cache.delete(cacheKey);
+      if (wrapperRef.current) {
+         wrapperRefs.set(cacheKey, wrapperRef.current);
       }
-    }
 
-    const existingCache = cache.get(cacheKey);
-    if (existingCache) {
-      setReady(!!existingCache.sessionId);
-      attach(existingCache);
-    } else {
-      const element = document.createElement("div");
-      element.style.width = "100%";
-      element.style.height = "100%";
-
-      const term = new Terminal({
-        cursorBlink: true,
-        fontSize,
-        fontFamily: buildFontFamily(fontFamilyProp),
-        theme: buildTerminalTheme(),
-        scrollback: 10000,
-        overviewRuler: { width: 0 },
-        allowProposedApi: true,
-      });
-
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      const unicode11 = new Unicode11Addon();
-      term.loadAddon(unicode11);
-      term.unicode.activeVersion = "11";
-
-      wrapper.appendChild(element);
-      term.open(element);
-      if (gpuAccel) void tryLoadWebgl(term);
-      if (setupFileLinks) setupFileLinks(term);
-      fitAddon.fit();
-
-      const entry = {
-        term,
-        fitAddon,
-        element,
-        sessionId: null as string | null,
-        unlisten: null as (() => void) | null,
-        inputController: null as ReturnType<typeof setupTerminalInput> | null,
-      };
-      cache.set(cacheKey, entry);
-
-      term.write(connectingMessage);
-
-      (async () => {
-        try {
-          const sessionId = await createSession(term.cols, term.rows, {
-            command: taskCommand ?? undefined,
-            configId: taskConfigId ?? undefined,
-          });
-
-          if (currentKeyRef.current !== cacheKey) return;
-          entry.sessionId = sessionId;
-          setReady(true);
-          onSessionReady?.();
-
-          if (tabAgentId) {
-            const cmdOverride = agentCommandOverride;
-            setTimeout(async () => {
-              if (!entry.sessionId) return;
-              try {
-                const agent = await getAgent(tabAgentId);
-                const cmd = cmdOverride ?? agent.command;
-                const cmdStr = [cmd, ...agent.args].join(" ") + "\r";
-                const bytes = Array.from(new TextEncoder().encode(cmdStr));
-                emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
-                onStatusChange?.("Running");
-              } catch (err) {
-                console.error("[Terminal] Auto-launch agent failed:", err);
-              }
-            }, agentDelayMs);
-          }
-
-          const unlisten = await listen<number[]>(`terminal-output-${sessionId}`, (event) => {
-            let bytes: Uint8Array = new Uint8Array(event.payload);
-            if (outputFilter) bytes = outputFilter(bytes) as Uint8Array;
-            term.write(bytes);
-          });
-          entry.unlisten = unlisten;
-
-          entry.inputController = setupTerminalInput({
-            term,
-            sendInput: (text: string) => {
-              if (!entry.sessionId) return;
-              const bytes = Array.from(new TextEncoder().encode(text));
-              emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
-            },
-          });
-
-          requestAnimationFrame(() => {
+      const attach = (entry: CacheEntry) => {
+         if (!wrapper.contains(entry.element)) {
+            wrapper.appendChild(entry.element);
+         }
+         requestAnimationFrame(() => {
             if (currentKeyRef.current !== cacheKey) return;
-            fitAddon.fit();
-            resize(sessionId, term.cols, term.rows).catch(() => {});
-            term.focus();
-          });
-        } catch (err) {
-          if (currentKeyRef.current !== cacheKey) return;
-          setReady(true);
-          term.write(`\x1b[31mFailed to connect: ${err}\x1b[0m\r\n`);
-        }
-      })();
-    }
+            entry.fitAddon.fit();
+            if (entry.sessionId) {
+               resize(entry.sessionId, entry.term.cols, entry.term.rows).catch(() => { });
+            }
+            entry.term.focus();
+         });
+      };
 
-    let resizeRafId: number | null = null;
-    let prevCols = 0;
-    let prevRows = 0;
-    const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
-      resizeRafId = requestAnimationFrame(() => {
-        resizeRafId = null;
-        const c = cache.get(cacheKey);
-        if (!c) return;
-        c.fitAddon.fit();
-        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
-          prevCols = c.term.cols;
-          prevRows = c.term.rows;
-          resize(c.sessionId, c.term.cols, c.term.rows).catch(() => {});
-        }
-      });
-    });
-    ro.observe(wrapper);
+      const detachAll = () => {
+         while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
+      };
 
-    return () => {
-      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
-      ro.disconnect();
       detachAll();
-      rebuildCallbacks.delete(cacheKey);
-      wrapperRefs.delete(cacheKey);
-    };
-  }, [cacheKey, rebuildCount, taskRebuildKey]);
 
-  return (
-    <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-      {!ready && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center text-text-secondary text-[var(--terminal-font-size)]">
-          Connecting...
-        </div>
-      )}
-      <div
-        className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
-        style={{ backgroundColor: "var(--terminal-bg)" }}
-        ref={wrapperRef}
-      />
-    </div>
-  );
+      // Task rebuild guard: destroy stale task cache when rebuildKey bumps
+      if (taskCommand && taskRebuildKey > 0) {
+         const stale = cache.get(cacheKey);
+         if (stale && stale.sessionId === null) {
+            cache.delete(cacheKey);
+         }
+      }
+
+      let scrollDisposable: { dispose: () => void } | undefined;
+
+      const existingCache = cache.get(cacheKey);
+      if (existingCache) {
+         setReady(!!existingCache.sessionId);
+         attach(existingCache);
+         currentTermRef.current = existingCache.term;
+         scrollDisposable = existingCache.term.onScroll(() => {
+            setIsAtBottom(
+               existingCache.term.buffer.active.viewportY >= existingCache.term.buffer.active.baseY
+            );
+         });
+      } else {
+         const element = document.createElement("div");
+         element.style.width = "100%";
+         element.style.height = "100%";
+
+         const term = new Terminal({
+            cursorBlink: true,
+            fontSize,
+            fontFamily: buildFontFamily(fontFamilyProp),
+            theme: buildTerminalTheme(),
+            scrollback: 10000,
+            overviewRuler: { width: 0 },
+            allowProposedApi: true,
+         });
+
+         const fitAddon = new FitAddon();
+         term.loadAddon(fitAddon);
+         const unicode11 = new Unicode11Addon();
+         term.loadAddon(unicode11);
+         term.unicode.activeVersion = "11";
+
+         wrapper.appendChild(element);
+         term.open(element);
+         if (gpuAccel) void tryLoadWebgl(term);
+         if (setupFileLinks) setupFileLinks(term);
+         fitAddon.fit();
+
+         currentTermRef.current = term;
+         scrollDisposable = term.onScroll(() => {
+            setIsAtBottom(
+               term.buffer.active.viewportY >= term.buffer.active.baseY
+            );
+         });
+
+         const entry = {
+            term,
+            fitAddon,
+            element,
+            sessionId: null as string | null,
+            unlisten: null as (() => void) | null,
+            inputController: null as ReturnType<typeof setupTerminalInput> | null,
+         };
+         cache.set(cacheKey, entry);
+
+         term.write(connectingMessage);
+
+         (async () => {
+            try {
+               const sessionId = await createSession(term.cols, term.rows, {
+                  command: taskCommand ?? undefined,
+                  configId: taskConfigId ?? undefined,
+               });
+
+               if (currentKeyRef.current !== cacheKey) return;
+               entry.sessionId = sessionId;
+               setReady(true);
+               onSessionReady?.();
+
+               if (tabAgentId) {
+                  const cmdOverride = agentCommandOverride;
+                  setTimeout(async () => {
+                     if (!entry.sessionId) return;
+                     try {
+                        const agent = await getAgent(tabAgentId);
+                        const cmd = cmdOverride ?? agent.command;
+                        const cmdStr = [cmd, ...agent.args].join(" ") + "\r";
+                        const bytes = Array.from(new TextEncoder().encode(cmdStr));
+                        emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => { });
+                        onStatusChange?.("Running");
+                     } catch (err) {
+                        console.error("[Terminal] Auto-launch agent failed:", err);
+                     }
+                  }, agentDelayMs);
+               }
+
+               const unlisten = await listen<number[]>(`terminal-output-${sessionId}`, (event) => {
+                  let bytes: Uint8Array = new Uint8Array(event.payload);
+                  if (outputFilter) bytes = outputFilter(bytes) as Uint8Array;
+                  term.write(bytes);
+               });
+               entry.unlisten = unlisten;
+
+               entry.inputController = setupTerminalInput({
+                  term,
+                  sendInput: (text: string) => {
+                     if (!entry.sessionId) return;
+                     const bytes = Array.from(new TextEncoder().encode(text));
+                     emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => { });
+                  },
+               });
+
+               requestAnimationFrame(() => {
+                  if (currentKeyRef.current !== cacheKey) return;
+                  fitAddon.fit();
+                  resize(sessionId, term.cols, term.rows).catch(() => { });
+                  term.focus();
+               });
+            } catch (err) {
+               if (currentKeyRef.current !== cacheKey) return;
+               setReady(true);
+               term.write(`\x1b[31mFailed to connect: ${err}\x1b[0m\r\n`);
+            }
+         })();
+      }
+
+      let resizeRafId: number | null = null;
+      let prevCols = 0;
+      let prevRows = 0;
+      const ro = new ResizeObserver(() => {
+         if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+         resizeRafId = requestAnimationFrame(() => {
+            resizeRafId = null;
+            const c = cache.get(cacheKey);
+            if (!c) return;
+            c.fitAddon.fit();
+            if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
+               prevCols = c.term.cols;
+               prevRows = c.term.rows;
+               resize(c.sessionId, c.term.cols, c.term.rows).catch(() => { });
+            }
+         });
+      });
+      ro.observe(wrapper);
+
+      return () => {
+         if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+         ro.disconnect();
+         detachAll();
+         rebuildCallbacks.delete(cacheKey);
+         wrapperRefs.delete(cacheKey);
+         scrollDisposable?.dispose();
+         currentTermRef.current = null;
+      };
+   }, [cacheKey, rebuildCount, taskRebuildKey]);
+
+   return (
+      <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+         {!ready && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center text-text-secondary text-[var(--terminal-font-size)]">
+               Connecting...
+            </div>
+         )}
+         <div
+            className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
+            style={{ backgroundColor: "var(--terminal-bg)" }}
+            ref={wrapperRef}
+         />
+         <button
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center justify-center w-8 h-8 rounded bg-bg-surface border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-opacity duration-150 cursor-pointer"
+            style={{ opacity: isAtBottom ? 0 : 1, pointerEvents: isAtBottom ? 'none' : 'auto' }}
+            onClick={handleScrollToBottom}
+            title="Scroll to bottom"
+         >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+               <path d="M7 10L3 5H11L7 10Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+         </button>
+      </div>
+   );
 });
