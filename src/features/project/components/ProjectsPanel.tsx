@@ -1,4 +1,12 @@
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
@@ -70,6 +78,11 @@ const ProjectsPanel: React.FC = () => {
 
   useAheadBehindSync(commands);
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
+
   /// The very last item across all three sections
   const lastCardId = useMemo<{
     kind: 'local' | 'wsl' | 'remote';
@@ -139,6 +152,7 @@ const ProjectsPanel: React.FC = () => {
         ) : (
           <>
             <DndContext
+              sensors={sensors}
               collisionDetection={closestCenter}
               modifiers={[restrictToVerticalAxis, restrictToParentElement]}
               onDragEnd={(event: DragEndEvent) => {
