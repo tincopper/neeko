@@ -1866,3 +1866,36 @@ Replaced self-implemented Pointer Events drag (useProjectItemDrag + DraggablePro
 ### Next Steps
 
 - None - task complete
+
+
+## Session 50: Fix dnd-kit blocking project item clicks
+
+**Date**: 2026-06-03
+**Task**: Fix dnd-kit blocking project item clicks
+**Branch**: `fix/project_panel_button`
+
+### Summary
+
+Diagnosed and fixed dnd-kit PointerSensor swallowing click events on ProjectItem. Added activationConstraint (distance: 5) to all three DndContext instances in ProjectsPanel and RemoteItems.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `04ba02c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
