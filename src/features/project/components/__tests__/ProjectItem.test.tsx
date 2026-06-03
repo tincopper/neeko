@@ -65,7 +65,7 @@ describe("ProjectItem", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
   });
 
-  it("点击组头只切换折叠状态，不触发项目选中", () => {
+  it("点击组头切换折叠状态并触发项目选中", () => {
     const project = createProject({ collapsed: true });
     const onSelectProject = vi.fn();
     const actions = createActions({ onSelectProject });
@@ -83,7 +83,7 @@ describe("ProjectItem", () => {
     fireEvent.click(screen.getByText("neeko"));
 
     expect(screen.getByText("local")).toBeInTheDocument();
-    expect(onSelectProject).not.toHaveBeenCalled();
+    expect(onSelectProject).toHaveBeenCalledWith("p-1");
     expect(invoke).toHaveBeenCalledWith("set_project_collapsed", {
       projectId: "p-1",
       collapsed: false,

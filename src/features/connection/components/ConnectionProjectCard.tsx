@@ -293,7 +293,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           isLast={isLast}
           ideIconSrc={ideIconSrc}
           actions={{
-            onToggle: () => setCollapsed((v) => !v),
+            onToggle: () => {
+              setCollapsed((v) => !v);
+              onSelectProject(selectProjectId, project);
+            },
             onContextMenu: handleContextMenu,
             onOpenIde: handleOpenIde,
             onRemove: handleRemove,

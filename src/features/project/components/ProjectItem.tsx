@@ -142,7 +142,10 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
         ideIconSrc={ideIconSrc}
         forceShowActions={gitMenuOpen}
         actions={{
-          onToggle: () => void toggleCollapsed(),
+          onToggle: () => {
+            toggleCollapsed();
+            onSelectProject(project.id);
+          },
           onContextMenu: handleContextMenu,
           onAddWorktree: project.git_info
             ? () =>
