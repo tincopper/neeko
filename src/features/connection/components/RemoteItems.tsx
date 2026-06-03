@@ -1,4 +1,12 @@
-import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React from 'react';
@@ -112,6 +120,11 @@ export const WSLItem = React.memo<WSLItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
+    const sensors = useSensors(
+      useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+      useSensor(KeyboardSensor),
+    );
+
     const handleDndEnd = (event: DragEndEvent) => {
       const { active, over } = event;
       if (over && active.id !== over.id && onDragEnd) {
@@ -136,6 +149,7 @@ export const WSLItem = React.memo<WSLItemProps>(
           <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
         ) : (
           <DndContext
+            sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis, restrictToParentElement]}
             onDragEnd={handleDndEnd}
@@ -204,6 +218,11 @@ export const RemoteItem = React.memo<RemoteItemProps>(
   }) => {
     const label = `${entry.host}:${entry.port}`;
 
+    const sensors = useSensors(
+      useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+      useSensor(KeyboardSensor),
+    );
+
     if (!invokeRemoteGit) return null;
 
     const handleDndEnd = (event: DragEndEvent) => {
@@ -230,6 +249,7 @@ export const RemoteItem = React.memo<RemoteItemProps>(
           <div className="text-[11px] text-text-muted px-3 py-1.5">No projects</div>
         ) : (
           <DndContext
+            sensors={sensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis, restrictToParentElement]}
             onDragEnd={handleDndEnd}
