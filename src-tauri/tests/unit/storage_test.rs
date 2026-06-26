@@ -1,7 +1,7 @@
 use neeko_lib::project::types::{Project, ViewMode};
 use neeko_lib::session::types::{ProjectSession, SessionStore};
 use neeko_lib::session::StorageManager;
-use neeko_lib::terminal::types::{TerminalSession, TerminalStatus};
+use neeko_lib::common::terminal::types::{TerminalSession, TerminalStatus};
 use std::path::PathBuf;
 use tempfile::TempDir;
 

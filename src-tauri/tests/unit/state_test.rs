@@ -1,11 +1,11 @@
-use neeko_lib::agent::types::AgentConfig;
-use neeko_lib::connection::types::AuthMethod;
-use neeko_lib::git::types::DiffLine;
+use neeko_lib::common::agent::types::AgentConfig;
+use neeko_lib::common::connection::types::AuthMethod;
+use neeko_lib::common::git::types::DiffLine;
+use neeko_lib::common::terminal::types::TerminalStatus;
 use neeko_lib::project::types::{FileChange, FileStatus, ViewMode};
 use neeko_lib::session::types::{
     ProjectSession, RemoteEntrySession, RemoteProjectSession, SessionStore, WSLProjectSession,
 };
-use neeko_lib::terminal::types::TerminalStatus;
 use std::collections::HashMap;
 use std::path::PathBuf;
 

@@ -1,4 +1,4 @@
-use neeko_lib::agent::types::AgentConfig;
+use neeko_lib::common::agent::types::AgentConfig;
 use neeko_lib::agent::AgentManager;
 use std::collections::HashMap;
 
