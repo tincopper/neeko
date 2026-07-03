@@ -1,0 +1,4 @@
+{"file": "pnpm type-check", "reason": "验证所有 TypeScript 类型正确"}
+{"file": "pnpm lint", "reason": "验证 lint 通过"}
+{"file": "pnpm test:run", "reason": "前端测试通过"}
+{"file": "cargo test --manifest-path src-tauri/Cargo.toml", "reason": "后端测试通过"}

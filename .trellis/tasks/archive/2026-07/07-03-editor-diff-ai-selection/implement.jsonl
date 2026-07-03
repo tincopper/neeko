@@ -1,0 +1,7 @@
+{"file": "src/shared/utils/agentPrompt.ts", "reason": "新建：构建发送到终端的纯文本消息，接收 action/filePath/行号等上下文"}
+{"file": "src/features/editor/hooks/useEditorAgentActions.ts", "reason": "新建：核心 hook，检测 agent tab、发送消息、Toast 引导创建终端"}
+{"file": "src/features/editor/components/SelectionToolbar.tsx", "reason": "新建：浮动操作条组件 + Ask inline 输入框"}
+{"file": "src/features/editor/components/FileViewer.tsx", "reason": "修改：加 selection listener + 渲染 SelectionToolbar"}
+{"file": "src/features/git/components/diff/DiffView.tsx", "reason": "修改：header 加 Review this change 按钮"}
+{"file": "src/features/git/components/diff/DiffTable.tsx", "reason": "修改：行号可点击 toggle 选中 + 高亮"}
+{"file": "src/features/git/components/diff/SplitDiffTable.tsx", "reason": "修改：行号可点击 toggle 选中 + 高亮"}
