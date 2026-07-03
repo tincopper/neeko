@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
+import { CloseIcon } from "@/shared/components/icons";
 
 interface SelectionToolbarProps {
   visible: boolean;
   top: number;
   left: number;
   onAction: (action: EditorAction, question?: string) => void;
+  onClose: () => void;
   needsAgentTab: boolean;
   agentName?: string;
   onCreateTab: () => void;
@@ -16,6 +18,7 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   top,
   left,
   onAction,
+  onClose,
   needsAgentTab,
   agentName,
   onCreateTab,
@@ -43,17 +46,18 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   return (
     <div
       className="fixed z-[9999]"
-      style={{ top: top - 36, left }}
+      style={{ top, left }}
     >
       {needsAgentTab ? (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary border border-border shadow-lg text-sm whitespace-nowrap">
           <span className="text-text-muted">No agent terminal open</span>
           <button
-            className="px-2 py-0.5 rounded bg-accent text-white text-xs font-medium hover:opacity-90 transition"
+            className="px-2 py-0.5 rounded bg-accent-blue text-white text-xs font-medium hover:opacity-90 transition"
             onClick={onCreateTab}
           >
             Open {agentName || 'Agent'} Terminal
           </button>
+          <CloseButton onClick={onClose} />
         </div>
       ) : showAskInput ? (
         <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-bg-tertiary border border-border shadow-lg">
@@ -66,11 +70,12 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             onKeyDown={e => { if (e.key === 'Enter') handleAskSend(); if (e.key === 'Escape') setShowAskInput(false); }}
           />
           <button
-            className="px-2 py-1 rounded bg-accent text-white text-xs font-medium hover:opacity-90 transition"
+            className="px-2 py-1 rounded bg-accent-blue text-white text-xs font-medium hover:opacity-90 transition"
             onClick={handleAskSend}
           >
             Send
           </button>
+          <CloseButton onClick={onClose} />
         </div>
       ) : (
         <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-bg-tertiary border border-border shadow-lg">
@@ -78,6 +83,8 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <ToolbarButton onClick={() => onAction('explain')}>Explain</ToolbarButton>
           <ToolbarButton onClick={() => onAction('review')}>Review</ToolbarButton>
           <ToolbarButton onClick={() => onAction('fix')}>Fix</ToolbarButton>
+          <span className="w-px h-4 bg-border mx-1" />
+          <CloseButton onClick={onClose} />
         </div>
       )}
     </div>
@@ -93,6 +100,16 @@ const ToolbarButton: React.FC<{ onClick: () => void; children: React.ReactNode }
     onClick={onClick}
   >
     {children}
+  </button>
+);
+
+const CloseButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button
+    className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition"
+    onClick={onClick}
+    title="Close"
+  >
+    <CloseIcon size={14} />
   </button>
 );
 

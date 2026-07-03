@@ -274,6 +274,11 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    // Selection → AI actions
    const currentProjectIdForToolbar = tab.projectId;
 
+   const handleCloseToolbar = useCallback(() => {
+      setSelectionLines(null);
+      setToolbarPos(null);
+   }, []);
+
    const handleEditorAction = useCallback((action: EditorAction, question?: string) => {
       if (!selectionLines) return;
       const message = buildCodeMessage(action, {
@@ -345,15 +350,13 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
                      const toLine = view.state.doc.lineAt(sel.to).number;
                      setSelectionLines({ startLine: fromLine, endLine: toLine });
 
-                     // Compute toolbar position above selection start
-                     const coords = view.coordsAtPos(sel.from);
-                     if (coords) {
-                        const editorRect = view.dom.getBoundingClientRect();
-                        setToolbarPos({
-                           top: editorRect.top + coords.top,
-                           left: editorRect.left + coords.left,
-                        });
-                     }
+                     const coords = view.coordsAtPos(sel.to);
+                      if (coords) {
+                         setToolbarPos({
+                            top: coords.bottom + 4,
+                            left: coords.left,
+                         });
+                      }
                   } else {
                      setSelectionLines(null);
                      setToolbarPos(null);
@@ -588,15 +591,16 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
             )}
           </div>
 
-          <SelectionToolbar
-             visible={toolbarPos !== null && !showPreview && !externallyModified}
-             top={toolbarPos?.top ?? 0}
-             left={toolbarPos?.left ?? 0}
-             onAction={handleEditorAction}
-             needsAgentTab={pending !== null}
-             agentName="Agent"
-             onCreateTab={handleCreateTab}
-          />
+           <SelectionToolbar
+              visible={toolbarPos !== null && !showPreview && !externallyModified}
+              top={toolbarPos?.top ?? 0}
+              left={toolbarPos?.left ?? 0}
+              onAction={handleEditorAction}
+              onClose={handleCloseToolbar}
+              needsAgentTab={pending !== null}
+              agentName="Agent"
+              onCreateTab={handleCreateTab}
+           />
        </div>
     );
  }
