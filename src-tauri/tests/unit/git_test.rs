@@ -1,6 +1,6 @@
 use git2::{Repository, Signature};
-use neeko_lib::git;
 use neeko_lib::common::git::types::DiffLine;
+use neeko_lib::git;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
