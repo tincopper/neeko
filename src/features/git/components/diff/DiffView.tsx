@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { ChevronRightIcon } from "@/shared/components/icons";
 import { cn } from '@/lib/utils';
@@ -7,14 +7,27 @@ import { useDiffData } from "./useDiffData";
 import DiffTable from "./DiffTable";
 import SplitDiffTable from "./SplitDiffTable";
 import type { DiffViewProps, ViewMode } from "./types";
+import { buildDiffMessage } from "@/shared/utils/agentPrompt";
+import { useEditorAgentActions } from "@/features/editor/hooks/useEditorAgentActions";
+import { useEditorStore } from "@/shared/store";
 
 function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
+function getProjectIdFromTab(): string | null {
+  const tabs = useEditorStore.getState().tabs;
+  for (const key of Object.keys(tabs)) {
+    return key;
+  }
+  return null;
+}
+
 const DiffView: React.FC<DiffViewProps> = React.memo(
   ({ projectId, diffSource, filePath, initialMode }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "unified");
+    const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
+    const { sendToAgent, pending, clearPending } = useEditorAgentActions();
 
     const {
       diffResult,
@@ -32,6 +45,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     useEffect(() => {
       void ensureLanguageRegistered(language);
     }, [language]);
+
+    const currentProjectId = projectId || getProjectIdFromTab() || '';
 
     const navigateBlock = (direction: "prev" | "next") => {
       if (totalChangeBlocks === 0) {
@@ -54,6 +69,45 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         }
       });
     };
+
+    const toggleLine = useCallback((hunkIdx: number, lineIdx: number) => {
+      setSelectedLines(prev => {
+        const next = new Set(prev);
+        if (lineIdx === -1) {
+          // Toggle entire hunk
+          const allLines = diffResult?.hunks[hunkIdx]?.lines;
+          if (!allLines) return prev;
+          const allIn = allLines.every((_, i) => next.has(`${hunkIdx}:${i}`));
+          if (allIn) {
+            allLines.forEach((_, i) => next.delete(`${hunkIdx}:${i}`));
+          } else {
+            allLines.forEach((_, i) => next.add(`${hunkIdx}:${i}`));
+          }
+        } else {
+          const key = `${hunkIdx}:${lineIdx}`;
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+        }
+        return next;
+      });
+    }, [diffResult]);
+
+    const clearSelection = useCallback(() => {
+      setSelectedLines(new Set());
+    }, []);
+
+    const selectedCount = selectedLines.size;
+
+    const handleReviewFull = useCallback(() => {
+      const message = buildDiffMessage('review', { filePath, isFullDiff: true });
+      sendToAgent(currentProjectId, message);
+    }, [filePath, currentProjectId, sendToAgent]);
+
+    const handleReviewSelection = useCallback(() => {
+      const message = buildDiffMessage('review', { filePath, lineCount: selectedCount });
+      sendToAgent(currentProjectId, message);
+      clearSelection();
+    }, [filePath, selectedCount, currentProjectId, sendToAgent, clearSelection]);
 
     if (loading) {
       return (
@@ -107,6 +161,16 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
                   </span>
                 </span>
               )}
+            {pending ? (
+              <span className="text-xs text-text-muted ml-2">No agent terminal open</span>
+            ) : (
+              <button
+                className="ml-2 px-2 py-0.5 text-xs rounded bg-accent text-white hover:opacity-90 transition"
+                onClick={handleReviewFull}
+              >
+                Review this change
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -160,12 +224,70 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
           </div>
         </div>
 
+        {selectedCount > 0 && (
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-bg-secondary border-b border-border">
+            <span className="text-xs text-text-muted">{selectedCount} line{selectedCount > 1 ? 's' : ''} selected</span>
+            {pending ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted">No agent terminal open</span>
+                <button
+                  className="px-2 py-0.5 rounded bg-accent text-white text-xs font-medium hover:opacity-90 transition"
+                  onClick={() => {
+                    import('@/features/terminal/hooks/useTerminalTabs').then(({ useTerminalTabs }) => {
+                      import('@/features/project/store').then(({ useProjectStore }) => {
+                        const { addTab } = useTerminalTabs();
+                        const agentId = useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
+                        addTab(currentProjectId, agentId, agentId);
+                        if (pending) {
+                          setTimeout(() => {
+                            const msg = buildDiffMessage('review', { filePath, lineCount: selectedCount });
+                            import('@/features/terminal/components/terminalCommands').then(({ sendToTerminal }) => {
+                              sendToTerminal(currentProjectId, `${msg}\r`);
+                              clearPending();
+                              clearSelection();
+                            });
+                          }, 1500);
+                        }
+                      });
+                    });
+                  }}
+                >
+                  Open Terminal
+                </button>
+              </div>
+            ) : (
+              <button
+                className="px-2 py-0.5 text-xs rounded bg-accent text-white hover:opacity-90 transition"
+                onClick={handleReviewSelection}
+              >
+                Ask AI about {selectedCount} line{selectedCount > 1 ? 's' : ''}
+              </button>
+            )}
+            <button
+              className="px-2 py-0.5 text-xs rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition"
+              onClick={clearSelection}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto pl-3 pr-2">
           {diffResult && diffResult.hunks.length > 0 ? (
             viewMode === "unified" ? (
-              <DiffTable diffResult={diffResult} language={language} />
+              <DiffTable
+                diffResult={diffResult}
+                language={language}
+                selectedLines={selectedLines}
+                onToggleLine={toggleLine}
+              />
             ) : (
-              <SplitDiffTable diffResult={diffResult} language={language} />
+              <SplitDiffTable
+                diffResult={diffResult}
+                language={language}
+                selectedLines={selectedLines}
+                onToggleLine={toggleLine}
+              />
             )
           ) : (
             <div className="flex items-center justify-center h-full text-text-muted text-[var(--font-size)]">

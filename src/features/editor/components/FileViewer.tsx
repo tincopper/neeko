@@ -28,6 +28,11 @@ import {
 } from "@/shared/utils/editorViewState";
 import InlineHtmlPreview from "./InlineHtmlPreview";
 import { readFileContent } from "@/features/file/api/fileApi";
+import SelectionToolbar from "./SelectionToolbar";
+import type { EditorAction } from "@/shared/utils/agentPrompt";
+import { buildCodeMessage } from "@/shared/utils/agentPrompt";
+import { useEditorAgentActions } from "../hooks/useEditorAgentActions";
+import { useTerminalTabs } from "@/features/terminal/hooks/useTerminalTabs";
 
 type PreviewMode = "preview" | "source";
 
@@ -171,6 +176,11 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    const editorViewRef = useRef<EditorView | null>(null);
    const editorRestoredRef = useRef(false);
 
+   // Selection state for AI toolbar
+   const [selectionLines, setSelectionLines] = useState<{ startLine: number; endLine: number } | null>(null);
+   const [toolbarPos, setToolbarPos] = useState<{ top: number; left: number } | null>(null);
+   const { sendToAgent, pending, clearPending } = useEditorAgentActions();
+
    // 处理外部文件修改：重新加载
    const handleReload = useCallback(async () => {
       try {
@@ -261,6 +271,39 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
    // Create theme object (new reference triggers CodeMirror reconfigure)
    const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
 
+   // Selection → AI actions
+   const currentProjectIdForToolbar = tab.projectId;
+
+   const handleEditorAction = useCallback((action: EditorAction, question?: string) => {
+      if (!selectionLines) return;
+      const message = buildCodeMessage(action, {
+         filePath: tab.filePath,
+         startLine: selectionLines.startLine,
+         endLine: selectionLines.endLine,
+      }, question);
+      const sent = sendToAgent(currentProjectIdForToolbar, message);
+      if (sent) {
+         setSelectionLines(null);
+         setToolbarPos(null);
+      }
+   }, [selectionLines, tab.filePath, currentProjectIdForToolbar, sendToAgent]);
+
+   const handleCreateTab = useCallback(() => {
+      const { addTab } = useTerminalTabs();
+      const agentId = useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
+      const tab = addTab(currentProjectIdForToolbar, agentId, agentId);
+      if (tab && pending) {
+         setTimeout(() => {
+            import('@/features/terminal/components/terminalCommands').then(({ sendToTerminal }) => {
+               sendToTerminal(currentProjectIdForToolbar, `${pending.message}\r`);
+               clearPending();
+               setSelectionLines(null);
+               setToolbarPos(null);
+            });
+         }, 1500);
+      }
+   }, [currentProjectIdForToolbar, pending, clearPending]);
+
    // 把当前 EditorView 状态写回缓存
    const saveEditorSnapshot = useCallback(() => {
       const view = editorViewRef.current;
@@ -290,6 +333,32 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
                u.docChanged
             ) {
                saveEditorSnapshot();
+            }
+
+            // Extract selection lines for AI toolbar
+            if (u.selectionSet) {
+               const view = editorViewRef.current;
+               if (view) {
+                  const sel = view.state.selection.main;
+                  if (!sel.empty) {
+                     const fromLine = view.state.doc.lineAt(sel.from).number;
+                     const toLine = view.state.doc.lineAt(sel.to).number;
+                     setSelectionLines({ startLine: fromLine, endLine: toLine });
+
+                     // Compute toolbar position above selection start
+                     const coords = view.coordsAtPos(sel.from);
+                     if (coords) {
+                        const editorRect = view.dom.getBoundingClientRect();
+                        setToolbarPos({
+                           top: editorRect.top + coords.top,
+                           left: editorRect.left + coords.left,
+                        });
+                     }
+                  } else {
+                     setSelectionLines(null);
+                     setToolbarPos(null);
+                  }
+               }
             }
          }),
       [saveEditorSnapshot],
@@ -517,12 +586,22 @@ function FileEditor({ tab, tabKey, tabId, externallyModified, theme, fontFamily,
                   className="h-full overflow-auto"
                />
             )}
-         </div>
-      </div>
-   );
-}
+          </div>
 
-// Header component for editor
+          <SelectionToolbar
+             visible={toolbarPos !== null && !showPreview && !externallyModified}
+             top={toolbarPos?.top ?? 0}
+             left={toolbarPos?.left ?? 0}
+             onAction={handleEditorAction}
+             needsAgentTab={pending !== null}
+             agentName="Agent"
+             onCreateTab={handleCreateTab}
+          />
+       </div>
+    );
+ }
+
+ // Header component for editor
 interface EditorHeaderProps {
    pathSegments: string[];
    isDirty: boolean;

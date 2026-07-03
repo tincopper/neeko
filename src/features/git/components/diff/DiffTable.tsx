@@ -8,11 +8,15 @@ import { getLineContent, getLineType } from "./useDiffData";
 interface DiffTableProps {
   diffResult: DiffResult;
   language: string;
+  selectedLines?: Set<string>;
+  onToggleLine?: (blockIdx: number, lineIdx: number) => void;
 }
 
 const DiffTable: React.FC<DiffTableProps> = ({
   diffResult,
   language,
+  selectedLines,
+  onToggleLine,
 }) => {
   return (
     <table className="w-full border-collapse font-mono" style={{ fontSize: 'var(--font-size)' }}>
@@ -26,7 +30,10 @@ const DiffTable: React.FC<DiffTableProps> = ({
 
             return (
               <React.Fragment key={hunkIndex}>
-                <tr className="bg-bg-tertiary text-accent-blue font-medium">
+                <tr
+                  className="bg-bg-tertiary text-accent-blue font-medium cursor-pointer hover:bg-bg-hover"
+                  onClick={() => onToggleLine?.(hunkIndex, -1)}
+                >
                   <td colSpan={4} className="py-1 px-2">
                     @@ -{hunk.old_start},{hunk.old_lines} +{hunk.new_start},
                     {hunk.new_lines} @@
@@ -84,6 +91,9 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     }
                   }
 
+                  const lineKey = `${hunkIndex}:${lineIndex}`;
+                  const isSelected = selectedLines?.has(lineKey) ?? false;
+
                   return (
                     <tr
                       key={`${hunkIndex}-${lineIndex}`}
@@ -92,12 +102,21 @@ const DiffTable: React.FC<DiffTableProps> = ({
                         "border-none",
                         lineType === "added" && "bg-diff-added",
                         lineType === "removed" && "bg-diff-removed",
+                        isSelected && "bg-blue-500/10",
+                        isSelected && (lineType === "added" && "bg-diff-added-selected"),
+                        isSelected && (lineType === "removed" && "bg-diff-removed-selected"),
                       )}
                     >
-                      <td className="w-[50px] text-right text-text-muted select-none">
+                      <td
+                        className="w-[50px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
+                        onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                      >
                         {lineType !== "added" ? curOld : ""}
                       </td>
-                      <td className="w-[50px] text-right text-text-muted select-none">
+                      <td
+                        className="w-[50px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
+                        onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                      >
                         {lineType !== "removed" ? curNew : ""}
                       </td>
                       <td className="w-5 text-center select-none">

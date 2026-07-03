@@ -7,9 +7,16 @@ import type { DiffResult } from "./types";
 interface SplitDiffTableProps {
   diffResult: DiffResult;
   language: string;
+  selectedLines?: Set<string>;
+  onToggleLine?: (hunkIdx: number, lineIdx: number) => void;
 }
 
-const SplitDiffTable: React.FC<SplitDiffTableProps> = ({ diffResult, language }) => {
+const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
+  diffResult,
+  language,
+  selectedLines,
+  onToggleLine,
+}) => {
   return (
     <table className="w-full border-collapse font-mono diff-table-split" style={{ fontSize: 'var(--font-size)' }}>
       <colgroup>
@@ -28,7 +35,8 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({ diffResult, language })
                 return (
                   <tr
                     key={`${hunkIndex}-${rowIndex}`}
-                    className="bg-bg-tertiary text-accent-blue font-medium"
+                    className="bg-bg-tertiary text-accent-blue font-medium cursor-pointer hover:bg-bg-hover"
+                    onClick={() => onToggleLine?.(hunkIndex, -1)}
                   >
                     <td colSpan={4} className="py-1 px-2">
                       {row.hunkHeader}
@@ -75,28 +83,42 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({ diffResult, language })
                 }
               }
 
+              const lineKey = `${hunkIndex}:${rowIndex}`;
+              const isSelected = selectedLines?.has(lineKey) ?? false;
+              const isRemoved = row.type === "change" && row.oldType === "removed";
+              const isAdded = row.type === "change" && row.newType === "added";
+
               return (
                 <tr
                   key={`${hunkIndex}-${rowIndex}`}
                   id={blockId}
-                  className="diff-line split-row"
+                  className={cn(
+                    "diff-line split-row",
+                    isSelected && "bg-blue-500/10",
+                  )}
                 >
-                  <td className={cn("line-number old split-linenum", row.oldType)}>
+                  <td
+                    className={cn("line-number old split-linenum", row.oldType, "cursor-pointer hover:bg-bg-hover")}
+                    onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
+                  >
                     {row.oldLineNum ?? ""}
                   </td>
                   <td
-                    className={cn("line-content split-cell", row.oldType)}
+                    className={cn("line-content split-cell", row.oldType, isSelected && isRemoved && "bg-diff-removed-selected")}
                     dangerouslySetInnerHTML={{
                       __html:
                         oldCellHtml ||
                         (row.oldType === "empty" ? "" : row.oldContent || ""),
                     }}
                   />
-                  <td className={cn("line-number new split-linenum", row.newType)}>
+                  <td
+                    className={cn("line-number new split-linenum", row.newType, "cursor-pointer hover:bg-bg-hover")}
+                    onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
+                  >
                     {row.newLineNum ?? ""}
                   </td>
                   <td
-                    className={cn("line-content split-cell", row.newType)}
+                    className={cn("line-content split-cell", row.newType, isSelected && isAdded && "bg-diff-added-selected")}
                     dangerouslySetInnerHTML={{
                       __html:
                         newCellHtml ||
