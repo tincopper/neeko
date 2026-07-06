@@ -125,10 +125,19 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
   };
 }
 
+interface PendingNavigateTarget {
+  tabKey: string;
+  tabId: string;
+  line: number;
+  col: number;
+}
+
 interface EditorStoreState {
   tabs: Record<string, ProjectTabs>;
   activeTabId: string | null;
   editorLayout: Record<string, EditorSplitLayout>;
+  cursorPosition: { line: number; col: number } | null;
+  pendingNavigateTarget: PendingNavigateTarget | null;
 
   addTab: (projectId: string, tab: Tab) => void;
   closeTab: (projectId: string, tabId: string) => void;
@@ -146,12 +155,17 @@ interface EditorStoreState {
   pinTab: (tabKey: string, tabId: string) => void;
   unpinTab: (tabKey: string) => void;
   setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
+
+  setCursorPosition: (pos: { line: number; col: number } | null) => void;
+  setPendingNavigateTarget: (target: PendingNavigateTarget | null) => void;
 }
 
 export const useEditorStore = create<EditorStoreState>((set) => ({
   tabs: {},
   activeTabId: null,
   editorLayout: {},
+  cursorPosition: null,
+  pendingNavigateTarget: null,
 
   addTab: (projectId, tab) =>
     set((state) => {
@@ -589,4 +603,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         },
       };
     }),
+
+  setCursorPosition: (pos) => set(() => ({ cursorPosition: pos })),
+
+  setPendingNavigateTarget: (target) => set(() => ({ pendingNavigateTarget: target })),
 }));
