@@ -19,33 +19,36 @@ pub fn lsp_request(
 
     // Ensure the document is known by the server before sending a document request.
     if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
-        let file_path = uri.trim_start_matches("file://");
-        log::debug!(
-            "[LSP] Auto-opening document for {}: uri={}, file_path={}",
-            method,
-            uri,
-            file_path
-        );
-        if let Ok(text) = std::fs::read_to_string(file_path) {
-            let open_params = serde_json::json!({
-                "textDocument": {
-                    "uri": uri,
-                    "languageId": &language_id,
-                    "version": 1,
-                    "text": text,
-                }
-            });
-            let _ = state.lsp_manager.send_notification(
-                &project_path,
-                &language_id,
-                "textDocument/didOpen",
-                open_params,
-            );
-        } else {
-            log::warn!(
-                "[LSP] Could not read file for didOpen: {}",
+        // Skip file read + didOpen if the document is already registered
+        if !state.lsp_manager.is_document_open(&project_path, &language_id, uri) {
+            let file_path = uri.trim_start_matches("file://");
+            log::debug!(
+                "[LSP] Auto-opening document for {}: uri={}, file_path={}",
+                method,
+                uri,
                 file_path
             );
+            if let Ok(text) = std::fs::read_to_string(file_path) {
+                let open_params = serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": &language_id,
+                        "version": 1,
+                        "text": text,
+                    }
+                });
+                let _ = state.lsp_manager.send_notification(
+                    &project_path,
+                    &language_id,
+                    "textDocument/didOpen",
+                    open_params,
+                );
+            } else {
+                log::warn!(
+                    "[LSP] Could not read file for didOpen: {}",
+                    file_path
+                );
+            }
         }
     } else {
         log::warn!(

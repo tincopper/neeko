@@ -683,12 +683,15 @@ function FileEditor({
           const pos = line.from + pending.col;
           view.dispatch({
             selection: { anchor: pos, head: pos },
-            scrollIntoView: true,
+            effects: EditorView.scrollIntoView(pos, { y: 'center' }),
           });
         } catch {
-          // Document may still be loading; fall through to snapshot restore
+          // line out of range, ignore
         }
-        useEditorStore.getState().setPendingNavigateTarget(null);
+        // Delay clear to survive React StrictMode double-mount
+        queueMicrotask(() => {
+          useEditorStore.getState().setPendingNavigateTarget(null);
+        });
         editorRestoredRef.current = true;
         return;
       }
@@ -749,7 +752,7 @@ function FileEditor({
             const pos = line.from + pending.col;
             view.dispatch({
               selection: { anchor: pos, head: pos },
-              scrollIntoView: true,
+              effects: EditorView.scrollIntoView(pos, { y: 'center' }),
             });
           } catch {
             // Ignore out-of-range navigation
