@@ -13,8 +13,8 @@ export function readFileContent(
 ): Promise<FileContent> {
   return invoke<FileContent>('read_file_content', {
     transport,
-    file_path: filePath,
-    root_path: rootPath ?? null,
+    filePath,
+    rootPath: rootPath ?? null,
   });
 }
 
@@ -26,9 +26,9 @@ export function readDirTree(
 ): Promise<FileNode[]> {
   return invoke<FileNode[]>('read_dir_tree', {
     transport,
-    root_path: rootPath ?? null,
-    sub_path: subPath ?? null,
-    max_depth: maxDepth ?? null,
+    rootPath: rootPath ?? null,
+    subPath: subPath ?? null,
+    maxDepth: maxDepth ?? null,
   });
 }
 
@@ -40,8 +40,8 @@ export function writeFileContent(
 ): Promise<void> {
   return invoke<void>('write_file_content', {
     transport,
-    file_path: filePath,
+    filePath,
     content,
-    root_path: rootPath ?? null,
+    rootPath: rootPath ?? null,
   });
 }

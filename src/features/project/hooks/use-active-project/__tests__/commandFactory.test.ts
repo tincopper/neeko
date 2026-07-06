@@ -175,9 +175,9 @@ describe("createProjectCommands (Local)", () => {
     await commands.readDirTree();
     expect(mockInvoke).toHaveBeenCalledWith("read_dir_tree", {
       transport: { Local: { project_path: "/home/user/project" } },
-      root_path: null,
-      sub_path: null,
-      max_depth: 4,
+      rootPath: null,
+      subPath: null,
+      maxDepth: 4,
     });
   });
 
@@ -185,8 +185,8 @@ describe("createProjectCommands (Local)", () => {
     await commands.readFileContent("src/foo.ts");
     expect(mockInvoke).toHaveBeenCalledWith("read_file_content", {
       transport: { Local: { project_path: "/home/user/project" } },
-      file_path: "src/foo.ts",
-      root_path: undefined,
+      filePath: "src/foo.ts",
+      rootPath: undefined,
     });
   });
 
@@ -194,9 +194,9 @@ describe("createProjectCommands (Local)", () => {
     await commands.writeFileContent("src/foo.ts", "const x = 1;");
     expect(mockInvoke).toHaveBeenCalledWith("write_file_content", {
       transport: { Local: { project_path: "/home/user/project" } },
-      file_path: "src/foo.ts",
+      filePath: "src/foo.ts",
       content: "const x = 1;",
-      root_path: undefined,
+      rootPath: undefined,
     });
   });
 
@@ -303,9 +303,9 @@ describe("createProjectCommands (WSL)", () => {
     await commands.readDirTree();
     expect(mockInvoke).toHaveBeenCalledWith("read_dir_tree", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
-      root_path: null,
-      sub_path: null,
-      max_depth: 4,
+      rootPath: null,
+      subPath: null,
+      maxDepth: 4,
     });
   });
 
@@ -313,8 +313,8 @@ describe("createProjectCommands (WSL)", () => {
     await commands.readFileContent("src/foo.ts");
     expect(mockInvoke).toHaveBeenCalledWith("read_file_content", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
-      file_path: "src/foo.ts",
-      root_path: undefined,
+      filePath: "src/foo.ts",
+      rootPath: undefined,
     });
   });
 
@@ -322,9 +322,9 @@ describe("createProjectCommands (WSL)", () => {
     await commands.writeFileContent("src/foo.ts", "content");
     expect(mockInvoke).toHaveBeenCalledWith("write_file_content", {
       transport: { Wsl: { distro: "Ubuntu-22.04", project_path: "/home/user/project" } },
-      file_path: "src/foo.ts",
+      filePath: "src/foo.ts",
       content: "content",
-      root_path: undefined,
+      rootPath: undefined,
     });
   });
 
@@ -412,9 +412,9 @@ describe("createProjectCommands (Remote)", () => {
           project_path: "/home/user/project",
         },
       },
-      root_path: null,
-      sub_path: null,
-      max_depth: 4,
+      rootPath: null,
+      subPath: null,
+      maxDepth: 4,
     });
   });
 
@@ -430,8 +430,8 @@ describe("createProjectCommands (Remote)", () => {
           project_path: "/home/user/project",
         },
       },
-      file_path: "src/foo.ts",
-      root_path: undefined,
+      filePath: "src/foo.ts",
+      rootPath: undefined,
     });
   });
 
@@ -447,9 +447,9 @@ describe("createProjectCommands (Remote)", () => {
           project_path: "/home/user/project",
         },
       },
-      file_path: "src/foo.ts",
+      filePath: "src/foo.ts",
       content: "content",
-      root_path: undefined,
+      rootPath: undefined,
     });
   });
 

@@ -136,24 +136,24 @@ export function createProjectCommands(transport: GitTransportKind): ProjectComma
     readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
       return invoke<FileNode[]>("read_dir_tree", {
         ...fileTransportArg(transport),
-        root_path: rootPath ?? null,
-        sub_path: subPath ?? null,
-        max_depth: maxDepth ?? 4,
+        rootPath: rootPath ?? null,
+        subPath: subPath ?? null,
+        maxDepth: maxDepth ?? 4,
       });
     },
     readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {
       return invoke<FileContent>("read_file_content", {
         ...fileTransportArg(transport),
-        file_path: filePath,
-        root_path: rootPath,
+        filePath,
+        rootPath,
       });
     },
     writeFileContent(filePath: string, content: string, rootPath?: string): Promise<void> {
       return invoke<void>("write_file_content", {
         ...fileTransportArg(transport),
-        file_path: filePath,
+        filePath,
         content,
-        root_path: rootPath,
+        rootPath,
       });
     },
 
