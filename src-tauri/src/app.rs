@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
@@ -154,9 +154,18 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                let state = window.state::<AppStateWrapper>();
-                state.shutdown_background_and_exit();
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Cmd+W on macOS should close the current tab, not the window.
+                    // Prevent the default close and let the frontend handle it.
+                    api.prevent_close();
+                    let _ = window.emit("cmd-w-pressed", ());
+                }
+                tauri::WindowEvent::Destroyed => {
+                    let state = window.state::<AppStateWrapper>();
+                    state.shutdown_background_and_exit();
+                }
+                _ => {}
             }
         })
         .invoke_handler(crate::neeko_invoke_handler!())
