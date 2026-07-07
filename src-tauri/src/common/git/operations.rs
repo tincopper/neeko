@@ -2,11 +2,11 @@ use anyhow::Result;
 
 use super::transport::GitTransport;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
+use crate::common::utils::command::local::exec;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
 };
-use crate::common::utils::command::local::exec;
 
 /// Stage specific files: `git add -- <files>`
 pub async fn stage_files(

@@ -1,0 +1,29 @@
+{
+  "id": "editor-lsp-dap",
+  "name": "editor-lsp-dap",
+  "title": "编辑器支持代码跳转与调试",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-07-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-06-lsp-phase",
+    "07-06-dap-phase"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

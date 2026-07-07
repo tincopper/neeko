@@ -157,19 +157,21 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
     );
 
   return (
-    <DockLayout
-      toolbarFooterLeft={
-        <ToolbarFooter
-          onAddProject={onAddProject}
-          onAddWsl={onAddWsl}
-          onAddRemote={onAddRemote}
-          onOpenSettings={onOpenSettings}
-          isSettingsOpen={isSettingsOpen}
-        />
-      }
-    >
-      {centerContent}
-    </DockLayout>
+    <>
+      <DockLayout
+        toolbarFooterLeft={
+          <ToolbarFooter
+            onAddProject={onAddProject}
+            onAddWsl={onAddWsl}
+            onAddRemote={onAddRemote}
+            onOpenSettings={onOpenSettings}
+            isSettingsOpen={isSettingsOpen}
+          />
+        }
+      >
+        {centerContent}
+      </DockLayout>
+    </>
   );
 }
 

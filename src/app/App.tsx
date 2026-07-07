@@ -1,4 +1,4 @@
-import { AppLayout, TitleBar } from "@/layout";
+import { AppLayout, TitleBar, StatusBar } from "@/layout";
 import { AppToast } from "@/shared/components/AppToast";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
@@ -34,6 +34,8 @@ function App() {
         <AppLayout {...appLayoutProps} />
         <AppModals {...appModalsProps} />
       </AppProviders>
+
+      <StatusBar />
 
       <AppToast toast={toast} />
     </div>

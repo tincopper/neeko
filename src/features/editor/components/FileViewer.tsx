@@ -358,6 +358,8 @@ function FileEditor({
 
   // @codemirror/lsp-client plugin — handles hover, diagnostics, completion, document lifecycle
   const [lspClientExt, setLspClientExt] = useState<import('@codemirror/state').Extension[]>([]);
+  const lspRef = useRef<{ transport: TauriLspTransport } | null>(null);
+
   useEffect(() => {
     const lang = getLspLanguageId(tab.filePath);
     if (!projectPath || !lang || !fileUri) {
@@ -365,23 +367,36 @@ function FileEditor({
       return;
     }
 
-    // Pass LSP features via config.extensions — the client extracts
-    // capabilities and includes editorExtension in client.plugin() output.
-    // We DO NOT include languageServerExtensions() because it bundles
-    // jumpToDefinitionKeymap / findReferencesKeymap that conflict with
-    // our custom F12 / Cmd+Click handlers.
+    let cancelled = false;
+
+    // Clean up any previous client first
+    if (lspRef.current) {
+      lspRef.current.transport.destroy();
+      lspRef.current = null;
+    }
+
     const client = new LSPClient({
       extensions: [serverCompletion(), hoverTooltips(), serverDiagnostics()],
+      timeout: 10000, // 10s for slow-starting LSP servers (rust-analyzer, etc.)
     });
     const transport = new TauriLspTransport(projectPath, lang);
     client.connect(transport);
 
     const plugin = client.plugin(fileUri, lang);
-    setLspClientExt([plugin]);
+    lspRef.current = { transport };
+
+    if (!cancelled) {
+      setLspClientExt([plugin]);
+    }
 
     return () => {
-      transport.destroy();
+      cancelled = true;
+      // 1. Remove plugin from extensions → triggers closeFile/didClose via transport
       setLspClientExt([]);
+      // 2. Delay transport destroy to allow pending cleanup messages to flush
+      const t = lspRef.current?.transport;
+      lspRef.current = null;
+      setTimeout(() => t?.destroy(), 200);
     };
   }, [projectPath, tab.filePath, fileUri]);
 

@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 
-use crate::common::agent::types::AgentConfig;
 use crate::app_state::AppStateWrapper;
+use crate::common::agent::types::AgentConfig;
 
 #[cfg(unix)]
 fn resolve_user_path() -> Option<String> {
@@ -124,6 +124,9 @@ pub fn run() {
                     }
                 }
             }
+
+            // Initialize LSP manager with AppHandle
+            state.lsp_manager.set_app_handle(app.handle().clone());
 
             // Auto-create Default tag group if none exist
             {

@@ -30,7 +30,8 @@ src/features/
 ├── skill/api/skillApi.ts        # Skill 相关 IPC
 ├── task/api/taskApi.ts          # Task 相关 IPC
 ├── terminal/api/terminalApi.ts  # 终端相关 IPC
-└── theme/api/themeApi.ts        # 主题相关 IPC
+├── theme/api/themeApi.ts        # 主题相关 IPC
+└── lsp/api/lspApi.ts            # LSP 代码智能 IPC（6 个命令）
 ```
 
 ### 标准文件结构
@@ -283,6 +284,7 @@ useEffect(() => {
 | `terminal-output-{id}` | 终端输出 | `number[]` |
 | `terminal-closed-{id}` | 终端关闭通知 | `null` |
 | `git-changed` | Git 状态变更 | `string` (projectId) |
+| `lsp-diagnostics-{project_path}` | LSP 诊断推送 | `LspDiagnosticsEvent` (uri + diagnostics[]) |
 
 ---
 

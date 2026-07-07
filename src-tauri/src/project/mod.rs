@@ -5,10 +5,10 @@ pub mod types;
 
 pub use commands_ide::*;
 
+use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::git;
 use crate::project::types::Project;
 use crate::project::types::ViewMode;
-use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;

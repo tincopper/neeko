@@ -78,7 +78,10 @@ impl TerminalManager {
         crate::terminal::services::log_info(&format!("[PTY] PTY opened ({}x{})", cols, rows));
 
         let mut cmd = if let Some(ref task_command) = command {
-            crate::terminal::services::log_info(&format!("[PTY] Task command mode: {}", task_command));
+            crate::terminal::services::log_info(&format!(
+                "[PTY] Task command mode: {}",
+                task_command
+            ));
             #[cfg(target_os = "windows")]
             {
                 let mut c = CommandBuilder::new("cmd");
@@ -108,7 +111,13 @@ impl TerminalManager {
         let child = pair.slave.spawn_command(cmd)?;
 
         crate::terminal::services::spawn_pty_pipeline(
-            &id, pair, child, &PTY_CONFIG, &self.sessions, &self.pty_handles, &app_handle,
+            &id,
+            pair,
+            child,
+            &PTY_CONFIG,
+            &self.sessions,
+            &self.pty_handles,
+            &app_handle,
         )
     }
 
@@ -143,7 +152,13 @@ impl TerminalManager {
         let child = pair.slave.spawn_command(cmd)?;
 
         crate::terminal::services::spawn_pty_pipeline(
-            &id, pair, child, &WSL_CONFIG, &self.sessions, &self.pty_handles, &app_handle,
+            &id,
+            pair,
+            child,
+            &WSL_CONFIG,
+            &self.sessions,
+            &self.pty_handles,
+            &app_handle,
         )
     }
 
@@ -153,9 +168,17 @@ impl TerminalManager {
             .lock()
             .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
         if let Some(handle) = handles.get_mut(session_id) {
-            handle.master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
+            handle.master.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })?;
             crate::terminal::services::log_info(&format!(
-                "[PTY] Resized {} to {}x{}", &session_id[..8.min(session_id.len())], cols, rows
+                "[PTY] Resized {} to {}x{}",
+                &session_id[..8.min(session_id.len())],
+                cols,
+                rows
             ));
         }
         Ok(())
@@ -163,7 +186,8 @@ impl TerminalManager {
 
     pub fn close_session(&self, session_id: &str) {
         crate::terminal::services::log_info(&format!(
-            "[PTY] Closing session {}", &session_id[..8.min(session_id.len())]
+            "[PTY] Closing session {}",
+            &session_id[..8.min(session_id.len())]
         ));
         if let Some(handle) = self.take_session_handle(session_id) {
             crate::terminal::services::close_pty_handle(session_id, handle);
@@ -172,7 +196,8 @@ impl TerminalManager {
 
     pub fn close_session_in_background(&self, session_id: &str) {
         crate::terminal::services::log_info(&format!(
-            "[PTY] Closing session {} in background", &session_id[..8.min(session_id.len())]
+            "[PTY] Closing session {} in background",
+            &session_id[..8.min(session_id.len())]
         ));
         if let Some(handle) = self.take_session_handle(session_id) {
             let close_id = session_id.to_string();
@@ -182,7 +207,8 @@ impl TerminalManager {
             }) {
                 crate::terminal::services::log_error(&format!(
                     "[PTY] Failed to spawn close worker for {}: {}",
-                    &session_id[..8.min(session_id.len())], e
+                    &session_id[..8.min(session_id.len())],
+                    e
                 ));
             }
         }
@@ -192,13 +218,17 @@ impl TerminalManager {
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.remove(session_id);
         }
-        self.pty_handles.lock().ok()
+        self.pty_handles
+            .lock()
+            .ok()
             .and_then(|mut handles| handles.remove(session_id))
     }
 
     pub fn close_all_sessions(&self) {
         crate::terminal::services::log_info("[PTY] Closing all sessions...");
-        let ids: Vec<String> = self.pty_handles.lock()
+        let ids: Vec<String> = self
+            .pty_handles
+            .lock()
             .map(|h| h.keys().cloned().collect())
             .unwrap_or_default();
         for id in ids {

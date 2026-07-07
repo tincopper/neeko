@@ -88,6 +88,11 @@ src-tauri/
     │   ├── manager.rs        # StorageManager —— JSON 文件持久化
     │   ├── model.rs
     │   └── types.rs          # SessionStore, ProjectSession 等
+    ├── lsp/                  # LSP 代码智能（Phase 1 新增）
+    │   ├── mod.rs            # LspManager pub 导出
+    │   ├── commands.rs       # 6 个 Tauri 命令：request/notification/open/change/close document + session list
+    │   ├── manager.rs        # LspManager + LspSession: 语言发现, server spawn, JSON-RPC proxy, diagnostics push
+    │   └── types.rs          # 可序列化 LSP 类型（Diagnostic/Position/Range/Hover/Completion 等）
     ├── settings/             # 应用设置
     │   ├── mod.rs
     │   └── commands.rs       # get_system_fonts
@@ -144,6 +149,7 @@ pub mod connection;
 pub mod core;
 pub mod file;
 pub mod git;
+pub mod lsp;
 pub mod project;
 pub mod session;
 pub mod settings;
@@ -182,6 +188,7 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     pub watcher_manager: file::WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
+    pub lsp_manager: lsp::LspManager,           // Phase 1: LSP server lifecycle management
 }
 ```
 
@@ -218,6 +225,7 @@ pub struct AppStateWrapper {
 | `settings/` | `commands.rs` | `get_system_fonts` |
 | `theme/` | `commands.rs` | `sync_agent_theme` |
 | `skill/` | `commands.rs` | 所有 Skill 操作（~25 个命令） |
+| `lsp/` | `commands.rs` | 6 个 LSP 命令：request/notification/open/change/close document + session list |
 
 ### 新代码应该放在哪里
 
@@ -228,6 +236,7 @@ pub struct AppStateWrapper {
 | 新 Manager | 新建 `<domain>/manager.rs`，在 `lib.rs` 中用 `pub mod` 声明，添加到 `AppStateWrapper` |
 | Git 操作（纯逻辑） | `git/local.rs`、`git/wsl.rs` 或 `git/remote.rs` |
 | SSH 认证 | `utils/command/ssh_auth.rs`（统一 `authenticate()` 和 `connect_and_authenticate()`） |
+| LSP 操作 | `lsp/manager.rs`（LspManager + LspSession）、`lsp/commands.rs`（Tauri 命令） |
 | 主题操作 | `theme/opencode.rs` 或 `theme/pi.rs`（共享工具在 `theme/common.rs`） |
 | 工具函数 | `utils/<name>.rs` |
 | 错误类型扩展 | `core/error.rs` |

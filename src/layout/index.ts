@@ -6,3 +6,4 @@ export { default as PanelArea } from "./PanelArea";
 export { default as OpenIdeButton } from "./OpenIdeButton";
 export { default as MainContent } from "./MainContent";
 export { default as RightPanel } from "./RightPanel";
+export { StatusBar } from "./StatusBar";

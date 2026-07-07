@@ -31,6 +31,8 @@ pub enum AppError {
     File(String),
     #[error("Lock poisoned: {0}")]
     LockPoisoned(String),
+    #[error("LSP error: {0}")]
+    Lsp(String),
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

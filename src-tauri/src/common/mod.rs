@@ -5,7 +5,7 @@ pub mod error;
 pub mod file;
 pub mod git;
 pub mod logger;
-pub mod theme_types;
 pub mod terminal;
+pub mod theme_types;
 pub mod types;
 pub mod utils;

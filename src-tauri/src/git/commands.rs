@@ -336,10 +336,10 @@ pub async fn get_git_info(transport: GitTransportKind) -> Result<GitInfo, AppErr
         let repo = t
             .open_repo(wd)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        let branch_info =
-            crate::common::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)?;
-        let changed_files =
-            crate::common::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)?;
+        let branch_info = crate::common::git::local::get_git_branch_info_from_repo(&repo)
+            .map_err(AppError::from)?;
+        let changed_files = crate::common::git::local::get_changed_files_from_repo(&repo)
+            .map_err(AppError::from)?;
         let is_clean = changed_files.is_empty();
         Ok(GitInfo {
             current_branch: branch_info.current_branch,

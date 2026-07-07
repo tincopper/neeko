@@ -362,6 +362,13 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
 | `useSideTerminalResize` | 拖拽调整终端面板大小 | 宽度状态、鼠标事件处理 |
 | `useWorktreeState` | 按项目追踪 worktree 状态 | 路径、分支、已打开的 worktrees |
+| `useLsp` | LSP 文档生命周期（打开/变更/关闭） | `openDocument`, `changeDocument`, `closeDocument`, `request` |
+| `useLspDiagnostics` | LSP 诊断事件监听（Tauri event） | `diagnosticsMap`, `getDiagnostics`, `clearDiagnostics` |
+| `useLspHover` | LSP hover 请求（防抖） | `hoverState`, `setDocument`, `onMouseMove`, `hideHover` |
+| `useLspDefinition` | Go to Definition + Find References | `goToDefinition`, `findReferences` |
+| `useLspCompletion` | LSP 自动补全源 | `setContext`, `getCompletions` |
+| `useLspDiagnosticExtensions` | CodeMirror 诊断装饰（波浪线 + gutter） | `Extension[]` |
+| `useLspHoverExtension` | CodeMirror hover 鼠标事件处理器 | `Extension` |
 
 ### 编排 Hook（从 App.tsx 提取）
 
