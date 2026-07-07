@@ -1,4 +1,6 @@
 import React, { useCallback } from "react";
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, Pin } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
@@ -10,6 +12,7 @@ interface TabItemProps {
   tab: Tab;
   isActive: boolean;
   isPinned?: boolean;
+  reorderable?: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
@@ -33,7 +36,19 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
 }
 
 const TabItem: React.FC<TabItemProps> = React.memo(
-  ({ tab, isActive, isPinned = false, onActivate, onClose, onContextMenu, agents = [] }) => {
+  ({ tab, isActive, isPinned = false, reorderable = false, onActivate, onClose, onContextMenu, agents = [] }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({
+      id: tab.id,
+      disabled: !reorderable,
+    });
+
     const handleClick = useCallback(() => {
       onActivate(tab.id);
     }, [tab.id, onActivate]);
@@ -85,25 +100,36 @@ const TabItem: React.FC<TabItemProps> = React.memo(
     const terminalStatus =
       tab.data.kind === "terminal" ? tab.data.status : null;
     // Show a coloured dot for active task terminals:
-    //   Running â†?green (accent-green)  Failed â†?red (status-failed)
-    // Idle (normal completion) shows no dot â€?the task finished cleanly.
+    //   Running ï¿½?green (accent-green)  Failed ï¿½?red (status-failed)
+    // Idle (normal completion) shows no dot ï¿½?the task finished cleanly.
     const showStatusDot = terminalStatus === "Running" || terminalStatus === "Failed";
     const statusDotColor =
       terminalStatus === "Running" ? "bg-accent-green" : "bg-status-failed";
     const showDirtyDot =
       tab.data.kind === "file" && tab.data.isDirty;
 
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition: transition ?? undefined,
+    };
+
     return (
       <div
+        ref={reorderable ? setNodeRef : undefined}
+        style={reorderable ? style : undefined}
         className={cn(
-          "flex items-center gap-1 h-6 px-2 rounded-md cursor-pointer min-w-0 transition-colors",
+          "flex items-center gap-1 h-6 px-2 rounded-md min-w-0 transition-colors",
           isActive
             ? "bg-bg-selected text-text-primary"
-            : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
+          reorderable && "cursor-grab",
+          isDragging && "opacity-50 shadow-lg shadow-black/20 z-50",
         )}
         onClick={handleClick}
         onAuxClick={handleAuxClick}
         onContextMenu={handleContextMenu}
+        {...(reorderable ? attributes : {})}
+        {...(reorderable ? listeners : {})}
         title={tab.title}
       >
         {agentIconSrc ? (

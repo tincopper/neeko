@@ -1,4 +1,14 @@
 import React, { useCallback, useRef, useMemo } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 import TabItem from "./TabItem";
@@ -19,6 +29,9 @@ interface TabBarProps {
   onCloseOtherTabs?: (tabId: string) => void;
   /** 关闭所�?tab */
   onCloseAllTabs?: () => void;
+  /** 启用拖拽排序 */
+  reorderable?: boolean;
+  onReorderTab?: (tabId: string, overId: string) => void;
   // Agent Bar 相关（仅终端 tab 时显示）
   agents?: AgentConfig[];
   showAgentBar?: boolean;
@@ -66,6 +79,8 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onCloseTab,
     onAddTerminalTab,
     onContextMenu,
+    reorderable = false,
+    onReorderTab,
     agents = [],
     showAgentBar = false,
     onAgentClick,
@@ -73,6 +88,21 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     hiddenAgentIds = [],
   }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    const sensors = useSensors(
+      useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+      useSensor(KeyboardSensor),
+    );
+
+    const handleDragEnd = useCallback(
+      (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (over && active.id !== over.id) {
+          onReorderTab?.(String(active.id), String(over.id));
+        }
+      },
+      [onReorderTab],
+    );
 
     // 鼠标滚轮横向滚动
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -113,6 +143,52 @@ const TabBar: React.FC<TabBarProps> = React.memo(
       [onAgentClick]
     );
 
+    const tabItems = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+
+    const renderTabs = () => {
+      if (reorderable && tabs.length > 1) {
+        return (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={tabItems}
+              strategy={horizontalListSortingStrategy}
+            >
+              {tabs.map((tab) => (
+                <TabItem
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  isPinned={tab.id === pinnedTabId}
+                  reorderable
+                  onActivate={onActivateTab}
+                  onClose={onCloseTab}
+                  onContextMenu={onContextMenu}
+                  agents={agents}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        );
+      }
+
+      return tabs.map((tab) => (
+        <TabItem
+          key={tab.id}
+          tab={tab}
+          isActive={tab.id === activeTabId}
+          isPinned={tab.id === pinnedTabId}
+          onActivate={onActivateTab}
+          onClose={onCloseTab}
+          onContextMenu={onContextMenu}
+          agents={agents}
+        />
+      ));
+    };
+
     return (
       <div className="shrink-0">
         {/* Tab 列表 */}
@@ -121,18 +197,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
           className="flex items-center gap-1 overflow-x-auto no-scrollbar"
           onWheel={handleWheel}
         >
-          {tabs.map((tab) => (
-            <TabItem
-              key={tab.id}
-              tab={tab}
-              isActive={tab.id === activeTabId}
-              isPinned={tab.id === pinnedTabId}
-              onActivate={onActivateTab}
-              onClose={onCloseTab}
-              onContextMenu={onContextMenu}
-              agents={agents}
-            />
-          ))}
+          {renderTabs()}
 
           {/* 新增终端按钮 */}
           {terminalTabCount < 10 && onAddTerminalTab && (

@@ -118,6 +118,14 @@ function EditorGroupPane({
     [tabKey, groupId],
   );
 
+  const handleReorderTab = useCallback(
+    (tabId: string, overId: string) => {
+      if (groupId === "pinned") return;
+      useEditorStore.getState().reorderTab(tabKey, groupId, tabId, overId);
+    },
+    [tabKey, groupId],
+  );
+
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
 
@@ -245,6 +253,8 @@ function EditorGroupPane({
                 onCloseTab={handleCloseTab}
                 onAddTerminalTab={onAddTerminalTab}
                 onContextMenu={handleTabContextMenu}
+                reorderable={groupId !== "pinned"}
+                onReorderTab={handleReorderTab}
                 agents={agents}
               />
             </div>

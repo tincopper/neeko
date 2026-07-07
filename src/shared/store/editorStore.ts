@@ -152,6 +152,8 @@ interface EditorStoreState {
   setActiveGroup: (tabKey: string, groupId: EditorGroupId) => void;
   setSplitRatio: (tabKey: string, ratio: number) => void;
 
+  reorderTab: (tabKey: string, groupId: EditorGroupId, tabId: string, overId: string) => void;
+
   pinTab: (tabKey: string, tabId: string) => void;
   unpinTab: (tabKey: string) => void;
   setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
@@ -537,6 +539,38 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         editorLayout: {
           ...state.editorLayout,
           [tabKey]: { ...layout, ratio: clamped },
+        },
+      };
+    }),
+
+  reorderTab: (tabKey, groupId, tabId, overId) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout) return state;
+      const group = layout.groups[groupId];
+      if (!group) return state;
+
+      const oldIndex = group.tabIds.indexOf(tabId);
+      const newIndex = group.tabIds.indexOf(overId);
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return state;
+
+      const newTabIds = [...group.tabIds];
+      newTabIds.splice(oldIndex, 1);
+      newTabIds.splice(newIndex, 0, tabId);
+
+      return {
+        editorLayout: {
+          ...state.editorLayout,
+          [tabKey]: {
+            ...layout,
+            groups: {
+              ...layout.groups,
+              [groupId]: {
+                ...group,
+                tabIds: newTabIds,
+              },
+            },
+          },
         },
       };
     }),
