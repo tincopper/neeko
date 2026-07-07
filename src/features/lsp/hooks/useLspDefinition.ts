@@ -2,19 +2,40 @@ import { useCallback } from 'react';
 
 import { lspRequest } from '../api/lspApi';
 import type { LspLocation } from '../types';
+import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
+import { lspGoToDefinition } from '../api/lspApi';
 
 function toLspLocation(raw: unknown): LspLocation | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
-  // LocationLink (rust-analyzer returns this): { targetUri, targetRange }
-  if (typeof obj.targetUri === 'string' && obj.targetRange) {
-    return { uri: obj.targetUri, range: obj.targetRange as LspLocation['range'] };
+  // LocationLink (rust-analyzer): { targetUri, targetRange, targetSelectionRange }
+  if (typeof obj.targetUri === 'string') {
+    // Prefer targetSelectionRange (symbol name) over targetRange (full definition)
+    const range = (obj.targetSelectionRange || obj.targetRange) as LspLocation['range'] | undefined;
+    if (!range) return null;
+    return { uri: obj.targetUri, range };
   }
   // Location: { uri, range }
   if (typeof obj.uri === 'string' && obj.range) {
     return { uri: obj.uri, range: obj.range as LspLocation['range'] };
   }
   return null;
+}
+
+function unwrapLocation(raw: unknown): LspLocation | null {
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      const loc = toLspLocation(item);
+      if (loc) return loc;
+    }
+    return null;
+  }
+  return toLspLocation(raw);
+}
+
+export interface GoToDefinitionWithContentResult {
+  location: LspLocation;
+  fileContent: string | null;
 }
 
 /**
@@ -37,18 +58,36 @@ export function useLspDefinition(projectPath: string | null) {
         });
 
         if (!result) return null;
-
-        // Handle single location, LocationLink, or array
-        if (Array.isArray(result)) {
-          for (const item of result) {
-            const loc = toLspLocation(item);
-            if (loc) return loc;
-          }
-          return null;
-        }
-        return toLspLocation(result);
+        return unwrapLocation(result);
       } catch (e) {
         console.error('[LSP] Go to definition failed:', e);
+        return null;
+      }
+    },
+    [projectPath],
+  );
+
+  const goToDefinitionWithContent = useCallback(
+    async (
+      languageId: string,
+      uri: string,
+      line: number,
+      character: number,
+    ): Promise<GoToDefinitionWithContentResult | null> => {
+      if (!projectPath) return null;
+
+      try {
+        const key = definitionCacheKey(projectPath, uri, line, character);
+        const wrapped = await getOrFetchDefinition(key, () =>
+          lspGoToDefinition(projectPath, languageId, uri, line, character),
+        );
+
+        if (!wrapped || !wrapped.lspResult) return null;
+        const location = unwrapLocation(wrapped.lspResult);
+        if (!location) return null;
+        return { location, fileContent: wrapped.fileContent ?? null };
+      } catch (e) {
+        console.error('[LSP] Go to definition (with content) failed:', e);
         return null;
       }
     },
@@ -82,5 +121,5 @@ export function useLspDefinition(projectPath: string | null) {
     [projectPath],
   );
 
-  return { goToDefinition, findReferences };
+  return { goToDefinition, goToDefinitionWithContent, findReferences };
 }

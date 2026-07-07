@@ -23,16 +23,12 @@ import { useShallow } from 'zustand/shallow';
 
 import { useConnectionStore } from '@/features/connection/store';
 import { readFileContent } from '@/features/file/api/fileApi';
-import { LspHoverTooltip } from '@/features/lsp/components/LspHoverTooltip';
+import { LSPClient, hoverTooltips, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
+import { TauriLspTransport } from '@/features/lsp/adapters';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
-import { useLsp, toFileUri } from '@/features/lsp/hooks/useLsp';
+import { toFileUri } from '@/features/lsp/hooks/useLsp';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
-import { useLspDiagnostics } from '@/features/lsp/hooks/useLspDiagnostics';
-import {
-  useLspDiagnosticExtensions,
-  useLspHoverExtension,
-} from '@/features/lsp/hooks/useLspExtensions';
-import { useLspHover } from '@/features/lsp/hooks/useLspHover';
+import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
 import type { LspLocation } from '@/features/lsp/types';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
@@ -158,24 +154,13 @@ function FileViewer() {
   // Read per-group activeTabId from EditorContext (correct in split mode)
   const { activeTabId: groupActiveTabId } = useEditorContext();
 
-  // Derive the active file tab from unified Tab.data (FileTabData)
-  const activeFileTabInfo = useMemo(() => {
-    if (!projectTabs) return null;
-    // Prefer the group's active tab if it's a file tab
-    let target = projectTabs.tabs.find((t) => t.id === groupActiveTabId);
-    if (!target || !isFileTab(target)) {
-      // Fall back to first file tab
-      target = projectTabs.tabs.find(isFileTab);
-    }
-    if (!target || !isFileTab(target)) return null;
-    return {
-      fileTab: tabToFileTab(target),
-      tabId: target.id,
-      externallyModified: target.data.externallyModified ?? false,
-    };
-  }, [projectTabs, groupActiveTabId]);
+  // Collect all file tabs to render (keep editors alive across switches)
+  const fileTabs = useMemo(() => {
+    if (!projectTabs) return [];
+    return projectTabs.tabs.filter(isFileTab) as (Tab & { data: FileTabData })[];
+  }, [projectTabs]);
 
-  if (!activeFileTabInfo) {
+  if (fileTabs.length === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center text-text-secondary">
         <FileCode size={48} className="mb-3 opacity-30" />
@@ -185,8 +170,6 @@ function FileViewer() {
     );
   }
 
-  const { fileTab: activeFileTab, tabId: activeTabId, externallyModified } = activeFileTabInfo;
-
   const projectPath =
     activeProject?.path ??
     activeWslProject?.project.path ??
@@ -195,19 +178,30 @@ function FileViewer() {
 
   return (
     <div className="flex flex-col h-full">
-      <FileEditor
-        key={activeFileTab.id}
-        tab={activeFileTab}
-        tabKey={tabKey ?? ''}
-        tabId={activeTabId}
-        externallyModified={externallyModified}
-        theme={theme}
-        fontFamily={fontFamily}
-        fontSize={fontSize}
-        projectPath={projectPath}
-        onSave={onSave}
-        onContentChange={onContentChange}
-      />
+      {fileTabs.map((tab) => {
+        const fileTab = tabToFileTab(tab);
+        const isActive = tab.id === groupActiveTabId;
+        return (
+          <div
+            key={tab.id}
+            className="flex-1 flex flex-col min-h-0"
+            style={{ display: isActive ? 'flex' : 'none' }}
+          >
+            <FileEditor
+              tab={fileTab}
+              tabKey={tabKey ?? ''}
+              tabId={tab.id}
+              externallyModified={tab.data.externallyModified ?? false}
+              theme={theme}
+              fontFamily={fontFamily}
+              fontSize={fontSize}
+              projectPath={projectPath}
+              onSave={onSave}
+              onContentChange={onContentChange}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -353,49 +347,50 @@ function FileEditor({
   // Create theme object (new reference triggers CodeMirror reconfigure)
   const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
 
-  // LSP lifecycle: open document + change + close
-  const lsp = useLsp();
-
-  useEffect(() => {
-    const lang = getLspLanguageId(tab.filePath);
-    if (!projectPath || !canEdit || !lang) return;
-
-    lsp.openDocument(projectPath, tab.filePath, currentContent).then((ok) => {
-      if (!ok) {
-        console.warn(`[LSP] Failed to open document for ${lang}`);
-      }
-    });
-
-    return () => {
-      lsp.closeDocument();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.filePath, projectPath]);
-
-  // Diagnostics listener + getter
-  // Uses projectPath for the Tauri event name (backend emits lsp-diagnostics-{project_path})
-  const { getDiagnostics } = useLspDiagnostics(projectPath);
-
-  // LSP diagnostic decorations for CodeMirror
-  const fileUri = useMemo(() => `file://${tab.filePath}`, [tab.filePath]);
-  const currentDiagnostics = useMemo(() => getDiagnostics(fileUri), [getDiagnostics, fileUri]);
-  const diagnosticExtensions = useLspDiagnosticExtensions(currentDiagnostics);
-
-  // LSP hover
-  const hover = useLspHover();
-  const hoverExtension = useLspHoverExtension(hover.onMouseMove);
-
-  // LSP go-to-definition / find-references
+  // LSP go-to-definition / find-references — keep custom handlers for cross-file navigation
   const definition = useLspDefinition(projectPath);
 
-  // Set hover document context
+  // Build file URI (used by keybindings, Cmd+Click handler, and LSP client)
+  const fileUri = useMemo(
+    () => (projectPath ? toFileUri(projectPath, tab.filePath) : ''),
+    [projectPath, tab.filePath],
+  );
+
+  // @codemirror/lsp-client plugin — handles hover, diagnostics, completion, document lifecycle
+  const [lspClientExt, setLspClientExt] = useState<import('@codemirror/state').Extension[]>([]);
   useEffect(() => {
-    if (!projectPath) return;
-    const lid = getLspLanguageId(tab.filePath);
-    if (!lid) return;
-    hover.setDocument(projectPath, lid, fileUri);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectPath, tab.filePath, fileUri, hover.setDocument]);
+    const lang = getLspLanguageId(tab.filePath);
+    if (!projectPath || !lang || !fileUri) {
+      setLspClientExt([]);
+      return;
+    }
+
+    // Pass LSP features via config.extensions — the client extracts
+    // capabilities and includes editorExtension in client.plugin() output.
+    // We DO NOT include languageServerExtensions() because it bundles
+    // jumpToDefinitionKeymap / findReferencesKeymap that conflict with
+    // our custom F12 / Cmd+Click handlers.
+    const client = new LSPClient({
+      extensions: [serverCompletion(), hoverTooltips(), serverDiagnostics()],
+    });
+    const transport = new TauriLspTransport(projectPath, lang);
+    client.connect(transport);
+
+    const plugin = client.plugin(fileUri, lang);
+    setLspClientExt([plugin]);
+
+    return () => {
+      transport.destroy();
+      setLspClientExt([]);
+    };
+  }, [projectPath, tab.filePath, fileUri]);
+
+  // LSP link highlight (Cmd/Ctrl+hover underline) — visual cue only, does not affect navigation
+  const linkHighlightExt = useLspLinkHighlightExtension(
+    projectPath,
+    projectPath ? getLspLanguageId(tab.filePath) : null,
+    projectPath ? toFileUri(projectPath, tab.filePath) : '',
+  );
 
   // Navigation helper for go-to-definition
   const navigateToLocation = useCallback(
@@ -405,13 +400,15 @@ function FileEditor({
       tKey: string,
       projId: string,
       currentFilePath: string,
+      preloadedContent?: string | null,
     ) => {
       const targetPath = location.uri.replace(/^file:\/\//, '');
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
 
       if (targetPath === currentFilePath) {
-        // Same file – navigate cursor
+        // Same file – navigate cursor and focus editor
+        console.log('[perf] navigate: same-file');
         const v = editorViewRef.current;
         if (!v) return;
         try {
@@ -420,6 +417,7 @@ function FileEditor({
             selection: { anchor: targetPos, head: targetPos },
             scrollIntoView: true,
           });
+          v.focus();
         } catch (e) {
           console.warn('[LSP] Navigation within file failed:', e);
         }
@@ -434,13 +432,23 @@ function FileEditor({
           col: targetChar,
         });
         if (existing?.tabs.some((t) => t.id === targetTabId)) {
+          console.log('[perf] navigate: cross-file existing-tab');
           useEditorStore.getState().activateTab(tKey, targetTabId);
         } else {
+          console.log(`[perf] navigate: cross-file new-tab content=${preloadedContent ? 'preloaded' : 'ipc-fallback'}`);
           try {
-            const content = await readFileContent(
-              { Local: { project_path: projPath } },
-              targetPath,
-            );
+            const content =
+              preloadedContent
+                ? {
+                    path: targetPath,
+                    content: preloadedContent,
+                    size: preloadedContent.length,
+                    is_binary: false,
+                  }
+                : await readFileContent(
+                    { Local: { project_path: projPath } },
+                    targetPath,
+                  );
             const newTab: Tab = {
               id: targetTabId,
               projectId: projId,
@@ -482,9 +490,19 @@ function FileEditor({
           const character = pos - lineObj.from;
           const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
-          definition.goToDefinition(lid, uri, line, character).then((result) => {
-            if (!result || !result.uri) return;
-            navigateToLocation(result, projectPath, tabKey, tab.projectId, tab.filePath);
+          const t0 = performance.now();
+          definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
+            if (!result) return;
+            navigateToLocation(
+              result.location,
+              projectPath,
+              tabKey,
+              tab.projectId,
+              tab.filePath,
+              result.fileContent,
+            ).then(() => {
+              console.log(`[perf] total (F12→rendered): ${(performance.now() - t0).toFixed(0)}ms`);
+            });
           });
 
           return true;
@@ -517,9 +535,11 @@ function FileEditor({
   }, [projectPath, tab.filePath, tabKey, tab.projectId, definition, navigateToLocation]);
   /* eslint-enable react-hooks/refs */
 
-  // Cmd+Click / Ctrl+Click — native DOM handler using same path as F12
+  // Cmd/Ctrl held state — used for link highlight pointer cursor style
   const cmdHeld = useCmdHeld();
   const cmClassName = cn('h-full overflow-auto', cmdHeld && 'cmd-held');
+
+  // Cmd+Click / Ctrl+Click — go to definition, clearing link highlight first
   useEffect(() => {
     const editorEl = editorViewRef.current?.dom;
     if (!editorEl || !projectPath) return;
@@ -533,6 +553,9 @@ function FileEditor({
       const view = editorViewRef.current;
       if (!view) return;
 
+      // Clear link highlight immediately to prevent visual stutter
+      clearLinkHighlight(view);
+
       const lid = getLspLanguageId(tab.filePath);
       if (!lid) return;
 
@@ -542,15 +565,20 @@ function FileEditor({
       const character = pos - lineObj.from;
       const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
-      definition.goToDefinition(lid, uri, line, character).then((result) => {
-        if (!result || !result.uri) return;
-        navigateToLocation(result, projectPath, tabKey, tab.projectId, tab.filePath);
+      definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
+        if (!result) return;
+        navigateToLocation(
+          result.location,
+          projectPath,
+          tabKey,
+          tab.projectId,
+          tab.filePath,
+          result.fileContent,
+        );
       });
     };
 
-    // Use click event (fires after mousedown + mouseup, cursor already positioned)
     editorEl.addEventListener('click', handler);
-
     return () => editorEl.removeEventListener('click', handler);
   }, [projectPath, tab.filePath, tabKey, tab.projectId, definition, navigateToLocation]);
 
@@ -678,6 +706,7 @@ function FileEditor({
         pending.tabKey === tabKey &&
         pending.tabId === tabId
       ) {
+        console.log(`[perf] handleCreateEditor applying pending: L${pending.line}:${pending.col}`);
         try {
           const line = view.state.doc.line(pending.line);
           const pos = line.from + pending.col;
@@ -793,10 +822,11 @@ function FileEditor({
 
     if (langExtension) exts.push(langExtension);
 
-    // LSP extensions
-    exts.push(...diagnosticExtensions);
-    exts.push(hoverExtension);
+    // LSP: @codemirror/lsp-client plugin (hover, diagnostics, completion, document sync)
+    // + custom keybinding (F12/Shift+F12) + link highlight (Cmd/Ctrl+hover underline)
+    exts.push(...lspClientExt);
     exts.push(lspKeymap);
+    exts.push(linkHighlightExt);
 
     return exts;
   }, [
@@ -806,9 +836,9 @@ function FileEditor({
     saveKeymap,
     theme,
     viewStateExt,
-    diagnosticExtensions,
-    hoverExtension,
+    lspClientExt,
     lspKeymap,
+    linkHighlightExt,
   ]);
 
   // Breadcrumb path segments
@@ -956,12 +986,6 @@ function FileEditor({
         needsAgentTab={pending !== null}
         agentName="Agent"
         onCreateTab={handleCreateTab}
-      />
-      <LspHoverTooltip
-        content={hover.hoverState?.content ?? null}
-        x={hover.hoverState?.x ?? 0}
-        y={hover.hoverState?.y ?? 0}
-        onClose={hover.hideHover}
       />
     </div>
   );

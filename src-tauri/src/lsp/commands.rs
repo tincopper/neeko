@@ -1,9 +1,14 @@
 use serde_json::Value;
 use tauri::State;
 
+use crate::lsp::symbol::UnifiedLocation;
 use crate::lsp::types::LspSessionInfo;
 use crate::AppError;
 use crate::AppStateWrapper;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Core LSP commands (existing)
+// ═══════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
 pub fn lsp_request(
@@ -19,8 +24,10 @@ pub fn lsp_request(
 
     // Ensure the document is known by the server before sending a document request.
     if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
-        // Skip file read + didOpen if the document is already registered
-        if !state.lsp_manager.is_document_open(&project_path, &language_id, uri) {
+        if !state
+            .lsp_manager
+            .is_document_open(&project_path, &language_id, uri)
+        {
             let file_path = uri.trim_start_matches("file://");
             log::debug!(
                 "[LSP] Auto-opening document for {}: uri={}, file_path={}",
@@ -44,10 +51,7 @@ pub fn lsp_request(
                     open_params,
                 );
             } else {
-                log::warn!(
-                    "[LSP] Could not read file for didOpen: {}",
-                    file_path
-                );
+                log::warn!("[LSP] Could not read file for didOpen: {}", file_path);
             }
         }
     } else {
@@ -91,13 +95,9 @@ pub fn lsp_open_document(
         .lsp_manager
         .get_or_create_session(&project_path, &language_id)?;
 
-    state.lsp_manager.register_open_document(
-        &project_path,
-        &language_id,
-        &uri,
-        &text,
-        version,
-    );
+    state
+        .lsp_manager
+        .register_open_document(&project_path, &language_id, &uri, &text, version);
 
     let params = serde_json::json!({
         "textDocument": {
@@ -145,11 +145,9 @@ pub fn lsp_close_document(
     uri: String,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    state.lsp_manager.unregister_open_document(
-        &project_path,
-        &language_id,
-        &uri,
-    );
+    state
+        .lsp_manager
+        .unregister_open_document(&project_path, &language_id, &uri);
 
     let params = serde_json::json!({
         "textDocument": {
@@ -177,4 +175,173 @@ pub fn lsp_close_session(
 #[tauri::command]
 pub fn lsp_list_sessions(state: State<AppStateWrapper>) -> Result<Vec<LspSessionInfo>, AppError> {
     Ok(state.lsp_manager.list_sessions())
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// JSON-RPC Transport Proxy (for @codemirror/lsp-client)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Raw JSON-RPC transport proxy.
+///
+/// Receives a JSON-RPC message string from the frontend
+/// (via @codemirror/lsp-client), routes it to the LSP server,
+/// and returns the raw JSON-RPC response string.
+///
+/// Special handling:
+/// - `initialize`: returns cached capabilities (already negotiated by Rust)
+/// - `initialized`: acknowledged without forwarding (already sent by Rust)
+/// - All other requests/notifications: forwarded to LSP server
+#[tauri::command]
+pub fn lsp_transport(
+    project_path: String,
+    language_id: String,
+    message: String,
+    state: State<AppStateWrapper>,
+) -> Result<String, AppError> {
+    let parsed: Value =
+        serde_json::from_str(&message).map_err(|e| AppError::Lsp(format!("Invalid JSON-RPC: {}", e)))?;
+
+    let method = parsed["method"]
+        .as_str()
+        .ok_or_else(|| AppError::Lsp("Missing method in JSON-RPC message".into()))?;
+    let params = parsed.get("params").cloned().unwrap_or(Value::Null);
+    let id = parsed.get("id").cloned();
+
+    // Ensure session exists (handles LSP process spawn + Rust-side init handshake)
+    state
+        .lsp_manager
+        .get_or_create_session(&project_path, &language_id)?;
+
+    // ── initialize: return cached capabilities ─────────────────────────
+    if method == "initialize" {
+        let caps = state
+            .lsp_manager
+            .get_capabilities(&project_path, &language_id)
+            .unwrap_or_else(|| serde_json::json!({}));
+        return Ok(serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": caps,
+        }))
+        .unwrap());
+    }
+
+    // ── initialized: already sent by Rust, no-op ──────────────────────
+    if method == "initialized" {
+        return Ok(serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {},
+        }))
+        .unwrap());
+    }
+
+    // ── shutdown / exit: handled gracefully ──────────────────────────
+    if method == "shutdown" {
+        return Ok(serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": null,
+        }))
+        .unwrap());
+    }
+
+    // ── Request (has id): forward to LSP server, return response ─────
+    if id.is_some() && !id.as_ref().map(|v| v.is_null()).unwrap_or(false) {
+        let result =
+            state
+                .lsp_manager
+                .send_request(&project_path, &language_id, method, params)?;
+        return Ok(serde_json::to_string(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": result,
+        }))
+        .unwrap());
+    }
+
+    // ── Notification (no id): forward, return empty ──────────────────
+    state
+        .lsp_manager
+        .send_notification(&project_path, &language_id, method, params)?;
+    Ok("{}".into())
+}
+
+/// Optimized go-to-definition: returns the LSP result plus preloaded target file content
+/// so the frontend avoids a second `readFileContent` IPC round trip.
+#[tauri::command]
+pub fn lsp_go_to_definition(
+    project_path: String,
+    language_id: String,
+    uri: String,
+    line: u32,
+    character: u32,
+    state: State<AppStateWrapper>,
+) -> Result<serde_json::Value, AppError> {
+    let t0 = std::time::Instant::now();
+
+    state
+        .lsp_manager
+        .get_or_create_session(&project_path, &language_id)?;
+    let t1 = t0.elapsed();
+    log::info!("[perf] lsp_go_to_definition: session ready in {:?}", t1);
+
+    // Auto-didOpen if the document is not yet registered
+    if !state
+        .lsp_manager
+        .is_document_open(&project_path, &language_id, &uri)
+    {
+        let file_path = uri.trim_start_matches("file://");
+        if let Ok(text) = std::fs::read_to_string(file_path) {
+            let open_params = serde_json::json!({
+                "textDocument": {
+                    "uri": &uri,
+                    "languageId": &language_id,
+                    "version": 1,
+                    "text": text,
+                }
+            });
+            let _ = state.lsp_manager.send_notification(
+                &project_path,
+                &language_id,
+                "textDocument/didOpen",
+                open_params,
+            );
+        }
+    }
+
+    let params = serde_json::json!({
+        "textDocument": { "uri": &uri },
+        "position": { "line": line, "character": character },
+    });
+
+    let lsp_result = state.lsp_manager.send_request(
+        &project_path,
+        &language_id,
+        "textDocument/definition",
+        params,
+    )?;
+    let t2 = t0.elapsed();
+    log::info!(
+        "[perf] lsp_go_to_definition: LSP responded in {:?} (request took {:?})",
+        t2,
+        t2 - t1,
+    );
+
+    // Preload target file content using UnifiedLocation
+    let file_content = UnifiedLocation::first_target_uri(&lsp_result).and_then(|target_uri| {
+        let path = target_uri.trim_start_matches("file://");
+        std::fs::read_to_string(path).ok()
+    });
+    let t3 = t0.elapsed();
+    log::info!(
+        "[perf] lsp_go_to_definition: total {:?} (file read {:?})",
+        t3,
+        t3 - t2,
+    );
+
+    Ok(serde_json::json!({
+        "lspResult": lsp_result,
+        "fileContent": file_content,
+    }))
 }

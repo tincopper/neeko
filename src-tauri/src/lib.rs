@@ -21,6 +21,7 @@ pub mod connection;
 pub mod core;
 pub mod file;
 pub mod git;
+pub mod lsp;
 pub mod project;
 pub mod session;
 pub mod settings;
@@ -205,6 +206,15 @@ macro_rules! neeko_invoke_handler {
             $crate::theme::commands::list_custom_themes,
             $crate::theme::commands::get_custom_theme,
             // ── settings ─────────────────────────────────────────────────────
+            $crate::lsp::commands::lsp_request,
+            $crate::lsp::commands::lsp_notification,
+            $crate::lsp::commands::lsp_open_document,
+            $crate::lsp::commands::lsp_change_document,
+            $crate::lsp::commands::lsp_close_document,
+            $crate::lsp::commands::lsp_close_session,
+            $crate::lsp::commands::lsp_list_sessions,
+            $crate::lsp::commands::lsp_go_to_definition,
+            $crate::lsp::commands::lsp_transport,
             $crate::settings::commands::get_system_fonts,
         ]
     };

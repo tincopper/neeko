@@ -42,6 +42,9 @@ urlencoding = "2"
 base64 = "0.22"
 url = "2"
 arboard = "3.6.1"
+lsp-server = "0.8.0"
+lsp-types = "0.97.0"
+crossbeam-channel = "0.5.15"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

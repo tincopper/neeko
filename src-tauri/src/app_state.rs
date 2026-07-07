@@ -1,9 +1,9 @@
 use crate::agent::AgentManager;
 use crate::common::file::watcher::WatcherManager;
+use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
 use crate::skill;
-use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::terminal::TerminalManager;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -18,6 +18,7 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     pub watcher_manager: WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
+    pub lsp_manager: crate::lsp::LspManager,
 }
 
 impl AppStateWrapper {
@@ -90,6 +91,7 @@ impl AppStateWrapper {
             active_project_id: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
             skill_store,
+            lsp_manager: crate::lsp::LspManager::new(),
         }
     }
 
