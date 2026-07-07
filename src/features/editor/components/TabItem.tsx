@@ -122,7 +122,6 @@ const TabItem: React.FC<TabItemProps> = React.memo(
           isActive
             ? "bg-bg-selected text-text-primary"
             : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
-          reorderable && "cursor-grab",
           isDragging && "opacity-50 shadow-lg shadow-black/20 z-50",
         )}
         onClick={handleClick}
@@ -168,7 +167,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(
         )}
 
         <span
-          className="truncate"
+          className="truncate cursor-pointer"
           style={{ fontSize: "var(--terminal-font-size)" }}
         >
           {tab.title}
