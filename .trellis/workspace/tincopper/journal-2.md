@@ -438,3 +438,36 @@ Implemented code selection and AI agent interaction in CodeMirror editor (floati
 ### Next Steps
 
 - None - task complete
+
+
+## Session 71: LSP Phase 1 — LSP engine, StatusBar, diagnostics integration
+
+**Date**: 2026-07-07
+**Task**: LSP Phase 1 — LSP engine, StatusBar, diagnostics integration
+**Branch**: `main`
+
+### Summary
+
+Complete LSP Phase 1: backend lsp/ module (LspManager, JSON-RPC proxy, installer, diagnostics bus), frontend StatusBar with LSP connection status & install progress, FileViewer lifecycle refactor, import order normalization, spec docs update.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f66b10a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
