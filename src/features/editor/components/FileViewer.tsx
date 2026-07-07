@@ -23,8 +23,7 @@ import { useShallow } from 'zustand/shallow';
 
 import { useConnectionStore } from '@/features/connection/store';
 import { readFileContent } from '@/features/file/api/fileApi';
-import { LSPClient, hoverTooltips, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
-import { TauriLspTransport } from '@/features/lsp/adapters';
+import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { toFileUri } from '@/features/lsp/hooks/useLsp';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
@@ -357,8 +356,9 @@ function FileEditor({
   );
 
   // @codemirror/lsp-client plugin — handles hover, diagnostics, completion, document lifecycle
+  // Shared per (projectPath, languageId) so switching between files of the same
+  // language reuses the existing LSP client instead of destroying and re-initializing.
   const [lspClientExt, setLspClientExt] = useState<import('@codemirror/state').Extension[]>([]);
-  const lspRef = useRef<{ transport: TauriLspTransport } | null>(null);
 
   useEffect(() => {
     const lang = getLspLanguageId(tab.filePath);
@@ -367,36 +367,12 @@ function FileEditor({
       return;
     }
 
-    let cancelled = false;
-
-    // Clean up any previous client first
-    if (lspRef.current) {
-      lspRef.current.transport.destroy();
-      lspRef.current = null;
-    }
-
-    const client = new LSPClient({
-      extensions: [serverCompletion(), hoverTooltips(), serverDiagnostics()],
-      timeout: 10000, // 10s for slow-starting LSP servers (rust-analyzer, etc.)
-    });
-    const transport = new TauriLspTransport(projectPath, lang);
-    client.connect(transport);
-
-    const plugin = client.plugin(fileUri, lang);
-    lspRef.current = { transport };
-
-    if (!cancelled) {
-      setLspClientExt([plugin]);
-    }
+    const plugin = acquireLspPlugin(projectPath, lang, fileUri);
+    setLspClientExt([plugin]);
 
     return () => {
-      cancelled = true;
-      // 1. Remove plugin from extensions → triggers closeFile/didClose via transport
       setLspClientExt([]);
-      // 2. Delay transport destroy to allow pending cleanup messages to flush
-      const t = lspRef.current?.transport;
-      lspRef.current = null;
-      setTimeout(() => t?.destroy(), 200);
+      releaseLspClient(projectPath, lang);
     };
   }, [projectPath, tab.filePath, fileUri]);
 

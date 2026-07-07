@@ -2,15 +2,18 @@ use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
-use super::types::LspDiagnostic;
-
 /// A single diagnostic event published by the DiagnosticBus.
+///
+/// The `diagnostics` field carries the raw JSON array from the LSP
+/// `textDocument/publishDiagnostics` notification params — no
+/// intermediate parsing to structs, avoiding a serialize→parse→serialize
+/// round-trip.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticEvent {
     pub project_path: String,
     pub uri: String,
     pub language_id: String,
-    pub diagnostics: Vec<LspDiagnostic>,
+    pub diagnostics: serde_json::Value,
 }
 
 type Listener = Box<dyn Fn(&DiagnosticEvent) + Send + Sync>;
@@ -105,7 +108,7 @@ mod tests {
             project_path: "/test".into(),
             uri: "file:///test.rs".into(),
             language_id: "rust".into(),
-            diagnostics: vec![],
+            diagnostics: serde_json::json!([]),
         });
 
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -129,7 +132,7 @@ mod tests {
             project_path: "/test".into(),
             uri: "file:///test.rs".into(),
             language_id: "rust".into(),
-            diagnostics: vec![],
+            diagnostics: serde_json::json!([]),
         });
 
         assert_eq!(counter.load(Ordering::SeqCst), 2);

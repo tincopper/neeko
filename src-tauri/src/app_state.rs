@@ -18,7 +18,7 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     pub watcher_manager: WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
-    pub lsp_manager: crate::lsp::LspManager,
+    pub lsp_manager: Arc<crate::lsp::LspManager>,
 }
 
 impl AppStateWrapper {
@@ -91,7 +91,7 @@ impl AppStateWrapper {
             active_project_id: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
             skill_store,
-            lsp_manager: crate::lsp::LspManager::new(),
+            lsp_manager: Arc::new(crate::lsp::LspManager::new()),
         }
     }
 

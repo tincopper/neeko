@@ -16,7 +16,7 @@ use crate::AppError;
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::plugin::{LspPlugin, LspPluginRegistry};
 use super::transport::{IpcTransport, LspTransport};
-use super::types::{LspDiagnostic, LspPosition, LspRange, LspSessionInfo};
+use super::types::LspSessionInfo;
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -50,12 +50,60 @@ fn restart_delay(attempt: u32) -> Duration {
 
 // ── LspSession ──────────────────────────────────────────────────────────
 
+/// Send an LSP request and await the response.
+///
+/// This free function takes cloned session ingredients (writer + pending map)
+/// so it can be called without borrowing a MutexGuard across the await point.
+async fn do_send_request(
+    pending: Arc<Mutex<HashMap<RequestId, PendingSender>>>,
+    writer: crossbeam_channel::Sender<Message>,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
+    let req_id = NEXT_REQ_ID.fetch_add(1, Ordering::Relaxed);
+    let request_id = RequestId::from(req_id);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut map = pending.lock().expect("infallible");
+        map.insert(request_id.clone(), tx);
+    }
+
+    let req = Request::new(request_id, method.to_string(), params);
+    writer
+        .send(Message::Request(req))
+        .with_context(|| format!("Failed to send LSP request: {}", method))?;
+
+    let t0 = std::time::Instant::now();
+    let response = rx
+        .await
+        .with_context(|| format!("No response received for LSP request: {}", method))?;
+    log::info!(
+        "[perf] do_send_request {}: awaited {:?}",
+        method,
+        t0.elapsed()
+    );
+
+    match response {
+        Message::Response(resp) => {
+            if let Some(err) = resp.error {
+                bail!("LSP error ({}): {}", err.code, err.message);
+            }
+            // A null result is valid per LSP spec — means "no data" (e.g. hover on whitespace)
+            Ok(resp.result.unwrap_or(Value::Null))
+        }
+        _ => bail!("Unexpected message type for request: {}", method),
+    }
+}
+
+type PendingSender = tokio::sync::oneshot::Sender<Message>;
+
 struct LspSession {
     language_id: String,
     project_path: String,
     server_name: String,
     writer: crossbeam_channel::Sender<Message>,
-    pending: Arc<Mutex<HashMap<RequestId, crossbeam_channel::Sender<Message>>>>,
+    pending: Arc<Mutex<HashMap<RequestId, PendingSender>>>,
     reader: Option<thread::JoinHandle<Result<()>>>,
     stderr_logger: Option<thread::JoinHandle<()>>,
     restart_count: u32,
@@ -172,7 +220,7 @@ impl LspSession {
             .map_err(|_| anyhow::anyhow!("Invalid project path: {}", project_path))?
             .to_string();
 
-        let pending: Arc<Mutex<HashMap<RequestId, crossbeam_channel::Sender<Message>>>> =
+        let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Reader thread
@@ -195,6 +243,7 @@ impl LspSession {
                         Message::Response(resp) => {
                             let mut map = pending_clone.lock().expect("infallible");
                             if let Some(tx) = map.remove(&resp.id) {
+                                // tokio oneshot: non-blocking send from OS thread
                                 let _ = tx.send(msg);
                                 continue;
                             }
@@ -222,7 +271,7 @@ impl LspSession {
             .unwrap();
 
         // ── Initialize handshake ─────────────────────────────────────────
-        let (init_tx, init_rx) = crossbeam_channel::bounded::<Message>(1);
+        let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Message>();
 
         let init_params = serde_json::json!({
             "processId": std::process::id(),
@@ -263,7 +312,7 @@ impl LspSession {
             .context("Failed to send initialize request")?;
 
         let init_response = init_rx
-            .recv()
+            .blocking_recv()
             .context("LSP initialization: no response received")?;
 
         let server_capabilities = match init_response {
@@ -307,15 +356,20 @@ impl LspSession {
             .unwrap_or(false)
     }
 
-    fn send_request_raw(&self, method: &str, params: Value) -> Result<Value> {
+    /// Send an LSP request and await the response asynchronously.
+    /// Takes a clone of the writer sender so it can be called without borrowing
+    /// `self` across the await point — safe even if the session is removed
+    /// from the session map while waiting.
+    async fn send_request_async(&self, method: &str, params: Value) -> Result<Value> {
         let req_id = NEXT_REQ_ID.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = crossbeam_channel::bounded::<Message>(1);
         let request_id = RequestId::from(req_id);
 
-        {
+        let rx = {
+            let (tx, rx) = tokio::sync::oneshot::channel();
             let mut map = self.pending.lock().expect("infallible");
             map.insert(request_id.clone(), tx);
-        }
+            rx
+        };
 
         let req = Request::new(request_id, method.to_string(), params);
         self.writer
@@ -323,11 +377,12 @@ impl LspSession {
             .with_context(|| format!("Failed to send LSP request: {}", method))?;
 
         let t0 = std::time::Instant::now();
+        // self is no longer used beyond this point — rx is owned, not borrowed
         let response = rx
-            .recv()
+            .await
             .with_context(|| format!("No response received for LSP request: {}", method))?;
         log::info!(
-            "[perf] send_request_raw {}: rx.recv() blocked {:?}",
+            "[perf] send_request_async {}: awaited {:?}",
             method,
             t0.elapsed()
         );
@@ -337,8 +392,8 @@ impl LspSession {
                 if let Some(err) = resp.error {
                     bail!("LSP error ({}): {}", err.code, err.message);
                 }
-                resp.result
-                    .ok_or_else(|| anyhow::anyhow!("LSP response has no result for: {}", method))
+                // A null result is valid per LSP spec (e.g. hover on empty space)
+                Ok(resp.result.unwrap_or(Value::Null))
             }
             _ => bail!("Unexpected message type for request: {}", method),
         }
@@ -364,35 +419,13 @@ fn handle_diagnostics_notification(
         .get("uri")
         .and_then(|v| v.as_str())
         .unwrap_or("");
+
+    // Pass the raw diagnostics JSON array through without parsing —
+    // avoids a serialize→parse→serialize round-trip.
     let diagnostics = params
         .get("diagnostics")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|d| {
-                    Some(LspDiagnostic {
-                        range: LspRange {
-                            start: LspPosition {
-                                line: d.pointer("/range/start/line")?.as_u64()? as u32,
-                                character: d.pointer("/range/start/character")?.as_u64()? as u32,
-                            },
-                            end: LspPosition {
-                                line: d.pointer("/range/end/line")?.as_u64()? as u32,
-                                character: d.pointer("/range/end/character")?.as_u64()? as u32,
-                            },
-                        },
-                        severity: d.get("severity").and_then(|v| v.as_i64()),
-                        message: d
-                            .get("message")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                        source: d.get("source").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
 
     diag_bus.publish(DiagnosticEvent {
         project_path: project_path.to_string(),
@@ -643,8 +676,8 @@ impl LspManager {
         count
     }
 
-    pub fn send_request(
-        &self,
+    pub async fn send_request_async(
+        self: &Arc<Self>,
         project_path: &str,
         language_id: &str,
         method: &str,
@@ -652,40 +685,43 @@ impl LspManager {
     ) -> Result<Value, AppError> {
         let key = session_key(project_path, language_id);
 
-        // Fast path: try existing session
-        {
+        // Fast path: extract session ingredients, drop lock before awaiting
+        let fast_result = {
             let sessions = self.sessions.lock().expect("infallible");
+
             if let Some(session) = sessions.get(&key) {
                 if session.is_alive() {
-                    match session.send_request_raw(method, params.clone()) {
-                        Ok(val) => return Ok(val),
-                        Err(e) => {
-                            log::warn!(
-                                "[LSP] send_request_raw failed for {}, reason: {}. Will restart.",
-                                key,
-                                e
-                            );
-                        }
-                    }
+                    let pending = Arc::clone(&session.pending);
+                    let writer = session.writer.clone();
+                    Some((pending, writer))
                 } else {
                     log::warn!("[LSP] Session {} is not alive, will restart", key);
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some((pending, writer)) = fast_result {
+            match do_send_request(pending, writer, method, params.clone()).await {
+                Ok(val) => return Ok(val),
+                Err(e) => {
+                    log::warn!(
+                        "[LSP] send_request_async failed for {}, reason: {}. Will restart.",
+                        key,
+                        e
+                    );
                 }
             }
         }
 
-        // Restart: remove dead session, create fresh one with backoff, retry once
-        {
-            let mut sessions = self.sessions.lock().expect("infallible");
-            sessions.remove(&key);
-        }
-
-        // Exponential backoff before restart
+        // Restart path: gather state under lock, then drop it
         let attempt = {
-            let sessions = self.sessions.lock().expect("infallible");
-            sessions
-                .get(&key)
-                .map(|s| s.restart_count)
-                .unwrap_or(0)
+            let mut sessions = self.sessions.lock().expect("infallible");
+            let attempt = sessions.get(&key).map(|s| s.restart_count).unwrap_or(0);
+            sessions.remove(&key);
+            attempt
         };
 
         if attempt > 0 && attempt < MAX_RESTART_COUNT {
@@ -696,17 +732,35 @@ impl LspManager {
                 attempt + 1,
                 key
             );
-            std::thread::sleep(delay);
+            tokio::time::sleep(delay).await;
         }
 
-        self.get_or_create_session(project_path, language_id)?;
+        // Spawn session creation on blocking thread pool — it spawns OS processes
+        let this = Arc::clone(self);
+        let pp = project_path.to_string();
+        let lid = language_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            this.get_or_create_session(&pp, &lid)
+        })
+        .await
+        .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
-        let sessions = self.sessions.lock().expect("infallible");
-        match sessions.get(&key) {
-            Some(session) => session
-                .send_request_raw(method, params)
+        let (pending, writer) = {
+            let sessions = self.sessions.lock().expect("infallible");
+            match sessions.get(&key) {
+                Some(session) => (
+                    Some(Arc::clone(&session.pending)),
+                    Some(session.writer.clone()),
+                ),
+                None => (None, None),
+            }
+        };
+
+        match (pending, writer) {
+            (Some(pending), Some(writer)) => do_send_request(pending, writer, method, params)
+                .await
                 .map_err(|e| AppError::Lsp(e.to_string())),
-            None => Err(AppError::Lsp(format!(
+            _ => Err(AppError::Lsp(format!(
                 "Failed to create LSP session: {}",
                 key
             ))),

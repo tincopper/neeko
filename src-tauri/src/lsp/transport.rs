@@ -1,7 +1,5 @@
 use tauri::Emitter;
 
-use super::types::LspDiagnostic;
-
 /// Trait for delivering LSP-originated data to the frontend.
 ///
 /// Current implementation uses Tauri IPC events. A future WebSocket
@@ -9,11 +7,13 @@ use super::types::LspDiagnostic;
 /// any LSP session logic.
 pub trait LspTransport: Send + Sync {
     /// Push diagnostics for a specific file URI to the frontend.
+    /// `diagnostics` is the raw JSON array from the LSP server —
+    /// emitted directly without intermediate parsing.
     fn push_diagnostics(
         &self,
         project_path: &str,
         uri: &str,
-        diagnostics: Vec<LspDiagnostic>,
+        diagnostics: serde_json::Value,
     );
 
     /// Push a work-done progress notification to the frontend.
@@ -59,7 +59,7 @@ impl LspTransport for IpcTransport {
         &self,
         project_path: &str,
         uri: &str,
-        diagnostics: Vec<LspDiagnostic>,
+        diagnostics: serde_json::Value,
     ) {
         let event_name = format!("lsp-diagnostics-{}", project_path);
         let payload = serde_json::json!({
