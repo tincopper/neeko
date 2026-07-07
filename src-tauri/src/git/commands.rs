@@ -375,14 +375,16 @@ pub async fn get_worktree_changed_files(
     transport: GitTransportKind,
     worktree_path: String,
 ) -> Result<Vec<FileChange>, AppError> {
-    let (t, _wd) = into_transport_and_dir(&transport);
+    let (t, wd) = into_transport_and_dir(&transport);
+    // When worktree_path is empty, use the main project path
+    let repo_path = if worktree_path.is_empty() { wd } else { &worktree_path };
     if t.supports_git2() {
         let repo = t
-            .open_repo(&worktree_path)
+            .open_repo(repo_path)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
         crate::common::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)
     } else {
-        operations::get_worktree_changed_files(&t, &worktree_path)
+        operations::get_worktree_changed_files(&t, repo_path)
             .await
             .map_err(AppError::from)
     }
