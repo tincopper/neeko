@@ -44,11 +44,13 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
       showToast(`Starting ${meta.agentId}...`, 'info');
       await onResumeConversation(meta);
       showToast('Resuming conversation...', 'info');
+      // 延迟刷新，等 Agent 更新完 session 文件
+      setTimeout(() => refresh(), 2000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to resume conversation';
       showToast(msg, 'error');
     }
-  }, [isResuming, showToast, onResumeConversation]);
+  }, [isResuming, showToast, onResumeConversation, refresh]);
 
   if (!projectPath) {
     return (
