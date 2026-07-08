@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{
-    extract_content_text, parse_timestamp, read_jsonl, strip_ansi, truncate,
+    parse_timestamp, read_jsonl, strip_ansi, truncate,
 };
 
 /// Claude Code 会话适配器
@@ -18,8 +18,7 @@ pub struct ClaudeCodeAdapter;
 
 /// 提取 Claude Code 消息内容，兼容多种格式：
 /// - message 是字符串 → 直接返回
-/// - message 是 object，有 content 数组 → 提取 text 块
-/// - message 是 object，有 content 字符串 → 直接返回
+/// - message 是 object，有 content 数组 → 提取所有块（text/thinking/tool_use 等）
 fn extract_claude_message_content(entry: &serde_json::Value) -> String {
     let msg = match entry.get("message") {
         Some(m) => m,
@@ -31,25 +30,78 @@ fn extract_claude_message_content(entry: &serde_json::Value) -> String {
         return s.to_string();
     }
 
-    // 情况2：message 是 object，有 content 字段
-    match msg.get("content") {
-        Some(content_val) => {
-            if content_val.is_array() {
-                extract_content_text(content_val)
-            } else if let Some(s) = content_val.as_str() {
-                s.to_string()
-            } else {
-                String::new()
-            }
-        }
-        None => {
-            // 情况3：message 是 object，内容就在 message 里的 text 字段
-            msg.get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()
-        }
+    // 情况2：message 是 object，有 content 数组
+    if let Some(arr) = msg.get("content").and_then(|v| v.as_array()) {
+        let parts: Vec<String> = arr
+            .iter()
+            .map(|block| {
+                let block_type = block
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                match block_type {
+                    "text" => block
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    "thinking" => {
+                        let t = block
+                            .get("thinking")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if !t.is_empty() {
+                            format!("<thinking>\n{}\n</thinking>", t)
+                        } else {
+                            String::new()
+                        }
+                    }
+                    "tool_use" => {
+                        let name = block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
+                        let input = block.get("input");
+                        format_tool_use(name, input)
+                    }
+                    _ => block
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                }
+            })
+            .filter(|s| !s.is_empty())
+            .collect();
+        return parts.join("\n\n");
     }
+
+    // 情况3：message 是 object，有 content 字符串
+    if let Some(s) = msg.get("content").and_then(|v| v.as_str()) {
+        return s.to_string();
+    }
+
+    // 案例4：message 有 text 字段
+    msg.get("text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// 将 tool_use 块格式化为可读文本
+fn format_tool_use(name: &str, input: Option<&serde_json::Value>) -> String {
+    let input_str = match input {
+        Some(v) if !v.is_null() => {
+            serde_json::to_string_pretty(v).unwrap_or_else(|_| String::new())
+        }
+        _ => String::new(),
+    };
+    let preview = if input_str.len() > 200 {
+        format!("{}...", &input_str[..200])
+    } else {
+        input_str
+    };
+    format!("🔧 `{name}`\n```json\n{preview}\n```")
 }
 
 fn is_message_type(t: &str) -> bool {
