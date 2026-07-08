@@ -1,6 +1,7 @@
 use crate::agent::AgentManager;
 use crate::common::file::watcher::WatcherManager;
 use crate::common::terminal::remote::RemoteTerminalManager;
+use crate::conversation::ConversationManager;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
 use crate::skill;
@@ -19,6 +20,7 @@ pub struct AppStateWrapper {
     pub watcher_manager: WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
     pub lsp_manager: Arc<crate::lsp::LspManager>,
+    pub conversation_manager: ConversationManager,
 }
 
 impl AppStateWrapper {
@@ -92,6 +94,7 @@ impl AppStateWrapper {
             watcher_manager: WatcherManager::new(),
             skill_store,
             lsp_manager: Arc::new(crate::lsp::LspManager::new()),
+            conversation_manager: ConversationManager::new(Vec::new()),
         }
     }
 

@@ -18,6 +18,7 @@ mod app_state;
 pub mod browser;
 pub mod common;
 pub mod connection;
+pub mod conversation;
 pub mod core;
 pub mod file;
 pub mod git;
@@ -89,6 +90,14 @@ macro_rules! neeko_invoke_handler {
             $crate::connection::commands::get_wsl_home_dir,
             $crate::connection::commands::test_remote_connection,
             $crate::connection::commands::list_remote_directories,
+            // ── conversation ─────────────────────────────────────────────────
+            $crate::conversation::commands::scan_conversations,
+            $crate::conversation::commands::list_conversations,
+            $crate::conversation::commands::get_conversation_messages,
+            $crate::conversation::commands::search_conversations,
+            $crate::conversation::commands::update_conversation,
+            $crate::conversation::commands::get_resume_command,
+            $crate::conversation::commands::export_conversation,
             // ── git ──────────────────────────────────────────────────────────
             // staging
             $crate::git::commands::stage_files,
