@@ -505,3 +505,37 @@ Complete LSP Phase 1: backend lsp/ module (LspManager, JSON-RPC proxy, installer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 73: 实现7个Agent会话适配器
+
+**Date**: 2026-07-08
+**Task**: 实现7个Agent会话适配器
+**Branch**: `main`
+
+### Summary
+
+实现全部7个Agent适配器（Codex、Claude Code、Pi、Gemini、Qoder、CodeBuddy、OpenCode），各适配器实现parse_meta/parse_messages/resume_command。54个测试通过，clippy合规。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1456071` | (see git log) |
+| `cf9bdaf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
