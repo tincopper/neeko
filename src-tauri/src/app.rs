@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
@@ -153,13 +154,29 @@ pub fn run() {
             }
             Ok(())
         })
+        .menu(|handle| {
+            let close_tab = MenuItemBuilder::with_id("close_tab", "Close Tab")
+                .accelerator("CmdOrCtrl+W")
+                .build(handle)?;
+            let file = SubmenuBuilder::new(handle, "File")
+                .item(&close_tab)
+                .build()?;
+            MenuBuilder::new(handle)
+                .item(&file)
+                .build()
+        })
+        .on_menu_event(|app, event| {
+            if event.id().0 == "close_tab" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("cmd-w-pressed", ());
+                }
+            }
+        })
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::CloseRequested { api, .. } => {
-                    // Cmd+W on macOS should close the current tab, not the window.
-                    // Prevent the default close and let the frontend handle it.
-                    api.prevent_close();
-                    let _ = window.emit("cmd-w-pressed", ());
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    // Close button → close the window naturally (no prevent_close).
+                    // Cmd+W is handled by the menu shortcut above.
                 }
                 tauri::WindowEvent::Destroyed => {
                     let state = window.state::<AppStateWrapper>();

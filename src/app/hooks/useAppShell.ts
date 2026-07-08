@@ -299,7 +299,7 @@ export function useAppShell(): UseAppShellResult {
         conn.activeRemoteKey?.projectId ??
         null;
       if (!currentProjectId) {
-        getCurrentWindow().close();
+        getCurrentWindow().destroy();
         return;
       }
       const worktreePath =
@@ -312,7 +312,7 @@ export function useAppShell(): UseAppShellResult {
         : currentProjectId;
       const projectTabs = store.tabs[tk];
       if (!projectTabs || projectTabs.tabs.length === 0) {
-        getCurrentWindow().close();
+        getCurrentWindow().destroy();
       }
     });
 
