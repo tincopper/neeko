@@ -944,4 +944,96 @@ mod tests {
         let all = manager.list(None, None).unwrap();
         assert_eq!(all.len(), 1);
     }
+
+    // ─── Resume 命令构造测试（验证每个 Agent 的正确 resume 命令）───
+
+    #[test]
+    fn claude_code_resume_command() {
+        use crate::conversation::adapters::ClaudeCodeAdapter;
+        let cmd = ClaudeCodeAdapter
+            .resume_command("40fb5179-2c80-45a9-8ac0-56ce8ab4178e", "/test")
+            .expect("Claude Code should support resume");
+        assert_eq!(cmd, vec!["--resume", "40fb5179-2c80-45a9-8ac0-56ce8ab4178e"]);
+    }
+
+    #[test]
+    fn codex_resume_command() {
+        use crate::conversation::adapters::CodexAdapter;
+        let cmd = CodexAdapter
+            .resume_command("session-uuid-123", "/test")
+            .expect("Codex should support resume");
+        assert_eq!(cmd, vec!["resume", "session-uuid-123"]);
+    }
+
+    #[test]
+    fn codebuddy_resume_command() {
+        use crate::conversation::adapters::CodeBuddyAdapter;
+        let cmd = CodeBuddyAdapter
+            .resume_command("session-abc", "/test")
+            .expect("CodeBuddy should support resume");
+        assert_eq!(cmd, vec!["--resume", "session-abc"]);
+    }
+
+    #[test]
+    fn pi_resume_command_returns_none() {
+        use crate::conversation::adapters::PiAdapter;
+        let cmd = PiAdapter.resume_command("test", "/test");
+        assert!(cmd.is_none(), "Pi should not support native CLI resume");
+    }
+
+    #[test]
+    fn gemini_resume_command_returns_none() {
+        use crate::conversation::adapters::GeminiAdapter;
+        let cmd = GeminiAdapter.resume_command("test", "/test");
+        assert!(cmd.is_none(), "Gemini should not support native CLI resume");
+    }
+
+    #[test]
+    fn qoder_resume_command_returns_none() {
+        use crate::conversation::adapters::QoderAdapter;
+        let cmd = QoderAdapter.resume_command("test", "/test");
+        assert!(cmd.is_none(), "Qoder should not support native CLI resume");
+    }
+
+    #[test]
+    fn opencode_resume_command_returns_none() {
+        use crate::conversation::adapters::OpenCodeAdapter;
+        let cmd = OpenCodeAdapter.resume_command("test", "/test");
+        assert!(cmd.is_none(), "OpenCode should not support native CLI resume");
+    }
+
+    /// 验证通过 Manager.get_resume_command 的完整路径（使用封装适配器避免扫描真实目录）
+    #[test]
+    fn manager_get_resume_command_claude_code() {
+        use crate::conversation::adapters::ClaudeCodeAdapter;
+
+        let dir = TempDir::new().unwrap();
+        create_claude_session_file(dir.path(), "-Users-tomgs-test", "session.jsonl");
+
+        // 封装适配器：复用 ClaudeCodeAdapter 的解析逻辑，但指向测试目录
+        struct TestAdapter { root: PathBuf }
+        impl AgentSessionAdapter for TestAdapter {
+            fn agent_id(&self) -> &str { "claude-code" }
+            fn session_root(&self) -> PathBuf { self.root.clone() }
+            fn file_pattern(&self) -> &str { "**/*.jsonl" }
+            fn parse_meta(&self, p: &Path) -> Result<ParsedMeta> { ClaudeCodeAdapter.parse_meta(p) }
+            fn parse_messages(&self, p: &Path) -> Result<Vec<ParsedMessage>> { ClaudeCodeAdapter.parse_messages(p) }
+            fn extract_session_id(&self, p: &Path) -> Option<String> { ClaudeCodeAdapter.extract_session_id(p) }
+            fn resume_command(&self, sid: &str, pp: &str) -> Option<Vec<String>> { ClaudeCodeAdapter.resume_command(sid, pp) }
+        }
+
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter { root: dir.path().to_path_buf() })]);
+        manager.scan_all().unwrap();
+
+        let list = manager.list(None, None).unwrap();
+        assert!(!list.is_empty(), "should find at least one conversation");
+        let conv_id = &list[0].id;
+
+        let cmd = manager
+            .get_resume_command(conv_id)
+            .expect("should get resume command")
+            .expect("should have resume args");
+        assert_eq!(cmd.len(), 2, "resume command should have 2 args");
+        assert_eq!(cmd[0], "--resume", "first arg should be --resume");
+    }
 }

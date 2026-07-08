@@ -182,7 +182,6 @@ impl AgentSessionAdapter for CodexAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec![
-            "codex".to_string(),
             "resume".to_string(),
             native_session_id.to_string(),
         ])
@@ -295,7 +294,7 @@ mod tests {
     #[test]
     fn should_return_resume_command() {
         let cmd = CodexAdapter.resume_command("test-uuid", "/projects/test");
-        assert_eq!(cmd, Some(vec!["codex".to_string(), "resume".to_string(), "test-uuid".to_string()]));
+        assert_eq!(cmd, Some(vec!["resume".to_string(), "test-uuid".to_string()]));
     }
 
     #[test]

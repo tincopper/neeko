@@ -186,7 +186,6 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec![
-            "codebuddy".to_string(),
             "--resume".to_string(),
             native_session_id.to_string(),
         ])
@@ -267,7 +266,6 @@ mod tests {
         assert_eq!(
             cmd,
             Some(vec![
-                "codebuddy".to_string(),
                 "--resume".to_string(),
                 "cb-session-001".to_string(),
             ])
