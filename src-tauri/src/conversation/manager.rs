@@ -845,4 +845,103 @@ mod tests {
     fn should_return_none_for_empty_id() {
         assert!(parse_conversation_id("").is_none());
     }
+
+    // ─── 集成测试：模拟真实 Claude Code 目录结构 ───
+
+    /// 在指定目录下创建模拟的 Claude Code 会话文件（真实格式）
+    fn create_claude_session_file(dir: &std::path::Path, subdir: &str, filename: &str) {
+        let session_dir = dir.join(subdir);
+        std::fs::create_dir_all(&session_dir).unwrap();
+        let file_path = session_dir.join(filename);
+        let mut content = String::new();
+        // mode line
+        content.push_str(r#"{"type":"mode","mode":"normal","sessionId":"fake-session-1"}"#);
+        content.push('\n');
+        // user message (new format: message is a string)
+        content.push_str(
+            r#"{"type":"user","uuid":"u1","parentUuid":"root","timestamp":"2025-01-15T10:00:01Z","message":"Can you help with the login bug?","cwd":"/Users/tomgs/my-project"}"#,
+        );
+        content.push('\n');
+        // assistant message
+        content.push_str(
+            r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2025-01-15T10:00:30Z","message":{"content":[{"type":"text","text":"Sure, checking the login flow."}]}}"#,
+        );
+        content.push('\n');
+        std::fs::write(&file_path, content).unwrap();
+    }
+
+    #[test]
+    fn should_scan_real_claude_code_structure() {
+        use crate::conversation::adapters::ClaudeCodeAdapter;
+
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // 模拟 ~/.claude/projects/-Users-tomgs-my-project/session.jsonl
+        create_claude_session_file(
+            root,
+            "-Users-tomgs-my-project",
+            "fake-session-1.jsonl",
+        );
+
+        // 创建一个指向该 root 的适配器（覆盖默认 ~/.claude/projects 路径）
+        struct TestClaudeAdapter {
+            root: PathBuf,
+        }
+        impl AgentSessionAdapter for TestClaudeAdapter {
+            fn agent_id(&self) -> &str {
+                "claude-code"
+            }
+            fn session_root(&self) -> PathBuf {
+                self.root.clone()
+            }
+            fn file_pattern(&self) -> &str {
+                "**/*.jsonl"
+            }
+            fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
+                ClaudeCodeAdapter.parse_meta(file_path)
+            }
+            fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
+                ClaudeCodeAdapter.parse_messages(file_path)
+            }
+            fn extract_session_id(&self, file_path: &Path) -> Option<String> {
+                ClaudeCodeAdapter.extract_session_id(file_path)
+            }
+            fn resume_command(
+                &self,
+                sid: &str,
+                pp: &str,
+            ) -> Option<Vec<String>> {
+                ClaudeCodeAdapter.resume_command(sid, pp)
+            }
+        }
+
+        let adapter = TestClaudeAdapter {
+            root: root.to_path_buf(),
+        };
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        // 扫描
+        let reports = manager.scan_all().unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].sessions_found, 1);
+        assert!(reports[0].errors.is_empty());
+
+        // 列表：按 project_path 过滤
+        let results = manager
+            .list(Some("/Users/tomgs/my-project"), None)
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].agent_id, "claude-code");
+        assert_eq!(results[0].message_count, 2);
+        assert!(results[0].preview.contains("login bug"));
+        assert_eq!(
+            results[0].project_path.as_deref(),
+            Some("/Users/tomgs/my-project")
+        );
+
+        // 列表：无过滤
+        let all = manager.list(None, None).unwrap();
+        assert_eq!(all.len(), 1);
+    }
 }
