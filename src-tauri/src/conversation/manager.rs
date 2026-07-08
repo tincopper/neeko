@@ -81,12 +81,14 @@ impl ConversationManager {
                 continue;
             }
 
-            let file_name = match path.file_name().and_then(|n| n.to_str()) {
-                Some(name) => name,
-                None => continue,
+            // 使用相对于 session_root 的路径匹配 pattern（支持 **/*.jsonl 等）
+            let rel_path = match path.strip_prefix(&root) {
+                Ok(rp) => rp,
+                Err(_) => continue,
             };
+            let rel_str = rel_path.to_string_lossy();
 
-            if !pattern_regex.is_match(file_name) {
+            if !pattern_regex.is_match(&rel_str) {
                 continue;
             }
 
@@ -148,8 +150,13 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
+                // 项目路径过滤：会话的 project_path 以给定路径开头（子路径匹配）
+                // 无 project_path 的会话也纳入（agent 可能未记录 project_path）
                 let matches_project = match project_path {
-                    Some(pp) => m.project_path.as_deref() == Some(pp),
+                    Some(pp) => m
+                        .project_path
+                        .as_deref()
+                        .is_none_or(|p| p.starts_with(pp)),
                     None => true,
                 };
                 let matches_agent = match agent_id {
@@ -242,9 +249,12 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
-                // project_path 精确匹配过滤
+                // project_path 子路径匹配
                 if let Some(pp) = project_path {
-                    if m.project_path.as_deref() != Some(pp) {
+                    if m.project_path
+                        .as_deref()
+                        .is_some_and(|p| !p.starts_with(pp))
+                    {
                         return false;
                     }
                 }
@@ -350,12 +360,35 @@ fn parse_conversation_id(id: &str) -> Option<(&str, &str)> {
     Some((&id[..colon_pos], &id[colon_pos + 1..]))
 }
 
-/// 将简单的 glob 模式（如 `*.jsonl`）转换为正则表达式
+/// 将简单的 glob 模式（如 `*.jsonl`、`**/*.json`）转换为正则表达式
 fn pattern_to_regex(pattern: &str) -> Regex {
-    let regex_str = pattern
-        .replace('.', "\\.")
-        .replace('*', ".*")
-        .replace('?', ".");
+    let mut regex_str = String::new();
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '*' => {
+                // `**` = globstar: 匹配任意深度
+                if i + 1 < chars.len() && chars[i + 1] == '*' {
+                    regex_str.push_str(".*");
+                    i += 1; // skip second *
+                } else {
+                    // `*` = 匹配单层文件名（不含 /）
+                    regex_str.push_str("[^/]*");
+                }
+            }
+            '?' => regex_str.push_str("[^/]"),
+            '.' => regex_str.push_str("\\."),
+            c if c.is_ascii_alphanumeric() || c == '/' || c == '-' || c == '_' => {
+                regex_str.push(c);
+            }
+            c => {
+                // 转义其他特殊字符
+                regex_str.push_str(&regex::escape(&c.to_string()));
+            }
+        }
+        i += 1;
+    }
     Regex::new(&format!("^{regex_str}$")).unwrap_or_else(|_| {
         Regex::new(".*").expect("infallible: .* is always a valid regex")
     })
