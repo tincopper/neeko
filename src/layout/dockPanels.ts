@@ -6,6 +6,7 @@ import {
   GitCommitHorizontal,
   GitBranch,
   Globe,
+  MessageSquareText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -33,6 +34,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   GitCommitHorizontal,
   GitBranch,
   Globe,
+  MessageSquareText,
 };
 
 // ���� Lazy-loaded panel components ����
@@ -74,6 +76,13 @@ const LazyGitCommitPanelWrapper = lazy(
 
 const LazyBrowserPanel = lazy(
   () => import("@/features/browser/components/BrowserPanel"),
+);
+
+const LazyConversationsPanelWrapper = lazy(
+  () =>
+    import("./dock-layout/DockPanelWrappers").then((m) => ({
+      default: m.ConversationsPanelWrapper,
+    })),
 );
 
 
@@ -143,5 +152,16 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
     >,
     minPanelSize: 300,
     defaultZoneSize: 50,
+  },
+  conversations: {
+    id: "conversations",
+    title: "History",
+    icon: "MessageSquareText",
+    defaultZone: "right",
+    defaultOrder: 4,
+    component: LazyConversationsPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    minPanelSize: 240,
   },
 };

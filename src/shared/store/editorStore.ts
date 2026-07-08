@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
-import type { FileTabData } from '@/shared/types/tab';
+import type { FileTabData, TerminalTabData, DiffTabData, HtmlPreviewTabData } from '@/shared/types/tab';
+import type { FileContent } from '@/features/file/types';
+import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 
 function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string, allTabIds: string[], activeTabId: string | null): EditorSplitLayout {
@@ -18,60 +20,69 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
 
   switch (data.kind) {
     case "terminal": {
+      const p = partial as Record<string, unknown>;
       const isTerminalPartial =
-        "agentId" in partial ||
-        "status" in partial ||
-        "taskCommand" in partial ||
-        "taskConfigId" in partial ||
-        "rebuildKey" in partial;
+        "agentId" in p ||
+        "status" in p ||
+        "taskCommand" in p ||
+        "taskConfigId" in p ||
+        "rebuildKey" in p;
       if (!isTerminalPartial) return data;
       return {
-        kind: "terminal",
-        agentId: partial.agentId !== undefined ? partial.agentId : data.agentId,
-        status: partial.status !== undefined ? partial.status : data.status,
-        taskCommand: partial.taskCommand !== undefined ? partial.taskCommand : data.taskCommand,
-        taskConfigId: partial.taskConfigId !== undefined ? partial.taskConfigId : data.taskConfigId,
-        rebuildKey: partial.rebuildKey !== undefined ? partial.rebuildKey : data.rebuildKey,
+        kind: "terminal" as const,
+        agentId: p.agentId !== undefined ? (p.agentId as string | null) : (data as TerminalTabData).agentId,
+        status: p.status !== undefined ? (p.status as "Idle" | "Running" | "Failed") : (data as TerminalTabData).status,
+        taskCommand: p.taskCommand !== undefined ? (p.taskCommand as string | undefined) : (data as TerminalTabData).taskCommand,
+        taskConfigId: p.taskConfigId !== undefined ? (p.taskConfigId as string | undefined) : (data as TerminalTabData).taskConfigId,
+        rebuildKey: p.rebuildKey !== undefined ? (p.rebuildKey as number | undefined) : (data as TerminalTabData).rebuildKey,
       };
     }
     case "file": {
+      const p = partial as Record<string, unknown>;
       const isFilePartial =
-        "content" in partial ||
-        "isDirty" in partial ||
-        "filePath" in partial ||
-        "fileName" in partial ||
-        "externallyModified" in partial;
+        "content" in p ||
+        "isDirty" in p ||
+        "filePath" in p ||
+        "fileName" in p ||
+        "externallyModified" in p;
       if (!isFilePartial) return data;
-      const fp = partial as Partial<FileTabData>;
+      const d = data as FileTabData;
       return {
-        kind: "file",
-        filePath: fp.filePath !== undefined ? fp.filePath : data.filePath,
-        fileName: fp.fileName !== undefined ? fp.fileName : data.fileName,
-        content: fp.content !== undefined ? fp.content : data.content,
-        isDirty: fp.isDirty !== undefined ? fp.isDirty : data.isDirty,
-        externallyModified: "externallyModified" in partial ? fp.externallyModified : data.externallyModified,
+        kind: "file" as const,
+        filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
+        fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
+        content: p.content !== undefined ? (p.content as FileContent) : d.content,
+        isDirty: p.isDirty !== undefined ? (p.isDirty as boolean) : d.isDirty,
+        externallyModified: "externallyModified" in p ? (p.externallyModified as boolean | undefined) : d.externallyModified,
       };
     }
     case "diff": {
-      if (!("diffSource" in partial)) return data;
+      const p = partial as Record<string, unknown>;
+      if (!("diffSource" in p)) return data;
+      const d = data as DiffTabData;
       return {
-        kind: "diff",
-        filePath: partial.filePath !== undefined ? partial.filePath : data.filePath,
-        fileName: partial.fileName !== undefined ? partial.fileName : data.fileName,
-        diffSource: partial.diffSource !== undefined ? partial.diffSource : data.diffSource,
-        initialMode: partial.initialMode !== undefined ? partial.initialMode : data.initialMode,
+        kind: "diff" as const,
+        filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
+        fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
+        diffSource: p.diffSource !== undefined ? (p.diffSource as DiffSource) : d.diffSource,
+        initialMode: p.initialMode !== undefined ? (p.initialMode as ViewMode | undefined) : d.initialMode,
       };
     }
     case "gitLog": {
-      return { kind: "gitLog" };
+      return { kind: "gitLog" as const };
     }
     case "html-preview": {
-      if (!("filePath" in partial)) return data;
+      const p = partial as Record<string, unknown>;
+      if (!("filePath" in p)) return data;
+      const d = data as HtmlPreviewTabData;
       return {
-        kind: "html-preview",
-        filePath: partial.filePath !== undefined ? partial.filePath : data.filePath,
-        fileName: partial.fileName !== undefined ? partial.fileName : data.fileName,
+        kind: "html-preview" as const,
+        filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
+        fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
       };
+    }
+    case "conversation": {
+      return data;
     }
   }
 }

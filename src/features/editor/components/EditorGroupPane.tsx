@@ -8,6 +8,7 @@ import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout'
 import DiffView from "@/features/git/components/diff";
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
+import ConversationViewer from "@/features/conversation/components/ConversationViewer";
 import { GitLogPanel } from '@/features/git/components/gitlog';
 import TabBar from "./TabBar";
 import AgentIcon from "@/features/agent/components/AgentIcon";
@@ -330,6 +331,16 @@ function EditorGroupPane({
 
       {/* Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {activeTab?.data.kind === "conversation" && (
+          <ConversationViewer
+            conversationId={activeTab.data.conversationId}
+            agentId={activeTab.data.agentId}
+            projectId={activeTab.projectId}
+            onBack={() => handleCloseTab(activeTab.id)}
+            showToast={showToast}
+          />
+        )}
+
         {activeTab?.data.kind === "terminal" && (
           <div className="terminal-pane-container flex-1 flex flex-row overflow-hidden min-h-0 p-0 m-0">
             <SplitLayout

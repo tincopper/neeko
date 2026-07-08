@@ -1,0 +1,167 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import ConversationItem from "@/features/conversation/components/ConversationItem";
+import type { ConversationMeta } from "@/features/conversation/types";
+import type { AgentConfig } from "@/features/agent/types";
+
+function createMeta(overrides: Partial<ConversationMeta> = {}): ConversationMeta {
+  return {
+    id: "claude-code:abc123",
+    nativeSessionId: "abc123",
+    agentId: "claude-code",
+    title: "Refactoring the auth module",
+    startedAt: Date.now() - 3600000,
+    updatedAt: Date.now() - 1800000,
+    messageCount: 12,
+    preview: "Let me help you refactor the authentication module to use the new API...",
+    filePath: "/tmp/project/.neeko/sessions/claude-code/abc123.json",
+    projectPath: "/tmp/project",
+    userTitle: null,
+    tags: [],
+    ...overrides,
+  };
+}
+
+function createAgent(overrides: Partial<AgentConfig> = {}): AgentConfig {
+  return {
+    id: "claude-code",
+    name: "Claude Code",
+    command: "claude",
+    args: [],
+    env: {},
+    icon: "claude-code.png",
+    enabled: true,
+    ...overrides,
+  };
+}
+
+describe("ConversationItem", () => {
+  it("renders agent icon and name", () => {
+    const meta = createMeta();
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+  });
+
+  it("renders title and message count", () => {
+    const meta = createMeta({ title: "Refactoring the auth module", messageCount: 12 });
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.getByText("Refactoring the auth module")).toBeInTheDocument();
+    expect(screen.getByText("12 msgs")).toBeInTheDocument();
+  });
+
+  it("renders preview text", () => {
+    const meta = createMeta({ preview: "Let me help you refactor" });
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.getByText("Let me help you refactor")).toBeInTheDocument();
+  });
+
+  it("calls onResume when Resume button is clicked", () => {
+    const meta = createMeta();
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Resume"));
+    expect(onResume).toHaveBeenCalledWith(meta);
+  });
+
+  it("calls onView when View button is clicked", () => {
+    const meta = createMeta();
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("View"));
+    expect(onView).toHaveBeenCalledWith(meta);
+  });
+
+  it("falls back to agentId when agent is not found in agents list", () => {
+    const meta = createMeta({ agentId: "unknown-agent" });
+    const agents: AgentConfig[] = [];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.getByText("unknown-agent")).toBeInTheDocument();
+  });
+
+  it("shows 'just now' for very recent conversations", () => {
+    const meta = createMeta({ startedAt: Date.now() - 1000 });
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.getByText("just now")).toBeInTheDocument();
+  });
+});

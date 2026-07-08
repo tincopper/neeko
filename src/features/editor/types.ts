@@ -2,7 +2,7 @@
 import type { DiffSource, ViewMode } from "@/features/git/components/diff/types";
 import type { FileContent } from "@/features/file/types";
 
-export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview";
+export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview" | "conversation";
 
 export interface TerminalTabData {
   kind: "terminal";
@@ -40,7 +40,13 @@ export interface HtmlPreviewTabData {
   fileName: string;
 }
 
-export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData;
+export interface ConversationTabData {
+  kind: "conversation";
+  conversationId: string;
+  agentId?: string;
+}
+
+export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData | ConversationTabData;
 
 export interface Tab {
   id: string;

@@ -12,12 +12,15 @@ import { useDockStore } from "@/shared/store/dockStore";
 import FilesPanel from "@/features/file/components/FilesPanel";
 import SkillsPanel from "@/features/skill/components/SkillsPanel";
 import GitCommitPanel from "@/features/git/components/GitCommitPanel";
+import ConversationPanel from "@/features/conversation/components/ConversationPanel";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
 import { buildDiffSource } from "@/shared/utils/diffSource";
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from "@/shared/utils/browserUtils";
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { mergeSubTree } from "@/shared/utils/fileTree";
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
+import type { ConversationMeta } from '@/features/conversation/types';
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
 
@@ -301,4 +304,69 @@ const SkillsPanelWrapper: React.FC = React.memo(() => {
 });
 SkillsPanelWrapper.displayName = "SkillsPanelWrapper";
 
-export { FilesPanelWrapper, GitCommitPanelWrapper, SkillsPanelWrapper };
+// ── ConversationsPanelWrapper ──
+
+/**
+ * Thin wrapper that reads project context + agent list and passes props
+ * to ConversationPanel.
+ */
+const ConversationsPanelWrapper: React.FC = React.memo(() => {
+  const { project, worktreePath } = useActiveProject();
+  const { agents, showToast } = useAppContext();
+
+  const projectPath = worktreePath ?? project?.path ?? null;
+  const isActive = useDockStore((s) => {
+    for (const zone of Object.values(s.zones)) {
+      if (zone.activePanelId === "conversations" && zone.expanded) return true;
+    }
+    return false;
+  });
+
+  // Determine project ID and tab key for opening conversation tabs
+  const localActiveProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
+  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
+  const currentProjectId = localActiveProjectId
+    ?? activeWslProject?.project.id
+    ?? activeRemoteProject?.project.id
+    ?? null;
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const tabKey = activeWorktreePath && currentProjectId
+    ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
+    : currentProjectId;
+
+  const handleOpenConversationTab = useCallback((meta: ConversationMeta) => {
+    const editorState = useEditorStore.getState();
+    const existingTabs = tabKey ? editorState.tabs[tabKey] : undefined;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tab: Tab = {
+      id: tabId,
+      projectId: currentProjectId ?? tabKey ?? 'conversation',
+      title: meta.title,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: "conversation",
+        conversationId: meta.id,
+        agentId: meta.agentId,
+      },
+    };
+    if (tabKey) {
+      editorState.addTab(tabKey, tab);
+      editorState.activateTab(tabKey, tabId);
+    }
+  }, [currentProjectId, tabKey]);
+
+  return (
+    <ConversationPanel
+      projectPath={projectPath}
+      projectId={currentProjectId}
+      agents={agents}
+      isActive={isActive}
+      showToast={showToast}
+      onOpenConversationTab={handleOpenConversationTab}
+    />
+  );
+});
+ConversationsPanelWrapper.displayName = "ConversationsPanelWrapper";
+
+export { FilesPanelWrapper, GitCommitPanelWrapper, SkillsPanelWrapper, ConversationsPanelWrapper };
