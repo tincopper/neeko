@@ -15,6 +15,7 @@ interface ConversationPanelProps {
   isActive: boolean;
   showToast: (message: string, type?: 'info' | 'error') => void;
   onOpenConversationTab: (meta: ConversationMeta) => void;
+  onResumeConversation: (meta: ConversationMeta) => Promise<void>;
 }
 
 const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
@@ -24,9 +25,10 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   isActive,
   showToast,
   onOpenConversationTab,
+  onResumeConversation,
 }) => {
   const { conversations, loading, refresh } = useConversationList(projectPath, isActive);
-  const { resume, isResuming } = useConversationResume(projectId);
+  const { isResuming } = useConversationResume(projectId);
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -39,13 +41,14 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   const handleResume = useCallback(async (meta: ConversationMeta) => {
     if (isResuming) return;
     try {
-      await resume(meta.id, meta.agentId);
+      showToast(`Starting ${meta.agentId}...`, 'info');
+      await onResumeConversation(meta);
       showToast('Resuming conversation...', 'info');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to resume conversation';
       showToast(msg, 'error');
     }
-  }, [resume, isResuming, showToast]);
+  }, [isResuming, showToast, onResumeConversation]);
 
   if (!projectPath) {
     return (

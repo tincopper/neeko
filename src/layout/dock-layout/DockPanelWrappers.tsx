@@ -308,7 +308,7 @@ SkillsPanelWrapper.displayName = "SkillsPanelWrapper";
 
 /**
  * Thin wrapper that reads project context + agent list and passes props
- * to ConversationPanel.
+ * to ConversationPanel. Handles terminal tab creation for conversation resume.
  */
 const ConversationsPanelWrapper: React.FC = React.memo(() => {
   const { project, worktreePath } = useActiveProject();
@@ -356,6 +356,73 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     }
   }, [currentProjectId, tabKey]);
 
+  const handleResumeConversation = useCallback(async (meta: ConversationMeta) => {
+    if (!currentProjectId || !tabKey) {
+      showToast('No project selected', 'error');
+      return;
+    }
+    const { getAgent } = await import('@/features/agent/api/agentApi');
+    const { getResumeCommand } = await import('@/features/conversation/api/conversationApi');
+    const { sendToTerminal } = await import('@/features/terminal/components/terminalCommands');
+
+    // Get agent config
+    let agentCommand: string;
+    try {
+      const agent = await getAgent(meta.agentId);
+      agentCommand = agent.command;
+    } catch {
+      showToast(`Agent "${meta.agentId}" not found`, 'error');
+      return;
+    }
+
+    // Get resume command from backend
+    let resumeCmd: string[] | null = null;
+    try {
+      resumeCmd = await getResumeCommand(meta.id);
+    } catch (err) {
+      console.warn('[ConversationsPanel] Failed to get resume command:', err);
+    }
+
+    // Create a new terminal tab with the agent
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const editorState = useEditorStore.getState();
+    const existingTabs = editorState.tabs[tabKey];
+    const terminalCount = (existingTabs?.tabs ?? []).filter((t) => t.data.kind === 'terminal').length;
+    if (terminalCount >= 10) {
+      showToast('Maximum terminal tabs reached', 'error');
+      return;
+    }
+    const tab: Tab = {
+      id: tabId,
+      projectId: currentProjectId,
+      title: meta.agentId,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: 'terminal',
+        agentId: meta.agentId,
+        status: 'Idle',
+      },
+    };
+    editorState.addTab(tabKey, tab);
+    editorState.activateTab(tabKey, tabId);
+
+    // Build the command to send
+    let cmdStr: string;
+    if (resumeCmd && resumeCmd.length > 0) {
+      // Native resume: e.g. "codex resume <id>"
+      const args = resumeCmd.slice(1).join(' ');
+      cmdStr = `${agentCommand} ${args}`;
+    } else {
+      // No native resume: just open the agent
+      cmdStr = agentCommand;
+    }
+
+    // Wait for terminal session to be created, then send command
+    setTimeout(() => {
+      sendToTerminal(currentProjectId, `${cmdStr}\r`, tabId);
+    }, 800);
+  }, [currentProjectId, tabKey, showToast]);
+
   return (
     <ConversationPanel
       projectPath={projectPath}
@@ -364,6 +431,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       isActive={isActive}
       showToast={showToast}
       onOpenConversationTab={handleOpenConversationTab}
+      onResumeConversation={handleResumeConversation}
     />
   );
 });

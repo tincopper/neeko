@@ -26,7 +26,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(({
   const [displayCount, setDisplayCount] = useState(100);
   const [exporting, setExporting] = useState(false);
 
-  const { resume, isResuming } = useConversationResume(projectId);
+  const { isResuming } = useConversationResume(projectId);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,14 +66,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(({
     }
   }, [conversationId, showToast]);
 
+  // Resume in Viewer delegates to the main ConversationPanel's resume flow
   const handleResume = useCallback(() => {
-    if (agentId) {
-      resume(conversationId, agentId).catch((err) => {
-        console.error('[ConversationViewer] Resume failed:', err);
-        showToast?.('Failed to resume conversation', 'error');
-      });
-    }
-  }, [conversationId, agentId, resume, showToast]);
+    showToast?.('Click Resume on the History panel to resume this conversation', 'info');
+  }, [showToast]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
