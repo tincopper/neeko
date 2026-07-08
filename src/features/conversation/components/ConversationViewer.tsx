@@ -4,6 +4,7 @@ import { Button } from '@/ui/button';
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
 import { useConversationResume } from '../hooks/useConversationResume';
 import ConversationMessage from './ConversationMessage';
+import 'highlight.js/styles/github-dark.min.css';
 import type { ConversationMessage as ConversationMessageType } from '../types';
 
 interface ConversationViewerProps {
@@ -125,7 +126,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(({
             No messages in this conversation
           </div>
         ) : (
-          <div className="flex flex-col divide-y divide-border/50">
+          <div className="flex flex-col gap-1 pb-8">
             {visibleMessages.map((msg, idx) => (
               <ConversationMessage key={`${msg.seq}-${idx}`} message={msg} />
             ))}

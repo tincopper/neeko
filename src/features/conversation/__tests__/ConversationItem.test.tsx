@@ -148,7 +148,7 @@ describe("ConversationItem", () => {
   });
 
   it("shows 'just now' for very recent conversations", () => {
-    const meta = createMeta({ startedAt: Date.now() - 1000 });
+    const meta = createMeta({ startedAt: Date.now() - 1000, updatedAt: Date.now() - 1000 });
     const agents = [createAgent()];
     const onView = vi.fn();
     const onResume = vi.fn();

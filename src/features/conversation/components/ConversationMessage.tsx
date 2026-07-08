@@ -1,4 +1,7 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { cn } from '@/lib/utils';
 import type { ConversationMessage as ConversationMessageType } from '../types';
 
@@ -14,26 +17,40 @@ const ConversationMessage: React.FC<ConversationMessageProps> = React.memo(({ me
   return (
     <div
       className={cn(
-        'flex flex-col gap-1 px-4 py-3 border-l-2',
+        'flex flex-col gap-2 px-4 py-3',
         isUser
-          ? 'border-l-accent-blue bg-white/[0.02]'
+          ? 'bg-blue-500/5 border-l-2 border-l-blue-400'
           : isSystem
-            ? 'border-l-accent-yellow bg-white/[0.01]'
-            : 'border-l-accent-green bg-white/[0.02]',
+            ? 'bg-yellow-500/5 border-l-2 border-l-yellow-400'
+            : 'bg-green-500/5 border-l-2 border-l-green-400',
       )}
     >
-      <div className="flex items-center gap-2 text-xs text-text-secondary">
-        <span className={cn(
-          'font-medium',
-          isUser ? 'text-accent-blue' : isSystem ? 'text-accent-yellow' : 'text-accent-green',
-        )}>
-          {isUser ? 'User' : isSystem ? 'System' : 'Assistant'}
+      {/* Role + Timestamp header */}
+      <div className="flex items-center gap-2 text-xs select-none">
+        <span
+          className={cn(
+            'font-semibold px-1.5 py-0.5 rounded text-[11px]',
+            isUser
+              ? 'bg-blue-500/15 text-blue-400'
+              : isSystem
+                ? 'bg-yellow-500/15 text-yellow-400'
+                : 'bg-green-500/15 text-green-400',
+          )}
+        >
+          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
         </span>
-        <span>{time}</span>
+        <span className="text-text-secondary/40">{time}</span>
       </div>
-      <pre className="m-0 whitespace-pre-wrap break-words text-[var(--font-size)] text-text-primary font-mono leading-relaxed">
-        {message.content}
-      </pre>
+
+      {/* Markdown content */}
+      <div className="prose prose-sm max-w-none prose-invert prose-headings:text-text-primary prose-p:text-text-primary prose-code:text-accent-blue prose-code:bg-bg-tertiary prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-bg-tertiary prose-pre:border prose-pre:border-border prose-a:text-accent-blue prose-strong:text-text-primary prose-li:text-text-primary">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeHighlight]}
+        >
+          {message.content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 });
