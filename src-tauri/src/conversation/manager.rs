@@ -168,7 +168,7 @@ impl ConversationManager {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         Ok(results)
     }
 
@@ -266,7 +266,7 @@ impl ConversationManager {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         Ok(results)
     }
 
