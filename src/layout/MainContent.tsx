@@ -15,6 +15,7 @@ import { useEditorStore } from '@/shared/store';
 import { useShallow } from "zustand/shallow";
 import { useAppViewStore } from "@/shared/store/appViewStore";
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
+import { useFileDrop } from "@/features/file/hooks/useFileDrop";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
@@ -63,6 +64,10 @@ function MainContent() {
    const tabs = projectTabs?.tabs ?? [];
 
    const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
+
+   // Wire up file drag-to-agent: on dragend, paste the stored file path into
+   // the agent terminal without auto-submitting (no \r).
+   useFileDrop();
 
    const handleAddTerminalTab = useCallback(() => {
       if (!tabKey || !currentProjectId) return;

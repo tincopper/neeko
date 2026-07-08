@@ -5,8 +5,9 @@ import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import type { FileNode, FileChange } from '@/shared/types';
 import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
 import type { ProjectType } from '@/shared/types/project';
+import { setDragFile } from "../hooks/useFileDrop";
 
-/** git status �?文件名颜�?class */
+/** git status �?文件名颜�?class */
 const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
   Modified:  "text-accent-blue",
   Added:     "text-accent-green",
@@ -18,6 +19,8 @@ const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
 interface FilesPanelProps {
   projectName: string | null;
   projectPath?: string | null;
+  /** 项目 ID — 用于拖拽文件时传给 sendToAgent */
+  projectId: string | null;
   fileTree: FileNode[];
   isLoading: boolean;
   activeFilePath: string | null;
@@ -27,9 +30,9 @@ interface FilesPanelProps {
   onExpandDir: (dirPath: string) => Promise<void>;
   /** 项目类型 */
   projectType?: ProjectType | null;
-  /** �?Browser Panel 中打开 HTML 文件 */
+  /** �?Browser Panel 中打开 HTML 文件 */
   onOpenInBrowser?: (filePath: string) => void;
-  /** 在系统文件管理器中显�?*/
+  /** 在系统文件管理器中显�?*/
   onRevealInExplorer?: (filePath: string) => void;
   /** git 变更文件列表（用于文件名着色） */
   changedFiles?: FileChange[];
@@ -67,6 +70,7 @@ interface FileTreeNodeProps {
   activeFilePath: string | null;
   expandedDirs: Set<string>;
   loadingDirs: Set<string>;
+  projectId: string | null;
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
   onContextMenu?: (position: { x: number; y: number }, node: FileNode) => void;
@@ -79,6 +83,7 @@ function FileTreeNode({
   activeFilePath,
   expandedDirs,
   loadingDirs,
+  projectId,
   onSelectFile,
   onToggleDir,
   onContextMenu,
@@ -104,6 +109,15 @@ function FileTreeNode({
 
   const indent = 4 + depth * 12;
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      if (node.is_dir || !projectId) return;
+      e.dataTransfer.effectAllowed = "copy";
+      setDragFile(node.path, projectId);
+    },
+    [node.path, node.is_dir, projectId],
+  );
+
   return (
     <>
       <div
@@ -111,6 +125,8 @@ function FileTreeNode({
           isActive ? "bg-accent/10" : "hover:bg-bg-hover"
         }`}
         style={{ paddingLeft: indent }}
+        draggable={!node.is_dir}
+        onDragStart={handleDragStart}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         title={node.path}
@@ -167,6 +183,7 @@ function FileTreeNode({
                   activeFilePath={activeFilePath}
                   expandedDirs={expandedDirs}
                   loadingDirs={loadingDirs}
+                  projectId={projectId}
                   onSelectFile={onSelectFile}
                   onToggleDir={onToggleDir}
                   onContextMenu={onContextMenu}
@@ -182,20 +199,20 @@ function FileTreeNode({
 
 const MemoizedFileTreeNode = React.memo(FileTreeNode);
 
-function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer, changedFiles }: FilesPanelProps) {
+function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer, changedFiles }: FilesPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   // 正在加载中的目录
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
-  // 已懒加载过的空目录（避免重复请求真正的空目录�?
+  // 已懒加载过的空目录（避免重复请求真正的空目录�?
   const [loadedEmptyDirs, setLoadedEmptyDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
 
-  // git 变更文件路径 �?status 映射（用于文件名着色）
+  // git 变更文件路径 �?status 映射（用于文件名着色）
   const changedFilesMap = useMemo(() => {
     if (!changedFiles || changedFiles.length === 0) return undefined;
     return new Map(changedFiles.map((f) => [f.path, f.status]));
   }, [changedFiles]);
-  // 右键上下文菜单状�?
+  // 右键上下文菜单状�?
   const [contextMenu, setContextMenu] = useState<{
     position: { x: number; y: number };
     node: FileNode;
@@ -228,7 +245,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
   }, [activeFilePath]);
 
   const handleToggleDir = useCallback(async (path: string) => {
-    // 收起：直�?toggle，无需懒加�?
+    // 收起：直�?toggle，无需懒加�?
     if (expandedDirs.has(path)) {
       setExpandedDirs((prev) => {
         const next = new Set(prev);
@@ -247,12 +264,12 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
       !loadedEmptyDirs.has(path);
 
     if (needsLazyLoad) {
-      // 先展开，显�?loading spinner
+      // 先展开，显�?loading spinner
       setExpandedDirs((prev) => new Set(prev).add(path));
       setLoadingDirs((prev) => new Set(prev).add(path));
       try {
         await onExpandDir(path);
-        // 标记已加载（成功后），防止重复请求真正的空目�?
+        // 标记已加载（成功后），防止重复请求真正的空目�?
         setLoadedEmptyDirs((prev) => new Set(prev).add(path));
       } catch (e) {
         // Lazy-load failed: collapse the directory so the UI doesn't show an
@@ -323,7 +340,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
       items.push({
         label: "Copy Relative Path",
         icon: ClipboardCopy,
-        // node.path 已经是相对于项目根的相对路径，直接复�?
+        // node.path 已经是相对于项目根的相对路径，直接复�?
         action: () => { navigator.clipboard.writeText(node.path); },
       });
     }
@@ -411,6 +428,7 @@ function FilesPanel({ projectName, projectPath, fileTree, isLoading, activeFileP
               activeFilePath={activeFilePath}
               expandedDirs={expandedDirs}
               loadingDirs={loadingDirs}
+              projectId={projectId}
               onSelectFile={onSelectFile}
               onToggleDir={handleToggleDir}
               onContextMenu={handleContextMenu}

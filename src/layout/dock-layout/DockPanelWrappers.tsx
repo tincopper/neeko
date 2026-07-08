@@ -41,6 +41,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const projectPath = fileRootPath;
   const changedFiles = project?.gitInfo?.changed_files;
 
+  // Compute projectId for use by child components (drag-and-drop, etc.)
+  const projectId = project ? (project.type === "local" ? activeProjectId : project.id) : null;
+
   // Load file tree when this panel is the active tab in any zone
   const isActive = useDockStore((s) => {
     for (const zone of Object.values(s.zones)) {
@@ -176,6 +179,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     <FilesPanel
       projectName={projectName}
       projectPath={projectPath}
+      projectId={projectId}
       fileTree={fileTree}
       isLoading={fileViewLoading}
       activeFilePath={activeFilePath}
