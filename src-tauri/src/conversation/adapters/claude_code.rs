@@ -226,10 +226,10 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
 
     fn resume_command(
         &self,
-        _native_session_id: &str,
+        native_session_id: &str,
         _project_path: &str,
     ) -> Option<Vec<String>> {
-        None
+        Some(vec!["--resume".into(), native_session_id.into()])
     }
 }
 
@@ -363,9 +363,11 @@ mod tests {
     }
 
     #[test]
-    fn should_resume_command_return_none() {
+    fn should_resume_command_return_args() {
         let cmd = ClaudeCodeAdapter.resume_command("test-id", "/projects/test");
-        assert!(cmd.is_none());
+        assert!(cmd.is_some());
+        let args = cmd.unwrap();
+        assert_eq!(args, vec!["--resume", "test-id"]);
     }
 
     #[test]
