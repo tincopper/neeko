@@ -42,23 +42,13 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-md bg-bg-secondary/50 border border-border hover:bg-bg-hover transition-colors">
-      {/* Header: Agent icon + name + time */}
+      {/* Header: Agent icon + name */}
       <div className="flex items-center gap-2">
         <div className="shrink-0 w-5 h-5 flex items-center justify-center">
           <AgentIcon icon={agent?.icon ?? null} size={16} />
         </div>
         <span className="text-xs text-text-secondary font-medium truncate">
           {agent?.name ?? meta.agentId}
-        </span>
-        <span className="ml-auto text-[11px] text-text-secondary/60 shrink-0">
-          {timeStr}
-        </span>
-      </div>
-
-      {/* Title + message count */}
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--font-size)] text-text-primary font-medium truncate">
-          {meta.title}
         </span>
         {meta.messageCount > 0 && (
           <span className="text-[11px] text-text-secondary/60 shrink-0">
@@ -67,12 +57,20 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
         )}
       </div>
 
+      {/* Title */}
+      <span className="text-[var(--font-size)] text-text-primary font-medium truncate">
+        {meta.userTitle ?? meta.title}
+      </span>
+
       {/* Preview */}
       {meta.preview && (
         <p className="text-xs text-text-secondary/70 line-clamp-2 leading-relaxed">
           {meta.preview}
         </p>
       )}
+
+      {/* Time */}
+      <span className="text-[11px] text-text-secondary/50">{timeStr}</span>
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 mt-1">
