@@ -975,10 +975,12 @@ mod tests {
     }
 
     #[test]
-    fn pi_resume_command_returns_none() {
+    fn pi_resume_command() {
         use crate::conversation::adapters::PiAdapter;
-        let cmd = PiAdapter.resume_command("test", "/test");
-        assert!(cmd.is_none(), "Pi should not support native CLI resume");
+        let cmd = PiAdapter
+            .resume_command("pi-session-1", "/test")
+            .expect("Pi should support resume via --session");
+        assert_eq!(cmd, vec!["--session", "pi-session-1"]);
     }
 
     #[test]

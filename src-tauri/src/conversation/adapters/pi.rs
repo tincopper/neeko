@@ -187,8 +187,8 @@ impl AgentSessionAdapter for PiAdapter {
         val.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
     }
 
-    fn resume_command(&self, _native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
-        None
+    fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
+        Some(vec!["--session".into(), native_session_id.into()])
     }
 }
 
@@ -274,9 +274,9 @@ mod tests {
     }
 
     #[test]
-    fn should_resume_command_return_none() {
-        let cmd = PiAdapter.resume_command("test-id", "/projects/test");
-        assert!(cmd.is_none());
+    fn should_return_resume_command() {
+        let cmd = PiAdapter.resume_command("test-session-id", "/projects/test");
+        assert_eq!(cmd, Some(vec!["--session".to_string(), "test-session-id".to_string()]));
     }
 
     #[test]
