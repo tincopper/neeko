@@ -96,8 +96,8 @@ fn format_tool_use(name: &str, input: Option<&serde_json::Value>) -> String {
         }
         _ => String::new(),
     };
-    let preview = if input_str.len() > 200 {
-        format!("{}...", &input_str[..200])
+    let preview = if input_str.chars().count() > 200 {
+        format!("{}...", truncate(&input_str, 200))
     } else {
         input_str
     };
