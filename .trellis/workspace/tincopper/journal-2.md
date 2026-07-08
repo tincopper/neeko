@@ -572,3 +572,36 @@ Complete LSP Phase 1: backend lsp/ module (LspManager, JSON-RPC proxy, installer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 75: 集成验证：完整端到端测试
+
+**Date**: 2026-07-08
+**Task**: 集成验证：完整端到端测试
+**Branch**: `main`
+
+### Summary
+
+端到端验证：cargo test 78/78通过, pnpm test 471/498通过（26个前置失败无回归）, tsc无新错误。全部4个子任务完成归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `43a1167` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
