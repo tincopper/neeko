@@ -38,7 +38,7 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
     [agents, meta.agentId],
   );
 
-  const timeStr = useMemo(() => formatRelativeTime(meta.startedAt), [meta.startedAt]);
+  const timeStr = useMemo(() => formatRelativeTime(meta.updatedAt), [meta.updatedAt]);
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-md bg-bg-secondary/50 border border-border hover:bg-bg-hover transition-colors">
