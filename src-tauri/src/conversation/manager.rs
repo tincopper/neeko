@@ -996,10 +996,12 @@ mod tests {
     }
 
     #[test]
-    fn opencode_resume_command_returns_none() {
+    fn opencode_resume_command() {
         use crate::conversation::adapters::OpenCodeAdapter;
-        let cmd = OpenCodeAdapter.resume_command("test", "/test");
-        assert!(cmd.is_none(), "OpenCode should not support native CLI resume");
+        let cmd = OpenCodeAdapter
+            .resume_command("ses-abc", "/test")
+            .expect("OpenCode should support resume via --session");
+        assert_eq!(cmd, vec!["--session", "ses-abc"]);
     }
 
     /// 验证通过 Manager.get_resume_command 的完整路径（使用封装适配器避免扫描真实目录）
