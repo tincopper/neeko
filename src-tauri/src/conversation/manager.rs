@@ -356,7 +356,9 @@ fn pattern_to_regex(pattern: &str) -> Regex {
         .replace('.', "\\.")
         .replace('*', ".*")
         .replace('?', ".");
-    Regex::new(&format!("^{regex_str}$")).unwrap_or_else(|_| Regex::new(".*").unwrap())
+    Regex::new(&format!("^{regex_str}$")).unwrap_or_else(|_| {
+        Regex::new(".*").expect("infallible: .* is always a valid regex")
+    })
 }
 
 /// 格式化 Unix 时间戳为可读字符串
