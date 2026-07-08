@@ -363,8 +363,6 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     }
     const { getAgent } = await import('@/features/agent/api/agentApi');
     const { getResumeCommand } = await import('@/features/conversation/api/conversationApi');
-    const { sendToTerminal } = await import('@/features/terminal/components/terminalCommands');
-
     // Get agent config
     let agentCommand: string;
     try {
@@ -383,7 +381,17 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       console.warn('[ConversationsPanel] Failed to get resume command:', err);
     }
 
-    // Create a new terminal tab with the agent
+    // Build the full command to execute in the PTY
+    let taskCommand: string | undefined;
+    if (resumeCmd && resumeCmd.length > 0) {
+      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
+      taskCommand = `${agentCommand} ${resumeCmd.join(' ')}`;
+    } else {
+      // No native resume: just open the agent
+      taskCommand = agentCommand;
+    }
+
+    // Create a new terminal tab — the PTY will execute taskCommand directly
     const tabId = `tab_${crypto.randomUUID()}`;
     const editorState = useEditorStore.getState();
     const existingTabs = editorState.tabs[tabKey];
@@ -401,25 +409,11 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
         kind: 'terminal',
         agentId: meta.agentId,
         status: 'Idle',
+        taskCommand,
       },
     };
     editorState.addTab(tabKey, tab);
     editorState.activateTab(tabKey, tabId);
-
-    // Build the command to send
-    let cmdStr: string;
-    if (resumeCmd && resumeCmd.length > 0) {
-      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
-      cmdStr = `${agentCommand} ${resumeCmd.join(' ')}`;
-    } else {
-      // No native resume: just open the agent
-      cmdStr = agentCommand;
-    }
-
-    // Wait for terminal session to be created, then send command
-    setTimeout(() => {
-      sendToTerminal(currentProjectId, `${cmdStr}\r`, tabId);
-    }, 800);
   }, [currentProjectId, tabKey, showToast]);
 
   return (

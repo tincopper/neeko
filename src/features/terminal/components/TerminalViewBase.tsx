@@ -182,7 +182,8 @@ export default React.memo(function TerminalViewBase({
                setReady(true);
                onSessionReady?.();
 
-               if (tabAgentId) {
+               // 当 taskCommand 已设置时（如 resume），跳过 auto-launch
+               if (tabAgentId && !taskCommand) {
                   const cmdOverride = agentCommandOverride;
                   setTimeout(async () => {
                      if (!entry.sessionId) return;
