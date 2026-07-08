@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 /// 会话元数据（扫描时提取，存在内存中）
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConversationMeta {
     pub id: String,
     pub native_session_id: String,
@@ -20,6 +21,7 @@ pub struct ConversationMeta {
 
 /// 单条会话消息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,
@@ -29,6 +31,7 @@ pub struct ConversationMessage {
 
 /// 扫描报告
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanReport {
     pub agent_id: String,
     pub sessions_found: u32,

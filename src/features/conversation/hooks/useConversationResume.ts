@@ -24,8 +24,18 @@ export function useConversationResume(projectId: string | null) {
     setIsResuming(true);
     try {
       // 1. Check if agent is installed
-      const installedResult = await checkAgentsInstalled([agentId]);
-      if (!installedResult[agentId]) {
+      if (!agentId) {
+        throw new Error('Agent ID is missing');
+      }
+      let installed = false;
+      try {
+        const installedResult = await checkAgentsInstalled([agentId]);
+        installed = installedResult[agentId] ?? false;
+      } catch {
+        // If check fails, assume agent is installed and try to resume anyway
+        installed = true;
+      }
+      if (!installed) {
         throw new Error(`Agent "${agentId}" is not installed`);
       }
 
