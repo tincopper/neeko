@@ -409,9 +409,8 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     // Build the command to send
     let cmdStr: string;
     if (resumeCmd && resumeCmd.length > 0) {
-      // Native resume: e.g. "codex resume <id>"
-      const args = resumeCmd.slice(1).join(' ');
-      cmdStr = `${agentCommand} ${args}`;
+      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
+      cmdStr = `${agentCommand} ${resumeCmd.join(' ')}`;
     } else {
       // No native resume: just open the agent
       cmdStr = agentCommand;
