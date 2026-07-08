@@ -1,19 +1,60 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{
-    extract_content_text, linearize_tree_entries, parse_timestamp, read_jsonl, strip_ansi, truncate,
+    extract_content_text, parse_timestamp, read_jsonl, strip_ansi, truncate,
 };
 
 /// Claude Code 会话适配器
 ///
 /// 会话格式：`~/.claude/projects/<sanitized-path>/*.jsonl`
-/// - 首行 type="summary" 包含标题和时间戳
-/// - 后续行为 type="user" / type="assistant"，树状结构通过 parentUuid 关联
+/// - 首行 type="mode" 包含 sessionId
+/// - 消息行 type="user" / type="assistant" / type="system"
+/// - user 消息的 message 字段是字符串，assistant 的 message 是 object（含 content 数组）
 /// - 不支持原生 CLI 恢复（仅 TUI 内的 /resume 命令）
 pub struct ClaudeCodeAdapter;
+
+/// 提取 Claude Code 消息内容，兼容多种格式：
+/// - message 是字符串 → 直接返回
+/// - message 是 object，有 content 数组 → 提取 text 块
+/// - message 是 object，有 content 字符串 → 直接返回
+fn extract_claude_message_content(entry: &serde_json::Value) -> String {
+    let msg = match entry.get("message") {
+        Some(m) => m,
+        None => return String::new(),
+    };
+
+    // 情况1：message 是字符串（较新的 Claude Code 格式中 user 消息）
+    if let Some(s) = msg.as_str() {
+        return s.to_string();
+    }
+
+    // 情况2：message 是 object，有 content 字段
+    match msg.get("content") {
+        Some(content_val) => {
+            if content_val.is_array() {
+                extract_content_text(content_val)
+            } else if let Some(s) = content_val.as_str() {
+                s.to_string()
+            } else {
+                String::new()
+            }
+        }
+        None => {
+            // 情况3：message 是 object，内容就在 message 里的 text 字段
+            msg.get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        }
+    }
+}
+
+fn is_message_type(t: &str) -> bool {
+    t == "user" || t == "assistant" || t == "system"
+}
 
 impl AgentSessionAdapter for ClaudeCodeAdapter {
     fn agent_id(&self) -> &str {
@@ -28,91 +69,86 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
     }
 
     fn file_pattern(&self) -> &str {
-        "*.jsonl"
+        "**/*.jsonl"
     }
 
     #[allow(clippy::cast_possible_truncation)]
     fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
         let entries = read_jsonl(file_path)?;
-        let first = entries.first().context("Claude Code session file is empty")?;
+        if entries.is_empty() {
+            anyhow::bail!("Claude Code session file is empty");
+        }
 
-        let native_session_id = file_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
+        // 从 mode 行或 filename 获取原生 session_id
+        let native_session_id = entries
+            .iter()
+            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("mode"))
+            .and_then(|e| e.get("sessionId").and_then(|v| v.as_str()))
+            .map(|s| s.to_string())
+            .or_else(|| {
+                file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "unknown".to_string());
 
-        // 首行 summary 元数据
-        let title = first
-            .get("conversationTitle")
-            .and_then(|v| v.as_str())
-            .or_else(|| first.get("title").and_then(|v| v.as_str()))
-            .map(|s| s.to_string());
+        // 标题：从第一条 user 消息提取
+        let first_user_msg = entries
+            .iter()
+            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("user"));
 
-        let started_at = first
-            .get("createdAt")
-            .or_else(|| first.get("created_at"))
-            .or_else(|| first.get("startedAt"))
-            .and_then(parse_timestamp)
+        let title = first_user_msg
+            .map(|msg| {
+                let content = extract_claude_message_content(msg);
+                let title_text = content.lines().next().unwrap_or("");
+                truncate(title_text, 80)
+            });
+
+        let started_at = first_user_msg
+            .and_then(|msg| msg.get("timestamp").and_then(parse_timestamp))
             .unwrap_or(0);
 
-        let updated_at = first
-            .get("updatedAt")
-            .or_else(|| first.get("updated_at"))
-            .and_then(parse_timestamp)
-            .or_else(|| {
-                // 取最后一条消息的时间戳
-                entries
-                    .iter()
-                    .rev()
-                    .find(|e| {
-                        e.get("type").and_then(|v| v.as_str())
-                            == Some("assistant")
-                            || e.get("type").and_then(|v| v.as_str()) == Some("user")
-                    })
-                    .and_then(|e| e.get("timestamp").and_then(parse_timestamp))
-                    .or_else(|| {
-                        entries
-                            .last()
-                            .and_then(|e| e.get("timestamp").and_then(parse_timestamp))
-                    })
+        let updated_at = entries
+            .iter()
+            .rev()
+            .find(|e| {
+                e.get("type")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(is_message_type)
             })
+            .and_then(|e| e.get("timestamp").and_then(parse_timestamp))
             .unwrap_or(started_at);
 
-        // 线性化消息并计数
-        let linearized = linearize_tree_entries(
-            &entries,
-            "uuid",
-            "parentUuid",
-            "type",
-            None,
-        );
-        let message_count = linearized.len() as u32;
-
-        // 预览：找到第一条 user 消息
-        let preview = entries
+        let message_count = entries
             .iter()
-            .find(|e| {
-                e.get("type").and_then(|v| v.as_str()) == Some("user")
+            .filter(|e| {
+                e.get("type")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(is_message_type)
             })
-            .and_then(|e| {
-                e.pointer("/message/content")
-                    .map(extract_content_text)
-                    .or_else(|| {
-                        e.get("message")
-                            .and_then(|m| m.get("content"))
-                            .map(extract_content_text)
-                    })
+            .count() as u32;
+
+        // 预览：从第一条 user 消息提取
+        let preview = first_user_msg
+            .map(|msg| {
+                let content = extract_claude_message_content(msg);
+                truncate(&strip_ansi(&content), 200)
             })
-            .map(|s| truncate(&strip_ansi(&s), 200))
             .unwrap_or_default();
 
-        // 项目路径：从文件路径层级推断（目录名）
-        let project_path = file_path
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string());
+        // project_path：优先从 user 消息的 cwd 字段获取（真实路径）
+        let project_path = first_user_msg
+            .and_then(|msg| msg.get("cwd").and_then(|v| v.as_str()))
+            .map(|s| s.to_string())
+            .or_else(|| {
+                // 回退：从父目录名反推（Claude Code 把 / 替换为 -）
+                file_path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+                    .map(unsanitize_claude_path)
+            });
 
         Ok(ParsedMeta {
             native_session_id,
@@ -128,42 +164,22 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
         let entries = read_jsonl(file_path)?;
 
-        // 线性化树形结构
-        let linearized =
-            linearize_tree_entries(&entries, "uuid", "parentUuid", "type", None);
-
         let mut messages = Vec::new();
-        for (idx, seq) in &linearized {
-            let entry = &entries[*idx];
+        let mut seq: u32 = 0;
+
+        for entry in &entries {
             let entry_type = entry
                 .get("type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            let role = entry_type;
+            if !is_message_type(entry_type) {
+                continue;
+            }
 
-            let content = match entry.pointer("/message/content") {
-                Some(content_val) => {
-                    if content_val.is_array() {
-                        extract_content_text(content_val)
-                    } else if let Some(s) = content_val.as_str() {
-                        s.to_string()
-                    } else {
-                        String::new()
-                    }
-                }
-                None => {
-                    // 尝试直接取 message 字段的字符串
-                    entry
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                }
-            };
-
+            let content = extract_claude_message_content(entry);
             let cleaned = strip_ansi(&content);
-            if cleaned.is_empty() {
+            if cleaned.trim().is_empty() {
                 continue;
             }
 
@@ -173,11 +189,12 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                 .unwrap_or(0);
 
             messages.push(ParsedMessage {
-                role: role.to_string(),
+                role: entry_type.to_string(),
                 content: cleaned,
                 timestamp,
-                seq: *seq,
+                seq,
             });
+            seq += 1;
         }
 
         Ok(messages)
@@ -190,8 +207,21 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .map(|s| s.to_string())
     }
 
-    fn resume_command(&self, _native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
+    fn resume_command(
+        &self,
+        _native_session_id: &str,
+        _project_path: &str,
+    ) -> Option<Vec<String>> {
         None
+    }
+}
+
+/// 反向 Claude Code 路径编码：`-Users-tomgs-proj` → `/Users/tomgs/proj`
+fn unsanitize_claude_path(sanitized: &str) -> String {
+    if sanitized.starts_with('-') {
+        sanitized.replacen('-', "/", 1).replace('-', "/")
+    } else {
+        format!("/{}", sanitized.replace('-', "/"))
     }
 }
 
@@ -200,31 +230,38 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn create_claude_fixture(dir: &TempDir, name: &str) -> PathBuf {
+    /// 创建模拟新格式的 fixture（与真实 Claude Code 格式一致）
+    fn create_real_fixture(dir: &TempDir, name: &str) -> PathBuf {
         let path = dir.path().join(name);
         let mut content = String::new();
 
-        // summary
+        // line 1: mode
         content.push_str(
-            r#"{"type":"summary","conversationTitle":"Fix auth middleware","createdAt":"2025-01-15T10:00:00Z","updatedAt":"2025-01-15T11:00:00Z"}"#,
+            r#"{"type":"mode","mode":"normal","sessionId":"30314800-3c5e-49be-a72a-75100ee499dd"}"#,
         );
         content.push('\n');
 
-        // user (root level)
+        // line 2: system
         content.push_str(
-            r#"{"type":"user","uuid":"msg1","parentUuid":"root","timestamp":"2025-01-15T10:00:01Z","message":{"content":[{"type":"text","text":"Can you help me fix the auth middleware?"}]}}"#,
+            r#"{"type":"system","uuid":"sys1","parentUuid":"root","timestamp":"2025-01-15T09:59:00Z","message":"<system>The project is a Tauri app. Use TypeScript.</system>"}"#,
         );
         content.push('\n');
 
-        // assistant
+        // line 3: user (message 是字符串 — 新格式)
         content.push_str(
-            r#"{"type":"assistant","uuid":"msg2","parentUuid":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"content":[{"type":"text","text":"Sure! Let me look at the auth module."}]}}"#,
+            r#"{"type":"user","uuid":"msg1","parentUuid":"root","timestamp":"2025-01-15T10:00:01Z","message":"Can you help me fix the auth middleware?","cwd":"/Users/tomgs/rust-project"}"#,
         );
         content.push('\n');
 
-        // user reply
+        // line 4: assistant (message 是 object + content 数组)
         content.push_str(
-            r#"{"type":"user","uuid":"msg3","parentUuid":"msg2","timestamp":"2025-01-15T10:00:03Z","message":{"content":[{"type":"text","text":"It's in src/auth/middleware.ts"}]}}"#,
+            r#"{"type":"assistant","uuid":"msg2","parentUuid":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"id":"r1","type":"message","role":"assistant","content":[{"type":"text","text":"Sure! Let me look at the auth module."}]}}"#,
+        );
+        content.push('\n');
+
+        // line 5: user reply
+        content.push_str(
+            r#"{"type":"user","uuid":"msg3","parentUuid":"msg2","timestamp":"2025-01-15T10:00:03Z","message":"It's in src/auth/middleware.ts","cwd":"/Users/tomgs/rust-project"}"#,
         );
         content.push('\n');
 
@@ -232,33 +269,80 @@ mod tests {
         path
     }
 
-    #[test]
-    fn should_parse_meta() {
-        let dir = TempDir::new().unwrap();
-        let path = create_claude_fixture(&dir, "session-123.jsonl");
-        let adapter = ClaudeCodeAdapter;
-
-        let meta = adapter.parse_meta(&path).unwrap();
-        assert_eq!(meta.native_session_id, "session-123");
-        assert_eq!(meta.title.as_deref(), Some("Fix auth middleware"));
-        assert_eq!(meta.message_count, 3);
-        assert!(meta.preview.contains("auth middleware"));
+    /// 创建模拟旧格式的 fixture（message 字段为 object + content 数组格式）
+    fn create_legacy_fixture(dir: &TempDir, name: &str) -> PathBuf {
+        let path = dir.path().join(name);
+        let mut content = String::new();
+        content.push_str(
+            r#"{"type":"summary","conversationTitle":"Fix auth middleware","createdAt":"2025-01-15T10:00:00Z"}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"type":"user","uuid":"msg1","parentUuid":"root","timestamp":"2025-01-15T10:00:01Z","message":{"content":[{"type":"text","text":"Can you help?"}]}}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"type":"assistant","uuid":"msg2","parentUuid":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"content":[{"type":"text","text":"Sure!"}]}}"#,
+        );
+        content.push('\n');
+        std::fs::write(&path, content).expect("Failed to write fixture");
+        path
     }
 
     #[test]
-    fn should_parse_messages() {
+    fn should_parse_meta_real_format() {
         let dir = TempDir::new().unwrap();
-        let path = create_claude_fixture(&dir, "session-456.jsonl");
-        let adapter = ClaudeCodeAdapter;
+        let path = create_real_fixture(&dir, "session-real.jsonl");
+        let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
+        assert_eq!(
+            meta.native_session_id,
+            "30314800-3c5e-49be-a72a-75100ee499dd"
+        );
+        assert_eq!(meta.message_count, 4); // system + user + assistant + user
+        assert!(meta.preview.contains("auth middleware"));
+        assert_eq!(
+            meta.project_path.as_deref(),
+            Some("/Users/tomgs/rust-project")
+        );
+    }
 
-        let messages = adapter.parse_messages(&path).unwrap();
-        assert_eq!(messages.len(), 3);
+    #[test]
+    fn should_parse_messages_real_format() {
+        let dir = TempDir::new().unwrap();
+        let path = create_real_fixture(&dir, "session-msgs.jsonl");
+        let messages = ClaudeCodeAdapter.parse_messages(&path).unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[1].role, "user");
+        assert_eq!(messages[1].content, "Can you help me fix the auth middleware?");
+        assert_eq!(messages[2].role, "assistant");
+        assert_eq!(
+            messages[2].content,
+            "Sure! Let me look at the auth module."
+        );
+        assert_eq!(messages[3].role, "user");
+        assert_eq!(messages[3].content, "It's in src/auth/middleware.ts");
+    }
+
+    #[test]
+    fn should_parse_meta_legacy_format() {
+        let dir = TempDir::new().unwrap();
+        let path = create_legacy_fixture(&dir, "session-legacy.jsonl");
+        let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
+        assert_eq!(meta.message_count, 2);
+        assert!(meta.preview.contains("Can you help?"));
+    }
+
+    #[test]
+    fn should_parse_messages_legacy_format() {
+        let dir = TempDir::new().unwrap();
+        let path = create_legacy_fixture(&dir, "session-legacy-msgs.jsonl");
+        let messages = ClaudeCodeAdapter.parse_messages(&path).unwrap();
+        assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "user");
-        assert_eq!(messages[0].content, "Can you help me fix the auth middleware?");
+        assert_eq!(messages[0].content, "Can you help?");
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[1].content, "Sure! Let me look at the auth module.");
-        assert_eq!(messages[2].role, "user");
-        assert_eq!(messages[2].content, "It's in src/auth/middleware.ts");
+        assert_eq!(messages[1].content, "Sure!");
     }
 
     #[test]
@@ -272,43 +356,19 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("empty.jsonl");
         std::fs::write(&path, "").expect("Failed to write");
-
         let result = ClaudeCodeAdapter.parse_meta(&path);
         assert!(result.is_err());
     }
 
     #[test]
-    fn should_handle_branching_tree() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("branch.jsonl");
-        let mut content = String::new();
-        // summary
-        content.push_str(
-            r#"{"type":"summary","conversationTitle":"Branch test","createdAt":"2025-01-15T10:00:00Z"}"#,
+    fn should_unsanitize_claude_path() {
+        assert_eq!(
+            unsanitize_claude_path("-Users-tomgs-RustroverProjects-neeko"),
+            "/Users/tomgs/RustroverProjects/neeko"
         );
-        content.push('\n');
-        // user root
-        content.push_str(
-            r#"{"type":"user","uuid":"msg1","parentUuid":"root","timestamp":"2025-01-15T10:00:01Z","message":{"content":[{"type":"text","text":"First question"}]}}"#,
+        assert_eq!(
+            unsanitize_claude_path("simple-path"),
+            "/simple/path"
         );
-        content.push('\n');
-        // assistant (reply to msg1)
-        content.push_str(
-            r#"{"type":"assistant","uuid":"msg2","parentUuid":"msg1","timestamp":"2025-01-15T10:00:02Z","message":{"content":[{"type":"text","text":"First answer"}]}}"#,
-        );
-        content.push('\n');
-        // user follow-up (branch A)
-        content.push_str(
-            r#"{"type":"user","uuid":"msg3","parentUuid":"msg2","timestamp":"2025-01-15T10:00:03Z","message":{"content":[{"type":"text","text":"Follow-up A"}]}}"#,
-        );
-        content.push('\n');
-
-        std::fs::write(&path, content).expect("Failed to write fixture");
-
-        let messages = ClaudeCodeAdapter.parse_messages(&path).unwrap();
-        assert_eq!(messages.len(), 3);
-        assert_eq!(messages[0].content, "First question");
-        assert_eq!(messages[1].content, "First answer");
-        assert_eq!(messages[2].content, "Follow-up A");
     }
 }
