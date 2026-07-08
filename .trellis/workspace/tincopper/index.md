@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 71
-- **Last Active**: 2026-07-07
+- **Total Sessions**: 72
+- **Last Active**: 2026-07-08
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~473 | Active |
+| `journal-2.md` | ~507 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 72 | 2026-07-08 | 实现会话历史管理后端核心 | `53381bf`, `5d9ac43` | `main` |
 | 71 | 2026-07-07 | LSP Phase 1 — LSP engine, StatusBar, diagnostics integration | `f66b10a` | `main` |
 | 70 | 2026-07-03 | Editor and Diff AI Selection | `2f82df6` | `main` |
 | 69 | 2026-06-01 | Remove project name and branch name from TitleBar | `59654bbcb099640ae1b72f7ff8d280e7a8ec33b7` | `refactor/architecture-optimization` |

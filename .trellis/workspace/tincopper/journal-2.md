@@ -471,3 +471,37 @@ Complete LSP Phase 1: backend lsp/ module (LspManager, JSON-RPC proxy, installer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 72: 实现会话历史管理后端核心
+
+**Date**: 2026-07-08
+**Task**: 实现会话历史管理后端核心
+**Branch**: `main`
+
+### Summary
+
+实现 AgentSessionAdapter trait、ConversationManager（内存缓存 + 扫描编排）、7 个 Tauri 命令，集成到 AppStateWrapper 和 lib.rs。78 个测试全部通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `53381bf` | (see git log) |
+| `5d9ac43` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
