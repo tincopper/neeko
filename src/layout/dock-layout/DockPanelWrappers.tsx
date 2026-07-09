@@ -335,27 +335,6 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
     : currentProjectId;
 
-  const handleOpenConversationTab = useCallback((meta: ConversationMeta) => {
-    const editorState = useEditorStore.getState();
-    const existingTabs = tabKey ? editorState.tabs[tabKey] : undefined;
-    const tabId = `tab_${crypto.randomUUID()}`;
-    const tab: Tab = {
-      id: tabId,
-      projectId: currentProjectId ?? tabKey ?? 'conversation',
-      title: meta.title,
-      order: existingTabs?.tabs.length ?? 0,
-      data: {
-        kind: "conversation",
-        conversationId: meta.id,
-        agentId: meta.agentId,
-      },
-    };
-    if (tabKey) {
-      editorState.addTab(tabKey, tab);
-      editorState.activateTab(tabKey, tabId);
-    }
-  }, [currentProjectId, tabKey]);
-
   const handleResumeConversation = useCallback(async (meta: ConversationMeta) => {
     if (!currentProjectId || !tabKey) {
       showToast('No project selected', 'error');
@@ -415,6 +394,29 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     editorState.addTab(tabKey, tab);
     editorState.activateTab(tabKey, tabId);
   }, [currentProjectId, tabKey, showToast]);
+
+  const handleOpenConversationTab = useCallback((meta: ConversationMeta) => {
+    const editorState = useEditorStore.getState();
+    const existingTabs = tabKey ? editorState.tabs[tabKey] : undefined;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tab: Tab = {
+      id: tabId,
+      projectId: currentProjectId ?? tabKey ?? 'conversation',
+      title: meta.title,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: "conversation",
+        conversationId: meta.id,
+        agentId: meta.agentId,
+        conversationMeta: meta,
+        onResume: handleResumeConversation,
+      },
+    };
+    if (tabKey) {
+      editorState.addTab(tabKey, tab);
+      editorState.activateTab(tabKey, tabId);
+    }
+  }, [currentProjectId, tabKey, handleResumeConversation]);
 
   return (
     <ConversationPanel

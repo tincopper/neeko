@@ -1,6 +1,7 @@
 // ─── Tab Types ──────────────────────────────────────────────────────────────
 import type { DiffSource, ViewMode } from "@/features/git/components/diff/types";
 import type { FileContent } from "@/features/file/types";
+import type { ConversationMeta } from "@/features/conversation/types";
 
 export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview" | "conversation";
 
@@ -44,6 +45,8 @@ export interface ConversationTabData {
   kind: "conversation";
   conversationId: string;
   agentId?: string;
+  conversationMeta?: ConversationMeta;
+  onResume?: (meta: ConversationMeta) => void;
 }
 
 export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData | ConversationTabData;

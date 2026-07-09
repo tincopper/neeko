@@ -75,24 +75,24 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
         <div className="flex items-center gap-1 ml-auto">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             className={cn(
-              'h-5 px-1.5 text-[10px] gap-0.5',
+              'w-5 h-5',
               'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
             )}
             onClick={() => onResume(meta)}
+            title="Resume"
           >
-            <Play className="w-2.5 h-2.5" />
-            Resume
+            <Play className="w-3 h-3" />
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-5 px-1.5 text-[10px] gap-0.5"
+            size="icon"
+            className="w-5 h-5"
             onClick={() => onView(meta)}
+            title="View"
           >
-            <FileText className="w-2.5 h-2.5" />
-            View
+            <FileText className="w-3 h-3" />
           </Button>
         </div>
       </div>
