@@ -336,7 +336,10 @@ function EditorGroupPane({
             conversationId={activeTab.data.conversationId}
             agentId={activeTab.data.agentId}
             projectId={activeTab.projectId}
+            conversationMeta={activeTab.data.conversationMeta ?? null}
+            agents={enabledAgents}
             onBack={() => handleCloseTab(activeTab.id)}
+            onResume={activeTab.data.onResume}
             showToast={showToast}
           />
         )}

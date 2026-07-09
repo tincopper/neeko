@@ -131,6 +131,7 @@ impl AgentSessionAdapter for CodexAdapter {
             title,
             first_user_message: first_user_raw,
             recent_messages,
+            model: None,
             started_at,
             updated_at,
             message_count,
@@ -168,6 +169,7 @@ impl AgentSessionAdapter for CodexAdapter {
                             role: "user".to_string(),
                             content: cleaned,
                             blocks: Vec::new(),
+                            model: None,
                             timestamp,
                             seq,
                         });
@@ -197,6 +199,7 @@ impl AgentSessionAdapter for CodexAdapter {
                                 role: "assistant".to_string(),
                                 content: cleaned,
                                 blocks: Vec::new(),
+                                model: None,
                                 timestamp,
                                 seq,
                             });

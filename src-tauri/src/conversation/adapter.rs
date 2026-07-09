@@ -13,6 +13,8 @@ pub struct ParsedMeta {
     pub first_user_message: Option<String>,
     /// 预览来源：最近消息环形缓冲（role, 原文），已剔除 harness 注入噪声
     pub recent_messages: Vec<(String, String)>,
+    /// 模型名称（如 "claude-sonnet-4-20250514"）
+    pub model: Option<String>,
     pub started_at: i64,
     pub updated_at: i64,
     pub message_count: u32,
@@ -26,6 +28,8 @@ pub struct ParsedMessage {
     pub content: String,
     /// 结构化内容块
     pub blocks: Vec<MessageBlock>,
+    /// 消息级别的模型名称（可能中途切换）
+    pub model: Option<String>,
     pub timestamp: i64,
     pub seq: u32,
 }

@@ -217,9 +217,11 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
         }
 
         // 从 mode 行或 filename 获取原生 session_id
-        let native_session_id = entries
+        let mode_entry = entries
             .iter()
-            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("mode"))
+            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("mode"));
+
+        let native_session_id = mode_entry
             .and_then(|e| e.get("sessionId").and_then(|v| v.as_str()))
             .map(|s| s.to_string())
             .or_else(|| {
@@ -229,6 +231,26 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                     .map(|s| s.to_string())
             })
             .unwrap_or_else(|| "unknown".to_string());
+
+        // 从首条有 message.model 的消息记录提取模型名（Claude CLI v2 格式）
+        let model = entries
+            .iter()
+            .find(|e| {
+                e.get("message")
+                    .and_then(|m| m.get("model"))
+                    .and_then(|v| v.as_str())
+                    .is_some()
+            })
+            .and_then(|e| {
+                e.get("message")
+                    .and_then(|m| m.get("model").and_then(|v| v.as_str()))
+            })
+            .or_else(|| {
+                // 回退：mode 记录顶层的 model 字段（旧格式）
+                mode_entry
+                    .and_then(|e| e.get("model").and_then(|v| v.as_str()))
+            })
+            .map(|s| s.to_string());
 
         // 首条 user 消息
         let first_user_msg = entries
@@ -331,6 +353,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             title,
             first_user_message: first_user_raw,
             recent_messages,
+            model,
             started_at,
             updated_at,
             message_count,
@@ -363,6 +386,13 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             // 提取结构化内容块
             let blocks = extract_message_blocks(entry);
 
+            // 提取消息级别的模型名称（Claude CLI v2 格式）
+            let model = entry
+                .get("message")
+                .and_then(|m| m.get("model"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
             let timestamp = entry
                 .get("timestamp")
                 .and_then(parse_timestamp)
@@ -372,6 +402,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
                 role: entry_type.to_string(),
                 content: cleaned,
                 blocks,
+                model,
                 timestamp,
                 seq,
             });
@@ -554,6 +585,54 @@ mod tests {
         let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("Fix auth middleware"));
         assert_eq!(meta.message_count, 2);
+    }
+
+    #[test]
+    fn should_extract_model_from_message() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session-model.jsonl");
+        let mut content = String::new();
+        content.push_str(
+            r#"{"type":"mode","sessionId":"test-model-001"}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":"Hello","cwd":"/tmp"}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"type":"assistant","uuid":"a1","timestamp":"2026-01-01T00:00:01Z","message":{"id":"r1","type":"message","role":"assistant","model":"deepseek-v4-pro","content":[{"type":"text","text":"Hi!"}]}}"#,
+        );
+        content.push('\n');
+        std::fs::write(&path, content).expect("Failed to write");
+        let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
+        assert_eq!(meta.model.as_deref(), Some("deepseek-v4-pro"));
+    }
+
+    #[test]
+    fn should_extract_model_from_user_message() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session-model-user.jsonl");
+        let mut content = String::new();
+        content.push_str(
+            r#"{"type":"mode","sessionId":"test-model-002"}"#,
+        );
+        content.push('\n');
+        content.push_str(
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"id":"r1","type":"message","role":"user","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hello"}]},"cwd":"/tmp"}"#,
+        );
+        content.push('\n');
+        std::fs::write(&path, content).expect("Failed to write");
+        let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
+        assert_eq!(meta.model.as_deref(), Some("claude-sonnet-4-20250514"));
+    }
+
+    #[test]
+    fn should_not_extract_model_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let path = create_real_fixture(&dir, "session-no-model.jsonl");
+        let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
+        assert!(meta.model.is_none());
     }
 
     #[test]

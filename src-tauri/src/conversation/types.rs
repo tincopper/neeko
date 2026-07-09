@@ -9,6 +9,7 @@ pub struct ConversationMeta {
     pub native_session_id: String,
     pub agent_id: String,
     pub title: String,
+    pub model: Option<String>,
     pub started_at: i64,
     pub updated_at: i64,
     pub message_count: u32,
@@ -54,6 +55,9 @@ pub struct ConversationMessage {
     /// 结构化内容块，用于展示 Agent 执行过程
     #[serde(default)]
     pub blocks: Vec<MessageBlock>,
+    /// 消息级别的模型名称（可能中途切换）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     pub timestamp: i64,
     pub seq: u32,
 }

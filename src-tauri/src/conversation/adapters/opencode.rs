@@ -79,30 +79,50 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             })
             .context("No sessions found in OpenCode database")?;
 
-        // Extract summary.title from data JSON if available (orca pattern)
-        let title = if has_data_col {
+        // Extract model from sessions table column or data JSON
+        let model_col = if session_cols.contains(&"model".to_string()) { Some("model".to_string()) }
+            else if session_cols.contains(&"modelName".to_string()) { Some("modelName".to_string()) }
+            else { None };
+        let model = if let Some(ref col) = model_col {
+            let model_query = format!(
+                "SELECT {col} FROM sessions ORDER BY {updated} DESC LIMIT 1",
+                col = col, updated = updated_col,
+            );
+            conn.query_row(&model_query, [], |row| row.get::<_, Option<String>>(0))
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+
+        // Extract summary.title and model from data JSON if available (orca pattern)
+        let data_json: Option<serde_json::Value> = if has_data_col {
             let data_query = format!(
                 "SELECT data FROM sessions ORDER BY {updated} DESC LIMIT 1",
                 updated = updated_col,
             );
-            let data_json: Option<String> = conn
-                .query_row(&data_query, [], |row| row.get::<_, Option<String>>(0))
+            conn.query_row(&data_query, [], |row| row.get::<_, Option<String>>(0))
                 .ok()
-                .flatten();
-            let summary_title = data_json
-                .as_deref()
-                .and_then(|json_str| {
-                    serde_json::from_str::<serde_json::Value>(json_str)
-                        .ok()
-                        .and_then(|v| {
-                            v.pointer("/summary/title")
-                                .and_then(|t| t.as_str().map(|s| s.to_string()))
-                        })
-                });
-            summary_title.or(title)
+                .flatten()
+                .and_then(|json_str| serde_json::from_str(&json_str).ok())
         } else {
-            title
+            None
         };
+        let title = data_json
+            .as_ref()
+            .and_then(|v| {
+                v.pointer("/summary/title")
+                    .and_then(|t| t.as_str().map(|s| s.to_string()))
+            })
+            .or(title);
+        let model = model.or_else(|| {
+            data_json.as_ref().and_then(|v| {
+                v.pointer("/model")
+                    .or_else(|| v.pointer("/summary/model"))
+                    .or_else(|| v.pointer("/modelName"))
+                    .and_then(|m| m.as_str().map(|s| s.to_string()))
+            })
+        });
 
         let project_path = project_path_str;
 
@@ -138,6 +158,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                     title,
                     first_user_message: None,
                     recent_messages: Vec::new(),
+                    model,
                     started_at,
                     updated_at,
                     message_count,
@@ -169,6 +190,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             title,
             first_user_message: first_user_raw,
             recent_messages,
+            model,
             started_at,
             updated_at,
             message_count,
@@ -247,6 +269,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                     role: role.replace("gemini", "assistant"),
                     content: strip_ansi(&content),
                     blocks: Vec::new(),
+                    model: None,
                     timestamp,
                     seq,
                 }

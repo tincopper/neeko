@@ -122,6 +122,7 @@ impl AgentSessionAdapter for GeminiAdapter {
             title,
             first_user_message: first_user_raw,
             recent_messages,
+            model: None,
             started_at,
             updated_at,
             message_count,
@@ -169,6 +170,7 @@ impl AgentSessionAdapter for GeminiAdapter {
                 role,
                 content: cleaned,
                 blocks: Vec::new(),
+                model: None,
                 timestamp,
                 seq: seq as u32,
             });
