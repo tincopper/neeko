@@ -109,7 +109,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const [displayCount, setDisplayCount] = useState(INITIAL_LOAD);
     const [exporting, setExporting] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [showScrollTop, setShowScrollTop] = useState(false);
+    const [atTop, setAtTop] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -147,11 +147,11 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       }
     }, [loading, messages.length]);
 
-    // Track scroll position for scroll-to-top button
+    // Track scroll position for nav button
     const handleScroll = useCallback(() => {
       const el = scrollRef.current;
       if (!el) return;
-      setShowScrollTop(el.scrollTop > el.clientHeight);
+      setAtTop(el.scrollTop < 60);
     }, []);
 
     // 计算统计信息和分组
@@ -233,6 +233,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
+    const scrollToBottom = useCallback(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, []);
+
     const agentName = agent?.name ?? agentId ?? 'Conversation';
     const modelLabel = conversationMeta?.model;
 
@@ -312,11 +316,11 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden relative">
           {/* Messages */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto relative"
+            className="flex-1 overflow-y-auto"
             onScroll={handleScroll}
           >
             {loading ? (
@@ -424,19 +428,18 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
               </div>
             )}
 
-            {/* Scroll to top button */}
-            {showScrollTop && (
-              <Button
-                variant="secondary"
-                size="icon"
-                className="absolute bottom-4 right-4 w-8 h-8 rounded-full shadow-md z-10"
-                onClick={scrollToTop}
-                title="Scroll to top"
-              >
-                <ChevronUp className="w-4 h-4" />
-              </Button>
-            )}
           </div>
+
+          {/* Navigation button (always visible, fixed at bottom-right) */}
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute bottom-4 right-4 w-8 h-8 rounded-full shadow-md z-10"
+            onClick={atTop ? scrollToBottom : scrollToTop}
+            title={atTop ? 'Scroll to bottom' : 'Scroll to top'}
+          >
+            {atTop ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          </Button>
 
           {/* Tool call sidebar */}
           {sidebarOpen && stats.toolCallList.length > 0 && (
