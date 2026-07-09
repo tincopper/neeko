@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use regex::Regex;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl, strip_ansi, truncate};
+use crate::conversation::adapters::{
+    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+};
 
 /// Codex CLI 会话适配器
 ///
@@ -74,8 +76,8 @@ impl AgentSessionAdapter for CodexAdapter {
             })
             .count() as u32;
 
-        // 预览：找第一条 turn_context 的 transcript 或第一条消息
-        let preview = entries
+        // 预览/首条用户消息：第一条 turn_context 的 transcript（净化交给 manager）
+        let first_user_raw = entries
             .iter()
             .find(|e| {
                 e.get("type").and_then(|v| v.as_str()) == Some("turn_context")
@@ -85,8 +87,38 @@ impl AgentSessionAdapter for CodexAdapter {
                     .and_then(|v| v.as_str())
                     .or_else(|| e.get("transcript").and_then(|v| v.as_str()))
             })
-            .map(|s| truncate(&strip_ansi(s), 200))
-            .unwrap_or_default();
+            .map(|s| s.to_string());
+
+        let recent_pairs: Vec<(String, String)> = entries
+            .iter()
+            .filter_map(|e| {
+                let t = e
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let (role, text) = match t {
+                    "turn_context" => (
+                        "user",
+                        e.pointer("/payload/transcript")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| e.get("transcript").and_then(|v| v.as_str())),
+                    ),
+                    "response_item" => (
+                        "assistant",
+                        e.pointer("/payload/content")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| e.get("content").and_then(|v| v.as_str()))
+                    ),
+                    _ => return None,
+                };
+                let t = text?.trim().to_string();
+                if t.is_empty() {
+                    return None;
+                }
+                Some((role.to_string(), t))
+            })
+            .collect();
+        let recent_messages = recent_messages_from(recent_pairs);
 
         let project_path = first
             .pointer("/payload/cwd")
@@ -97,10 +129,11 @@ impl AgentSessionAdapter for CodexAdapter {
         Ok(ParsedMeta {
             native_session_id,
             title,
+            first_user_message: first_user_raw,
+            recent_messages,
             started_at,
             updated_at,
             message_count,
-            preview,
             project_path,
         })
     }
@@ -134,6 +167,7 @@ impl AgentSessionAdapter for CodexAdapter {
                         messages.push(ParsedMessage {
                             role: "user".to_string(),
                             content: cleaned,
+                            blocks: Vec::new(),
                             timestamp,
                             seq,
                         });
@@ -162,6 +196,7 @@ impl AgentSessionAdapter for CodexAdapter {
                             messages.push(ParsedMessage {
                                 role: "assistant".to_string(),
                                 content: cleaned,
+                                blocks: Vec::new(),
                                 timestamp,
                                 seq,
                             });
@@ -254,7 +289,7 @@ mod tests {
         assert_eq!(meta.native_session_id, "123e4567-e89b-12d3-a456-426614174000");
         assert_eq!(meta.title.as_deref(), Some("Fix login bug"));
         assert_eq!(meta.message_count, 4);
-        assert!(meta.preview.contains("login"));
+        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("login")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 

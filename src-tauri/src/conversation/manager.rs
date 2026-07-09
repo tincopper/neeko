@@ -7,7 +7,27 @@ use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
+use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
 use crate::conversation::types::{ConversationMessage, ConversationMeta, ScanReport};
+
+/// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
+///
+/// - P2：AI 生成标题（`title`）
+/// - P3：首条用户消息（`first_user_message`）
+/// - 兜底：`<agent_id> <native_session_id 前 8 位>`
+pub(crate) fn resolve_title(
+    title: Option<&str>,
+    first_user_message: Option<&str>,
+    agent_id: &str,
+    native_session_id: &str,
+) -> String {
+    normalize_session_text(title.unwrap_or(""), NormTarget::Title)
+        .or_else(|| normalize_session_text(first_user_message.unwrap_or(""), NormTarget::Title))
+        .unwrap_or_else(|| {
+            let short = &native_session_id[..native_session_id.len().min(8)];
+            format!("{} {}", agent_id, short)
+        })
+}
 
 /// 内存缓存 + 扫描编排
 ///
@@ -97,15 +117,25 @@ impl ConversationManager {
                     let native_session_id = meta.native_session_id;
                     let id = format!("{agent_id}:{native_session_id}");
 
+                    // 标题三优先级解析（P2 AI 标题 → P3 首条用户消息 → 兜底）
+                    let resolved_title = resolve_title(
+                        meta.title.as_deref(),
+                        meta.first_user_message.as_deref(),
+                        agent_id,
+                        &native_session_id,
+                    );
+                    let resolved_preview =
+                        build_preview_messages(&meta.recent_messages);
+
                     let conversation = ConversationMeta {
                         id,
                         native_session_id,
                         agent_id: agent_id.to_string(),
-                        title: meta.title.unwrap_or_else(|| "Untitled".to_string()),
+                        title: resolved_title,
                         started_at: meta.started_at,
                         updated_at: meta.updated_at,
                         message_count: meta.message_count,
-                        preview: meta.preview,
+                        preview: resolved_preview,
                         file_path: path.to_path_buf(),
                         project_path: meta.project_path,
                         user_title: None,
@@ -199,6 +229,7 @@ impl ConversationManager {
             .map(|p| ConversationMessage {
                 role: p.role,
                 content: p.content,
+                blocks: p.blocks,
                 timestamp: p.timestamp,
                 seq: p.seq,
             })
@@ -492,15 +523,6 @@ mod tests {
 
             let message_count = entries.len() as u32;
 
-            let preview = first
-                .get("content")
-                .and_then(|c| c.as_str())
-                .map(|s| {
-                    let truncated: String = s.chars().take(200).collect();
-                    truncated
-                })
-                .unwrap_or_default();
-
             let project_path = first
                 .get("project_path")
                 .and_then(|p| p.as_str())
@@ -509,10 +531,11 @@ mod tests {
             Ok(ParsedMeta {
                 native_session_id,
                 title,
+                first_user_message: None,
+                recent_messages: Vec::new(),
                 started_at,
                 updated_at,
                 message_count,
-                preview,
                 project_path,
             })
         }
@@ -542,6 +565,7 @@ mod tests {
                 messages.push(ParsedMessage {
                     role,
                     content,
+                    blocks: Vec::new(),
                     timestamp,
                     seq: seq_value,
                 });
@@ -1039,5 +1063,54 @@ mod tests {
             .expect("should have resume args");
         assert_eq!(cmd.len(), 2, "resume command should have 2 args");
         assert_eq!(cmd[0], "--resume", "first arg should be --resume");
+    }
+
+    fn meta_with(
+        native_session_id: &str,
+        title: Option<&str>,
+        first_user_message: Option<&str>,
+    ) -> ParsedMeta {
+        ParsedMeta {
+            native_session_id: native_session_id.to_string(),
+            title: title.map(|s| s.to_string()),
+            first_user_message: first_user_message.map(|s| s.to_string()),
+            started_at: 0,
+            updated_at: 0,
+            message_count: 0,
+            recent_messages: Vec::new(),
+            project_path: None,
+        }
+    }
+
+    #[test]
+    fn resolve_title_prefers_ai_title_over_user_message() {
+        let meta =
+            meta_with("sess9876abcd", Some("AI Summary Title"), Some("raw user request"));
+        assert_eq!(
+            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "claude-code", "sess9876abcd"),
+            "AI Summary Title"
+        );
+    }
+
+    #[test]
+    fn resolve_title_falls_back_to_user_message() {
+        let meta = meta_with(
+            "sess9876abcd",
+            None,
+            Some("  help me fix the <system-reminder>secret</system-reminder> bug  "),
+        );
+        assert_eq!(
+            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "claude-code", "sess9876abcd"),
+            "help me fix the bug"
+        );
+    }
+
+    #[test]
+    fn resolve_title_falls_back_to_agent_and_session_id() {
+        let meta = meta_with("sess9876abcd", None, None);
+        assert_eq!(
+            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "opencode", "sess9876abcd"),
+            "opencode sess9876"
+        );
     }
 }

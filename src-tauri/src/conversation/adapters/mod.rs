@@ -169,6 +169,27 @@ pub(crate) fn linearize_tree_entries(
     result
 }
 
+/// 由（role, 原文）消息对构建预览环形缓冲。
+///
+/// - 剔除 harness 注入噪声（is_harness_injected_user_turn）
+/// - 剔除空白消息
+/// - 保留最近 `PREVIEW_MESSAGE_LIMIT` 条（按出现顺序）
+pub(crate) fn recent_messages_from(
+    mut pairs: Vec<(String, String)>,
+) -> Vec<(String, String)> {
+    use crate::conversation::normalize::{
+        is_harness_injected_user_turn, PREVIEW_MESSAGE_LIMIT,
+    };
+    pairs.retain(|(_, text)| {
+        !is_harness_injected_user_turn(text) && !text.trim().is_empty()
+    });
+    let len = pairs.len();
+    if len > PREVIEW_MESSAGE_LIMIT {
+        pairs.drain(..len - PREVIEW_MESSAGE_LIMIT);
+    }
+    pairs
+}
+
 /// 读取 JSONL 文件，返回所有非空行
 pub(crate) fn read_jsonl(path: &std::path::Path) -> Result<Vec<serde_json::Value>> {
     let content = std::fs::read_to_string(path)?;

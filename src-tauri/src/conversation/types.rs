@@ -19,12 +19,41 @@ pub struct ConversationMeta {
     pub tags: Vec<String>,
 }
 
+/// 消息内容块 - 表示 Agent 执行过程中的不同类型内容
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum MessageBlock {
+    /// 文本内容
+    Text {
+        text: String,
+    },
+    /// 思考过程（Claude 的 thinking 模式）
+    Thinking {
+        thinking: String,
+    },
+    /// 工具调用
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    /// 工具执行结果
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+        is_error: bool,
+    },
+}
+
 /// 单条会话消息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationMessage {
     pub role: String,
     pub content: String,
+    /// 结构化内容块，用于展示 Agent 执行过程
+    #[serde(default)]
+    pub blocks: Vec<MessageBlock>,
     pub timestamp: i64,
     pub seq: u32,
 }

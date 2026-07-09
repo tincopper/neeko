@@ -4,7 +4,8 @@ use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{
-    linearize_tree_entries, parse_timestamp, read_jsonl, strip_ansi, truncate,
+    linearize_tree_entries, parse_timestamp, read_jsonl, recent_messages_from,
+    strip_ansi,
 };
 
 /// Pi CLI 会话适配器
@@ -76,8 +77,8 @@ impl AgentSessionAdapter for PiAdapter {
             .collect();
         let message_count = message_entries.len() as u32;
 
-        // 预览：第一条 user 消息
-        let preview = message_entries
+        // 首条用户消息（P3 标题候选）
+        let first_user_raw = message_entries
             .iter()
             .find(|e| {
                 e.pointer("/message/role")
@@ -91,8 +92,30 @@ impl AgentSessionAdapter for PiAdapter {
                     .or_else(|| e.pointer("/message/text").and_then(|v| v.as_str()))
                     .or_else(|| e.get("content").and_then(|v| v.as_str()))
             })
-            .map(|s| truncate(&strip_ansi(s), 200))
-            .unwrap_or_default();
+            .map(|s| s.to_string());
+
+        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
+        let recent_pairs: Vec<(String, String)> = message_entries
+            .iter()
+            .filter_map(|e| {
+                let role = e
+                    .pointer("/message/role")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("user")
+                    .to_string();
+                let text = e
+                    .pointer("/message/content")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| e.pointer("/message/text").and_then(|v| v.as_str()))
+                    .or_else(|| e.get("content").and_then(|v| v.as_str()))?;
+                let t = text.trim().to_string();
+                if t.is_empty() {
+                    return None;
+                }
+                Some((role, t))
+            })
+            .collect();
+        let recent_messages = recent_messages_from(recent_pairs);
 
         // 项目路径：从 session 行或文件路径
         let project_path = first
@@ -110,10 +133,11 @@ impl AgentSessionAdapter for PiAdapter {
         Ok(ParsedMeta {
             native_session_id,
             title,
+            first_user_message: first_user_raw,
+            recent_messages,
             started_at,
             updated_at,
             message_count,
-            preview,
             project_path,
         })
     }
@@ -166,6 +190,7 @@ impl AgentSessionAdapter for PiAdapter {
             messages.push(ParsedMessage {
                 role: role.to_string(),
                 content: cleaned,
+                blocks: Vec::new(),
                 timestamp,
                 seq: *seq,
             });
@@ -241,7 +266,7 @@ mod tests {
             "550e8400-e29b-41d4-a716-446655440000"
         );
         assert_eq!(meta.message_count, 3);
-        assert!(meta.preview.contains("authentication"));
+        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("authentication")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 

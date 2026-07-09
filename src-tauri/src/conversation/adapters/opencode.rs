@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{strip_ansi, truncate};
+use crate::conversation::adapters::{
+    recent_messages_from, strip_ansi,
+};
 
 /// OpenCode 会话适配器
 ///
@@ -52,6 +54,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         let created_col = if use_camel { "createdAt" } else if use_snake { "created_at" } else { "createdAt" };
         let updated_col = if use_camel { "updatedAt" } else if use_snake { "updated_at" } else { "createdAt" };
         let project_col = if use_camel { "projectPath" } else if use_snake { "project_path" } else { "projectPath" };
+        let has_data_col = session_cols.contains(&"data".to_string());
 
         // Build query with detected column names
         let session_query = format!(
@@ -62,8 +65,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             project = project_col,
         );
 
-        #[allow(clippy::type_complexity)]
-        let session_info: Option<(String, Option<String>, i64, i64, Option<String>)> = conn
+        let (native_session_id, title, started_at, updated_at, project_path_str): (String, Option<String>, i64, i64, Option<String>) = conn
             .query_row(&session_query, [], |row| {
                 let id: String = row.get(0)?;
                 let title: Option<String> = row.get(1)?;
@@ -75,10 +77,34 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 let pp = project_path.filter(|s| !s.is_empty());
                 Ok((id, title, created_ms, updated_ms, pp))
             })
-            .ok();
+            .context("No sessions found in OpenCode database")?;
 
-        let (native_session_id, title, started_at, updated_at, project_path) =
-            session_info.context("No sessions found in OpenCode database")?;
+        // Extract summary.title from data JSON if available (orca pattern)
+        let title = if has_data_col {
+            let data_query = format!(
+                "SELECT data FROM sessions ORDER BY {updated} DESC LIMIT 1",
+                updated = updated_col,
+            );
+            let data_json: Option<String> = conn
+                .query_row(&data_query, [], |row| row.get::<_, Option<String>>(0))
+                .ok()
+                .flatten();
+            let summary_title = data_json
+                .as_deref()
+                .and_then(|json_str| {
+                    serde_json::from_str::<serde_json::Value>(json_str)
+                        .ok()
+                        .and_then(|v| {
+                            v.pointer("/summary/title")
+                                .and_then(|t| t.as_str().map(|s| s.to_string()))
+                        })
+                });
+            summary_title.or(title)
+        } else {
+            title
+        };
+
+        let project_path = project_path_str;
 
         // Detect column names in messages table
         let msg_cols = get_column_names(&conn, "messages");
@@ -95,7 +121,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             .query_row(&count_query, [&native_session_id], |row| row.get(0))
             .unwrap_or(0);
 
-        // Get preview from first user message — query all messages for session and filter in Rust
+        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
         let preview_query = format!(
             "SELECT content, role FROM messages \
              WHERE {session_col} = ?1 \
@@ -104,17 +130,18 @@ impl AgentSessionAdapter for OpenCodeAdapter {
             session_col = msg_session_col,
             seq_col = msg_seq_col,
         );
-        let preview: String = {
+        let recent_messages: Vec<(String, String)> = {
             let mut stmt = match conn.prepare(&preview_query) {
                 Ok(s) => s,
                 Err(_) => return Ok(ParsedMeta {
                     native_session_id,
                     title,
+                    first_user_message: None,
+                    recent_messages: Vec::new(),
                     started_at,
                     updated_at,
                     message_count,
-                    preview: String::new(),
-                    project_path: project_path.map(|s| s.to_string()),
+                    project_path,
                 }),
             };
             let rows: Vec<(String, String)> = match stmt.query_map([&native_session_id], |row| {
@@ -125,21 +152,27 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
                 Err(_) => Vec::new(),
             };
-            rows.into_iter()
-                .find(|(_, role)| role == "user")
-                .map(|(content, _)| content)
-                .map(|s| truncate(&strip_ansi(&s), 200))
-                .unwrap_or_default()
+            let pairs: Vec<(String, String)> = rows
+                .into_iter()
+                .map(|(content, role)| (role, content))
+                .collect();
+            recent_messages_from(pairs)
         };
+
+        let first_user_raw = recent_messages
+            .iter()
+            .find(|(role, _)| role == "user")
+            .map(|(_, text)| text.clone());
 
         Ok(ParsedMeta {
             native_session_id,
             title,
+            first_user_message: first_user_raw,
+            recent_messages,
             started_at,
             updated_at,
             message_count,
-            preview,
-            project_path: project_path.map(|s| s.to_string()),
+            project_path,
         })
     }
 
@@ -213,6 +246,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 ParsedMessage {
                     role: role.replace("gemini", "assistant"),
                     content: strip_ansi(&content),
+                    blocks: Vec::new(),
                     timestamp,
                     seq,
                 }
@@ -305,7 +339,7 @@ mod tests {
         assert_eq!(meta.native_session_id, "oc-session-001");
         assert_eq!(meta.title.as_deref(), Some("Fix UI bug"));
         assert_eq!(meta.message_count, 3);
-        assert!(meta.preview.contains("button"));
+        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("button")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 

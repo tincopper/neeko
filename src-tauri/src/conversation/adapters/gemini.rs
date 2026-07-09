@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, strip_ansi, truncate};
+use crate::conversation::adapters::{
+    parse_timestamp, recent_messages_from, strip_ansi,
+};
 
 /// Gemini CLI 会话适配器
 ///
@@ -73,8 +75,8 @@ impl AgentSessionAdapter for GeminiAdapter {
             })
             .unwrap_or(started_at);
 
-        // 预览：第一条 user 消息
-        let preview = messages_val
+        // 首条用户消息（P3 标题候选）
+        let first_user_raw = messages_val
             .and_then(|arr| {
                 arr.iter().find(|m| {
                     m.get("type").and_then(|v| v.as_str())
@@ -82,22 +84,47 @@ impl AgentSessionAdapter for GeminiAdapter {
                 })
             })
             .and_then(|m| m.get("content").and_then(|v| v.as_str()))
-            .map(|s| truncate(&strip_ansi(s), 200))
+            .map(|s| s.to_string());
+
+        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
+        let recent_pairs: Vec<(String, String)> = messages_val
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let role = m
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("user")
+                            .to_string();
+                        let text = m
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| m.get("text").and_then(|v| v.as_str()))?;
+                        let t = text.trim().to_string();
+                        if t.is_empty() {
+                            return None;
+                        }
+                        Some((role, t))
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
+        let recent_messages = recent_messages_from(recent_pairs);
 
         let project_path = root
             .get("projectPath")
             .or_else(|| root.get("projectHash"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-
+ 
         Ok(ParsedMeta {
             native_session_id,
             title,
+            first_user_message: first_user_raw,
+            recent_messages,
             started_at,
             updated_at,
             message_count,
-            preview,
             project_path,
         })
     }
@@ -141,6 +168,7 @@ impl AgentSessionAdapter for GeminiAdapter {
             messages.push(ParsedMessage {
                 role,
                 content: cleaned,
+                blocks: Vec::new(),
                 timestamp,
                 seq: seq as u32,
             });
@@ -209,7 +237,7 @@ mod tests {
         assert_eq!(meta.native_session_id, "gemini-session-001");
         assert_eq!(meta.title.as_deref(), Some("API design discussion"));
         assert_eq!(meta.message_count, 3);
-        assert!(meta.preview.contains("REST API"));
+        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("REST API")));
     }
 
     #[test]

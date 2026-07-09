@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl, strip_ansi, truncate};
+use crate::conversation::adapters::{
+    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+};
 
 /// Qoder CLI 会话适配器
 ///
@@ -90,8 +92,8 @@ impl AgentSessionAdapter for QoderAdapter {
             })
             .count() as u32;
 
-        // 预览：第一条用户消息
-        let preview = entries
+        // 预览/首条用户消息：第一条用户消息（净化交给 manager）
+        let first_user_raw = entries
             .iter()
             .find(|e| {
                 e.get("role").and_then(|v| v.as_str()) == Some("user")
@@ -108,8 +110,30 @@ impl AgentSessionAdapter for QoderAdapter {
                     .and_then(|v| v.as_str())
                     .or_else(|| e.get("text").and_then(|v| v.as_str()))
             })
-            .map(|s| truncate(&strip_ansi(s), 200))
-            .unwrap_or_default();
+            .map(|s| s.to_string());
+
+        // 最近消息缓冲（剔除 harness 注入噪声），供 manager 构建预览
+        let recent_pairs: Vec<(String, String)> = entries
+            .iter()
+            .filter_map(|e| {
+                let role = e
+                    .get("role")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| e.get("type").and_then(|v| v.as_str()))
+                    .unwrap_or("user")
+                    .to_string();
+                let text = e
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| e.get("text").and_then(|v| v.as_str()))?;
+                let t = text.trim().to_string();
+                if t.is_empty() {
+                    return None;
+                }
+                Some((role, t))
+            })
+            .collect();
+        let recent_messages = recent_messages_from(recent_pairs);
 
         // 项目路径：从文件路径推断
         let project_path = file_path
@@ -117,14 +141,15 @@ impl AgentSessionAdapter for QoderAdapter {
             .and_then(|p| p.file_name())
             .and_then(|s| s.to_str())
             .map(|s| s.to_string());
-
+ 
         Ok(ParsedMeta {
             native_session_id,
             title,
+            first_user_message: first_user_raw,
+            recent_messages,
             started_at,
             updated_at,
             message_count,
-            preview,
             project_path,
         })
     }
@@ -190,6 +215,7 @@ impl AgentSessionAdapter for QoderAdapter {
             messages.push(ParsedMessage {
                 role: role.to_string(),
                 content: cleaned,
+                blocks: Vec::new(),
                 timestamp,
                 seq,
             });
@@ -264,7 +290,7 @@ mod tests {
         assert_eq!(meta.native_session_id, "qoder-session-001");
         assert_eq!(meta.title.as_deref(), Some("Debug database connection"));
         assert_eq!(meta.message_count, 3); // only user/assistant, not context
-        assert!(meta.preview.contains("database"));
+        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("database")));
     }
 
     #[test]
