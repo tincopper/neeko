@@ -605,3 +605,36 @@ Complete LSP Phase 1: backend lsp/ module (LspManager, JSON-RPC proxy, installer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 76: Conversation title normalization with orca-aligned pipeline
+
+**Date**: 2026-07-09
+**Task**: Conversation title normalization with orca-aligned pipeline
+**Branch**: `main`
+
+### Summary
+
+Aligned conversation title normalization with orca reference: normalize_session_text pipeline (ANSI strip, hidden blocks, HTML comments, harness prefixes, markdown headings), build_preview_messages from recent ≤5, orca-matched title priority for Claude Code (custom-title > ai-title > summary > agent-name > first_user_message), OpenCode summary.title from data JSON. Fixed all 7 adapters to use recent_messages_from. 325 tests passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ab08fba` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

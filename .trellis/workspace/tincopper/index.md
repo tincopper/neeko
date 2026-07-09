@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 75
-- **Last Active**: 2026-07-08
+- **Total Sessions**: 76
+- **Last Active**: 2026-07-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~607 | Active |
+| `journal-2.md` | ~640 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 76 | 2026-07-09 | Conversation title normalization with orca-aligned pipeline | `ab08fba` | `main` |
 | 75 | 2026-07-08 | 集成验证：完整端到端测试 | `43a1167` | `main` |
 | 74 | 2026-07-08 | 实现前端会话管理UI | `43a1167` | `main` |
 | 73 | 2026-07-08 | 实现7个Agent会话适配器 | `1456071`, `cf9bdaf` | `main` |
