@@ -42,44 +42,6 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-md bg-bg-secondary/50 border border-border hover:bg-bg-hover transition-colors">
-      {/* Row 1: Agent icon + name + msgs + actions */}
-      <div className="flex items-center gap-2">
-        <div className="shrink-0 w-5 h-5 flex items-center justify-center">
-          <AgentIcon icon={agent?.icon ?? null} size={16} />
-        </div>
-        <span className="text-xs text-text-secondary font-medium truncate">
-          {agent?.name ?? meta.agentId}
-        </span>
-        {meta.messageCount > 0 && (
-          <span className="text-[11px] text-text-secondary/60 shrink-0">
-            {meta.messageCount} msgs
-          </span>
-        )}
-        <div className="flex items-center gap-1.5 ml-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'h-6 px-2 text-xs gap-1',
-              'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
-            )}
-            onClick={() => onResume(meta)}
-          >
-            <Play className="w-3 h-3" />
-            Resume
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-xs gap-1"
-            onClick={() => onView(meta)}
-          >
-            <FileText className="w-3 h-3" />
-            View
-          </Button>
-        </div>
-      </div>
-
       {/* Title */}
       <span className="text-[var(--font-size)] text-text-primary font-medium truncate">
         {meta.userTitle ?? meta.title}
@@ -92,8 +54,48 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
         </p>
       )}
 
-      {/* Time */}
-      <span className="text-[11px] text-text-secondary/50">{timeStr}</span>
+      {/* Bottom row: agent info + msgs + time + actions */}
+      <div className="flex items-center gap-2">
+        {agent && (
+          <div className="shrink-0 w-4 h-4 flex items-center justify-center">
+            <AgentIcon icon={agent.icon} size={14} />
+          </div>
+        )}
+        <span className="text-[11px] text-text-secondary font-medium truncate">
+          {agent?.name ?? meta.agentId}
+        </span>
+        {meta.messageCount > 0 && (
+          <span className="text-[10px] text-text-secondary/60 shrink-0">
+            {meta.messageCount} msgs
+          </span>
+        )}
+        <span className="text-[10px] text-text-secondary/40 shrink-0">
+          {timeStr}
+        </span>
+        <div className="flex items-center gap-1 ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-5 px-1.5 text-[10px] gap-0.5',
+              'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
+            )}
+            onClick={() => onResume(meta)}
+          >
+            <Play className="w-2.5 h-2.5" />
+            Resume
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 px-1.5 text-[10px] gap-0.5"
+            onClick={() => onView(meta)}
+          >
+            <FileText className="w-2.5 h-2.5" />
+            View
+          </Button>
+        </div>
+      </div>
     </div>
   );
 });

@@ -16,6 +16,7 @@ const HIDDEN_BLOCKS: &[(&str, &str)] = &[
     ("system-reminder", "</system-reminder>"),
     ("codex_internal_context", "</codex_internal_context>"),
     ("goal_context", "</goal_context>"),
+    ("thinking", "</thinking>"),
 ];
 
 /// 抑制前缀：以注入指令开头 → 视为无语义（返回 None）
@@ -342,6 +343,13 @@ mod tests {
         let input = "Fix issue #42 in the login flow";
         let r = normalize_session_text(input, NormTarget::Title).unwrap();
         assert_eq!(r, "Fix issue #42 in the login flow");
+    }
+
+    #[test]
+    fn strips_thinking_tags_from_preview() {
+        let input = "<thinking>Let me analyze the code...</thinking> The bug is in main.rs.";
+        let r = normalize_session_text(input, NormTarget::Preview).unwrap();
+        assert_eq!(r, "The bug is in main.rs.");
     }
 
     #[test]
