@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/conversation.md", "reason": "会话管理模块 spec，定义 normalized title/preview 数据结构和管线的约束"}
+{"file": ".trellis/spec/backend/adapters.md", "reason": "各 AgentSessionAdapter 实现规范，定义 parse_meta 返回格式"}
