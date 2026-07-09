@@ -168,22 +168,25 @@ pub fn run() {
         .on_menu_event(|app, event| {
             if event.id().0 == "close_tab" {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("cmd-w-pressed", ());
+                    let _ = window.emit("close-tab", ());
                 }
             }
         })
-        .on_window_event(|window, event| {
-            match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
-                    // Close button → close the window naturally (no prevent_close).
-                    // Cmd+W is handled by the menu shortcut above.
-                }
-                tauri::WindowEvent::Destroyed => {
-                    let state = window.state::<AppStateWrapper>();
-                    state.shutdown_background_and_exit();
-                }
-                _ => {}
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                // macOS: Cmd+W fires CloseRequested alongside the menu handler.
+                // Prevent it — the menu handler's close-tab event already handles
+                // tab close.
+                #[cfg(target_os = "macos")]
+                api.prevent_close();
+                // On Windows/Linux, CloseRequested fires only for Alt+F4 / native
+                // close button → let the window close naturally.
             }
+            tauri::WindowEvent::Destroyed => {
+                let state = window.state::<AppStateWrapper>();
+                state.shutdown_background_and_exit();
+            }
+            _ => {}
         })
         .invoke_handler(crate::neeko_invoke_handler!())
         .run(tauri::generate_context!())

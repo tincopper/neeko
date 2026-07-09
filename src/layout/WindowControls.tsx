@@ -53,7 +53,7 @@ function WindowControls() {
       </button>
       <button
         className="wc-btn wc-close"
-        onClick={() => appWindow.close()}
+        onClick={() => appWindow.destroy()}
         title="Close"
       >
         <X size={14} strokeWidth={1.5} />

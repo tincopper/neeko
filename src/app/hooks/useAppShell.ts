@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { useWslActions } from '@/features/connection/hooks/useWslActions';
 import { useRemoteActions } from '@/features/connection/hooks/useRemoteActions';
@@ -12,8 +11,6 @@ import { useRemoteAuthActions } from '@/features/connection/hooks/useRemoteAuthA
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/shared/store';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { useFileView } from '@/features/editor/hooks/useFileView';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
@@ -279,46 +276,15 @@ export function useAppShell(): UseAppShellResult {
     unifiedItems: useProjectList().items,
   });
 
-  // Cmd+W on macOS is intercepted by the native window system as CloseRequested.
-  // Rust prevents the default close and emits this event so we can close the
-  // current tab instead.
+  // Cmd+W / Ctrl+W → close active tab only, never close the window.
   useEffect(() => {
-    const unlistenPromise = listen('cmd-w-pressed', () => {
+    const unlistenPromise = listen('close-tab', () => {
       const currentTabId = activeTabId;
       if (currentTabId) {
         handleCloseTab(currentTabId);
       }
-      // If no more tabs are open, close the window
-      const store = useEditorStore.getState();
-      const proj = useProjectStore.getState();
-      const conn = useConnectionStore.getState();
-      const wt = useWorktreeStore.getState();
-      const currentProjectId =
-        proj.activeProjectId ??
-        conn.activeWslKey?.projectId ??
-        conn.activeRemoteKey?.projectId ??
-        null;
-      if (!currentProjectId) {
-        getCurrentWindow().destroy();
-        return;
-      }
-      const worktreePath =
-        wt.activeWorktreePath ??
-        wt.activeWslWorktreePath ??
-        wt.activeRemoteWorktreePath ??
-        null;
-      const tk = worktreePath
-        ? buildWorktreeTabKey(currentProjectId, worktreePath)
-        : currentProjectId;
-      const projectTabs = store.tabs[tk];
-      if (!projectTabs || projectTabs.tabs.length === 0) {
-        getCurrentWindow().destroy();
-      }
     });
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
+    return () => { unlistenPromise.then((fn) => fn()); };
   }, [activeTabId, handleCloseTab]);
 
   const { handleAgentClick } = useAgentClickHandler({
