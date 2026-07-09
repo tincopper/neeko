@@ -104,7 +104,15 @@ pub(crate) fn normalize_session_text(input: &str, target: NormTarget) -> Option<
     };
     let s = collapse_whitespace(&s);
 
-    // 7. 截断 + `...`
+    // 7. 剥离工具调用标记（仅 Preview 目标，如 🔧 `Read` ```json ... ```）
+    let s = if matches!(target, NormTarget::Preview) {
+        strip_tool_call_patterns(&s)
+    } else {
+        s
+    };
+    let s = collapse_whitespace(&s);
+
+    // 8. 截断 + `...`
     let limit = match target {
         NormTarget::Title => TITLE_MAX_CHARS,
         NormTarget::Preview => PREVIEW_MAX_CHARS,
@@ -203,6 +211,13 @@ fn is_word_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
+/// 剥离工具调用标记（预览专用）。
+/// 格式如 `🔧 `Read` ```json {"file": "..."} ``` ` → 移除整段。
+fn strip_tool_call_patterns(s: &str) -> String {
+    let re = Regex::new(r"🔧 `[^`]+` ```json .*? ```\s*").expect("infallible: static regex pattern");
+    re.replace_all(s, "").to_string()
+}
+
 /// 剥离前导 markdown 标题标记（`# `、`## ` 等）。
 /// 使首条用户消息的 `# Check Agent Task` → `Check Agent Task`。
 fn strip_leading_markdown_heading(s: &str) -> String {
@@ -292,6 +307,27 @@ mod tests {
         let input = "# Check Agent Task\nYou are the Check Agent";
         let r = normalize_session_text(input, NormTarget::Title).unwrap();
         assert_eq!(r, "Check Agent Task You are the Check Agent");
+    }
+
+    #[test]
+    fn strips_tool_call_from_preview() {
+        let input = "🔧 `Read` ```json {\"file_path\": \"src/auth.ts\"} ``` I found the issue.";
+        let r = normalize_session_text(input, NormTarget::Preview).unwrap();
+        assert_eq!(r, "I found the issue.");
+    }
+
+    #[test]
+    fn strips_multiple_tool_calls_from_preview() {
+        let input = "🔧 `Read` ```json {\"file\": \"a.ts\"} ``` 🔧 `Write` ```json {\"file\": \"b.ts\"} ``` Fixed it.";
+        let r = normalize_session_text(input, NormTarget::Preview).unwrap();
+        assert_eq!(r, "Fixed it.");
+    }
+
+    #[test]
+    fn does_not_affect_title() {
+        let input = "🔧 `Read` ```json {}``` Check this";
+        let r = normalize_session_text(input, NormTarget::Title).unwrap();
+        assert!(r.contains("🔧"));
     }
 
     #[test]
