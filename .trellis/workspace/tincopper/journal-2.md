@@ -638,3 +638,36 @@ Aligned conversation title normalization with orca reference: normalize_session_
 ### Next Steps
 
 - None - task complete
+
+
+## Session 77: View page UX optimization
+
+**Date**: 2026-07-09
+**Task**: View page UX optimization
+**Branch**: `main`
+
+### Summary
+
+R1: model in title bar + per-message (extracted from message.model in Claude CLI v2 JSONL, sessions column/data JSON in OpenCode). R2: scroll-to-top floating button. R3: consecutive assistant message aggregation with agent icon/name, sub-message dividers, model switch indicator. 328 tests passing.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `888dcff` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
