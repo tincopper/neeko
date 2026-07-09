@@ -21,6 +21,7 @@
 | [并发指南](./concurrency-guidelines.md) | 线程、Mutex、tokio、PTY/SSH I/O | 已填写 |
 | [质量指南](./quality-guidelines.md) | 代码风格、命名、平台特定代码 | 已填写 |
 | [会话适配器](./conversation-adapter.md) | Agent 会话管理、适配器模式、Tauri 命令 | 已填写 |
+| [窗口生命周期](./window-lifecycle.md) | 窗口关闭、Cmd+W 快捷键、跨平台事件交互 | 已填写 |
 
 ---
 
