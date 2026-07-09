@@ -1,2 +1,0 @@
-{"file": "src-tauri/src/conversation/normalize.rs", "reason": "核心规范管线实现，验证所有 normalize 测试通过"}
-{"file": "src-tauri/src/conversation/adapters/mod.rs", "reason": "recent_messages_from 辅助函数，验证 harness 过滤与环形缓冲"}
