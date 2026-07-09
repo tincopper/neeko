@@ -1,15 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { ChevronRightIcon } from "@/shared/components/icons";
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { useEditorAgentActions } from '@/features/editor/hooks/useEditorAgentActions';
 import { cn } from '@/lib/utils';
-import { detectLanguage, ensureLanguageRegistered } from "./highlight";
-import { useDiffData } from "./useDiffData";
-import DiffTable from "./DiffTable";
-import SplitDiffTable from "./SplitDiffTable";
-import type { DiffViewProps, ViewMode } from "./types";
-import { buildDiffMessage } from "@/shared/utils/agentPrompt";
-import { useEditorAgentActions } from "@/features/editor/hooks/useEditorAgentActions";
-import { useEditorStore } from "@/shared/store";
+import { ChevronRightIcon, Sparkles, TerminalIcon, CloseIcon } from '@/shared/components/icons';
+import { useEditorStore } from '@/shared/store';
+import { buildDiffMessage } from '@/shared/utils/agentPrompt';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
+
+import DiffTable from './DiffTable';
+import { detectLanguage, ensureLanguageRegistered } from './highlight';
+import SplitDiffTable from './SplitDiffTable';
+import type { DiffViewProps, ViewMode } from './types';
+import { useDiffData } from './useDiffData';
 
 function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -25,7 +27,7 @@ function getProjectIdFromTab(): string | null {
 
 const DiffView: React.FC<DiffViewProps> = React.memo(
   ({ projectId, diffSource, filePath, initialMode }) => {
-    const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? "unified");
+    const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? 'unified');
     const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
     const { sendToAgent, pending, clearPending } = useEditorAgentActions();
 
@@ -48,49 +50,49 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
 
     const currentProjectId = projectId || getProjectIdFromTab() || '';
 
-    const navigateBlock = (direction: "prev" | "next") => {
+    const navigateBlock = (direction: 'prev' | 'next') => {
       if (totalChangeBlocks === 0) {
         return;
       }
       let newIndex = currentBlockIndex;
-      if (direction === "prev" && currentBlockIndex > 0) {
+      if (direction === 'prev' && currentBlockIndex > 0) {
         newIndex = currentBlockIndex - 1;
-      } else if (
-        direction === "next" &&
-        currentBlockIndex < totalChangeBlocks - 1
-      ) {
+      } else if (direction === 'next' && currentBlockIndex < totalChangeBlocks - 1) {
         newIndex = currentBlockIndex + 1;
       }
       setCurrentBlockIndex(newIndex);
       requestAnimationFrame(() => {
         const el = document.getElementById(`cb-${newIndex}`);
         if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       });
     };
 
-    const toggleLine = useCallback((hunkIdx: number, lineIdx: number) => {
-      setSelectedLines(prev => {
-        const next = new Set(prev);
-        if (lineIdx === -1) {
-          // Toggle entire hunk
-          const allLines = diffResult?.hunks[hunkIdx]?.lines;
-          if (!allLines) return prev;
-          const allIn = allLines.every((_, i) => next.has(`${hunkIdx}:${i}`));
-          if (allIn) {
-            allLines.forEach((_, i) => next.delete(`${hunkIdx}:${i}`));
+    const toggleLine = useCallback(
+      (hunkIdx: number, lineIdx: number) => {
+        setSelectedLines((prev) => {
+          const next = new Set(prev);
+          if (lineIdx === -1) {
+            // Toggle entire hunk
+            const allLines = diffResult?.hunks[hunkIdx]?.lines;
+            if (!allLines) return prev;
+            const allIn = allLines.every((_, i) => next.has(`${hunkIdx}:${i}`));
+            if (allIn) {
+              allLines.forEach((_, i) => next.delete(`${hunkIdx}:${i}`));
+            } else {
+              allLines.forEach((_, i) => next.add(`${hunkIdx}:${i}`));
+            }
           } else {
-            allLines.forEach((_, i) => next.add(`${hunkIdx}:${i}`));
+            const key = `${hunkIdx}:${lineIdx}`;
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
           }
-        } else {
-          const key = `${hunkIdx}:${lineIdx}`;
-          if (next.has(key)) next.delete(key);
-          else next.add(key);
-        }
-        return next;
-      });
-    }, [diffResult]);
+          return next;
+        });
+      },
+      [diffResult],
+    );
 
     const clearSelection = useCallback(() => {
       setSelectedLines(new Set());
@@ -150,25 +152,21 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             />
             <span className="font-semibold text-[var(--font-size)]">{getFileName(filePath)}</span>
             <span className="text-text-muted text-[var(--font-size)]">{filePath}</span>
-            {diffResult &&
-              (changeStats.additions > 0 || changeStats.deletions > 0) && (
-                <span className="bg-bg-tertiary py-0.5 px-2 rounded-full text-[var(--font-size)] text-text-secondary flex gap-1">
-                  <span className="text-[#3fb950] font-semibold">
-                    +{changeStats.additions}
-                  </span>{" "}
-                  <span className="text-[#f85149] font-semibold">
-                    -{changeStats.deletions}
-                  </span>
-                </span>
-              )}
+            {diffResult && (changeStats.additions > 0 || changeStats.deletions > 0) && (
+              <span className="bg-bg-tertiary py-0.5 px-2 rounded-full text-[var(--font-size)] text-text-secondary flex gap-1">
+                <span className="text-[#3fb950] font-semibold">+{changeStats.additions}</span>{' '}
+                <span className="text-[#f85149] font-semibold">-{changeStats.deletions}</span>
+              </span>
+            )}
             {pending ? (
               <span className="text-xs text-text-muted ml-2">No agent terminal open</span>
             ) : (
               <button
-                className="ml-2 px-2 py-0.5 text-xs rounded bg-accent text-white hover:opacity-90 transition"
+                className="ml-2 p-1 rounded bg-accent-blue text-white hover:opacity-90 transition"
                 onClick={handleReviewFull}
+                title="Review this change"
               >
-                Review this change
+                <Sparkles size={14} />
               </button>
             )}
           </div>
@@ -177,20 +175,20 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             <div className="flex border border-border rounded overflow-hidden">
               <button
                 className={cn(
-                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0",
-                  viewMode === "unified" && "!bg-accent-blue !text-white",
+                  'bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0',
+                  viewMode === 'unified' && '!bg-accent-blue !text-white',
                 )}
-                onClick={() => setViewMode("unified")}
+                onClick={() => setViewMode('unified')}
                 title="Unified view"
               >
                 Unified
               </button>
               <button
                 className={cn(
-                  "bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0",
-                  viewMode === "split" && "!bg-accent-blue !text-white",
+                  'bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0',
+                  viewMode === 'split' && '!bg-accent-blue !text-white',
                 )}
-                onClick={() => setViewMode("split")}
+                onClick={() => setViewMode('split')}
                 title="Split view"
               >
                 Split
@@ -199,24 +197,19 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
 
             <button
               className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-[var(--font-size)] transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
-              onClick={() => navigateBlock("prev")}
+              onClick={() => navigateBlock('prev')}
               disabled={totalChangeBlocks === 0 || currentBlockIndex === 0}
               title="Previous Change"
             >
-              <ChevronRightIcon size={14} style={{ transform: "rotate(180deg)" }} />
+              <ChevronRightIcon size={14} style={{ transform: 'rotate(180deg)' }} />
             </button>
             <span className="text-[var(--font-size)] text-text-secondary min-w-[60px] text-center">
-              {totalChangeBlocks > 0
-                ? `${currentBlockIndex + 1} / ${totalChangeBlocks}`
-                : "0 / 0"}
+              {totalChangeBlocks > 0 ? `${currentBlockIndex + 1} / ${totalChangeBlocks}` : '0 / 0'}
             </span>
             <button
               className="bg-bg-tertiary border border-border text-text-primary px-2.5 py-1 rounded cursor-pointer text-[var(--font-size)] transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue disabled:opacity-40 disabled:cursor-not-allowed"
-              onClick={() => navigateBlock("next")}
-              disabled={
-                totalChangeBlocks === 0 ||
-                currentBlockIndex >= totalChangeBlocks - 1
-              }
+              onClick={() => navigateBlock('next')}
+              disabled={totalChangeBlocks === 0 || currentBlockIndex >= totalChangeBlocks - 1}
               title="Next Change"
             >
               <ChevronRightIcon size={14} />
@@ -226,55 +219,68 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
 
         {selectedCount > 0 && (
           <div className="flex items-center gap-2 px-4 py-1.5 bg-bg-secondary border-b border-border">
-            <span className="text-xs text-text-muted">{selectedCount} line{selectedCount > 1 ? 's' : ''} selected</span>
+            <span className="text-xs text-text-muted">
+              {selectedCount} line{selectedCount > 1 ? 's' : ''} selected
+            </span>
             {pending ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-text-muted">No agent terminal open</span>
                 <button
-                  className="px-2 py-0.5 rounded bg-accent text-white text-xs font-medium hover:opacity-90 transition"
+                  className="p-1 rounded bg-accent-blue text-white text-xs font-medium hover:opacity-90 transition"
                   onClick={() => {
-                    import('@/features/terminal/hooks/useTerminalTabs').then(({ useTerminalTabs }) => {
-                      import('@/features/project/store').then(({ useProjectStore }) => {
-                        const { addTab } = useTerminalTabs();
-                        const agentId = useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
-                        addTab(currentProjectId, agentId, agentId);
-                        if (pending) {
-                          setTimeout(() => {
-                            const msg = buildDiffMessage('review', { filePath, lineCount: selectedCount });
-                            import('@/features/terminal/components/terminalCommands').then(({ sendToTerminal }) => {
-                              sendToTerminal(currentProjectId, `${msg}\r`);
-                              clearPending();
-                              clearSelection();
-                            });
-                          }, 1500);
-                        }
-                      });
-                    });
+                    import('@/features/terminal/hooks/useTerminalTabs').then(
+                      ({ useTerminalTabs }) => {
+                        import('@/features/project/store').then(({ useProjectStore }) => {
+                          const { addTab } = useTerminalTabs();
+                          const agentId =
+                            useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
+                          addTab(currentProjectId, agentId, agentId);
+                          if (pending) {
+                            setTimeout(() => {
+                              const msg = buildDiffMessage('review', {
+                                filePath,
+                                lineCount: selectedCount,
+                              });
+                              import('@/features/terminal/components/terminalCommands').then(
+                                ({ sendToTerminal }) => {
+                                  sendToTerminal(currentProjectId, `${msg}\r`);
+                                  clearPending();
+                                  clearSelection();
+                                },
+                              );
+                            }, 1500);
+                          }
+                        });
+                      },
+                    );
                   }}
+                  title="Open Terminal"
                 >
-                  Open Terminal
+                  <TerminalIcon size={14} />
                 </button>
               </div>
             ) : (
               <button
-                className="px-2 py-0.5 text-xs rounded bg-accent text-white hover:opacity-90 transition"
+                className="p-1 rounded bg-accent-blue text-white hover:opacity-90 transition"
                 onClick={handleReviewSelection}
+                title={`Ask AI about ${selectedCount} line${selectedCount > 1 ? 's' : ''}`}
               >
-                Ask AI about {selectedCount} line{selectedCount > 1 ? 's' : ''}
+                <Sparkles size={14} />
               </button>
             )}
             <button
-              className="px-2 py-0.5 text-xs rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition"
+              className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition"
               onClick={clearSelection}
+              title="Clear selection"
             >
-              Clear
+              <CloseIcon size={14} />
             </button>
           </div>
         )}
 
         <div className="flex-1 overflow-auto pl-3 pr-2">
           {diffResult && diffResult.hunks.length > 0 ? (
-            viewMode === "unified" ? (
+            viewMode === 'unified' ? (
               <DiffTable
                 diffResult={diffResult}
                 language={language}
