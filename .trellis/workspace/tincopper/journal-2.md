@@ -774,3 +774,36 @@ Implemented 8-step LSP stability plan: session lifecycle events, restart/stop co
 ### Next Steps
 
 - None - task complete
+
+
+## Session 81: Terminal file path click to open in editor tab
+
+**Date**: 2026-07-10
+**Task**: Terminal file path click to open in editor tab
+**Branch**: `main`
+
+### Summary
+
+Implemented terminal file path clicking: Cmd/Ctrl+click opens file in editor tab with line/col navigation, plain click reveals in system file manager. Replaced dead __termLine with term.buffer.active.getLine() for path detection. Added FileTransportKind and setupFileLinks to Local/WSL/Remote terminal strategies. Fixed underline offset bug (getLine 0-based vs bufferLineNumber 1-based). Added toast notification for missing files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a0d1972` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
