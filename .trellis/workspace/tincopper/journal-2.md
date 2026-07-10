@@ -741,3 +741,36 @@ InlineDiffBlock component for diff code blocks in MarkdownPreview; filter empty 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 80: LSP stability fixes and hover tooltip improvements
+
+**Date**: 2026-07-10
+**Task**: LSP stability fixes and hover tooltip improvements
+**Branch**: `main`
+
+### Summary
+
+Implemented 8-step LSP stability plan: session lifecycle events, restart/stop commands, progress forwarding, proper child process cleanup, frontend dead code removal, unified language map, StatusBar LSP controls, and custom hover tooltip with clipping fix, scrollbar consistency, and link-to-browser-panel click handling.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `be3534f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
