@@ -1,15 +1,22 @@
-import { useMemo } from "react";
-import { createRemoteTerminalSession, resizeRemoteTerminal, closeRemoteTerminalSession } from "../api/terminalApi";
+import { useMemo } from 'react';
+
+import { useAppContext, useEditorContext } from '@/shared/contexts';
+import type { AuthMethod, FileTransportKind } from '@/shared/types';
+
+import {
+  createRemoteTerminalSession,
+  resizeRemoteTerminal,
+  closeRemoteTerminalSession,
+} from '../api/terminalApi';
 import {
   remoteCacheKey,
   remoteRebuildCallbacks,
   remoteTerminalCache,
   remoteWrapperRefs,
-} from "../components/terminalCache";
-import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/shared/contexts';
-import type { AuthMethod } from '@/shared/types';
-import type { TerminalStrategy } from "./types";
+} from '../components/terminalCache';
+import { setupTerminalLinks } from '../components/terminalLinks';
+
+import type { TerminalStrategy } from './types';
 
 interface RemoteStrategyParams {
   entryId: string;
@@ -26,10 +33,8 @@ interface RemoteStrategyParams {
   cacheKeySuffix?: string;
 }
 
-export function useRemoteTerminalStrategy(
-  params: RemoteStrategyParams,
-): TerminalStrategy {
-  const { config } = useAppContext();
+export function useRemoteTerminalStrategy(params: RemoteStrategyParams): TerminalStrategy {
+  const { config, showToast } = useAppContext();
   const { activeTabId, tabs } = useEditorContext();
 
   const {
@@ -41,19 +46,19 @@ export function useRemoteTerminalStrategy(
     username,
     auth,
     fontSize = 14,
-    fontFamily = "",
+    fontFamily = '',
     onSessionReady,
-    paneId = "p1",
-    cacheKeySuffix = "",
+    paneId = 'p1',
+    cacheKeySuffix = '',
   } = params;
 
   return useMemo(() => {
-    const cacheKey = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ""}${cacheKeySuffix}:${paneId}`;
+    const cacheKey = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
 
     return {
-      kind: "remote" as const,
+      kind: 'remote' as const,
       cacheKey,
-      cache: remoteTerminalCache as Map<string, import("./types").CacheEntry>,
+      cache: remoteTerminalCache as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: remoteRebuildCallbacks,
       wrapperRefs: remoteWrapperRefs,
       createSession: async (cols: number, rows: number) => {
@@ -76,6 +81,14 @@ export function useRemoteTerminalStrategy(
       fontFamily,
       gpuAccel: config.terminalGpuAcceleration ?? false,
       onSessionReady: onSessionReady ? () => onSessionReady(projectId) : undefined,
+      setupFileLinks: (term) => {
+        if (projectPath) {
+          const transport: FileTransportKind = {
+            Remote: { host, port, username, auth, project_path: projectPath },
+          };
+          setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, transport, showToast });
+        }
+      },
     } satisfies TerminalStrategy;
   }, [
     entryId,

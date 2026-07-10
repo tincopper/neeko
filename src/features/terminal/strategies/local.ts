@@ -1,24 +1,28 @@
-import { useMemo } from "react";
-import { createTerminalSession, resizeTerminal, closeTerminalSession } from "../api/terminalApi";
+import { useMemo } from 'react';
+
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/shared/contexts';
+import { useAppContext, useEditorContext } from '@/shared/contexts';
+import type { FileTransportKind } from '@/shared/types';
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+
+import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
   terminalCache,
   terminalRebuildCallbacks,
   terminalWrapperRefs,
   terminalCacheKey,
-} from "../components/terminalCache";
-import { setupTerminalLinks } from "../components/terminalLinks";
-import type { TerminalStrategy } from "./types";
+} from '../components/terminalCache';
+import { setupTerminalLinks } from '../components/terminalLinks';
+
+import type { TerminalStrategy } from './types';
 
 export function useLocalTerminalStrategy(
   paneId: string,
   worktreePathOverride?: string,
   worktreeBranchOverride?: string,
 ): TerminalStrategy | null {
-  const { config } = useAppContext();
+  const { config, showToast } = useAppContext();
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
@@ -33,23 +37,26 @@ export function useLocalTerminalStrategy(
     const isWorktree = !!effWorktreePath;
     const projectPath = effWorktreePath ?? activeProject?.path ?? null;
     const baseName = activeProject?.name ?? null;
-    const projectName = baseName && effWorktreeBranch
-      ? `${baseName} [${effWorktreeBranch}]`
-      : baseName ?? null;
+    const projectName =
+      baseName && effWorktreeBranch ? `${baseName} [${effWorktreeBranch}]` : (baseName ?? null);
 
     const cacheKey = projectId
       ? isWorktree
-        ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? "default"}:${paneId}`
+        ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? 'default'}:${paneId}`
         : terminalCacheKey(projectId, activeTabId, paneId)
       : `local:none:${paneId}`;
 
     return {
-      kind: "local" as const,
+      kind: 'local' as const,
       cacheKey,
-      cache: terminalCache as unknown as Map<string, import("./types").CacheEntry>,
+      cache: terminalCache as unknown as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: terminalRebuildCallbacks,
       wrapperRefs: terminalWrapperRefs,
-      createSession: async (cols: number, rows: number, payload?: { command?: string; configId?: string }) => {
+      createSession: async (
+        cols: number,
+        rows: number,
+        payload?: { command?: string; configId?: string },
+      ) => {
         const session = await createTerminalSession(
           projectId,
           cols,
@@ -65,7 +72,7 @@ export function useLocalTerminalStrategy(
       agentDelayMs: 0,
       connectingMessage: `\x1b[33m[Terminal] Connecting to ${projectName ?? projectPath}...\x1b[0m\r\n`,
       fontSize: config.terminalFontSize,
-      fontFamily: config.fontFamily ?? "",
+      fontFamily: config.fontFamily ?? '',
       gpuAccel: config.terminalGpuAcceleration ?? false,
       outputFilter: (bytes: Uint8Array): Uint8Array => {
         const arr: number[] = [];
@@ -73,7 +80,14 @@ export function useLocalTerminalStrategy(
         return arr.length > 0 ? new Uint8Array(arr) : new Uint8Array(0);
       },
       setupFileLinks: (term) => {
-        if (projectPath) setupTerminalLinks(term, projectPath);
+        if (projectPath) {
+          const tabKey =
+            isWorktree && effWorktreePath
+              ? buildWorktreeTabKey(projectId, effWorktreePath)
+              : projectId;
+          const transport: FileTransportKind = { Local: { project_path: projectPath } };
+          setupTerminalLinks(term, { projectPath, tabKey, projectId, transport, showToast });
+        }
       },
     } satisfies TerminalStrategy;
   }, [
