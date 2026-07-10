@@ -77,6 +77,56 @@ impl ConversationManager {
         agent_id: &str,
         adapter: &dyn AgentSessionAdapter,
     ) -> Result<ScanReport> {
+        // 优先使用批量解析（如 SQLite 单文件多会话适配器）
+        if let Some(bulk) = adapter.parse_all_metas() {
+            let metas = bulk?;
+            let mut sessions_found: u32 = 0;
+            let mut errors: Vec<String> = Vec::new();
+
+            for (meta, synthetic_path) in metas {
+                let native_session_id = meta.native_session_id;
+                let id = format!("{agent_id}:{native_session_id}");
+
+                let resolved_title = resolve_title(
+                    meta.title.as_deref(),
+                    meta.first_user_message.as_deref(),
+                    agent_id,
+                    &native_session_id,
+                );
+                let resolved_preview = build_preview_messages(&meta.recent_messages);
+
+                let conversation = ConversationMeta {
+                    id,
+                    native_session_id,
+                    agent_id: agent_id.to_string(),
+                    title: resolved_title,
+                    model: meta.model,
+                    started_at: meta.started_at,
+                    updated_at: meta.updated_at,
+                    message_count: meta.message_count,
+                    preview: resolved_preview,
+                    file_path: synthetic_path,
+                    project_path: meta.project_path,
+                    user_title: None,
+                    tags: Vec::new(),
+                };
+
+                let mut cache = self
+                    .cache
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+                cache.insert(conversation.id.clone(), conversation);
+                sessions_found += 1;
+            }
+
+            return Ok(ScanReport {
+                agent_id: agent_id.to_string(),
+                sessions_found,
+                errors,
+            });
+        }
+
+        // 默认逐文件扫描
         let root = adapter.session_root();
         if !root.exists() {
             return Ok(ScanReport {
@@ -101,7 +151,7 @@ impl ConversationManager {
                 continue;
             }
 
-            // 使用相对于 session_root 的路径匹配 pattern（支持 **/*.jsonl 等）
+            // 使用相对于 session_root 的路径匹配 pattern
             let rel_path = match path.strip_prefix(&root) {
                 Ok(rp) => rp,
                 Err(_) => continue,
@@ -117,7 +167,6 @@ impl ConversationManager {
                     let native_session_id = meta.native_session_id;
                     let id = format!("{agent_id}:{native_session_id}");
 
-                    // 标题三优先级解析（P2 AI 标题 → P3 首条用户消息 → 兜底）
                     let resolved_title = resolve_title(
                         meta.title.as_deref(),
                         meta.first_user_message.as_deref(),
