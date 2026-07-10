@@ -704,3 +704,40 @@ R1: model in title bar + per-message (extracted from message.model in Claude CLI
 ### Next Steps
 
 - None - task complete
+
+
+## Session 79: Diff block rendering, empty message filter, clippy fixes
+
+**Date**: 2026-07-10
+**Task**: Diff block rendering, empty message filter, clippy fixes
+**Branch**: `main`
+
+### Summary
+
+InlineDiffBlock component for diff code blocks in MarkdownPreview; filter empty assistant sub-messages in ConversationViewer; fix clippy cast_sign_loss errors in opencode adapter and lsp symbol parser; cargo fmt across all Rust files.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bdc4ae4` | (see git log) |
+| `b99c6ee` | (see git log) |
+| `b8e13a1` | (see git log) |
+| `11bb58f` | (see git log) |
+| `8eec093` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
