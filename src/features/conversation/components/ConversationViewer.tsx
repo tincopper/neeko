@@ -84,7 +84,11 @@ function groupMessages(messages: ConversationMessageType[], startIdx: number): M
     const msg = messages[i];
     const actualIdx = startIdx + i;
     if (msg.role !== 'assistant') {
-      groups.push({ role: msg.role as 'user' | 'assistant', messages: [msg], indices: [actualIdx] });
+      groups.push({
+        role: msg.role as 'user' | 'assistant',
+        messages: [msg],
+        indices: [actualIdx],
+      });
       continue;
     }
     const last = groups[groups.length - 1];
@@ -114,10 +118,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const bottomRef = useRef<HTMLDivElement>(null);
     const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-    const agent = useMemo(
-      () => agents.find((a) => a.id === agentId) ?? null,
-      [agents, agentId],
-    );
+    const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId]);
 
     // Load messages
     useEffect(() => {
@@ -220,14 +221,17 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       }
     }, [conversationId, showToast]);
 
-    const scrollToMessage = useCallback((msgIdx: number) => {
-      const group = groups.find((g) => g.indices.includes(msgIdx));
-      if (group) {
-        const firstIdx = group.indices[0];
-        const el = groupRefs.current.get(firstIdx);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, [groups]);
+    const scrollToMessage = useCallback(
+      (msgIdx: number) => {
+        const group = groups.find((g) => g.indices.includes(msgIdx));
+        if (group) {
+          const firstIdx = group.indices[0];
+          const el = groupRefs.current.get(firstIdx);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      },
+      [groups],
+    );
 
     const scrollToTop = useCallback(() => {
       scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -249,16 +253,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
           </Button>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              {agent && (
-                <AgentIcon icon={agent.icon} size={14} />
-              )}
-              <h3 className="text-sm font-medium text-text-primary truncate">
-                {agentName}
-              </h3>
+              {agent && <AgentIcon icon={agent.icon} size={14} />}
+              <h3 className="text-sm font-medium text-text-primary truncate">{agentName}</h3>
               {modelLabel && (
-                <span className="text-[11px] text-text-secondary/50 truncate">
-                  · {modelLabel}
-                </span>
+                <span className="text-[11px] text-text-secondary/50 truncate">· {modelLabel}</span>
               )}
             </div>
             {!loading && messages.length > 0 && (
@@ -318,11 +316,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
         {/* Main content area */}
         <div className="flex-1 flex overflow-hidden relative">
           {/* Messages */}
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto"
-            onScroll={handleScroll}
-          >
+          <div ref={scrollRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
             {loading ? (
               <div className="flex items-center justify-center py-16 text-xs text-text-secondary/40">
                 Loading...
@@ -361,9 +355,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                         <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-bg-secondary text-text-primary rounded-bl-md border border-border/50">
                           {/* Role label + model */}
                           <div className="flex items-center gap-1.5 mb-2">
-                            {agent && (
-                              <AgentIcon icon={agent.icon} size={14} />
-                            )}
+                            {agent && <AgentIcon icon={agent.icon} size={14} />}
                             <span className="text-[11px] font-medium text-green-400">
                               {agent?.name ?? agentId ?? 'Assistant'}
                             </span>
@@ -379,10 +371,17 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
 
                           {/* Sub-messages */}
                           {group.messages.map((msg, msgIdx) => {
+                            // 跳过无内容的消息
+                            const hasAnyContent =
+                              (msg.blocks && msg.blocks.length > 0) ||
+                              (msg.content?.trim() ?? '').length > 0;
+                            if (!hasAnyContent) return null;
+
                             // 切换模型提示：仅从第2条开始，且与前一条模型不同时展示
-                            const showModel = msgIdx > 0
-                              && msg.model != null
-                              && msg.model !== group.messages[msgIdx - 1].model;
+                            const showModel =
+                              msgIdx > 0 &&
+                              msg.model != null &&
+                              msg.model !== group.messages[msgIdx - 1].model;
                             return (
                               <React.Fragment key={msg.seq}>
                                 {showModel && (
@@ -424,7 +423,6 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                 <div ref={bottomRef} />
               </div>
             )}
-
           </div>
 
           {/* Navigation button (always visible, fixed at bottom-right) */}
