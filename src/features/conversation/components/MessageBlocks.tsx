@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import rehypeRaw from 'rehype-raw';
+import { cn } from '@/lib/utils';
+import { MarkdownPreview } from '@/ui/MarkdownPreview';
+import type { MessageBlock } from '../types';
 import {
   ChevronDown,
   ChevronRight,
@@ -13,9 +12,6 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { MessageBlock } from '../types';
-import 'highlight.js/styles/github-dark.min.css';
 
 // 工具图标映射
 const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
@@ -79,13 +75,8 @@ function normalizeMarkdown(text: string): string {
 
 export const TextBlock: React.FC<{ text: string }> = ({ text }) => {
   const normalizedText = normalizeMarkdown(text);
-  return (
-    <div className="prose prose-sm max-w-none prose-invert prose-p:my-1 prose-headings:text-text-primary prose-headings:my-2 prose-code:before:content-none prose-code:after:content-none prose-code:text-accent-blue prose-code:bg-bg-tertiary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-[#0d1117] prose-pre:border prose-pre:border-border prose-pre:rounded-lg prose-a:text-accent-blue prose-li:text-text-primary prose-li:my-0.5 prose-strong:text-text-primary prose-table:border prose-table:border-border prose-table:w-full prose-th:bg-bg-secondary prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:font-medium prose-th:border prose-th:border-border prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-border">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight]}>
-        {normalizedText}
-      </ReactMarkdown>
-    </div>
-  );
+  const theme = document.documentElement.getAttribute('data-theme') || 'classic-dark';
+  return <MarkdownPreview content={normalizedText} theme={theme} />;
 };
 
 // ─── Thinking Block ──────────────────────────────────────────────────────────

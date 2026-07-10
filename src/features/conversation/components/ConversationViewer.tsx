@@ -385,7 +385,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                               && msg.model !== group.messages[msgIdx - 1].model;
                             return (
                               <React.Fragment key={msg.seq}>
-                                {msgIdx > 0 && (
+                                {(msgIdx > 0 && (msg.blocks?.some((b) => {
+                                  if (b.type === 'text') return b.text?.trim().length > 0;
+                                  return true;
+                                }) || msg.content?.trim().length > 0)) && (
                                   <div className="border-t border-border/50 my-2" />
                                 )}
                                 {showModel && (
