@@ -242,10 +242,19 @@ function cycleTab(direction: 1 | -1) {
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs || projectTabs.tabs.length === 0) return;
 
-  const { tabs, activeTabId: currentActive } = projectTabs;
-  const currentIndex = tabs.findIndex((t) => t.id === currentActive);
+  const layout = editor.editorLayout[tabKey];
+  const activeGroupId = layout?.activeGroupId ?? "left";
+  const groupTabIds = layout?.groups[activeGroupId]?.tabIds;
+  const orderedIds =
+    groupTabIds && groupTabIds.length > 0
+      ? groupTabIds
+      : projectTabs.tabs.map((t) => t.id);
+
+  const currentActive = projectTabs.activeTabId;
+  if (!currentActive) return;
+  const currentIndex = orderedIds.indexOf(currentActive);
   if (currentIndex < 0) return;
 
-  const targetIndex = (currentIndex + direction + tabs.length) % tabs.length;
-  useEditorStore.getState().activateTab(tabKey, tabs[targetIndex].id);
+  const targetIndex = (currentIndex + direction + orderedIds.length) % orderedIds.length;
+  useEditorStore.getState().activateTab(tabKey, orderedIds[targetIndex]);
 }

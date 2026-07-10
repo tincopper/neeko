@@ -239,8 +239,19 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         if (remaining.length === 0) {
           newActiveId = null;
         } else {
-          const nextIdx = idx < remaining.length ? idx : remaining.length - 1;
-          newActiveId = remaining[nextIdx].id;
+          const layout = state.editorLayout[projectId];
+          let groupId: EditorGroupId = "left";
+          if (layout?.groups.right.tabIds.includes(tabId)) groupId = "right";
+          const groupIds = layout?.groups[groupId]?.tabIds;
+          const groupIdx = groupIds?.indexOf(tabId) ?? -1;
+
+          if (groupIdx > 0) {
+            newActiveId = groupIds![groupIdx - 1];
+          } else if (groupIdx >= 0 && groupIds && groupIds.length > 1) {
+            newActiveId = groupIds[groupIdx + 1];
+          } else {
+            newActiveId = remaining[remaining.length - 1].id;
+          }
         }
       }
 
