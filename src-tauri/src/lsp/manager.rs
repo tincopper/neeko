@@ -182,7 +182,10 @@ impl LspSession {
         // Writer thread
         let mut child_stdin_w = child_stdin;
         let _writer_handle = thread::Builder::new()
-            .name(format!("lsp-writer-{}", &server_name[..4.min(server_name.len())]))
+            .name(format!(
+                "lsp-writer-{}",
+                &server_name[..4.min(server_name.len())]
+            ))
             .spawn(move || -> Result<()> {
                 for msg in writer_rx {
                     msg.write(&mut child_stdin_w)
@@ -415,10 +418,7 @@ fn handle_diagnostics_notification(
     language_id: &str,
     diag_bus: &DiagnosticBus,
 ) {
-    let uri = params
-        .get("uri")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let uri = params.get("uri").and_then(|v| v.as_str()).unwrap_or("");
 
     // Pass the raw diagnostics JSON array through without parsing —
     // avoids a serialize→parse→serialize round-trip.
@@ -436,10 +436,7 @@ fn handle_diagnostics_notification(
 }
 
 fn handle_progress_notification(params: &Value, project_path: &str) {
-    let token = params
-        .get("token")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let token = params.get("token").and_then(|v| v.as_str()).unwrap_or("");
     let value = params.get("value");
     let kind = value.and_then(|v| v.get("kind").and_then(|k| k.as_str()));
 
@@ -576,11 +573,7 @@ impl LspManager {
         let ah = app_handle.clone();
         let diag_subscriber = self.diag_bus.subscribe(move |event: &DiagnosticEvent| {
             let transport = IpcTransport::new(ah.clone());
-            transport.push_diagnostics(
-                &event.project_path,
-                &event.uri,
-                event.diagnostics.clone(),
-            );
+            transport.push_diagnostics(&event.project_path, &event.uri, event.diagnostics.clone());
         });
         // Leak the subscription intentionally — it lives for the app lifetime
         std::mem::forget(diag_subscriber);
@@ -613,7 +606,10 @@ impl LspManager {
                 .resolve_by_language(language_id)
                 .cloned()
                 .ok_or_else(|| {
-                    AppError::Lsp(format!("No LSP plugin registered for language: {}", language_id))
+                    AppError::Lsp(format!(
+                        "No LSP plugin registered for language: {}",
+                        language_id
+                    ))
                 })?
         };
 
@@ -739,11 +735,9 @@ impl LspManager {
         let this = Arc::clone(self);
         let pp = project_path.to_string();
         let lid = language_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            this.get_or_create_session(&pp, &lid)
-        })
-        .await
-        .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
+        tokio::task::spawn_blocking(move || this.get_or_create_session(&pp, &lid))
+            .await
+            .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
         let (pending, writer) = {
             let sessions = self.sessions.lock().expect("infallible");

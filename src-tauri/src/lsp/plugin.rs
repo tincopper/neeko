@@ -248,8 +248,7 @@ impl LspPluginRegistry {
             self.ext_index
                 .insert(ext.to_string(), plugin.language_id.to_string());
         }
-        self.plugins
-            .insert(plugin.language_id.to_string(), plugin);
+        self.plugins.insert(plugin.language_id.to_string(), plugin);
     }
 
     /// Resolve a file extension to its LSP plugin, if any.

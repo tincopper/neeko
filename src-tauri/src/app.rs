@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::{Emitter, Manager};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
@@ -161,9 +161,7 @@ pub fn run() {
             let file = SubmenuBuilder::new(handle, "File")
                 .item(&close_tab)
                 .build()?;
-            MenuBuilder::new(handle)
-                .item(&file)
-                .build()
+            MenuBuilder::new(handle).item(&file).build()
         })
         .on_menu_event(|app, event| {
             if event.id().0 == "close_tab" {

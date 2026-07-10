@@ -78,10 +78,7 @@ pub fn get_resume_command(
 }
 
 #[tauri::command]
-pub fn export_conversation(
-    id: String,
-    state: State<AppStateWrapper>,
-) -> Result<String, AppError> {
+pub fn export_conversation(id: String, state: State<AppStateWrapper>) -> Result<String, AppError> {
     state
         .conversation_manager
         .export_markdown(&id)

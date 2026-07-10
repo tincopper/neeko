@@ -89,7 +89,10 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         if let Some((db_path, session_id)) = split_synthetic_path(file_path) {
             return parse_opencode_session(&db_path, &session_id);
         }
-        anyhow::bail!("OpenCode adapter requires parse_all_metas; parse_meta called with: {}", file_path.display());
+        anyhow::bail!(
+            "OpenCode adapter requires parse_all_metas; parse_meta called with: {}",
+            file_path.display()
+        );
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -97,11 +100,9 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         let (db_path, session_id) = split_synthetic_path(file_path)
             .context("Invalid synthetic path; expected <dbPath>#<sessionId>")?;
 
-        let conn = rusqlite::Connection::open_with_flags(
-            &db_path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )
-        .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
+        let conn =
+            rusqlite::Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
         let _ = conn.execute_batch("PRAGMA query_only = ON");
 
         // Messages with their parts, ordered by time
@@ -162,10 +163,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 let mut blocks: Vec<MessageBlock> = Vec::new();
 
                 for part in &parts {
-                    let part_type = part
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("text");
+                    let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("text");
                     match part_type {
                         "text" => {
                             if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
@@ -201,10 +199,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
-                            let text = part
-                                .get("text")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
+                            let text = part.get("text").and_then(|v| v.as_str()).unwrap_or("");
                             let is_error = part
                                 .get("is_error")
                                 .and_then(|v| v.as_bool())
@@ -219,9 +214,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                     }
                 }
 
-                let model = model_json
-                    .as_deref()
-                    .and_then(extract_model_id_from_json);
+                let model = model_json.as_deref().and_then(extract_model_id_from_json);
 
                 ParsedMessage {
                     role,
@@ -317,8 +310,16 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
             let tokens_reasoning: i64 = row.get(8)?;
             let msg_count: i64 = row.get(9)?;
             Ok((
-                id, title, directory, time_created, time_updated,
-                model_json, tokens_input, tokens_output, tokens_reasoning, msg_count,
+                id,
+                title,
+                directory,
+                time_created,
+                time_updated,
+                model_json,
+                tokens_input,
+                tokens_output,
+                tokens_reasoning,
+                msg_count,
             ))
         })
         .context("Failed to query sessions")?;
@@ -326,16 +327,19 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
     let mut results = Vec::new();
     for row in rows {
         let (
-            id, title, directory, time_created, time_updated,
-            model_json, tokens_input, tokens_output, tokens_reasoning, msg_count,
+            id,
+            title,
+            directory,
+            time_created,
+            time_updated,
+            model_json,
+            tokens_input,
+            tokens_output,
+            tokens_reasoning,
+            msg_count,
         ) = row?;
 
-        let synthetic_path = PathBuf::from(format!(
-            "{}{}{}",
-            db_path.display(),
-            SYNTHETIC_SEP,
-            id
-        ));
+        let synthetic_path = PathBuf::from(format!("{}{}{}", db_path.display(), SYNTHETIC_SEP, id));
 
         let started_at = normalize_timestamp(time_created);
         let updated_at = normalize_timestamp(time_updated);
@@ -356,7 +360,8 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
             model,
             started_at,
             updated_at,
-            message_count: msg_count as u32,
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            message_count: msg_count.clamp(0, i64::from(u32::MAX)) as u32,
             project_path: directory,
         };
 
@@ -367,10 +372,7 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
 }
 
 /// Build preview messages for a given session.
-fn build_preview_messages(
-    conn: &rusqlite::Connection,
-    session_id: &str,
-) -> Vec<(String, String)> {
+fn build_preview_messages(conn: &rusqlite::Connection, session_id: &str) -> Vec<(String, String)> {
     let query = conn.prepare(
         "SELECT json_extract(m.data, '$.role') AS role,
                 p.data AS part_data,
@@ -389,18 +391,16 @@ fn build_preview_messages(
         Err(_) => return Vec::new(),
     };
 
-    let rows: Vec<(String, String, i64)> = match stmt.query_map(
-        [session_id, &PREVIEW_LIMIT.to_string()],
-        |row| {
+    let rows: Vec<(String, String, i64)> =
+        match stmt.query_map([session_id, &PREVIEW_LIMIT.to_string()], |row| {
             let role: String = row.get(0)?;
             let part_data_str: String = row.get(1)?;
             let ts: i64 = row.get(2)?;
             Ok((role, part_data_str, ts))
-        },
-    ) {
-        Ok(r) => r.filter_map(|r| r.ok()).collect(),
-        Err(_) => return Vec::new(),
-    };
+        }) {
+            Ok(r) => r.filter_map(|r| r.ok()).collect(),
+            Err(_) => return Vec::new(),
+        };
 
     // Reverse-iterate (query returns newest first, we want oldest-first for the ring buffer)
     let mut pairs: Vec<(String, String)> = Vec::new();
@@ -416,16 +416,14 @@ fn build_preview_messages(
 }
 
 /// Parse a single session from a synthetic path reference.
-fn parse_opencode_session(
-    db_path: &Path,
-    session_id: &str,
-) -> Result<ParsedMeta> {
+fn parse_opencode_session(db_path: &Path, session_id: &str) -> Result<ParsedMeta> {
     let conn = rusqlite::Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
     let _ = conn.execute_batch("PRAGMA query_only = ON");
 
-    let row = conn.query_row(
-        "SELECT s.title, s.directory, s.time_created, s.time_updated,
+    let row = conn
+        .query_row(
+            "SELECT s.title, s.directory, s.time_created, s.time_updated,
                 s.model, COALESCE(s.tokens_input, 0), COALESCE(s.tokens_output, 0),
                 COALESCE(s.tokens_reasoning, 0),
                 (SELECT COUNT(*) FROM message m
@@ -435,27 +433,42 @@ fn parse_opencode_session(
          FROM session s
          WHERE s.id = ?1
          LIMIT 1",
-        [session_id],
-        |row| {
-            let title: Option<String> = row.get(0)?;
-            let directory: Option<String> = row.get(1)?;
-            let time_created: i64 = row.get(2)?;
-            let time_updated: i64 = row.get(3)?;
-            let model_json: Option<String> = row.get(4)?;
-            let tokens_input: i64 = row.get(5)?;
-            let tokens_output: i64 = row.get(6)?;
-            let tokens_reasoning: i64 = row.get(7)?;
-            let msg_count: i64 = row.get(8)?;
-            Ok((
-                title, directory, time_created, time_updated,
-                model_json, tokens_input, tokens_output, tokens_reasoning, msg_count,
-            ))
-        },
-    ).context("Session not found in OpenCode database")?;
+            [session_id],
+            |row| {
+                let title: Option<String> = row.get(0)?;
+                let directory: Option<String> = row.get(1)?;
+                let time_created: i64 = row.get(2)?;
+                let time_updated: i64 = row.get(3)?;
+                let model_json: Option<String> = row.get(4)?;
+                let tokens_input: i64 = row.get(5)?;
+                let tokens_output: i64 = row.get(6)?;
+                let tokens_reasoning: i64 = row.get(7)?;
+                let msg_count: i64 = row.get(8)?;
+                Ok((
+                    title,
+                    directory,
+                    time_created,
+                    time_updated,
+                    model_json,
+                    tokens_input,
+                    tokens_output,
+                    tokens_reasoning,
+                    msg_count,
+                ))
+            },
+        )
+        .context("Session not found in OpenCode database")?;
 
     let (
-        title, directory, time_created, time_updated,
-        model_json, _tokens_input, _tokens_output, _tokens_reasoning, msg_count,
+        title,
+        directory,
+        time_created,
+        time_updated,
+        model_json,
+        _tokens_input,
+        _tokens_output,
+        _tokens_reasoning,
+        msg_count,
     ) = row;
 
     let recent_messages = build_preview_messages(&conn, session_id);
@@ -473,7 +486,8 @@ fn parse_opencode_session(
         model: model_json.as_deref().and_then(extract_model_id_from_json),
         started_at: normalize_timestamp(time_created),
         updated_at: normalize_timestamp(time_updated),
-        message_count: msg_count as u32,
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        message_count: msg_count.clamp(0, i64::from(u32::MAX)) as u32,
         project_path: directory,
     })
 }
@@ -614,7 +628,10 @@ mod tests {
         assert!(syn_str.contains("opencode.db"));
 
         // Preview messages should include recent messages
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("button")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("button")));
     }
 
     #[test]
@@ -642,7 +659,10 @@ mod tests {
         let metas = parse_opencode_db(&db_path).expect("should succeed");
 
         // Archived and child sessions should be excluded
-        let ids: Vec<&str> = metas.iter().map(|(m, _)| m.native_session_id.as_str()).collect();
+        let ids: Vec<&str> = metas
+            .iter()
+            .map(|(m, _)| m.native_session_id.as_str())
+            .collect();
         assert!(!ids.contains(&"ses-archived"));
         assert!(!ids.contains(&"ses-child"));
         assert!(ids.contains(&"ses-001"));
@@ -695,7 +715,8 @@ mod tests {
     #[test]
     fn should_handle_nonexistent_db() {
         let path = Path::new("/nonexistent/opencode.db");
-        let result = OpenCodeAdapter.parse_messages(&PathBuf::from(format!("{}#s1", path.display())));
+        let result =
+            OpenCodeAdapter.parse_messages(&PathBuf::from(format!("{}#s1", path.display())));
         assert!(result.is_err());
     }
 

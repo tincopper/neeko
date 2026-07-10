@@ -214,8 +214,8 @@ pub async fn lsp_transport(
     message: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
-    let parsed: Value =
-        serde_json::from_str(&message).map_err(|e| AppError::Lsp(format!("Invalid JSON-RPC: {}", e)))?;
+    let parsed: Value = serde_json::from_str(&message)
+        .map_err(|e| AppError::Lsp(format!("Invalid JSON-RPC: {}", e)))?;
 
     let method = parsed["method"]
         .as_str()
@@ -262,11 +262,10 @@ pub async fn lsp_transport(
 
     // ── Request (has id): forward to LSP server, return response ─────
     if id.is_some() && !id.as_ref().map(|v| v.is_null()).unwrap_or(false) {
-        let result =
-            state
-                .lsp_manager
-                .send_request_async(&project_path, &language_id, method, params)
-                .await?;
+        let result = state
+            .lsp_manager
+            .send_request_async(&project_path, &language_id, method, params)
+            .await?;
         return Ok(serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": id,
@@ -279,9 +278,7 @@ pub async fn lsp_transport(
     match method {
         "textDocument/didOpen" => {
             if let (Some(uri), Some(text), Some(version)) = (
-                params
-                    .pointer("/textDocument/uri")
-                    .and_then(|v| v.as_str()),
+                params.pointer("/textDocument/uri").and_then(|v| v.as_str()),
                 params
                     .pointer("/textDocument/text")
                     .and_then(|v| v.as_str()),
@@ -299,10 +296,7 @@ pub async fn lsp_transport(
             }
         }
         "textDocument/didClose" => {
-            if let Some(uri) = params
-                .pointer("/textDocument/uri")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
                 state
                     .lsp_manager
                     .unregister_open_document(&project_path, &language_id, uri);
@@ -363,12 +357,15 @@ pub async fn lsp_go_to_definition(
         "position": { "line": line, "character": character },
     });
 
-    let lsp_result = state.lsp_manager.send_request_async(
-        &project_path,
-        &language_id,
-        "textDocument/definition",
-        params,
-    ).await?;
+    let lsp_result = state
+        .lsp_manager
+        .send_request_async(
+            &project_path,
+            &language_id,
+            "textDocument/definition",
+            params,
+        )
+        .await?;
     let t2 = t0.elapsed();
     log::info!(
         "[perf] lsp_go_to_definition: LSP responded in {:?} (request took {:?})",

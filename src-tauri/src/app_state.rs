@@ -94,7 +94,9 @@ impl AppStateWrapper {
             watcher_manager: WatcherManager::new(),
             skill_store,
             lsp_manager: Arc::new(crate::lsp::LspManager::new()),
-            conversation_manager: ConversationManager::new(crate::conversation::adapters::all_adapters()),
+            conversation_manager: ConversationManager::new(
+                crate::conversation::adapters::all_adapters(),
+            ),
         }
     }
 

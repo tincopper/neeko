@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{
-    parse_timestamp, recent_messages_from, strip_ansi,
-};
+use crate::conversation::adapters::{parse_timestamp, recent_messages_from, strip_ansi};
 
 /// CodeBuddy 会话适配器
 ///
@@ -75,13 +73,11 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
             .and_then(parse_timestamp)
             .or_else(|| {
                 // 从第一条消息获取
-                messages_val
-                    .and_then(|arr| arr.first())
-                    .and_then(|m| {
-                        m.get("timestamp")
-                            .or_else(|| m.get("time"))
-                            .and_then(parse_timestamp)
-                    })
+                messages_val.and_then(|arr| arr.first()).and_then(|m| {
+                    m.get("timestamp")
+                        .or_else(|| m.get("time"))
+                        .and_then(parse_timestamp)
+                })
             })
             .unwrap_or(0);
 
@@ -99,9 +95,8 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
         // 首条用户消息（P3 标题候选）
         let first_user_raw = messages_val
             .and_then(|arr| {
-                arr.iter().find(|m| {
-                    m.get("role").and_then(|v| v.as_str()) == Some("user")
-                })
+                arr.iter()
+                    .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("user"))
             })
             .and_then(|m| {
                 m.get("content")
@@ -171,10 +166,7 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
 
         let mut messages = Vec::new();
         for (seq, msg) in messages_val.iter().enumerate() {
-            let role = msg
-                .get("role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("user");
+            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
 
             let content = msg
                 .get("content")
@@ -215,10 +207,7 @@ impl AgentSessionAdapter for CodeBuddyAdapter {
     }
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
-        Some(vec![
-            "--resume".to_string(),
-            native_session_id.to_string(),
-        ])
+        Some(vec!["--resume".to_string(), native_session_id.to_string()])
     }
 }
 
@@ -270,7 +259,10 @@ mod tests {
         assert_eq!(meta.native_session_id, "cb-session-001");
         assert_eq!(meta.title.as_deref(), Some("Refactor user service"));
         assert_eq!(meta.message_count, 3);
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("refactor the user service")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("refactor the user service")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 
@@ -283,11 +275,20 @@ mod tests {
         let messages = adapter.parse_messages(&path).unwrap();
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].role, "user");
-        assert_eq!(messages[0].content, "Can you refactor the user service to use dependency injection?");
+        assert_eq!(
+            messages[0].content,
+            "Can you refactor the user service to use dependency injection?"
+        );
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[1].content, "Sure! I'll create an interface and inject it through the constructor.");
+        assert_eq!(
+            messages[1].content,
+            "Sure! I'll create an interface and inject it through the constructor."
+        );
         assert_eq!(messages[2].role, "user");
-        assert_eq!(messages[2].content, "Also add unit tests for the new service");
+        assert_eq!(
+            messages[2].content,
+            "Also add unit tests for the new service"
+        );
     }
 
     #[test]
@@ -295,10 +296,7 @@ mod tests {
         let cmd = CodeBuddyAdapter.resume_command("cb-session-001", "/projects/test");
         assert_eq!(
             cmd,
-            Some(vec![
-                "--resume".to_string(),
-                "cb-session-001".to_string(),
-            ])
+            Some(vec!["--resume".to_string(), "cb-session-001".to_string(),])
         );
     }
 

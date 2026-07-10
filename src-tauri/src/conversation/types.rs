@@ -25,13 +25,9 @@ pub struct ConversationMeta {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum MessageBlock {
     /// 文本内容
-    Text {
-        text: String,
-    },
+    Text { text: String },
     /// 思考过程（Claude 的 thinking 模式）
-    Thinking {
-        thinking: String,
-    },
+    Thinking { thinking: String },
     /// 工具调用
     ToolUse {
         id: String,

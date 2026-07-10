@@ -27,14 +27,9 @@ impl UnifiedLocation {
         }
 
         // LocationLink (rust-analyzer etc.)
-        if let Some(target_uri) = item
-            .get("targetUri")
-            .and_then(|v| v.as_str())
-        {
+        if let Some(target_uri) = item.get("targetUri").and_then(|v| v.as_str()) {
             let range = parse_range(item.get("targetRange")?)?;
-            let selection_range = item
-                .get("targetSelectionRange")
-                .and_then(parse_range);
+            let selection_range = item.get("targetSelectionRange").and_then(parse_range);
             return Some(Self {
                 uri: target_uri.to_string(),
                 range,
@@ -85,10 +80,11 @@ impl UnifiedLocation {
 }
 
 fn parse_range(value: &Value) -> Option<LspRange> {
-    let start_line = value.pointer("/start/line")?.as_u64()? as u32;
-    let start_char = value.pointer("/start/character")?.as_u64()? as u32;
-    let end_line = value.pointer("/end/line")?.as_u64()? as u32;
-    let end_char = value.pointer("/end/character")?.as_u64()? as u32;
+    let start_line = u32::try_from(value.pointer("/start/line")?.as_u64()?).unwrap_or(u32::MAX);
+    let start_char =
+        u32::try_from(value.pointer("/start/character")?.as_u64()?).unwrap_or(u32::MAX);
+    let end_line = u32::try_from(value.pointer("/end/line")?.as_u64()?).unwrap_or(u32::MAX);
+    let end_char = u32::try_from(value.pointer("/end/character")?.as_u64()?).unwrap_or(u32::MAX);
 
     Some(LspRange {
         start: LspPosition {

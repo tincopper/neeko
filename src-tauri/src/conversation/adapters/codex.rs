@@ -39,8 +39,8 @@ impl AgentSessionAdapter for CodexAdapter {
         let first = entries.first().context("Codex session file is empty")?;
 
         // 从文件名提取 UUID 作为原生会话 ID
-        let native_session_id = extract_codex_session_id_from_filename(file_path)
-            .unwrap_or_else(|| {
+        let native_session_id =
+            extract_codex_session_id_from_filename(file_path).unwrap_or_else(|| {
                 file_path
                     .file_stem()
                     .and_then(|s| s.to_str())
@@ -79,9 +79,7 @@ impl AgentSessionAdapter for CodexAdapter {
         // 预览/首条用户消息：第一条 turn_context 的 transcript（净化交给 manager）
         let first_user_raw = entries
             .iter()
-            .find(|e| {
-                e.get("type").and_then(|v| v.as_str()) == Some("turn_context")
-            })
+            .find(|e| e.get("type").and_then(|v| v.as_str()) == Some("turn_context"))
             .and_then(|e| {
                 e.pointer("/payload/transcript")
                     .and_then(|v| v.as_str())
@@ -92,10 +90,7 @@ impl AgentSessionAdapter for CodexAdapter {
         let recent_pairs: Vec<(String, String)> = entries
             .iter()
             .filter_map(|e| {
-                let t = e
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let t = e.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 let (role, text) = match t {
                     "turn_context" => (
                         "user",
@@ -107,7 +102,7 @@ impl AgentSessionAdapter for CodexAdapter {
                         "assistant",
                         e.pointer("/payload/content")
                             .and_then(|v| v.as_str())
-                            .or_else(|| e.get("content").and_then(|v| v.as_str()))
+                            .or_else(|| e.get("content").and_then(|v| v.as_str())),
                     ),
                     _ => return None,
                 };
@@ -145,10 +140,7 @@ impl AgentSessionAdapter for CodexAdapter {
         let mut seq = 0u32;
 
         for entry in &entries {
-            let entry_type = entry
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
             match entry_type {
                 "turn_context" => {
@@ -219,10 +211,7 @@ impl AgentSessionAdapter for CodexAdapter {
     }
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
-        Some(vec![
-            "resume".to_string(),
-            native_session_id.to_string(),
-        ])
+        Some(vec!["resume".to_string(), native_session_id.to_string()])
     }
 }
 
@@ -233,8 +222,8 @@ fn extract_codex_session_id_from_filename(path: &Path) -> Option<String> {
     let file_name = path.file_name()?.to_str()?;
     // Match pattern: rollout-YYYY-MM-DDThh-mm-ss-<uuid>.jsonl
     // UUID is the last segment before .jsonl
-    let re = Regex::new(r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([a-f0-9-]+)\.jsonl$")
-        .ok()?;
+    let re =
+        Regex::new(r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([a-f0-9-]+)\.jsonl$").ok()?;
     let caps = re.captures(file_name)?;
     Some(caps.get(1)?.as_str().to_string())
 }
@@ -285,14 +274,23 @@ mod tests {
     #[test]
     fn should_parse_meta() {
         let dir = TempDir::new().unwrap();
-        let path = create_codex_fixture(&dir, "rollout-2025-01-15T10-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl");
+        let path = create_codex_fixture(
+            &dir,
+            "rollout-2025-01-15T10-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl",
+        );
         let adapter = CodexAdapter;
 
         let meta = adapter.parse_meta(&path).unwrap();
-        assert_eq!(meta.native_session_id, "123e4567-e89b-12d3-a456-426614174000");
+        assert_eq!(
+            meta.native_session_id,
+            "123e4567-e89b-12d3-a456-426614174000"
+        );
         assert_eq!(meta.title.as_deref(), Some("Fix login bug"));
         assert_eq!(meta.message_count, 4);
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("login")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("login")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 
@@ -307,17 +305,24 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "Can you help me fix the login issue?");
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[1].content, "I see the issue. The auth token validation is missing a null check.");
+        assert_eq!(
+            messages[1].content,
+            "I see the issue. The auth token validation is missing a null check."
+        );
         assert_eq!(messages[2].role, "user");
         assert_eq!(messages[2].content, "Where should I add it?");
         assert_eq!(messages[3].role, "assistant");
-        assert_eq!(messages[3].content, "In the middleware file, around line 45.");
+        assert_eq!(
+            messages[3].content,
+            "In the middleware file, around line 45."
+        );
         assert_eq!(messages[3].seq, 3);
     }
 
     #[test]
     fn should_extract_session_id() {
-        let path = Path::new("rollout-2025-01-15T10-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl");
+        let path =
+            Path::new("rollout-2025-01-15T10-00-00-123e4567-e89b-12d3-a456-426614174000.jsonl");
         let id = CodexAdapter.extract_session_id(path);
         assert_eq!(id, Some("123e4567-e89b-12d3-a456-426614174000".to_string()));
     }
@@ -332,7 +337,10 @@ mod tests {
     #[test]
     fn should_return_resume_command() {
         let cmd = CodexAdapter.resume_command("test-uuid", "/projects/test");
-        assert_eq!(cmd, Some(vec!["resume".to_string(), "test-uuid".to_string()]));
+        assert_eq!(
+            cmd,
+            Some(vec!["resume".to_string(), "test-uuid".to_string()])
+        );
     }
 
     #[test]

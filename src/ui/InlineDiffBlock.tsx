@@ -57,9 +57,11 @@ function InlineDiffBlockImpl({ code }: InlineDiffBlockProps) {
             <div
               key={i}
               className={`px-3 leading-relaxed whitespace-pre font-mono ${
-                l.type === 'header' ? 'py-0.5 text-[11px]' :
-                l.type === 'nonewline' ? 'py-0 text-[11px]' :
-                'py-px text-xs'
+                l.type === 'header'
+                  ? 'py-0.5 text-[11px]'
+                  : l.type === 'nonewline'
+                    ? 'py-0 text-[11px]'
+                    : 'py-px text-xs'
               } ${LINE_STYLES[l.type]}`}
             >
               {l.type === 'header' || l.type === 'hunk' || l.type === 'nonewline'

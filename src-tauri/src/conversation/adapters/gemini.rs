@@ -3,9 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{
-    parse_timestamp, recent_messages_from, strip_ansi,
-};
+use crate::conversation::adapters::{parse_timestamp, recent_messages_from, strip_ansi};
 
 /// Gemini CLI 会话适配器
 ///
@@ -78,10 +76,8 @@ impl AgentSessionAdapter for GeminiAdapter {
         // 首条用户消息（P3 标题候选）
         let first_user_raw = messages_val
             .and_then(|arr| {
-                arr.iter().find(|m| {
-                    m.get("type").and_then(|v| v.as_str())
-                        == Some("user")
-                })
+                arr.iter()
+                    .find(|m| m.get("type").and_then(|v| v.as_str()) == Some("user"))
             })
             .and_then(|m| m.get("content").and_then(|v| v.as_str()))
             .map(|s| s.to_string());
@@ -116,7 +112,7 @@ impl AgentSessionAdapter for GeminiAdapter {
             .or_else(|| root.get("projectHash"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
- 
+
         Ok(ParsedMeta {
             native_session_id,
             title,
@@ -150,10 +146,7 @@ impl AgentSessionAdapter for GeminiAdapter {
                 .to_string()
                 .replace("gemini", "assistant");
 
-            let content = msg
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
             let cleaned = strip_ansi(content);
             if cleaned.is_empty() {
@@ -239,7 +232,10 @@ mod tests {
         assert_eq!(meta.native_session_id, "gemini-session-001");
         assert_eq!(meta.title.as_deref(), Some("API design discussion"));
         assert_eq!(meta.message_count, 3);
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("REST API")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("REST API")));
     }
 
     #[test]
@@ -253,7 +249,10 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "Can you help me design a REST API?");
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[1].content, "Sure! Let's start with the endpoints...");
+        assert_eq!(
+            messages[1].content,
+            "Sure! Let's start with the endpoints..."
+        );
         assert_eq!(messages[2].role, "user");
         assert_eq!(messages[2].content, "What about authentication?");
     }

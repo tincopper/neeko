@@ -75,9 +75,7 @@ pub(crate) fn parse_timestamp(value: &serde_json::Value) -> Option<i64> {
                 return Some(dt.timestamp_millis());
             }
             // Try ISO 8601 with Z suffix
-            if let Ok(ndt) =
-                chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ")
-            {
+            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.fZ") {
                 return Some(ndt.and_utc().timestamp_millis());
             }
             None
@@ -123,10 +121,7 @@ pub(crate) fn linearize_tree_entries(
     // 建立 id → index 映射
     let mut id_to_idx: HashMap<&str, usize> = HashMap::new();
     for &idx in &filtered_indices {
-        if let Some(id) = entries[idx]
-            .get(id_field)
-            .and_then(|v| v.as_str())
-        {
+        if let Some(id) = entries[idx].get(id_field).and_then(|v| v.as_str()) {
             id_to_idx.insert(id, idx);
         }
     }
@@ -156,10 +151,7 @@ pub(crate) fn linearize_tree_entries(
         }
         if let Some(child_indices) = children.remove(current) {
             for child_idx in child_indices {
-                if let Some(id) = entries[child_idx]
-                    .get(id_field)
-                    .and_then(|v| v.as_str())
-                {
+                if let Some(id) = entries[child_idx].get(id_field).and_then(|v| v.as_str()) {
                     queue.push_back(id);
                 }
             }
@@ -174,15 +166,9 @@ pub(crate) fn linearize_tree_entries(
 /// - 剔除 harness 注入噪声（is_harness_injected_user_turn）
 /// - 剔除空白消息
 /// - 保留最近 `PREVIEW_MESSAGE_LIMIT` 条（按出现顺序）
-pub(crate) fn recent_messages_from(
-    mut pairs: Vec<(String, String)>,
-) -> Vec<(String, String)> {
-    use crate::conversation::normalize::{
-        is_harness_injected_user_turn, PREVIEW_MESSAGE_LIMIT,
-    };
-    pairs.retain(|(_, text)| {
-        !is_harness_injected_user_turn(text) && !text.trim().is_empty()
-    });
+pub(crate) fn recent_messages_from(mut pairs: Vec<(String, String)>) -> Vec<(String, String)> {
+    use crate::conversation::normalize::{is_harness_injected_user_turn, PREVIEW_MESSAGE_LIMIT};
+    pairs.retain(|(_, text)| !is_harness_injected_user_turn(text) && !text.trim().is_empty());
     let len = pairs.len();
     if len > PREVIEW_MESSAGE_LIMIT {
         pairs.drain(..len - PREVIEW_MESSAGE_LIMIT);

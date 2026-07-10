@@ -377,7 +377,11 @@ pub async fn get_worktree_changed_files(
 ) -> Result<Vec<FileChange>, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     // When worktree_path is empty, use the main project path
-    let repo_path = if worktree_path.is_empty() { wd } else { &worktree_path };
+    let repo_path = if worktree_path.is_empty() {
+        wd
+    } else {
+        &worktree_path
+    };
     if t.supports_git2() {
         let repo = t
             .open_repo(repo_path)

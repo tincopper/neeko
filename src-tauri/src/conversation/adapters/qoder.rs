@@ -68,11 +68,7 @@ impl AgentSessionAdapter for QoderAdapter {
         let updated_at = entries
             .last()
             .and_then(|e| e.get("timestamp"))
-            .or_else(|| {
-                entries
-                    .last()
-                    .and_then(|e| e.get("time"))
-            })
+            .or_else(|| entries.last().and_then(|e| e.get("time")))
             .and_then(parse_timestamp)
             .unwrap_or(started_at);
 
@@ -80,10 +76,7 @@ impl AgentSessionAdapter for QoderAdapter {
         let message_count = entries
             .iter()
             .filter(|e| {
-                let entry_type = e
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let entry_type = e.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 entry_type == "message"
                     || entry_type == "chat"
                     || entry_type == "user"
@@ -141,7 +134,7 @@ impl AgentSessionAdapter for QoderAdapter {
             .and_then(|p| p.file_name())
             .and_then(|s| s.to_str())
             .map(|s| s.to_string());
- 
+
         Ok(ParsedMeta {
             native_session_id,
             title,
@@ -161,10 +154,7 @@ impl AgentSessionAdapter for QoderAdapter {
         let mut seq = 0u32;
 
         for entry in &entries {
-            let entry_type = entry
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
             // 跳过 context/tool 类型的行（这些没有 role）
             if entry_type == "context" || entry_type == "tool_call" || entry_type == "tool_result" {
@@ -172,10 +162,7 @@ impl AgentSessionAdapter for QoderAdapter {
             }
 
             // 尝试从 role 或 type 确定角色
-            let role = match entry
-                .get("role")
-                .and_then(|v| v.as_str())
-            {
+            let role = match entry.get("role").and_then(|v| v.as_str()) {
                 Some(r) => r,
                 None => match entry_type {
                     "user" | "chat" => "user",
@@ -204,9 +191,7 @@ impl AgentSessionAdapter for QoderAdapter {
 
             // 去重：如果上一条消息角色相同且时间接近，追加内容
             if let Some(last) = messages.last_mut() {
-                if last.role == role
-                    && (timestamp == 0 || last.timestamp == timestamp)
-                {
+                if last.role == role && (timestamp == 0 || last.timestamp == timestamp) {
                     last.content.push(' ');
                     last.content.push_str(&cleaned);
                     continue;
@@ -292,7 +277,10 @@ mod tests {
         assert_eq!(meta.native_session_id, "qoder-session-001");
         assert_eq!(meta.title.as_deref(), Some("Debug database connection"));
         assert_eq!(meta.message_count, 3); // only user/assistant, not context
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("database")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("database")));
     }
 
     #[test]

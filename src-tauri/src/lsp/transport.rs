@@ -9,12 +9,7 @@ pub trait LspTransport: Send + Sync {
     /// Push diagnostics for a specific file URI to the frontend.
     /// `diagnostics` is the raw JSON array from the LSP server —
     /// emitted directly without intermediate parsing.
-    fn push_diagnostics(
-        &self,
-        project_path: &str,
-        uri: &str,
-        diagnostics: serde_json::Value,
-    );
+    fn push_diagnostics(&self, project_path: &str, uri: &str, diagnostics: serde_json::Value);
 
     /// Push a work-done progress notification to the frontend.
     fn push_progress(
@@ -55,12 +50,7 @@ impl IpcTransport {
 }
 
 impl LspTransport for IpcTransport {
-    fn push_diagnostics(
-        &self,
-        project_path: &str,
-        uri: &str,
-        diagnostics: serde_json::Value,
-    ) {
+    fn push_diagnostics(&self, project_path: &str, uri: &str, diagnostics: serde_json::Value) {
         let event_name = format!("lsp-diagnostics-{}", project_path);
         let payload = serde_json::json!({
             "uri": uri,
@@ -68,7 +58,11 @@ impl LspTransport for IpcTransport {
         });
 
         if let Err(e) = self.app_handle.emit(&event_name, payload) {
-            log::error!("[LSP] Failed to emit diagnostics event '{}': {}", event_name, e);
+            log::error!(
+                "[LSP] Failed to emit diagnostics event '{}': {}",
+                event_name,
+                e
+            );
         }
     }
 
@@ -96,7 +90,11 @@ impl LspTransport for IpcTransport {
         });
 
         if let Err(e) = self.app_handle.emit(&event_name, payload) {
-            log::error!("[LSP] Failed to emit progress event '{}': {}", event_name, e);
+            log::error!(
+                "[LSP] Failed to emit progress event '{}': {}",
+                event_name,
+                e
+            );
         }
     }
 }

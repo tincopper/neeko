@@ -36,10 +36,7 @@ fn extract_claude_message_content(entry: &serde_json::Value) -> String {
         let parts: Vec<String> = arr
             .iter()
             .map(|block| {
-                let block_type = block
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 match block_type {
                     "text" => block
                         .get("text")
@@ -47,10 +44,7 @@ fn extract_claude_message_content(entry: &serde_json::Value) -> String {
                         .unwrap_or("")
                         .to_string(),
                     "thinking" => {
-                        let t = block
-                            .get("thinking")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let t = block.get("thinking").and_then(|v| v.as_str()).unwrap_or("");
                         if !t.is_empty() {
                             format!("<thinking>\n{}\n</thinking>", t)
                         } else {
@@ -247,8 +241,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             })
             .or_else(|| {
                 // 回退：mode 记录顶层的 model 字段（旧格式）
-                mode_entry
-                    .and_then(|e| e.get("model").and_then(|v| v.as_str()))
+                mode_entry.and_then(|e| e.get("model").and_then(|v| v.as_str()))
             })
             .map(|s| s.to_string());
 
@@ -288,8 +281,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .map(|s| s.to_string());
 
         // P4 / 预览来源：首条 user 消息原文
-        let first_user_raw = first_user_msg
-            .map(|msg| extract_claude_message_content(msg));
+        let first_user_raw = first_user_msg.map(|msg| extract_claude_message_content(msg));
 
         let title = custom_title.or(ai_title).or(agent_name_title);
 
@@ -368,10 +360,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
         let mut seq: u32 = 0;
 
         for entry in &entries {
-            let entry_type = entry
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
             if !is_message_type(entry_type) {
                 continue;
@@ -419,11 +408,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .map(|s| s.to_string())
     }
 
-    fn resume_command(
-        &self,
-        native_session_id: &str,
-        _project_path: &str,
-    ) -> Option<Vec<String>> {
+    fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
         Some(vec!["--resume".into(), native_session_id.into()])
     }
 }
@@ -531,7 +516,10 @@ mod tests {
             "30314800-3c5e-49be-a72a-75100ee499dd"
         );
         assert_eq!(meta.message_count, 4); // system + user + assistant + user
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("auth middleware")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("auth middleware")));
         assert_eq!(
             meta.project_path.as_deref(),
             Some("/Users/tomgs/rust-project")
@@ -546,12 +534,12 @@ mod tests {
         assert_eq!(messages.len(), 4);
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[1].role, "user");
-        assert_eq!(messages[1].content, "Can you help me fix the auth middleware?");
-        assert_eq!(messages[2].role, "assistant");
         assert_eq!(
-            messages[2].content,
-            "Sure! Let me look at the auth module."
+            messages[1].content,
+            "Can you help me fix the auth middleware?"
         );
+        assert_eq!(messages[2].role, "assistant");
+        assert_eq!(messages[2].content, "Sure! Let me look at the auth module.");
         assert_eq!(messages[3].role, "user");
         assert_eq!(messages[3].content, "It's in src/auth/middleware.ts");
     }
@@ -563,7 +551,10 @@ mod tests {
         let meta = ClaudeCodeAdapter.parse_meta(&path).unwrap();
         assert_eq!(meta.title.as_deref(), Some("Fix auth middleware"));
         assert_eq!(meta.message_count, 2);
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("Can you help?")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("Can you help?")));
     }
 
     #[test]
@@ -592,9 +583,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("session-model.jsonl");
         let mut content = String::new();
-        content.push_str(
-            r#"{"type":"mode","sessionId":"test-model-001"}"#,
-        );
+        content.push_str(r#"{"type":"mode","sessionId":"test-model-001"}"#);
         content.push('\n');
         content.push_str(
             r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":"Hello","cwd":"/tmp"}"#,
@@ -614,9 +603,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("session-model-user.jsonl");
         let mut content = String::new();
-        content.push_str(
-            r#"{"type":"mode","sessionId":"test-model-002"}"#,
-        );
+        content.push_str(r#"{"type":"mode","sessionId":"test-model-002"}"#);
         content.push('\n');
         content.push_str(
             r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"id":"r1","type":"message","role":"user","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Hello"}]},"cwd":"/tmp"}"#,
@@ -658,9 +645,6 @@ mod tests {
             unsanitize_claude_path("-Users-tomgs-RustroverProjects-neeko"),
             "/Users/tomgs/RustroverProjects/neeko"
         );
-        assert_eq!(
-            unsanitize_claude_path("simple-path"),
-            "/simple/path"
-        );
+        assert_eq!(unsanitize_claude_path("simple-path"), "/simple/path");
     }
 }

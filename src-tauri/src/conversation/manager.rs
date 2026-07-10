@@ -173,8 +173,7 @@ impl ConversationManager {
                         agent_id,
                         &native_session_id,
                     );
-                    let resolved_preview =
-                        build_preview_messages(&meta.recent_messages);
+                    let resolved_preview = build_preview_messages(&meta.recent_messages);
 
                     let conversation = ConversationMeta {
                         id,
@@ -233,10 +232,7 @@ impl ConversationManager {
                 // 项目路径过滤：会话的 project_path 以给定路径开头（子路径匹配）
                 // 无 project_path 的会话也纳入（agent 可能未记录 project_path）
                 let matches_project = match project_path {
-                    Some(pp) => m
-                        .project_path
-                        .as_deref()
-                        .is_none_or(|p| p.starts_with(pp)),
+                    Some(pp) => m.project_path.as_deref().is_none_or(|p| p.starts_with(pp)),
                     None => true,
                 };
                 let matches_agent = match agent_id {
@@ -313,11 +309,7 @@ impl ConversationManager {
     /// - `query`: 搜索关键词，为空时返回空列表
     /// - `project_path`: 按项目路径过滤
     /// - 匹配字段：title（含 user_title）和 preview
-    pub fn search(
-        &self,
-        query: &str,
-        project_path: Option<&str>,
-    ) -> Result<Vec<ConversationMeta>> {
+    pub fn search(&self, query: &str, project_path: Option<&str>) -> Result<Vec<ConversationMeta>> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -423,8 +415,14 @@ impl ConversationManager {
         let title = meta.user_title.as_deref().unwrap_or(&meta.title);
         let mut md = format!("# {}\n\n", title);
         md.push_str(&format!("- **Agent**: {}\n", meta.agent_id));
-        md.push_str(&format!("- **Started**: {}\n", format_timestamp(meta.started_at)));
-        md.push_str(&format!("- **Messages**: {}\n\n---\n\n", meta.message_count));
+        md.push_str(&format!(
+            "- **Started**: {}\n",
+            format_timestamp(meta.started_at)
+        ));
+        md.push_str(&format!(
+            "- **Messages**: {}\n\n---\n\n",
+            meta.message_count
+        ));
 
         for msg in &messages {
             let timestamp = format_timestamp(msg.timestamp);
@@ -471,9 +469,8 @@ fn pattern_to_regex(pattern: &str) -> Regex {
         }
         i += 1;
     }
-    Regex::new(&format!("^{regex_str}$")).unwrap_or_else(|_| {
-        Regex::new(".*").expect("infallible: .* is always a valid regex")
-    })
+    Regex::new(&format!("^{regex_str}$"))
+        .unwrap_or_else(|_| Regex::new(".*").expect("infallible: .* is always a valid regex"))
 }
 
 /// 格式化 Unix 时间戳为可读字符串
@@ -494,7 +491,7 @@ fn format_timestamp(ts: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversation::adapter::{ParsedMeta, ParsedMessage};
+    use crate::conversation::adapter::{ParsedMessage, ParsedMeta};
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
@@ -553,18 +550,12 @@ mod tests {
                 .unwrap_or("unknown")
                 .to_string();
 
-            let title = first
-                .get("content")
-                .and_then(|c| c.as_str())
-                .map(|s| {
-                    let truncated: String = s.chars().take(80).collect();
-                    truncated
-                });
+            let title = first.get("content").and_then(|c| c.as_str()).map(|s| {
+                let truncated: String = s.chars().take(80).collect();
+                truncated
+            });
 
-            let started_at = first
-                .get("timestamp")
-                .and_then(|t| t.as_i64())
-                .unwrap_or(0);
+            let started_at = first.get("timestamp").and_then(|t| t.as_i64()).unwrap_or(0);
 
             let updated_at = entries
                 .last()
@@ -606,10 +597,7 @@ mod tests {
                     .and_then(|c| c.as_str())
                     .unwrap_or("")
                     .to_string();
-                let timestamp = entry
-                    .get("timestamp")
-                    .and_then(|t| t.as_i64())
-                    .unwrap_or(0);
+                let timestamp = entry.get("timestamp").and_then(|t| t.as_i64()).unwrap_or(0);
                 let seq_value = entry
                     .get("seq")
                     .and_then(|s| s.as_u64())
@@ -633,7 +621,11 @@ mod tests {
                 .map(|s| s.to_string())
         }
 
-        fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
+        fn resume_command(
+            &self,
+            native_session_id: &str,
+            _project_path: &str,
+        ) -> Option<Vec<String>> {
             Some(vec![
                 "test-agent".to_string(),
                 "resume".to_string(),
@@ -805,7 +797,11 @@ mod tests {
         let conv_id = &list[0].id;
 
         manager
-            .update_meta(conv_id, Some("Custom Title".to_string()), Some(vec!["bug".to_string()]))
+            .update_meta(
+                conv_id,
+                Some("Custom Title".to_string()),
+                Some(vec!["bug".to_string()]),
+            )
             .unwrap();
 
         let updated = manager.list(None, None).unwrap();
@@ -955,11 +951,7 @@ mod tests {
         let root = dir.path();
 
         // 模拟 ~/.claude/projects/-Users-tomgs-my-project/session.jsonl
-        create_claude_session_file(
-            root,
-            "-Users-tomgs-my-project",
-            "fake-session-1.jsonl",
-        );
+        create_claude_session_file(root, "-Users-tomgs-my-project", "fake-session-1.jsonl");
 
         // 创建一个指向该 root 的适配器（覆盖默认 ~/.claude/projects 路径）
         struct TestClaudeAdapter {
@@ -984,11 +976,7 @@ mod tests {
             fn extract_session_id(&self, file_path: &Path) -> Option<String> {
                 ClaudeCodeAdapter.extract_session_id(file_path)
             }
-            fn resume_command(
-                &self,
-                sid: &str,
-                pp: &str,
-            ) -> Option<Vec<String>> {
+            fn resume_command(&self, sid: &str, pp: &str) -> Option<Vec<String>> {
                 ClaudeCodeAdapter.resume_command(sid, pp)
             }
         }
@@ -1005,9 +993,7 @@ mod tests {
         assert!(reports[0].errors.is_empty());
 
         // 列表：按 project_path 过滤
-        let results = manager
-            .list(Some("/Users/tomgs/my-project"), None)
-            .unwrap();
+        let results = manager.list(Some("/Users/tomgs/my-project"), None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].agent_id, "claude-code");
         assert_eq!(results[0].message_count, 2);
@@ -1030,7 +1016,10 @@ mod tests {
         let cmd = ClaudeCodeAdapter
             .resume_command("40fb5179-2c80-45a9-8ac0-56ce8ab4178e", "/test")
             .expect("Claude Code should support resume");
-        assert_eq!(cmd, vec!["--resume", "40fb5179-2c80-45a9-8ac0-56ce8ab4178e"]);
+        assert_eq!(
+            cmd,
+            vec!["--resume", "40fb5179-2c80-45a9-8ac0-56ce8ab4178e"]
+        );
     }
 
     #[test]
@@ -1092,18 +1081,36 @@ mod tests {
         create_claude_session_file(dir.path(), "-Users-tomgs-test", "session.jsonl");
 
         // 封装适配器：复用 ClaudeCodeAdapter 的解析逻辑，但指向测试目录
-        struct TestAdapter { root: PathBuf }
+        struct TestAdapter {
+            root: PathBuf,
+        }
         impl AgentSessionAdapter for TestAdapter {
-            fn agent_id(&self) -> &str { "claude-code" }
-            fn session_root(&self) -> PathBuf { self.root.clone() }
-            fn file_pattern(&self) -> &str { "**/*.jsonl" }
-            fn parse_meta(&self, p: &Path) -> Result<ParsedMeta> { ClaudeCodeAdapter.parse_meta(p) }
-            fn parse_messages(&self, p: &Path) -> Result<Vec<ParsedMessage>> { ClaudeCodeAdapter.parse_messages(p) }
-            fn extract_session_id(&self, p: &Path) -> Option<String> { ClaudeCodeAdapter.extract_session_id(p) }
-            fn resume_command(&self, sid: &str, pp: &str) -> Option<Vec<String>> { ClaudeCodeAdapter.resume_command(sid, pp) }
+            fn agent_id(&self) -> &str {
+                "claude-code"
+            }
+            fn session_root(&self) -> PathBuf {
+                self.root.clone()
+            }
+            fn file_pattern(&self) -> &str {
+                "**/*.jsonl"
+            }
+            fn parse_meta(&self, p: &Path) -> Result<ParsedMeta> {
+                ClaudeCodeAdapter.parse_meta(p)
+            }
+            fn parse_messages(&self, p: &Path) -> Result<Vec<ParsedMessage>> {
+                ClaudeCodeAdapter.parse_messages(p)
+            }
+            fn extract_session_id(&self, p: &Path) -> Option<String> {
+                ClaudeCodeAdapter.extract_session_id(p)
+            }
+            fn resume_command(&self, sid: &str, pp: &str) -> Option<Vec<String>> {
+                ClaudeCodeAdapter.resume_command(sid, pp)
+            }
         }
 
-        let manager = ConversationManager::new(vec![Box::new(TestAdapter { root: dir.path().to_path_buf() })]);
+        let manager = ConversationManager::new(vec![Box::new(TestAdapter {
+            root: dir.path().to_path_buf(),
+        })]);
         manager.scan_all().unwrap();
 
         let list = manager.list(None, None).unwrap();
@@ -1138,10 +1145,18 @@ mod tests {
 
     #[test]
     fn resolve_title_prefers_ai_title_over_user_message() {
-        let meta =
-            meta_with("sess9876abcd", Some("AI Summary Title"), Some("raw user request"));
+        let meta = meta_with(
+            "sess9876abcd",
+            Some("AI Summary Title"),
+            Some("raw user request"),
+        );
         assert_eq!(
-            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "claude-code", "sess9876abcd"),
+            resolve_title(
+                meta.title.as_deref(),
+                meta.first_user_message.as_deref(),
+                "claude-code",
+                "sess9876abcd"
+            ),
             "AI Summary Title"
         );
     }
@@ -1154,7 +1169,12 @@ mod tests {
             Some("  help me fix the <system-reminder>secret</system-reminder> bug  "),
         );
         assert_eq!(
-            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "claude-code", "sess9876abcd"),
+            resolve_title(
+                meta.title.as_deref(),
+                meta.first_user_message.as_deref(),
+                "claude-code",
+                "sess9876abcd"
+            ),
             "help me fix the bug"
         );
     }
@@ -1163,7 +1183,12 @@ mod tests {
     fn resolve_title_falls_back_to_agent_and_session_id() {
         let meta = meta_with("sess9876abcd", None, None);
         assert_eq!(
-            resolve_title(meta.title.as_deref(), meta.first_user_message.as_deref(), "opencode", "sess9876abcd"),
+            resolve_title(
+                meta.title.as_deref(),
+                meta.first_user_message.as_deref(),
+                "opencode",
+                "sess9876abcd"
+            ),
             "opencode sess9876"
         );
     }

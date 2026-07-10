@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
 use crate::conversation::adapters::{
-    linearize_tree_entries, parse_timestamp, read_jsonl, recent_messages_from,
-    strip_ansi,
+    linearize_tree_entries, parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
 };
 
 /// Pi CLI 会话适配器
@@ -71,20 +70,14 @@ impl AgentSessionAdapter for PiAdapter {
         // 消息数
         let message_entries: Vec<&serde_json::Value> = entries
             .iter()
-            .filter(|e| {
-                e.get("type").and_then(|v| v.as_str()) == Some("message")
-            })
+            .filter(|e| e.get("type").and_then(|v| v.as_str()) == Some("message"))
             .collect();
         let message_count = message_entries.len() as u32;
 
         // 首条用户消息（P3 标题候选）
         let first_user_raw = message_entries
             .iter()
-            .find(|e| {
-                e.pointer("/message/role")
-                    .and_then(|v| v.as_str())
-                    == Some("user")
-            })
+            .find(|e| e.pointer("/message/role").and_then(|v| v.as_str()) == Some("user"))
             .or_else(|| message_entries.first())
             .and_then(|e| {
                 e.pointer("/message/content")
@@ -147,16 +140,12 @@ impl AgentSessionAdapter for PiAdapter {
         let entries = read_jsonl(file_path)?;
 
         // 线性化树形结构
-        let linearized =
-            linearize_tree_entries(&entries, "id", "parentId", "type", None);
+        let linearized = linearize_tree_entries(&entries, "id", "parentId", "type", None);
 
         let mut messages = Vec::new();
         for (idx, seq) in &linearized {
             let entry = &entries[*idx];
-            let entry_type = entry
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
             if entry_type != "message" {
                 continue;
@@ -170,11 +159,7 @@ impl AgentSessionAdapter for PiAdapter {
             let content = entry
                 .pointer("/message/content")
                 .and_then(|v| v.as_str())
-                .or_else(|| {
-                    entry
-                        .pointer("/message/text")
-                        .and_then(|v| v.as_str())
-                })
+                .or_else(|| entry.pointer("/message/text").and_then(|v| v.as_str()))
                 .or_else(|| entry.get("content").and_then(|v| v.as_str()))
                 .unwrap_or("");
 
@@ -211,7 +196,9 @@ impl AgentSessionAdapter for PiAdapter {
             return None;
         }
         let val: serde_json::Value = serde_json::from_str(trimmed).ok()?;
-        val.get("id").and_then(|v| v.as_str()).map(|s| s.to_string())
+        val.get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 
     fn resume_command(&self, native_session_id: &str, _project_path: &str) -> Option<Vec<String>> {
@@ -268,7 +255,10 @@ mod tests {
             "550e8400-e29b-41d4-a716-446655440000"
         );
         assert_eq!(meta.message_count, 3);
-        assert!(meta.recent_messages.iter().any(|(_, t)| t.contains("authentication")));
+        assert!(meta
+            .recent_messages
+            .iter()
+            .any(|(_, t)| t.contains("authentication")));
         assert_eq!(meta.project_path.as_deref(), Some("/projects/test"));
     }
 
@@ -283,7 +273,10 @@ mod tests {
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "How do I implement authentication?");
         assert_eq!(messages[1].role, "assistant");
-        assert_eq!(messages[1].content, "You should use JWT tokens. Here's a basic setup...");
+        assert_eq!(
+            messages[1].content,
+            "You should use JWT tokens. Here's a basic setup..."
+        );
         assert_eq!(messages[2].role, "user");
         assert_eq!(messages[2].content, "Can you show me the code?");
     }
@@ -294,16 +287,16 @@ mod tests {
         let path = create_pi_fixture(&dir, "session-pi.jsonl");
 
         let id = PiAdapter.extract_session_id(&path);
-        assert_eq!(
-            id,
-            Some("550e8400-e29b-41d4-a716-446655440000".to_string())
-        );
+        assert_eq!(id, Some("550e8400-e29b-41d4-a716-446655440000".to_string()));
     }
 
     #[test]
     fn should_return_resume_command() {
         let cmd = PiAdapter.resume_command("test-session-id", "/projects/test");
-        assert_eq!(cmd, Some(vec!["--session".to_string(), "test-session-id".to_string()]));
+        assert_eq!(
+            cmd,
+            Some(vec!["--session".to_string(), "test-session-id".to_string()])
+        );
     }
 
     #[test]

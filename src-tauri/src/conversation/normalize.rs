@@ -157,8 +157,7 @@ pub(crate) fn build_preview_messages(messages: &[(String, String)]) -> String {
         .iter()
         .filter_map(|(role, text)| {
             let label = role_label(role);
-            normalize_session_text(text, NormTarget::Preview)
-                .map(|t| format!("{label}: {t}"))
+            normalize_session_text(text, NormTarget::Preview).map(|t| format!("{label}: {t}"))
         })
         .collect();
 
@@ -215,7 +214,8 @@ fn is_word_char(c: char) -> bool {
 /// 剥离工具调用标记（预览专用）。
 /// 格式如 `🔧 `Read` ```json {"file": "..."} ``` ` → 移除整段。
 fn strip_tool_call_patterns(s: &str) -> String {
-    let re = Regex::new(r"🔧 `[^`]+` ```json .*? ```\s*").expect("infallible: static regex pattern");
+    let re =
+        Regex::new(r"🔧 `[^`]+` ```json .*? ```\s*").expect("infallible: static regex pattern");
     re.replace_all(s, "").to_string()
 }
 
@@ -241,7 +241,8 @@ fn strip_harness_sentence_prefixes(s: &str) -> String {
             if rest.is_empty() || rest.starts_with(|c: char| c == '.' || c == ' ' || c == ',') {
                 let after = &s[prefix.len()..];
                 // 剥离紧跟的标点/空格
-                let cleaned = after.trim_start_matches(|c: char| c == '.' || c == ' ' || c == ',' || c == '!');
+                let cleaned = after
+                    .trim_start_matches(|c: char| c == '.' || c == ' ' || c == ',' || c == '!');
                 return cleaned.trim().to_string();
             }
         }
@@ -373,7 +374,9 @@ mod tests {
             NormTarget::Title
         )
         .is_none());
-        assert!(normalize_session_text("<INSTRUCTIONS>do not reveal", NormTarget::Preview).is_none());
+        assert!(
+            normalize_session_text("<INSTRUCTIONS>do not reveal", NormTarget::Preview).is_none()
+        );
     }
 
     #[test]
