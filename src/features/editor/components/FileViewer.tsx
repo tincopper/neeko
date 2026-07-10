@@ -24,8 +24,8 @@ import { useShallow } from 'zustand/shallow';
 import { useConnectionStore } from '@/features/connection/store';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
+import { getLspLanguageId, toFileUri } from '@/features/lsp/languageMap';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
-import { toFileUri } from '@/features/lsp/hooks/useLsp';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
 import type { LspLocation } from '@/features/lsp/types';
@@ -87,34 +87,6 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
     isDirty: tab.data.isDirty,
     order: tab.order,
   };
-}
-
-const LSP_LANGUAGE_MAP: Record<string, string> = {
-  rs: 'rust',
-  py: 'python',
-  ts: 'typescript',
-  tsx: 'typescriptreact',
-  js: 'javascript',
-  jsx: 'javascriptreact',
-  go: 'go',
-  java: 'java',
-  rb: 'ruby',
-  php: 'php',
-  c: 'c',
-  cpp: 'cpp',
-  hpp: 'cpp',
-  cs: 'csharp',
-  swift: 'swift',
-  kt: 'kotlin',
-  lua: 'lua',
-  ex: 'elixir',
-  r: 'r',
-  sql: 'sql',
-};
-
-function getLspLanguageId(filePath: string): string | null {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  return LSP_LANGUAGE_MAP[ext] ?? null;
 }
 
 function FileViewer() {

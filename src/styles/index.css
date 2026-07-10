@@ -332,6 +332,8 @@
     max-width: 480px;
     max-height: 340px;
     overflow-y: auto;
+    overflow-x: auto;
+    overflow-wrap: break-word;
     padding: 10px 14px;
 
     /* ── Typography ─────────────────────────────────────────────── */
@@ -383,6 +385,13 @@
       padding: 8px 10px;
       margin: 0.5em 0;
       overflow-x: auto;
+
+      &::-webkit-scrollbar { height: 2px; }
+      &::-webkit-scrollbar-track { background: transparent; }
+      &::-webkit-scrollbar-thumb {
+        background: var(--bg-hover);
+        border-radius: 1px;
+      }
     }
     & pre code {
       background: transparent;

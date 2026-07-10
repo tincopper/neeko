@@ -94,6 +94,26 @@ export function lspListSessions(): Promise<LspSessionInfo[]> {
   return invoke<LspSessionInfo[]>('lsp_list_sessions');
 }
 
+export function lspRestartSession(
+  projectPath: string,
+  languageId: string,
+): Promise<LspSessionInfo> {
+  return invoke<LspSessionInfo>('lsp_restart_session', {
+    projectPath,
+    languageId,
+  });
+}
+
+export function lspStopSession(
+  projectPath: string,
+  languageId: string,
+): Promise<void> {
+  return invoke('lsp_stop_session', {
+    projectPath,
+    languageId,
+  });
+}
+
 export interface LspGoToDefinitionResult {
   lspResult: unknown;
   fileContent: string | null;

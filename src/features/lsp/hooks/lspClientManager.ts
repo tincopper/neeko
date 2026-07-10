@@ -1,7 +1,9 @@
-import { LSPClient, hoverTooltips, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
+import { LSPClient, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
 import { TauriLspTransport } from '../transport/TauriLspTransport';
+
+import { createLspHoverTooltips } from './lspHoverExtension';
 
 interface LspClientEntry {
   client: LSPClient;
@@ -32,9 +34,12 @@ export function acquireLspPlugin(
   let entry = clients.get(key);
 
   if (!entry) {
+    // timeout: 10000ms covers slow LSP server startup (spawn + init handshake).
+    // After server is ready, session status is reflected via lspStore (subscribed
+    // from lsp-session-{projectPath} events emitted by the Rust backend).
     const client = new LSPClient({
-      extensions: [serverCompletion(), hoverTooltips(), serverDiagnostics()],
-      timeout: 10000,
+      extensions: [serverCompletion(), createLspHoverTooltips(), serverDiagnostics()],
+      timeout: 15000,
     });
     const transport = new TauriLspTransport(projectPath, languageId);
     client.connect(transport);

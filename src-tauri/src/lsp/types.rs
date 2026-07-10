@@ -6,7 +6,9 @@ pub struct LspSessionInfo {
     pub language_id: String,
     pub project_path: String,
     pub server_name: String,
-    pub connected: bool,
+    pub status: String,
+    pub status_message: Option<String>,
+    pub progress_pct: Option<u32>,
 }
 
 /// A single diagnostic item, serializable for Tauri IPC.

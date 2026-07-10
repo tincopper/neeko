@@ -21,8 +21,17 @@ pub trait LspTransport: Send + Sync {
         _message: Option<&str>,
         _percentage: Option<u32>,
     ) {
-        // Default: no-op (not all backends need progress reporting)
-        // Implementations override as needed.
+    }
+
+    /// Push a session lifecycle event (starting, ready, error, etc.) to the frontend.
+    fn push_session_event(
+        &self,
+        _project_path: &str,
+        _language_id: &str,
+        _status: &str,
+        _message: Option<&str>,
+        _progress_pct: Option<u32>,
+    ) {
     }
 }
 
@@ -95,6 +104,27 @@ impl LspTransport for IpcTransport {
                 event_name,
                 e
             );
+        }
+    }
+
+    fn push_session_event(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        status: &str,
+        message: Option<&str>,
+        progress_pct: Option<u32>,
+    ) {
+        let event_name = format!("lsp-session-{}", project_path);
+        let payload = serde_json::json!({
+            "languageId": language_id,
+            "status": status,
+            "message": message,
+            "progressPct": progress_pct,
+        });
+
+        if let Err(e) = self.app_handle.emit(&event_name, payload) {
+            log::error!("[LSP] Failed to emit session event '{}': {}", event_name, e);
         }
     }
 }

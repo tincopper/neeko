@@ -15,7 +15,7 @@ use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::plugin::{LspPlugin, LspPluginRegistry};
-use super::transport::{IpcTransport, LspTransport};
+use super::transport::{IpcTransport, LspTransport, ProgressKind};
 use super::types::LspSessionInfo;
 
 // ── Constants ───────────────────────────────────────────────────────────
@@ -46,6 +46,32 @@ fn session_key(project_path: &str, language_id: &str) -> SessionKey {
 /// Compute the restart delay with exponential backoff.
 fn restart_delay(attempt: u32) -> Duration {
     Duration::from_millis(RESTART_BASE_DELAY_MS * 2_u64.saturating_pow(attempt))
+}
+
+// ── LspSessionStatus ────────────────────────────────────────────────────
+
+/// Lifecycle status of an LSP session, emitted to the frontend.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LspSessionStatus {
+    Starting,
+    Initializing,
+    Indexing,
+    Ready,
+    Error(String),
+    Stopped,
+}
+
+impl LspSessionStatus {
+    fn as_str(&self) -> &str {
+        match self {
+            LspSessionStatus::Starting => "starting",
+            LspSessionStatus::Initializing => "initializing",
+            LspSessionStatus::Indexing => "indexing",
+            LspSessionStatus::Ready => "ready",
+            LspSessionStatus::Error(_) => "error",
+            LspSessionStatus::Stopped => "stopped",
+        }
+    }
 }
 
 // ── LspSession ──────────────────────────────────────────────────────────
@@ -108,8 +134,13 @@ struct LspSession {
     stderr_logger: Option<thread::JoinHandle<()>>,
     restart_count: u32,
     /// Cached server capabilities from the initialize handshake.
-    /// Used by lsp_transport to respond to @codemirror/lsp-client's init.
     server_capabilities: Value,
+    /// Current lifecycle status.
+    status: LspSessionStatus,
+    /// Child process handle for lifecycle management (kill on close).
+    child: Option<std::process::Child>,
+    /// Transport for emitting session lifecycle events to the frontend.
+    transport: Arc<dyn LspTransport>,
 }
 
 impl LspSession {
@@ -118,6 +149,7 @@ impl LspSession {
         project_path: &str,
         app_handle: tauri::AppHandle,
         diag_bus: Arc<DiagnosticBus>,
+        transport: Arc<dyn LspTransport>,
     ) -> Result<Self> {
         let language_id = plugin.language_id.to_string();
         let server_name = plugin.server_binary.to_string();
@@ -161,6 +193,14 @@ impl LspSession {
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("Failed to spawn LSP server: {}", server_name))?;
+
+        transport.push_session_event(
+            project_path,
+            &language_id,
+            "starting",
+            Some(&format!("Starting {}...", server_name)),
+            None,
+        );
 
         let child_stdin = child
             .stdin
@@ -231,6 +271,7 @@ impl LspSession {
         let pending_clone = Arc::clone(&pending);
         let pp_reader = project_path.to_string();
         let lang_id_clone = language_id.clone();
+        let transport_clone = Arc::clone(&transport);
 
         let reader_handle = thread::Builder::new()
             .name(format!(
@@ -260,8 +301,15 @@ impl LspSession {
                                     &lang_id_clone,
                                     &diag_bus,
                                 );
-                            } else if notif.method == "window/workDoneProgress" {
-                                handle_progress_notification(&notif.params, &pp_reader);
+                            } else if notif.method == "window/workDoneProgress"
+                                || notif.method == "$/progress"
+                            {
+                                handle_progress_notification(
+                                    &notif.params,
+                                    &pp_reader,
+                                    &lang_id_clone,
+                                    &*transport_clone,
+                                );
                             }
                         }
                         Message::Request(req) => {
@@ -328,6 +376,9 @@ impl LspSession {
 
         log::info!("[LSP] {} initialized, capabilities received", server_name);
 
+        transport.push_session_event(project_path, &language_id, "initializing", None, None);
+        transport.push_session_event(project_path, &language_id, "ready", None, None);
+
         let notif = Notification::new("initialized".to_string(), serde_json::json!({}));
         writer_tx
             .send(Message::Notification(notif))
@@ -349,6 +400,9 @@ impl LspSession {
             stderr_logger: stderr_handle,
             restart_count: 0,
             server_capabilities,
+            status: LspSessionStatus::Ready,
+            child: Some(child),
+            transport,
         })
     }
 
@@ -408,6 +462,30 @@ impl LspSession {
             .send(Message::Notification(notif))
             .with_context(|| format!("Failed to send LSP notification: {}", method))
     }
+
+    /// Kill the child process and wait for it to exit.
+    fn kill_child(&mut self) {
+        if let Some(ref mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    /// Emit a session lifecycle event to the frontend via the transport.
+    fn emit_session_event(
+        &self,
+        status: LspSessionStatus,
+        message: Option<&str>,
+        progress_pct: Option<u32>,
+    ) {
+        self.transport.push_session_event(
+            &self.project_path,
+            &self.language_id,
+            status.as_str(),
+            message,
+            progress_pct,
+        );
+    }
 }
 
 // ── Notification handlers (free functions) ──────────────────────────────
@@ -435,7 +513,12 @@ fn handle_diagnostics_notification(
     });
 }
 
-fn handle_progress_notification(params: &Value, project_path: &str) {
+fn handle_progress_notification(
+    params: &Value,
+    project_path: &str,
+    language_id: &str,
+    transport: &dyn LspTransport,
+) {
     let token = params.get("token").and_then(|v| v.as_str()).unwrap_or("");
     let value = params.get("value");
     let kind = value.and_then(|v| v.get("kind").and_then(|k| k.as_str()));
@@ -452,6 +535,15 @@ fn handle_progress_notification(params: &Value, project_path: &str) {
                 msg,
                 project_path
             );
+            transport.push_session_event(project_path, language_id, "indexing", Some(msg), None);
+            transport.push_progress(
+                project_path,
+                language_id,
+                token,
+                ProgressKind::Begin,
+                Some(msg),
+                None,
+            );
         }
         Some("report") => {
             let msg = value
@@ -459,7 +551,8 @@ fn handle_progress_notification(params: &Value, project_path: &str) {
                 .and_then(|m| m.as_str());
             let pct = value
                 .and_then(|v| v.get("percentage"))
-                .and_then(|p| p.as_u64());
+                .and_then(|p| p.as_u64())
+                .and_then(|p| u32::try_from(p).ok());
             log::info!(
                 "[LSP] Progress report [{}]: {:?} ({:?}%) for project {}",
                 token,
@@ -467,12 +560,30 @@ fn handle_progress_notification(params: &Value, project_path: &str) {
                 pct,
                 project_path
             );
+            transport.push_progress(
+                project_path,
+                language_id,
+                token,
+                ProgressKind::Report,
+                msg,
+                pct,
+            );
+            transport.push_session_event(project_path, language_id, "indexing", msg, pct);
         }
         Some("end") => {
             log::info!(
                 "[LSP] Progress end [{}] for project {}",
                 token,
                 project_path
+            );
+            transport.push_session_event(project_path, language_id, "ready", None, None);
+            transport.push_progress(
+                project_path,
+                language_id,
+                token,
+                ProgressKind::End,
+                None,
+                None,
             );
         }
         _ => {}
@@ -621,8 +732,9 @@ impl LspManager {
             .ok_or_else(|| AppError::Lsp("AppHandle not set".to_string()))?;
 
         let diag_bus = Arc::new(self.diag_bus.clone());
+        let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
 
-        let session = LspSession::new(&plugin, project_path, app_handle, diag_bus)
+        let session = LspSession::new(&plugin, project_path, app_handle, diag_bus, transport)
             .map_err(|e| AppError::Lsp(e.to_string()))?;
 
         // Re-open any previously open documents for this session (covers restart)
@@ -784,14 +896,31 @@ impl LspManager {
         let key = session_key(project_path, language_id);
         let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
 
-        sessions.remove(&key);
-        log::info!("[LSP] Closed session: {}", key);
+        if let Some(mut s) = sessions.remove(&key) {
+            s.transport
+                .push_session_event(project_path, language_id, "stopped", None, None);
+            let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
+            s.kill_child();
+            log::info!("[LSP] Closed session: {}", key);
+        }
+        if let Ok(mut docs) = self.open_docs.lock() {
+            docs.remove(&key);
+        }
         Ok(())
     }
 
     pub fn close_all_sessions(&self) {
         let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        sessions.clear();
+        for (key, mut s) in sessions.drain() {
+            s.transport
+                .push_session_event(&s.project_path, &s.language_id, "stopped", None, None);
+            let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
+            s.kill_child();
+            log::info!("[LSP] Closed session: {}", key);
+        }
+        if let Ok(mut docs) = self.open_docs.lock() {
+            docs.clear();
+        }
         log::info!("[LSP] Closed all sessions");
     }
 
@@ -804,7 +933,12 @@ impl LspManager {
                 language_id: s.language_id.clone(),
                 project_path: s.project_path.clone(),
                 server_name: s.server_name.clone(),
-                connected: s.is_alive(),
+                status: s.status.as_str().to_string(),
+                status_message: match &s.status {
+                    LspSessionStatus::Error(msg) => Some(msg.clone()),
+                    _ => None,
+                },
+                progress_pct: None,
             })
             .collect()
     }
@@ -906,5 +1040,53 @@ mod tests {
             registry.resolve_by_extension("tl").unwrap().language_id,
             "testlang"
         );
+    }
+
+    // ── LspSessionStatus tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_session_info_has_status_field() {
+        let info = LspSessionInfo {
+            language_id: "rust".into(),
+            project_path: "/test".into(),
+            server_name: "rust-analyzer".into(),
+            status: "ready".into(),
+            status_message: None,
+            progress_pct: None,
+        };
+        assert_eq!(info.status, "ready");
+        assert_eq!(info.language_id, "rust");
+    }
+
+    #[test]
+    fn test_session_info_has_status_message_and_progress() {
+        let info = LspSessionInfo {
+            language_id: "python".into(),
+            project_path: "/test".into(),
+            server_name: "pyright".into(),
+            status: "indexing".into(),
+            status_message: Some("Indexing workspace...".into()),
+            progress_pct: Some(45),
+        };
+        assert_eq!(info.status_message, Some("Indexing workspace...".into()));
+        assert_eq!(info.progress_pct, Some(45));
+    }
+
+    #[test]
+    fn test_session_info_serialization_includes_status() {
+        let info = LspSessionInfo {
+            language_id: "go".into(),
+            project_path: "/workspace".into(),
+            server_name: "gopls".into(),
+            status: "starting".into(),
+            status_message: None,
+            progress_pct: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["status"].as_str(), Some("starting"));
+        assert_eq!(parsed["connected"].as_bool(), None);
+        // Old `connected` field must not exist
+        assert!(parsed.get("connected").is_none());
     }
 }

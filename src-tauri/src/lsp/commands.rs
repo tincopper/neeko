@@ -194,6 +194,43 @@ pub fn lsp_list_sessions(state: State<AppStateWrapper>) -> Result<Vec<LspSession
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// LSP Session Lifecycle
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tauri::command]
+pub async fn lsp_restart_session(
+    project_path: String,
+    language_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<LspSessionInfo, AppError> {
+    // Close existing session (sends shutdown + kills child)
+    let _ = state.lsp_manager.close_session(&project_path, &language_id);
+
+    // Re-create session (triggers lazy init + reopen docs on next request)
+    let key = state
+        .lsp_manager
+        .get_or_create_session(&project_path, &language_id)?;
+
+    let sessions = state.lsp_manager.list_sessions();
+    sessions
+        .into_iter()
+        .find(|s| {
+            let expected = format!("{}:{}", project_path, language_id);
+            format!("{}:{}", s.project_path, s.language_id) == expected
+        })
+        .ok_or_else(|| AppError::Lsp(format!("Failed to restart session: {}", key)))
+}
+
+#[tauri::command]
+pub fn lsp_stop_session(
+    project_path: String,
+    language_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    state.lsp_manager.close_session(&project_path, &language_id)
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // JSON-RPC Transport Proxy (for @codemirror/lsp-client)
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -242,12 +279,7 @@ pub async fn lsp_transport(
 
     // ── initialized: already sent by Rust, no-op ──────────────────────
     if method == "initialized" {
-        return Ok(serde_json::to_string(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": {},
-        }))
-        .unwrap());
+        return Ok("{}".into());
     }
 
     // ── shutdown / exit: handled gracefully ──────────────────────────
@@ -340,7 +372,7 @@ pub async fn lsp_go_to_definition(
                     "uri": &uri,
                     "languageId": &language_id,
                     "version": 1,
-                    "text": text,
+                    "text": &text,
                 }
             });
             let _ = state.lsp_manager.send_notification(
@@ -349,6 +381,9 @@ pub async fn lsp_go_to_definition(
                 "textDocument/didOpen",
                 open_params,
             );
+            state
+                .lsp_manager
+                .register_open_document(&project_path, &language_id, &uri, &text, 1);
         }
     }
 

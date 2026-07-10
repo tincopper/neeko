@@ -82,17 +82,3 @@ export function useLspCapabilities(
 
   return caps;
 }
-
-/**
- * Quick check: is LSP available for the given file extension?
- * Does NOT start a session — only checks if a plugin is registered.
- */
-export function isLspAvailable(extension: string): boolean {
-  const SUPPORTED_EXTENSIONS = new Set([
-    'rs', 'py', 'ts', 'tsx', 'js', 'jsx', 'go', 'java',
-    'c', 'h', 'cpp', 'hpp', 'cc', 'cxx', 'cs',
-    'rb', 'php', 'swift', 'kt', 'kts', 'lua',
-    'ex', 'exs', 'r', 'sql',
-  ]);
-  return SUPPORTED_EXTENSIONS.has(extension.toLowerCase());
-}

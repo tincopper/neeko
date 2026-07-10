@@ -28,6 +28,7 @@ impl AppStateWrapper {
         let terminal_manager = self.terminal_manager.clone();
         let remote_terminal_manager = self.remote_terminal_manager.clone();
         let watcher_manager = self.watcher_manager.clone();
+        let lsp_manager = self.lsp_manager.clone();
 
         thread::spawn(move || {
             log::info!("shutdown_all_background start");
@@ -41,6 +42,9 @@ impl AppStateWrapper {
             });
             let t3 = thread::spawn(move || {
                 watcher_manager.stop_all();
+            });
+            let t4 = thread::spawn(move || {
+                lsp_manager.close_all_sessions();
             });
 
             if let Err(e) = t1.join() {
@@ -59,6 +63,12 @@ impl AppStateWrapper {
                 log::error!("Watcher cleanup failed: {:?}", e);
             } else {
                 log::info!("Watcher cleanup finished in {:?}", start.elapsed());
+            }
+
+            if let Err(e) = t4.join() {
+                log::error!("LSP cleanup failed: {:?}", e);
+            } else {
+                log::info!("LSP cleanup finished in {:?}", start.elapsed());
             }
 
             log::info!(

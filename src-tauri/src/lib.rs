@@ -222,6 +222,8 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_close_document,
             $crate::lsp::commands::lsp_close_session,
             $crate::lsp::commands::lsp_list_sessions,
+            $crate::lsp::commands::lsp_restart_session,
+            $crate::lsp::commands::lsp_stop_session,
             $crate::lsp::commands::lsp_go_to_definition,
             $crate::lsp::commands::lsp_transport,
             $crate::settings::commands::get_system_fonts,

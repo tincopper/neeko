@@ -2,7 +2,16 @@ export interface LspSessionInfo {
   language_id: string;
   project_path: string;
   server_name: string;
-  connected: boolean;
+  status: string;
+  status_message?: string;
+  progress_pct?: number;
+}
+
+export interface LspSessionStatusEvent {
+  languageId: string;
+  status: string;
+  message?: string;
+  progressPct?: number;
 }
 
 export interface LspDiagnostic {
