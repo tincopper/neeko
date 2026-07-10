@@ -671,3 +671,36 @@ R1: model in title bar + per-message (extracted from message.model in Claude CLI
 ### Next Steps
 
 - None - task complete
+
+
+## Session 78: Fix OpenCode history session loading
+
+**Date**: 2026-07-10
+**Task**: Fix OpenCode history session loading
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c30af0a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

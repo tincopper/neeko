@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 77
-- **Last Active**: 2026-07-09
+- **Total Sessions**: 78
+- **Last Active**: 2026-07-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~673 | Active |
+| `journal-2.md` | ~706 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 78 | 2026-07-10 | Fix OpenCode history session loading | `c30af0a` | `main` |
 | 77 | 2026-07-09 | View page UX optimization | `888dcff` | `main` |
 | 76 | 2026-07-09 | Conversation title normalization with orca-aligned pipeline | `ab08fba` | `main` |
 | 75 | 2026-07-08 | 集成验证：完整端到端测试 | `43a1167` | `main` |
