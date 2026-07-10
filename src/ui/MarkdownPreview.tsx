@@ -7,6 +7,7 @@ import plantumlEncoder from "plantuml-encoder";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AppTheme } from '@/shared/types';
 import { isDarkTheme } from '@/shared/utils/theme';
+import { InlineDiffBlock } from './InlineDiffBlock';
 
 function resolveImageSrc(src: string, basePath?: string): string {
    if (/^(https?:|data:|blob:|asset:)\/?\//i.test(src)) return src;
@@ -227,6 +228,10 @@ function MarkdownPreviewImpl({ content, theme, className, basePath }: MarkdownPr
 
                   if (lang === "plantuml") {
                      return <PlantUMLBlock code={codeString} />;
+                  }
+
+                  if (lang === "diff") {
+                     return <InlineDiffBlock code={codeString} />;
                   }
 
                   if ((lang === "svg" || lang === "html") && codeString.includes("<svg")) {
