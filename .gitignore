@@ -25,6 +25,7 @@ build/
 .kiro
 .trae
 .windsurf
+.reasonix
 
 # OS
 .DS_Store
@@ -45,3 +46,5 @@ src-tauri/gen/
 .neeko/
 tsconfig.app.tsbuildinfo
 nul
+
+reasonix.toml
