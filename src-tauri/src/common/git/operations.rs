@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use super::transport::GitTransport;
+use crate::common::git::parsers::parse_numstat_line;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::common::utils::command::local::exec;
 use crate::project::types::{
@@ -685,7 +686,7 @@ fn parse_porcelain_status(output: &str) -> Vec<FileChange> {
     files
 }
 
-/// Get changed files for a worktree path (shell-based)
+/// Get changed files for a worktree path (shell-based) with additions/deletions
 pub async fn get_worktree_changed_files(
     transport: &GitTransport,
     worktree_path: &str,
@@ -693,7 +694,52 @@ pub async fn get_worktree_changed_files(
     let output = transport
         .run_git(&["status", "--porcelain"], worktree_path)
         .await?;
-    Ok(parse_porcelain_status(&output))
+    let mut files = parse_porcelain_status(&output);
+
+    // Enrich with additions/deletions from git diff --numstat
+    if !files.is_empty() {
+        let mut numstat: std::collections::HashMap<String, (usize, usize)> =
+            std::collections::HashMap::new();
+
+        // Unstaged changes
+        if let Ok(unstaged) = transport
+            .run_git(&["diff", "--numstat"], worktree_path)
+            .await
+        {
+            for line in unstaged.lines() {
+                if let Some((add, del, path)) = parse_numstat_line(line) {
+                    let entry = numstat.entry(path).or_insert((0, 0));
+                    entry.0 += add;
+                    entry.1 += del;
+                }
+            }
+        }
+
+        // Staged changes
+        if let Ok(staged) = transport
+            .run_git(&["diff", "--cached", "--numstat"], worktree_path)
+            .await
+        {
+            for line in staged.lines() {
+                if let Some((add, del, path)) = parse_numstat_line(line) {
+                    let entry = numstat.entry(path).or_insert((0, 0));
+                    entry.0 += add;
+                    entry.1 += del;
+                }
+            }
+        }
+
+        // Merge numstat counts into files
+        for file in &mut files {
+            let path_str = file.path.to_string_lossy().to_string();
+            if let Some((add, del)) = numstat.get(&path_str) {
+                file.additions = *add;
+                file.deletions = *del;
+            }
+        }
+    }
+
+    Ok(files)
 }
 
 /// Get file diff for a worktree path
