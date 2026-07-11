@@ -77,6 +77,11 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const [labelSearchQuery, setLabelSearchQuery] = useState('');
   const authorSearchRef = useRef<HTMLInputElement>(null);
   const labelSearchRef = useRef<HTMLInputElement>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
+  const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+  const assigneeSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     console.log('[PullRequestsPanel] Checking gh CLI...');
@@ -148,6 +153,11 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     return Array.from(labels).sort();
   }, [repoLabels, prList]);
 
+  const filterAssignees = useMemo(() => {
+    const assignees = new Set(prList.flatMap((pr) => pr.assignees ?? []).map((a) => a.login).filter(Boolean));
+    return Array.from(assignees).sort();
+  }, [prList]);
+
   const filteredAuthorOptions = useMemo(() => {
     if (!authorSearchQuery.trim()) return filterAuthors;
     const q = authorSearchQuery.toLowerCase();
@@ -160,6 +170,12 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     return filterLabels.filter((l) => l.toLowerCase().includes(q));
   }, [filterLabels, labelSearchQuery]);
 
+  const filteredAssigneeOptions = useMemo(() => {
+    if (!assigneeSearchQuery.trim()) return filterAssignees;
+    const q = assigneeSearchQuery.toLowerCase();
+    return filterAssignees.filter((a) => a.toLowerCase().includes(q));
+  }, [filterAssignees, assigneeSearchQuery]);
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -171,6 +187,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       }
       if (labelDropdownRef.current && !labelDropdownRef.current.contains(event.target as Node)) {
         setLabelDropdownOpen(false);
+      }
+      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(event.target as Node)) {
+        setAssigneeDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -185,6 +204,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     if (labelFilter) {
       list = list.filter((pr) => (pr.labels ?? []).some((l) => l.name === labelFilter));
     }
+    if (assigneeFilter) {
+      list = list.filter((pr) => (pr.assignees ?? []).some((a) => a.login === assigneeFilter));
+    }
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       list = list.filter(
@@ -195,7 +217,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       );
     }
     return list;
-  }, [prList, searchQuery, authorFilter, labelFilter]);
+  }, [prList, searchQuery, authorFilter, labelFilter, assigneeFilter]);
 
   const handleMerge = useCallback(
     async (number: number) => {
@@ -510,6 +532,66 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                           }}
                         >
                           {label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Assignee Filter Dropdown */}
+            <div className="relative" ref={assigneeDropdownRef}>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border transition-colors duration-100',
+                  assigneeDropdownOpen || assigneeFilter
+                    ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
+                    : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
+                )}
+                onClick={() => {
+                  setAssigneeDropdownOpen(!assigneeDropdownOpen);
+                  if (!assigneeDropdownOpen) setAssigneeSearchQuery('');
+                }}
+              >
+                {assigneeFilter ?? 'Assignee'}
+                {assigneeFilter && (
+                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setAssigneeFilter(null); }} />
+                )}
+                <ChevronDown size={12} className={cn('transition-transform duration-150', assigneeDropdownOpen && 'rotate-180')} />
+              </button>
+              {assigneeDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                  <div className="px-2 pb-1 flex-shrink-0">
+                    <input
+                      ref={assigneeSearchRef}
+                      type="text"
+                      className="w-full px-2 py-1 bg-bg-primary border border-border rounded text-[calc(var(--font-size)-1px)] text-text-primary placeholder-text-muted outline-none focus:border-accent-blue"
+                      placeholder="Search assignees..."
+                      value={assigneeSearchQuery}
+                      onChange={(e) => setAssigneeSearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {filteredAssigneeOptions.length === 0 ? (
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No assignees</div>
+                    ) : (
+                      filteredAssigneeOptions.map((assignee) => (
+                        <button
+                          key={assignee}
+                          className={cn(
+                            'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                            assigneeFilter === assignee
+                              ? 'bg-accent-blue/10 text-accent-blue'
+                              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                          )}
+                          onClick={() => {
+                            setAssigneeFilter(assigneeFilter === assignee ? null : assignee);
+                            setAssigneeDropdownOpen(false);
+                          }}
+                        >
+                          {assignee}
                         </button>
                       ))
                     )}
