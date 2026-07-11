@@ -106,6 +106,7 @@ export interface PRListItem {
   headRepositoryOwner: string;
   commentCount?: number;
   labels: PrLabel[];
+  assignees: { login: string }[];
 }
 
 export interface PRStatusCheck {

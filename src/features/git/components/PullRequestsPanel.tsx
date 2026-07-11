@@ -571,6 +571,14 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                       <span>
                         by <span className="text-text-secondary">{pr.author}</span>
                       </span>
+                      {pr.assignees && pr.assignees.length > 0 && (
+                        <>
+                          <span>·</span>
+                          <span>
+                            assigned to <span className="text-text-secondary">{pr.assignees.map(a => a.login).join(', ')}</span>
+                          </span>
+                        </>
+                      )}
                     </div>
                     {pr.labels && pr.labels.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">

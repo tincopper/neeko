@@ -43,7 +43,7 @@ pub fn is_gh_authenticated() -> bool {
 pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
     let s = state.to_string();
     cache::get_cached_pr_list(repo_path, &s, limit, || {
-        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels,comments";
+        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels,comments,assignees";
         let output = no_window_cmd("gh")
             .args([
                 "pr",

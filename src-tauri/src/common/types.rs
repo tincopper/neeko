@@ -171,6 +171,8 @@ pub struct PRListItem {
     pub comments: Vec<serde_json::Value>,
     #[serde(default)]
     pub comment_count: u64,
+    #[serde(default)]
+    pub assignees: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
