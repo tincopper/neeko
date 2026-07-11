@@ -3,12 +3,15 @@ import WindowControls from "./WindowControls";
 import TaskRunButton from "@/features/task/components/TaskRunButton";
 import OpenIdeButton from "./OpenIdeButton";
 import { IS_MACOS } from "@/shared/utils/platform";
+import { useFullscreen } from "./useFullscreen";
 import neekoIcon from "../assets/neeko-icon.png";
 
 function TitleBar() {
+  const isFullscreen = useFullscreen();
+
   return (
     <div
-      className={`titlebar flex items-center h-9 shrink-0 select-none ${IS_MACOS ? 'pl-[72px]' : ''}`}
+      className={`titlebar flex items-center h-9 shrink-0 select-none ${IS_MACOS && !isFullscreen ? 'pl-[72px]' : ''}`}
       data-tauri-drag-region
     >
       {/* Left: Neeko icon (visual anchor for the drag region) */}

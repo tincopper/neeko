@@ -24,7 +24,9 @@ vi.mock('@tauri-apps/api/window', () => ({
     toggleMaximize: vi.fn(),
     close: vi.fn(),
     isMaximized: vi.fn(() => Promise.resolve(false)),
+    isFullscreen: vi.fn(() => Promise.resolve(false)),
     onFocusChanged: vi.fn(() => Promise.resolve(() => {})),
+    onResized: vi.fn(() => Promise.resolve(() => {})),
   })),
 }));
 
