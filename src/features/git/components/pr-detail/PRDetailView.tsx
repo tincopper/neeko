@@ -154,10 +154,10 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
           </div>
           <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted mb-2">
             <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
               style={getAvatarStyle({ name: author })}
             >
-              {author.charAt(0).toUpperCase()}
+              {(author?.charAt(0) || '#').toUpperCase()}
             </div>
             <span>{author}</span><span>·</span><span>{formatTimestamp(createdAt)}</span>
           </div>
@@ -182,10 +182,10 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
           <h2 className="text-lg font-semibold text-text-primary mb-2">{prTitle} #{prNumber}</h2>
           <div className="flex items-center gap-2 text-[var(--font-size)] text-text-muted">
             <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
               style={getAvatarStyle({ name: author })}
             >
-              {author.charAt(0).toUpperCase()}
+              {(author?.charAt(0) || '#').toUpperCase()}
             </div>
             <span>{author}</span><span>·</span><span>{formatTimestamp(createdAt)}</span>
           </div>

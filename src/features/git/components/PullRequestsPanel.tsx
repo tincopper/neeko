@@ -644,10 +644,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   {/* Author Avatar */}
                   <div className="flex-shrink-0">
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-medium"
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-semibold"
                       style={getAvatarStyle({ name: pr.author })}
                     >
-                      {pr.author.charAt(0).toUpperCase()}
+                      {(pr.author?.charAt(0) || '#').toUpperCase()}
                     </div>
                   </div>
                   {/* Left Content */}
