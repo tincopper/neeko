@@ -43,7 +43,7 @@ pub fn is_gh_authenticated() -> bool {
 pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
     let s = state.to_string();
     cache::get_cached_pr_list(repo_path, &s, limit, || {
-        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels";
+        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels,comments";
         let output = no_window_cmd("gh")
             .args([
                 "pr",
@@ -66,7 +66,11 @@ pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRLis
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         log::info!("[list_prs] Raw output: {}", &stdout[..stdout.len().min(500)]);
-        let result: Vec<PRListItem> = serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
+        let mut result: Vec<PRListItem> = serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
+        // Compute comment_count from the comments array
+        for item in &mut result {
+            item.comment_count = item.comments.len() as u64;
+        }
         if let Some(first) = result.first() {
             log::info!("[list_prs] First PR created_at: {:?}", first.created_at);
         }

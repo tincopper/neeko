@@ -488,8 +488,19 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
           {/* PR List */}
           <div className="flex-1 overflow-y-auto">
             {loading && filteredPrList.length === 0 ? (
-              <div className="p-4 text-center text-[var(--font-size)] text-text-muted">
-                Loading...
+              <div className="p-4 space-y-3 animate-pulse">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="h-3 w-3/4 rounded bg-bg-hover" />
+                      <div className="h-2 w-1/2 rounded bg-bg-hover" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-14 rounded-full bg-bg-hover" />
+                      <div className="h-3 w-8 rounded bg-bg-hover" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : error ? (
               <div className="p-4 text-center text-[var(--font-size)]">

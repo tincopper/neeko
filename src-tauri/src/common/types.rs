@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::path::PathBuf;
 
 // ─── File types ───────────────────────────────────────────────────────────────
@@ -166,6 +167,10 @@ pub struct PRListItem {
     pub head_repository_owner: String,
     #[serde(default)]
     pub labels: Vec<PrLabel>,
+    #[serde(default)]
+    pub comments: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub comment_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
