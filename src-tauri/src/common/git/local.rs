@@ -87,6 +87,47 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
         }
     }
 
+    // Enrich with additions/deletions from git diff --numstat
+    if !files.is_empty() {
+        let repo_path = repo_workdir;
+        let mut numstat: std::collections::HashMap<String, (usize, usize)> =
+            std::collections::HashMap::new();
+
+        if let Ok(output) = exec("git")
+            .args(["-C", repo_path.to_str().unwrap_or("."), "diff", "--numstat"])
+            .output()
+        {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some((add, del, path)) = parse_numstat_line(line) {
+                    let entry = numstat.entry(path).or_insert((0, 0));
+                    entry.0 += add;
+                    entry.1 += del;
+                }
+            }
+        }
+
+        if let Ok(output) = exec("git")
+            .args(["-C", repo_path.to_str().unwrap_or("."), "diff", "--cached", "--numstat"])
+            .output()
+        {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Some((add, del, path)) = parse_numstat_line(line) {
+                    let entry = numstat.entry(path).or_insert((0, 0));
+                    entry.0 += add;
+                    entry.1 += del;
+                }
+            }
+        }
+
+        for file in &mut files {
+            let path_str = file.path.to_string_lossy().to_string();
+            if let Some((add, del)) = numstat.get(&path_str) {
+                file.additions = *add;
+                file.deletions = *del;
+            }
+        }
+    }
+
     Ok(files)
 }
 
