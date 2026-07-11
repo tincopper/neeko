@@ -232,6 +232,7 @@ pub struct PRCommit {
 // ─── PR Comment types ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PRComment {
     pub id: String,
     pub author: String,
@@ -246,6 +247,7 @@ pub struct PRComment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommentReaction {
     pub emoji: String,
     pub count: u32,
