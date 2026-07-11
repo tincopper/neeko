@@ -385,7 +385,7 @@ pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>
 
 // ─── PR Comments ────────────────────────────────────────────────────────────
 
-/// 获取 PR 评论列表
+/// 获取 PR 评论列表（合并 issue comments + PR reviews）
 pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRComment>> {
     log::info!("[list_pr_comments] Loading comments for PR #{} at {:?}", pr_number, repo_path);
 
@@ -420,30 +420,42 @@ pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommen
 
     log::info!("[list_pr_comments] Repo: {}/{}", owner, repo);
 
+    // 1. Fetch issue comments
+    let issue_comments = fetch_issue_comments(owner, repo, pr_number, repo_path)?;
+    let issue_count = issue_comments.len();
+
+    // 2. Fetch PR reviews and convert to comment format
+    let review_comments = fetch_pr_reviews(owner, repo, pr_number, repo_path)?;
+    let review_count = review_comments.len();
+
+    // 3. Merge and sort by created_at
+    let mut all_comments: Vec<PRComment> = issue_comments.into_iter().chain(review_comments).collect();
+    all_comments.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    log::info!("[list_pr_comments] Merged {} comments ({} issue + {} reviews)",
+        all_comments.len(), issue_count, review_count);
+
+    Ok(all_comments)
+}
+
+/// 拉取 issue comments（普通讨论评论）
+fn fetch_issue_comments(owner: &str, repo: &str, pr_number: u64, repo_path: &Path) -> Result<Vec<PRComment>> {
     let output = no_window_cmd("gh")
-        .args([
-            "api",
-            &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number),
-        ])
+        .args(["api", &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number)])
         .current_dir(repo_path)
         .output()
         .context("Failed to list PR comments")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("[list_pr_comments] gh api failed: {}", stderr.trim());
         anyhow::bail!("gh api failed: {}", stderr.trim());
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    log::info!("[list_pr_comments] Raw output length: {}", stdout.len());
-
     let values: Vec<serde_json::Value> = serde_json::from_str(&stdout)
         .context("Failed to parse PR comments response")?;
 
-    log::info!("[list_pr_comments] Found {} comments", values.len());
-
-    let comments: Vec<PRComment> = values.iter().filter_map(|v| {
+    Ok(values.iter().filter_map(|v| {
         let id = v.get("id")?.as_u64()?.to_string();
         let author = v.get("user")?.get("login")?.as_str()?.to_string();
         let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(|s| s.to_string());
@@ -460,11 +472,66 @@ pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommen
             updated_at,
             reactions: None,
         })
-    }).collect();
+    }).collect())
+}
 
-    log::info!("[list_pr_comments] Parsed {} comments", comments.len());
+/// 拉取 PR reviews（审查摘要，转换为 PRComment 格式）
+fn fetch_pr_reviews(owner: &str, repo: &str, pr_number: u64, repo_path: &Path) -> Result<Vec<PRComment>> {
+    let output = no_window_cmd("gh")
+        .args(["api", &format!("repos/{}/{}/pulls/{}/reviews", owner, repo, pr_number)])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to list PR reviews")?;
 
-    Ok(comments)
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::warn!("[list_pr_comments] Failed to fetch PR reviews: {}", stderr.trim());
+        return Ok(vec![]); // reviews are optional — non-blocking
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let values: Vec<serde_json::Value> = match serde_json::from_str(&stdout) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("[list_pr_comments] Failed to parse PR reviews: {}", e);
+            return Ok(vec![]);
+        }
+    };
+
+    let state_label = |state: &str| -> &'static str {
+        match state {
+            "APPROVED" => "✅ Approved",
+            "CHANGES_REQUESTED" => "🔴 Changes requested",
+            "COMMENTED" => "💬 Reviewed",
+            _ => "📝 Reviewed",
+        }
+    };
+
+    Ok(values.iter().filter_map(|v| {
+        let id = v.get("id")?.as_u64()?.to_string();
+        let author = v.get("user")?.get("login")?.as_str()?.to_string();
+        let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(|s| s.to_string());
+        let body = v.get("body")?.as_str().unwrap_or("").to_string();
+        let state = v.get("state")?.as_str().unwrap_or("").to_string();
+        let submitted_at = v.get("submitted_at")?.as_str()?.to_string();
+
+        // Prefix body with review state for visibility
+        let display_body = if body.is_empty() {
+            format!("{}", state_label(&state))
+        } else {
+            format!("{}:\n\n{}", state_label(&state), body)
+        };
+
+        Some(PRComment {
+            id,
+            author,
+            author_avatar,
+            body: display_body,
+            created_at: submitted_at.clone(),
+            updated_at: Some(submitted_at),
+            reactions: None,
+        })
+    }).collect())
 }
 
 /// 添加 PR 评论
