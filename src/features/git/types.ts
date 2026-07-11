@@ -159,6 +159,8 @@ export interface PRCommit {
 export interface GitStatusFile {
   path: string;
   status: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface GitStatusDiff {

@@ -1,6 +1,7 @@
 use crate::common::utils::command::local;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
+use std::collections::HashMap;
 use std::{path::PathBuf, sync::mpsc, thread};
 
 /// 提取 git 进程退出码与信号，便于诊断 exit status: 129 (SIGHUP) 等异常
@@ -31,6 +32,19 @@ pub struct GitStatusDiff {
 pub struct GitStatusFile {
     pub path: String,
     pub status: String,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+impl GitStatusFile {
+    fn new(path: String, status: String) -> Self {
+        Self {
+            path,
+            status,
+            additions: 0,
+            deletions: 0,
+        }
+    }
 }
 
 /// 常驻 git status worker。
@@ -107,6 +121,21 @@ fn worker_loop(
 
         let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
 
+        // Parse porcelain output and enrich with additions/deletions from --numstat
+        let mut current_files = parse_porcelain(&current);
+        if !current_files.is_empty() {
+            let numstat = get_numstat_map(&repo_path);
+            for file in &mut current_files {
+                if let Some((add, del)) = numstat.get(&file.path) {
+                    file.additions = *add;
+                    file.deletions = *del;
+                }
+            }
+        }
+
+        // Serialize to string for comparison (preserve counts)
+        let current_serialized = serialize_files_for_diff(&current_files);
+
         log::debug!(
             "[GitWorker] git status result for {}: {} bytes, changed={}",
             path_str,
@@ -115,19 +144,24 @@ fn worker_loop(
         );
 
         if current != last_status {
-            let diff = compute_status_diff(&last_status, &current);
-            last_status = current;
+            let last_files = parse_porcelain(&last_status);
+            let last_serialized = serialize_files_for_diff(&last_files);
 
-            // 只在有实际变化时通知
-            if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.modified.is_empty() {
-                log::debug!(
-                    "[GitWorker] Emitting diff for {}: +{} ~{} -{}",
-                    path_str,
-                    diff.added.len(),
-                    diff.modified.len(),
-                    diff.removed.len()
-                );
-                on_change(diff);
+            if current_serialized != last_serialized {
+                let diff = compute_status_diff(&last_files, &current_files);
+                last_status = current;
+
+                // 只在有实际变化时通知
+                if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.modified.is_empty() {
+                    log::debug!(
+                        "[GitWorker] Emitting diff for {}: +{} ~{} -{}",
+                        path_str,
+                        diff.added.len(),
+                        diff.modified.len(),
+                        diff.removed.len()
+                    );
+                    on_change(diff);
+                }
             }
         }
     }
@@ -238,7 +272,7 @@ fn parse_porcelain(output: &str) -> Vec<GitStatusFile> {
         };
 
         let status = xy_to_status(xy);
-        files.push(GitStatusFile { path, status });
+        files.push(GitStatusFile::new(path, status));
     }
     files
 }
@@ -263,35 +297,30 @@ fn xy_to_status(xy: &str) -> String {
     }
 }
 
-/// 计算两次 git status 输出之间的增量差异
-fn compute_status_diff(old_output: &str, new_output: &str) -> GitStatusDiff {
-    let old_files = parse_porcelain(old_output);
-    let new_files = parse_porcelain(new_output);
-
-    let old_map: std::collections::HashMap<String, String> =
-        old_files.into_iter().map(|f| (f.path, f.status)).collect();
-    let new_map: std::collections::HashMap<String, String> =
-        new_files.into_iter().map(|f| (f.path, f.status)).collect();
+/// 计算两次 git status 结果之间的增量差异
+/// 接收解析后的文件列表（含 additions/deletions 计数）
+fn compute_status_diff(old_files: &[GitStatusFile], new_files: &[GitStatusFile]) -> GitStatusDiff {
+    let old_map: std::collections::HashMap<String, &GitStatusFile> =
+        old_files.iter().map(|f| (f.path.clone(), f)).collect();
+    let new_map: std::collections::HashMap<String, &GitStatusFile> =
+        new_files.iter().map(|f| (f.path.clone(), f)).collect();
 
     let mut diff = GitStatusDiff::default();
 
     // 找新增和修改的文件
-    for (path, status) in &new_map {
+    for (path, file) in &new_map {
         match old_map.get(path) {
             None => {
                 // 新文件
-                diff.added.push(GitStatusFile {
-                    path: path.clone(),
-                    status: status.clone(),
-                });
+                diff.added.push((*file).clone());
             }
-            Some(old_status) => {
-                if old_status != status {
-                    // 状态变化
-                    diff.modified.push(GitStatusFile {
-                        path: path.clone(),
-                        status: status.clone(),
-                    });
+            Some(old_file) => {
+                if old_file.status != file.status
+                    || old_file.additions != file.additions
+                    || old_file.deletions != file.deletions
+                {
+                    // 状态或行数变化
+                    diff.modified.push((*file).clone());
                 }
             }
         }
@@ -305,6 +334,52 @@ fn compute_status_diff(old_output: &str, new_output: &str) -> GitStatusDiff {
     }
 
     diff
+}
+
+/// 将文件列表序列化为比较字符串（用于检测变化，包含 counts）
+fn serialize_files_for_diff(files: &[GitStatusFile]) -> String {
+    let mut parts: Vec<String> = files
+        .iter()
+        .map(|f| format!("{}:{}:+{}-{}", f.path, f.status, f.additions, f.deletions))
+        .collect();
+    parts.sort();
+    parts.join("\n")
+}
+
+/// 运行 `git diff --numstat`（unstaged + cached）并返回 path → (additions, deletions)
+fn get_numstat_map(repo_path: &PathBuf) -> HashMap<String, (i32, i32)> {
+    let path_str = repo_path.to_str().unwrap_or(".");
+    let mut map: HashMap<String, (i32, i32)> = HashMap::new();
+
+    // Unstaged changes
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["-C", path_str, "diff", "--numstat"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
+                let entry = map.entry(path).or_insert((0, 0));
+                entry.0 += add as i32;
+                entry.1 += del as i32;
+            }
+        }
+    }
+
+    // Staged changes
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["-C", path_str, "diff", "--cached", "--numstat"])
+        .output()
+    {
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
+                let entry = map.entry(path).or_insert((0, 0));
+                entry.0 += add as i32;
+                entry.1 += del as i32;
+            }
+        }
+    }
+
+    map
 }
 
 #[cfg(test)]
@@ -358,20 +433,25 @@ mod tests {
 
     #[test]
     fn compute_diff_added_file() {
-        let old = "";
-        let new = "?? new_file.txt\n";
-        let diff = compute_status_diff(old, new);
+        let old = parse_porcelain("");
+        let new = parse_porcelain("?? new_file.txt\n");
+        let new_files: Vec<GitStatusFile> = new.into_iter().map(|mut f| {
+            f.additions = 10;
+            f
+        }).collect();
+        let diff = compute_status_diff(&old, &new_files);
         assert_eq!(diff.added.len(), 1);
         assert_eq!(diff.added[0].path, "new_file.txt");
+        assert_eq!(diff.added[0].additions, 10);
         assert!(diff.removed.is_empty());
         assert!(diff.modified.is_empty());
     }
 
     #[test]
     fn compute_diff_removed_file() {
-        let old = " M file.txt\n";
-        let new = "";
-        let diff = compute_status_diff(old, new);
+        let old = parse_porcelain(" M file.txt\n");
+        let new = parse_porcelain("");
+        let diff = compute_status_diff(&old, &new);
         assert!(diff.added.is_empty());
         assert_eq!(diff.removed.len(), 1);
         assert_eq!(diff.removed[0], "file.txt");
@@ -380,9 +460,9 @@ mod tests {
 
     #[test]
     fn compute_diff_status_change() {
-        let old = "?? file.txt\n";
-        let new = "A  file.txt\n";
-        let diff = compute_status_diff(old, new);
+        let old = parse_porcelain("?? file.txt\n");
+        let new = parse_porcelain("A  file.txt\n");
+        let diff = compute_status_diff(&old, &new);
         assert!(diff.added.is_empty());
         assert!(diff.removed.is_empty());
         assert_eq!(diff.modified.len(), 1);
@@ -392,11 +472,25 @@ mod tests {
 
     #[test]
     fn compute_diff_no_change() {
-        let old = " M file.txt\n";
-        let new = " M file.txt\n";
-        let diff = compute_status_diff(old, new);
+        let old = parse_porcelain(" M file.txt\n");
+        let new = parse_porcelain(" M file.txt\n");
+        let diff = compute_status_diff(&old, &new);
         assert!(diff.added.is_empty());
         assert!(diff.removed.is_empty());
         assert!(diff.modified.is_empty());
+    }
+
+    #[test]
+    fn compute_diff_additions_changed() {
+        let old: Vec<GitStatusFile> = vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
+        let mut new: Vec<GitStatusFile> = vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
+        new[0].additions = 5;
+        new[0].deletions = 3;
+        let diff = compute_status_diff(&old, &new);
+        assert!(diff.added.is_empty());
+        assert!(diff.removed.is_empty());
+        assert_eq!(diff.modified.len(), 1);
+        assert_eq!(diff.modified[0].additions, 5);
+        assert_eq!(diff.modified[0].deletions, 3);
     }
 }

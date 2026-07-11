@@ -154,15 +154,15 @@ export function useSessionBootstrap(deps: {
             added: diff.added.map((f) => ({
                path: f.path,
                status: mapGitStatus(f.status),
-               additions: 0,
-               deletions: 0,
+               additions: f.additions ?? 0,
+               deletions: f.deletions ?? 0,
             })),
             removed: diff.removed,
             modified: diff.modified.map((f) => ({
                path: f.path,
                status: mapGitStatus(f.status),
-               additions: 0,
-               deletions: 0,
+               additions: f.additions ?? 0,
+               deletions: f.deletions ?? 0,
             })),
          });
       });
