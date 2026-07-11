@@ -143,6 +143,13 @@ fn deserialize_head_repo_owner<'de, D: serde::Deserializer<'de>>(d: D) -> Result
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrLabel {
+    pub name: String,
+    #[serde(default)]
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PRListItem {
     pub number: u64,
@@ -157,6 +164,8 @@ pub struct PRListItem {
     pub is_cross_repository: bool,
     #[serde(default, deserialize_with = "deserialize_head_repo_owner")]
     pub head_repository_owner: String,
+    #[serde(default)]
+    pub labels: Vec<PrLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

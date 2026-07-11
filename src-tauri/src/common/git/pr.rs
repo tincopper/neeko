@@ -1,4 +1,4 @@
-use crate::project::types::{PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction};
+use crate::project::types::{PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction, PrLabel};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -43,7 +43,7 @@ pub fn is_gh_authenticated() -> bool {
 pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
     let s = state.to_string();
     cache::get_cached_pr_list(repo_path, &s, limit, || {
-        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner";
+        let json_fields = "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels";
         let output = no_window_cmd("gh")
             .args([
                 "pr",
@@ -71,6 +71,65 @@ pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRLis
             log::info!("[list_prs] First PR created_at: {:?}", first.created_at);
         }
         Ok(result)
+    })
+}
+
+/// 获取仓库所有 labels（通过 gh label list）
+pub fn list_repo_labels(repo_path: &Path) -> Result<Vec<PrLabel>> {
+    cache::get_cached_repo_labels(repo_path, || {
+        let output = no_window_cmd("gh")
+            .args(["label", "list", "--json", "name,color", "--limit", "200"])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run gh label list")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("gh label list failed: {}", stderr.trim());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let labels: Vec<PrLabel> =
+            serde_json::from_str(&stdout).context("Failed to parse gh label list output")?;
+        Ok(labels)
+    })
+}
+
+/// 获取仓库所有 PR 作者（通过 gh pr list --state all --limit 1000 提取去重）
+pub fn list_repo_authors(repo_path: &Path) -> Result<Vec<String>> {
+    cache::get_cached_repo_authors(repo_path, || {
+        let output = no_window_cmd("gh")
+            .args(["pr", "list", "--state", "all", "--limit", "1000", "--json", "author"])
+            .current_dir(repo_path)
+            .output()
+            .context("Failed to run gh pr list for authors")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("gh pr list failed: {}", stderr.trim());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let items: Vec<serde_json::Value> =
+            serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
+
+        let mut authors: Vec<String> = items
+            .iter()
+            .filter_map(|v| {
+                v.get("author").and_then(|a| {
+                    if let Some(s) = a.as_str() {
+                        Some(s.to_string())
+                    } else if let Some(obj) = a.as_object() {
+                        obj.get("login").and_then(|l| l.as_str()).map(String::from)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        authors.sort();
+        authors.dedup();
+        Ok(authors)
     })
 }
 

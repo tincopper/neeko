@@ -345,6 +345,18 @@ export function listPrs(
   return invoke<import('../types').PRListItem[]>('list_prs_command', { projectId, state, limit });
 }
 
+export function listRepoLabels(
+  projectId: string,
+): Promise<import('../types').PrLabel[]> {
+  return invoke<import('../types').PrLabel[]>('list_repo_labels_command', { projectId });
+}
+
+export function listRepoAuthors(
+  projectId: string,
+): Promise<string[]> {
+  return invoke<string[]>('list_repo_authors_command', { projectId });
+}
+
 export function viewPr(projectId: string, prNumber: number): Promise<import('../types').PRInfo> {
   return invoke<import('../types').PRInfo>('view_pr_command', { projectId, prNumber });
 }

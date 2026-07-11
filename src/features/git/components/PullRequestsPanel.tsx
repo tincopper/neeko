@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { closePr, isGhInstalled, isGhAuthenticated, listPrs, mergePr } from '../api/gitApi';
+import { closePr, isGhInstalled, isGhAuthenticated, listPrs, listRepoLabels, listRepoAuthors, mergePr } from '../api/gitApi';
 import type { PRListItem } from '@/shared/types';
 import type { PRDetailTabData } from '@/features/editor/types';
 import { useEditorStore } from '@/shared/store';
@@ -65,6 +65,14 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
   const stateDropdownRef = useRef<HTMLDivElement>(null);
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [authorDropdownOpen, setAuthorDropdownOpen] = useState(false);
+  const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
+  const authorDropdownRef = useRef<HTMLDivElement>(null);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
+  const [repoLabels, setRepoLabels] = useState<import('../types').PrLabel[]>([]);
+  const [repoAuthors, setRepoAuthors] = useState<string[]>([]);
 
   useEffect(() => {
     console.log('[PullRequestsPanel] Checking gh CLI...');
@@ -116,11 +124,37 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     loadPRs();
   }, [loadPRs]);
 
-  // Close dropdown on outside click
+  // Load full repo labels and authors list (separate from current PR list)
+  useEffect(() => {
+    if (!ghInstalled || !ghAuthenticated) return;
+    listRepoLabels(projectId).then(setRepoLabels).catch(() => {});
+    listRepoAuthors(projectId).then(setRepoAuthors).catch(() => {});
+  }, [projectId, ghInstalled, ghAuthenticated]);
+
+  // Use repo-level data for filter dropdowns, fall back to deriving from prList
+  const filterAuthors = useMemo(() => {
+    if (repoAuthors.length > 0) return repoAuthors;
+    const authors = new Set(prList.map((pr) => pr.author).filter(Boolean));
+    return Array.from(authors).sort();
+  }, [repoAuthors, prList]);
+
+  const filterLabels = useMemo(() => {
+    if (repoLabels.length > 0) return repoLabels.map((l) => l.name).sort();
+    const labels = new Set(prList.flatMap((pr) => pr.labels ?? []).map((l) => l.name));
+    return Array.from(labels).sort();
+  }, [repoLabels, prList]);
+
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (stateDropdownRef.current && !stateDropdownRef.current.contains(event.target as Node)) {
         setStateDropdownOpen(false);
+      }
+      if (authorDropdownRef.current && !authorDropdownRef.current.contains(event.target as Node)) {
+        setAuthorDropdownOpen(false);
+      }
+      if (labelDropdownRef.current && !labelDropdownRef.current.contains(event.target as Node)) {
+        setLabelDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -128,15 +162,24 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   }, []);
 
   const filteredPrList = useMemo(() => {
-    if (!searchQuery.trim()) return prList;
-    const query = searchQuery.toLowerCase();
-    return prList.filter(
-      (pr) =>
-        pr.title.toLowerCase().includes(query) ||
-        pr.author.toLowerCase().includes(query) ||
-        `#${pr.number}`.includes(query),
-    );
-  }, [prList, searchQuery]);
+    let list = prList;
+    if (authorFilter) {
+      list = list.filter((pr) => pr.author === authorFilter);
+    }
+    if (labelFilter) {
+      list = list.filter((pr) => (pr.labels ?? []).some((l) => l.name === labelFilter));
+    }
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (pr) =>
+          pr.title.toLowerCase().includes(query) ||
+          pr.author.toLowerCase().includes(query) ||
+          `#${pr.number}`.includes(query),
+      );
+    }
+    return list;
+  }, [prList, searchQuery, authorFilter, labelFilter]);
 
   const handleMerge = useCallback(
     async (number: number) => {
@@ -279,7 +322,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                 )}
                 onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
               >
-                State
+                {STATE_OPTIONS.find((o) => o.value === filter)?.label ?? 'State'}
                 <ChevronDown size={12} className={cn('transition-transform duration-150', stateDropdownOpen && 'rotate-180')} />
               </button>
               {stateDropdownOpen && (
@@ -305,15 +348,93 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               )}
             </div>
 
-            {/* Other filter buttons (placeholder) */}
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary transition-colors duration-100">
-              Author
-              <ChevronDown size={12} />
-            </button>
-            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary transition-colors duration-100">
-              Label
-              <ChevronDown size={12} />
-            </button>
+            {/* Author Filter Dropdown */}
+            <div className="relative" ref={authorDropdownRef}>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border transition-colors duration-100',
+                  authorDropdownOpen || authorFilter
+                    ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
+                    : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
+                )}
+                onClick={() => setAuthorDropdownOpen(!authorDropdownOpen)}
+              >
+                {authorFilter ?? 'Author'}
+                {authorFilter && (
+                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setAuthorFilter(null); }} />
+                )}
+                <ChevronDown size={12} className={cn('transition-transform duration-150', authorDropdownOpen && 'rotate-180')} />
+              </button>
+              {authorDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
+                  {filterAuthors.length === 0 ? (
+                    <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No authors</div>
+                  ) : (
+                    filterAuthors.map((author) => (
+                      <button
+                        key={author}
+                        className={cn(
+                          'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                          authorFilter === author
+                            ? 'bg-accent-blue/10 text-accent-blue'
+                            : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                        )}
+                        onClick={() => {
+                          setAuthorFilter(authorFilter === author ? null : author);
+                          setAuthorDropdownOpen(false);
+                        }}
+                      >
+                        {author}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Label Filter Dropdown */}
+            <div className="relative" ref={labelDropdownRef}>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border transition-colors duration-100',
+                  labelDropdownOpen || labelFilter
+                    ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
+                    : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
+                )}
+                onClick={() => setLabelDropdownOpen(!labelDropdownOpen)}
+              >
+                {labelFilter ?? 'Label'}
+                {labelFilter && (
+                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setLabelFilter(null); }} />
+                )}
+                <ChevronDown size={12} className={cn('transition-transform duration-150', labelDropdownOpen && 'rotate-180')} />
+              </button>
+              {labelDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
+                  {filterLabels.length === 0 ? (
+                    <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No labels</div>
+                  ) : (
+                    filterLabels.map((label) => (
+                      <button
+                        key={label}
+                        className={cn(
+                          'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                          labelFilter === label
+                            ? 'bg-accent-blue/10 text-accent-blue'
+                            : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                        )}
+                        onClick={() => {
+                          setLabelFilter(labelFilter === label ? null : label);
+                          setLabelDropdownOpen(false);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* PR List */}
@@ -358,6 +479,23 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                         by <span className="text-text-secondary">{pr.author}</span>
                       </span>
                     </div>
+                    {pr.labels && pr.labels.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {pr.labels.map((label) => (
+                          <span
+                            key={label.name}
+                            className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium leading-tight"
+                            style={{
+                              backgroundColor: label.color ? `#${label.color}20` : 'var(--bg-tertiary)',
+                              color: label.color ? `#${label.color}` : 'var(--text-muted)',
+                              border: label.color ? `1px solid #${label.color}40` : '1px solid transparent',
+                            }}
+                          >
+                            {label.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Right Content */}

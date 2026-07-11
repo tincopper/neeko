@@ -89,6 +89,11 @@ export interface DiffResult {
   truncated?: boolean;
 }
 
+export interface PrLabel {
+  name: string;
+  color: string;
+}
+
 export interface PRListItem {
   number: number;
   title: string;
@@ -100,6 +105,7 @@ export interface PRListItem {
   isCrossRepository: boolean;
   headRepositoryOwner: string;
   comment_count?: number;
+  labels: PrLabel[];
 }
 
 export interface PRStatusCheck {

@@ -1,5 +1,5 @@
 use crate::common::git::types::DiffResult;
-use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem};
+use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem, PrLabel};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
@@ -50,6 +50,8 @@ impl<T> TtlCache<T> {
 
 static PR_LIST_CACHE: LazyLock<TtlCache<Vec<PRListItem>>> = LazyLock::new(TtlCache::new);
 static PR_INFO_CACHE: LazyLock<TtlCache<PRInfo>> = LazyLock::new(TtlCache::new);
+static REPO_LABELS_CACHE: LazyLock<TtlCache<Vec<PrLabel>>> = LazyLock::new(TtlCache::new);
+static REPO_AUTHORS_CACHE: LazyLock<TtlCache<Vec<String>>> = LazyLock::new(TtlCache::new);
 static DEFAULT_BRANCH_CACHE: LazyLock<TtlCache<String>> = LazyLock::new(TtlCache::new);
 static GH_INSTALLED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
 static GH_AUTHENTICATED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
@@ -188,6 +190,34 @@ pub fn get_cached_pr_info(
     Ok(result)
 }
 
+/// Get cached repo labels or fetch via callback
+pub fn get_cached_repo_labels(
+    repo_path: &Path,
+    fetch: impl FnOnce() -> anyhow::Result<Vec<PrLabel>>,
+) -> anyhow::Result<Vec<PrLabel>> {
+    let key = repo_key_prefix(repo_path);
+    if let Some(cached) = REPO_LABELS_CACHE.get(&key) {
+        return Ok(cached);
+    }
+    let result = fetch()?;
+    REPO_LABELS_CACHE.set(key, result.clone());
+    Ok(result)
+}
+
+/// Get cached repo authors or fetch via callback
+pub fn get_cached_repo_authors(
+    repo_path: &Path,
+    fetch: impl FnOnce() -> anyhow::Result<Vec<String>>,
+) -> anyhow::Result<Vec<String>> {
+    let key = repo_key_prefix(repo_path);
+    if let Some(cached) = REPO_AUTHORS_CACHE.get(&key) {
+        return Ok(cached);
+    }
+    let result = fetch()?;
+    REPO_AUTHORS_CACHE.set(key, result.clone());
+    Ok(result)
+}
+
 /// Get cached default branch or compute
 pub fn get_cached_default_branch(
     repo_path: &Path,
@@ -281,6 +311,8 @@ pub fn get_cached_ahead_behind(
 pub fn invalidate_repo_caches(repo_path: &Path) {
     PR_LIST_CACHE.invalidate_repo(repo_path);
     PR_INFO_CACHE.invalidate_repo(repo_path);
+    REPO_LABELS_CACHE.invalidate_repo(repo_path);
+    REPO_AUTHORS_CACHE.invalidate_repo(repo_path);
     DEFAULT_BRANCH_CACHE.invalidate_repo(repo_path);
     DIFF_CACHE.invalidate_repo(repo_path);
     DIFF_STATS_CACHE.invalidate_repo(repo_path);

@@ -7,7 +7,7 @@ use crate::common::git::types::DiffResult;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRInfo, PRListItem,
-    PRMergeResult, PRFileChange, PRCommit, PRComment,
+    PRMergeResult, PRFileChange, PRCommit, PRComment, PrLabel,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -1131,6 +1131,38 @@ pub fn list_prs_command(
     let manager = state_w.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
         crate::git::list_prs(&project.path, &state, limit).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn list_repo_labels_command(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<PrLabel>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::list_repo_labels(&project.path).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn list_repo_authors_command(
+    project_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<String>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::list_repo_authors(&project.path).map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",

@@ -154,6 +154,8 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::is_gh_installed_command,
             $crate::git::commands::is_gh_authenticated_command,
             $crate::git::commands::list_prs_command,
+            $crate::git::commands::list_repo_labels_command,
+            $crate::git::commands::list_repo_authors_command,
             $crate::git::commands::view_pr_command,
             $crate::git::commands::create_pr_command,
             $crate::git::commands::merge_pr_command,
