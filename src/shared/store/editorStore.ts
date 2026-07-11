@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
-import type { FileTabData, TerminalTabData, DiffTabData, HtmlPreviewTabData } from '@/shared/types/tab';
+import type { FileTabData, TerminalTabData, DiffTabData, HtmlPreviewTabData, PRDetailTabData } from '@/shared/types/tab';
 import type { FileContent } from '@/features/file/types';
 import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
@@ -83,6 +83,23 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
     }
     case "conversation": {
       return data;
+    }
+    case "prDetail": {
+      const p = partial as Record<string, unknown>;
+      const d = data as PRDetailTabData;
+      return {
+        kind: "prDetail" as const,
+        projectId: p.projectId !== undefined ? (p.projectId as string) : d.projectId,
+        prNumber: p.prNumber !== undefined ? (p.prNumber as number) : d.prNumber,
+        prTitle: p.prTitle !== undefined ? (p.prTitle as string) : d.prTitle,
+        prState: p.prState !== undefined ? (p.prState as string) : d.prState,
+        prBody: p.prBody !== undefined ? (p.prBody as string | null) : d.prBody,
+        prAuthor: p.prAuthor !== undefined ? (p.prAuthor as string) : d.prAuthor,
+        prCreatedAt: p.prCreatedAt !== undefined ? (p.prCreatedAt as string) : d.prCreatedAt,
+        prUrl: p.prUrl !== undefined ? (p.prUrl as string) : d.prUrl,
+        prHeadRef: p.prHeadRef !== undefined ? (p.prHeadRef as string) : d.prHeadRef,
+        prBaseRef: p.prBaseRef !== undefined ? (p.prBaseRef as string) : d.prBaseRef,
+      };
     }
   }
 }

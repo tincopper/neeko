@@ -94,11 +94,12 @@ export interface PRListItem {
   title: string;
   state: string;
   author: string;
-  head_ref_name: string;
-  base_ref_name: string;
-  created_at: string;
-  is_cross_repository: boolean;
-  head_repository_owner: string;
+  headRefName: string;
+  baseRefName: string;
+  createdAt: string;
+  isCrossRepository: boolean;
+  headRepositoryOwner: string;
+  comment_count?: number;
 }
 
 export interface PRStatusCheck {
@@ -115,20 +116,38 @@ export interface PRInfo {
   state: string;
   body: string | null;
   author: string;
-  head_ref_name: string;
-  base_ref_name: string;
+  headRefName: string;
+  baseRefName: string;
   url: string;
-  created_at: string;
+  createdAt: string;
   mergeable: string | null;
-  merge_state_status: string | null;
-  is_draft: boolean;
-  is_cross_repository: boolean;
-  status_check_rollup: PRStatusCheck[] | null;
+  mergeStateStatus: string | null;
+  isDraft: boolean;
+  isCrossRepository: boolean;
+  statusCheckRollup: PRStatusCheck[] | null;
+  mergeCommit?: {
+    oid: string;
+  } | null;
 }
 
 export interface PRMergeResult {
   success: boolean;
   message: string;
+}
+
+export interface PRFileChange {
+  path: string;
+  status: "added" | "removed" | "modified" | "renamed";
+  additions: number;
+  deletions: number;
+}
+
+export interface PRCommit {
+  hash: string;
+  shortHash: string;
+  message: string;
+  author: string;
+  timestamp: string;
 }
 
 export interface GitStatusFile {

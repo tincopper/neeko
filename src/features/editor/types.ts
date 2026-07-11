@@ -3,7 +3,7 @@ import type { DiffSource, ViewMode } from "@/features/git/components/diff/types"
 import type { FileContent } from "@/features/file/types";
 import type { ConversationMeta } from "@/features/conversation/types";
 
-export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview" | "conversation";
+export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview" | "conversation" | "prDetail";
 
 export interface TerminalTabData {
   kind: "terminal";
@@ -49,7 +49,22 @@ export interface ConversationTabData {
   onResume?: (meta: ConversationMeta) => void;
 }
 
-export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData | ConversationTabData;
+export interface PRDetailTabData {
+  kind: "prDetail";
+  projectId: string;
+  prNumber: number;
+  prTitle: string;
+  prState: string;
+  prBody: string | null;
+  prAuthor: string;
+  prCreatedAt: string;
+  prUrl: string;
+  prHeadRef: string;
+  prBaseRef: string;
+  comments?: import('@/features/git/types/comment').PRComment[];
+}
+
+export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData | ConversationTabData | PRDetailTabData;
 
 export interface Tab {
   id: string;

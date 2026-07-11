@@ -132,6 +132,16 @@ fn deserialize_author<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, 
     }
 }
 
+fn deserialize_head_repo_owner<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let val = serde_json::Value::deserialize(d)?;
+    match val {
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Object(_) => Ok(extract_author_login(&val)),
+        serde_json::Value::Null => Ok(String::new()),
+        _ => Ok(String::new()),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PRListItem {
@@ -145,7 +155,7 @@ pub struct PRListItem {
     pub created_at: String,
     #[serde(default)]
     pub is_cross_repository: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_head_repo_owner")]
     pub head_repository_owner: String,
 }
 
@@ -172,12 +182,65 @@ pub struct PRInfo {
     pub is_cross_repository: bool,
     #[serde(default)]
     pub status_check_rollup: Option<serde_json::Value>,
+    #[serde(default)]
+    pub merge_commit: Option<MergeCommit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeCommit {
+    pub oid: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PRMergeResult {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PRFileChange {
+    pub path: String,
+    pub status: String,
+    #[serde(default)]
+    pub additions: u64,
+    #[serde(default)]
+    pub deletions: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PRCommit {
+    pub hash: String,
+    pub short_hash: String,
+    pub message: String,
+    #[serde(deserialize_with = "deserialize_author")]
+    pub author: String,
+    pub timestamp: String,
+}
+
+// ─── PR Comment types ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PRComment {
+    pub id: String,
+    pub author: String,
+    #[serde(default)]
+    pub author_avatar: Option<String>,
+    pub body: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub reactions: Option<Vec<CommentReaction>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentReaction {
+    pub emoji: String,
+    pub count: u32,
+    pub user_reacted: bool,
 }
 
 // ─── Watcher types ────────────────────────────────────────────────────────────

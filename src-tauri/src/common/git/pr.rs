@@ -1,4 +1,4 @@
-use crate::project::types::{PRInfo, PRListItem, PRMergeResult};
+use crate::project::types::{PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -22,6 +22,17 @@ pub fn is_gh_installed() -> bool {
     cache::get_cached_gh_installed(|| {
         no_window_cmd("gh")
             .args(["--version"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+}
+
+/// 检测 gh CLI 是否已登录 GitHub
+pub fn is_gh_authenticated() -> bool {
+    cache::get_cached_gh_authenticated(|| {
+        no_window_cmd("gh")
+            .args(["auth", "status"])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
@@ -54,14 +65,19 @@ pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRLis
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        serde_json::from_str(&stdout).context("Failed to parse gh pr list output")
+        log::info!("[list_prs] Raw output: {}", &stdout[..stdout.len().min(500)]);
+        let result: Vec<PRListItem> = serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
+        if let Some(first) = result.first() {
+            log::info!("[list_prs] First PR created_at: {:?}", first.created_at);
+        }
+        Ok(result)
     })
 }
 
 /// 获取单个 PR 详情
 pub fn view_pr(repo_path: &Path, pr_number: u64) -> Result<PRInfo> {
     cache::get_cached_pr_info(repo_path, pr_number, || {
-        let json_fields = "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup";
+        let json_fields = "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup,mergeCommit";
         let output = no_window_cmd("gh")
             .args(["pr", "view", &pr_number.to_string(), "--json", json_fields])
             .current_dir(repo_path)
@@ -188,5 +204,494 @@ pub fn checkout_pr(repo_path: &Path, pr_number: u64) -> Result<()> {
         anyhow::bail!("gh pr checkout failed: {}", stderr.trim());
     }
     invalidate_repo_caches(repo_path);
+    Ok(())
+}
+
+/// 获取 PR 变更文件列表
+pub fn list_pr_files(repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChange>> {
+    let output = no_window_cmd("gh")
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "files",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run gh pr view")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh pr view failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .context("Failed to parse gh pr view output")?;
+
+    let files = value
+        .get("files")
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|f| {
+                    let path = f.get("path")?.as_str()?.to_string();
+                    let additions = f.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let deletions = f.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let change_type = f.get("changeType")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("MODIFIED");
+                    let status = match change_type {
+                        "ADDED" => "added",
+                        "REMOVED" => "removed",
+                        "RENAMED" => "renamed",
+                        _ => "modified",
+                    };
+                    Some(PRFileChange {
+                        path,
+                        status: status.to_string(),
+                        additions,
+                        deletions,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(files)
+}
+
+/// 获取 PR 提交列表
+pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>> {
+    let output = no_window_cmd("gh")
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "commits",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to run gh pr view")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh pr view failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: serde_json::Value = serde_json::from_str(&stdout)
+        .context("Failed to parse gh pr view output")?;
+
+    let commits = value
+        .get("commits")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| {
+                    let oid = c.get("oid")?.as_str()?.to_string();
+                    let short_hash = oid.chars().take(7).collect::<String>();
+                    let message_headline = c.get("messageHeadline")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    // authors is an array, get first author's login
+                    let author_login = c.get("authors")
+                        .and_then(|a| a.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|a| a.get("login"))
+                        .and_then(|l| l.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let authored_date = c.get("authoredDate")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Some(PRCommit {
+                        hash: oid,
+                        short_hash,
+                        message: message_headline,
+                        author: author_login,
+                        timestamp: authored_date,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(commits)
+}
+
+// ─── PR Comments ────────────────────────────────────────────────────────────
+
+/// 获取 PR 评论列表
+pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRComment>> {
+    log::info!("[list_pr_comments] Loading comments for PR #{} at {:?}", pr_number, repo_path);
+
+    // First get the repo info to construct the API URL
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        let stderr = String::from_utf8_lossy(&repo_output.stderr);
+        log::error!("[list_pr_comments] Failed to get repo info: {}", stderr.trim());
+        anyhow::bail!("Failed to get repo info");
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout)
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let repo = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+
+    log::info!("[list_pr_comments] Repo: {}/{}", owner, repo);
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to list PR comments")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("[list_pr_comments] gh api failed: {}", stderr.trim());
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::info!("[list_pr_comments] Raw output length: {}", stdout.len());
+
+    let values: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .context("Failed to parse PR comments response")?;
+
+    log::info!("[list_pr_comments] Found {} comments", values.len());
+
+    let comments: Vec<PRComment> = values.iter().filter_map(|v| {
+        let id = v.get("id")?.as_u64()?.to_string();
+        let author = v.get("user")?.get("login")?.as_str()?.to_string();
+        let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(|s| s.to_string());
+        let body = v.get("body")?.as_str()?.to_string();
+        let created_at = v.get("created_at")?.as_str()?.to_string();
+        let updated_at = v.get("updated_at")?.as_str().map(|s| s.to_string());
+
+        Some(PRComment {
+            id,
+            author,
+            author_avatar,
+            body,
+            created_at,
+            updated_at,
+            reactions: None,
+        })
+    }).collect();
+
+    log::info!("[list_pr_comments] Parsed {} comments", comments.len());
+
+    Ok(comments)
+}
+
+/// 添加 PR 评论
+pub fn add_pr_comment(repo_path: &Path, pr_number: u64, body: &str) -> Result<PRComment> {
+    log::info!("[add_pr_comment] Adding comment to PR #{}", pr_number);
+    log::info!("[add_pr_comment] Body: {}", body);
+
+    // First get the repo info to construct the API URL
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        let stderr = String::from_utf8_lossy(&repo_output.stderr);
+        log::error!("[add_pr_comment] Failed to get repo info: {}", stderr.trim());
+        anyhow::bail!("Failed to get repo info");
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout)
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let repo = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+
+    log::info!("[add_pr_comment] Repo: {}/{}", owner, repo);
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number),
+            "--method",
+            "POST",
+            "--raw-field",
+            &format!("body={}", body),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to add PR comment")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("[add_pr_comment] gh api failed: {}", stderr.trim());
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::info!("[add_pr_comment] Response: {}", &stdout[..stdout.len().min(500)]);
+
+    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .context("Failed to parse PR comment response")?;
+
+    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
+    let author = v.get("user")
+        .and_then(|u| u.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let author_avatar = v.get("user")
+        .and_then(|u| u.get("avatar_url"))
+        .and_then(|a| a.as_str())
+        .map(|s| s.to_string());
+    let comment_body = v.get("body")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .to_string();
+    let created_at = v.get("created_at")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let updated_at = v.get("updated_at")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string());
+
+    log::info!("[add_pr_comment] Comment added successfully: id={}", id);
+
+    Ok(PRComment {
+        id,
+        author,
+        author_avatar,
+        body: comment_body,
+        created_at,
+        updated_at,
+        reactions: None,
+    })
+}
+
+/// 编辑 PR 评论
+pub fn edit_pr_comment(
+    repo_path: &Path,
+    _pr_number: u64,
+    comment_id: &str,
+    body: &str,
+) -> Result<PRComment> {
+    // First get the repo info to construct the API URL
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        anyhow::bail!("Failed to get repo info");
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout)
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let repo = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/comments/{}", owner, repo, comment_id),
+            "--method",
+            "PATCH",
+            "--raw-field",
+            &format!("body={}", body),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to edit PR comment")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .context("Failed to parse PR comment response")?;
+
+    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
+    let author = v.get("user")
+        .and_then(|u| u.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let author_avatar = v.get("user")
+        .and_then(|u| u.get("avatar_url"))
+        .and_then(|a| a.as_str())
+        .map(|s| s.to_string());
+    let comment_body = v.get("body")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .to_string();
+    let created_at = v.get("created_at")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let updated_at = v.get("updated_at")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string());
+
+    Ok(PRComment {
+        id,
+        author,
+        author_avatar,
+        body: comment_body,
+        created_at,
+        updated_at,
+        reactions: None,
+    })
+}
+
+/// 删除 PR 评论
+pub fn delete_pr_comment(repo_path: &Path, _pr_number: u64, comment_id: &str) -> Result<()> {
+    // First get the repo info to construct the API URL
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        anyhow::bail!("Failed to get repo info");
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout)
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let repo = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/comments/{}", owner, repo, comment_id),
+            "--method",
+            "DELETE",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to delete PR comment")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    Ok(())
+}
+
+/// 添加评论反应
+pub fn add_comment_reaction(
+    repo_path: &Path,
+    _pr_number: u64,
+    comment_id: &str,
+    emoji: &str,
+) -> Result<()> {
+    // First get the repo info to construct the API URL
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        anyhow::bail!("Failed to get repo info");
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout)
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let repo = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/comments/{}/reactions", owner, repo, comment_id),
+            "--method",
+            "POST",
+            "--field",
+            &format!("content={}", emoji),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to add comment reaction")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
     Ok(())
 }

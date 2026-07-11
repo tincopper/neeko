@@ -7,7 +7,7 @@ use crate::common::git::types::DiffResult;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRInfo, PRListItem,
-    PRMergeResult,
+    PRMergeResult, PRFileChange, PRCommit, PRComment,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -1117,6 +1117,11 @@ pub fn is_gh_installed_command() -> bool {
 }
 
 #[tauri::command]
+pub fn is_gh_authenticated_command() -> bool {
+    crate::git::is_gh_authenticated()
+}
+
+#[tauri::command]
 pub fn list_prs_command(
     project_id: String,
     state: String,
@@ -1199,6 +1204,136 @@ pub fn close_pr_command(
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
         crate::git::close_pr(&project.path, pr_number).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn list_pr_files_command(
+    project_id: String,
+    pr_number: u64,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<PRFileChange>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::list_pr_files(&project.path, pr_number).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn list_pr_commits_command(
+    project_id: String,
+    pr_number: u64,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<PRCommit>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::list_pr_commits(&project.path, pr_number).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+// ─── PR Comment Commands ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_pr_comments_command(
+    project_id: String,
+    pr_number: u64,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<PRComment>, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::list_pr_comments(&project.path, pr_number).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn add_pr_comment_command(
+    project_id: String,
+    pr_number: u64,
+    body: String,
+    state: State<AppStateWrapper>,
+) -> Result<PRComment, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::add_pr_comment(&project.path, pr_number, &body).map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn edit_pr_comment_command(
+    project_id: String,
+    pr_number: u64,
+    comment_id: String,
+    body: String,
+    state: State<AppStateWrapper>,
+) -> Result<PRComment, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::edit_pr_comment(&project.path, pr_number, &comment_id, &body)
+            .map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn delete_pr_comment_command(
+    project_id: String,
+    pr_number: u64,
+    comment_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::delete_pr_comment(&project.path, pr_number, &comment_id)
+            .map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub fn add_comment_reaction_command(
+    project_id: String,
+    pr_number: u64,
+    comment_id: String,
+    emoji: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::add_comment_reaction(&project.path, pr_number, &comment_id, &emoji)
+            .map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",

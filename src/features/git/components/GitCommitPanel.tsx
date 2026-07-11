@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { AheadBehind, CommitResult } from '@/shared/types';
 import type {
   ProjectView,
@@ -7,15 +7,14 @@ import type {
 } from '@/shared/types/activeProject';
 import { useAppContext } from '@/shared/contexts';
 import { withTimeout } from '@/shared/utils/withTimeout';
-import BranchInfo from "./BranchInfo";
-import ChangesList from "./ChangesList";
-import CommitForm from "./CommitForm";
-import PullRequestsPanel from "./PullRequestsPanel";
-import GitDialog, { type DialogState } from "./GitDialog";
+import BranchInfo from './BranchInfo';
+import ChangesList from './ChangesList';
+import CommitForm from './CommitForm';
+import GitDialog, { type DialogState } from './GitDialog';
 
 // Timeout constants (ms). These protect against indefinite IPC hangs caused by
 // the Rust backend's project_manager Mutex being held by a long operation.
-const TIMEOUT_LOCAL_MS = 30_000;  // discard, stage, commit
+const TIMEOUT_LOCAL_MS = 30_000; // discard, stage, commit
 const TIMEOUT_NETWORK_MS = 60_000; // fetch, pull, push
 
 interface GitCommitPanelProps {
@@ -24,8 +23,8 @@ interface GitCommitPanelProps {
   capabilities: ProjectCapabilities;
   onRefreshGit: () => Promise<void>;
   onSelectFile?: (filePath: string) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
-  onOpenDialog?: (type: "new-branch" | "new-worktree", e: React.MouseEvent) => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
+  onOpenDialog?: (type: 'new-branch' | 'new-worktree', e: React.MouseEvent) => void;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
@@ -44,19 +43,22 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
-  // AI 生成 commit message 相关状�?
-  const [commitMessage, setCommitMessage] = useState("");
+  // AI 生成 commit message 相关状�?
+  const [commitMessage, setCommitMessage] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
   const { config } = useAppContext();
 
   const changedFiles = project.gitInfo?.changed_files ?? [];
 
-  const noCommits = project.gitInfo !== null &&
+  const noCommits =
+    project.gitInfo !== null &&
     project.gitInfo.branches.length === 0 &&
     !project.gitInfo.current_branch;
 
-  // Diff stats 懒加载：首次渲染后异步获�?+/- 统计
-  const [diffStats, setDiffStats] = useState<Record<string, { additions: number; deletions: number }>>({});
+  // Diff stats 懒加载：首次渲染后异步获�?+/- 统计
+  const [diffStats, setDiffStats] = useState<
+    Record<string, { additions: number; deletions: number }>
+  >({});
 
   useEffect(() => {
     if (changedFiles.length === 0) {
@@ -64,7 +66,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       return;
     }
     let cancelled = false;
-    commands.getChangedFilesDiffStats()
+    commands
+      .getChangedFilesDiffStats()
       .then((stats) => {
         if (cancelled) return;
         const map: Record<string, { additions: number; deletions: number }> = {};
@@ -74,10 +77,12 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setDiffStats(map);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [project.id, changedFiles.length]);
 
-  // 合并 diff stats 到文件列�?
+  // 合并 diff stats 到文件列�?
   const changedFilesWithStats = changedFiles.map((f) => ({
     ...f,
     additions: diffStats[f.path]?.additions ?? f.additions,
@@ -98,16 +103,16 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
       const onMouseUp = () => {
         dragStartRef.current = null;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       };
 
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     },
     [textareaHeight],
   );
@@ -122,19 +127,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   // never fire, leaving body styles permanently dirty.
   useEffect(() => {
     return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
   }, []);
 
-  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可�?
+  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可�?
   const canAiGenerate = capabilities.canGenerateCommitMessage && !!project.selectedAgent;
 
   const handleAiGenerate = useCallback(async () => {
     if (!capabilities.canGenerateCommitMessage || !project.selectedAgent) return;
     const files = Array.from(selectedFiles);
     if (files.length === 0) {
-      onShowToast?.("No files selected. Please select files to generate commit message.", "error");
+      onShowToast?.('No files selected. Please select files to generate commit message.', 'error');
       return;
     }
     setAiGenerating(true);
@@ -147,11 +152,18 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       );
       setCommitMessage(generated.trim());
     } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
+      onShowToast?.(String(e), 'error');
     } finally {
       setAiGenerating(false);
     }
-  }, [capabilities.canGenerateCommitMessage, project.selectedAgent, selectedFiles, commands, config.agentCommandOverrides, onShowToast]);
+  }, [
+    capabilities.canGenerateCommitMessage,
+    project.selectedAgent,
+    selectedFiles,
+    commands,
+    config.agentCommandOverrides,
+    onShowToast,
+  ]);
 
   const refreshAheadBehind = async () => {
     try {
@@ -162,138 +174,134 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
   };
 
-  const toggleFile = useCallback(
-    (path: string) => {
-      setSelectedFiles((prev) => {
-        const next = new Set(prev);
-        if (next.has(path)) {
-          next.delete(path);
-        } else {
-          next.add(path);
-        }
-        return next;
-      });
-    },
-    []
-  );
+  const toggleFile = useCallback((path: string) => {
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
 
   const handleDiscardFile = useCallback(
     async (path: string) => {
       setLoading(true);
       try {
-        await withTimeout(commands.discardFile(path), TIMEOUT_LOCAL_MS, "discard");
+        await withTimeout(commands.discardFile(path), TIMEOUT_LOCAL_MS, 'discard');
         await onRefreshGit();
         setSelectedFiles((prev) => {
           const next = new Set(prev);
           next.delete(path);
           return next;
         });
-        onShowToast?.("Discarded changes", "info");
+        onShowToast?.('Discarded changes', 'info');
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [commands, onRefreshGit, onShowToast]
+    [commands, onRefreshGit, onShowToast],
   );
 
   const handleStageFile = useCallback(
     async (path: string) => {
       setLoading(true);
       try {
-        await withTimeout(commands.stageFiles([path]), TIMEOUT_LOCAL_MS, "stage");
+        await withTimeout(commands.stageFiles([path]), TIMEOUT_LOCAL_MS, 'stage');
         await onRefreshGit();
-        onShowToast?.("Staged file", "info");
+        onShowToast?.('Staged file', 'info');
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [commands, onRefreshGit, onShowToast]
+    [commands, onRefreshGit, onShowToast],
   );
 
-  const handleStageAllUntracked = useCallback(
-    async () => {
-      const untrackedPaths = changedFiles
-        .filter((f) => f.status === "Untracked")
-        .map((f) => f.path);
-      if (untrackedPaths.length === 0) return;
-      setLoading(true);
-      try {
-        await withTimeout(commands.stageFiles(untrackedPaths), TIMEOUT_LOCAL_MS, "stage-all");
-        await onRefreshGit();
-        onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, "info");
-      } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [changedFiles, commands, onRefreshGit, onShowToast]
-  );
+  const handleStageAllUntracked = useCallback(async () => {
+    const untrackedPaths = changedFiles.filter((f) => f.status === 'Untracked').map((f) => f.path);
+    if (untrackedPaths.length === 0) return;
+    setLoading(true);
+    try {
+      await withTimeout(commands.stageFiles(untrackedPaths), TIMEOUT_LOCAL_MS, 'stage-all');
+      await onRefreshGit();
+      onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, 'info');
+    } catch (e: unknown) {
+      onShowToast?.(String(e), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [changedFiles, commands, onRefreshGit, onShowToast]);
 
   const handleCommit = useCallback(
     async (message: string) => {
       const files = Array.from(selectedFiles);
       if (files.length === 0) {
-        onShowToast?.("No files selected. Check files to commit.", "error");
+        onShowToast?.('No files selected. Check files to commit.', 'error');
         return;
       }
       setLoading(true);
       try {
-        const result = await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, "commit") as CommitResult;
+        const result = (await withTimeout(
+          commands.commitFiles(files, message),
+          TIMEOUT_LOCAL_MS,
+          'commit',
+        )) as CommitResult;
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
-        setCommitMessage("");
+        setCommitMessage('');
         onShowToast?.(
-          `Committed ${result.hash ? result.hash.slice(0, 7) : "successfully"}`,
-          "info"
+          `Committed ${result.hash ? result.hash.slice(0, 7) : 'successfully'}`,
+          'info',
         );
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [selectedFiles, commands, onRefreshGit, refreshAheadBehind, onShowToast]
+    [selectedFiles, commands, onRefreshGit, refreshAheadBehind, onShowToast],
   );
 
   const handleCommitAndPush = useCallback(
     async (message: string) => {
       const files = Array.from(selectedFiles);
       if (files.length === 0) {
-        onShowToast?.("No files selected. Check files to commit.", "error");
+        onShowToast?.('No files selected. Check files to commit.', 'error');
         return;
       }
       setLoading(true);
       try {
-        await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, "commit");
-        await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, "push");
+        await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, 'commit');
+        await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
-        setCommitMessage("");
-        onShowToast?.("Committed & pushed successfully", "info");
+        setCommitMessage('');
+        onShowToast?.('Committed & pushed successfully', 'info');
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [selectedFiles, commands, onRefreshGit, onShowToast]
+    [selectedFiles, commands, onRefreshGit, onShowToast],
   );
 
   const handleFetch = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, "fetch");
+      await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
       refreshAheadBehind();
-      onShowToast?.("Fetched successfully", "info");
+      onShowToast?.('Fetched successfully', 'info');
     } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
+      onShowToast?.(String(e), 'error');
     } finally {
       setLoading(false);
     }
@@ -302,12 +310,12 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handlePull = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, "pull");
+      await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, 'pull');
       await onRefreshGit();
       refreshAheadBehind();
-      onShowToast?.("Pulled successfully", "info");
+      onShowToast?.('Pulled successfully', 'info');
     } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
+      onShowToast?.(String(e), 'error');
     } finally {
       setLoading(false);
     }
@@ -316,12 +324,12 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handlePush = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, "push");
+      await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
       await onRefreshGit();
       refreshAheadBehind();
-      onShowToast?.("Pushed successfully", "info");
+      onShowToast?.('Pushed successfully', 'info');
     } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
+      onShowToast?.(String(e), 'error');
     } finally {
       setLoading(false);
     }
@@ -329,10 +337,10 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
   const handleNewBranch = useCallback(() => {
     if (onOpenDialog) {
-      onOpenDialog("new-branch", {} as React.MouseEvent);
+      onOpenDialog('new-branch', {} as React.MouseEvent);
     } else {
       setDialog({
-        type: "new-branch",
+        type: 'new-branch',
         projectId: project.id,
         branches: project.gitInfo?.branches ?? [],
         projectPath: project.path,
@@ -342,10 +350,10 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
   const handleNewWorktree = useCallback(() => {
     if (onOpenDialog) {
-      onOpenDialog("new-worktree", {} as React.MouseEvent);
+      onOpenDialog('new-worktree', {} as React.MouseEvent);
     } else {
       setDialog({
-        type: "new-worktree",
+        type: 'new-worktree',
         projectId: project.id,
         branches: project.gitInfo?.branches ?? [],
         projectPath: project.path,
@@ -353,23 +361,29 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
   }, [onOpenDialog, project]);
 
-  const handleCheckoutBranch = useCallback(async (branchName: string) => {
-    try {
-      await commands.checkoutBranch(branchName);
-      await onRefreshGit();
-    } catch (e: unknown) {
-      onShowToast?.(String(e), "error");
-    }
-  }, [commands, onRefreshGit, onShowToast]);
+  const handleCheckoutBranch = useCallback(
+    async (branchName: string) => {
+      try {
+        await commands.checkoutBranch(branchName);
+        await onRefreshGit();
+      } catch (e: unknown) {
+        onShowToast?.(String(e), 'error');
+      }
+    },
+    [commands, onRefreshGit, onShowToast],
+  );
 
   const handleDialogClose = useCallback(() => {
     setDialog(null);
   }, []);
 
   // GitDialog onRefreshGit shim: local dialogs pass projectId, but we use onRefreshGit() directly
-  const handleDialogRefreshGit = useCallback((_projectId: string) => {
-    onRefreshGit().catch(console.error);
-  }, [onRefreshGit]);
+  const handleDialogRefreshGit = useCallback(
+    (_projectId: string) => {
+      onRefreshGit().catch(console.error);
+    },
+    [onRefreshGit],
+  );
 
   return (
     <div className="flex flex-col h-full gap-0.5 p-1.5">
@@ -434,14 +448,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         loading={loading}
         textareaHeight={textareaHeight}
       />
-
-      {capabilities.canManagePRs && (
-        <PullRequestsPanel
-          projectId={project.id}
-          onShowToast={onShowToast}
-          onRefreshGit={handleDialogRefreshGit}
-        />
-      )}
     </div>
   );
 };

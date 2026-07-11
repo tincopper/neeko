@@ -5,6 +5,7 @@ export type {
   DiffTabData,
   GitLogTabData,
   HtmlPreviewTabData,
+  PRDetailTabData,
   TabData,
   Tab,
   ProjectTabs,

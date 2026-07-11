@@ -332,11 +332,16 @@ export function isGhInstalled(): Promise<boolean> {
   return invoke<boolean>('is_gh_installed_command');
 }
 
+export function isGhAuthenticated(): Promise<boolean> {
+  return invoke<boolean>('is_gh_authenticated_command');
+}
+
 export function listPrs(
   projectId: string,
   state: string,
   limit: number,
 ): Promise<import('../types').PRListItem[]> {
+  console.log('[gitApi] listPrs called with:', { projectId, state, limit });
   return invoke<import('../types').PRListItem[]>('list_prs_command', { projectId, state, limit });
 }
 
@@ -368,4 +373,75 @@ export function mergePr(
 
 export function closePr(projectId: string, prNumber: number): Promise<void> {
   return invoke<void>('close_pr_command', { projectId, prNumber });
+}
+
+export function listPrFiles(
+  projectId: string,
+  prNumber: number,
+): Promise<import('../types').PRFileChange[]> {
+  return invoke<import('../types').PRFileChange[]>('list_pr_files_command', { projectId, prNumber });
+}
+
+export function listPrCommits(
+  projectId: string,
+  prNumber: number,
+): Promise<import('../types').PRCommit[]> {
+  return invoke<import('../types').PRCommit[]>('list_pr_commits_command', { projectId, prNumber });
+}
+
+// ─── PR Comments ─────────────────────────────────────────────────────────────
+
+export interface PRComment {
+  id: string;
+  author: string;
+  authorAvatar?: string;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+  reactions?: Array<{
+    emoji: string;
+    count: number;
+    userReacted: boolean;
+  }>;
+}
+
+export function listPrComments(
+  projectId: string,
+  prNumber: number,
+): Promise<PRComment[]> {
+  return invoke<PRComment[]>('list_pr_comments_command', { projectId, prNumber });
+}
+
+export function addPrComment(
+  projectId: string,
+  prNumber: number,
+  body: string,
+): Promise<PRComment> {
+  return invoke<PRComment>('add_pr_comment_command', { projectId, prNumber, body });
+}
+
+export function editPrComment(
+  projectId: string,
+  prNumber: number,
+  commentId: string,
+  body: string,
+): Promise<PRComment> {
+  return invoke<PRComment>('edit_pr_comment_command', { projectId, prNumber, commentId, body });
+}
+
+export function deletePrComment(
+  projectId: string,
+  prNumber: number,
+  commentId: string,
+): Promise<void> {
+  return invoke<void>('delete_pr_comment_command', { projectId, prNumber, commentId });
+}
+
+export function addCommentReaction(
+  projectId: string,
+  prNumber: number,
+  commentId: string,
+  emoji: string,
+): Promise<void> {
+  return invoke<void>('add_comment_reaction_command', { projectId, prNumber, commentId, emoji });
 }

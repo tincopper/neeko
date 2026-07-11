@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
+import DiffView from "@/features/git/components/diff";
+import { PRDetailView } from '@/features/git/components/pr-detail';
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import TerminalView from '@/features/terminal/components/TerminalView';
 import WSLTerminalView from '@/features/terminal/components/WSLTerminalView';
 import RemoteTerminalView from '@/features/terminal/components/RemoteTerminalView';
 import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
-import DiffView from "@/features/git/components/diff";
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
 import ConversationViewer from "@/features/conversation/components/ConversationViewer";
@@ -21,6 +22,7 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
 import { useEditorStore } from '@/shared/store';
+import { buildDiffSource } from '@/shared/utils/diffSource';
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
@@ -395,6 +397,42 @@ function EditorGroupPane({
             projectId={activeTab.projectId}
             filePath={activeTab.data.filePath}
             fileName={activeTab.data.fileName}
+          />
+        )}
+
+        {activeTab?.data.kind === "prDetail" && (
+          <PRDetailView
+            key={activeTab.data.prNumber}
+            projectId={activeTab.data.projectId}
+            prNumber={activeTab.data.prNumber}
+            prTitle={activeTab.data.prTitle}
+            prState={activeTab.data.prState}
+            prBody={activeTab.data.prBody}
+            prAuthor={activeTab.data.prAuthor}
+            prCreatedAt={activeTab.data.prCreatedAt}
+            prUrl={activeTab.data.prUrl}
+            prHeadRef={activeTab.data.prHeadRef}
+            prBaseRef={activeTab.data.prBaseRef}
+            onClose={() => handleCloseTab(activeTab.id)}
+            onOpenDiff={(filePath) => {
+              // Open diff in a new tab
+              const tabId = `tab_${crypto.randomUUID()}`;
+              const diffSource = buildDiffSource(null, null);
+              const tab = {
+                id: tabId,
+                projectId: activeTab.projectId,
+                title: filePath.split('/').pop() || filePath,
+                order: 0,
+                data: {
+                  kind: 'diff' as const,
+                  filePath,
+                  fileName: filePath.split('/').pop() || filePath,
+                  diffSource,
+                },
+              };
+              useEditorStore.getState().addTab(tabKey, tab);
+              useEditorStore.getState().activateTab(tabKey, tabId);
+            }}
           />
         )}
 

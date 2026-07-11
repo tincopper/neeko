@@ -52,6 +52,7 @@ static PR_LIST_CACHE: LazyLock<TtlCache<Vec<PRListItem>>> = LazyLock::new(TtlCac
 static PR_INFO_CACHE: LazyLock<TtlCache<PRInfo>> = LazyLock::new(TtlCache::new);
 static DEFAULT_BRANCH_CACHE: LazyLock<TtlCache<String>> = LazyLock::new(TtlCache::new);
 static GH_INSTALLED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
+static GH_AUTHENTICATED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
 
 // ─── LRU Diff Cache (参考 Muxy DiffCache) ─────────────────────────────────
 
@@ -212,6 +213,22 @@ pub fn get_cached_gh_installed(check: impl FnOnce() -> bool) -> bool {
     }
     let result = check();
     if let Ok(mut guard) = GH_INSTALLED_CACHE.lock() {
+        *guard = Some((Instant::now(), result));
+    }
+    result
+}
+
+/// Check if gh is authenticated (cached for TTL)
+pub fn get_cached_gh_authenticated(check: impl FnOnce() -> bool) -> bool {
+    if let Ok(guard) = GH_AUTHENTICATED_CACHE.lock() {
+        if let Some((ts, val)) = &*guard {
+            if ts.elapsed() < METADATA_TTL {
+                return *val;
+            }
+        }
+    }
+    let result = check();
+    if let Ok(mut guard) = GH_AUTHENTICATED_CACHE.lock() {
         *guard = Some((Instant::now(), result));
     }
     result

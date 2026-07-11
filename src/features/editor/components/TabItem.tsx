@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, MessageSquareText, Pin } from "@/shared/components/icons"
+import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, MessageSquareText, Pin, GitPullRequest } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
@@ -34,6 +34,8 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
       return Globe;
     case "conversation":
       return MessageSquareText;
+    case "prDetail":
+      return GitPullRequest;
   }
 }
 

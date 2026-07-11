@@ -1,113 +1,158 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { closePr, isGhInstalled, listPrs, mergePr, viewPr } from "../api/gitApi";
-import { saveVcsSettings, loadVcsSettings } from "../../session/api/sessionApi";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { closePr, isGhInstalled, isGhAuthenticated, listPrs, mergePr } from '../api/gitApi';
 import type { PRListItem } from '@/shared/types';
-import { ChevronRightIcon } from "@/shared/components/icons";
+import type { PRDetailTabData } from '@/features/editor/types';
+import { useEditorStore } from '@/shared/store';
 import { cn } from '@/lib/utils';
-import { GitPullRequest, GitMerge, GitFork, ExternalLink, X } from "@/shared/components/icons"
+import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 
 interface PullRequestsPanelProps {
   projectId: string;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  tabKey: string;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onRefreshGit: (projectId: string) => void;
+  onOpenTerminal: (command: string, title: string) => void;
 }
 
-const STATE_LABELS: Record<string, string> = {
-  open: "Open",
-  closed: "Closed",
-  merged: "Merged",
-  all: "All",
-};
-
-const AUTO_SYNC_OPTIONS = [
-  { label: "Off", value: 0 },
-  { label: "30s", value: 30_000 },
-  { label: "60s", value: 60_000 },
-  { label: "5m", value: 300_000 },
+const STATE_OPTIONS = [
+  { label: 'All', value: 'all' },
+  { label: 'Open', value: 'open' },
+  { label: 'Closed', value: 'closed' },
+  { label: 'Merged', value: 'merged' },
 ];
+
+function formatCreatedAt(timestamp: string | undefined | null): string {
+  if (!timestamp) return '';
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return timestamp;
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+  } catch {
+    return timestamp || '';
+  }
+}
+
+function getStateBadgeClass(state: string): string {
+  switch (state.toUpperCase()) {
+    case 'OPEN':
+      return 'bg-accent-green/15 text-accent-green';
+    case 'CLOSED':
+      return 'bg-accent-red/15 text-accent-red';
+    case 'MERGED':
+      return 'bg-[#a371f7]/20 text-[#a371f7]';
+    default:
+      return 'bg-bg-tertiary text-text-muted';
+  }
+}
 
 const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   projectId,
+  tabKey,
   onShowToast,
   onRefreshGit,
+  onOpenTerminal,
 }) => {
   const [prList, setPrList] = useState<PRListItem[]>([]);
-  const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState("open");
-  const [ghInstalled, setGhInstalled] = useState(false);
-  const [autoSync, setAutoSync] = useState(0);
-  const autoSyncRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [ghInstalled, setGhInstalled] = useState<boolean | null>(null);
+  const [ghAuthenticated, setGhAuthenticated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
+  const stateDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    console.log('[PullRequestsPanel] Checking gh CLI...');
     isGhInstalled()
-      .then(setGhInstalled)
-      .catch(() => setGhInstalled(false));
-    // Restore persisted VCS settings
-    (loadVcsSettings(projectId) as Promise<{ auto_sync?: number; expanded?: boolean }>)
-      .then((s) => {
-        if (typeof s.auto_sync === "number") setAutoSync(s.auto_sync);
-        if (typeof s.expanded === "boolean") setExpanded(s.expanded);
+      .then((installed) => {
+        console.log('[PullRequestsPanel] gh installed:', installed);
+        setGhInstalled(installed);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error('[PullRequestsPanel] Failed to check gh installation:', err);
+        setGhInstalled(false);
+      });
+    isGhAuthenticated()
+      .then((auth) => {
+        console.log('[PullRequestsPanel] gh authenticated:', auth);
+        setGhAuthenticated(auth);
+      })
+      .catch((err) => {
+        console.error('[PullRequestsPanel] Failed to check gh auth:', err);
+        setGhAuthenticated(false);
+      });
   }, []);
 
-  // Persist settings when they change
-  useEffect(() => {
-    saveVcsSettings(projectId, { auto_sync: autoSync, expanded }).catch(() => {});
-  }, [autoSync, expanded, projectId]);
-
   const loadPRs = useCallback(async () => {
-    if (!ghInstalled || !expanded) return;
+    console.log('[PullRequestsPanel] loadPRs called:', { projectId, filter, ghInstalled, ghAuthenticated });
+    if (!ghInstalled || !ghAuthenticated) {
+      console.log('[PullRequestsPanel] Skipping load - gh not ready');
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
-      const prs = await listPrs(projectId, filter, 20);
+      const prs = await listPrs(projectId, filter === 'all' ? 'all' : filter, 50);
+      console.log('[PullRequestsPanel] PRs loaded:', prs.length, 'items');
+      if (prs.length > 0) {
+        console.log('[PullRequestsPanel] First PR data:', JSON.stringify(prs[0], null, 2));
+      }
       setPrList(prs);
-    } catch {
-      // gh not authenticated or no remote
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load pull requests';
+      setError(message);
+      console.error('[PullRequestsPanel] Failed to load PRs:', err);
     } finally {
       setLoading(false);
     }
-  }, [projectId, filter, ghInstalled, expanded]);
+  }, [projectId, filter, ghInstalled, ghAuthenticated]);
 
   useEffect(() => {
     loadPRs();
   }, [loadPRs]);
 
-  // Auto-sync interval (参�?Muxy VCSTabState PR auto-sync)
+  // Close dropdown on outside click
   useEffect(() => {
-    if (autoSyncRef.current) {
-      clearInterval(autoSyncRef.current);
-      autoSyncRef.current = null;
-    }
-    if (autoSync > 0 && expanded) {
-      autoSyncRef.current = setInterval(() => {
-        loadPRs();
-      }, autoSync);
-    }
-    return () => {
-      if (autoSyncRef.current) {
-        clearInterval(autoSyncRef.current);
-        autoSyncRef.current = null;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (stateDropdownRef.current && !stateDropdownRef.current.contains(event.target as Node)) {
+        setStateDropdownOpen(false);
       }
     };
-  }, [autoSync, expanded, loadPRs]);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredPrList = useMemo(() => {
+    if (!searchQuery.trim()) return prList;
+    const query = searchQuery.toLowerCase();
+    return prList.filter(
+      (pr) =>
+        pr.title.toLowerCase().includes(query) ||
+        pr.author.toLowerCase().includes(query) ||
+        `#${pr.number}`.includes(query),
+    );
+  }, [prList, searchQuery]);
 
   const handleMerge = useCallback(
     async (number: number) => {
       setLoading(true);
       try {
-        const result = await mergePr(projectId, number, "squash");
-        onShowToast?.(result.message, "info");
+        const result = await mergePr(projectId, number, 'squash');
+        onShowToast?.(result.message, 'info');
         loadPRs();
         onRefreshGit(projectId);
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [projectId, loadPRs, onRefreshGit, onShowToast]
+    [projectId, loadPRs, onRefreshGit, onShowToast],
   );
 
   const handleClose = useCallback(
@@ -115,162 +160,250 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       setLoading(true);
       try {
         await closePr(projectId, number);
-        onShowToast?.("PR closed", "info");
+        onShowToast?.('PR closed', 'info');
         loadPRs();
       } catch (e: unknown) {
-        onShowToast?.(String(e), "error");
+        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [projectId, loadPRs, onShowToast]
+    [projectId, loadPRs, onShowToast],
   );
 
-  const handleOpenUrl = useCallback(
-    async (number: number) => {
-      try {
-        const info = await viewPr(projectId, number);
-        window.open(info.url, "_blank");
-      } catch {
-        // ignore
+  const handleOpenPr = useCallback(
+    (pr: PRListItem) => {
+      const editorState = useEditorStore.getState();
+      const existingTabs = editorState.tabs[tabKey]?.tabs ?? [];
+      const existingTab = existingTabs.find(
+        (t) => t.data.kind === 'prDetail' && t.data.prNumber === pr.number,
+      );
+      if (existingTab) {
+        editorState.activateTab(tabKey, existingTab.id);
+        return;
       }
+
+      const tabId = `tab_${crypto.randomUUID()}`;
+      editorState.addTab(tabKey, {
+        id: tabId,
+        projectId,
+        title: `#${pr.number} ${pr.title}`,
+        order: 0,
+        data: {
+          kind: 'prDetail' as const,
+          projectId,
+          prNumber: pr.number,
+          prTitle: pr.title,
+          prState: pr.state,
+          prBody: null,
+          prAuthor: pr.author,
+          prCreatedAt: pr.createdAt,
+          prUrl: '',
+          prHeadRef: pr.headRefName,
+          prBaseRef: pr.baseRefName,
+        } satisfies PRDetailTabData,
+      });
     },
-    [projectId]
+    [projectId, tabKey],
   );
 
-  if (!ghInstalled) {
+  if (ghInstalled === null) {
     return null;
   }
 
   return (
-    <div className="flex flex-col shrink-0">
-      <div className="flex items-center gap-1 px-2.5 py-1">
-        <div
-          className="flex items-center gap-1 text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer rounded-md transition-colors duration-100 hover:bg-bg-hover hover:text-text-secondary select-none flex-1"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          <ChevronRightIcon
-            size={9}
-            className={cn(
-              "text-[calc(var(--font-size)-4px)] w-2.5 shrink-0 transition-transform duration-150",
-              expanded && "rotate-90"
-            )}
-          />
-          Pull Requests ({prList.length})
-        </div>
-        <select
-          className="text-[calc(var(--font-size)-2px)] bg-transparent border-none text-text-muted cursor-pointer appearance-none px-1"
-          value={autoSync}
-          onChange={(e) => setAutoSync(Number(e.target.value))}
-        >
-          {AUTO_SYNC_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <span className="text-[var(--font-size)] font-semibold text-text-primary">
+          Pull Requests
+        </span>
+        {ghInstalled && ghAuthenticated && (
+          <span className="text-[calc(var(--font-size)-2px)] text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
+            {filteredPrList.length}
+          </span>
+        )}
       </div>
 
-      {expanded && (
+      {!ghInstalled ? (
+        <div className="px-3 py-4 text-[var(--font-size)] text-text-muted space-y-2">
+          <p>GitHub CLI (<code>gh</code>) is not installed.</p>
+          <p>Install it to manage pull requests.</p>
+          <button
+            className="text-[calc(var(--font-size)-2px)] px-3 py-1.5 rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
+            onClick={() => onOpenTerminal('brew install gh', 'Install gh')}
+          >
+            Install gh
+          </button>
+        </div>
+      ) : !ghAuthenticated ? (
+        <div className="px-3 py-4 text-[var(--font-size)] text-text-muted space-y-2">
+          <p>Not authenticated with GitHub.</p>
+          <p>Run <code>gh auth login</code> to authenticate.</p>
+          <button
+            className="text-[calc(var(--font-size)-2px)] px-3 py-1.5 rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
+            onClick={() => onOpenTerminal('gh auth login', 'gh auth login')}
+          >
+            Login
+          </button>
+        </div>
+      ) : (
         <>
-          <div className="flex items-center gap-1 px-2.5 py-0.5">
-            {(["open", "closed", "merged", "all"] as const).map((s) => (
-              <button
-                key={s}
-                className={cn(
-                  "text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded transition-colors duration-100",
-                  filter === s
-                    ? "bg-bg-tertiary text-text-primary"
-                    : "text-text-muted hover:text-text-secondary"
-                )}
-                onClick={() => setFilter(s)}
-              >
-                {STATE_LABELS[s]}
-              </button>
-            ))}
+          {/* Search Bar */}
+          <div className="px-3 py-2 border-b border-border">
+            <div className="relative flex items-center">
+              <SearchIcon
+                size={14}
+                className="absolute left-2.5 text-text-muted pointer-events-none"
+              />
+              <input
+                type="text"
+                className="w-full pl-8 pr-3 py-1.5 bg-bg-primary border border-border rounded-md text-[var(--font-size)] text-text-primary placeholder-text-muted outline-none focus:border-accent-blue transition-colors duration-100"
+                placeholder="Search pull requests..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="max-h-[200px] overflow-y-auto">
-            {loading && prList.length === 0 ? (
-              <div className="p-3 text-center text-[var(--font-size)] text-text-muted">Loading...</div>
-            ) : prList.length === 0 ? (
-              <div className="p-3 text-center text-[var(--font-size)] text-text-muted">No pull requests</div>
+          {/* Filter Bar */}
+          <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+            {/* State Filter Dropdown */}
+            <div className="relative" ref={stateDropdownRef}>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border transition-colors duration-100',
+                  stateDropdownOpen
+                    ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
+                    : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
+                )}
+                onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
+              >
+                State
+                <ChevronDown size={12} className={cn('transition-transform duration-150', stateDropdownOpen && 'rotate-180')} />
+              </button>
+              {stateDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-32 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1">
+                  {STATE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      className={cn(
+                        'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                        filter === option.value
+                          ? 'bg-accent-blue/10 text-accent-blue'
+                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                      )}
+                      onClick={() => {
+                        setFilter(option.value);
+                        setStateDropdownOpen(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Other filter buttons (placeholder) */}
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary transition-colors duration-100">
+              Author
+              <ChevronDown size={12} />
+            </button>
+            <button className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[calc(var(--font-size)-1px)] border border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary transition-colors duration-100">
+              Label
+              <ChevronDown size={12} />
+            </button>
+          </div>
+
+          {/* PR List */}
+          <div className="flex-1 overflow-y-auto">
+            {loading && filteredPrList.length === 0 ? (
+              <div className="p-4 text-center text-[var(--font-size)] text-text-muted">
+                Loading...
+              </div>
+            ) : error ? (
+              <div className="p-4 text-center text-[var(--font-size)]">
+                <p className="text-accent-red mb-2">Failed to load pull requests</p>
+                <p className="text-text-muted text-[calc(var(--font-size)-2px)]">{error}</p>
+                <button
+                  className="mt-2 px-3 py-1 text-[calc(var(--font-size)-2px)] bg-bg-tertiary rounded hover:bg-bg-hover transition-colors duration-100"
+                  onClick={loadPRs}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filteredPrList.length === 0 ? (
+              <div className="p-4 text-center text-[var(--font-size)] text-text-muted">
+                No pull requests
+              </div>
             ) : (
-              prList.map((pr) => (
+              filteredPrList.map((pr) => (
                 <div
                   key={pr.number}
-                    className="flex items-center gap-1.5 py-1 px-2.5 text-[var(--font-size)] text-text-secondary hover:bg-bg-hover transition-colors duration-100 group cursor-pointer"
-                  onClick={() => handleOpenUrl(pr.number)}
+                  className="flex items-center px-3 py-2.5 border-b border-border hover:bg-bg-hover transition-colors duration-100 cursor-pointer group"
+                  onClick={() => handleOpenPr(pr)}
                 >
-                  {pr.is_cross_repository ? (
-                    <span title="Cross-repository PR">
-                      <GitFork
-                        size={11}
-                        className={cn(
-                          "shrink-0",
-                          pr.state === "OPEN" && "text-accent-green",
-                          pr.state === "CLOSED" && "text-accent-red",
-                          pr.state === "MERGED" && "text-[#a371f7]"
-                        )}
-                      />
-                    </span>
-                  ) : (
-                    <GitPullRequest
-                      size={11}
-                      className={cn(
-                        "shrink-0",
-                        pr.state === "OPEN" && "text-accent-green",
-                        pr.state === "CLOSED" && "text-accent-red",
-                        pr.state === "MERGED" && "text-[#a371f7]"
-                      )}
-                    />
-                  )}
-                  <span className="flex-1 truncate">{pr.title}</span>
-                  {pr.is_cross_repository && pr.head_repository_owner && (
-                    <span
-                      className="text-[calc(var(--font-size)-3px)] text-text-muted shrink-0 max-w-[60px] truncate"
-                      title={`Fork from ${pr.head_repository_owner}`}
-                    >
-                      {pr.head_repository_owner}
-                    </span>
-                  )}
-                  <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
-                    #{pr.number}
-                  </span>
-                  {pr.state === "OPEN" && (
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button
-                        className="p-0.5 rounded hover:bg-bg-hover text-text-muted hover:text-accent-green"
-                        title="Squash merge"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMerge(pr.number);
-                        }}
-                      >
-                        <GitMerge size={11} />
-                      </button>
-                      <button
-                        className="p-0.5 rounded hover:bg-bg-hover text-text-muted hover:text-accent-red"
-                        title="Close PR"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleClose(pr.number);
-                        }}
-                      >
-                        <X size={11} />
-                      </button>
+                  {/* Left Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--font-size)] font-medium text-text-primary truncate mb-0.5">
+                      {pr.title}
                     </div>
-                  )}
-                  <button
-                    className="p-0.5 rounded hover:bg-bg-hover text-text-muted hover:text-accent-blue opacity-0 group-hover:opacity-100"
-                    title="Open in browser"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenUrl(pr.number);
-                    }}
-                  >
-                    <ExternalLink size={11} />
-                  </button>
+                    <div className="flex items-center gap-1.5 text-[calc(var(--font-size)-2px)] text-text-muted">
+                      <span className="font-mono text-accent-blue">#{pr.number}</span>
+                      <span>·</span>
+                      <span>created {formatCreatedAt(pr.createdAt)}</span>
+                      <span>·</span>
+                      <span>
+                        by <span className="text-text-secondary">{pr.author}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right Content */}
+                  <div className="flex items-center gap-2.5 ml-3 flex-shrink-0">
+                    {/* Action buttons (hover) */}
+                    {pr.state === 'OPEN' && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                        <button
+                          className="p-1 rounded hover:bg-bg-tertiary text-text-muted hover:text-accent-green"
+                          title="Squash merge"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMerge(pr.number);
+                          }}
+                        >
+                          <GitMerge size={12} />
+                        </button>
+                        <button
+                          className="p-1 rounded hover:bg-bg-tertiary text-text-muted hover:text-accent-red"
+                          title="Close PR"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClose(pr.number);
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Status Badge */}
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-wide',
+                        getStateBadgeClass(pr.state),
+                      )}
+                    >
+                      {pr.state}
+                    </span>
+
+                    {/* Comment Count */}
+                    <div className="flex items-center gap-1 text-text-muted">
+                      <MessageSquare size={13} />
+                      <span className="text-[calc(var(--font-size)-2px)]">{pr.comment_count ?? 0}</span>
+                    </div>
+                  </div>
                 </div>
               ))
             )}

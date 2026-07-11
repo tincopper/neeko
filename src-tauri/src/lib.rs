@@ -152,11 +152,20 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::get_remote_home_dir,
             // PR commands
             $crate::git::commands::is_gh_installed_command,
+            $crate::git::commands::is_gh_authenticated_command,
             $crate::git::commands::list_prs_command,
             $crate::git::commands::view_pr_command,
             $crate::git::commands::create_pr_command,
             $crate::git::commands::merge_pr_command,
             $crate::git::commands::close_pr_command,
+            $crate::git::commands::list_pr_files_command,
+            $crate::git::commands::list_pr_commits_command,
+            // PR comment commands
+            $crate::git::commands::list_pr_comments_command,
+            $crate::git::commands::add_pr_comment_command,
+            $crate::git::commands::edit_pr_comment_command,
+            $crate::git::commands::delete_pr_comment_command,
+            $crate::git::commands::add_comment_reaction_command,
             // ── file ──────────────────────────────────────────────────────────
             $crate::file::commands::reveal_in_file_manager,
             // ── task ─────────────────────────────────────────────────────────

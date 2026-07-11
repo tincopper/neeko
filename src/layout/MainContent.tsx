@@ -56,10 +56,10 @@ function MainContent() {
       : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
    // Get unified tabs from store
-   const projectTabs = useEditorStore(useShallow((state) => {
+    const projectTabs = useEditorStore(useShallow((state) => {
       if (!tabKey) return null;
       return state.tabs[tabKey] ?? null;
-   }));
+    }));
 
    const tabs = projectTabs?.tabs ?? [];
 
