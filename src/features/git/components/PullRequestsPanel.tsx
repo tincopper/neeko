@@ -73,6 +73,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const labelDropdownRef = useRef<HTMLDivElement>(null);
   const [repoLabels, setRepoLabels] = useState<import('../types').PrLabel[]>([]);
   const [repoAuthors, setRepoAuthors] = useState<string[]>([]);
+  const [authorSearchQuery, setAuthorSearchQuery] = useState('');
+  const [labelSearchQuery, setLabelSearchQuery] = useState('');
+  const authorSearchRef = useRef<HTMLInputElement>(null);
+  const labelSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     console.log('[PullRequestsPanel] Checking gh CLI...');
@@ -143,6 +147,18 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     const labels = new Set(prList.flatMap((pr) => pr.labels ?? []).map((l) => l.name));
     return Array.from(labels).sort();
   }, [repoLabels, prList]);
+
+  const filteredAuthorOptions = useMemo(() => {
+    if (!authorSearchQuery.trim()) return filterAuthors;
+    const q = authorSearchQuery.toLowerCase();
+    return filterAuthors.filter((a) => a.toLowerCase().includes(q));
+  }, [filterAuthors, authorSearchQuery]);
+
+  const filteredLabelOptions = useMemo(() => {
+    if (!labelSearchQuery.trim()) return filterLabels;
+    const q = labelSearchQuery.toLowerCase();
+    return filterLabels.filter((l) => l.toLowerCase().includes(q));
+  }, [filterLabels, labelSearchQuery]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -357,7 +373,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                     ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
                     : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
                 )}
-                onClick={() => setAuthorDropdownOpen(!authorDropdownOpen)}
+                onClick={() => {
+                  setAuthorDropdownOpen(!authorDropdownOpen);
+                  if (!authorDropdownOpen) setAuthorSearchQuery('');
+                }}
               >
                 {authorFilter ?? 'Author'}
                 {authorFilter && (
@@ -366,28 +385,41 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                 <ChevronDown size={12} className={cn('transition-transform duration-150', authorDropdownOpen && 'rotate-180')} />
               </button>
               {authorDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
-                  {filterAuthors.length === 0 ? (
-                    <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No authors</div>
-                  ) : (
-                    filterAuthors.map((author) => (
-                      <button
-                        key={author}
-                        className={cn(
-                          'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
-                          authorFilter === author
-                            ? 'bg-accent-blue/10 text-accent-blue'
-                            : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                        )}
-                        onClick={() => {
-                          setAuthorFilter(authorFilter === author ? null : author);
-                          setAuthorDropdownOpen(false);
-                        }}
-                      >
-                        {author}
-                      </button>
-                    ))
-                  )}
+                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                  <div className="px-2 pb-1 flex-shrink-0">
+                    <input
+                      ref={authorSearchRef}
+                      type="text"
+                      className="w-full px-2 py-1 bg-bg-primary border border-border rounded text-[calc(var(--font-size)-1px)] text-text-primary placeholder-text-muted outline-none focus:border-accent-blue"
+                      placeholder="Search authors..."
+                      value={authorSearchQuery}
+                      onChange={(e) => setAuthorSearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {filteredAuthorOptions.length === 0 ? (
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No authors</div>
+                    ) : (
+                      filteredAuthorOptions.map((author) => (
+                        <button
+                          key={author}
+                          className={cn(
+                            'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                            authorFilter === author
+                              ? 'bg-accent-blue/10 text-accent-blue'
+                              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                          )}
+                          onClick={() => {
+                            setAuthorFilter(authorFilter === author ? null : author);
+                            setAuthorDropdownOpen(false);
+                          }}
+                        >
+                          {author}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -401,7 +433,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                     ? 'border-accent-blue bg-accent-blue/10 text-accent-blue'
                     : 'border-border bg-bg-primary text-text-secondary hover:border-accent-blue hover:text-text-primary',
                 )}
-                onClick={() => setLabelDropdownOpen(!labelDropdownOpen)}
+                onClick={() => {
+                  setLabelDropdownOpen(!labelDropdownOpen);
+                  if (!labelDropdownOpen) setLabelSearchQuery('');
+                }}
               >
                 {labelFilter ?? 'Label'}
                 {labelFilter && (
@@ -410,28 +445,41 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                 <ChevronDown size={12} className={cn('transition-transform duration-150', labelDropdownOpen && 'rotate-180')} />
               </button>
               {labelDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-40 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
-                  {filterLabels.length === 0 ? (
-                    <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No labels</div>
-                  ) : (
-                    filterLabels.map((label) => (
-                      <button
-                        key={label}
-                        className={cn(
-                          'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
-                          labelFilter === label
-                            ? 'bg-accent-blue/10 text-accent-blue'
-                            : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                        )}
-                        onClick={() => {
-                          setLabelFilter(labelFilter === label ? null : label);
-                          setLabelDropdownOpen(false);
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))
-                  )}
+                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                  <div className="px-2 pb-1 flex-shrink-0">
+                    <input
+                      ref={labelSearchRef}
+                      type="text"
+                      className="w-full px-2 py-1 bg-bg-primary border border-border rounded text-[calc(var(--font-size)-1px)] text-text-primary placeholder-text-muted outline-none focus:border-accent-blue"
+                      placeholder="Search labels..."
+                      value={labelSearchQuery}
+                      onChange={(e) => setLabelSearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {filteredLabelOptions.length === 0 ? (
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No labels</div>
+                    ) : (
+                      filteredLabelOptions.map((label) => (
+                        <button
+                          key={label}
+                          className={cn(
+                            'w-full text-left px-3 py-1.5 text-[calc(var(--font-size)-1px)] transition-colors duration-100',
+                            labelFilter === label
+                              ? 'bg-accent-blue/10 text-accent-blue'
+                              : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                          )}
+                          onClick={() => {
+                            setLabelFilter(labelFilter === label ? null : label);
+                            setLabelDropdownOpen(false);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>
