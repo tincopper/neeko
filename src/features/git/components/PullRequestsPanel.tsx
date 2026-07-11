@@ -4,6 +4,7 @@ import type { PRListItem } from '@/shared/types';
 import type { PRDetailTabData } from '@/features/editor/types';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/lib/utils';
+import { getAvatarStyle } from '@/shared/utils/projectAvatar';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 
 interface PullRequestsPanelProps {
@@ -637,9 +638,18 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               filteredPrList.map((pr) => (
                 <div
                   key={pr.number}
-                  className="flex items-center px-3 py-2.5 border-b border-border hover:bg-bg-hover transition-colors duration-100 cursor-pointer group"
+                  className="flex items-center gap-3 px-3 py-2.5 border-b border-border hover:bg-bg-hover transition-colors duration-100 cursor-pointer group"
                   onClick={() => handleOpenPr(pr)}
                 >
+                  {/* Author Avatar */}
+                  <div className="flex-shrink-0">
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-medium"
+                      style={getAvatarStyle({ name: pr.author })}
+                    >
+                      {pr.author.charAt(0).toUpperCase()}
+                    </div>
+                  </div>
                   {/* Left Content */}
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--font-size)] font-medium text-text-primary truncate mb-0.5">
