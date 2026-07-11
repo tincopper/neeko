@@ -267,7 +267,29 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   );
 
   if (ghInstalled === null) {
-    return null;
+    return (
+      <div className="flex flex-col h-full">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <div className="h-4 w-28 rounded bg-bg-hover animate-pulse" />
+        </div>
+        {/* Skeleton rows */}
+        <div className="flex-1 p-4 space-y-3 animate-pulse">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+              <div className="flex-1 min-w-0 space-y-2">
+                <div className="h-3 w-3/4 rounded bg-bg-hover" />
+                <div className="h-2 w-1/2 rounded bg-bg-hover" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-14 rounded-full bg-bg-hover" />
+                <div className="h-3 w-8 rounded bg-bg-hover" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
