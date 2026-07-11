@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { Badge } from '@/ui/badge';
 import { ScrollArea } from '@/ui/ScrollArea';
-import { getAvatarStyle } from '@/shared/utils/projectAvatar';
 
 import {
   listPrComments,
@@ -153,11 +152,16 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
             <Badge variant={getStateBadgeVariant(prState)}>{prState.toUpperCase()}</Badge>
           </div>
           <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted mb-2">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
-              style={getAvatarStyle({ name: author })}
-            >
-              {(author?.charAt(0) || '#').toUpperCase()}
+            <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-bg-tertiary flex items-center justify-center text-[11px] font-semibold text-text-muted">
+              <img
+                src={`https://avatars.githubusercontent.com/${author}?s=24`}
+                alt={author}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).parentElement!.innerText = (author?.charAt(0) || '#').toUpperCase();
+                }}
+              />
             </div>
             <span>{author}</span><span>·</span><span>{formatTimestamp(createdAt)}</span>
           </div>
@@ -181,11 +185,16 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
         <div className="p-4 border-b border-border bg-bg-secondary">
           <h2 className="text-lg font-semibold text-text-primary mb-2">{prTitle} #{prNumber}</h2>
           <div className="flex items-center gap-2 text-[var(--font-size)] text-text-muted">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
-              style={getAvatarStyle({ name: author })}
-            >
-              {(author?.charAt(0) || '#').toUpperCase()}
+            <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-bg-tertiary flex items-center justify-center text-[11px] font-semibold text-text-muted">
+              <img
+                src={`https://avatars.githubusercontent.com/${author}?s=24`}
+                alt={author}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).parentElement!.innerText = (author?.charAt(0) || '#').toUpperCase();
+                }}
+              />
             </div>
             <span>{author}</span><span>·</span><span>{formatTimestamp(createdAt)}</span>
           </div>

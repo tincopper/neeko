@@ -4,7 +4,6 @@ import type { PRListItem } from '@/shared/types';
 import type { PRDetailTabData } from '@/features/editor/types';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/lib/utils';
-import { getAvatarStyle } from '@/shared/utils/projectAvatar';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 
 interface PullRequestsPanelProps {
@@ -643,11 +642,16 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                 >
                   {/* Author Avatar */}
                   <div className="flex-shrink-0">
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-semibold"
-                      style={getAvatarStyle({ name: pr.author })}
-                    >
-                      {(pr.author?.charAt(0) || '#').toUpperCase()}
+                    <div className="w-7 h-7 rounded-full overflow-hidden bg-bg-tertiary flex items-center justify-center text-[12px] font-semibold text-text-muted">
+                      <img
+                        src={`https://avatars.githubusercontent.com/${pr.author}?s=28`}
+                        alt={pr.author}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                          (e.target as HTMLImageElement).parentElement!.innerText = (pr.author?.charAt(0) || '#').toUpperCase();
+                        }}
+                      />
                     </div>
                   </div>
                   {/* Left Content */}
