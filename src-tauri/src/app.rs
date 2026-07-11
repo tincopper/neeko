@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
@@ -54,6 +55,9 @@ pub fn run() {
                 .expect("Failed to create skill store"),
         )
     };
+
+    let cmd_w_flag = Arc::new(AtomicBool::new(false));
+    let cmd_w_flag_win = cmd_w_flag.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -163,22 +167,29 @@ pub fn run() {
                 .build()?;
             MenuBuilder::new(handle).item(&file).build()
         })
-        .on_menu_event(|app, event| {
+        .on_menu_event(move |app, event| {
             if event.id().0 == "close_tab" {
+                cmd_w_flag.store(true, Ordering::SeqCst);
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.emit("close-tab", ());
                 }
             }
         })
-        .on_window_event(|window, event| match event {
+        .on_window_event(move |window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                // macOS: Cmd+W fires CloseRequested alongside the menu handler.
-                // Prevent it — the menu handler's close-tab event already handles
-                // tab close.
+                // macOS: both Cmd+W and the red close button fire
+                // CloseRequested.  The menu handler for close_tab
+                // (Cmd+W) sets cmd_w_flag beforehand — when the
+                // flag is set we prevent close (the tab was already
+                // closed) and reset the flag.  When the flag is
+                // clear the user clicked the red button → let the
+                // window close naturally.
                 #[cfg(target_os = "macos")]
-                api.prevent_close();
-                // On Windows/Linux, CloseRequested fires only for Alt+F4 / native
-                // close button → let the window close naturally.
+                if cmd_w_flag_win.swap(false, Ordering::SeqCst) {
+                    api.prevent_close();
+                }
+                // On Windows/Linux, CloseRequested fires only for
+                // Alt+F4 / native close button → let it proceed.
             }
             tauri::WindowEvent::Destroyed => {
                 let state = window.state::<AppStateWrapper>();
