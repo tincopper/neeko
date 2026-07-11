@@ -14,13 +14,11 @@ const PRCommentInput: React.FC<PRCommentInputProps> = ({
   isSubmitting = false,
 }) => {
   const [body, setBody] = useState('');
-  const [isPreview, setIsPreview] = useState(false);
 
   const handleSubmit = () => {
     if (body.trim() && !isSubmitting) {
       onSubmit(body);
       setBody('');
-      setIsPreview(false);
     }
   };
 
@@ -31,61 +29,18 @@ const PRCommentInput: React.FC<PRCommentInputProps> = ({
     }
   };
 
-  const charCount = body.length;
-  const maxChars = 65536;
-
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-bg-primary">
-      {/* Tabs */}
-      <div className="flex items-center border-b border-border bg-bg-secondary">
-        <button
-          className={cn(
-            'px-4 py-2 text-[calc(var(--font-size)-1px)] font-medium transition-colors',
-            !isPreview
-              ? 'text-text-primary border-b-2 border-accent-blue'
-              : 'text-text-muted hover:text-text-primary',
-          )}
-          onClick={() => setIsPreview(false)}
-        >
-          Write
-        </button>
-        <button
-          className={cn(
-            'px-4 py-2 text-[calc(var(--font-size)-1px)] font-medium transition-colors',
-            isPreview
-              ? 'text-text-primary border-b-2 border-accent-blue'
-              : 'text-text-muted hover:text-text-primary',
-          )}
-          onClick={() => setIsPreview(true)}
-        >
-          Preview
-        </button>
-        <div className="flex-1" />
-        <div className="px-3 text-[calc(var(--font-size)-2px)] text-text-muted">
-          {charCount > 0 && (
-            <span className={cn(charCount > maxChars && 'text-accent-red')}>
-              {charCount.toLocaleString()} / {maxChars.toLocaleString()}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
+      {/* Textarea */}
       <div className="min-h-[120px]">
-        {isPreview ? (
-          <div className="p-3 text-[var(--font-size)] text-text-primary whitespace-pre-wrap">
-            {body || <span className="text-text-muted italic">Nothing to preview</span>}
-          </div>
-        ) : (
-          <textarea
-            className="w-full min-h-[120px] p-3 bg-transparent text-[var(--font-size)] text-text-primary placeholder-text-muted outline-none resize-y"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={isSubmitting}
-          />
-        )}
+        <textarea
+          className="w-full min-h-[120px] p-3 bg-transparent text-[var(--font-size)] text-text-primary placeholder-text-muted outline-none resize-y"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={isSubmitting}
+        />
       </div>
 
       {/* Footer */}
