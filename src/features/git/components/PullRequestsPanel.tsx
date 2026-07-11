@@ -598,7 +598,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                     {/* Comment Count */}
                     <div className="flex items-center gap-1 text-text-muted">
                       <MessageSquare size={13} />
-                      <span className="text-[calc(var(--font-size)-2px)]">{pr.comment_count ?? 0}</span>
+                      <span className="text-[calc(var(--font-size)-2px)]">{pr.commentCount ?? 0}</span>
                     </div>
                   </div>
                 </div>

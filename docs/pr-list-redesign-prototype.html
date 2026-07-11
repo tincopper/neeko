@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PR 列表重新设计原型 - Neeko</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #282840;
+    --surface-hover: #2f2f4a;
+    --text: #cdd6f4;
+    --text-muted: #6c7086;
+    --text-bright: #ffffff;
+    --border: #45475a;
+    --accent: #89b4fa;
+    --accent-green: #a6e3a1;
+    --accent-red: #f38ba8;
+    --accent-purple: #cba6f7;
+    --radius: 6px;
+    --font-mono: "SF Mono", "Cascadia Code", monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 2rem;
+    min-height: 100vh;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+    color: var(--text-bright);
+    margin-bottom: 0.5rem;
+  }
+
+  .header p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .section-title {
+    font-size: 1rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .section-title::before {
+    content: '';
+    width: 3px;
+    height: 1em;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* ── PR Panel Mock ── */
+  .pr-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    max-width: 600px;
+    margin: 0 auto 2rem;
+    overflow: hidden;
+  }
+
+  .pr-panel-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .pr-panel-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pr-count {
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  /* ── Search Bar ── */
+  .search-bar {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 0.6rem 0.75rem 0.6rem 2.25rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 150ms;
+  }
+
+  .search-input:focus {
+    border-color: var(--accent);
+  }
+
+  .search-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* ── Filter Bar ── */
+  .filter-bar {
+    padding: 0.5rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 150ms;
+  }
+
+  .filter-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .filter-btn.active {
+    border-color: var(--accent);
+    background: rgba(137, 180, 250, 0.1);
+    color: var(--accent);
+  }
+
+  .filter-arrow {
+    font-size: 0.6rem;
+    opacity: 0.6;
+  }
+
+  /* ── PR List ── */
+  .pr-list {
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .pr-item {
+    display: flex;
+    align-items: center;
+    padding: 0.875rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  .pr-item:hover {
+    background: var(--surface-hover);
+  }
+
+  .pr-item:last-child {
+    border-bottom: none;
+  }
+
+  .pr-item-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pr-item-title {
+    font-size: 0.9rem;
+    color: var(--text-bright);
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pr-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .pr-item-number {
+    font-family: var(--font-mono);
+    color: var(--accent);
+  }
+
+  .pr-item-separator {
+    opacity: 0.4;
+  }
+
+  .pr-item-author {
+    color: var(--text);
+  }
+
+  .pr-item-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-left: 1rem;
+    flex-shrink: 0;
+  }
+
+  .pr-status-badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .pr-status-badge.merged {
+    background: rgba(203, 166, 247, 0.2);
+    color: var(--accent-purple);
+  }
+
+  .pr-status-badge.closed {
+    background: rgba(243, 139, 168, 0.15);
+    color: var(--accent-red);
+  }
+
+  .pr-status-badge.open {
+    background: rgba(166, 227, 161, 0.15);
+    color: var(--accent-green);
+  }
+
+  .pr-comment-count {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .pr-comment-icon {
+    font-size: 0.85rem;
+  }
+
+  .pr-closed-icon {
+    color: var(--accent-red);
+    font-size: 0.9rem;
+  }
+
+  /* ── Comparison ── */
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .comparison-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .comparison-card-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .comparison-card-header h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-bright);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .badge-before { background: rgba(243, 139, 168, 0.15); color: var(--accent-red); }
+  .badge-after { background: rgba(166, 227, 161, 0.15); color: var(--accent-green); }
+
+  .comparison-card-body {
+    padding: 1rem;
+  }
+
+  /* ── Changes Table ── */
+  .changes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .changes-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .changes-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .changes-table tr:hover td {
+    background: var(--surface);
+  }
+
+  .file-path {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .status-badge.new { background: rgba(166, 227, 161, 0.15); color: var(--accent-green); }
+  .status-badge.modified { background: rgba(137, 180, 250, 0.15); color: var(--accent); }
+
+  .footer {
+    text-align: center;
+    padding-top: 2rem;
+    margin-top: 2rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  @media (max-width: 768px) {
+    .comparison-grid {
+      grid-template-columns: 1fr;
+    }
+    .filter-bar {
+      overflow-x: auto;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>PR 列表页面重新设计</h1>
+  <p>基于参考图片的 Pull Requests 列表界面重新设计方案 — Neeko</p>
+</div>
+
+<!-- New Design Prototype -->
+<h2 class="section-title">新设计原型</h2>
+
+<div class="pr-panel">
+  <div class="pr-panel-header">
+    <div class="pr-panel-title">
+      Pull Requests
+      <span class="pr-count">8</span>
+    </div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="search-bar">
+    <div class="search-input-wrapper">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="search-input" placeholder="Search pull requests..." />
+    </div>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="filter-bar">
+    <button class="filter-btn active">
+      State <span class="filter-arrow">▼</span>
+    </button>
+    <button class="filter-btn">
+      Author <span class="filter-arrow">▼</span>
+    </button>
+    <button class="filter-btn">
+      Label <span class="filter-arrow">▼</span>
+    </button>
+    <button class="filter-btn">
+      Assignee <span class="filter-arrow">▼</span>
+    </button>
+    <button class="filter-btn">
+      Review <span class="filter-arrow">▼</span>
+    </button>
+  </div>
+
+  <!-- PR List -->
+  <div class="pr-list">
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">fix(ui): project header click now selects...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#39</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/6/3</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">HushAsy</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge closed">CLOSED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">fix(project): 为 dnd-kit 传感器添加 activ...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#38</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/6/3</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">VinciWu557</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge merged">MERGED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">refactor(project): replace custom drag ...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#37</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/6/2</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">VinciWu557</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge merged">MERGED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">feat: 统一删除确认交互、简化添加本地项...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#36</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/6/2</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">VinciWu557</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge merged">MERGED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">feat(theme): 新增 OKLCH 暗色主题为默...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#35</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/6/2</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">VinciWu557</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge merged">MERGED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">feat(ui): Cmd+/-/0 zoom shortcuts ...</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#34</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/5/25</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">HushAsy</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge closed">CLOSED</span>
+        <span class="pr-closed-icon">⊘</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pr-item">
+      <div class="pr-item-content">
+        <div class="pr-item-title">feat(ui): Neeko Night redesign</div>
+        <div class="pr-item-meta">
+          <span class="pr-item-number">#33</span>
+          <span class="pr-item-separator">·</span>
+          <span>created 2026/5/20</span>
+          <span class="pr-item-separator">·</span>
+          <span>by <span class="pr-item-author">HushAsy</span></span>
+        </div>
+      </div>
+      <div class="pr-item-right">
+        <span class="pr-status-badge closed">CLOSED</span>
+        <div class="pr-comment-count">
+          <span class="pr-comment-icon">💬</span>
+          <span>0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Changes Table -->
+<h2 class="section-title">变更文件清单</h2>
+
+<table class="changes-table">
+  <thead>
+    <tr>
+      <th>文件</th>
+      <th>类型</th>
+      <th>说明</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="file-path">src/features/git/types.ts</span></td>
+      <td><span class="status-badge modified">修改</span></td>
+      <td>扩展 PRListItem 添加 comment_count 字段</td>
+    </tr>
+    <tr>
+      <td><span class="file-path">src/features/git/components/PullRequestsPanel.tsx</span></td>
+      <td><span class="status-badge modified">修改</span></td>
+      <td>重新设计整个组件，添加搜索栏、过滤器下拉、新列表布局</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  <p>Neeko PR 列表重新设计原型 · 基于参考图片设计 · 2026</p>
+</div>
+
+</body>
+</html>

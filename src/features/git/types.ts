@@ -104,7 +104,7 @@ export interface PRListItem {
   createdAt: string;
   isCrossRepository: boolean;
   headRepositoryOwner: string;
-  comment_count?: number;
+  commentCount?: number;
   labels: PrLabel[];
 }
 
