@@ -33,6 +33,12 @@ type LanguageFn = (
 
 const registeredLangs = new Set<string>();
 
+// 提前注册 plaintext（默认 fallback 语言），避免首次渲染时抛出未注册异常
+void import("highlight.js/lib/languages/plaintext").then((mod) => {
+  hljs.registerLanguage("plaintext", (mod as { default: LanguageFn }).default);
+  registeredLangs.add("plaintext");
+});
+
 const EXT_TO_LANG: Record<string, string> = {
   ".js": "javascript",
   ".jsx": "javascript",
@@ -120,6 +126,7 @@ export function escapeHtml(str: string): string {
 }
 
 export function highlightLine(text: string, language: string): string {
+  if (!language || !hljs.getLanguage(language)) return escapeHtml(text);
   try {
     const result = hljs.highlight(text, { language, ignoreIllegals: true });
     return result.value;

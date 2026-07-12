@@ -17,13 +17,13 @@ import {
 import type { PRComment } from '../../types/comment';
 
 import FileStatsBar from './FileStatsBar';
-import InlineDiffPreview from './InlineDiffPreview';
 import PRCommentInput from './PRCommentInput';
 import PRCommentList from './PRCommentList';
 import PRCommitList from './PRCommitList';
 import PRDescription from './PRDescription';
 import PRDetailSkeleton from './PRDetailSkeleton';
 import PRFileTree from './PRFileTree';
+import PRFilesChangedPanel from './PRFilesChangedPanel';
 import PRTimeline from './PRTimeline';
 import { usePRResource } from './usePRResource';
 
@@ -350,7 +350,14 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
                 />
               )
             }
-            right={<InlineDiffPreview projectId={projectId} filePath={selectedFile} />}
+            right={
+              <PRFilesChangedPanel
+                projectId={projectId}
+                prNumber={prNumber}
+                files={files}
+                scrollToFile={selectedFile}
+              />
+            }
           />
         </TabsContent>
       </Tabs>

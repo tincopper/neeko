@@ -168,6 +168,9 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::edit_pr_comment_command,
             $crate::git::commands::delete_pr_comment_command,
             $crate::git::commands::add_comment_reaction_command,
+            // PR review comment commands
+            $crate::git::commands::add_pr_review_comment_command,
+            $crate::git::commands::list_pr_review_comments_command,
             // ── file ──────────────────────────────────────────────────────────
             $crate::file::commands::reveal_in_file_manager,
             // ── task ─────────────────────────────────────────────────────────

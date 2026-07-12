@@ -46,7 +46,7 @@ const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, selectedPat
       onFileClick={onFileClick}
       selectedPath={selectedPath}
       showStatusDot={true}
-      showBadge={true}
+      showBadge={false}
       className="flex-1 min-h-0 overflow-auto"
     />
   );

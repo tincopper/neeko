@@ -219,7 +219,11 @@ export function getChangedFilesDiffStats(transport: GitTransportKind): Promise<F
 }
 
 export function getFileDiff(transport: GitTransportKind, filePath: string): Promise<DiffResult> {
-  return invoke<DiffResult>('get_file_diff', { transport, filePath });
+  const t0 = performance.now();
+  return invoke<DiffResult>('get_file_diff', { transport, filePath }).then((r) => {
+    console.debug('[perf] invoke get_file_diff:', filePath, `${(performance.now() - t0).toFixed(0)}ms`);
+    return r;
+  });
 }
 
 export function isGitRepo(transport: GitTransportKind): Promise<boolean> {
@@ -417,6 +421,19 @@ export interface PRComment {
   }>;
 }
 
+export interface PRReviewComment {
+  id: string;
+  author: string;
+  authorAvatar?: string;
+  body: string;
+  path: string;
+  line: number;
+  side: 'LEFT' | 'RIGHT';
+  commitId: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export function listPrComments(
   projectId: string,
   prNumber: number,
@@ -456,4 +473,30 @@ export function addCommentReaction(
   emoji: string,
 ): Promise<void> {
   return invoke<void>('add_comment_reaction_command', { projectId, prNumber, commentId, emoji });
+}
+
+export function addPrReviewComment(
+  projectId: string,
+  prNumber: number,
+  body: string,
+  filePath: string,
+  line: number,
+  side: string,
+): Promise<PRReviewComment> {
+  return invoke<PRReviewComment>('add_pr_review_comment_command', {
+    projectId, prNumber, body, filePath, line, side,
+  });
+}
+
+export function listPrReviewComments(
+  projectId: string,
+  prNumber: number,
+): Promise<PRReviewComment[]> {
+  const t0 = performance.now();
+  return invoke<PRReviewComment[]>('list_pr_review_comments_command', {
+    projectId, prNumber,
+  }).then((r) => {
+    console.debug('[perf] invoke list_pr_review_comments:', prNumber, `${(performance.now() - t0).toFixed(0)}ms`, 'count:', r.length);
+    return r;
+  });
 }

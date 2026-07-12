@@ -10,6 +10,10 @@ interface DiffTableProps {
   language: string;
   selectedLines?: Set<string>;
   onToggleLine?: (blockIdx: number, lineIdx: number) => void;
+  // Optional comment support (for PR review)
+  onCommentLine?: (lineNum: number) => void;
+  renderCommentArea?: (lineNum: number) => React.ReactNode;
+  commentCounts?: Map<number, number>;
 }
 
 const DiffTable: React.FC<DiffTableProps> = ({
@@ -17,6 +21,9 @@ const DiffTable: React.FC<DiffTableProps> = ({
   language,
   selectedLines,
   onToggleLine,
+  onCommentLine,
+  renderCommentArea,
+  commentCounts,
 }) => {
   return (
     <table className="w-full border-collapse font-mono" style={{ fontSize: 'var(--font-size)' }}>
@@ -93,44 +100,72 @@ const DiffTable: React.FC<DiffTableProps> = ({
 
                   const lineKey = `${hunkIndex}:${lineIndex}`;
                   const isSelected = selectedLines?.has(lineKey) ?? false;
+                  const canComment = onCommentLine && (lineType === "added" || lineType === "context");
+                  const commentCount = commentCounts?.get(curNew) ?? 0;
+                  const commentArea = renderCommentArea?.(curNew);
 
                   return (
-                    <tr
-                      key={`${hunkIndex}-${lineIndex}`}
-                      id={blockId}
-                      className={cn(
-                        "border-none",
-                        lineType === "added" && "bg-diff-added",
-                        lineType === "removed" && "bg-diff-removed",
-                        isSelected && "bg-blue-500/10",
-                        isSelected && (lineType === "added" && "bg-diff-added-selected"),
-                        isSelected && (lineType === "removed" && "bg-diff-removed-selected"),
+                    <React.Fragment key={`${hunkIndex}-${lineIndex}`}>
+                      <tr
+                        id={blockId}
+                        className={cn(
+                          "border-none",
+                          lineType === "added" && "bg-diff-added",
+                          lineType === "removed" && "bg-diff-removed",
+                          isSelected && "bg-blue-500/10",
+                          isSelected && (lineType === "added" && "bg-diff-added-selected"),
+                          isSelected && (lineType === "removed" && "bg-diff-removed-selected"),
+                        )}
+                      >
+                        <td
+                          className="w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group"
+                          onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                        >
+                          {lineType !== "added" ? curOld : ""}
+                          {canComment && (
+                            <button
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCommentLine(curNew);
+                              }}
+                              title="Add a comment on this line"
+                            >
+                              +
+                            </button>
+                          )}
+                        </td>
+                        <td
+                          className="w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative"
+                          onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                        >
+                          {lineType !== "removed" ? curNew : ""}
+                          {commentCount > 0 && (
+                            <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-accent-blue font-bold">
+                              {commentCount}
+                            </span>
+                          )}
+                        </td>
+                        <td className="w-5 text-center select-none">
+                          {lineType === "added"
+                            ? "+"
+                            : lineType === "removed"
+                              ? "-"
+                              : " "}
+                        </td>
+                        <td
+                          className="whitespace-pre-wrap break-all"
+                          dangerouslySetInnerHTML={{ __html: cellHtml }}
+                        />
+                      </tr>
+                      {commentArea && (
+                        <tr>
+                          <td colSpan={4} className="py-2 px-4 bg-bg-secondary border-t border-border">
+                            {commentArea}
+                          </td>
+                        </tr>
                       )}
-                    >
-                      <td
-                        className="w-[50px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
-                        onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
-                      >
-                        {lineType !== "added" ? curOld : ""}
-                      </td>
-                      <td
-                        className="w-[50px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
-                        onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
-                      >
-                        {lineType !== "removed" ? curNew : ""}
-                      </td>
-                      <td className="w-5 text-center select-none">
-                        {lineType === "added"
-                          ? "+"
-                          : lineType === "removed"
-                            ? "-"
-                            : " "}
-                      </td>
-                      <td
-                        className="whitespace-pre-wrap break-all"
-                        dangerouslySetInnerHTML={{ __html: cellHtml }}
-                      />
-                    </tr>
+                    </React.Fragment>
                   );
                 })}
               </React.Fragment>

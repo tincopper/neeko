@@ -1,4 +1,4 @@
-use crate::project::types::{Actor, PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction, PrLabel};
+use crate::project::types::{Actor, PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, PRReviewComment, CommentReaction, PrLabel};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -897,4 +897,193 @@ pub fn add_comment_reaction(
     }
 
     Ok(())
+}
+
+/// Helper: 获取 repo owner 和 name
+fn get_gh_repo_owner_name(repo_path: &Path) -> Result<(String, String)> {
+    let output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+    if !output.status.success() {
+        anyhow::bail!("Failed to get repo info");
+    }
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&output.stdout),
+    )
+    .context("Failed to parse repo info")?;
+    let owner = repo_info
+        .get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("")
+        .to_string();
+    let repo = repo_info
+        .get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("")
+        .to_string();
+    if owner.is_empty() || repo.is_empty() {
+        anyhow::bail!("Failed to get owner or repo name");
+    }
+    Ok((owner, repo))
+}
+
+/// 获取 PR 的最新 head commit SHA
+fn get_pr_head_sha(repo_path: &Path, owner: &str, repo: &str, pr_number: u64) -> Result<String> {
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/pulls/{}", owner, repo, pr_number),
+            "--jq",
+            ".head.sha",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get PR head SHA")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to get PR head SHA: {}", stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// 添加 PR 行级审查评论 (Pull Request Review Comment)
+pub fn add_pr_review_comment(
+    repo_path: &Path,
+    pr_number: u64,
+    body: &str,
+    path: &str,
+    line: u64,
+    side: &str,
+) -> Result<PRReviewComment> {
+    log::info!("[add_pr_review_comment] PR #{} path={} line={} side={}", pr_number, path, line, side);
+
+    let (owner, repo) = get_gh_repo_owner_name(repo_path)?;
+    let commit_id = get_pr_head_sha(repo_path, &owner, &repo, pr_number)?;
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/pulls/{}/comments", owner, repo, pr_number),
+            "--method",
+            "POST",
+            "--field",
+            &format!("body={}", body),
+            "--field",
+            &format!("commit_id={}", commit_id),
+            "--field",
+            &format!("path={}", path),
+            "--field",
+            &format!("line={}", line),
+            "--field",
+            &format!("side={}", side),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to add PR review comment")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("[add_pr_review_comment] gh api failed: {}", stderr.trim());
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let v: serde_json::Value = serde_json::from_str(&stdout)
+        .context("Failed to parse PR review comment response")?;
+
+    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
+    let author = v.get("user")
+        .and_then(|u| u.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let author_avatar = v.get("user")
+        .and_then(|u| u.get("avatar_url"))
+        .and_then(|a| a.as_str())
+        .map(|s| s.to_string());
+    let comment_body = v.get("body").and_then(|b| b.as_str()).unwrap_or("").to_string();
+    let comment_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string();
+    let comment_line = v.get("line").and_then(|l| l.as_u64()).unwrap_or(0);
+    let comment_side = v.get("side").and_then(|s| s.as_str()).unwrap_or("RIGHT").to_string();
+    let comment_commit_id = v.get("commit_id").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let created_at = v.get("created_at").and_then(|c| c.as_str()).unwrap_or("").to_string();
+    let updated_at = v.get("updated_at").and_then(|u| u.as_str()).map(|s| s.to_string());
+
+    log::info!("[add_pr_review_comment] Comment added successfully: id={}", id);
+
+    Ok(PRReviewComment {
+        id,
+        author,
+        author_avatar,
+        body: comment_body,
+        path: comment_path,
+        line: comment_line,
+        side: comment_side,
+        commit_id: comment_commit_id,
+        created_at,
+        updated_at,
+    })
+}
+
+/// 获取 PR 行级审查评论列表
+pub fn list_pr_review_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRReviewComment>> {
+    log::info!("[list_pr_review_comments] Loading for PR #{}", pr_number);
+
+    let (owner, repo) = get_gh_repo_owner_name(repo_path)?;
+
+    let output = no_window_cmd("gh")
+        .args([
+            "api",
+            &format!("repos/{}/{}/pulls/{}/comments", owner, repo, pr_number),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to list PR review comments")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("[list_pr_review_comments] gh api failed: {}", stderr.trim());
+        anyhow::bail!("gh api failed: {}", stderr.trim());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let values: Vec<serde_json::Value> = serde_json::from_str(&stdout)
+        .context("Failed to parse PR review comments response")?;
+
+    let comments: Vec<PRReviewComment> = values
+        .into_iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_u64()?.to_string();
+            let author = v.get("user")?.get("login")?.as_str()?.to_string();
+            let author_avatar = v.get("user")?
+                .get("avatar_url")?
+                .as_str()
+                .map(|s| s.to_string());
+            let body = v.get("body")?.as_str()?.to_string();
+            let path = v.get("path")?.as_str()?.to_string();
+            let line = v.get("line")?.as_u64()?;
+            let side = v.get("side")?.as_str().unwrap_or("RIGHT").to_string();
+            let commit_id = v.get("commit_id")?.as_str()?.to_string();
+            let created_at = v.get("created_at")?.as_str()?.to_string();
+            let updated_at = v.get("updated_at")?.as_str().map(|s| s.to_string());
+            Some(PRReviewComment {
+                id,
+                author,
+                author_avatar,
+                body,
+                path,
+                line,
+                side,
+                commit_id,
+                created_at,
+                updated_at,
+            })
+        })
+        .collect();
+
+    log::info!("[list_pr_review_comments] Loaded {} comments", comments.len());
+    Ok(comments)
 }

@@ -11,7 +11,7 @@ interface SplitPaneProps {
 const SplitPane: React.FC<SplitPaneProps> = ({
   left,
   right,
-  defaultLeftWidth = 360,
+  defaultLeftWidth = 260,
   minLeftWidth = 200,
   minRightWidth = 200,
 }) => {

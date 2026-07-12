@@ -7,7 +7,7 @@ use crate::common::git::types::DiffResult;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRInfo, PRListItem,
-    PRMergeResult, PRFileChange, PRCommit, PRComment, PrLabel,
+    PRMergeResult, PRFileChange, PRCommit, PRComment, PRReviewComment, PrLabel,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -414,15 +414,19 @@ pub async fn get_file_diff(
     transport: GitTransportKind,
     file_path: String,
 ) -> Result<DiffResult, AppError> {
+    let t0 = std::time::Instant::now();
     let (t, wd) = into_transport_and_dir(&transport);
-    if t.supports_git2() {
+    let result = if t.supports_git2() {
         crate::common::git::local::get_file_diff(std::path::Path::new(wd), &file_path)
             .map_err(AppError::from)
     } else {
         operations::get_file_diff(&t, wd, &file_path)
             .await
             .map_err(AppError::from)
-    }
+    };
+    let elapsed_ms = t0.elapsed().as_millis();
+    log::debug!("[perf] Rust get_file_diff: {} {}ms", file_path, elapsed_ms);
+    result
 }
 
 #[tauri::command]
@@ -1276,6 +1280,51 @@ pub fn list_pr_commits_command(
             project_id
         )))
     }
+}
+
+#[tauri::command]
+pub fn add_pr_review_comment_command(
+    project_id: String,
+    pr_number: u64,
+    body: String,
+    file_path: String,
+    line: u64,
+    side: String,
+    state: State<AppStateWrapper>,
+) -> Result<PRReviewComment, AppError> {
+    let manager = state.project_manager.lock().map_err(AppError::from)?;
+    if let Some(project) = manager.get_project(&project_id) {
+        crate::git::add_pr_review_comment(&project.path, pr_number, &body, &file_path, line, &side)
+            .map_err(AppError::from)
+    } else {
+        Err(AppError::NotFound(format!(
+            "Project not found: {}",
+            project_id
+        )))
+    }
+}
+
+#[tauri::command]
+pub async fn list_pr_review_comments_command(
+    project_id: String,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<PRReviewComment>, AppError> {
+    let t0 = std::time::Instant::now();
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => return Err(AppError::NotFound(format!("Project not found: {}", project_id))),
+        }
+    };
+    let result = tokio::task::spawn_blocking(move || {
+        crate::git::list_pr_review_comments(&project_path, pr_number).map_err(AppError::from)
+    })
+    .await
+    .map_err(|e| AppError::Io(format!("spawn_blocking failed: {}", e)))??;
+    log::debug!("[perf] Rust list_pr_review_comments: PR #{} {}ms", pr_number, t0.elapsed().as_millis());
+    Ok(result)
 }
 
 // ─── PR Comment Commands ────────────────────────────────────────────────────

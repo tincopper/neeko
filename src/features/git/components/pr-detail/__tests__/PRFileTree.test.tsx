@@ -22,11 +22,12 @@ describe('PRFileTree', () => {
     expect(screen.getByText('README.md')).toBeInTheDocument();
   });
 
-  it('renders status badges', () => {
+  it('does not render badge text (only status dot)', () => {
     render(<PRFileTree files={files} />);
-    expect(screen.getByText('M')).toBeInTheDocument();
-    expect(screen.getByText('A')).toBeInTheDocument();
-    expect(screen.getByText('D')).toBeInTheDocument();
+    expect(screen.queryByText('M')).not.toBeInTheDocument();
+    expect(screen.queryByText('A')).not.toBeInTheDocument();
+    expect(screen.queryByText('D')).not.toBeInTheDocument();
+    expect(screen.queryByText('R')).not.toBeInTheDocument();
   });
 
   it('calls onFileClick when a file is clicked', () => {

@@ -256,6 +256,23 @@ pub struct PRCommit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PRReviewComment {
+    pub id: String,
+    pub author: String,
+    #[serde(default)]
+    pub author_avatar: Option<String>,
+    pub body: String,
+    pub path: String,
+    pub line: u64,
+    pub side: String,
+    pub commit_id: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PRComment {
     pub id: String,
     pub author: String,

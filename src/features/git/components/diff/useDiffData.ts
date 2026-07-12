@@ -4,6 +4,13 @@ import { useProjectStore } from "@/features/project/store";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
+// ── 模块级 Diff 结果缓存（避免在文件间切换时重复加载） ──────────────────
+const diffCache = new Map<string, DiffResult>();
+
+function getCacheKey(projectId?: string, diffSource?: DiffSource, filePath?: string): string {
+  return `${projectId ?? ""}|${JSON.stringify(diffSource ?? "")}|${filePath ?? ""}`;
+}
+
 function lookupLocalProjectPath(projectId: string): string {
   const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
   return project?.path ?? projectId;
@@ -113,6 +120,22 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
   const lastLoadKeyRef = useRef<string>("");
 
   const loadDiff = useCallback(async () => {
+    const cacheKey = getCacheKey(projectId, diffSource, filePath);
+
+    // 命中缓存则跳过 fetch，立即返回
+    const cached = diffCache.get(cacheKey);
+    if (cached) {
+      setDiffResult(cached);
+      setLoading(false);
+      setError(null);
+      setCurrentBlockIndex(0);
+      return;
+    }
+
+    // ── 性能日志：diff 加载开始 ──
+    const t0 = performance.now();
+    console.debug('[perf] useDiffData start:', filePath);
+
     setLoading(true);
     setError(null);
     try {
@@ -142,9 +165,15 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
         result = await getFileDiff(args.transport as any, filePath);
       }
 
+      const elapsed = (performance.now() - t0).toFixed(0);
+      console.debug('[perf] useDiffData done:', filePath, `${elapsed}ms`, 'hunks:', result.hunks.length);
+
+      diffCache.set(cacheKey, result);
       setDiffResult(result);
       setCurrentBlockIndex(0);
     } catch (err) {
+      const elapsed = (performance.now() - t0).toFixed(0);
+      console.debug('[perf] useDiffData error:', filePath, `${elapsed}ms`, err);
       setError(err as string);
     } finally {
       setLoading(false);
@@ -152,7 +181,7 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
   }, [projectId, diffSource, filePath, commands]);
 
   useEffect(() => {
-    const key = `${projectId ?? ""}|${JSON.stringify(diffSource ?? "")}|${filePath}`;
+    const key = getCacheKey(projectId, diffSource, filePath);
     if (key === lastLoadKeyRef.current) {
       return;
     }

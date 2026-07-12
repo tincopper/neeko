@@ -350,96 +350,104 @@ pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&s
 }
 
 pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+    super::cache::get_cached_diff(repo_path, file_path, || {
+        let t_open = std::time::Instant::now();
+        let repo = Repository::open(repo_path).context("Failed to open git repository")?;
+        log::debug!("[perf:detail] Repository::open: {}ms", t_open.elapsed().as_millis());
 
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(file_path)
-        .context_lines(3)
-        .ignore_whitespace_eol(false);
+        let mut opts = git2::DiffOptions::new();
+        opts.pathspec(file_path)
+            .context_lines(3)
+            .ignore_whitespace_eol(false);
 
-    let old_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .and_then(|c| c.tree().ok());
+        let old_tree = repo
+            .head()
+            .ok()
+            .and_then(|h| h.peel_to_commit().ok())
+            .and_then(|c| c.tree().ok());
 
-    let diff = match &old_tree {
-        Some(tree) => repo
-            .diff_tree_to_workdir_with_index(Some(tree), Some(&mut opts))
-            .context("Failed to compute diff")?,
-        None => repo
-            .diff_index_to_workdir(None, Some(&mut opts))
-            .context("Failed to compute diff")?,
-    };
+        let t_diff = std::time::Instant::now();
+        let diff = match &old_tree {
+            Some(tree) => repo
+                .diff_tree_to_workdir_with_index(Some(tree), Some(&mut opts))
+                .context("Failed to compute diff")?,
+            None => repo
+                .diff_index_to_workdir(None, Some(&mut opts))
+                .context("Failed to compute diff")?,
+        };
+        log::debug!("[perf:detail] diff_T2W: {}ms", t_diff.elapsed().as_millis());
 
-    // 先收集所有 patch 数据，避免多个闭包同时借用
-    use std::cell::RefCell;
-    let hunks: RefCell<Vec<DiffHunk>> = RefCell::new(Vec::new());
+        // 先收集所有 patch 数据，避免多个闭包同时借用
+        use std::cell::RefCell;
+        let hunks: RefCell<Vec<DiffHunk>> = RefCell::new(Vec::new());
 
-    diff.foreach(
-        &mut |_, _| true,
-        None,
-        Some(&mut |_delta, hunk| {
-            hunks.borrow_mut().push(DiffHunk {
-                old_start: hunk.old_start(),
-                old_lines: hunk.old_lines(),
-                new_start: hunk.new_start(),
-                new_lines: hunk.new_lines(),
-                lines: Vec::new(),
-            });
-            true
-        }),
-        Some(&mut |_delta, _hunk_opt, line| {
-            let content = std::str::from_utf8(line.content())
-                .unwrap_or("")
-                .trim_end_matches('\n')
-                .trim_end_matches('\r')
-                .to_string();
+        let t_foreach = std::time::Instant::now();
+        diff.foreach(
+            &mut |_, _| true,
+            None,
+            Some(&mut |_delta, hunk| {
+                hunks.borrow_mut().push(DiffHunk {
+                    old_start: hunk.old_start(),
+                    old_lines: hunk.old_lines(),
+                    new_start: hunk.new_start(),
+                    new_lines: hunk.new_lines(),
+                    lines: Vec::new(),
+                });
+                true
+            }),
+            Some(&mut |_delta, _hunk_opt, line| {
+                let content = std::str::from_utf8(line.content())
+                    .unwrap_or("")
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .to_string();
 
-            let diff_line = match line.origin() {
-                '+' => DiffLine::Added(content),
-                '-' => DiffLine::Removed(content),
-                ' ' => DiffLine::Context(content),
-                _ => return true,
-            };
+                let diff_line = match line.origin() {
+                    '+' => DiffLine::Added(content),
+                    '-' => DiffLine::Removed(content),
+                    ' ' => DiffLine::Context(content),
+                    _ => return true,
+                };
 
-            if let Some(last) = hunks.borrow_mut().last_mut() {
-                last.lines.push(diff_line);
-            }
-            true
-        }),
-    )
-    .context("Failed to iterate diff")?;
+                if let Some(last) = hunks.borrow_mut().last_mut() {
+                    last.lines.push(diff_line);
+                }
+                true
+            }),
+        )
+        .context("Failed to iterate diff")?;
+        log::debug!("[perf:detail] diff_foreach: {}ms", t_foreach.elapsed().as_millis());
 
-    let mut result_hunks = hunks.into_inner();
+        let mut result_hunks = hunks.into_inner();
 
-    // If hunks is empty, try to read file content (may be a new file)
-    if result_hunks.is_empty() {
-        let full_path = repo_path.join(file_path);
-        if full_path.exists() && full_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&full_path) {
-                let lines: Vec<DiffLine> = content
-                    .lines()
-                    .map(|line| DiffLine::Added(line.to_string()))
-                    .collect();
+        // If hunks is empty, try to read file content (may be a new file)
+        if result_hunks.is_empty() {
+            let full_path = repo_path.join(file_path);
+            if full_path.exists() && full_path.is_file() {
+                if let Ok(content) = std::fs::read_to_string(&full_path) {
+                    let lines: Vec<DiffLine> = content
+                        .lines()
+                        .map(|line| DiffLine::Added(line.to_string()))
+                        .collect();
 
-                if !lines.is_empty() {
-                    #[allow(clippy::cast_possible_truncation)]
-                    result_hunks.push(DiffHunk {
-                        old_start: 0,
-                        old_lines: 0,
-                        new_start: 1,
-                        new_lines: lines.len() as u32,
-                        lines,
-                    });
+                    if !lines.is_empty() {
+                        #[allow(clippy::cast_possible_truncation)]
+                        result_hunks.push(DiffHunk {
+                            old_start: 0,
+                            old_lines: 0,
+                            new_start: 1,
+                            new_lines: lines.len() as u32,
+                            lines,
+                        });
+                    }
                 }
             }
         }
-    }
 
-    Ok(DiffResult {
-        hunks: result_hunks,
-        truncated: false,
+        Ok(DiffResult {
+            hunks: result_hunks,
+            truncated: false,
+        })
     })
 }
 

@@ -10,4 +10,4 @@ export { default as PRCommentList } from './PRCommentList';
 export { default as PRCommentItem } from './PRCommentItem';
 export { default as PRCommentInput } from './PRCommentInput';
 export { default as FileStatsBar } from './FileStatsBar';
-export { default as InlineDiffPreview } from './InlineDiffPreview';
+export { default as PRFilesChangedPanel } from './PRFilesChangedPanel';
