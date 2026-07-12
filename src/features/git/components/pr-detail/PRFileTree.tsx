@@ -1,11 +1,14 @@
 import React from 'react';
+
 import ChangeFileTree from '@/shared/components/ChangeFileTree';
 import type { ChangeFileItem } from '@/shared/components/ChangeFileTree';
+
 import type { PRFileChange } from '../../types';
 
 interface PRFileTreeProps {
   files: PRFileChange[];
   onFileClick?: (path: string) => void;
+  selectedPath?: string | null;
   loading?: boolean;
 }
 
@@ -18,7 +21,7 @@ function mapPRFilesToChangeFiles(prFiles: PRFileChange[]): ChangeFileItem[] {
   }));
 }
 
-const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, loading }) => {
+const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, selectedPath, loading }) => {
   const changeFiles = React.useMemo(() => mapPRFilesToChangeFiles(files), [files]);
 
   if (loading) {
@@ -41,6 +44,7 @@ const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, loading }) 
     <ChangeFileTree
       files={changeFiles}
       onFileClick={onFileClick}
+      selectedPath={selectedPath}
       showStatusDot={true}
       showBadge={true}
       className="flex-1 min-h-0 overflow-auto"

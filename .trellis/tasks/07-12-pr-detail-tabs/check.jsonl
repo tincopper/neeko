@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Verify component structure follows frontend conventions"}
+{"file": "prd.md", "reason": "Verify acceptance criteria met"}
+{"file": "design.md", "reason": "Verify implementation follows design"}

@@ -135,6 +135,10 @@ export interface PRInfo {
   mergeCommit?: {
     oid: string;
   } | null;
+  mergedBy?: { login: string; avatarUrl?: string } | null;
+  closedBy?: { login: string; avatarUrl?: string } | null;
+  mergedAt?: string | null;
+  closedAt?: string | null;
 }
 
 export interface PRMergeResult {

@@ -1,8 +1,17 @@
 import React from 'react';
+import {
+  GitCommitHorizontal,
+  GitMerge,
+  GitPullRequest,
+  XCircle,
+  MessageSquare,
+  Tag,
+  Trash2,
+} from '@/shared/components/icons';
 
 interface TimelineEvent {
   id: string;
-  type: 'merge' | 'commit' | 'review' | 'label' | 'branch_delete';
+  type: 'opened' | 'merge' | 'closed' | 'commit' | 'review' | 'label' | 'branch_delete';
   author: string;
   timestamp: string;
   message: string;
@@ -47,6 +56,28 @@ const PRTimeline: React.FC<PRTimelineProps> = ({ events, loading }) => {
     );
   }
 
+  function renderEventIcon(type: TimelineEvent['type']) {
+    const iconClass = 'shrink-0 w-4 h-4';
+    switch (type) {
+      case 'opened':
+        return <GitPullRequest className={`${iconClass} text-accent-green`} />;
+      case 'merge':
+        return <GitMerge className={`${iconClass} text-accent-purple`} />;
+      case 'closed':
+        return <XCircle className={`${iconClass} text-accent-red`} />;
+      case 'commit':
+        return <GitCommitHorizontal className={`${iconClass} text-text-muted`} />;
+      case 'review':
+        return <MessageSquare className={`${iconClass} text-accent-blue`} />;
+      case 'label':
+        return <Tag className={`${iconClass} text-text-muted`} />;
+      case 'branch_delete':
+        return <Trash2 className={`${iconClass} text-text-muted`} />;
+      default:
+        return null;
+    }
+  }
+
   return (
     <div className="flex flex-col">
       {events.map((event) => (
@@ -54,6 +85,10 @@ const PRTimeline: React.FC<PRTimelineProps> = ({ events, loading }) => {
           key={event.id}
           className="flex items-start gap-3 py-2 px-4 hover:bg-bg-hover transition-colors duration-100"
         >
+          {/* Event type icon */}
+          <div className="shrink-0 w-6 h-6 flex items-center justify-center">
+            {renderEventIcon(event.type)}
+          </div>
           {/* User Avatar */}
           <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0 bg-bg-tertiary flex items-center justify-center text-[10px] font-medium text-text-muted">
             <img

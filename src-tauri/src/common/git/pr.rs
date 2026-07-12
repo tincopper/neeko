@@ -1,4 +1,4 @@
-use crate::project::types::{PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction, PrLabel};
+use crate::project::types::{Actor, PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, CommentReaction, PrLabel};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -140,7 +140,7 @@ pub fn list_repo_authors(repo_path: &Path) -> Result<Vec<String>> {
 /// 获取单个 PR 详情
 pub fn view_pr(repo_path: &Path, pr_number: u64) -> Result<PRInfo> {
     cache::get_cached_pr_info(repo_path, pr_number, || {
-        let json_fields = "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup,mergeCommit";
+        let json_fields = "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup,mergeCommit,mergedBy,mergedAt,closedAt";
         let output = no_window_cmd("gh")
             .args(["pr", "view", &pr_number.to_string(), "--json", json_fields])
             .current_dir(repo_path)
@@ -153,8 +153,81 @@ pub fn view_pr(repo_path: &Path, pr_number: u64) -> Result<PRInfo> {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        serde_json::from_str(&stdout).context("Failed to parse gh pr view output")
+        let mut info: PRInfo = serde_json::from_str(&stdout).context("Failed to parse gh pr view output")?;
+
+        // `closedBy` is not available in gh pr view --json, so fetch it separately
+        if info.closed_by.is_none() {
+            info.closed_by = fetch_pr_closed_by(repo_path, pr_number).ok().flatten();
+        }
+
+        Ok(info)
     })
+}
+
+/// 通过 GitHub Issue Events API 获取 PR 的关闭者信息
+/// `gh pr view --json` 不支持 `closedBy` 字段，但 Issue Events API 中有 closed 事件的 actor
+fn fetch_pr_closed_by(repo_path: &Path, pr_number: u64) -> Result<Option<Actor>> {
+    // 获取仓库 owner/name
+    let repo_output = no_window_cmd("gh")
+        .args(["repo", "view", "--json", "owner,name"])
+        .current_dir(repo_path)
+        .output()
+        .context("Failed to get repo info")?;
+
+    if !repo_output.status.success() {
+        return Ok(None);
+    }
+
+    let repo_info: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(&repo_output.stdout),
+    ).context("Failed to parse repo info")?;
+
+    let owner = repo_info.get("owner")
+        .and_then(|o| o.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("");
+    let name = repo_info.get("name")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+
+    if owner.is_empty() || name.is_empty() {
+        return Ok(None);
+    }
+
+    // 调用 Issue Events API 查找 closed 事件
+    let api_url = format!("repos/{}/{}/issues/{}/events", owner, name, pr_number);
+    let output = no_window_cmd("gh")
+        .args(["api", &api_url])
+        .current_dir(repo_path)
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Ok(events) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
+                for event in &events {
+                    if event.get("event").and_then(|e| e.as_str()) != Some("closed") {
+                        continue;
+                    }
+                    // events API: {"event":"closed","actor":{"login":"..."}}
+                    // timeline API: {"event":"closed","actor":"..."}
+                    let login = event.get("actor").and_then(|a| {
+                        a.as_str()
+                            .or_else(|| a.get("login").and_then(|l| l.as_str()))
+                            .map(String::from)
+                    });
+                    if let Some(login) = login {
+                        return Ok(Some(Actor {
+                            login,
+                            avatar_url: None,
+                        }));
+                    }
+                }
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
 }
 
 /// 创建 PR

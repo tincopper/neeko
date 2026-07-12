@@ -6,7 +6,6 @@ interface PRDetailSkeletonProps {
   prState: string;
   prAuthor: string;
   prCreatedAt: string;
-  prBaseRef: string;
   prNumber: number;
   onReady?: () => void;
 }
@@ -37,7 +36,6 @@ function formatTimestamp(timestamp: string | undefined | null): string {
   }
 }
 
-const FILE_ROWS = ['65%', '80%', '55%', '72%', '60%', '78%', '50%', '68%'];
 const BODY_ROWS = ['100%', '85%', '70%', '95%', '60%'];
 const COMMIT_ROWS = ['85%', '70%', '90%'];
 
@@ -46,7 +44,6 @@ const PRDetailSkeleton: React.FC<PRDetailSkeletonProps> = ({
   prState,
   prAuthor,
   prCreatedAt,
-  prBaseRef,
   prNumber,
   onReady,
 }) => {
@@ -56,48 +53,29 @@ const PRDetailSkeleton: React.FC<PRDetailSkeletonProps> = ({
   }, []);
 
   return (
-  <div className="flex-1 flex overflow-hidden">
-    <div className="w-[35%] min-w-[250px] border-r border-border flex flex-col overflow-hidden">
-      <div className="p-3 border-b border-border bg-bg-secondary">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[var(--font-size)] font-semibold text-text-primary truncate flex-1 mr-2">
-            {prTitle}
-          </h3>
-          <Badge variant={getStateBadgeVariant(prState)}>{prState.toUpperCase()}</Badge>
-        </div>
-        <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted mb-2">
-          <span>{prAuthor}</span>
-          <span>·</span>
-          <span>{formatTimestamp(prCreatedAt)}</span>
-        </div>
-        <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted">
-          <span>Changes from</span>
-          <span className="inline-block w-12 h-3 rounded bg-bg-tertiary animate-pulse align-middle" />
-          <span>into</span>
-          <span className="font-mono text-accent-blue">{prBaseRef}</span>
-        </div>
-      </div>
-      <div className="flex-1 overflow-auto p-3 space-y-1.5">
-        {FILE_ROWS.map((w, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-bg-tertiary shrink-0" />
-            <div className="h-2.5 rounded bg-bg-tertiary animate-pulse" style={{ width: w }} />
-          </div>
-        ))}
-      </div>
-    </div>
-
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 border-b border-border bg-bg-secondary">
-        <h2 className="text-lg font-semibold text-text-primary mb-2">
-          {prTitle} <span className="text-text-muted">#{prNumber}</span>
-        </h2>
-        <div className="flex items-center gap-2 text-[var(--font-size)] text-text-muted">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-bg-secondary">
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-[var(--font-size)] font-semibold text-text-primary truncate">{prTitle}</h2>
+          <span className="text-text-muted text-[calc(var(--font-size)-2px)] shrink-0">#{prNumber}</span>
+          <Badge variant={getStateBadgeVariant(prState)} className="shrink-0">{prState.toUpperCase()}</Badge>
+        </div>
+        <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
+          <div className="w-5 h-5 rounded-full bg-bg-tertiary animate-pulse shrink-0" />
           <span>{prAuthor}</span>
           <span>·</span>
           <span>{formatTimestamp(prCreatedAt)}</span>
         </div>
       </div>
+
+      <div className="px-4 pt-0 border-b border-border bg-bg-secondary">
+        <div className="flex h-[36px] items-end gap-5">
+          <div className="h-[22px] w-24 rounded bg-bg-tertiary animate-pulse" />
+          <div className="h-[22px] w-20 rounded bg-bg-tertiary animate-pulse" />
+          <div className="h-[22px] w-28 rounded bg-bg-tertiary animate-pulse" />
+        </div>
+      </div>
+
       <div className="flex-1 overflow-auto">
         <div className="p-4 space-y-2">
           {BODY_ROWS.map((w, i) => (
@@ -122,7 +100,6 @@ const PRDetailSkeleton: React.FC<PRDetailSkeletonProps> = ({
         </div>
       </div>
     </div>
-  </div>
   );
 };
 

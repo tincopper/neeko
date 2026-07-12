@@ -38,7 +38,10 @@ export function usePRResource(projectId: string, prNumber: number, enabled: bool
     timer = setTimeout(() => {
       if (cancelled) return;
       Promise.all([
-        viewPr(projectId, prNumber),
+        viewPr(projectId, prNumber).catch((err: unknown) => {
+          console.error('[usePRResource] viewPr failed:', err);
+          throw err; // re-throw so Promise.all still rejects
+        }),
         listPrFiles(projectId, prNumber).catch((): PRFileChange[] => []),
         listPrCommits(projectId, prNumber).catch((): PRCommit[] => []),
         listPrComments(projectId, prNumber).catch((): PRComment[] => []),
@@ -50,7 +53,9 @@ export function usePRResource(projectId: string, prNumber: number, enabled: bool
             setResource(data);
           }
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          console.error('[usePRResource] failed to load PR resource:', err);
+        });
     }, 0);
 
     return () => {

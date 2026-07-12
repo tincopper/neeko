@@ -185,32 +185,6 @@ pub struct PRListItem {
     pub head_repository_owner: String,
 }
 
-/// PR 详细信息（对应 gh pr view --json）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PRInfo {
-    pub number: u64,
-    pub title: String,
-    pub state: String,
-    pub body: Option<String>,
-    #[serde(deserialize_with = "deserialize_author")]
-    pub author: String,
-    pub head_ref_name: String,
-    pub base_ref_name: String,
-    pub url: String,
-    pub created_at: String,
-    #[serde(default)]
-    pub mergeable: Option<String>,
-    #[serde(default)]
-    pub merge_state_status: Option<String>,
-    #[serde(default)]
-    pub is_draft: bool,
-    #[serde(default)]
-    pub is_cross_repository: bool,
-    #[serde(default)]
-    pub status_check_rollup: Option<serde_json::Value>,
-}
-
 /// PR 合并结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PRMergeResult {

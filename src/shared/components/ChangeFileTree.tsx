@@ -1,11 +1,19 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback } from 'react';
+
+import { cn } from '@/lib/utils';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from "@/ui/badge";
-import { cn } from "@/lib/utils";
+import { Badge } from '@/ui/badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FileStatus = "added" | "removed" | "modified" | "renamed" | "modified_count" | "added_count" | "removed_count";
+export type FileStatus =
+  | 'added'
+  | 'removed'
+  | 'modified'
+  | 'renamed'
+  | 'modified_count'
+  | 'added_count'
+  | 'removed_count';
 
 export interface ChangeFileItem {
   path: string;
@@ -25,10 +33,10 @@ export interface ChangeTreeNode {
 // ─── Tree Building ────────────────────────────────────────────────────────────
 
 export function buildChangeTree(files: ChangeFileItem[]): ChangeTreeNode[] {
-  const root: ChangeTreeNode = { name: "", path: "", isDir: true, children: [] };
+  const root: ChangeTreeNode = { name: '', path: '', isDir: true, children: [] };
 
   for (const file of files) {
-    const parts = file.path.replace(/\\/g, "/").split("/");
+    const parts = file.path.replace(/\\/g, '/').split('/');
     let node = root;
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
@@ -37,7 +45,7 @@ export function buildChangeTree(files: ChangeFileItem[]): ChangeTreeNode[] {
       if (!child) {
         child = {
           name: part,
-          path: parts.slice(0, i + 1).join("/"),
+          path: parts.slice(0, i + 1).join('/'),
           isDir: !isLast,
           children: [],
           file: isLast ? file : undefined,
@@ -63,34 +71,37 @@ export function buildChangeTree(files: ChangeFileItem[]): ChangeTreeNode[] {
 
 // ─── Status Config ────────────────────────────────────────────────────────────
 
-const STATUS_BADGE: Record<FileStatus, { label: string; variant: "modified" | "added" | "deleted" | "default" }> = {
-  added: { label: "A", variant: "added" },
-  removed: { label: "D", variant: "deleted" },
-  modified: { label: "M", variant: "modified" },
-  renamed: { label: "R", variant: "default" },
-  modified_count: { label: "M", variant: "modified" },
-  added_count: { label: "A", variant: "added" },
-  removed_count: { label: "D", variant: "deleted" },
+const STATUS_BADGE: Record<
+  FileStatus,
+  { label: string; variant: 'modified' | 'added' | 'deleted' | 'default' }
+> = {
+  added: { label: 'A', variant: 'added' },
+  removed: { label: 'D', variant: 'deleted' },
+  modified: { label: 'M', variant: 'modified' },
+  renamed: { label: 'R', variant: 'default' },
+  modified_count: { label: 'M', variant: 'modified' },
+  added_count: { label: 'A', variant: 'added' },
+  removed_count: { label: 'D', variant: 'deleted' },
 };
 
 const STATUS_DOT_COLOR: Record<FileStatus, string> = {
-  added: "bg-accent-green",
-  removed: "bg-accent-red",
-  modified: "bg-accent-blue",
-  renamed: "bg-accent-yellow",
-  modified_count: "bg-accent-blue",
-  added_count: "bg-accent-green",
-  removed_count: "bg-accent-red",
+  added: 'bg-accent-green',
+  removed: 'bg-accent-red',
+  modified: 'bg-accent-blue',
+  renamed: 'bg-accent-yellow',
+  modified_count: 'bg-accent-blue',
+  added_count: 'bg-accent-green',
+  removed_count: 'bg-accent-red',
 };
 
 const STATUS_TEXT_COLOR: Record<FileStatus, string> = {
-  added: "text-accent-green",
-  removed: "text-accent-red",
-  modified: "text-text-primary",
-  renamed: "text-text-primary",
-  modified_count: "text-text-primary",
-  added_count: "text-accent-green",
-  removed_count: "text-accent-red",
+  added: 'text-accent-green',
+  removed: 'text-accent-red',
+  modified: 'text-text-primary',
+  renamed: 'text-text-primary',
+  modified_count: 'text-text-primary',
+  added_count: 'text-accent-green',
+  removed_count: 'text-accent-red',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -98,6 +109,7 @@ const STATUS_TEXT_COLOR: Record<FileStatus, string> = {
 interface ChangeFileTreeProps {
   files: ChangeFileItem[];
   onFileClick?: (path: string) => void;
+  selectedPath?: string | null;
   showStatusDot?: boolean;
   showBadge?: boolean;
   className?: string;
@@ -106,6 +118,7 @@ interface ChangeFileTreeProps {
 const ChangeFileTree: React.FC<ChangeFileTreeProps> = ({
   files,
   onFileClick,
+  selectedPath,
   showStatusDot = true,
   showBadge = true,
   className,
@@ -121,13 +134,14 @@ const ChangeFileTree: React.FC<ChangeFileTreeProps> = ({
   }
 
   return (
-    <div className={cn("flex flex-col", className)}>
+    <div className={cn('flex flex-col', className)}>
       {tree.map((node) => (
         <TreeNodeComponent
           key={node.path}
           node={node}
           depth={0}
           onFileClick={onFileClick}
+          selectedPath={selectedPath}
           showStatusDot={showStatusDot}
           showBadge={showBadge}
         />
@@ -142,98 +156,97 @@ interface TreeNodeComponentProps {
   node: ChangeTreeNode;
   depth: number;
   onFileClick?: (path: string) => void;
+  selectedPath?: string | null;
   showStatusDot: boolean;
   showBadge: boolean;
 }
 
-const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(({
-  node,
-  depth,
-  onFileClick,
-  showStatusDot,
-  showBadge,
-}) => {
-  const [expanded, setExpanded] = useState(true);
-  const indent = 6 + depth * 12;
+const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
+  ({ node, depth, onFileClick, selectedPath, showStatusDot, showBadge }) => {
+    const [expanded, setExpanded] = useState(true);
+    const indent = 6 + depth * 12;
 
-  const handleToggle = useCallback(() => {
-    setExpanded((v) => !v);
-  }, []);
+    const handleToggle = useCallback(() => {
+      setExpanded((v) => !v);
+    }, []);
 
-  const handleClick = useCallback(() => {
+    const handleClick = useCallback(() => {
+      if (node.isDir) {
+        handleToggle();
+      } else if (node.file && onFileClick) {
+        onFileClick(node.file.path);
+      }
+    }, [node, handleToggle, onFileClick]);
+
     if (node.isDir) {
-      handleToggle();
-    } else if (node.file && onFileClick) {
-      onFileClick(node.file.path);
-    }
-  }, [node, handleToggle, onFileClick]);
-
-  if (node.isDir) {
-    return (
-      <div>
-        <div
-          className="flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
-          style={{ paddingLeft: indent }}
-          onClick={handleClick}
-          title={node.path}
-        >
-          <img
-            className="w-4 h-4 shrink-0 block"
-            src={`/icons/${!expanded ? "_folder" : "_folder_open"}.svg`}
-            alt=""
-            width={16}
-            height={16}
-          />
-          <span className="flex-1 text-text-primary font-medium truncate">{node.name}</span>
-          <span className="text-[calc(var(--font-size)-2px)] text-text-muted">
-            {node.children.length}
-          </span>
+      return (
+        <div>
+          <div
+            className="flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
+            style={{ paddingLeft: indent }}
+            onClick={handleClick}
+            title={node.path}
+          >
+            <img
+              className="w-4 h-4 shrink-0 block"
+              src={`/icons/${!expanded ? '_folder' : '_folder_open'}.svg`}
+              alt=""
+              width={16}
+              height={16}
+            />
+            <span className="flex-1 text-text-primary font-medium truncate">{node.name}</span>
+            <span className="text-[calc(var(--font-size)-2px)] text-text-muted">
+              {node.children.length}
+            </span>
+          </div>
+          {expanded &&
+            node.children.map((child) => (
+              <TreeNodeComponent
+                key={child.path}
+                node={child}
+                depth={depth + 1}
+                onFileClick={onFileClick}
+                selectedPath={selectedPath}
+                showStatusDot={showStatusDot}
+                showBadge={showBadge}
+              />
+            ))}
         </div>
-        {expanded && node.children.map((child) => (
-          <TreeNodeComponent
-            key={child.path}
-            node={child}
-            depth={depth + 1}
-            onFileClick={onFileClick}
-            showStatusDot={showStatusDot}
-            showBadge={showBadge}
-          />
-        ))}
+      );
+    }
+
+    const file = node.file!;
+    const badge = STATUS_BADGE[file.status];
+    const dotColor = STATUS_DOT_COLOR[file.status];
+    const textColor = STATUS_TEXT_COLOR[file.status];
+    const isSelected = selectedPath === file.path;
+
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 group',
+          isSelected ? 'bg-accent-blue/10' : 'hover:bg-bg-hover',
+        )}
+        style={{ paddingLeft: indent }}
+        onClick={handleClick}
+        title={file.path}
+      >
+        <img
+          className="w-4 h-4 shrink-0 block opacity-70"
+          src={fileIconSrc(node.name)}
+          alt=""
+          width={16}
+          height={16}
+        />
+        <span className={`flex-1 truncate group-hover:text-text-primary ${textColor}`}>
+          {node.name}
+        </span>
+        {showStatusDot && <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColor)} />}
+        {showBadge && <Badge variant={badge.variant}>{badge.label}</Badge>}
       </div>
     );
-  }
-
-  const file = node.file!;
-  const badge = STATUS_BADGE[file.status];
-  const dotColor = STATUS_DOT_COLOR[file.status];
-  const textColor = STATUS_TEXT_COLOR[file.status];
-
-  return (
-    <div
-      className="flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
-      style={{ paddingLeft: indent }}
-      onClick={handleClick}
-      title={file.path}
-    >
-      <img
-        className="w-4 h-4 shrink-0 block opacity-70"
-        src={fileIconSrc(node.name)}
-        alt=""
-        width={16}
-        height={16}
-      />
-      <span className={`flex-1 truncate group-hover:text-text-primary ${textColor}`}>
-        {node.name}
-      </span>
-      {showStatusDot && (
-        <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", dotColor)} />
-      )}
-      {showBadge && (
-        <Badge variant={badge.variant}>{badge.label}</Badge>
-      )}
-    </div>
-  );
-});
+  },
+);
 
 TreeNodeComponent.displayName = 'TreeNodeComponent';
 

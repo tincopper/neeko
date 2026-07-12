@@ -200,12 +200,28 @@ pub struct PRInfo {
     pub status_check_rollup: Option<serde_json::Value>,
     #[serde(default)]
     pub merge_commit: Option<MergeCommit>,
+    #[serde(default)]
+    pub merged_by: Option<Actor>,
+    #[serde(default)]
+    pub closed_by: Option<Actor>,
+    #[serde(default)]
+    pub merged_at: Option<String>,
+    #[serde(default)]
+    pub closed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MergeCommit {
     pub oid: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Actor {
+    pub login: String,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
