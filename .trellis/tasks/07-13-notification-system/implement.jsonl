@@ -1,3 +1,0 @@
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Component patterns, React.memo, cn(), Tailwind usage, Props conventions"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store patterns — how stores are structured in this project"}
-{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Feature directory layout — where to put the new notification feature"}
