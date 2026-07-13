@@ -27,7 +27,6 @@ import { useProjectList } from '@/features/project/hooks/useProjectList';
 import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
-import { useToast } from '@/shared/hooks/useToast';
 import { useNotificationStore } from '@/features/notification/notificationStore';
 
 import type AppModals from '../../app/AppModals';
@@ -40,7 +39,6 @@ type AppModalsProps = React.ComponentProps<typeof AppModals>;
 
 interface UseAppShellResult {
   initializing: boolean;
-  toast: ReturnType<typeof useToast>['toast'];
   appProvidersProps: AppProvidersProps;
   appLayoutProps: AppLayoutProps;
   appModalsProps: AppModalsProps;
@@ -48,17 +46,15 @@ interface UseAppShellResult {
 
 export function useAppShell(): UseAppShellResult {
   const { config, saveConfig, customThemes } = useAppConfig();
-  const { toast, showToast: originalShowToast } = useToast();
   const showToast = useCallback(
     (message: string, type: "info" | "error" = "info") => {
-      originalShowToast(message, type);
       useNotificationStore.getState().addNotification({
         type: type === 'error' ? 'error' : 'info',
         title: type === 'error' ? 'Error' : 'Info',
         message,
       });
     },
-    [originalShowToast],
+    [],
   );
   const local = useLocalProjects();
   const session = useSessionPersistence();
@@ -462,5 +458,5 @@ export function useAppShell(): UseAppShellResult {
     onRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess,
   };
 
-  return { initializing, toast, appProvidersProps, appLayoutProps, appModalsProps };
+  return { initializing, appProvidersProps, appLayoutProps, appModalsProps };
 }

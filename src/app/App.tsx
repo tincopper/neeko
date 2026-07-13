@@ -1,5 +1,4 @@
 import { AppLayout, TitleBar, StatusBar } from "@/layout";
-import { AppToast } from "@/shared/components/AppToast";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
@@ -11,7 +10,6 @@ export type { ActiveWslKey, ActiveRemoteKey };
 function App() {
   const {
     initializing,
-    toast,
     appProvidersProps,
     appLayoutProps,
     appModalsProps,
@@ -36,8 +34,6 @@ function App() {
       </AppProviders>
 
       <StatusBar />
-
-      <AppToast toast={toast} />
     </div>
   );
 }
