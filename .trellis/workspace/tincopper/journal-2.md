@@ -914,3 +914,37 @@ Implemented notification system:
 ### Next Steps
 
 - None - task complete
+
+
+## Session 85: Git provider detection & PR backend refactoring
+
+**Date**: 2026-07-13
+**Task**: Git provider detection & PR backend refactoring
+**Branch**: `main`
+
+### Summary
+
+Phase 1: detect Git provider (GitHub/GitLab/Gitee) from remote URL, display on frontend. Phase 2: refactor monolithic pr.rs into trait-based multi-provider architecture (PrProvider + ProviderStore + dispatch). Extract GhCli utility to eliminate cmd boilerplate in github.rs (936→530 lines).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6d26687` | (see git log) |
+| `cafa1b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
