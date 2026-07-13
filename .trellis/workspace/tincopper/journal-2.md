@@ -873,3 +873,44 @@ Implemented terminal file path clicking: Cmd/Ctrl+click opens file in editor tab
 ### Next Steps
 
 - None - task complete
+
+
+## Session 84: 通知系统：StatusBar 通知图标 + 浮动通知 + 通知记录
+
+**Date**: 2026-07-13
+**Task**: 通知系统：StatusBar 通知图标 + 浮动通知 + 通知记录
+**Branch**: `main`
+
+### Summary
+
+Implemented notification system:
+- notificationTypes/notificationStore (Zustand, 100 cap)
+- NotificationButton (Bell icon + unread badge in StatusBar)
+- NotificationList (popover, last 10, mark all read, clear)
+- NotificationToast (floating 4s auto-dismiss, click to open list)
+- NotificationDetail (Dialog, full content, copy to clipboard)
+- Fixed bg-surface → bg-popover (invalid Tailwind class)
+- Added useShallow pattern to prevent infinite rerenders
+- CSS: animate-slide-up keyframes
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd1e790` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 83
+- **Total Sessions**: 84
 - **Last Active**: 2026-07-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~875 | Active |
+| `journal-2.md` | ~916 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 84 | 2026-07-13 | 通知系统：StatusBar 通知图标 + 浮动通知 + 通知记录 | `cd1e790` | `main` |
 | 83 | 2026-07-13 | git push HTTPS credential dialog flow + reasonix.toml gitignore fix | `d11408fe3625dc18aedbe9cba637ab4aa98bd6d6` | `main` |
 | 82 | 2026-07-13 | Git Push HTTPS 登录支持 | `d11a2a9` | `main` |
 | 81 | 2026-07-10 | Terminal file path click to open in editor tab | `a0d1972` | `main` |
