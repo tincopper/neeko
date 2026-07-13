@@ -295,7 +295,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
               ...layout.groups[groupId],
               tabIds: updatedGroupIds,
               activeTabId: layout.groups[groupId].activeTabId === tabId
-                ? (updatedGroupIds.length > 0 ? updatedGroupIds[updatedGroupIds.length - 1] : null)
+                ? (updatedGroupIds.length > 0 ? newActiveId : null)
                 : layout.groups[groupId].activeTabId,
             },
           },
