@@ -26,6 +26,7 @@ interface GitCommitPanelProps {
   onSelectFile?: (filePath: string) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onOpenDialog?: (type: 'new-branch' | 'new-worktree', e: React.MouseEvent) => void;
+  aheadBehind: AheadBehind | null;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
@@ -36,9 +37,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   onSelectFile,
   onShowToast,
   onOpenDialog,
+  aheadBehind,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
 const [credentialDialog, setCredentialDialog] = useState<{
@@ -101,7 +102,6 @@ const handleCredentialSubmit = useCallback(
       );
       if (!handlePushOutcome(outcome, 'push', setUpstream)) {
         await onRefreshGit();
-        refreshAheadBehind();
         setSelectedFiles(new Set());
         setCommitMessage('');
         onShowToast?.('Pushed successfully', 'info');
@@ -191,11 +191,6 @@ const handleCredentialSubmit = useCallback(
     [textareaHeight],
   );
 
-  useEffect(() => {
-    if (!project.gitInfo) return;
-    refreshAheadBehind();
-  }, [project.id]);
-
   // Guard against userSelect/cursor leak: if this component unmounts while a
   // divider drag is still in progress the document-level mouseup handler will
   // never fire, leaving body styles permanently dirty.
@@ -238,15 +233,6 @@ const handleCredentialSubmit = useCallback(
     config.agentCommandOverrides,
     onShowToast,
   ]);
-
-  const refreshAheadBehind = async () => {
-    try {
-      const ab = await commands.getAheadBehind();
-      setAheadBehind(ab);
-    } catch {
-      // repo may not have remote configured
-    }
-  };
 
   const toggleFile = useCallback((path: string) => {
     setSelectedFiles((prev) => {
@@ -327,7 +313,6 @@ const handleCredentialSubmit = useCallback(
           'commit',
         )) as CommitResult;
         await onRefreshGit();
-        refreshAheadBehind();
         setSelectedFiles(new Set());
         setCommitMessage('');
         onShowToast?.(
@@ -340,7 +325,7 @@ const handleCredentialSubmit = useCallback(
         setLoading(false);
       }
     },
-    [selectedFiles, commands, onRefreshGit, refreshAheadBehind, onShowToast],
+    [selectedFiles, commands, onRefreshGit, onShowToast],
   );
 
   const handleCommitAndPush = useCallback(
@@ -356,7 +341,6 @@ const handleCredentialSubmit = useCallback(
         const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
         if (handlePushOutcome(outcome, 'push')) return; // AuthRequired handled
         await onRefreshGit();
-        refreshAheadBehind();
         setSelectedFiles(new Set());
         setCommitMessage('');
         onShowToast?.('Committed & pushed successfully', 'info');
@@ -374,7 +358,6 @@ const handleCredentialSubmit = useCallback(
     try {
       const outcome = await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
       if (handlePushOutcome(outcome, 'fetch')) return;
-      refreshAheadBehind();
       onShowToast?.('Fetched successfully', 'info');
     } catch (e: unknown) {
       onShowToast?.(String(e), 'error');
@@ -389,7 +372,6 @@ const handleCredentialSubmit = useCallback(
       const outcome = await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, 'pull');
       if (handlePushOutcome(outcome, 'pull')) return;
       await onRefreshGit();
-      refreshAheadBehind();
       onShowToast?.('Pulled successfully', 'info');
     } catch (e: unknown) {
       onShowToast?.(String(e), 'error');
@@ -404,7 +386,6 @@ const handleCredentialSubmit = useCallback(
       const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
       if (handlePushOutcome(outcome, 'push')) return;
       await onRefreshGit();
-      refreshAheadBehind();
       onShowToast?.('Pushed successfully', 'info');
     } catch (e: unknown) {
       onShowToast?.(String(e), 'error');
@@ -488,8 +469,7 @@ const handleCredentialSubmit = useCallback(
         onPush={handlePush}
         onRefresh={() => {
           onRefreshGit().catch(console.error);
-          refreshAheadBehind();
-        }}
+          }}
         onNewBranch={handleNewBranch}
         onNewWorktree={handleNewWorktree}
         onCheckoutBranch={handleCheckoutBranch}
