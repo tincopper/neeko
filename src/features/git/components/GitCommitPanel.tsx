@@ -91,7 +91,7 @@ const handleCredentialSubmit = useCallback(
       setLoading(false);
     }
   },
-  [commands, onRefreshGit, onShowToast],
+  [commands, onRefreshGit, onShowToast, handlePushOutcome],
 );
   const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);

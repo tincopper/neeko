@@ -75,7 +75,7 @@ pub async fn fetch(transport: &GitTransport, work_dir: &str) -> Result<PushOutco
     let result = transport.run_git(&["fetch", "--all"], work_dir).await;
     match result {
         Ok(_) => Ok(PushOutcome::Success),
-        Err(e) => classify_git_error(transport, work_dir, e),
+        Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
 
@@ -96,7 +96,7 @@ pub async fn push(transport: &GitTransport, work_dir: &str, set_upstream: bool) 
     let result = transport.run_git(&args, work_dir).await;
     match result {
         Ok(_) => Ok(PushOutcome::Success),
-        Err(e) => classify_git_error(transport, work_dir, e),
+        Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
 
@@ -128,7 +128,7 @@ pub async fn pull(transport: &GitTransport, work_dir: &str) -> Result<PushOutcom
         .await;
     match result {
         Ok(_) => Ok(PushOutcome::Success),
-        Err(e) => classify_git_error(transport, work_dir, e),
+        Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
 
@@ -150,7 +150,7 @@ pub async fn pull_with_credentials(
         .await;
     match result {
         Ok(_) => Ok(PushOutcome::Success),
-        Err(e) => classify_git_error(transport, work_dir, e),
+        Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
 
@@ -946,7 +946,7 @@ async fn exec_with_credentials(
     match result {
         Ok(_) => Ok(PushOutcome::Success),
         Err(e) => {
-            let classified = classify_git_error(transport, work_dir, e)?;
+            let classified = classify_git_error(transport, work_dir, e).await?;
             if let PushOutcome::AuthRequired { ssh: false, .. } = classified {
                 let _ = credential_reject(transport, work_dir, &helper, &cred, username).await;
                 Ok(PushOutcome::AuthRequired {
@@ -962,7 +962,8 @@ async fn exec_with_credentials(
 }
 
 /// 从 GitExecError 分类为 PushOutcome（Auth / AuthSsh → AuthRequired；其他 bail）。
-fn classify_git_error(
+/// 异步版本，直接 await remote URL 获取，避免嵌套 tokio Runtime。
+async fn classify_git_error(
     transport: &GitTransport,
     work_dir: &str,
     err: anyhow::Error,
@@ -972,7 +973,7 @@ fn classify_git_error(
         .find_map(|c| c.downcast_ref::<GitExecError>())
         .map(|e| e.kind)
         .unwrap_or(ErrorKind::Other);
-    let remote_url = resolve_remote_url_sync(transport, work_dir)
+    let remote_url = get_remote_url(transport, work_dir).await
         .unwrap_or_else(|_| "unknown".to_string());
     let username_hint = extract_username_hint(&remote_url);
     let is_ssh_url = remote_url.starts_with("git@") || remote_url.starts_with("ssh://");
@@ -995,12 +996,6 @@ async fn get_remote_url(transport: &GitTransport, work_dir: &str) -> Result<Stri
         .run_git(&["remote", "get-url", "origin"], work_dir)
         .await
         .map(|s| s.trim().to_string())
-}
-
-/// 同步版（供 classify_git_error 使用，它无法 await）。
-fn resolve_remote_url_sync(transport: &GitTransport, work_dir: &str) -> Result<String> {
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(get_remote_url(transport, work_dir))
 }
 
 /// 获取当前分支名（Option 版，失败返回 None）。

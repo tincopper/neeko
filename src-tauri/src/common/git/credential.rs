@@ -107,15 +107,17 @@ impl Credential {
 
 /// 检测 git credential helper（优先用户配置，回退平台默认）。
 /// 结果不含 leading `-c`，调用方自行拼入 GitExecOptions。
-///
-/// 同步版本，供测试和跨平台调用时使用（tokio runtime 不在测试上下文）。
-fn resolve_credential_helper_sync(transport: &GitTransport, work_dir: &str) -> Result<String> {
-    // 先读用户配置（同步：用 tokio runtime block_on）
-    let rt = tokio::runtime::Runtime::new()?;
-    let output = rt.block_on(transport.run_git(&["config", "--get", "credential.helper"], work_dir))?;
-    let trimmed = output.trim();
+/// 纯 async，直接 await transport.run_git 避免嵌套 tokio Runtime。
+pub async fn resolve_credential_helper(transport: &GitTransport, work_dir: &str) -> Result<String> {
+    let trimmed = match transport
+        .run_git(&["config", "--get", "credential.helper"], work_dir)
+        .await
+    {
+        Ok(out) => out.trim().to_string(),
+        Err(_) => String::new(), // 未配置 → 回退平台默认
+    };
     if !trimmed.is_empty() {
-        return Ok(trimmed.to_string());
+        return Ok(trimmed);
     }
     // 回退平台默认
     let platform_default = if cfg!(target_os = "macos") {
@@ -128,11 +130,6 @@ fn resolve_credential_helper_sync(transport: &GitTransport, work_dir: &str) -> R
         "libsecret"
     };
     Ok(platform_default.to_string())
-}
-
-/// 异步包装器（实际使用场景在 async 上下文）。
-pub async fn resolve_credential_helper(transport: &GitTransport, work_dir: &str) -> Result<String> {
-    resolve_credential_helper_sync(transport, work_dir)
 }
 
 /// 通过 git credential fill 查询缓存凭据。返回 Some(Credential) 表示命中（含 password）。
@@ -279,27 +276,27 @@ mod tests {
 
     // ── resolve_credential_helper ─────────────────────────────────────────
 
-    #[test]
+    #[tokio::test]
     #[cfg(target_os = "macos")]
-    fn should_return_osxkeychain_on_macos_when_no_config() {
+    async fn should_return_osxkeychain_on_macos_when_no_config() {
         let transport = GitTransport::Local;
-        let helper = resolve_credential_helper_sync(&transport, ".").unwrap();
+        let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "osxkeychain");
     }
 
-    #[test]
+    #[tokio::test]
     #[cfg(windows)]
-    fn should_return_manager_on_windows_when_no_config() {
+    async fn should_return_manager_on_windows_when_no_config() {
         let transport = GitTransport::Local;
-        let helper = resolve_credential_helper_sync(&transport, ".").unwrap();
+        let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "manager");
     }
 
-    #[test]
+    #[tokio::test]
     #[cfg(all(not(target_os = "macos"), not(windows)))]
-    fn should_return_libsecret_on_linux_when_no_config() {
+    async fn should_return_libsecret_on_linux_when_no_config() {
         let transport = GitTransport::Local;
-        let helper = resolve_credential_helper_sync(&transport, ".").unwrap();
+        let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "libsecret");
     }
 
