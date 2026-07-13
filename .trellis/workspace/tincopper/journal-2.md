@@ -807,3 +807,36 @@ Implemented terminal file path clicking: Cmd/Ctrl+click opens file in editor tab
 ### Next Steps
 
 - None - task complete
+
+
+## Session 82: Git Push HTTPS 登录支持
+
+**Date**: 2026-07-13
+**Task**: Git Push HTTPS 登录支持
+**Branch**: `main`
+
+### Summary
+
+全面实现了 in-app git HTTPS 登录：\n- transport.rs: GitExecOptions + classify_stderr 错误分类 + stdin 管道\n- 新增 credential.rs: Credential / git credential fill/approve/reject / resolve_credential_helper\n- operations.rs: push/pull/fetch 返回 PushOutcome；新增 with_credentials 变体\n- 前端 GitCredentialDialog + PushOutcome 处理（GitCommitPanel / CommitDialog / ProjectsPanel）\n- 删除 local.rs 旧同步 push/commit_and_push 死代码
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d11a2a9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
