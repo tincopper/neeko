@@ -6,6 +6,8 @@ import { useFileActionsContext } from '@/features/editor/FileActionsContext';
 import { useFileStore } from '@/features/file/store';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useGitStore } from '@/features/git/store';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -231,7 +233,21 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
             : state.activeProject,
       };
     });
-  }, [project, commands]);
+    // Sync ahead/behind to global store for sidebar
+    try {
+      const ab = await commands.getAheadBehind();
+      const cc = connectionContext;
+      if (cc?.type === 'wsl') {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, project.id), ab);
+      } else if (cc?.type === 'remote') {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, project.id), ab);
+      } else {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('local', project.id, project.id), ab);
+      }
+    } catch {
+      // ahead/behind refresh failure should not block the main flow
+    }
+  }, [project, commands, connectionContext]);
 
   if (!project || !commands || !capabilities) {
     return (
