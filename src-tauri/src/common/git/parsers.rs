@@ -2,7 +2,9 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::project::types::{CommitEntry, FileChange, FileNode, FileStatus, GitInfo, Worktree};
+use crate::project::types::{
+    CommitEntry, FileChange, FileNode, FileStatus, GitInfo, GitProvider, Worktree,
+};
 
 // ─── Diff parsers (originally from local.rs) ─────────────────────────────────
 
@@ -219,6 +221,7 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
         worktrees,
         changed_files,
         is_clean,
+        git_provider: GitProvider::Unknown,
     }
 }
 

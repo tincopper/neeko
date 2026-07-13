@@ -210,6 +210,7 @@ export function useLocalProjects() {
       worktrees: [] as Worktree[],
       changed_files: [] as FileChange[],
       is_clean: true,
+      git_provider: '',
     };
 
     const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {

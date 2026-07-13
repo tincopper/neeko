@@ -5,9 +5,10 @@ use crate::common::utils::command::local::safe_path;
 use crate::common::utils::command::ssh::exec_command;
 #[cfg(test)]
 use crate::project::types::FileStatus;
-use crate::project::types::{FileNode, GitInfo};
+use crate::project::types::{FileNode, GitInfo, GitProvider};
 
 use super::parsers::{build_file_tree_from_find, parse_git_info_output};
+use super::provider::detect_provider;
 
 /// 通过 SSH 获取完整 GitInfo（1 次 SSH 连接）
 pub async fn get_remote_git_info(
@@ -27,10 +28,28 @@ pub async fn get_remote_git_info(
           && printf '\\n__WORKTREES__\\n' \
           && git worktree list --porcelain 2>/dev/null \
           && printf '\\n__STATUS__\\n' \
-          && git status --porcelain 2>/dev/null"
+          && git status --porcelain 2>/dev/null \
+          && printf '\\n__REMOTE__\\n' \
+          && git remote get-url origin 2>/dev/null"
     );
     let output = exec_command(host, port, username, auth, &cmd).await?;
-    Ok(parse_git_info_output(&output))
+
+    // Parse the remote URL from the last line (after __REMOTE__ marker)
+    let git_provider = if let Some(remote_pos) = output.rfind("__REMOTE__\n") {
+        let after_marker = &output[remote_pos + "__REMOTE__\n".len()..];
+        let remote_url = after_marker.lines().next().unwrap_or("").trim();
+        if remote_url.is_empty() {
+            GitProvider::Unknown
+        } else {
+            detect_provider(remote_url)
+        }
+    } else {
+        GitProvider::Unknown
+    };
+
+    let mut info = parse_git_info_output(&output);
+    info.git_provider = git_provider;
+    Ok(info)
 }
 
 /// 通过 SSH 读取目录树（使用 find 命令）

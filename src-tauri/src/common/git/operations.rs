@@ -6,11 +6,12 @@ use super::credential::{
 use super::transport::{ErrorKind, GitExecError, GitTransport};
 use super::types::PushOutcome;
 use crate::common::git::parsers::parse_numstat_line;
+use crate::common::git::provider::detect_provider;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::common::utils::command::local::exec;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, Worktree,
+    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, Worktree,
 };
 
 /// Stage specific files: `git add -- <files>`
@@ -635,12 +636,25 @@ pub async fn get_git_info_shell(transport: &GitTransport, work_dir: &str) -> Res
     } else {
         parse_porcelain_status(&changed_files)
     };
+
+    // 检测 Git 提供商
+    let remote_url = transport
+        .run_git(&["remote", "get-url", "origin"], work_dir)
+        .await
+        .unwrap_or_default();
+    let git_provider = if remote_url.trim().is_empty() {
+        GitProvider::Unknown
+    } else {
+        detect_provider(remote_url.trim())
+    };
+
     Ok(GitInfo {
         current_branch: branch_info.current_branch,
         branches: branch_info.branches,
         worktrees: branch_info.worktrees,
         changed_files: files,
         is_clean,
+        git_provider,
     })
 }
 

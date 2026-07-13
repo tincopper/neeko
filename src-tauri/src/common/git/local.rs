@@ -2,7 +2,7 @@ use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::common::utils::command::local::exec;
 use crate::project::types::{
     CommitDetail, CommitEntry, CommitFileChange, FileChange, FileDiffStats, FileStatus,
-    GitBranchInfo, GitInfo, Worktree,
+    GitBranchInfo, GitInfo, GitProvider, Worktree,
 };
 use anyhow::{Context, Result};
 use git2::{BranchType, Repository, Status, StatusOptions};
@@ -22,12 +22,21 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let changed_files = get_changed_files_from_repo(&repo)?;
     let is_clean = changed_files.is_empty();
 
+    // 检测 Git 提供商（复用已打开的 repo，零额外开销）
+    let git_provider = repo
+        .find_remote("origin")
+        .ok()
+        .and_then(|r| r.url().map(|u| u.to_string()))
+        .map(|u| crate::common::git::provider::detect_provider(&u))
+        .unwrap_or(GitProvider::Unknown);
+
     Ok(GitInfo {
         current_branch: branch_info.current_branch,
         branches: branch_info.branches,
         worktrees: branch_info.worktrees,
         changed_files,
         is_clean,
+        git_provider,
     })
 }
 

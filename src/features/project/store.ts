@@ -48,6 +48,7 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
         worktrees: [] as import("@/shared/types").Worktree[],
         changed_files: [] as import("@/shared/types").FileChange[],
         is_clean: true,
+        git_provider: "",
       };
 
       const currentFiles = gitInfo.changed_files ?? [];

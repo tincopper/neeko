@@ -60,6 +60,14 @@ pub struct GitBranchInfo {
     pub worktrees: Vec<Worktree>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum GitProvider {
+    GitHub,
+    Gitee,
+    GitLab,
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitInfo {
     pub current_branch: String,
@@ -67,6 +75,7 @@ pub struct GitInfo {
     pub worktrees: Vec<Worktree>,
     pub changed_files: Vec<FileChange>,
     pub is_clean: bool,
+    pub git_provider: GitProvider,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::common::terminal::types::TerminalSession;
+use crate::common::types::GitProvider;
 
 /// 文件状态
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -61,6 +62,7 @@ pub struct GitInfo {
     pub worktrees: Vec<Worktree>,
     pub changed_files: Vec<FileChange>,
     pub is_clean: bool,
+    pub git_provider: GitProvider,
 }
 
 /// 项目信息

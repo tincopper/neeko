@@ -29,6 +29,7 @@ export interface GitInfo {
   worktrees: Worktree[];
   changed_files: FileChange[];
   is_clean: boolean;
+  git_provider: string;
 }
 
 export interface CommitEntry {

@@ -6,7 +6,7 @@ use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRComment, PRCommit,
+    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, GitProvider, PRComment, PRCommit,
     PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
 use crate::AppError;
@@ -381,12 +381,21 @@ pub async fn get_git_info(transport: GitTransportKind) -> Result<GitInfo, AppErr
         let changed_files = crate::common::git::local::get_changed_files_from_repo(&repo)
             .map_err(AppError::from)?;
         let is_clean = changed_files.is_empty();
+
+        let git_provider = repo
+            .find_remote("origin")
+            .ok()
+            .and_then(|r| r.url().map(|u| u.to_string()))
+            .map(|u| crate::common::git::provider::detect_provider(&u))
+            .unwrap_or(GitProvider::Unknown);
+
         Ok(GitInfo {
             current_branch: branch_info.current_branch,
             branches: branch_info.branches,
             worktrees: branch_info.worktrees,
             changed_files,
             is_clean,
+            git_provider,
         })
     } else {
         operations::get_git_info_shell(&t, wd)

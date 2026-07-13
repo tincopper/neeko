@@ -37,6 +37,7 @@ export function useSessionBootstrap(deps: {
                worktrees: [] as Worktree[],
                changed_files: [] as FileChange[],
                is_clean: true,
+               git_provider: "",
             };
 
             const patchGitInfo = (projectId: string, patch: Partial<typeof defaultGitInfo>) => {
@@ -107,6 +108,7 @@ export function useSessionBootstrap(deps: {
             worktrees: [] as Worktree[],
             changed_files: [] as FileChange[],
             is_clean: true,
+            git_provider: "",
          };
 
          const updateGitInfo = (patch: Partial<typeof defaultGitInfo>) => {

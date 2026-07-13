@@ -47,6 +47,17 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   const currentBranch = gitInfo?.current_branch ?? "";
   const branches = gitInfo?.branches ?? [];
   const worktrees = gitInfo?.worktrees ?? [];
+  const gitProvider = gitInfo?.git_provider ?? "";
+
+  const providerLabel = useMemo(() => {
+    switch (gitProvider) {
+      case "GitHub": return { label: "GitHub", color: "text-accent-blue" };
+      case "GitLab": return { label: "GitLab", color: "text-accent-orange" };
+      case "Bitbucket": return { label: "Bitbucket", color: "text-accent-blue" };
+      case "Gitee": return { label: "Gitee", color: "text-accent-red" };
+      default: return null;
+    }
+  }, [gitProvider]);
 
   // Exclude branches that are already checked out in a worktree
   const availableBranches = useMemo(() => {
@@ -88,6 +99,14 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
               <BranchIcon size={11} />
               {currentBranch}
             </span>
+
+            {providerLabel && (
+              <span
+                className={`text-[calc(var(--font-size)-2px)] ${providerLabel.color} font-medium ml-1 shrink-0`}
+              >
+                {providerLabel.label}
+              </span>
+            )}
 
             {/* Dropdown panel */}
             {branchDropdownOpen && (
