@@ -16,7 +16,7 @@ import GitCredentialDialog from './GitCredentialDialog';
 // Timeout constants (ms). These protect against indefinite IPC hangs caused by
 // the Rust backend's project_manager Mutex being held by a long operation.
 const TIMEOUT_LOCAL_MS = 30_000; // discard, stage, commit
-const TIMEOUT_NETWORK_MS = 60_000; // fetch, pull, push
+const TIMEOUT_NETWORK_MS = 30_000; // fetch, pull, push
 
 interface GitCommitPanelProps {
   project: ProjectView;

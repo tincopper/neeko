@@ -10,7 +10,7 @@ use crate::common::utils::command::ssh::exec_command;
 use crate::common::utils::command::wsl;
 
 const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
-const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(180);
+const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 终端提示默认关闭——所有 git 子进程不挂死等待交互输入（AC5）。
 const GIT_TERMINAL_PROMPT: &str = "0";

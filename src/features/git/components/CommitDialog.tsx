@@ -79,7 +79,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         const transport = { Local: { project_path: projectPath } } as const;
         await commitFiles(transport, filePaths, message.trim());
         if (pushAfter) {
-          const outcome = await withTimeout(push(transport, false), 60_000, 'push');
+          const outcome = await withTimeout(push(transport, false), 30_000, 'push');
           const msg = pushOutcomeMsg(outcome);
           if (msg) { setError(msg); return; }
         }
@@ -99,7 +99,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 60_000, 'push');
+      const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 30_000, 'push');
       const msg = pushOutcomeMsg(outcome);
       if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
@@ -116,7 +116,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 60_000, 'pull');
+      const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 30_000, 'pull');
       const msg = pushOutcomeMsg(outcome);
       if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
