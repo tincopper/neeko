@@ -1,4 +1,4 @@
-import { Info, CheckCircle, AlertTriangle, AlertCircle, X } from 'lucide-react';
+import { Info, CircleCheckBig, CircleAlert, CircleX, X } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useNotificationStore } from '../notificationStore';
@@ -12,17 +12,17 @@ interface NotificationToastProps {
 const TOAST_DURATION = 4000;
 
 const typeIcons: Record<NotificationType, React.FC<{ size?: number; className?: string }>> = {
-  info: (props) => <Info {...props} />,
-  success: (props) => <CheckCircle {...props} />,
-  warning: (props) => <AlertTriangle {...props} />,
-  error: (props) => <AlertCircle {...props} />,
+  info: (props) => <Info strokeWidth={2.5} {...props} />,
+  success: (props) => <CircleCheckBig strokeWidth={2.5} {...props} />,
+  warning: (props) => <CircleAlert strokeWidth={2.5} {...props} />,
+  error: (props) => <CircleX strokeWidth={2.5} {...props} />,
 };
 
 const typeStyles: Record<NotificationType, string> = {
-  info: 'border-l-accent',
+  info: 'border-l-blue-400',
   success: 'border-l-status-idle',
-  warning: 'border-l-yellow-500',
-  error: 'border-l-status-error',
+  warning: 'border-l-yellow-400',
+  error: 'border-l-destructive',
 };
 
 export function NotificationToast({ onOpenList, listOpen }: NotificationToastProps) {

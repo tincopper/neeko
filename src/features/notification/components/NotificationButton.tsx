@@ -23,7 +23,8 @@ export function NotificationButton() {
       if (
         containerRef.current &&
         !containerRef.current.contains(target) &&
-        !(target as Element).closest?.('[data-notification-list]')
+        !(target as Element).closest?.('[data-notification-list]') &&
+        !(target as Element).closest?.('[data-notification-detail]')
       ) {
         setListOpen(false);
       }
@@ -43,7 +44,7 @@ export function NotificationButton() {
       >
         <Bell size={14} strokeWidth={1.8} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-status-error text-[10px] font-medium text-white leading-none">
+          <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full bg-destructive text-[10px] font-medium text-white leading-none">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

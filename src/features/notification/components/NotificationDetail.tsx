@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { Info, CheckCircle, AlertTriangle, AlertCircle, Copy, Check } from 'lucide-react';
+import { Info, CircleCheckBig, CircleAlert, CircleX, Copy, Check } from 'lucide-react';
 import { useState, useCallback } from 'react';
 
 import type { Notification, NotificationType } from '../notificationTypes';
@@ -10,17 +10,17 @@ interface NotificationDetailProps {
 }
 
 const typeIcons: Record<NotificationType, React.FC<{ size?: number; className?: string }>> = {
-  info: (props) => <Info {...props} />,
-  success: (props) => <CheckCircle {...props} />,
-  warning: (props) => <AlertTriangle {...props} />,
-  error: (props) => <AlertCircle {...props} />,
+  info: (props) => <Info strokeWidth={2.5} {...props} />,
+  success: (props) => <CircleCheckBig strokeWidth={2.5} {...props} />,
+  warning: (props) => <CircleAlert strokeWidth={2.5} {...props} />,
+  error: (props) => <CircleX strokeWidth={2.5} {...props} />,
 };
 
 const typeColors: Record<NotificationType, string> = {
-  info: 'text-accent',
+  info: 'text-blue-400',
   success: 'text-status-idle',
-  warning: 'text-yellow-500',
-  error: 'text-status-error',
+  warning: 'text-yellow-400',
+  error: 'text-destructive',
 };
 
 function formatDateTime(ts: number): string {
@@ -62,7 +62,7 @@ export function NotificationDetail({ notification, onClose }: NotificationDetail
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[9998]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border border-border rounded-lg shadow-xl z-[9999] w-[400px] max-w-[90vw]">
+        <Dialog.Content data-notification-detail className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border border-border rounded-lg shadow-xl z-[9999] w-[400px] max-w-[90vw]">
           <div className="px-4 py-3 border-b border-border flex items-center gap-2">
             <span className={typeColors[notification.type]}>
               {typeIcons[notification.type]({ size: 16 })}
@@ -98,7 +98,7 @@ export function NotificationDetail({ notification, onClose }: NotificationDetail
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-popover border border-border text-text-primary hover:bg-hover transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md bg-popover border border-border text-text-primary hover:bg-hover transition-colors cursor-pointer"
             >
               {copied ? (
                 <>

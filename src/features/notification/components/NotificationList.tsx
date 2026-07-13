@@ -1,4 +1,4 @@
-import { Info, CheckCircle, AlertTriangle, AlertCircle, BellOff } from 'lucide-react';
+import { Info, CircleCheckBig, CircleAlert, CircleX, BellOff } from 'lucide-react';
 import { useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
@@ -13,17 +13,17 @@ interface NotificationListProps {
 }
 
 const typeIcons: Record<NotificationType, React.FC<{ size?: number; className?: string }>> = {
-  info: (props) => <Info {...props} />,
-  success: (props) => <CheckCircle {...props} />,
-  warning: (props) => <AlertTriangle {...props} />,
-  error: (props) => <AlertCircle {...props} />,
+  info: (props) => <Info strokeWidth={2.5} {...props} />,
+  success: (props) => <CircleCheckBig strokeWidth={2.5} {...props} />,
+  warning: (props) => <CircleAlert strokeWidth={2.5} {...props} />,
+  error: (props) => <CircleX strokeWidth={2.5} {...props} />,
 };
 
 const typeColors: Record<NotificationType, string> = {
-  info: 'text-accent',
+  info: 'text-blue-400',
   success: 'text-status-idle',
-  warning: 'text-yellow-500',
-  error: 'text-status-error',
+  warning: 'text-yellow-400',
+  error: 'text-destructive',
 };
 
 function formatRelativeTime(ts: number): string {
@@ -75,7 +75,7 @@ export function NotificationList({ buttonRef }: NotificationListProps) {
                 <button
                   type="button"
                   onClick={markAllAsRead}
-                  className="text-[10px] text-accent hover:underline"
+                  className="text-[10px] text-accent-foreground hover:underline"
                 >
                   Mark all read
                 </button>
@@ -107,7 +107,7 @@ export function NotificationList({ buttonRef }: NotificationListProps) {
                           {n.title}
                         </span>
                         {!n.read && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent-foreground shrink-0" />
                         )}
                       </div>
                       <p className="text-[11px] text-text-muted truncate mt-0.5">{n.message}</p>
@@ -129,6 +129,7 @@ export function NotificationList({ buttonRef }: NotificationListProps) {
                 Clear all
               </button>
             )}
+
           </div>
         </div>,
         document.body,
