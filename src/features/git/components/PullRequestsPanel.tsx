@@ -656,8 +656,18 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   </div>
                   {/* Left Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="text-[var(--font-size)] font-medium text-text-primary truncate mb-0.5">
-                      {pr.title}
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-[var(--font-size)] font-medium text-text-primary truncate" title={pr.title}>
+                        {pr.title}
+                      </span>
+                      <span
+                        className={cn(
+                          'shrink-0 px-1.5 py-[1px] rounded text-[8px] font-semibold uppercase tracking-wide',
+                          getStateBadgeClass(pr.state),
+                        )}
+                      >
+                        {pr.state}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[calc(var(--font-size)-2px)] text-text-muted">
                       <span className="font-mono text-accent-blue">#{pr.number}</span>
@@ -722,16 +732,6 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                         </button>
                       </div>
                     )}
-
-                    {/* Status Badge */}
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-wide',
-                        getStateBadgeClass(pr.state),
-                      )}
-                    >
-                      {pr.state}
-                    </span>
 
                     {/* Comment Count */}
                     <div className="flex items-center gap-1 text-text-muted">

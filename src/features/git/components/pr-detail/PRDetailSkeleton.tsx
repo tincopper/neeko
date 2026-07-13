@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Badge } from '@/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface PRDetailSkeletonProps {
   prTitle: string;
@@ -10,12 +10,16 @@ interface PRDetailSkeletonProps {
   onReady?: () => void;
 }
 
-function getStateBadgeVariant(state: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+function getStateBadgeClass(state: string): string {
   switch (state.toUpperCase()) {
-    case 'OPEN': return 'default';
-    case 'CLOSED': return 'destructive';
-    case 'MERGED': return 'secondary';
-    default: return 'outline';
+    case 'OPEN':
+      return 'bg-accent-green/15 text-accent-green';
+    case 'CLOSED':
+      return 'bg-accent-red/15 text-accent-red';
+    case 'MERGED':
+      return 'bg-[#a371f7]/20 text-[#a371f7]';
+    default:
+      return 'bg-bg-tertiary text-text-muted';
   }
 }
 
@@ -58,7 +62,7 @@ const PRDetailSkeleton: React.FC<PRDetailSkeletonProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <h2 className="text-[var(--font-size)] font-semibold text-text-primary truncate">{prTitle}</h2>
           <span className="text-text-muted text-[calc(var(--font-size)-2px)] shrink-0">#{prNumber}</span>
-          <Badge variant={getStateBadgeVariant(prState)} className="shrink-0">{prState.toUpperCase()}</Badge>
+          <span className={cn('shrink-0 px-1.5 py-[1px] rounded text-[8px] font-semibold uppercase tracking-wide', getStateBadgeClass(prState))}>{prState.toUpperCase()}</span>
         </div>
         <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
           <div className="w-5 h-5 rounded-full bg-bg-tertiary animate-pulse shrink-0" />

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { cn } from '@/lib/utils';
 
 import { SplitPane } from '@/shared/components';
 import { FileDiff, GitCommitHorizontal, MessageSquare } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { Badge } from '@/ui/badge';
+
 import { ScrollArea } from '@/ui/ScrollArea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/tabs';
 
@@ -42,16 +43,16 @@ interface PRDetailViewProps {
   onOpenDiff?: (filePath: string) => void;
 }
 
-function getStateBadgeVariant(state: string): 'default' | 'secondary' | 'destructive' | 'outline' {
+function getStateBadgeClass(state: string): string {
   switch (state.toUpperCase()) {
     case 'OPEN':
-      return 'default';
+      return 'bg-accent-green/15 text-accent-green';
     case 'CLOSED':
-      return 'destructive';
+      return 'bg-accent-red/15 text-accent-red';
     case 'MERGED':
-      return 'default';
+      return 'bg-[#a371f7]/20 text-[#a371f7]';
     default:
-      return 'outline';
+      return 'bg-bg-tertiary text-text-muted';
   }
 }
 
@@ -79,6 +80,7 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
   prState,
   prAuthor,
   prCreatedAt,
+  prHeadRef,
   prBaseRef,
 }) => {
   const { config } = useAppContext();
@@ -164,25 +166,30 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
   const { info, files, commits } = resource;
   const author = info.author || prAuthor;
   const createdAt = info.createdAt || prCreatedAt || '';
+  const totalCommits = commits.length;
+  const totalFiles = files.length;
+  const totalAdditions = files.reduce((sum, f) => sum + f.additions, 0);
+  const totalDeletions = files.reduce((sum, f) => sum + f.deletions, 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-bg-secondary">
-        <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-[var(--font-size)] font-semibold text-text-primary truncate">
+      <div className="px-4 py-3 border-b border-border bg-bg-secondary">
+        <div className="title-row">
+          <h1 className="inline text-[var(--font-size)] font-semibold text-text-primary leading-relaxed break-words">
             {prTitle}
-          </h2>
-          <span className="text-text-muted text-[calc(var(--font-size)-2px)] shrink-0">
+          </h1>
+          <span className="text-text-muted text-[calc(var(--font-size)-1px)] ml-1">
             #{prNumber}
           </span>
-          <Badge variant={getStateBadgeVariant(prState)} className="shrink-0">
+          <span className={cn('inline-block align-middle ml-1.5 px-1.5 py-[1px] rounded text-[8px] font-semibold uppercase tracking-wide', getStateBadgeClass(prState))}>
             {prState.toUpperCase()}
-          </Badge>
+          </span>
         </div>
-        <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
-          <div className="w-5 h-5 rounded-full overflow-hidden bg-bg-tertiary flex items-center justify-center text-[10px] font-semibold text-text-muted">
+
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">
+          <span className="inline-flex w-[18px] h-[18px] rounded-full overflow-hidden bg-bg-tertiary items-center justify-center text-[9px] font-semibold text-text-muted shrink-0">
             <img
-              src={`https://avatars.githubusercontent.com/${author}?s=20`}
+              src={`https://avatars.githubusercontent.com/${author}?s=18`}
               alt={author}
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -192,10 +199,56 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
                 ).toUpperCase();
               }}
             />
-          </div>
-          <span>{author}</span>
-          <span>·</span>
-          <span>{formatTimestamp(createdAt)}</span>
+          </span>
+          <strong className="font-medium text-text-secondary">{author}</strong>
+
+          <span className="text-border">|</span>
+
+          <span className="inline-flex items-center px-[5px] h-[18px] rounded text-[10px] font-mono bg-accent-blue/15 text-accent-blue">
+            {prHeadRef}
+          </span>
+          <span className="text-text-muted text-[11px]">→</span>
+          <span className="inline-flex items-center px-[5px] h-[18px] rounded text-[10px] font-mono bg-accent-blue/15 text-accent-blue">
+            {prBaseRef}
+          </span>
+
+          <span className="text-border">·</span>
+          <span>opened {formatTimestamp(createdAt)}</span>
+
+          {info.mergedBy && info.mergedAt && (
+            <>
+              <span className="text-border">·</span>
+              <span>merged by <strong className="font-medium text-text-secondary">{info.mergedBy.login}</strong> {formatTimestamp(info.mergedAt)}</span>
+            </>
+          )}
+
+          {info.closedBy && info.closedAt && !info.mergedBy && (
+            <>
+              <span className="text-border">·</span>
+              <span>closed by <strong className="font-medium text-text-secondary">{info.closedBy.login}</strong> {formatTimestamp(info.closedAt)}</span>
+            </>
+          )}
+
+          <span className="text-border">·</span>
+
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded text-[10px] font-medium bg-[#a371f7]/15 text-[#a371f7]">
+            <GitCommitHorizontal size={11} />
+            {totalCommits} {totalCommits === 1 ? 'commit' : 'commits'}
+          </span>
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded text-[10px] font-medium bg-accent-blue/15 text-accent-blue">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+            {totalFiles} {totalFiles === 1 ? 'file' : 'files'}
+          </span>
+          {totalAdditions > 0 && (
+            <span className="inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-medium bg-accent-green/10 text-accent-green">
+              +{totalAdditions.toLocaleString()}
+            </span>
+          )}
+          {totalDeletions > 0 && (
+            <span className="inline-flex items-center px-1.5 py-[1px] rounded text-[10px] font-medium bg-accent-red/10 text-accent-red">
+              -{totalDeletions.toLocaleString()}
+            </span>
+          )}
         </div>
       </div>
 
