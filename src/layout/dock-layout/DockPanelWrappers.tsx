@@ -249,6 +249,22 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     }
   }, [project, commands, connectionContext]);
 
+  // 从全局 useGitStore 读取 ahead/behind（单数据源），传入 commit panel
+  const aheadBehindMap = useGitStore((s) => s.aheadBehind);
+  const aheadBehind = useMemo(() => {
+    if (!project || !connectionContext) return null;
+    const cc = connectionContext;
+    let key;
+    if (cc.type === 'wsl') {
+      key = aheadBehindKey('wsl', cc.distro, project.id);
+    } else if (cc.type === 'remote') {
+      key = aheadBehindKey('remote', cc.host, project.id);
+    } else {
+      key = aheadBehindKey('local', project.id, project.id);
+    }
+    return aheadBehindMap[key] ?? null;
+  }, [project, connectionContext, aheadBehindMap]);
+
   if (!project || !commands || !capabilities) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">
@@ -302,22 +318,6 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     editorState.addTab(tabKey, tab);
     editorState.activateTab(tabKey, tabId);
   };
-
-  // 从全局 useGitStore 读取 ahead/behind（单数据源），传入 commit panel
-  const aheadBehindMap = useGitStore((s) => s.aheadBehind);
-  const aheadBehind = useMemo(() => {
-    if (!project || !connectionContext) return null;
-    const cc = connectionContext;
-    let key;
-    if (cc.type === 'wsl') {
-      key = aheadBehindKey('wsl', cc.distro, project.id);
-    } else if (cc.type === 'remote') {
-      key = aheadBehindKey('remote', cc.host, project.id);
-    } else {
-      key = aheadBehindKey('local', project.id, project.id);
-    }
-    return aheadBehindMap[key] ?? null;
-  }, [project, connectionContext, aheadBehindMap]);
 
   return (
     <GitCommitPanel
