@@ -1,265 +1,189 @@
-# 实施计划：Git Provider 检测
+# 实施计划：Git Provider 检测 & PR 后端接口化
 
-## 概览
+## Phase 1: Git Provider 检测（已完成 ✅）
+
+| 步骤 | 文件 | 状态 | 提交 |
+|---|---|---|---|
+| 1 | `src-tauri/src/common/types.rs` | ✅ `GitProvider` 枚举 + `GitInfo.git_provider` | `dc65746` |
+| 2 | `src-tauri/src/project/model.rs` | ✅ 同步 `GitInfo.git_provider` | `dc65746` |
+| 3 | `src-tauri/src/common/git/provider.rs` | ✅ 新建：检测逻辑 + 单元测试 | `dc65746` |
+| 4 | `src-tauri/src/common/git/mod.rs` | ✅ 注册 `provider` 模块 | `dc65746` |
+| 5 | `src-tauri/src/common/git/local.rs` | ✅ 在 `get_git_info` 中接入检测 | `dc65746` |
+| 6 | `src-tauri/src/common/git/operations.rs` | ✅ 在 `get_git_info_shell` 中接入检测 | `dc65746` |
+| 7 | `src-tauri/src/common/git/remote.rs` | ✅ 在 `get_remote_git_info` 中接入检测 | `dc65746` |
+| 8 | `src/features/git/types.ts` | ✅ 添加 `git_provider` 到 `GitInfo` | `dc65746` |
+| 9 | `src/features/git/components/BranchInfo.tsx` | ✅ 显示 provider 标签 | `dc65746` |
+
+## Phase 2: PR 后端接口化
+
+### 概览
 
 | 步骤 | 文件 | 操作 | 验证方式 |
 |---|---|---|---|
-| 1 | `src-tauri/src/common/types.rs` | 添加 `GitProvider` 枚举 + `GitInfo.git_provider` | `cargo check` |
-| 2 | `src-tauri/src/project/model.rs` | 同步 `GitInfo.git_provider` | `cargo check` |
-| 3 | `src-tauri/src/common/git/provider.rs` | 新建：检测逻辑 | `cargo test` |
-| 4 | `src-tauri/src/common/git/mod.rs` | 注册 `provider` 模块 | `cargo check` |
-| 5 | `src-tauri/src/common/git/local.rs` | 在 `get_git_info` 中接入检测 | `cargo test` |
-| 6 | `src-tauri/src/common/git/operations.rs` | 在 `get_git_info_shell` 中接入检测 | `cargo test` |
-| 7 | `src-tauri/src/common/git/remote.rs` | 在 `get_remote_git_info` 中接入检测 | `cargo test` |
-| 8 | `src/features/git/types.ts` | 添加 `gitProvider` 到 `GitInfo` | `pnpm type-check` |
+| 1 | `src-tauri/src/common/git/pr/` | 创建目录，`pr.rs` 拆分为 `mod.rs` + `github.rs` | `cargo check` |
+| 2 | `src-tauri/src/common/git/pr/mod.rs` | 定义 `PrProvider` trait + ProviderStore + Factory | `cargo check` |
+| 3 | `src-tauri/src/common/git/pr/github.rs` | 迁移现有 `gh` CLI 代码为 `GitHubPrProvider` | `cargo check` |
+| 4 | `src-tauri/src/common/git/pr/mod.rs` | 实现 17 个 dispatch 函数 + `checkout_pr` 独立函数 | `cargo test` |
+| 5 | `src-tauri/src/common/git/pr/gitlab.rs` | stub: 返回 "not yet supported" | `cargo check` |
+| 6 | `src-tauri/src/common/git/pr/gitee.rs` | stub: 返回 "not yet supported" | `cargo check` |
+| 7 | `src-tauri/src/common/git/local.rs` | `get_git_info` 中调用 `set_cached_provider` | `cargo test` |
+| 8 | 回归验证 | `cargo test` + `pnpm type-check` + `pnpm tauri build` | 全部通过 |
 
-## 详细步骤
+### Step 1: 创建 `pr/` 目录 + 迁移代码
 
-### Step 1: `src-tauri/src/common/types.rs`
+1. `rm src-tauri/src/common/git/pr.rs`
+2. `mkdir src-tauri/src/common/git/pr/`
+3. 创建 `pr/mod.rs` — 新文件（trait + dispatch + store）
+4. 创建 `pr/github.rs` — 从原 `pr.rs` 提取 GitHub 实现
 
-在 `Worktree` struct 之后、`GitInfo` struct 之前添加：
+**注意**：`git/mod.rs` 第 8 行 `pub use crate::common::git::pr::*;` 和 `common/git/mod.rs` 第 7 行 `pub mod pr;` 第 20 行 `pub use pr::*;` 均正常工作，无需改动。
+
+### Step 2: `pr/mod.rs` — Trait + ProviderStore + Factory
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum GitProvider {
-    GitHub,
-    Gitee,
-    GitLab,
-    Unknown,
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+// ─── PrProvider Trait ───────────────────────────────────────
+pub trait PrProvider: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn is_installed(&self) -> bool;
+    fn is_authenticated(&self) -> bool;
+    fn list_prs(&self, repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>>;
+    // ... 17 个方法 ...
 }
-```
 
-修改 `GitInfo` struct，追加字段：
+// ─── ProviderStore ──────────────────────────────────────────
+static PROVIDER_STORE: OnceLock<Mutex<HashMap<PathBuf, GitProvider>>> = OnceLock::new();
 
-```rust
-pub struct GitInfo {
-    pub current_branch: String,
-    pub branches: Vec<String>,
-    pub worktrees: Vec<Worktree>,
-    pub changed_files: Vec<FileChange>,
-    pub is_clean: bool,
-    pub git_provider: GitProvider,  // ← 新增
+fn store() -> &'static Mutex<HashMap<PathBuf, GitProvider>> {
+    PROVIDER_STORE.get_or_init(|| Mutex::new(HashMap::new()))
 }
-```
 
-### Step 2: `src-tauri/src/project/model.rs`
+/// 缓存优先，未命中时检测并缓存
+pub fn resolve_provider(repo_path: &Path) -> GitProvider { ... }
 
-两个 `GitInfo` 结构体内容相同。同步追加 `git_provider: GitProvider`。
+/// 由 get_git_info 在刷新时注入
+pub fn set_cached_provider(repo_path: &Path, provider: GitProvider) { ... }
 
-### Step 3: `src-tauri/src/common/git/provider.rs`（新建）
+/// 写操作后清除缓存
+pub fn invalidate_provider_cache(repo_path: &Path) { ... }
 
-```rust
-use anyhow::Result;
-use std::path::Path;
-
-use crate::common::types::GitProvider;
-
-/// 从 remote URL 检测 Git 提供商
-pub fn detect_provider(remote_url: &str) -> GitProvider {
-    let url = remote_url.trim().to_lowercase();
-    if url.contains("github.com") {
-        GitProvider::GitHub
-    } else if url.contains("gitee.com") {
-        GitProvider::Gitee
-    } else if url.contains("gitlab.") {
-        GitProvider::GitLab
-    } else {
-        GitProvider::Unknown
+// ─── Factory ────────────────────────────────────────────────
+fn create_provider(provider: GitProvider) -> Result<Box<dyn PrProvider>> {
+    match provider {
+        GitProvider::GitHub => Ok(Box::new(github::GitHubPrProvider)),
+        GitProvider::GitLab => Err(anyhow::anyhow!("GitLab PR 操作暂不支持")),
+        GitProvider::Gitee => Err(anyhow::anyhow!("Gitee PR 操作暂不支持")),
+        GitProvider::Unknown => Err(anyhow::anyhow!("未知 Git 提供商，PR 操作不可用")),
     }
 }
 
-/// 执行 git remote get-url origin（同步，local 使用）
-pub fn get_git_provider(repo_path: &Path) -> Result<GitProvider> {
+// ─── Dispatch Functions ─────────────────────────────────────
+// 17 个 pub fn + 1 个 checkout_pr
+
+pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
+    let provider = resolve_provider(repo_path);
+    let client = create_provider(provider)?;
+    cache::get_cached_pr_list(repo_path, state, limit, || {
+        client.list_prs(repo_path, state, limit)
+    })
+}
+
+// ... 其余 dispatch 函数类似 ...
+
+/// checkout_pr 是 git 原生操作，不经过 Provider
+pub fn checkout_pr(repo_path: &Path, pr_number: u64) -> Result<()> {
     let output = std::process::Command::new("git")
-        .args(["remote", "get-url", "origin"])
+        .args(["fetch", "origin", &format!("pull/{}/head:pr-{}", pr_number, pr_number)])
         .current_dir(repo_path)
         .output()?;
-    if output.status.success() {
-        let url = String::from_utf8_lossy(&output.stdout);
-        Ok(detect_provider(&url))
-    } else {
-        Ok(GitProvider::Unknown)
+    if !output.status.success() {
+        anyhow::bail!("git fetch failed: {}", String::from_utf8_lossy(&output.stderr).trim());
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_detect_github_ssh() {
-        assert_eq!(
-            detect_provider("git@github.com:user/repo.git"),
-            GitProvider::GitHub
-        );
+    let output = std::process::Command::new("git")
+        .args(["checkout", &format!("pr-{}", pr_number)])
+        .current_dir(repo_path)
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("git checkout failed: {}", String::from_utf8_lossy(&output.stderr).trim());
     }
-
-    #[test]
-    fn test_detect_github_https() {
-        assert_eq!(
-            detect_provider("https://github.com/user/repo.git"),
-            GitProvider::GitHub
-        );
-    }
-
-    #[test]
-    fn test_detect_gitee() {
-        assert_eq!(
-            detect_provider("git@gitee.com:user/repo.git"),
-            GitProvider::Gitee
-        );
-    }
-
-    #[test]
-    fn test_detect_gitlab_com() {
-        assert_eq!(
-            detect_provider("git@gitlab.com:user/repo.git"),
-            GitProvider::GitLab
-        );
-    }
-
-    #[test]
-    fn test_detect_gitlab_self_hosted() {
-        assert_eq!(
-            detect_provider("git@gitlab.example.com:user/repo.git"),
-            GitProvider::GitLab
-        );
-    }
-
-    #[test]
-    fn test_detect_unknown() {
-        assert_eq!(
-            detect_provider("git@bitbucket.org:user/repo.git"),
-            GitProvider::Unknown
-        );
-    }
-
-    #[test]
-    fn test_detect_empty() {
-        assert_eq!(detect_provider(""), GitProvider::Unknown);
-    }
+    Ok(())
 }
 ```
 
-### Step 4: `src-tauri/src/common/git/mod.rs`
+### Step 3: `pr/github.rs` — GitHub 实现
 
-追加两行：
+从原 `pr.rs` 迁移，去掉 cache 包裹和 invalidate 调用：
+
 ```rust
-pub mod provider;
+pub struct GitHubPrProvider;
+
+impl PrProvider for GitHubPrProvider {
+    fn name(&self) -> &'static str { "GitHub" }
+    fn is_installed(&self) -> bool { ... }
+    fn is_authenticated(&self) -> bool { ... }
+
+    fn list_prs(&self, repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
+        // gh CLI 调用，无 cache 包裹
+        let output = no_window_cmd("gh")
+            .args(["pr", "list", "--json", "...", "--state", state, "--limit", &limit.to_string()])
+            .current_dir(repo_path)
+            .output()?;
+        // ... 解析 JSON ...
+    }
+
+    // ... 其余方法同理 ...
+}
+
+// 内部 helper 函数/方法
+fn no_window_cmd(program: &str) -> Command { ... }
+fn get_gh_repo_owner_name(repo_path: &Path) -> Result<(String, String)> { ... }
 // ...
-pub use provider::*;
 ```
 
-### Step 5: `src-tauri/src/common/git/local.rs`
+### Step 4: Dispatch 函数 + checkout_pr
 
-在 `get_git_info` 函数中，`Repository` 已打开，直接复用：
+dispatch 函数模板：
+```
+resolve_provider(repo_path) → GitProvider
+  match: create_provider(provider) → Box<dyn PrProvider>
+    调用 provider.method(repo_path, args...)
+    包裹 cache::get_cached_*(repo_path, ..., || provider.method(...))
+```
+
+写操作（`merge_pr`, `close_pr`, `checkout_pr`）额外调用 `invalidate_repo_caches(repo_path)` + `invalidate_provider_cache(repo_path)`。
+
+### Step 5-6: GitLab / Gitee Stub
 
 ```rust
-pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-    let branch_info = get_git_branch_info_from_repo(&repo)?;
-    let changed_files = get_changed_files_from_repo(&repo)?;
-    let is_clean = changed_files.is_empty();
-
-    // 检测 Git 提供商
-    let git_provider = repo
-        .find_remote("origin")
-        .ok()
-        .and_then(|r| r.url().map(|u| u.to_string()))
-        .map(|u| crate::common::git::provider::detect_provider(&u))
-        .unwrap_or(GitProvider::Unknown);
-
-    Ok(GitInfo {
-        current_branch: branch_info.current_branch,
-        branches: branch_info.branches,
-        worktrees: branch_info.worktrees,
-        changed_files,
-        is_clean,
-        git_provider,  // ← 新增
-    })
+pub struct GitLabPrProvider;
+impl PrProvider for GitLabPrProvider {
+    fn name(&self) -> &'static str { "GitLab" }
+    // 所有方法返回 Err("GitLab PR operations not yet supported")
 }
 ```
 
-### Step 6: `src-tauri/src/common/git/operations.rs`
+### Step 7: `local.rs` 注入缓存
 
-在 `get_git_info_shell` 函数末尾添加 provider 检测。注：已存在的 `get_remote_url` 是私有函数（第 1046 行），需要改为 `pub(crate)` 或直接内联。
+在 `get_git_info` 的 `Ok(GitInfo { ... git_provider, ... })` 之前添加：
 
 ```rust
-pub async fn get_git_info_shell(transport: &GitTransport, work_dir: &str) -> Result<GitInfo> {
-    // ... 现有逻辑 ...
-
-    // 检测 Git 提供商
-    let remote_url = transport
-        .run_git(&["remote", "get-url", "origin"], work_dir)
-        .await
-        .unwrap_or_default();
-    let git_provider = if remote_url.trim().is_empty() {
-        GitProvider::Unknown
-    } else {
-        crate::common::git::provider::detect_provider(&remote_url)
-    };
-
-    Ok(GitInfo {
-        current_branch: branch_info.current_branch,
-        branches: branch_info.branches,
-        worktrees: branch_info.worktrees,
-        changed_files: files,
-        is_clean,
-        git_provider,
-    })
-}
+crate::common::git::pr::set_cached_provider(repo_path, git_provider);
 ```
 
-### Step 7: `src-tauri/src/common/git/remote.rs`
-
-在 `get_remote_git_info` 中添加独立的 SSH 调用来获取 remote URL：
-
-```rust
-pub async fn get_remote_git_info(
-    host: &str, port: u16, username: &str, auth: &AuthMethod, project_path: &str,
-) -> Result<GitInfo> {
-    let sp = safe_path(project_path);
-    // ... 现有组合命令 ...
-
-    // 额外的 remote URL 检测（独立 SSH 调用）
-    let remote_url_cmd = format!(
-        "cd '{sp}' && git remote get-url origin 2>/dev/null || true"
-    );
-    let remote_url = exec_command(host, port, username, auth, &remote_url_cmd).await
-        .unwrap_or_default();
-    let git_provider = crate::common::git::provider::detect_provider(&remote_url);
-
-    let mut info = parse_git_info_output(&output);
-    info.git_provider = git_provider;
-    Ok(info)
-}
-```
-
-### Step 8: `src/features/git/types.ts`
-
-```typescript
-export interface GitInfo {
-  current_branch: string;
-  branches: string[];
-  worktrees: Worktree[];
-  changed_files: FileChange[];
-  is_clean: boolean;
-  gitProvider: 'github' | 'gitee' | 'gitlab' | 'unknown';  // ← 新增
-}
-```
-
-## 验证清单
+### Step 8: 回归验证
 
 ```bash
-# 1. Rust 编译
-cargo check --manifest-path src-tauri/Cargo.toml
-
-# 2. Rust 测试（含新加的 detect_provider 单元测试）
 cargo test --manifest-path src-tauri/Cargo.toml
-
-# 3. 前端类型检查
 pnpm type-check
-
-# 4. Lint
-pnpm lint
+# 可选：手动启动 tauri dev 验证 PR 功能
+pnpm tauri build --ci    # 只检查编译
 ```
+
+## 需特别关注的细节
+
+1. **`commands.rs` 中的 `list_pr_review_comments_command`** 是唯一 `async fn` 的 PR 命令，使用 `tokio::task::spawn_blocking` 调用 `crate::git::list_pr_review_comments`。dispatch 函数必须保持为 `fn`（非 async），否则会破坏这个模式。
+2. **`no_window_cmd`** 当前是 `pr.rs` 中的私有函数。重构后需要在 `pr/mod.rs` 中暴露为 `pub(crate)` 函数供所有 provider 使用。
+3. **`invalidate_repo_caches`** 当前在 `merge_pr` / `close_pr` / `checkout_pr` 中调用。dispatch 函数负责此调用，provider 实现不再关心缓存。

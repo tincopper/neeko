@@ -1,1 +1,11 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/07-13-git-provider-detection/design.md", "reason": "Verify Phase 2 design: PrProvider trait completeness, ProviderStore API, module structure"}
+{"file": ".trellis/tasks/07-13-git-provider-detection/implement.md", "reason": "Verify Phase 2 implementation steps: all 8 steps, code templates, migration guide"}
+{"file": "src-tauri/src/common/git/pr.rs", "reason": "Verify: original 1198-line file removed, replaced by pr/ directory"}
+{"file": "src-tauri/src/common/git/pr/mod.rs", "reason": "Verify: PrProvider trait defined, ProviderStore implemented, 17 dispatch functions, checkout_pr, re-exports"}
+{"file": "src-tauri/src/common/git/pr/github.rs", "reason": "Verify: GitHubPrProvider implements all trait methods, gh CLI calls, internal helpers"}
+{"file": "src-tauri/src/common/git/pr/gitlab.rs", "reason": "Verify: GitLabPrProvider stub returns unsupported error"}
+{"file": "src-tauri/src/common/git/pr/gitee.rs", "reason": "Verify: GiteePrProvider stub returns unsupported error"}
+{"file": "src-tauri/src/common/git/local.rs", "reason": "Verify: get_git_info calls set_cached_provider after detecting provider"}
+{"file": "src-tauri/src/common/git/cache.rs", "reason": "Verify: cache.rs unchanged — no modifications to cache logic"}
+{"file": "src-tauri/src/git/commands.rs", "reason": "Verify: commands.rs unchanged — all PR command signatures preserved"}
+{"file": "src-tauri/src/common/git/mod.rs", "reason": "Verify: pub mod pr; pub use pr::*; works with directory module"}
