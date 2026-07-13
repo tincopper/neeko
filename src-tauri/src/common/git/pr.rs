@@ -1,4 +1,7 @@
-use crate::project::types::{Actor, PRInfo, PRListItem, PRMergeResult, PRFileChange, PRCommit, PRComment, PRReviewComment, CommentReaction, PrLabel};
+use crate::project::types::{
+    Actor, CommentReaction, PRComment, PRCommit, PRFileChange, PRInfo, PRListItem, PRMergeResult,
+    PRReviewComment, PrLabel,
+};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -65,8 +68,12 @@ pub fn list_prs(repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRLis
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        log::info!("[list_prs] Raw output: {}", &stdout[..stdout.len().min(500)]);
-        let mut result: Vec<PRListItem> = serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
+        log::info!(
+            "[list_prs] Raw output: {}",
+            &stdout[..stdout.len().min(500)]
+        );
+        let mut result: Vec<PRListItem> =
+            serde_json::from_str(&stdout).context("Failed to parse gh pr list output")?;
         // Compute comment_count from the comments array
         for item in &mut result {
             item.comment_count = item.comments.len() as u64;
@@ -103,7 +110,9 @@ pub fn list_repo_labels(repo_path: &Path) -> Result<Vec<PrLabel>> {
 pub fn list_repo_authors(repo_path: &Path) -> Result<Vec<String>> {
     cache::get_cached_repo_authors(repo_path, || {
         let output = no_window_cmd("gh")
-            .args(["pr", "list", "--state", "all", "--limit", "1000", "--json", "author"])
+            .args([
+                "pr", "list", "--state", "all", "--limit", "1000", "--json", "author",
+            ])
             .current_dir(repo_path)
             .output()
             .context("Failed to run gh pr list for authors")?;
@@ -153,7 +162,8 @@ pub fn view_pr(repo_path: &Path, pr_number: u64) -> Result<PRInfo> {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut info: PRInfo = serde_json::from_str(&stdout).context("Failed to parse gh pr view output")?;
+        let mut info: PRInfo =
+            serde_json::from_str(&stdout).context("Failed to parse gh pr view output")?;
 
         // `closedBy` is not available in gh pr view --json, so fetch it separately
         if info.closed_by.is_none() {
@@ -178,17 +188,16 @@ fn fetch_pr_closed_by(repo_path: &Path, pr_number: u64) -> Result<Option<Actor>>
         return Ok(None);
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout),
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let name = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let name = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || name.is_empty() {
         return Ok(None);
@@ -346,13 +355,7 @@ pub fn checkout_pr(repo_path: &Path, pr_number: u64) -> Result<()> {
 /// 获取 PR 变更文件列表
 pub fn list_pr_files(repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChange>> {
     let output = no_window_cmd("gh")
-        .args([
-            "pr",
-            "view",
-            &pr_number.to_string(),
-            "--json",
-            "files",
-        ])
+        .args(["pr", "view", &pr_number.to_string(), "--json", "files"])
         .current_dir(repo_path)
         .output()
         .context("Failed to run gh pr view")?;
@@ -363,8 +366,8 @@ pub fn list_pr_files(repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChang
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout)
-        .context("Failed to parse gh pr view output")?;
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout).context("Failed to parse gh pr view output")?;
 
     let files = value
         .get("files")
@@ -375,7 +378,8 @@ pub fn list_pr_files(repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChang
                     let path = f.get("path")?.as_str()?.to_string();
                     let additions = f.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
                     let deletions = f.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let change_type = f.get("changeType")
+                    let change_type = f
+                        .get("changeType")
                         .and_then(|v| v.as_str())
                         .unwrap_or("MODIFIED");
                     let status = match change_type {
@@ -401,13 +405,7 @@ pub fn list_pr_files(repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChang
 /// 获取 PR 提交列表
 pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>> {
     let output = no_window_cmd("gh")
-        .args([
-            "pr",
-            "view",
-            &pr_number.to_string(),
-            "--json",
-            "commits",
-        ])
+        .args(["pr", "view", &pr_number.to_string(), "--json", "commits"])
         .current_dir(repo_path)
         .output()
         .context("Failed to run gh pr view")?;
@@ -418,8 +416,8 @@ pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let value: serde_json::Value = serde_json::from_str(&stdout)
-        .context("Failed to parse gh pr view output")?;
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout).context("Failed to parse gh pr view output")?;
 
     let commits = value
         .get("commits")
@@ -429,19 +427,22 @@ pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>
                 .filter_map(|c| {
                     let oid = c.get("oid")?.as_str()?.to_string();
                     let short_hash = oid.chars().take(7).collect::<String>();
-                    let message_headline = c.get("messageHeadline")
+                    let message_headline = c
+                        .get("messageHeadline")
                         .and_then(|m| m.as_str())
                         .unwrap_or("")
                         .to_string();
                     // authors is an array, get first author's login
-                    let author_login = c.get("authors")
+                    let author_login = c
+                        .get("authors")
                         .and_then(|a| a.as_array())
                         .and_then(|arr| arr.first())
                         .and_then(|a| a.get("login"))
                         .and_then(|l| l.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let authored_date = c.get("authoredDate")
+                    let authored_date = c
+                        .get("authoredDate")
                         .and_then(|d| d.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -464,7 +465,11 @@ pub fn list_pr_commits(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>
 
 /// 获取 PR 评论列表（合并 issue comments + PR reviews）
 pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRComment>> {
-    log::info!("[list_pr_comments] Loading comments for PR #{} at {:?}", pr_number, repo_path);
+    log::info!(
+        "[list_pr_comments] Loading comments for PR #{} at {:?}",
+        pr_number,
+        repo_path
+    );
 
     // First get the repo info to construct the API URL
     let repo_output = no_window_cmd("gh")
@@ -475,21 +480,23 @@ pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommen
 
     if !repo_output.status.success() {
         let stderr = String::from_utf8_lossy(&repo_output.stderr);
-        log::error!("[list_pr_comments] Failed to get repo info: {}", stderr.trim());
+        log::error!(
+            "[list_pr_comments] Failed to get repo info: {}",
+            stderr.trim()
+        );
         anyhow::bail!("Failed to get repo info");
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout)
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let repo = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let repo = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || repo.is_empty() {
         anyhow::bail!("Failed to get owner or repo name");
@@ -506,19 +513,32 @@ pub fn list_pr_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommen
     let review_count = review_comments.len();
 
     // 3. Merge and sort by created_at
-    let mut all_comments: Vec<PRComment> = issue_comments.into_iter().chain(review_comments).collect();
+    let mut all_comments: Vec<PRComment> =
+        issue_comments.into_iter().chain(review_comments).collect();
     all_comments.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
-    log::info!("[list_pr_comments] Merged {} comments ({} issue + {} reviews)",
-        all_comments.len(), issue_count, review_count);
+    log::info!(
+        "[list_pr_comments] Merged {} comments ({} issue + {} reviews)",
+        all_comments.len(),
+        issue_count,
+        review_count
+    );
 
     Ok(all_comments)
 }
 
 /// 拉取 issue comments（普通讨论评论）
-fn fetch_issue_comments(owner: &str, repo: &str, pr_number: u64, repo_path: &Path) -> Result<Vec<PRComment>> {
+fn fetch_issue_comments(
+    owner: &str,
+    repo: &str,
+    pr_number: u64,
+    repo_path: &Path,
+) -> Result<Vec<PRComment>> {
     let output = no_window_cmd("gh")
-        .args(["api", &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number)])
+        .args([
+            "api",
+            &format!("repos/{}/{}/issues/{}/comments", owner, repo, pr_number),
+        ])
         .current_dir(repo_path)
         .output()
         .context("Failed to list PR comments")?;
@@ -529,40 +549,58 @@ fn fetch_issue_comments(owner: &str, repo: &str, pr_number: u64, repo_path: &Pat
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let values: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .context("Failed to parse PR comments response")?;
+    let values: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).context("Failed to parse PR comments response")?;
 
-    Ok(values.iter().filter_map(|v| {
-        let id = v.get("id")?.as_u64()?.to_string();
-        let author = v.get("user")?.get("login")?.as_str()?.to_string();
-        let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(|s| s.to_string());
-        let body = v.get("body")?.as_str()?.to_string();
-        let created_at = v.get("created_at")?.as_str()?.to_string();
-        let updated_at = v.get("updated_at")?.as_str().map(|s| s.to_string());
+    Ok(values
+        .iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_u64()?.to_string();
+            let author = v.get("user")?.get("login")?.as_str()?.to_string();
+            let author_avatar = v
+                .get("user")?
+                .get("avatar_url")?
+                .as_str()
+                .map(|s| s.to_string());
+            let body = v.get("body")?.as_str()?.to_string();
+            let created_at = v.get("created_at")?.as_str()?.to_string();
+            let updated_at = v.get("updated_at")?.as_str().map(|s| s.to_string());
 
-        Some(PRComment {
-            id,
-            author,
-            author_avatar,
-            body,
-            created_at,
-            updated_at,
-            reactions: None,
+            Some(PRComment {
+                id,
+                author,
+                author_avatar,
+                body,
+                created_at,
+                updated_at,
+                reactions: None,
+            })
         })
-    }).collect())
+        .collect())
 }
 
 /// 拉取 PR reviews（审查摘要，转换为 PRComment 格式）
-fn fetch_pr_reviews(owner: &str, repo: &str, pr_number: u64, repo_path: &Path) -> Result<Vec<PRComment>> {
+fn fetch_pr_reviews(
+    owner: &str,
+    repo: &str,
+    pr_number: u64,
+    repo_path: &Path,
+) -> Result<Vec<PRComment>> {
     let output = no_window_cmd("gh")
-        .args(["api", &format!("repos/{}/{}/pulls/{}/reviews", owner, repo, pr_number)])
+        .args([
+            "api",
+            &format!("repos/{}/{}/pulls/{}/reviews", owner, repo, pr_number),
+        ])
         .current_dir(repo_path)
         .output()
         .context("Failed to list PR reviews")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        log::warn!("[list_pr_comments] Failed to fetch PR reviews: {}", stderr.trim());
+        log::warn!(
+            "[list_pr_comments] Failed to fetch PR reviews: {}",
+            stderr.trim()
+        );
         return Ok(vec![]); // reviews are optional — non-blocking
     }
 
@@ -584,31 +622,38 @@ fn fetch_pr_reviews(owner: &str, repo: &str, pr_number: u64, repo_path: &Path) -
         }
     };
 
-    Ok(values.iter().filter_map(|v| {
-        let id = v.get("id")?.as_u64()?.to_string();
-        let author = v.get("user")?.get("login")?.as_str()?.to_string();
-        let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(|s| s.to_string());
-        let body = v.get("body")?.as_str().unwrap_or("").to_string();
-        let state = v.get("state")?.as_str().unwrap_or("").to_string();
-        let submitted_at = v.get("submitted_at")?.as_str()?.to_string();
+    Ok(values
+        .iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_u64()?.to_string();
+            let author = v.get("user")?.get("login")?.as_str()?.to_string();
+            let author_avatar = v
+                .get("user")?
+                .get("avatar_url")?
+                .as_str()
+                .map(|s| s.to_string());
+            let body = v.get("body")?.as_str().unwrap_or("").to_string();
+            let state = v.get("state")?.as_str().unwrap_or("").to_string();
+            let submitted_at = v.get("submitted_at")?.as_str()?.to_string();
 
-        // Prefix body with review state for visibility
-        let display_body = if body.is_empty() {
-            format!("{}", state_label(&state))
-        } else {
-            format!("{}:\n\n{}", state_label(&state), body)
-        };
+            // Prefix body with review state for visibility
+            let display_body = if body.is_empty() {
+                format!("{}", state_label(&state))
+            } else {
+                format!("{}:\n\n{}", state_label(&state), body)
+            };
 
-        Some(PRComment {
-            id,
-            author,
-            author_avatar,
-            body: display_body,
-            created_at: submitted_at.clone(),
-            updated_at: Some(submitted_at),
-            reactions: None,
+            Some(PRComment {
+                id,
+                author,
+                author_avatar,
+                body: display_body,
+                created_at: submitted_at.clone(),
+                updated_at: Some(submitted_at),
+                reactions: None,
+            })
         })
-    }).collect())
+        .collect())
 }
 
 /// 添加 PR 评论
@@ -625,21 +670,23 @@ pub fn add_pr_comment(repo_path: &Path, pr_number: u64, body: &str) -> Result<PR
 
     if !repo_output.status.success() {
         let stderr = String::from_utf8_lossy(&repo_output.stderr);
-        log::error!("[add_pr_comment] Failed to get repo info: {}", stderr.trim());
+        log::error!(
+            "[add_pr_comment] Failed to get repo info: {}",
+            stderr.trim()
+        );
         anyhow::bail!("Failed to get repo info");
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout)
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let repo = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let repo = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || repo.is_empty() {
         anyhow::bail!("Failed to get owner or repo name");
@@ -667,30 +714,42 @@ pub fn add_pr_comment(repo_path: &Path, pr_number: u64, body: &str) -> Result<PR
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    log::info!("[add_pr_comment] Response: {}", &stdout[..stdout.len().min(500)]);
+    log::info!(
+        "[add_pr_comment] Response: {}",
+        &stdout[..stdout.len().min(500)]
+    );
 
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .context("Failed to parse PR comment response")?;
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).context("Failed to parse PR comment response")?;
 
-    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
-    let author = v.get("user")
+    let id = v
+        .get("id")
+        .and_then(|i| i.as_u64())
+        .map(|i| i.to_string())
+        .unwrap_or_default();
+    let author = v
+        .get("user")
         .and_then(|u| u.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("unknown")
         .to_string();
-    let author_avatar = v.get("user")
+    let author_avatar = v
+        .get("user")
         .and_then(|u| u.get("avatar_url"))
         .and_then(|a| a.as_str())
         .map(|s| s.to_string());
-    let comment_body = v.get("body")
+    let comment_body = v
+        .get("body")
         .and_then(|b| b.as_str())
         .unwrap_or("")
         .to_string();
-    let created_at = v.get("created_at")
+    let created_at = v
+        .get("created_at")
         .and_then(|c| c.as_str())
         .unwrap_or("")
         .to_string();
-    let updated_at = v.get("updated_at")
+    let updated_at = v
+        .get("updated_at")
         .and_then(|u| u.as_str())
         .map(|s| s.to_string());
 
@@ -725,17 +784,16 @@ pub fn edit_pr_comment(
         anyhow::bail!("Failed to get repo info");
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout)
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let repo = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let repo = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || repo.is_empty() {
         anyhow::bail!("Failed to get owner or repo name");
@@ -760,28 +818,37 @@ pub fn edit_pr_comment(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .context("Failed to parse PR comment response")?;
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).context("Failed to parse PR comment response")?;
 
-    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
-    let author = v.get("user")
+    let id = v
+        .get("id")
+        .and_then(|i| i.as_u64())
+        .map(|i| i.to_string())
+        .unwrap_or_default();
+    let author = v
+        .get("user")
         .and_then(|u| u.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("unknown")
         .to_string();
-    let author_avatar = v.get("user")
+    let author_avatar = v
+        .get("user")
         .and_then(|u| u.get("avatar_url"))
         .and_then(|a| a.as_str())
         .map(|s| s.to_string());
-    let comment_body = v.get("body")
+    let comment_body = v
+        .get("body")
         .and_then(|b| b.as_str())
         .unwrap_or("")
         .to_string();
-    let created_at = v.get("created_at")
+    let created_at = v
+        .get("created_at")
         .and_then(|c| c.as_str())
         .unwrap_or("")
         .to_string();
-    let updated_at = v.get("updated_at")
+    let updated_at = v
+        .get("updated_at")
         .and_then(|u| u.as_str())
         .map(|s| s.to_string());
 
@@ -809,17 +876,16 @@ pub fn delete_pr_comment(repo_path: &Path, _pr_number: u64, comment_id: &str) ->
         anyhow::bail!("Failed to get repo info");
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout)
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let repo = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let repo = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || repo.is_empty() {
         anyhow::bail!("Failed to get owner or repo name");
@@ -862,17 +928,16 @@ pub fn add_comment_reaction(
         anyhow::bail!("Failed to get repo info");
     }
 
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&repo_output.stdout)
-    ).context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&repo_output.stdout))
+            .context("Failed to parse repo info")?;
 
-    let owner = repo_info.get("owner")
+    let owner = repo_info
+        .get("owner")
         .and_then(|o| o.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("");
-    let repo = repo_info.get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let repo = repo_info.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     if owner.is_empty() || repo.is_empty() {
         anyhow::bail!("Failed to get owner or repo name");
@@ -881,7 +946,10 @@ pub fn add_comment_reaction(
     let output = no_window_cmd("gh")
         .args([
             "api",
-            &format!("repos/{}/{}/issues/comments/{}/reactions", owner, repo, comment_id),
+            &format!(
+                "repos/{}/{}/issues/comments/{}/reactions",
+                owner, repo, comment_id
+            ),
             "--method",
             "POST",
             "--field",
@@ -909,10 +977,9 @@ fn get_gh_repo_owner_name(repo_path: &Path) -> Result<(String, String)> {
     if !output.status.success() {
         anyhow::bail!("Failed to get repo info");
     }
-    let repo_info: serde_json::Value = serde_json::from_str(
-        &String::from_utf8_lossy(&output.stdout),
-    )
-    .context("Failed to parse repo info")?;
+    let repo_info: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&output.stdout))
+            .context("Failed to parse repo info")?;
     let owner = repo_info
         .get("owner")
         .and_then(|o| o.get("login"))
@@ -958,7 +1025,13 @@ pub fn add_pr_review_comment(
     line: u64,
     side: &str,
 ) -> Result<PRReviewComment> {
-    log::info!("[add_pr_review_comment] PR #{} path={} line={} side={}", pr_number, path, line, side);
+    log::info!(
+        "[add_pr_review_comment] PR #{} path={} line={} side={}",
+        pr_number,
+        path,
+        line,
+        side
+    );
 
     let (owner, repo) = get_gh_repo_owner_name(repo_path)?;
     let commit_id = get_pr_head_sha(repo_path, &owner, &repo, pr_number)?;
@@ -991,28 +1064,60 @@ pub fn add_pr_review_comment(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let v: serde_json::Value = serde_json::from_str(&stdout)
-        .context("Failed to parse PR review comment response")?;
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).context("Failed to parse PR review comment response")?;
 
-    let id = v.get("id").and_then(|i| i.as_u64()).map(|i| i.to_string()).unwrap_or_default();
-    let author = v.get("user")
+    let id = v
+        .get("id")
+        .and_then(|i| i.as_u64())
+        .map(|i| i.to_string())
+        .unwrap_or_default();
+    let author = v
+        .get("user")
         .and_then(|u| u.get("login"))
         .and_then(|l| l.as_str())
         .unwrap_or("unknown")
         .to_string();
-    let author_avatar = v.get("user")
+    let author_avatar = v
+        .get("user")
         .and_then(|u| u.get("avatar_url"))
         .and_then(|a| a.as_str())
         .map(|s| s.to_string());
-    let comment_body = v.get("body").and_then(|b| b.as_str()).unwrap_or("").to_string();
-    let comment_path = v.get("path").and_then(|p| p.as_str()).unwrap_or("").to_string();
+    let comment_body = v
+        .get("body")
+        .and_then(|b| b.as_str())
+        .unwrap_or("")
+        .to_string();
+    let comment_path = v
+        .get("path")
+        .and_then(|p| p.as_str())
+        .unwrap_or("")
+        .to_string();
     let comment_line = v.get("line").and_then(|l| l.as_u64()).unwrap_or(0);
-    let comment_side = v.get("side").and_then(|s| s.as_str()).unwrap_or("RIGHT").to_string();
-    let comment_commit_id = v.get("commit_id").and_then(|c| c.as_str()).unwrap_or("").to_string();
-    let created_at = v.get("created_at").and_then(|c| c.as_str()).unwrap_or("").to_string();
-    let updated_at = v.get("updated_at").and_then(|u| u.as_str()).map(|s| s.to_string());
+    let comment_side = v
+        .get("side")
+        .and_then(|s| s.as_str())
+        .unwrap_or("RIGHT")
+        .to_string();
+    let comment_commit_id = v
+        .get("commit_id")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let created_at = v
+        .get("created_at")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let updated_at = v
+        .get("updated_at")
+        .and_then(|u| u.as_str())
+        .map(|s| s.to_string());
 
-    log::info!("[add_pr_review_comment] Comment added successfully: id={}", id);
+    log::info!(
+        "[add_pr_review_comment] Comment added successfully: id={}",
+        id
+    );
 
     Ok(PRReviewComment {
         id,
@@ -1050,15 +1155,16 @@ pub fn list_pr_review_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<P
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let values: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .context("Failed to parse PR review comments response")?;
+    let values: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).context("Failed to parse PR review comments response")?;
 
     let comments: Vec<PRReviewComment> = values
         .into_iter()
         .filter_map(|v| {
             let id = v.get("id")?.as_u64()?.to_string();
             let author = v.get("user")?.get("login")?.as_str()?.to_string();
-            let author_avatar = v.get("user")?
+            let author_avatar = v
+                .get("user")?
                 .get("avatar_url")?
                 .as_str()
                 .map(|s| s.to_string());
@@ -1084,6 +1190,9 @@ pub fn list_pr_review_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<P
         })
         .collect();
 
-    log::info!("[list_pr_review_comments] Loaded {} comments", comments.len());
+    log::info!(
+        "[list_pr_review_comments] Loaded {} comments",
+        comments.len()
+    );
     Ok(comments)
 }

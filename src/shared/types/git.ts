@@ -18,4 +18,5 @@ export type {
   GitStatusFile,
   GitStatusDiff,
   FileDiffStats,
+  PushOutcome,
 } from "@/features/git/types";

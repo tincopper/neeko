@@ -1,6 +1,6 @@
 import type { AgentConfig } from "@/features/agent/types";
 import type { WSLProject, RemoteProject } from "@/features/connection/types";
-import type { GitInfo } from "@/features/git/types";
+import type { GitInfo, PushOutcome } from "@/features/git/types";
 
 export interface Project {
   id: string;
@@ -91,9 +91,12 @@ export interface ProjectCommands {
   unstageFiles(filePaths: string[]): Promise<void>;
   discardFile(filePath: string): Promise<void>;
   commitFiles(filePaths: string[], message: string): Promise<CommitResult>;
-  fetch(): Promise<void>;
-  pull(): Promise<void>;
-  push(setUpstream?: boolean): Promise<void>;
+  fetch(): Promise<PushOutcome>;
+  pull(): Promise<PushOutcome>;
+  push(setUpstream?: boolean): Promise<PushOutcome>;
+  fetchWithCredentials(username: string, password: string): Promise<PushOutcome>;
+  pullWithCredentials(username: string, password: string): Promise<PushOutcome>;
+  pushWithCredentials(setUpstream: boolean, username: string, password: string): Promise<PushOutcome>;
   checkoutBranch(branchName: string): Promise<void>;
   createBranch(branchName: string, startPoint?: string): Promise<void>;
   deleteBranch(branchName: string): Promise<void>;

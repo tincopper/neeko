@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { commitFiles, push, pull, getWorktreeChangedFiles, getCommitLog } from "../api/gitApi";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
-import { Button } from "@/ui/button";
-import { Checkbox } from "@/ui/checkbox";
-import type { FileChange } from '@/shared/types';
+import React, { useState, useEffect, useCallback } from 'react';
+
 import { useProjectStore } from '@/features/project/store';
+import type { FileChange } from '@/shared/types';
+import { withTimeout } from '@/shared/utils/withTimeout';
+import { Button } from '@/ui/button';
+import { Checkbox } from '@/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+
+import { commitFiles, push, pull, getWorktreeChangedFiles, getCommitLog, type PushOutcome } from '../api/gitApi';
 
 interface CommitDialogProps {
   projectId: string;
@@ -16,21 +19,19 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const [files, setFiles] = useState<FileChange[]>([]);
   const [untrackedCount, setUntrackedCount] = useState(0);
   const [filesLoading, setFilesLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState('');
   const [amend, setAmend] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    getWorktreeChangedFiles(
-      { Local: { project_path: projectPath } },
-      "",
-    )
+    const projectPath =
+      useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+    getWorktreeChangedFiles({ Local: { project_path: projectPath } }, '')
       .then((result) => {
-        const untracked = result.filter((f) => f.status === "Untracked");
+        const untracked = result.filter((f) => f.status === 'Untracked');
         setUntrackedCount(untracked.length);
-        setFiles(result.filter((f) => f.status !== "Untracked"));
+        setFiles(result.filter((f) => f.status !== 'Untracked'));
       })
       .catch((e) => setError(String(e)))
       .finally(() => setFilesLoading(false));
@@ -38,14 +39,12 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
 
   useEffect(() => {
     if (!amend) {
-      setMessage("");
+      setMessage('');
       return;
     }
-    const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
-    getCommitLog(
-      { Local: { project_path: projectPath } },
-      1,
-    )
+    const projectPath =
+      useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+    getCommitLog({ Local: { project_path: projectPath } }, 1)
       .then((entries) => {
         if (entries.length > 0) setMessage(entries[0].message);
       })
@@ -53,36 +52,56 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   }, [amend, projectId]);
 
   const getProjectPath = useCallback(() => {
-    return useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
+    return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
   }, [projectId]);
 
-  const handleCommit = useCallback(async (pushAfter: boolean) => {
-    if (!message.trim()) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const filePaths = files.map((f) => f.path);
-      const projectPath = getProjectPath();
-      const transport = { Local: { project_path: projectPath } } as const;
-      await commitFiles(transport, filePaths, message.trim());
-      if (pushAfter) {
-        await push(transport, false);
+  /** Convert a PushOutcome into an error message string if it's AuthRequired, or return undefined for Success. */
+  function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
+    if ('AuthRequired' in outcome) {
+      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
+      if (ssh) {
+        return 'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.';
       }
-      onRefreshGit(projectId);
-      onClose();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSubmitting(false);
+      const hint = username_hint ? ` (user: ${username_hint})` : '';
+      return `Authentication required for ${remote_url}${hint}. Use the credentials dialog in the main panel, or configure git credentials via terminal.`;
     }
-  }, [projectId, message, files, onRefreshGit, onClose, getProjectPath]);
+    return undefined;
+  }
+
+  const handleCommit = useCallback(
+    async (pushAfter: boolean) => {
+      if (!message.trim()) return;
+      setSubmitting(true);
+      setError(null);
+      try {
+        const filePaths = files.map((f) => f.path);
+        const projectPath = getProjectPath();
+        const transport = { Local: { project_path: projectPath } } as const;
+        await commitFiles(transport, filePaths, message.trim());
+        if (pushAfter) {
+          const outcome = await withTimeout(push(transport, false), 60_000, 'push');
+          const msg = pushOutcomeMsg(outcome);
+          if (msg) { setError(msg); return; }
+        }
+        onRefreshGit(projectId);
+        onClose();
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [projectId, message, files, onRefreshGit, onClose, getProjectPath],
+  );
 
   const handlePush = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await push({ Local: { project_path: projectPath } }, false);
+      const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 60_000, 'push');
+      const msg = pushOutcomeMsg(outcome);
+      if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
       onClose();
     } catch (e) {
@@ -97,7 +116,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     setError(null);
     try {
       const projectPath = getProjectPath();
-      await pull({ Local: { project_path: projectPath } });
+      const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 60_000, 'pull');
+      const msg = pushOutcomeMsg(outcome);
+      if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
       onClose();
     } catch (e) {
@@ -126,7 +147,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
           ) : (
             <div className="max-h-[140px] overflow-y-auto mt-1 border border-border rounded-md bg-bg-secondary/50">
               {files.map((f) => (
-                <div key={f.path} className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] border-b border-border/50 last:border-b-0">
+                <div
+                  key={f.path}
+                  className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] border-b border-border/50 last:border-b-0"
+                >
                   <span className="text-accent-green shrink-0 text-[11px] font-bold w-4">
                     {f.status[0]}
                   </span>
@@ -143,7 +167,8 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
           )}
           {untrackedCount > 0 && (
             <p className="text-[11px] text-text-muted mt-1">
-              {untrackedCount} untracked file{untrackedCount > 1 ? "s" : ""} not shown (stage them in the Git panel first)
+              {untrackedCount} untracked file{untrackedCount > 1 ? 's' : ''} not shown (stage them
+              in the Git panel first)
             </p>
           )}
         </div>
@@ -165,7 +190,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               handleCommit(false);
             }
           }}
@@ -186,7 +211,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
               disabled={submitting}
               className="flex-1"
             >
-              {submitting ? "..." : "Pull"}
+              {submitting ? '...' : 'Pull'}
             </Button>
             <Button
               variant="secondary"
@@ -194,7 +219,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
               disabled={submitting}
               className="flex-1"
             >
-              {submitting ? "..." : "Push"}
+              {submitting ? '...' : 'Push'}
             </Button>
           </div>
           <div className="flex items-center gap-2 w-full">
@@ -207,7 +232,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
               disabled={!message.trim() || submitting || files.length === 0}
               className="flex-1"
             >
-              {submitting ? "Committing..." : "Commit"}
+              {submitting ? 'Committing...' : 'Commit'}
             </Button>
             <Button
               variant="primary"
@@ -215,7 +240,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
               disabled={!message.trim() || submitting || files.length === 0}
               className="flex-1"
             >
-              {submitting ? "..." : "Commit & Push"}
+              {submitting ? '...' : 'Commit & Push'}
             </Button>
           </div>
         </DialogFooter>

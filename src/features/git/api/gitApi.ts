@@ -12,7 +12,9 @@ import type {
   CommitFileChange,
   CommitResult,
   AheadBehind,
-} from '@/shared/types';
+  PushOutcome,
+} from '../types';
+export type { PushOutcome };
 
 // The transport types used by git commands
 export interface LocalTransport {
@@ -88,16 +90,41 @@ export function discardAll(transport: GitTransportKind): Promise<void> {
 
 // ─── Remote operations ───────────────────────────────────────────────────────
 
-export function fetch(transport: GitTransportKind): Promise<void> {
-  return invoke<void>('fetch', { transport });
+export function fetch(transport: GitTransportKind): Promise<PushOutcome> {
+  return invoke<PushOutcome>('fetch', { transport });
 }
 
-export function pull(transport: GitTransportKind): Promise<void> {
-  return invoke<void>('pull', { transport });
+export function pull(transport: GitTransportKind): Promise<PushOutcome> {
+  return invoke<PushOutcome>('pull', { transport });
 }
 
-export function push(transport: GitTransportKind, setUpstream?: boolean): Promise<void> {
-  return invoke<void>('push', { transport, setUpstream });
+export function push(transport: GitTransportKind, setUpstream?: boolean): Promise<PushOutcome> {
+  return invoke<PushOutcome>('push', { transport, setUpstream });
+}
+
+export function fetchWithCredentials(
+  transport: GitTransportKind,
+  username: string,
+  password: string,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('fetch_with_credentials', { transport, username, password });
+}
+
+export function pullWithCredentials(
+  transport: GitTransportKind,
+  username: string,
+  password: string,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('pull_with_credentials', { transport, username, password });
+}
+
+export function pushWithCredentials(
+  transport: GitTransportKind,
+  setUpstream: boolean,
+  username: string,
+  password: string,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('push_with_credentials', { transport, setUpstream, username, password });
 }
 
 export function commitFiles(

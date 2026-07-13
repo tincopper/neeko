@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod credential;
 pub mod local;
 pub mod model;
 pub mod operations;

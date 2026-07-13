@@ -107,7 +107,13 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
         }
 
         if let Ok(output) = exec("git")
-            .args(["-C", repo_path.to_str().unwrap_or("."), "diff", "--cached", "--numstat"])
+            .args([
+                "-C",
+                repo_path.to_str().unwrap_or("."),
+                "diff",
+                "--cached",
+                "--numstat",
+            ])
             .output()
         {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
@@ -353,7 +359,10 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
     super::cache::get_cached_diff(repo_path, file_path, || {
         let t_open = std::time::Instant::now();
         let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-        log::debug!("[perf:detail] Repository::open: {}ms", t_open.elapsed().as_millis());
+        log::debug!(
+            "[perf:detail] Repository::open: {}ms",
+            t_open.elapsed().as_millis()
+        );
 
         let mut opts = git2::DiffOptions::new();
         opts.pathspec(file_path)
@@ -416,7 +425,10 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
             }),
         )
         .context("Failed to iterate diff")?;
-        log::debug!("[perf:detail] diff_foreach: {}ms", t_foreach.elapsed().as_millis());
+        log::debug!(
+            "[perf:detail] diff_foreach: {}ms",
+            t_foreach.elapsed().as_millis()
+        );
 
         let mut result_hunks = hunks.into_inner();
 
@@ -965,13 +977,6 @@ pub fn commit_files(
     commit(repo_path, message)
 }
 
-/// Commit 并 Push
-pub fn commit_and_push(repo_path: &Path, message: &str) -> Result<CommitResult> {
-    let commit_result = commit(repo_path, message)?;
-    push(repo_path, false)?;
-    Ok(commit_result)
-}
-
 /// Fetch 远程更新
 pub fn fetch(repo_path: &Path) -> Result<()> {
     let output = exec("git")
@@ -1037,37 +1042,6 @@ pub fn pull(repo_path: &Path) -> Result<()> {
         anyhow::bail!("git merge {} failed: {}", remote_branch, msg);
     }
 
-    invalidate_repo_caches(repo_path);
-    Ok(())
-}
-
-/// Push 到远程（参考 Muxy upstream 检测模式）
-pub fn push(repo_path: &Path, set_upstream: bool) -> Result<()> {
-    let branch = get_current_branch_via_cli(repo_path)?;
-    let has_upstream = check_upstream(repo_path, &branch)?;
-    if !set_upstream && !has_upstream {
-        anyhow::bail!(
-            "No upstream configured for branch '{}'. Push with --set-upstream to push.",
-            branch
-        );
-    }
-    let mut args = vec!["push"];
-    if set_upstream {
-        args.push("--set-upstream");
-    }
-    args.push("origin");
-    args.push(&branch);
-    let result = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git push")?;
-    if !result.status.success() {
-        anyhow::bail!(
-            "git push failed: {}",
-            String::from_utf8_lossy(&result.stderr).trim()
-        );
-    }
     invalidate_repo_caches(repo_path);
     Ok(())
 }

@@ -266,6 +266,78 @@ std::thread::spawn(move || { /* 使用 data */ });
 
 本地 PTY 操作使用阻塞 I/O。使用 `std::thread::spawn` 而非 `tokio::spawn`，以避免阻塞异步运行时。
 
+### 5. 在异步上下文中使用 `std::process::Command::output()`
+
+`std::process::Command::output()` 是同步阻塞调用。在 `async fn`（Tauri 命令）中直接调用会**阻塞整个 tokio 工作线程**，导致所有并发请求排队等待。
+
+如果 git push 等待 stdin（鉴权场景），进程永不退出，Tauri IPC 永久挂死。
+
+```rust
+// 错误 —— 阻塞 tokio 线程
+let output = std::process::Command::new("git")
+    .args(args)
+    .output()?;  // 阻塞！不释放线程
+```
+
+**修正方案**：使用 `tokio::process::Command` + `tokio::time::timeout`
+
+```rust
+use tokio::process::Command as TokioCommand;
+
+let output = tokio::time::timeout(
+    Duration::from_secs(timeout_secs),
+    TokioCommand::new("git")
+        .args(args)
+        .current_dir(work_dir)
+        .output(),
+)
+.await
+.map_err(|_| anyhow::anyhow!("git command timed out after {}s", timeout_secs))?
+.map_err(|e| anyhow::anyhow!("git command failed: {}", e))?;
+```
+
+**默认超时**：本地操作 30s，网络操作（push/fetch/pull/clone）180s。定义在 `transport.rs`：
+
+```rust
+const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
+const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(180);
+```
+
+网络操作检测：
+```rust
+let is_network_op = args
+    .first()
+    .map(|a| matches!(*a, "push" | "fetch" | "pull" | "clone"))
+    .unwrap_or(false);
+```
+
+### 6. Git 鉴权错误检测
+
+在所有 git 命令执行后，扫描 stderr 匹配鉴权错误模式，返回带 `[AuthRequired]` 前缀的明确错误：
+
+```rust
+const AUTH_FAILURE_PATTERNS: &[&str] = &[
+    "Authentication failed",
+    "Could not read from remote repository",
+    "Permission denied (publickey)",
+    "could not read Username",
+    "HTTP Basic: Access denied",
+    "fatal: unable to access",
+    "fatal: could not read",
+    "request failed with status 401",
+    "Repository not found",
+];
+
+fn check_auth_failure(stderr: &str) -> Option<&'static str> {
+    AUTH_FAILURE_PATTERNS
+        .iter()
+        .find(|pat| stderr.contains(*pat))
+        .copied()
+}
+```
+
+搭配前端 `withTimeout` 和 `isAuthError` 检测，确保用户不会遇到永久挂死。
+
 ### 4. 移入线程前没有克隆 Arc
 
 ```rust

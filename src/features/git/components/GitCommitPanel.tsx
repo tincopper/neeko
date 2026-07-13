@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { AheadBehind, CommitResult } from '@/shared/types';
+import type { AheadBehind, CommitResult, PushOutcome } from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
@@ -11,6 +11,7 @@ import BranchInfo from './BranchInfo';
 import ChangesList from './ChangesList';
 import CommitForm from './CommitForm';
 import GitDialog, { type DialogState } from './GitDialog';
+import GitCredentialDialog from './GitCredentialDialog';
 
 // Timeout constants (ms). These protect against indefinite IPC hangs caused by
 // the Rust backend's project_manager Mutex being held by a long operation.
@@ -40,6 +41,58 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [aheadBehind, setAheadBehind] = useState<AheadBehind | null>(null);
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+const [credentialDialog, setCredentialDialog] = useState<{
+  open: boolean;
+  host: string;
+  usernameHint: string | null;
+}>({ open: false, host: '', usernameHint: null });
+
+/** Handle the result of push/pull/fetch. Returns true if caller should stop further processing. */
+const handlePushOutcome = useCallback(
+  (outcome: PushOutcome, opName: string): boolean => {
+    if ('AuthRequired' in outcome) {
+      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
+      if (ssh) {
+        onShowToast?.('SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.', 'error');
+      } else {
+        setCredentialDialog({
+          open: true,
+          host: remote_url,
+          usernameHint: username_hint,
+        });
+      }
+      return true; // caller should stop / not treat as success
+    }
+    return false; // Success
+  },
+  [onShowToast],
+);
+
+const handleCredentialSubmit = useCallback(
+  async (username: string, password: string) => {
+    setCredentialDialog(prev => ({ ...prev, open: false }));
+    setLoading(true);
+    try {
+      const outcome = await withTimeout(
+        commands.pushWithCredentials(false, username, password),
+        TIMEOUT_NETWORK_MS,
+        'push',
+      );
+      if (!handlePushOutcome(outcome, 'push')) {
+        await onRefreshGit();
+        refreshAheadBehind();
+        setSelectedFiles(new Set());
+        setCommitMessage('');
+        onShowToast?.('Pushed successfully', 'info');
+      }
+    } catch (e: unknown) {
+      onShowToast?.(String(e), 'error');
+    } finally {
+      setLoading(false);
+    }
+  },
+  [commands, onRefreshGit, onShowToast],
+);
   const [textareaHeight, setTextareaHeight] = useState(120);
   const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -279,7 +332,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       setLoading(true);
       try {
         await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, 'commit');
-        await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
+        const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
+        if (handlePushOutcome(outcome, 'push')) return; // AuthRequired handled
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
@@ -291,13 +345,14 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [selectedFiles, commands, onRefreshGit, onShowToast],
+    [selectedFiles, commands, onRefreshGit, onShowToast, handlePushOutcome],
   );
 
   const handleFetch = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
+      const outcome = await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
+      if (handlePushOutcome(outcome, 'fetch')) return;
       refreshAheadBehind();
       onShowToast?.('Fetched successfully', 'info');
     } catch (e: unknown) {
@@ -305,12 +360,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [commands, onShowToast]);
+  }, [commands, onShowToast, handlePushOutcome]);
 
   const handlePull = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, 'pull');
+      const outcome = await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, 'pull');
+      if (handlePushOutcome(outcome, 'pull')) return;
       await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.('Pulled successfully', 'info');
@@ -319,12 +375,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [commands, onRefreshGit, onShowToast]);
+  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
 
   const handlePush = useCallback(async () => {
     setLoading(true);
     try {
-      await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
+      const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
+      if (handlePushOutcome(outcome, 'push')) return;
       await onRefreshGit();
       refreshAheadBehind();
       onShowToast?.('Pushed successfully', 'info');
@@ -333,7 +390,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [commands, onRefreshGit, onShowToast]);
+  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
 
   const handleNewBranch = useCallback(() => {
     if (onOpenDialog) {
@@ -394,6 +451,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           onRefreshGit={handleDialogRefreshGit}
         />
       )}
+      <GitCredentialDialog
+        open={credentialDialog.open}
+        host={credentialDialog.host}
+        usernameHint={credentialDialog.usernameHint}
+        onSubmit={handleCredentialSubmit}
+        onCancel={() => setCredentialDialog({ open: false, host: '', usernameHint: null })}
+      />
       <BranchInfo
         gitInfo={project.gitInfo ?? null}
         aheadBehind={aheadBehind}

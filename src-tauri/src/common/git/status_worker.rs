@@ -1,7 +1,7 @@
 use crate::common::utils::command::local;
+use std::collections::HashMap;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-use std::collections::HashMap;
 use std::{path::PathBuf, sync::mpsc, thread};
 
 /// 提取 git 进程退出码与信号，便于诊断 exit status: 129 (SIGHUP) 等异常
@@ -435,10 +435,13 @@ mod tests {
     fn compute_diff_added_file() {
         let old = parse_porcelain("");
         let new = parse_porcelain("?? new_file.txt\n");
-        let new_files: Vec<GitStatusFile> = new.into_iter().map(|mut f| {
-            f.additions = 10;
-            f
-        }).collect();
+        let new_files: Vec<GitStatusFile> = new
+            .into_iter()
+            .map(|mut f| {
+                f.additions = 10;
+                f
+            })
+            .collect();
         let diff = compute_status_diff(&old, &new_files);
         assert_eq!(diff.added.len(), 1);
         assert_eq!(diff.added[0].path, "new_file.txt");
@@ -482,8 +485,10 @@ mod tests {
 
     #[test]
     fn compute_diff_additions_changed() {
-        let old: Vec<GitStatusFile> = vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
-        let mut new: Vec<GitStatusFile> = vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
+        let old: Vec<GitStatusFile> =
+            vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
+        let mut new: Vec<GitStatusFile> =
+            vec![GitStatusFile::new("file.txt".into(), "Modified".into())];
         new[0].additions = 5;
         new[0].deletions = 3;
         let diff = compute_status_diff(&old, &new);

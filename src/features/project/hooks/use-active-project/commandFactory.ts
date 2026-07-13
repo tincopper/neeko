@@ -9,6 +9,7 @@ import type {
   CommitFileChange,
   CommitResult,
   DiffResult,
+  PushOutcome,
 } from '@/shared/types/git';
 import type { FileNode, FileContent } from '@/shared/types/file';
 
@@ -90,14 +91,23 @@ export function createProjectCommands(transport: GitTransportKind): ProjectComma
       return invoke<CommitResult>("commit_files", { ...tp(), filePaths, message });
     },
 
-    fetch(): Promise<void> {
-      return invoke<void>("fetch", tp());
+    fetch(): Promise<PushOutcome> {
+      return invoke<PushOutcome>("fetch", tp());
     },
-    pull(): Promise<void> {
-      return invoke<void>("pull", tp());
+    pull(): Promise<PushOutcome> {
+      return invoke<PushOutcome>("pull", tp());
     },
-    push(setUpstream?: boolean): Promise<void> {
-      return invoke<void>("push", { ...tp(), setUpstream: setUpstream ?? false });
+    push(setUpstream?: boolean): Promise<PushOutcome> {
+      return invoke<PushOutcome>("push", { ...tp(), setUpstream: setUpstream ?? false });
+    },
+    fetchWithCredentials(username: string, password: string): Promise<PushOutcome> {
+      return invoke<PushOutcome>("fetch_with_credentials", { ...tp(), username, password });
+    },
+    pullWithCredentials(username: string, password: string): Promise<PushOutcome> {
+      return invoke<PushOutcome>("pull_with_credentials", { ...tp(), username, password });
+    },
+    pushWithCredentials(setUpstream: boolean, username: string, password: string): Promise<PushOutcome> {
+      return invoke<PushOutcome>("push_with_credentials", { ...tp(), setUpstream, username, password });
     },
 
     checkoutBranch(branchName: string): Promise<void> {

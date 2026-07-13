@@ -174,3 +174,13 @@ export interface GitStatusDiff {
   removed: string[];
   modified: GitStatusFile[];
 }
+
+export type PushOutcome =
+  | { Success: Record<string, never> }
+  | {
+      AuthRequired: {
+        remote_url: string;
+        username_hint: string | null;
+        ssh: boolean;
+      };
+    };

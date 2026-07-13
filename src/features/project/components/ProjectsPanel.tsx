@@ -24,8 +24,9 @@ import { useProjectList } from '@/features/project/hooks/useProjectList';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { IS_WINDOWS } from '@/shared/utils/platform';
+import { withTimeout } from '@/shared/utils/withTimeout';
 
-import { push, pull } from '../../git/api/gitApi';
+import { push, pull, type PushOutcome } from '../../git/api/gitApi';
 
 const ProjectsPanel: React.FC = () => {
   const { config, agents, ideCommandOverrides, showToast } = useAppContext();
@@ -114,12 +115,27 @@ const ProjectsPanel: React.FC = () => {
     setCommitProjectId(projectId);
   }, []);
 
+  /** Convert PushOutcome to error string if AuthRequired. */
+  function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
+    if ('AuthRequired' in outcome) {
+      const { remote_url, ssh, username_hint } = outcome.AuthRequired;
+      if (ssh) {
+        return 'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.';
+      }
+      const hint = username_hint ? ` (user: ${username_hint})` : '';
+      return `Authentication required for ${remote_url}${hint}. Use the main commit panel or configure git credentials.`;
+    }
+    return undefined;
+  }
+
   const handlePush = useCallback(
     async (projectId: string) => {
       try {
         const projectPath =
           useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-        await push({ Local: { project_path: projectPath } }, false);
+        const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 60_000, 'push');
+        const msg = pushOutcomeMsg(outcome);
+        if (msg) { showToast?.(msg, 'error'); return; }
         onRefreshGit(projectId);
       } catch (e) {
         showToast?.(String(e), 'error');
@@ -133,7 +149,9 @@ const ProjectsPanel: React.FC = () => {
       try {
         const projectPath =
           useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-        await pull({ Local: { project_path: projectPath } });
+        const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 60_000, 'pull');
+        const msg = pushOutcomeMsg(outcome);
+        if (msg) { showToast?.(msg, 'error'); return; }
         onRefreshGit(projectId);
       } catch (e) {
         showToast?.(String(e), 'error');

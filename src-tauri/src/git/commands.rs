@@ -3,11 +3,11 @@ use serde::Deserialize;
 use crate::common::connection::types::AuthMethod;
 use crate::common::git::operations;
 use crate::common::git::transport::GitTransport;
-use crate::common::git::types::DiffResult;
+use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRInfo, PRListItem,
-    PRMergeResult, PRFileChange, PRCommit, PRComment, PRReviewComment, PrLabel,
+    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRComment, PRCommit,
+    PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -140,21 +140,58 @@ pub async fn discard_all(transport: GitTransportKind) -> Result<(), AppError> {
 // ─── Remote operations ───────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn fetch(transport: GitTransportKind) -> Result<(), AppError> {
+pub async fn fetch(transport: GitTransportKind) -> Result<PushOutcome, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::fetch(&t, wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn pull(transport: GitTransportKind) -> Result<(), AppError> {
+pub async fn pull(transport: GitTransportKind) -> Result<PushOutcome, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::pull(&t, wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn push(transport: GitTransportKind, set_upstream: Option<bool>) -> Result<(), AppError> {
+pub async fn push(transport: GitTransportKind, set_upstream: Option<bool>) -> Result<PushOutcome, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::push(&t, wd, set_upstream.unwrap_or(false))
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn fetch_with_credentials(
+    transport: GitTransportKind,
+    username: String,
+    password: String,
+) -> Result<PushOutcome, AppError> {
+    let (t, wd) = into_transport_and_dir(&transport);
+    operations::fetch_with_credentials(&t, wd, &username, &password)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn pull_with_credentials(
+    transport: GitTransportKind,
+    username: String,
+    password: String,
+) -> Result<PushOutcome, AppError> {
+    let (t, wd) = into_transport_and_dir(&transport);
+    operations::pull_with_credentials(&t, wd, &username, &password)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn push_with_credentials(
+    transport: GitTransportKind,
+    set_upstream: Option<bool>,
+    username: String,
+    password: String,
+) -> Result<PushOutcome, AppError> {
+    let (t, wd) = into_transport_and_dir(&transport);
+    operations::push_with_credentials(&t, wd, set_upstream.unwrap_or(false), &username, &password)
         .await
         .map_err(AppError::from)
 }
@@ -1315,7 +1352,12 @@ pub async fn list_pr_review_comments_command(
         let manager = state.project_manager.lock().map_err(AppError::from)?;
         match manager.get_project(&project_id) {
             Some(p) => p.path.clone(),
-            None => return Err(AppError::NotFound(format!("Project not found: {}", project_id))),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
         }
     };
     let result = tokio::task::spawn_blocking(move || {
@@ -1323,7 +1365,11 @@ pub async fn list_pr_review_comments_command(
     })
     .await
     .map_err(|e| AppError::Io(format!("spawn_blocking failed: {}", e)))??;
-    log::debug!("[perf] Rust list_pr_review_comments: PR #{} {}ms", pr_number, t0.elapsed().as_millis());
+    log::debug!(
+        "[perf] Rust list_pr_review_comments: PR #{} {}ms",
+        pr_number,
+        t0.elapsed().as_millis()
+    );
     Ok(result)
 }
 
@@ -1393,8 +1439,7 @@ pub fn delete_pr_comment_command(
 ) -> Result<(), AppError> {
     let manager = state.project_manager.lock().map_err(AppError::from)?;
     if let Some(project) = manager.get_project(&project_id) {
-        crate::git::delete_pr_comment(&project.path, pr_number, &comment_id)
-            .map_err(AppError::from)
+        crate::git::delete_pr_comment(&project.path, pr_number, &comment_id).map_err(AppError::from)
     } else {
         Err(AppError::NotFound(format!(
             "Project not found: {}",

@@ -148,6 +148,29 @@ onDragEnd={(event) => {
 
 应将排序逻辑封装在域 hook 中，DndContext 只负责提取 `active.id` / `over.id` 并调用 handler。
 
+## 网络操作超时模式
+
+所有 git 网络操作（push/pull/fetch）必须使用 `withTimeout` 包装，防止后端阻塞时 UI 永久挂死：
+
+```typescript
+import { withTimeout } from '@/shared/utils/withTimeout';
+
+// 网络操作：60 秒超时
+await withTimeout(commands.push(false), 60_000, 'push');
+await withTimeout(commands.pull(), 60_000, 'pull');
+
+// 本地操作：30 秒超时
+await withTimeout(commands.commitFiles(files, message), 30_000, 'commit');
+```
+
+当前已覆盖的网络操作路径（需保持同步）：
+
+| 触发路径 | 文件 | push | pull | fetch |
+|---------|------|------|------|-------|
+| GitCommitPanel | `GitCommitPanel.tsx` | ✅ | ✅ | ✅ |
+| CommitDialog | `CommitDialog.tsx` | ✅ | ✅ | - |
+| ProjectsPanel 右键 | `ProjectsPanel.tsx` | ✅ | ✅ | - |
+
 ### 9. Modifiers 说明
 
 - `restrictToVerticalAxis`：锁定垂直轴，防止水平漂移
