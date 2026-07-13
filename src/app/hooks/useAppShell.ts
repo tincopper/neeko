@@ -28,6 +28,7 @@ import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useToast } from '@/shared/hooks/useToast';
+import { useNotificationStore } from '@/features/notification/notificationStore';
 
 import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';
@@ -47,7 +48,18 @@ interface UseAppShellResult {
 
 export function useAppShell(): UseAppShellResult {
   const { config, saveConfig, customThemes } = useAppConfig();
-  const { toast, showToast } = useToast();
+  const { toast, showToast: originalShowToast } = useToast();
+  const showToast = useCallback(
+    (message: string, type: "info" | "error" = "info") => {
+      originalShowToast(message, type);
+      useNotificationStore.getState().addNotification({
+        type: type === 'error' ? 'error' : 'info',
+        title: type === 'error' ? 'Error' : 'Info',
+        message,
+      });
+    },
+    [originalShowToast],
+  );
   const local = useLocalProjects();
   const session = useSessionPersistence();
   const wsl = useWslProjects(session.saveSession);
