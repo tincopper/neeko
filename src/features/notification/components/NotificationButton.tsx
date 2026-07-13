@@ -50,7 +50,7 @@ export function NotificationButton() {
         )}
       </button>
       {listOpen && <NotificationList buttonRef={buttonRef} />}
-      <NotificationToast onOpenList={() => setListOpen(true)} listOpen={listOpen} />
+      <NotificationToast listOpen={listOpen} />
     </div>
   );
 }

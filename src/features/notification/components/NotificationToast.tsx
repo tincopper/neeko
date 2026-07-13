@@ -5,7 +5,6 @@ import { useNotificationStore } from '../notificationStore';
 import type { NotificationType } from '../notificationTypes';
 
 interface NotificationToastProps {
-  onOpenList: () => void;
   listOpen: boolean;
 }
 
@@ -25,15 +24,9 @@ const typeStyles: Record<NotificationType, string> = {
   error: 'border-l-destructive',
 };
 
-export function NotificationToast({ onOpenList, listOpen }: NotificationToastProps) {
-  const markAsRead = useNotificationStore((s) => s.markAsRead);
+export function NotificationToast({ listOpen }: NotificationToastProps) {
   const [visibleId, setVisibleId] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const visibleIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    visibleIdRef.current = visibleId;
-  }, [visibleId]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -65,32 +58,17 @@ export function NotificationToast({ onOpenList, listOpen }: NotificationToastPro
     visibleId ? (s.notifications.find((n) => n.id === visibleId) ?? null) : null,
   );
 
-  const handleClick = useCallback(() => {
+  const handleDismiss = useCallback(() => {
     clearTimer();
     setVisibleId(null);
-    if (visibleIdRef.current) {
-      markAsRead(visibleIdRef.current);
-    }
-    onOpenList();
-  }, [markAsRead, onOpenList, clearTimer]);
-
-  const handleDismiss = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      clearTimer();
-      setVisibleId(null);
-    },
-    [clearTimer],
-  );
+  }, [clearTimer]);
 
   if (!current) return null;
 
   return (
     <div className="fixed bottom-8 right-12 z-[9999] animate-slide-up">
-      <button
-        type="button"
-        onClick={handleClick}
-        className={`flex items-start gap-2.5 bg-popover border border-border rounded-lg shadow-lg px-3 py-2.5 text-left max-w-[320px] cursor-pointer hover:bg-hover transition-colors border-l-2 ${typeStyles[current.type]}`}
+      <div
+        className={`flex items-start gap-2.5 bg-popover border border-border rounded-lg shadow-lg px-3 py-2.5 text-left max-w-[320px] border-l-2 ${typeStyles[current.type]}`}
       >
         <span className="mt-0.5 shrink-0">{typeIcons[current.type]({ size: 14 })}</span>
         <div className="flex-1 min-w-0">
@@ -104,7 +82,7 @@ export function NotificationToast({ onOpenList, listOpen }: NotificationToastPro
         >
           <X size={12} strokeWidth={1.8} />
         </button>
-      </button>
+      </div>
     </div>
   );
 }
