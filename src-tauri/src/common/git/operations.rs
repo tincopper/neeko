@@ -1,7 +1,9 @@
 use anyhow::{bail, Result};
 
-use super::transport::{GitTransport, GitExecError, ErrorKind};
-use super::credential::{resolve_credential_helper, credential_approve, credential_reject, Credential};
+use super::credential::{
+    credential_approve, credential_reject, resolve_credential_helper, Credential,
+};
+use super::transport::{ErrorKind, GitExecError, GitTransport};
 use super::types::PushOutcome;
 use crate::common::git::parsers::parse_numstat_line;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
@@ -74,7 +76,7 @@ pub async fn discard_all(transport: &GitTransport, work_dir: &str) -> Result<()>
 pub async fn fetch(transport: &GitTransport, work_dir: &str) -> Result<PushOutcome> {
     let result = transport.run_git(&["fetch", "--all"], work_dir).await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success),
+        Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -90,12 +92,16 @@ pub async fn fetch_with_credentials(
 }
 
 /// Push to remote: `git push [--set-upstream [-o origin <branch>]]`
-pub async fn push(transport: &GitTransport, work_dir: &str, set_upstream: bool) -> Result<PushOutcome> {
+pub async fn push(
+    transport: &GitTransport,
+    work_dir: &str,
+    set_upstream: bool,
+) -> Result<PushOutcome> {
     let owned = push_args(transport, work_dir, set_upstream).await;
     let args: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
     let result = transport.run_git(&args, work_dir).await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success),
+        Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -127,7 +133,7 @@ pub async fn pull(transport: &GitTransport, work_dir: &str) -> Result<PushOutcom
         .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
         .await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success),
+        Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -143,13 +149,20 @@ pub async fn pull_with_credentials(
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;
     let branch = branch.trim();
-    exec_with_credentials(transport, work_dir, &["fetch", "origin", branch], username, password).await?;
+    exec_with_credentials(
+        transport,
+        work_dir,
+        &["fetch", "origin", branch],
+        username,
+        password,
+    )
+    .await?;
     let remote_branch = format!("origin/{}", branch);
     let result = transport
         .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
         .await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success),
+        Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -920,7 +933,12 @@ pub async fn get_recent_commit_messages(
 async fn push_args(transport: &GitTransport, work_dir: &str, set_upstream: bool) -> Vec<String> {
     if set_upstream {
         if let Some(branch) = get_current_branch_opt(transport, work_dir).await {
-            vec!["push".to_string(), "--set-upstream".to_string(), "origin".to_string(), branch]
+            vec![
+                "push".to_string(),
+                "--set-upstream".to_string(),
+                "origin".to_string(),
+                branch,
+            ]
         } else {
             vec!["push".to_string(), "--set-upstream".to_string()]
         }
@@ -937,14 +955,33 @@ async fn exec_with_credentials(
     username: &str,
     password: &str,
 ) -> Result<PushOutcome> {
-    let remote_url = get_remote_url(transport, work_dir).await
+    let remote_url = get_remote_url(transport, work_dir)
+        .await
         .unwrap_or_else(|_| "unknown".to_string());
     let helper = resolve_credential_helper(transport, work_dir).await?;
-    let cred = Credential::from_url(&remote_url, Some(username))?;
-    credential_approve(transport, work_dir, &helper, &cred, username, password).await?;
+    // 如果 remote_url 不是合法 URL（如 "unknown"），跳过 credential 流程直接执行
+    if remote_url == "unknown" || !remote_url.contains("://") {
+        let result = transport.run_git(args, work_dir).await;
+        return match result {
+            Ok(_) => Ok(PushOutcome::Success {}),
+            Err(e) => classify_git_error(transport, work_dir, e).await,
+        };
+    }
+    let cred = match Credential::from_url(&remote_url, Some(username)) {
+        Ok(c) => c,
+        Err(_) => {
+            // URL 格式无法解析，跳过 credential 流程
+            let result = transport.run_git(args, work_dir).await;
+            return match result {
+                Ok(_) => Ok(PushOutcome::Success {}),
+                Err(e) => classify_git_error(transport, work_dir, e).await,
+            };
+        }
+    };
+    let _ = credential_approve(transport, work_dir, &helper, &cred, username, password).await;
     let result = transport.run_git(args, work_dir).await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success),
+        Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => {
             let classified = classify_git_error(transport, work_dir, e).await?;
             if let PushOutcome::AuthRequired { ssh: false, .. } = classified {
@@ -973,17 +1010,33 @@ async fn classify_git_error(
         .find_map(|c| c.downcast_ref::<GitExecError>())
         .map(|e| e.kind)
         .unwrap_or(ErrorKind::Other);
-    let remote_url = get_remote_url(transport, work_dir).await
+    let remote_url = get_remote_url(transport, work_dir)
+        .await
         .unwrap_or_else(|_| "unknown".to_string());
     let username_hint = extract_username_hint(&remote_url);
     let is_ssh_url = remote_url.starts_with("git@") || remote_url.starts_with("ssh://");
     match kind {
-        ErrorKind::Auth => Ok(PushOutcome::AuthRequired { remote_url, username_hint, ssh: false }),
-        ErrorKind::AuthSsh => Ok(PushOutcome::AuthRequired { remote_url, username_hint, ssh: true }),
+        ErrorKind::Auth => Ok(PushOutcome::AuthRequired {
+            remote_url,
+            username_hint,
+            ssh: false,
+        }),
+        ErrorKind::AuthSsh => Ok(PushOutcome::AuthRequired {
+            remote_url,
+            username_hint,
+            ssh: true,
+        }),
         ErrorKind::Network => {
             bail!("Network error (check connectivity): {}", err);
         }
-        ErrorKind::Ambiguous => Ok(PushOutcome::AuthRequired { remote_url, username_hint, ssh: is_ssh_url }),
+        ErrorKind::Ambiguous => Ok(PushOutcome::AuthRequired {
+            remote_url,
+            username_hint,
+            ssh: is_ssh_url,
+        }),
+        ErrorKind::NoUpstream => {
+            bail!("The current branch has no upstream branch. Push with `--set-upstream` or use the 'Push with upstream' option.");
+        }
         ErrorKind::Other => {
             bail!("git operation failed: {}", err);
         }
@@ -1010,8 +1063,8 @@ async fn get_current_branch_opt(transport: &GitTransport, work_dir: &str) -> Opt
 
 /// 从 https://user@host/path 中提取 user。
 fn extract_username_hint(url: &str) -> Option<String> {
-    let rest = url.strip_prefix("https://")
+    let rest = url
+        .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))?;
-    rest.split_once('@')
-        .map(|(user, _)| user.to_string())
+    rest.split_once('@').map(|(user, _)| user.to_string())
 }

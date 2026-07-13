@@ -45,11 +45,30 @@ const [credentialDialog, setCredentialDialog] = useState<{
   open: boolean;
   host: string;
   usernameHint: string | null;
-}>({ open: false, host: '', usernameHint: null });
+  setUpstream: boolean;
+}>({ open: false, host: '', usernameHint: null, setUpstream: false });
+
+// 从 URL 中提取可读的 hostname（仅显示域名部分）
+const formatHost = (url: string): string => {
+  try {
+    const cleaned = url.replace(/^git@/, '').replace(/\.git$/, '');
+    if (cleaned.includes('://')) {
+      const afterProtocol = cleaned.split('://')[1];
+      const withoutUser = afterProtocol.includes('@') ? afterProtocol.split('@')[1] : afterProtocol;
+      return withoutUser;
+    }
+    if (cleaned.includes(':')) {
+      return cleaned.split(':')[0];
+    }
+    return cleaned;
+  } catch {
+    return url;
+  }
+};
 
 /** Handle the result of push/pull/fetch. Returns true if caller should stop further processing. */
 const handlePushOutcome = useCallback(
-  (outcome: PushOutcome, opName: string): boolean => {
+  (outcome: PushOutcome, _opName: string, setUpstream: boolean = false): boolean => {
     if ('AuthRequired' in outcome) {
       const { remote_url, ssh, username_hint } = outcome.AuthRequired;
       if (ssh) {
@@ -57,8 +76,9 @@ const handlePushOutcome = useCallback(
       } else {
         setCredentialDialog({
           open: true,
-          host: remote_url,
+          host: formatHost(remote_url),
           usernameHint: username_hint,
+          setUpstream,
         });
       }
       return true; // caller should stop / not treat as success
@@ -70,15 +90,16 @@ const handlePushOutcome = useCallback(
 
 const handleCredentialSubmit = useCallback(
   async (username: string, password: string) => {
+    const setUpstream = credentialDialog.setUpstream;
     setCredentialDialog(prev => ({ ...prev, open: false }));
     setLoading(true);
     try {
       const outcome = await withTimeout(
-        commands.pushWithCredentials(false, username, password),
+        commands.pushWithCredentials(setUpstream, username, password),
         TIMEOUT_NETWORK_MS,
         'push',
       );
-      if (!handlePushOutcome(outcome, 'push')) {
+      if (!handlePushOutcome(outcome, 'push', setUpstream)) {
         await onRefreshGit();
         refreshAheadBehind();
         setSelectedFiles(new Set());
@@ -456,7 +477,7 @@ const handleCredentialSubmit = useCallback(
         host={credentialDialog.host}
         usernameHint={credentialDialog.usernameHint}
         onSubmit={handleCredentialSubmit}
-        onCancel={() => setCredentialDialog({ open: false, host: '', usernameHint: null })}
+        onCancel={() => setCredentialDialog({ open: false, host: '', usernameHint: null, setUpstream: false })}
       />
       <BranchInfo
         gitInfo={project.gitInfo ?? null}

@@ -1,5 +1,5 @@
+use super::transport::{GitExecOptions, GitTransport};
 use anyhow::Result;
-use super::transport::{GitTransport, GitExecOptions};
 
 /// git credential 协议数据结构。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,9 +50,7 @@ impl Credential {
     pub fn build_fill_input(&self) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\n\n",
-            self.protocol,
-            self.host,
-            self.path
+            self.protocol, self.host, self.path
         )
         .into_bytes()
     }
@@ -145,7 +143,9 @@ pub async fn credential_fill(
         env: &[],
         extra_config: &[("credential.helper", helper)],
     };
-    let output = transport.run_git_with_stdin(&["credential", "fill"], work_dir, opts, &stdin).await?;
+    let output = transport
+        .run_git_with_stdin(&["credential", "fill"], work_dir, opts, &stdin)
+        .await?;
     let result = Credential::parse_fill_output(&output)?;
     if result.password.is_some() {
         Ok(Some(result))
@@ -201,8 +201,7 @@ mod tests {
 
     #[test]
     fn should_parse_https_url_without_user() {
-        let cred =
-            Credential::from_url("https://github.com/user/repo", None).unwrap();
+        let cred = Credential::from_url("https://github.com/user/repo", None).unwrap();
         assert_eq!(cred.protocol, "https");
         assert_eq!(cred.host, "github.com");
         assert_eq!(cred.path, "user/repo");
@@ -211,15 +210,13 @@ mod tests {
 
     #[test]
     fn should_parse_https_url_with_user_in_hint() {
-        let cred = Credential::from_url("https://github.com/user/repo", Some("bob"))
-            .unwrap();
+        let cred = Credential::from_url("https://github.com/user/repo", Some("bob")).unwrap();
         assert_eq!(cred.username, Some("bob".to_string()));
     }
 
     #[test]
     fn should_parse_url_with_embedded_user() {
-        let cred =
-            Credential::from_url("https://bob@github.com/user/repo", None).unwrap();
+        let cred = Credential::from_url("https://bob@github.com/user/repo", None).unwrap();
         assert_eq!(cred.host, "github.com");
         assert_eq!(cred.path, "user/repo");
         assert_eq!(cred.username, None); // from_url 不解析嵌入的 user，靠 hint
@@ -237,7 +234,10 @@ mod tests {
             password: None,
         };
         let input = cred.build_fill_input();
-        assert_eq!(input, b"protocol=https\nhost=github.com\npath=user/repo\n\n");
+        assert_eq!(
+            input,
+            b"protocol=https\nhost=github.com\npath=user/repo\n\n"
+        );
     }
 
     #[test]

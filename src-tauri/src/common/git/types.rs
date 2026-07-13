@@ -34,7 +34,7 @@ pub struct DiffResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PushOutcome {
     /// 操作成功。
-    Success,
+    Success {},
     /// 需要鉴权。`ssh=true` 时前端不弹密码框，引导 ssh-agent。
     AuthRequired {
         remote_url: String,
@@ -50,10 +50,10 @@ mod tests {
     #[test]
     fn should_serialize_and_deserialize_push_outcome() {
         // Success
-        let success = PushOutcome::Success;
+        let success = PushOutcome::Success {};
         let json = serde_json::to_string(&success).unwrap();
         let de: PushOutcome = serde_json::from_str(&json).unwrap();
-        assert!(matches!(de, PushOutcome::Success));
+        assert!(matches!(de, PushOutcome::Success {}));
 
         // AuthRequired (https)
         let auth = PushOutcome::AuthRequired {

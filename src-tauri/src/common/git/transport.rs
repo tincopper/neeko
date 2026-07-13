@@ -63,6 +63,8 @@ pub enum ErrorKind {
     Network,
     /// 模糊（可能鉴权也可能网络）→ 调用方结合上下文判定
     Ambiguous,
+    /// 当前分支没有 upstream 分支（git push 不带 --set-upstream）
+    NoUpstream,
     /// 其他错误
     Other,
 }
@@ -77,6 +79,9 @@ pub fn classify_stderr(stderr: &str) -> ErrorKind {
     }
     if NETWORK_PATTERNS.iter().any(|p| stderr.contains(*p)) {
         return ErrorKind::Network;
+    }
+    if stderr.contains("has no upstream branch") || stderr.contains("no upstream configured") {
+        return ErrorKind::NoUpstream;
     }
     if AMBIGUOUS_PATTERNS.iter().any(|p| stderr.contains(*p)) {
         return ErrorKind::Ambiguous;
@@ -155,7 +160,8 @@ pub enum GitTransport {
 impl GitTransport {
     /// Execute a raw git command, returning stdout. 旧签名保留，委托默认选项。
     pub async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
-        self.run_git_opts(args, work_dir, GitExecOptions::default()).await
+        self.run_git_opts(args, work_dir, GitExecOptions::default())
+            .await
     }
 
     /// 同 `run_git`，但允许注入 env 与 `-c` 配置。网络操作统一由调用方传入
@@ -233,13 +239,15 @@ impl GitTransport {
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let cmd = format!("cd '{sp}' && {}git {}", env_prefix, parts.join(" "));
                 let out = wsl::exec(distro, &cmd);
-                out.map_err(|e| GitExecError {
-                    kind: classify_stderr(&e.to_string()),
-                    stderr: e.to_string(),
-                    stdout: String::new(),
-                    command: cmd,
-                }
-                .into())
+                out.map_err(|e| {
+                    GitExecError {
+                        kind: classify_stderr(&e.to_string()),
+                        stderr: e.to_string(),
+                        stdout: String::new(),
+                        command: cmd,
+                    }
+                    .into()
+                })
             }
             GitTransport::Remote {
                 host,
@@ -257,15 +265,17 @@ impl GitTransport {
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let git_cmd = format!("{}git {}", env_prefix, parts.join(" "));
                 let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_command(host, *port, username, auth, &cmd).await.map_err(|e| {
-                    GitExecError {
-                        kind: classify_stderr(&e.to_string()),
-                        stderr: e.to_string(),
-                        stdout: String::new(),
-                        command: cmd,
-                    }
-                    .into()
-                })
+                exec_command(host, *port, username, auth, &cmd)
+                    .await
+                    .map_err(|e| {
+                        GitExecError {
+                            kind: classify_stderr(&e.to_string()),
+                            stderr: e.to_string(),
+                            stdout: String::new(),
+                            command: cmd,
+                        }
+                        .into()
+                    })
             }
         }
     }
@@ -356,13 +366,15 @@ impl GitTransport {
                     parts.join(" ")
                 );
                 let out = wsl::exec(distro, &cmd);
-                out.map_err(|e| GitExecError {
-                    kind: classify_stderr(&e.to_string()),
-                    stderr: e.to_string(),
-                    stdout: String::new(),
-                    command: cmd,
-                }
-                .into())
+                out.map_err(|e| {
+                    GitExecError {
+                        kind: classify_stderr(&e.to_string()),
+                        stderr: e.to_string(),
+                        stdout: String::new(),
+                        command: cmd,
+                    }
+                    .into()
+                })
             }
             GitTransport::Remote {
                 host,
@@ -388,15 +400,17 @@ impl GitTransport {
                     parts.join(" ")
                 );
                 let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_command(host, *port, username, auth, &cmd).await.map_err(|e| {
-                    GitExecError {
-                        kind: classify_stderr(&e.to_string()),
-                        stderr: e.to_string(),
-                        stdout: String::new(),
-                        command: cmd,
-                    }
-                    .into()
-                })
+                exec_command(host, *port, username, auth, &cmd)
+                    .await
+                    .map_err(|e| {
+                        GitExecError {
+                            kind: classify_stderr(&e.to_string()),
+                            stderr: e.to_string(),
+                            stdout: String::new(),
+                            command: cmd,
+                        }
+                        .into()
+                    })
             }
         }
     }
@@ -450,8 +464,7 @@ fn shell_quote(v: &str) -> String {
 
 /// 简易 base64 编码（避免引入额外依赖；用于 WSL/Remote stdin 传递凭据）。
 fn base64_encode(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0];
@@ -493,9 +506,14 @@ mod tests {
 
     #[test]
     fn should_classify_https_auth_failures() {
-        assert_eq!(classify_stderr("fatal: Authentication failed"), ErrorKind::Auth);
         assert_eq!(
-            classify_stderr("fatal: could not read Username for 'https://...': terminal prompts disabled"),
+            classify_stderr("fatal: Authentication failed"),
+            ErrorKind::Auth
+        );
+        assert_eq!(
+            classify_stderr(
+                "fatal: could not read Username for 'https://...': terminal prompts disabled"
+            ),
             ErrorKind::Auth
         );
         assert_eq!(
@@ -535,7 +553,9 @@ mod tests {
             ErrorKind::Ambiguous
         );
         assert_eq!(
-            classify_stderr("fatal: the remote end hung up unexpectedly The requested URL returned error: 403"),
+            classify_stderr(
+                "fatal: the remote end hung up unexpectedly The requested URL returned error: 403"
+            ),
             ErrorKind::Ambiguous
         );
     }
@@ -543,7 +563,10 @@ mod tests {
     #[test]
     fn should_classify_other_for_empty_or_unknown() {
         assert_eq!(classify_stderr(""), ErrorKind::Other);
-        assert_eq!(classify_stderr("some unrelated git message"), ErrorKind::Other);
+        assert_eq!(
+            classify_stderr("some unrelated git message"),
+            ErrorKind::Other
+        );
     }
 
     // ── shell_quote / base64 ───────────────────────────────────────────────

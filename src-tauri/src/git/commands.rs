@@ -152,7 +152,10 @@ pub async fn pull(transport: GitTransportKind) -> Result<PushOutcome, AppError> 
 }
 
 #[tauri::command]
-pub async fn push(transport: GitTransportKind, set_upstream: Option<bool>) -> Result<PushOutcome, AppError> {
+pub async fn push(
+    transport: GitTransportKind,
+    set_upstream: Option<bool>,
+) -> Result<PushOutcome, AppError> {
     let (t, wd) = into_transport_and_dir(&transport);
     operations::push(&t, wd, set_upstream.unwrap_or(false))
         .await
