@@ -592,3 +592,52 @@ const [confirmRemove, setConfirmRemove] = useState(false);
 ```
 
 ✅ **使用 ConfirmDialog**：见上方使用方式。
+
+---
+
+## 浮层面板背景色：使用 `bg-popover` 而非 `bg-surface`
+
+### 规则
+
+所有浮层面板（dropdown、popover、portal、toast）必须使用 `bg-popover` 作为背景色，由 shadcn 主题映射到 `var(--bg-secondary)`。
+
+`bg-surface` **不存在于 Tailwind CSS v4 主题中**，使用它会导致背景完全透明。
+
+### 正确
+
+```tsx
+<div className="bg-popover border border-border rounded-md shadow-lg">
+```
+
+### 错误
+
+```tsx
+<div className="bg-surface border border-border rounded-md shadow-lg">
+```
+
+---
+
+## Zustand + `useSyncExternalStore`：`useShallow` 用于派生数组
+
+### 规则
+
+zustand v5 底层使用 `useSyncExternalStore`，store selector 返回的引用必须稳定。调用 `.slice()`、`.filter()`、`.map()` 等方法时每次都返回新引用，会导致无限重渲染。
+
+使用 `zustand/shallow` 的 `useShallow` 做浅比较：
+
+### 错误
+
+```tsx
+// .slice() 每次返回新数组 → 无限重渲染
+const items = useStore((s) => s.list.slice(0, 10));
+```
+
+### 正确
+
+```tsx
+import { useShallow } from 'zustand/shallow';
+
+const items = useStore(
+  useShallow((s) => s.list.slice(0, 10)),
+);
+```

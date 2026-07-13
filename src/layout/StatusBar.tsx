@@ -8,6 +8,7 @@ import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/shared/utils/cn';
+import { NotificationButton } from '@/features/notification/components/NotificationButton';
 
 function serverName(languageId: string): string {
   const names: Record<string, string> = {
@@ -187,7 +188,7 @@ export function StatusBar() {
           </button>
           {dropdownOpen && dropdownStyle && createPortal(
             <div
-              className="bg-surface border border-border rounded-md shadow-lg py-1 z-50"
+              className="bg-popover border border-border rounded-md shadow-lg py-1 z-50"
               data-lsp-dropdown
               style={dropdownStyle}
             >
@@ -261,6 +262,7 @@ export function StatusBar() {
     <div className="flex items-center justify-between h-6 px-3 text-xs text-text-secondary shrink-0 select-none">
       <div className="flex items-center gap-3 min-w-0">{leftContent()}</div>
       <div className="flex items-center gap-2 shrink-0">
+        <NotificationButton />
         {cursorPosition && (
           <span>
             Ln {cursorPosition.line}, Col {cursorPosition.col}

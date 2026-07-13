@@ -147,6 +147,8 @@
   .lsp-dot:nth-child(3) { animation-delay: 0.4s; }
   /* Toast animation */
   @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-slide-up { animation: slide-up 0.25s ease-out; }
 
   /* Agent bar button */
   .agent-bar-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; background: transparent; color: var(--text-secondary); border: none; cursor: pointer; transition: all 0.15s; }
