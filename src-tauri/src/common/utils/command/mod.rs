@@ -1,3 +1,4 @@
+pub mod gh;
 pub mod local;
 pub mod ssh;
 pub mod ssh_auth;

@@ -30,6 +30,9 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
         .map(|u| crate::common::git::provider::detect_provider(&u))
         .unwrap_or(GitProvider::Unknown);
 
+    // 注入 ProviderStore 缓存，后续 PR 操作直接读缓存
+    crate::common::git::pr::set_cached_provider(repo_path, git_provider);
+
     Ok(GitInfo {
         current_branch: branch_info.current_branch,
         branches: branch_info.branches,
