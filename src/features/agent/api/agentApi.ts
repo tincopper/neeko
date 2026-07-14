@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { getAgentIconSrc as getPresetIconSrc } from '@/shared/utils/agents';
 
 import type { AgentConfig } from '@/shared/types';
 
@@ -24,4 +25,15 @@ export function setProjectAgent(projectId: string, agentId?: string | null): Pro
 
 export function checkAgentsInstalled(agentIds?: string[]): Promise<Record<string, boolean>> {
   return invoke<Record<string, boolean>>('check_agents_installed', { agentIds });
+}
+
+export function importAgentIcon(sourcePath: string): Promise<string> {
+  return invoke<string>('import_agent_icon', { sourcePath });
+}
+
+export function resolveAgentIconSrc(icon: string | null | undefined): string | null {
+  const preset = getPresetIconSrc(icon);
+  if (preset) return preset;
+  if (!icon) return null;
+  return convertFileSrc(icon);
 }

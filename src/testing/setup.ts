@@ -9,6 +9,7 @@ afterEach(() => {
 // 全局 mock：@tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn((path: string) => `asset://localhost/${path}`),
 }));
 
 // 全局 mock：@tauri-apps/api/event

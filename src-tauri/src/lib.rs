@@ -84,6 +84,7 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::commands::remove_agent,
             $crate::agent::commands::set_project_agent,
             $crate::agent::commands::check_agents_installed,
+            $crate::agent::commands::import_agent_icon,
             // ── connection ───────────────────────────────────────────────────
             $crate::connection::commands::get_wsl_distros,
             $crate::connection::commands::get_wsl_directories,

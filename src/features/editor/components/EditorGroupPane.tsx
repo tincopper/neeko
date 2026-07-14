@@ -161,12 +161,14 @@ function EditorGroupPane({
     [agents, hiddenAgentIds],
   );
 
-  const allEnabledAgents = useMemo(
-    () => agents.filter((a) => a.enabled).sort((a, b) => a.name.localeCompare(b.name)),
-    [agents],
+  const installedEnabledAgents = useMemo(
+    () => enabledAgents.filter(
+      (a) => installedMap.size === 0 || (installedMap.get(a.id) ?? true),
+    ),
+    [enabledAgents, installedMap],
   );
 
-  const showAgentBarContent = showAgentBar && activeTab?.data.kind === "terminal" && (enabledAgents.length > 0 || allEnabledAgents.length > 0);
+  const showAgentBarContent = showAgentBar && activeTab?.data.kind === "terminal" && installedEnabledAgents.length > 0;
   const showAgentBarRow = activeTab?.data.kind === "terminal";
 
   // Split state
@@ -258,7 +260,7 @@ function EditorGroupPane({
                 onContextMenu={handleTabContextMenu}
                 reorderable={groupId !== "pinned"}
                 onReorderTab={handleReorderTab}
-                agents={agents}
+                agents={installedEnabledAgents}
               />
             </div>
           </div>
@@ -269,16 +271,14 @@ function EditorGroupPane({
                 <>
                   <div className="relative shrink-0">
                     <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
-                      {enabledAgents.map((agent) => {
-                        const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+                      {installedEnabledAgents.map((agent) => {
                         const selected = currentAgentId === agent.id;
                         return (
                           <button
                             key={agent.id}
-                            className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"} ${!installed ? "opacity-50" : ""}`}
+                            className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? "text-text-primary bg-bg-hover" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"}`}
                             style={{ fontSize: "var(--terminal-font-size)" }}
                             onClick={() => handleAgentClick(agent)}
-                            disabled={!installed}
                             title={agent.name}
                           >
                             <AgentIcon icon={agent.icon} />

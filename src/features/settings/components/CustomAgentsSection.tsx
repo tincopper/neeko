@@ -1,6 +1,7 @@
 import React from "react";
 import type { AppConfig } from '@/shared/types';
-import { getAgentIconSrc } from '@/shared/utils/agents';
+import { PRESET_AGENT_ICONS } from '@/shared/utils/agents';
+import { resolveAgentIconSrc } from "@/features/agent/api/agentApi";
 import { cn } from '@/lib/utils';
 import { FolderIcon } from "@/shared/components/icons";
 import { Input, Button } from "@/ui";
@@ -13,13 +14,16 @@ interface CustomAgentsSectionProps {
   newAgentCommand: string;
   newAgentArgs: string;
   newAgentSkillPath: string;
+  newAgentIcon: string;
   onSkillPathInputValueChange: (value: string) => void;
   onNewAgentNameChange: (value: string) => void;
   onNewAgentCommandChange: (value: string) => void;
   onNewAgentArgsChange: (value: string) => void;
   onNewAgentSkillPathChange: (value: string) => void;
+  onNewAgentIconChange: (value: string) => void;
   onAddCustomAgent: () => void;
   onRemoveCustomAgent: (index: number) => void;
+  onUploadAgentIcon: () => void;
   getEffectiveSkillPath: (
     agentId: string,
     fallback: string | null | undefined,
@@ -41,13 +45,16 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
   newAgentCommand,
   newAgentArgs,
   newAgentSkillPath,
+  newAgentIcon,
   onSkillPathInputValueChange,
   onNewAgentNameChange,
   onNewAgentCommandChange,
   onNewAgentArgsChange,
   onNewAgentSkillPathChange,
+  onNewAgentIconChange,
   onAddCustomAgent,
   onRemoveCustomAgent,
+  onUploadAgentIcon,
   getEffectiveSkillPath,
   onSelectSkillPath,
   onStartEditSkillPath,
@@ -69,7 +76,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
       {(config.customAgents || []).length > 0 && (
         <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
           {(config.customAgents || []).map((agent, idx) => {
-            const iconSrc = getAgentIconSrc(agent.icon);
+            const iconSrc = resolveAgentIconSrc(agent.icon);
             const effectiveSkillPath = getEffectiveSkillPath(agent.id, agent.skillPath);
             const hasSkillPath = !!effectiveSkillPath;
 
@@ -201,6 +208,48 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
           }}
           spellCheck={false}
         />
+        <div className="flex items-center gap-2 py-1">
+          <span className="text-[0.79em] text-text-muted shrink-0">Icon:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {PRESET_AGENT_ICONS.map((iconName) => (
+              <button
+                key={iconName}
+                type="button"
+                className={cn(
+                  "w-7 h-7 rounded flex items-center justify-center border transition-colors",
+                  newAgentIcon === iconName
+                    ? "border-accent-blue bg-accent-blue/10"
+                    : "border-transparent hover:bg-bg-hover",
+                )}
+                onClick={() => onNewAgentIconChange(iconName)}
+                title={iconName}
+              >
+                <img src={resolveAgentIconSrc(iconName) ?? ""} className="w-4 h-4 object-contain" alt="" />
+              </button>
+            ))}
+            <span className="text-text-muted mx-0.5 select-none">|</span>
+            {PRESET_AGENT_ICONS.includes(newAgentIcon) ? (
+              <button
+                type="button"
+                className="text-[0.79em] text-accent-blue hover:underline px-1 py-0.5"
+                onClick={onUploadAgentIcon}
+                title="Upload custom icon"
+              >
+                Upload
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-[0.79em] text-accent-blue hover:underline px-1 py-0.5 rounded hover:bg-accent-blue/5"
+                onClick={onUploadAgentIcon}
+                title="Upload custom icon"
+              >
+                <img src={resolveAgentIconSrc(newAgentIcon) ?? ""} className="w-5 h-5 object-contain rounded" alt="" />
+                <span>Upload</span>
+              </button>
+            )}
+          </div>
+        </div>
         <Input
           className="py-[7px] px-2.5 text-[0.86em]"
           type="text"

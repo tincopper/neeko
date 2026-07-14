@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addAgent, removeAgent } from "../../agent/api/agentApi";
+import { addAgent, removeAgent, importAgentIcon } from "../../agent/api/agentApi";
 import { getSystemFonts } from "../api/settingsApi";
 import { open } from "@tauri-apps/plugin-dialog";
+import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
@@ -41,6 +42,7 @@ export function useSettingsPanelState({
   const [newAgentCommand, setNewAgentCommand] = useState("");
   const [newAgentArgs, setNewAgentArgs] = useState("");
   const [newAgentSkillPath, setNewAgentSkillPath] = useState("");
+  const [newAgentIcon, setNewAgentIcon] = useState(DEFAULT_AGENT_ICON);
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -165,6 +167,24 @@ export function useSettingsPanelState({
     onConfigChange({ ...config, customIdes: next });
   };
 
+  const uploadAgentIcon = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{
+          name: "Images",
+          extensions: ["png", "jpg", "jpeg", "svg", "gif", "webp", "ico", "bmp"],
+        }],
+      });
+      if (!selected) return;
+      const path = typeof selected === "string" ? selected : selected;
+      const iconPath = await importAgentIcon(path);
+      setNewAgentIcon(iconPath);
+    } catch (e) {
+      console.error("[Settings] Failed to upload agent icon:", e);
+    }
+  }, []);
+
   const addCustomAgent = async () => {
     const name = newAgentName.trim();
     const command = newAgentCommand.trim();
@@ -191,7 +211,7 @@ export function useSettingsPanelState({
       command,
       args,
       env: {},
-      icon: "cli.svg",
+      icon: newAgentIcon,
       enabled: true,
     };
 
@@ -217,6 +237,7 @@ export function useSettingsPanelState({
     setNewAgentCommand("");
     setNewAgentArgs("");
     setNewAgentSkillPath("");
+    setNewAgentIcon(DEFAULT_AGENT_ICON);
   };
 
   const removeCustomAgent = async (idx: number) => {
@@ -380,6 +401,8 @@ export function useSettingsPanelState({
     setNewAgentArgs,
     newAgentSkillPath,
     setNewAgentSkillPath,
+    newAgentIcon,
+    setNewAgentIcon,
     isCustomShell,
     filteredFonts,
 
@@ -395,6 +418,7 @@ export function useSettingsPanelState({
     removeCustomIde,
     addCustomAgent,
     removeCustomAgent,
+    uploadAgentIcon,
 
     startEditAgent,
     saveAgentOverride,

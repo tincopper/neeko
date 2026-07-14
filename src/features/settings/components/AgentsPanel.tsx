@@ -15,6 +15,7 @@ interface AgentsPanelProps {
   newAgentCommand: string;
   newAgentArgs: string;
   newAgentSkillPath: string;
+  newAgentIcon: string;
   onConfigChange: (next: AppConfig) => void;
   onEditingValueChange: (value: string) => void;
   onSkillPathInputValueChange: (value: string) => void;
@@ -22,8 +23,10 @@ interface AgentsPanelProps {
   onNewAgentCommandChange: (value: string) => void;
   onNewAgentArgsChange: (value: string) => void;
   onNewAgentSkillPathChange: (value: string) => void;
+  onNewAgentIconChange: (value: string) => void;
   onAddCustomAgent: () => void;
   onRemoveCustomAgent: (index: number) => void;
+  onUploadAgentIcon: () => void;
   onStartEditAgent: (agent: AgentConfig) => void;
   onSaveAgentOverride: (agentId: string) => void;
   onCancelPresetEdit: () => void;
@@ -52,6 +55,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   newAgentCommand,
   newAgentArgs,
   newAgentSkillPath,
+  newAgentIcon,
   onConfigChange,
   onEditingValueChange,
   onSkillPathInputValueChange,
@@ -59,8 +63,10 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   onNewAgentCommandChange,
   onNewAgentArgsChange,
   onNewAgentSkillPathChange,
+  onNewAgentIconChange,
   onAddCustomAgent,
   onRemoveCustomAgent,
+  onUploadAgentIcon,
   onStartEditAgent,
   onSaveAgentOverride,
   onCancelPresetEdit,
@@ -144,13 +150,16 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         newAgentCommand={newAgentCommand}
         newAgentArgs={newAgentArgs}
         newAgentSkillPath={newAgentSkillPath}
+        newAgentIcon={newAgentIcon}
         onSkillPathInputValueChange={onSkillPathInputValueChange}
         onNewAgentNameChange={onNewAgentNameChange}
         onNewAgentCommandChange={onNewAgentCommandChange}
         onNewAgentArgsChange={onNewAgentArgsChange}
         onNewAgentSkillPathChange={onNewAgentSkillPathChange}
+        onNewAgentIconChange={onNewAgentIconChange}
         onAddCustomAgent={onAddCustomAgent}
         onRemoveCustomAgent={onRemoveCustomAgent}
+        onUploadAgentIcon={onUploadAgentIcon}
         getEffectiveSkillPath={getEffectiveSkillPath}
         onSelectSkillPath={onSelectSkillPath}
         onStartEditSkillPath={onStartEditSkillPath}

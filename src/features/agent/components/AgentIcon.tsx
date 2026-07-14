@@ -1,5 +1,5 @@
 import React from "react";
-import { getAgentIconSrc } from '@/shared/utils/agents';
+import { resolveAgentIconSrc } from "../api/agentApi";
 
 interface AgentIconProps {
   icon?: string | null;
@@ -8,7 +8,7 @@ interface AgentIconProps {
 }
 
 const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "" }) => {
-  const src = getAgentIconSrc(icon);
+  const src = resolveAgentIconSrc(icon);
   if (src) {
     return (
       <img

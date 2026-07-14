@@ -137,6 +137,31 @@ fn default_agents() -> Vec<AgentConfig> {
             default_skill_path: Some("~/.pi/skills".into()),
             ..Default::default()
         },
+        AgentConfig {
+            id: "omp".into(),
+            name: "omp".into(),
+            command: "omp".into(),
+            icon: Some("omp.svg".into()),
+            enabled: true,
+            prompt_args: Some(vec!["-p".into()]),
+            is_builtin: true,
+            default_skill_path: Some("~/.omp/skills".into()),
+            ..Default::default()
+        },
+        AgentConfig {
+            id: "reasonix".into(),
+            name: "reasonix".into(),
+            command: "reasonix".into(),
+            icon: Some("reasonix.svg".into()),
+            enabled: true,
+            prompt_args: Some(vec![
+              "run".into(),
+              "--yolo".into()
+            ]),
+            is_builtin: true,
+            default_skill_path: Some("~/.reasonix/skills".into()),
+            ..Default::default()
+        },
     ]
 }
 
@@ -145,9 +170,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_seven_presets() {
+    fn should_initialize_with_nine_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 9);
     }
 
     #[test]
@@ -191,7 +216,7 @@ mod tests {
             ..Default::default()
         };
         manager.add_agent(custom);
-        assert_eq!(manager.get_agents().len(), 8);
+        assert_eq!(manager.get_agents().len(), 10);
         assert!(manager.get_agent("custom").is_some());
     }
 
@@ -199,7 +224,7 @@ mod tests {
     fn should_remove_agent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), 6);
+        assert_eq!(manager.get_agents().len(), 8);
         assert!(manager.get_agent("opencode").is_none());
     }
 
@@ -207,7 +232,7 @@ mod tests {
     fn should_not_panic_when_removing_nonexistent() {
         let mut manager = AgentManager::new();
         manager.remove_agent("nonexistent");
-        assert_eq!(manager.get_agents().len(), 7);
+        assert_eq!(manager.get_agents().len(), 9);
     }
 
     #[test]
@@ -265,7 +290,7 @@ mod tests {
         manager.add_agent(dup);
         // Current behavior: allows duplicates, get_agent returns first match
         assert_eq!(manager.get_agent("opencode").unwrap().name, "opencode");
-        assert_eq!(manager.get_agents().len(), 8);
+        assert_eq!(manager.get_agents().len(), 10);
     }
 
     #[test]

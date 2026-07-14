@@ -29,6 +29,8 @@ fn new_manager_contains_all_defaults() {
         "qoder",
         "codebuddy",
         "pi",
+        "omp",
+        "reasonix",
     ];
     for id in expected_ids {
         assert!(

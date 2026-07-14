@@ -2,6 +2,7 @@ use crate::common::agent::types::AgentConfig;
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::collections::HashMap;
+use std::path::Path;
 use tauri::State;
 
 #[tauri::command]
@@ -150,4 +151,75 @@ pub async fn check_agents_installed(
         result.insert(id.clone(), installed);
     }
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn import_agent_icon(
+    source_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<String, AppError> {
+    use tauri::Manager;
+
+    let source = Path::new(&source_path);
+
+    // Validate source exists
+    if !source.exists() {
+        return Err(AppError::Io(format!(
+            "Source file not found: {source_path}"
+        )));
+    }
+
+    // Validate file extension
+    let ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .filter(|e| {
+            matches!(
+                e.as_str(),
+                "png" | "jpg" | "jpeg" | "svg" | "gif" | "webp" | "ico" | "bmp"
+            )
+        })
+        .ok_or_else(|| {
+            AppError::InvalidInput(
+                "Unsupported image format. Supported: png, jpg, jpeg, svg, gif, webp, ico, bmp"
+                    .to_string(),
+            )
+        })?;
+
+    // Validate file size (max 1MB)
+    let metadata = source.metadata().map_err(AppError::from)?;
+    if metadata.len() > 1_048_576 {
+        return Err(AppError::InvalidInput(format!(
+            "File too large ({} bytes). Maximum is 1MB.",
+            metadata.len()
+        )));
+    }
+
+    // Determine destination directory
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::Io(format!("Failed to resolve app data directory: {e}")))?;
+    let dest_dir = app_data_dir.join("agent-icons");
+    tokio::fs::create_dir_all(&dest_dir)
+        .await
+        .map_err(AppError::from)?;
+
+    // Generate unique filename
+    let uuid = uuid::Uuid::new_v4();
+    let dest_filename = format!("{uuid}.{ext}");
+    let dest_path = dest_dir.join(&dest_filename);
+
+    // Copy file
+    tokio::fs::copy(source, &dest_path)
+        .await
+        .map_err(AppError::from)?;
+
+    log::info!(
+        "Imported agent icon: {source_path} -> {}",
+        dest_path.display()
+    );
+
+    Ok(dest_path.to_string_lossy().to_string())
 }

@@ -114,20 +114,25 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                      newAgentName={state.newAgentName}
                      newAgentCommand={state.newAgentCommand}
                      newAgentArgs={state.newAgentArgs}
-                     newAgentSkillPath={state.newAgentSkillPath}
-                     onConfigChange={onConfigChange}
-                     onEditingValueChange={state.setEditingValue}
-                     onSkillPathInputValueChange={state.setSkillPathInputValue}
-                     onNewAgentNameChange={state.setNewAgentName}
-                     onNewAgentCommandChange={state.setNewAgentCommand}
-                     onNewAgentArgsChange={state.setNewAgentArgs}
-                     onNewAgentSkillPathChange={state.setNewAgentSkillPath}
-                     onAddCustomAgent={() => {
-                        void state.addCustomAgent();
-                     }}
-                     onRemoveCustomAgent={(index) => {
-                        void state.removeCustomAgent(index);
-                     }}
+                      newAgentSkillPath={state.newAgentSkillPath}
+                      newAgentIcon={state.newAgentIcon}
+                      onConfigChange={onConfigChange}
+                      onEditingValueChange={state.setEditingValue}
+                      onSkillPathInputValueChange={state.setSkillPathInputValue}
+                      onNewAgentNameChange={state.setNewAgentName}
+                      onNewAgentCommandChange={state.setNewAgentCommand}
+                      onNewAgentArgsChange={state.setNewAgentArgs}
+                      onNewAgentSkillPathChange={state.setNewAgentSkillPath}
+                      onNewAgentIconChange={state.setNewAgentIcon}
+                      onAddCustomAgent={() => {
+                         void state.addCustomAgent();
+                      }}
+                      onRemoveCustomAgent={(index) => {
+                         void state.removeCustomAgent(index);
+                      }}
+                      onUploadAgentIcon={() => {
+                         void state.uploadAgentIcon();
+                      }}
                      onStartEditAgent={state.startEditAgent}
                      onSaveAgentOverride={state.saveAgentOverride}
                      onCancelPresetEdit={state.cancelPresetEdit}
