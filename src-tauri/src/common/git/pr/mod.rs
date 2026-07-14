@@ -1,6 +1,6 @@
+pub mod gitee;
 pub mod github;
 pub mod gitlab;
-pub mod gitee;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,22 +34,12 @@ pub trait PrProvider: Send + Sync {
         base: Option<&str>,
         draft: bool,
     ) -> Result<u64>;
-    fn merge_pr(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-        method: &str,
-    ) -> Result<PRMergeResult>;
+    fn merge_pr(&self, repo_path: &Path, pr_number: u64, method: &str) -> Result<PRMergeResult>;
     fn close_pr(&self, repo_path: &Path, pr_number: u64) -> Result<()>;
     fn list_pr_files(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChange>>;
     fn list_pr_commits(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>>;
     fn list_pr_comments(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRComment>>;
-    fn add_pr_comment(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-        body: &str,
-    ) -> Result<PRComment>;
+    fn add_pr_comment(&self, repo_path: &Path, pr_number: u64, body: &str) -> Result<PRComment>;
     fn edit_pr_comment(
         &self,
         repo_path: &Path,
@@ -57,12 +47,7 @@ pub trait PrProvider: Send + Sync {
         comment_id: &str,
         body: &str,
     ) -> Result<PRComment>;
-    fn delete_pr_comment(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-        comment_id: &str,
-    ) -> Result<()>;
+    fn delete_pr_comment(&self, repo_path: &Path, pr_number: u64, comment_id: &str) -> Result<()>;
     fn add_comment_reaction(
         &self,
         repo_path: &Path,
@@ -96,11 +81,7 @@ fn store() -> &'static Mutex<HashMap<PathBuf, GitProvider>> {
 
 /// 缓存优先，未命中时通过 `get_git_provider` 检测并缓存
 pub fn resolve_provider(repo_path: &Path) -> GitProvider {
-    if let Some(p) = store()
-        .lock()
-        .ok()
-        .and_then(|m| m.get(repo_path).copied())
-    {
+    if let Some(p) = store().lock().ok().and_then(|m| m.get(repo_path).copied()) {
         return p;
     }
     let p = get_git_provider(repo_path).unwrap_or(GitProvider::Unknown);
@@ -131,9 +112,9 @@ fn create_provider(provider: GitProvider) -> Result<Box<dyn PrProvider>> {
         GitProvider::GitHub => Ok(Box::new(github::GitHubPrProvider)),
         GitProvider::GitLab => Err(anyhow::anyhow!("GitLab PR operations not yet supported")),
         GitProvider::Gitee => Err(anyhow::anyhow!("Gitee PR operations not yet supported")),
-        GitProvider::Unknown => {
-            Err(anyhow::anyhow!("Unknown Git provider — PR operations unavailable"))
-        }
+        GitProvider::Unknown => Err(anyhow::anyhow!(
+            "Unknown Git provider — PR operations unavailable"
+        )),
     }
 }
 
@@ -296,10 +277,7 @@ pub fn add_pr_review_comment(
     client.add_pr_review_comment(repo_path, pr_number, body, path, line, side)
 }
 
-pub fn list_pr_review_comments(
-    repo_path: &Path,
-    pr_number: u64,
-) -> Result<Vec<PRReviewComment>> {
+pub fn list_pr_review_comments(repo_path: &Path, pr_number: u64) -> Result<Vec<PRReviewComment>> {
     let client = provider_from_repo(repo_path)?;
     client.list_pr_review_comments(repo_path, pr_number)
 }

@@ -154,10 +154,7 @@ fn default_agents() -> Vec<AgentConfig> {
             command: "reasonix".into(),
             icon: Some("reasonix.svg".into()),
             enabled: true,
-            prompt_args: Some(vec![
-              "run".into(),
-              "--yolo".into()
-            ]),
+            prompt_args: Some(vec!["run".into(), "--yolo".into()]),
             is_builtin: true,
             default_skill_path: Some("~/.reasonix/skills".into()),
             ..Default::default()

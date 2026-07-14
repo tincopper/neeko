@@ -78,15 +78,10 @@ impl GhCli {
         })?;
         let v: serde_json::Value =
             serde_json::from_str(&stdout).context("Failed to parse gh repo view output")?;
-        let owner = v["owner"]["login"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let owner = v["owner"]["login"].as_str().unwrap_or("").to_string();
         let repo = v["name"].as_str().unwrap_or("").to_string();
         if owner.is_empty() || repo.is_empty() {
-            anyhow::bail!(
-                "Failed to determine repo owner/name; is `gh repo view` working?"
-            );
+            anyhow::bail!("Failed to determine repo owner/name; is `gh repo view` working?");
         }
         let pair = (owner, repo);
         *guard = Some(pair.clone());
@@ -115,8 +110,6 @@ impl GhCli {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
-        cmd.output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        cmd.output().map(|o| o.status.success()).unwrap_or(false)
     }
 }

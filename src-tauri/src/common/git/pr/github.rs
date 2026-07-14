@@ -13,11 +13,7 @@ use crate::project::types::{
 fn parse_issue_comment(v: &serde_json::Value) -> Option<PRComment> {
     let id = v.get("id")?.as_u64()?.to_string();
     let author = v.get("user")?.get("login")?.as_str()?.to_string();
-    let author_avatar = v
-        .get("user")?
-        .get("avatar_url")?
-        .as_str()
-        .map(String::from);
+    let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(String::from);
     let body = v.get("body")?.as_str()?.to_string();
     let created_at = v.get("created_at")?.as_str()?.to_string();
     let updated_at = v.get("updated_at")?.as_str().map(String::from);
@@ -44,11 +40,7 @@ fn state_label(state: &str) -> &'static str {
 fn parse_review_to_comment(v: &serde_json::Value) -> Option<PRComment> {
     let id = v.get("id")?.as_u64()?.to_string();
     let author = v.get("user")?.get("login")?.as_str()?.to_string();
-    let author_avatar = v
-        .get("user")?
-        .get("avatar_url")?
-        .as_str()
-        .map(String::from);
+    let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(String::from);
     let body = v.get("body")?.as_str().unwrap_or("").to_string();
     let state = v.get("state")?.as_str().unwrap_or("").to_string();
     let submitted_at = v.get("submitted_at")?.as_str()?.to_string();
@@ -172,11 +164,7 @@ fn parse_review_comments_response(stdout: &str) -> Vec<PRReviewComment> {
         .filter_map(|v| {
             let id = v.get("id")?.as_u64()?.to_string();
             let author = v.get("user")?.get("login")?.as_str()?.to_string();
-            let author_avatar = v
-                .get("user")?
-                .get("avatar_url")?
-                .as_str()
-                .map(String::from);
+            let author_avatar = v.get("user")?.get("avatar_url")?.as_str().map(String::from);
             let body = v.get("body")?.as_str()?.to_string();
             let path = v.get("path")?.as_str()?.to_string();
             let line = v.get("line")?.as_u64()?;
@@ -217,12 +205,7 @@ impl PrProvider for GitHubPrProvider {
         GhCli::is_authenticated()
     }
 
-    fn list_prs(
-        &self,
-        repo_path: &Path,
-        state: &str,
-        limit: usize,
-    ) -> Result<Vec<PRListItem>> {
+    fn list_prs(&self, repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
         let cli = GhCli::new(repo_path);
         let mut result: Vec<PRListItem> = cli.run_json(|cmd| {
             cmd.args([
@@ -253,14 +236,7 @@ impl PrProvider for GitHubPrProvider {
         let cli = GhCli::new(repo_path);
         let items: Vec<serde_json::Value> = cli.run_json(|cmd| {
             cmd.args([
-                "pr",
-                "list",
-                "--state",
-                "all",
-                "--limit",
-                "1000",
-                "--json",
-                "author",
+                "pr", "list", "--state", "all", "--limit", "1000", "--json", "author",
             ]);
         })?;
         let mut authors: Vec<String> = items
@@ -270,9 +246,7 @@ impl PrProvider for GitHubPrProvider {
                     if let Some(s) = a.as_str() {
                         Some(s.to_string())
                     } else if let Some(obj) = a.as_object() {
-                        obj.get("login")
-                            .and_then(|l| l.as_str())
-                            .map(String::from)
+                        obj.get("login").and_then(|l| l.as_str()).map(String::from)
                     } else {
                         None
                     }
@@ -329,12 +303,7 @@ impl PrProvider for GitHubPrProvider {
             .context("Failed to parse PR number from gh pr create output")
     }
 
-    fn merge_pr(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-        method: &str,
-    ) -> Result<PRMergeResult> {
+    fn merge_pr(&self, repo_path: &Path, pr_number: u64, method: &str) -> Result<PRMergeResult> {
         if !["merge", "squash", "rebase"].contains(&method) {
             anyhow::bail!(
                 "Invalid merge method '{}'. Use: merge, squash, or rebase",
@@ -377,10 +346,8 @@ impl PrProvider for GitHubPrProvider {
                 arr.iter()
                     .filter_map(|f| {
                         let path = f.get("path")?.as_str()?.to_string();
-                        let additions =
-                            f.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let deletions =
-                            f.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let additions = f.get("additions").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let deletions = f.get("deletions").and_then(|v| v.as_u64()).unwrap_or(0);
                         let change_type = f
                             .get("changeType")
                             .and_then(|v| v.as_str())
@@ -453,11 +420,13 @@ impl PrProvider for GitHubPrProvider {
         let cli = GhCli::new(repo_path);
         log::info!("[list_pr_comments] Loading comments for PR #{}", pr_number);
 
-        let issue_comments: Vec<serde_json::Value> = cli
-            .api_json(&format!("issues/{}/comments", pr_number), |_| {})?;
+        let issue_comments: Vec<serde_json::Value> =
+            cli.api_json(&format!("issues/{}/comments", pr_number), |_| {})?;
         let issue_count = issue_comments.len();
-        let issue_comments: Vec<PRComment> =
-            issue_comments.iter().filter_map(parse_issue_comment).collect();
+        let issue_comments: Vec<PRComment> = issue_comments
+            .iter()
+            .filter_map(parse_issue_comment)
+            .collect();
 
         let reviews: Vec<serde_json::Value> = cli
             .api_json(&format!("pulls/{}/reviews", pr_number), |_| {})
@@ -477,12 +446,7 @@ impl PrProvider for GitHubPrProvider {
         Ok(all)
     }
 
-    fn add_pr_comment(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-        body: &str,
-    ) -> Result<PRComment> {
+    fn add_pr_comment(&self, repo_path: &Path, pr_number: u64, body: &str) -> Result<PRComment> {
         log::info!("[add_pr_comment] Adding comment to PR #{}", pr_number);
         let cli = GhCli::new(repo_path);
         let stdout = cli.api_run(&format!("issues/{}/comments", pr_number), |cmd| {
@@ -499,19 +463,18 @@ impl PrProvider for GitHubPrProvider {
         body: &str,
     ) -> Result<PRComment> {
         let cli = GhCli::new(repo_path);
-        let stdout =
-            cli.api_run(&format!("issues/comments/{}", comment_id), |cmd| {
-                cmd.args(["--method", "PATCH", "--raw-field", &format!("body={}", body)]);
-            })?;
+        let stdout = cli.api_run(&format!("issues/comments/{}", comment_id), |cmd| {
+            cmd.args([
+                "--method",
+                "PATCH",
+                "--raw-field",
+                &format!("body={}", body),
+            ]);
+        })?;
         parse_comment_response(&stdout)
     }
 
-    fn delete_pr_comment(
-        &self,
-        repo_path: &Path,
-        _pr_number: u64,
-        comment_id: &str,
-    ) -> Result<()> {
+    fn delete_pr_comment(&self, repo_path: &Path, _pr_number: u64, comment_id: &str) -> Result<()> {
         let cli = GhCli::new(repo_path);
         cli.api_run(&format!("issues/comments/{}", comment_id), |cmd| {
             cmd.args(["--method", "DELETE"]);

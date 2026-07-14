@@ -41,12 +41,7 @@ impl PrProvider for GiteePrProvider {
     ) -> Result<u64> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn merge_pr(
-        &self,
-        _repo_path: &Path,
-        _pr_number: u64,
-        _method: &str,
-    ) -> Result<PRMergeResult> {
+    fn merge_pr(&self, _repo_path: &Path, _pr_number: u64, _method: &str) -> Result<PRMergeResult> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
     fn close_pr(&self, _repo_path: &Path, _pr_number: u64) -> Result<()> {
@@ -61,12 +56,7 @@ impl PrProvider for GiteePrProvider {
     fn list_pr_comments(&self, _repo_path: &Path, _pr_number: u64) -> Result<Vec<PRComment>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn add_pr_comment(
-        &self,
-        _repo_path: &Path,
-        _pr_number: u64,
-        _body: &str,
-    ) -> Result<PRComment> {
+    fn add_pr_comment(&self, _repo_path: &Path, _pr_number: u64, _body: &str) -> Result<PRComment> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
     fn edit_pr_comment(
