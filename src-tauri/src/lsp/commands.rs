@@ -43,7 +43,7 @@ pub async fn lsp_request(
             .lsp_manager
             .is_document_open(&project_path, &language_id, uri)
         {
-            let file_path = uri.trim_start_matches("file://");
+            let file_path = uri.strip_prefix("file://").unwrap_or(uri);
             log::debug!(
                 "[LSP] Auto-opening document for {}: uri={}, file_path={}",
                 method,
@@ -365,7 +365,7 @@ pub async fn lsp_go_to_definition(
         .lsp_manager
         .is_document_open(&project_path, &language_id, &uri)
     {
-        let file_path = uri.trim_start_matches("file://");
+        let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
         if let Ok(text) = std::fs::read_to_string(file_path) {
             let open_params = serde_json::json!({
                 "textDocument": {
@@ -410,7 +410,7 @@ pub async fn lsp_go_to_definition(
 
     // Preload target file content using UnifiedLocation
     let file_content = UnifiedLocation::first_target_uri(&lsp_result).and_then(|target_uri| {
-        let path = target_uri.trim_start_matches("file://");
+        let path = target_uri.strip_prefix("file://").unwrap_or(&target_uri);
         std::fs::read_to_string(path).ok()
     });
     let t3 = t0.elapsed();

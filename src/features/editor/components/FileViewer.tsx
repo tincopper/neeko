@@ -24,7 +24,7 @@ import { useShallow } from 'zustand/shallow';
 import { useConnectionStore } from '@/features/connection/store';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
-import { getLspLanguageId, toFileUri } from '@/features/lsp/languageMap';
+import { fromFileUri, getLspLanguageId, toFileUri } from '@/features/lsp/languageMap';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
@@ -365,7 +365,7 @@ function FileEditor({
       currentFilePath: string,
       preloadedContent?: string | null,
     ) => {
-      const targetPath = location.uri.replace(/^file:\/\//, '');
+      const targetPath = fromFileUri(location.uri);
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
 

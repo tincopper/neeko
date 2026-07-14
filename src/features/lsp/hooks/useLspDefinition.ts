@@ -1,9 +1,11 @@
 import { useCallback } from 'react';
 
-import { lspRequest } from '../api/lspApi';
+import { useNotificationStore } from '@/features/notification/notificationStore';
+
+import { lspGoToDefinition, lspRequest } from '../api/lspApi';
 import type { LspLocation } from '../types';
+
 import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
-import { lspGoToDefinition } from '../api/lspApi';
 
 function toLspLocation(raw: unknown): LspLocation | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -61,6 +63,11 @@ export function useLspDefinition(projectPath: string | null) {
         return unwrapLocation(result);
       } catch (e) {
         console.error('[LSP] Go to definition failed:', e);
+        useNotificationStore.getState().addNotification({
+          type: 'error',
+          title: 'Go to Definition Failed',
+          message: String(e),
+        });
         return null;
       }
     },
@@ -88,6 +95,11 @@ export function useLspDefinition(projectPath: string | null) {
         return { location, fileContent: wrapped.fileContent ?? null };
       } catch (e) {
         console.error('[LSP] Go to definition (with content) failed:', e);
+        useNotificationStore.getState().addNotification({
+          type: 'error',
+          title: 'Go to Definition Failed',
+          message: String(e),
+        });
         return null;
       }
     },
@@ -115,6 +127,11 @@ export function useLspDefinition(projectPath: string | null) {
         return result.map((item) => toLspLocation(item)).filter(Boolean) as LspLocation[];
       } catch (e) {
         console.error('[LSP] Find references failed:', e);
+        useNotificationStore.getState().addNotification({
+          type: 'error',
+          title: 'Find References Failed',
+          message: String(e),
+        });
         return [];
       }
     },

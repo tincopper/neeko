@@ -47,6 +47,13 @@ export function toFileUri(projectPath: string, filePath: string): string {
   return `file://${projectPath.replace(/\\/g, '/')}/${normalized}`;
 }
 
+export function fromFileUri(uri: string): string {
+  const withoutScheme = uri.startsWith('file://')
+    ? uri.slice('file://'.length)
+    : uri;
+  return decodeURIComponent(withoutScheme);
+}
+
 export function isLspAvailable(extension: string): boolean {
   return extension.toLowerCase() in LSP_LANGUAGE_MAP;
 }

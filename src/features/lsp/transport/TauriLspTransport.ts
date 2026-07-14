@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { Transport } from '@codemirror/lsp-client';
 
+import { useNotificationStore } from '@/features/notification/notificationStore';
+
 /**
  * Bridges @codemirror/lsp-client to Neeko's Rust LSP backend via Tauri IPC.
  *
@@ -40,6 +42,11 @@ export class TauriLspTransport implements Transport {
       })
       .catch((err) => {
         console.error('[TauriLspTransport] send error:', err);
+        useNotificationStore.getState().addNotification({
+          type: 'error',
+          title: 'LSP Connection Error',
+          message: String(err),
+        });
         // Synthesize a JSON-RPC error response so the client can handle it
         const errorResponse = JSON.stringify({
           jsonrpc: '2.0',

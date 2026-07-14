@@ -45,6 +45,10 @@ pub fn run() {
                 log::warn!("Failed to resolve user PATH from login shell, using default PATH");
             }
         }
+        log::info!(
+            "[LSP] Effective PATH after resolve: {}",
+            std::env::var("PATH").unwrap_or_default()
+        );
     }
 
     let skill_store: Arc<crate::skill::skill_store::SkillStore> = {

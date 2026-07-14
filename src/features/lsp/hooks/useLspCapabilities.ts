@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+
+import { useNotificationStore } from '@/features/notification/notificationStore';
+
 import { lspRequest } from '../api/lspApi';
 
 /**
@@ -72,6 +75,11 @@ export function useLspCapabilities(
       .catch(() => {
         if (!cancelled) {
           setCaps(EMPTY_CAPABILITIES);
+          useNotificationStore.getState().addNotification({
+            type: 'warning',
+            title: 'LSP Server Unavailable',
+            message: `LSP for ${languageId} is not responding. Language features are disabled.`,
+          });
         }
       });
 

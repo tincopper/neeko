@@ -9,6 +9,7 @@ import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/shared/utils/cn';
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
+import { useNotificationStore } from '@/features/notification/notificationStore';
 
 function serverName(languageId: string): string {
   const names: Record<string, string> = {
@@ -115,6 +116,11 @@ export function StatusBar() {
         status: 'error',
         statusMessage: String(e),
       });
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        title: 'LSP Restart Failed',
+        message: String(e),
+      });
     }
   };
 
@@ -127,6 +133,11 @@ export function StatusBar() {
       await lspStopSession(activeProjectPath, languageId);
     } catch (e) {
       console.error('[LSP] Stop failed:', e);
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        title: 'LSP Stop Failed',
+        message: String(e),
+      });
     }
   };
 
