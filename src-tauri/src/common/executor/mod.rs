@@ -4,8 +4,29 @@
 //! WSL, and SSH command execution. Callers use the same API regardless
 //! of the target environment.
 
+pub mod factory;
 mod local;
 mod ssh;
+pub mod ssh_auth;
+pub mod sync;
+
+#[cfg(target_os = "windows")]
+pub mod wsl;
+#[cfg(not(target_os = "windows"))]
+pub(crate) mod wsl {
+    use super::ExecError;
+    use async_trait::async_trait;
+    use super::{CommandExecutor, ExecChild};
+
+    pub struct WslExecutor;
+
+    #[async_trait]
+    impl CommandExecutor for WslExecutor {
+        async fn spawn(&self, _cmd: &str, _args: &[&str]) -> Result<ExecChild, ExecError> {
+            Err(ExecError::Wsl("WSL is only supported on Windows".into()))
+        }
+    }
+}
 
 use std::future::Future;
 use std::pin::Pin;

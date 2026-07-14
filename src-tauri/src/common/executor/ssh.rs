@@ -28,8 +28,8 @@ use russh::client::Handle;
 
 use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError};
 use crate::common::connection::types::AuthMethod;
-use crate::common::utils::command::ssh_auth;
-use crate::common::utils::command::ssh_auth::Client;
+use crate::common::executor::ssh_auth;
+use crate::common::executor::ssh_auth::Client;
 
 type StdioReceiver = mpsc::Receiver<Vec<u8>>;
 
