@@ -33,6 +33,20 @@ pub fn exec_detached(program: &str) -> Command {
     cmd
 }
 
+/// Create a Command with full PATH resolution.
+///
+/// Resolves `program` to an absolute path by merging the current process PATH
+/// with common user shell paths (fnm, nvm, homebrew, etc.), then delegates to
+/// [`exec`] for platform-specific flags. Use this for binaries installed via
+/// package managers (npm, pip, rustup, go) that may not be on the Tauri GUI
+/// process's default PATH.
+///
+/// Resolution is done via [`resolve_command_path`] + [`resolve_full_path`].
+pub fn cmd_from_path(program: &str) -> Command {
+    let resolved = resolve_command_path(program, &resolve_full_path());
+    exec(&resolved)
+}
+
 /// Check if a command exists on the system PATH.
 pub fn check_command_exists(command: &str) -> bool {
     if cfg!(target_os = "windows") {

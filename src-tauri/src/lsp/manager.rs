@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+use crate::common::utils::command::local::cmd_from_path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -186,7 +188,17 @@ impl LspSession {
         }
 
         let cmd = plugin.server_command;
-        let mut child = Command::new(cmd[0])
+        log::info!(
+            "[LSP] Spawning server: language={} binary={:?} project={}",
+            language_id,
+            cmd,
+            project_path
+        );
+        log::debug!(
+            "[LSP] PATH before spawn: {}",
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let mut child = cmd_from_path(cmd[0])
             .args(&cmd[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

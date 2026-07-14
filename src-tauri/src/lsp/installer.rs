@@ -1,5 +1,6 @@
-use std::process::Command;
 use std::sync::Mutex;
+
+use crate::common::utils::command::local::cmd_from_path;
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -58,9 +59,22 @@ fn emit_progress(app_handle: &tauri::AppHandle, language_id: &str, phase: &str, 
 pub fn check_server_installed(language_id: &str) -> bool {
     let binary = match server_binary(language_id) {
         Some(b) => b,
-        None => return false,
+        None => {
+            log::debug!(
+                "[LSP][installer] No binary mapping for language={}",
+                language_id
+            );
+            return false;
+        }
     };
-    crate::common::utils::command::local::check_command_exists(binary)
+    let found = crate::common::utils::command::local::check_command_exists(binary);
+    log::info!(
+        "[LSP][installer] check_server_installed: language={} binary={} found={}",
+        language_id,
+        binary,
+        found,
+    );
+    found
 }
 
 /// Try to auto-install the LSP server for the given language.
@@ -121,7 +135,7 @@ fn install_server_impl(language_id: &str, app_handle: &tauri::AppHandle) -> Resu
 
     log::info!("[LSP] Installing {} via: {:?}", bin, cmd_and_args);
 
-    let result = Command::new(cmd_and_args[0])
+    let result = cmd_from_path(cmd_and_args[0])
         .args(&cmd_and_args[1..])
         .output();
 

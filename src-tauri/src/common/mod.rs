@@ -2,6 +2,7 @@ pub mod agent;
 pub mod connection;
 pub mod db;
 pub mod error;
+pub mod executor;
 pub mod file;
 pub mod git;
 pub mod logger;
