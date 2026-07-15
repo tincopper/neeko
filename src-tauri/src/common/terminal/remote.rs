@@ -1,6 +1,6 @@
 use crate::common::connection::types::AuthMethod;
-use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::common::executor::ssh_auth;
+use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use anyhow::{Context, Result};
 #[allow(clippy::wildcard_imports)]

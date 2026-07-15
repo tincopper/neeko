@@ -4,10 +4,9 @@ use anyhow::Result;
 use tokio::io::AsyncWriteExt;
 
 use crate::common::connection::types::AuthMethod;
+use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
-use crate::common::utils::command::ssh::exec_command;
-#[cfg(target_os = "windows")]
-use crate::common::utils::command::wsl;
 
 const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
 const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -238,7 +237,13 @@ impl GitTransport {
                 parts.push("--".to_string()); // 隔离 git 参数
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let cmd = format!("cd '{sp}' && {}git {}", env_prefix, parts.join(" "));
-                let out = wsl::exec(distro, &cmd);
+                let out = exec_on(
+                    &ExecTarget::Wsl {
+                        distro: distro.clone(),
+                    },
+                    "bash",
+                    &["-c", &cmd],
+                );
                 out.map_err(|e| {
                     GitExecError {
                         kind: classify_stderr(&e.to_string()),
@@ -265,17 +270,26 @@ impl GitTransport {
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let git_cmd = format!("{}git {}", env_prefix, parts.join(" "));
                 let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_command(host, *port, username, auth, &cmd)
-                    .await
-                    .map_err(|e| {
-                        GitExecError {
-                            kind: classify_stderr(&e.to_string()),
-                            stderr: e.to_string(),
-                            stdout: String::new(),
-                            command: cmd,
-                        }
-                        .into()
-                    })
+                exec_on(
+                    &ExecTarget::Remote {
+                        host: host.clone(),
+                        port: *port,
+                        username: username.clone(),
+                        auth: auth.clone(),
+                    },
+                    "sh",
+                    &["-c", &cmd],
+                )
+                .await
+                .map_err(|e| {
+                    GitExecError {
+                        kind: classify_stderr(&e.to_string()),
+                        stderr: e.to_string(),
+                        stdout: String::new(),
+                        command: cmd,
+                    }
+                    .into()
+                })
             }
         }
     }
@@ -365,7 +379,13 @@ impl GitTransport {
                     b64,
                     parts.join(" ")
                 );
-                let out = wsl::exec(distro, &cmd);
+                let out = exec_on(
+                    &ExecTarget::Wsl {
+                        distro: distro.clone(),
+                    },
+                    "bash",
+                    &["-c", &cmd],
+                );
                 out.map_err(|e| {
                     GitExecError {
                         kind: classify_stderr(&e.to_string()),
@@ -400,17 +420,26 @@ impl GitTransport {
                     parts.join(" ")
                 );
                 let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_command(host, *port, username, auth, &cmd)
-                    .await
-                    .map_err(|e| {
-                        GitExecError {
-                            kind: classify_stderr(&e.to_string()),
-                            stderr: e.to_string(),
-                            stdout: String::new(),
-                            command: cmd,
-                        }
-                        .into()
-                    })
+                exec_on(
+                    &ExecTarget::Remote {
+                        host: host.clone(),
+                        port: *port,
+                        username: username.clone(),
+                        auth: auth.clone(),
+                    },
+                    "sh",
+                    &["-c", &cmd],
+                )
+                .await
+                .map_err(|e| {
+                    GitExecError {
+                        kind: classify_stderr(&e.to_string()),
+                        stderr: e.to_string(),
+                        stdout: String::new(),
+                        command: cmd,
+                    }
+                    .into()
+                })
             }
         }
     }
@@ -439,7 +468,14 @@ impl GitTransport {
             GitTransport::Wsl { distro } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
-                wsl::exec(distro, &cmd).is_ok()
+                exec_on(
+                    &ExecTarget::Wsl {
+                        distro: distro.clone(),
+                    },
+                    "bash",
+                    &["-c", &cmd],
+                )
+                .is_ok()
             }
             GitTransport::Remote {
                 host,
@@ -449,9 +485,18 @@ impl GitTransport {
             } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
-                exec_command(host, *port, username, auth, &cmd)
-                    .await
-                    .is_ok()
+                exec_on(
+                    &ExecTarget::Remote {
+                        host: host.clone(),
+                        port: *port,
+                        username: username.clone(),
+                        auth: auth.clone(),
+                    },
+                    "sh",
+                    &["-c", &cmd],
+                )
+                .await
+                .is_ok()
             }
         }
     }

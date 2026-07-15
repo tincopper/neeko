@@ -1,8 +1,9 @@
 use anyhow::Result;
 
 use crate::common::connection::types::AuthMethod;
+use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
-use crate::common::utils::command::ssh::exec_command;
 #[cfg(test)]
 use crate::project::types::FileStatus;
 use crate::project::types::{FileNode, GitInfo, GitProvider};
@@ -32,7 +33,17 @@ pub async fn get_remote_git_info(
           && printf '\\n__REMOTE__\\n' \
           && git remote get-url origin 2>/dev/null"
     );
-    let output = exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_on(
+        &ExecTarget::Remote {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+            auth: auth.clone(),
+        },
+        "sh",
+        &["-c", &cmd],
+    )
+    .await?;
 
     // Parse the remote URL from the last line (after __REMOTE__ marker)
     let git_provider = if let Some(remote_pos) = output.rfind("__REMOTE__\n") {
@@ -77,7 +88,17 @@ pub async fn remote_read_dir_tree_fn(
          -not -name '.git' \
           2>/dev/null | sort"
     );
-    let output = exec_command(host, port, username, auth, &cmd).await?;
+    let output = exec_on(
+        &ExecTarget::Remote {
+            host: host.to_string(),
+            port,
+            username: username.to_string(),
+            auth: auth.clone(),
+        },
+        "sh",
+        &["-c", &cmd],
+    )
+    .await?;
     let mut tree = build_file_tree_from_find(&output, &actual_path)?;
 
     // 如果使用了 sub_path，需要将路径修正为相对于项目根的完整路径
