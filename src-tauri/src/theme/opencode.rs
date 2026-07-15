@@ -5,7 +5,6 @@ use std::path::Path;
 
 use super::common::{base64_encode, map_theme_name, read_config_bool, shell_escape};
 use crate::common::utils::command::ssh::exec;
-use crate::common::utils::command::wsl;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具
@@ -114,9 +113,20 @@ pub fn write_project_tui_config(project_path: &str, neeko_theme: &str) -> Result
 }
 
 /// 通过 WSL 安装主题文件到 WSL 内部的 ~/.config/opencode/themes/
-pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
+pub async fn install_wsl_theme_files(distro: &str) -> Result<()> {
     let themes_dir = "$HOME/.config/opencode/themes";
-    wsl::exec(distro, &format!("mkdir -p {}", themes_dir))?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("mkdir -p {}", themes_dir)],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
     log::debug!("[WSL][Theme] mkdir -p {} (distro={})", themes_dir, distro);
 
     let themes = [
@@ -138,9 +148,17 @@ pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
             encoded.len(),
             distro
         );
-        if let Err(e) = wsl::exec(distro, &cmd) {
-            log::error!("[WSL][Theme] Failed to write {}: {}", path, e);
-            return Err(e);
+        {
+            let target = crate::common::executor::factory::ExecTarget::Wsl {
+                distro: distro.to_string(),
+            };
+            if let Err(e) = crate::common::executor::sync::exec_on(&target, "bash", &["-c", &cmd])
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))
+            {
+                log::error!("[WSL][Theme] Failed to write {}: {}", path, e);
+                return Err(e);
+            }
         }
     }
 
@@ -153,7 +171,11 @@ pub fn install_wsl_theme_files(distro: &str) -> Result<()> {
 
 /// WSL 项目终端创建前调用
 /// 通过 wsl.exe 在 WSL 内部写入 .opencode/tui.json
-pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str) -> Result<()> {
+pub async fn write_wsl_tui_config(
+    distro: &str,
+    project_path: &str,
+    neeko_theme: &str,
+) -> Result<()> {
     let theme_name = map_theme_name(neeko_theme);
     let opencode_dir = format!("{}/.opencode", project_path);
     let tui_path = format!("{}/tui.json", opencode_dir);
@@ -166,22 +188,54 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str)
         theme_name
     );
 
-    wsl::exec(distro, &format!("mkdir -p {}", shell_escape(&opencode_dir)))?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("mkdir -p {}", shell_escape(&opencode_dir))],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
 
     // 备份（如果 tui.json 存在且备份不存在）
-    let _ = wsl::exec(
-        distro,
-        &format!(
-            "test -f {} && test ! -f {} && cp {} {}",
-            shell_escape(&tui_path),
-            shell_escape(&backup_path),
-            shell_escape(&tui_path),
-            shell_escape(&backup_path)
-        ),
-    );
+    let _ = {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &[
+                "-c",
+                &format!(
+                    "test -f {} && test ! -f {} && cp {} {}",
+                    shell_escape(&tui_path),
+                    shell_escape(&backup_path),
+                    shell_escape(&tui_path),
+                    shell_escape(&backup_path)
+                ),
+            ],
+        )
+        .await
+    };
 
     // 读取并合并已有 tui.json（与本地版本行为一致）
-    let merged_content = match wsl::exec(distro, &format!("cat {}", shell_escape(&tui_path))) {
+    let merged_content = match {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("cat {}", shell_escape(&tui_path))],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))
+    } {
         Ok(raw) => {
             let mut config: serde_json::Value =
                 serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
@@ -195,14 +249,25 @@ pub fn write_wsl_tui_config(distro: &str, project_path: &str, neeko_theme: &str)
 
     // 写入 tui.json
     let encoded = base64_encode(&merged_content);
-    wsl::exec(
-        distro,
-        &format!(
-            "echo '{}' | base64 -d > {}",
-            encoded,
-            shell_escape(&tui_path)
-        ),
-    )?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &[
+                "-c",
+                &format!(
+                    "echo '{}' | base64 -d > {}",
+                    encoded,
+                    shell_escape(&tui_path)
+                ),
+            ],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
 
     log::info!(
         "[OpenCodeTheme] Written WSL tui.json to {} with theme={} (merged)",

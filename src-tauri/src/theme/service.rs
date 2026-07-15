@@ -41,10 +41,10 @@ impl ThemeStrategy {
         }
     }
 
-    pub fn sync_wsl(&self, distro: &str, project_path: &str, theme: &str) -> Result<()> {
+    pub async fn sync_wsl(&self, distro: &str, project_path: &str, theme: &str) -> Result<()> {
         match self {
-            Self::OpenCode => opencode::write_wsl_tui_config(distro, project_path, theme),
-            Self::Pi => pi::write_wsl_pi_settings(distro, project_path, theme),
+            Self::OpenCode => opencode::write_wsl_tui_config(distro, project_path, theme).await,
+            Self::Pi => pi::write_wsl_pi_settings(distro, project_path, theme).await,
         }
     }
 
@@ -83,14 +83,14 @@ pub fn install_all_global_themes() -> Result<()> {
 }
 
 /// WSL 终端创建时调用：同时安装 OpenCode 和 Pi 主题文件到 WSL 内部
-pub fn install_wsl_themes(distro: &str) -> Result<()> {
-    opencode::install_wsl_theme_files(distro)?;
-    pi::install_wsl_pi_theme_files(distro)?;
+pub async fn install_wsl_themes(distro: &str) -> Result<()> {
+    opencode::install_wsl_theme_files(distro).await?;
+    pi::install_wsl_pi_theme_files(distro).await?;
     Ok(())
 }
 
 /// 统一写入项目级主题配置（本地 / WSL）
-pub fn write_project_theme_config(ctx: &ThemeContext, project_path: &str) -> Result<()> {
+pub async fn write_project_theme_config(ctx: &ThemeContext, project_path: &str) -> Result<()> {
     let theme = common::read_neeko_theme().unwrap_or_else(|| "dark".to_string());
     for s in ThemeStrategy::all() {
         if !s.is_enabled() {
@@ -98,7 +98,7 @@ pub fn write_project_theme_config(ctx: &ThemeContext, project_path: &str) -> Res
         }
         match ctx {
             ThemeContext::Local => s.sync_local(project_path, &theme)?,
-            ThemeContext::Wsl(distro) => s.sync_wsl(distro, project_path, &theme)?,
+            ThemeContext::Wsl(distro) => s.sync_wsl(distro, project_path, &theme).await?,
         }
     }
     Ok(())

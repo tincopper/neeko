@@ -5,38 +5,37 @@ use crate::AppStateWrapper;
 use tauri::State;
 
 #[tauri::command]
-pub fn create_terminal_session(
+pub async fn create_terminal_session(
     project_id: String,
     cols: u16,
     rows: u16,
     shell: Option<String>,
     working_dir: Option<String>,
     command: Option<String>,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        let path = project.path.to_string_lossy().to_string();
+    let path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        let project = manager
+            .get_project(&project_id)
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+        project.path.to_string_lossy().to_string()
+    };
 
-        // Theme sync — skip for task terminals (command != None)
-        if command.is_none() {
-            let _ = crate::theme::service::write_project_theme_config(
-                &crate::theme::service::ThemeContext::Local,
-                &path,
-            );
-        }
-
-        state
-            .terminal_manager
-            .create_session(&path, cols, rows, shell, working_dir, command, app_handle)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
+    // Theme sync — skip for task terminals (command != None)
+    if command.is_none() {
+        let _ = crate::theme::service::write_project_theme_config(
+            &crate::theme::service::ThemeContext::Local,
+            &path,
+        )
+        .await;
     }
+
+    state
+        .terminal_manager
+        .create_session(&path, cols, rows, shell, working_dir, command, app_handle)
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -60,12 +59,12 @@ pub fn resize_terminal(
 }
 
 #[tauri::command]
-pub fn create_wsl_terminal_session(
+pub async fn create_wsl_terminal_session(
     distro: String,
     project_path: String,
     cols: u16,
     rows: u16,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
     if !cfg!(target_os = "windows") {
@@ -86,20 +85,21 @@ pub fn create_wsl_terminal_session(
             pi,
         };
 
-        if let Err(e) = install_wsl_theme_files(&distro) {
+        if let Err(e) = install_wsl_theme_files(&distro).await {
             log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
         }
-        if let Err(e) = pi::install_wsl_pi_theme_files(&distro) {
+        if let Err(e) = pi::install_wsl_pi_theme_files(&distro).await {
             log::warn!("[WSL] Failed to install Pi theme files: {}", e);
         }
         let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
         if read_enable_opencode_theme_sync() {
-            if let Err(e) = write_wsl_tui_config(&distro, &project_path, &current_theme) {
+            if let Err(e) = write_wsl_tui_config(&distro, &project_path, &current_theme).await {
                 log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
             }
         }
         if read_enable_pi_theme_sync() {
-            if let Err(e) = pi::write_wsl_pi_settings(&distro, &project_path, &current_theme) {
+            if let Err(e) = pi::write_wsl_pi_settings(&distro, &project_path, &current_theme).await
+            {
                 log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
             }
         }

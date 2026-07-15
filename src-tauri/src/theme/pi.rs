@@ -5,7 +5,6 @@ use std::path::Path;
 
 use super::common::{base64_encode, map_theme_name, shell_escape};
 use crate::common::utils::command::ssh::exec;
-use crate::common::utils::command::wsl;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 内部工具
@@ -114,9 +113,20 @@ pub fn write_project_pi_settings(project_path: &str, neeko_theme: &str) -> Resul
 }
 
 /// 通过 WSL 安装主题文件到 WSL 内部的 ~/.pi/agent/themes/
-pub fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
+pub async fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
     let themes_dir = "$HOME/.pi/agent/themes";
-    wsl::exec(distro, &format!("mkdir -p {}", themes_dir))?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("mkdir -p {}", themes_dir)],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
     log::debug!("[WSL][PiTheme] mkdir -p {} (distro={})", themes_dir, distro);
 
     let themes = [
@@ -138,7 +148,14 @@ pub fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
             encoded.len(),
             distro
         );
-        if let Err(e) = wsl::exec(distro, &cmd) {
+        if let Err(e) = {
+            let target = crate::common::executor::factory::ExecTarget::Wsl {
+                distro: distro.to_string(),
+            };
+            crate::common::executor::sync::exec_on(&target, "bash", &["-c", &cmd])
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))
+        } {
             log::error!("[WSL][PiTheme] Failed to write {}: {}", path, e);
             return Err(e);
         }
@@ -150,7 +167,11 @@ pub fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
 
 /// WSL 项目终端创建前调用
 /// 通过 wsl.exe 在 WSL 内部写入 .pi/settings.json
-pub fn write_wsl_pi_settings(distro: &str, project_path: &str, neeko_theme: &str) -> Result<()> {
+pub async fn write_wsl_pi_settings(
+    distro: &str,
+    project_path: &str,
+    neeko_theme: &str,
+) -> Result<()> {
     let theme_name = map_theme_name(neeko_theme);
     let pi_dir = format!("{}/.pi", project_path);
     let settings_path = format!("{}/settings.json", pi_dir);
@@ -163,22 +184,55 @@ pub fn write_wsl_pi_settings(distro: &str, project_path: &str, neeko_theme: &str
         theme_name
     );
 
-    wsl::exec(distro, &format!("mkdir -p {}", shell_escape(&pi_dir)))?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("mkdir -p {}", shell_escape(&pi_dir))],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
 
     // 备份（如果 settings.json 存在且备份不存在）
-    let _ = wsl::exec(
-        distro,
-        &format!(
-            "test -f {} && test ! -f {} && cp {} {}",
-            shell_escape(&settings_path),
-            shell_escape(&backup_path),
-            shell_escape(&settings_path),
-            shell_escape(&backup_path)
-        ),
-    );
+    let _ = {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &[
+                "-c",
+                &format!(
+                    "test -f {} && test ! -f {} && cp {} {}",
+                    shell_escape(&settings_path),
+                    shell_escape(&backup_path),
+                    shell_escape(&settings_path),
+                    shell_escape(&backup_path)
+                ),
+            ],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))
+    };
 
     // 读取并合并已有 settings.json
-    let merged_content = match wsl::exec(distro, &format!("cat {}", shell_escape(&settings_path))) {
+    let merged_content = match {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &["-c", &format!("cat {}", shell_escape(&settings_path))],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))
+    } {
         Ok(raw) => {
             let mut config: serde_json::Value =
                 serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
@@ -192,14 +246,25 @@ pub fn write_wsl_pi_settings(distro: &str, project_path: &str, neeko_theme: &str
 
     // 写入 settings.json
     let encoded = base64_encode(&merged_content);
-    wsl::exec(
-        distro,
-        &format!(
-            "echo '{}' | base64 -d > {}",
-            encoded,
-            shell_escape(&settings_path)
-        ),
-    )?;
+    {
+        let target = crate::common::executor::factory::ExecTarget::Wsl {
+            distro: distro.to_string(),
+        };
+        crate::common::executor::sync::exec_on(
+            &target,
+            "bash",
+            &[
+                "-c",
+                &format!(
+                    "echo '{}' | base64 -d > {}",
+                    encoded,
+                    shell_escape(&settings_path)
+                ),
+            ],
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    }
 
     log::info!(
         "[PiTheme] Written WSL settings.json to {} with theme={} (merged)",

@@ -16,7 +16,7 @@ pub struct ProjectThemeTargets {
 }
 
 #[tauri::command]
-pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
+pub async fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
     for s in crate::theme::service::ThemeStrategy::all() {
         if !s.is_enabled() {
             continue;
@@ -32,7 +32,7 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
             }
         }
         for target in &targets.wsl {
-            if let Err(e) = s.sync_wsl(&target.distro, &target.path, &theme) {
+            if let Err(e) = s.sync_wsl(&target.distro, &target.path, &theme).await {
                 log::warn!(
                     "[{}] Failed to sync for WSL project {} ({}): {}",
                     s.name(),
