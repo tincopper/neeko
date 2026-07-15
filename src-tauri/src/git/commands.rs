@@ -1147,11 +1147,10 @@ pub async fn generate_commit_message(
             let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
 
             // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
-            let wsl_user = crate::common::utils::command::local::exec("wsl.exe")
-                .arg("-d")
-                .arg(&distro)
-                .arg("whoami")
+            let wsl_user = tokio::process::Command::new("wsl.exe")
+                .args(["-d", &distro, "whoami"])
                 .output()
+                .await
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                 .unwrap_or_else(|_| "root".to_string());
             log::info!("[AI commit WSL] wsl_user={}", wsl_user);
@@ -1159,23 +1158,18 @@ pub async fn generate_commit_message(
             // 使用 bash -ic 交互模式执行（绕过 .bashrc 的 non-interactive guard，确保 nvm 加载）
             //    -u <user>: 确保 HOME=/home/<user>，profile 路径正确
             //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
-            let wsl_output = tokio::task::spawn_blocking(move || {
-                crate::common::utils::command::local::exec("wsl.exe")
-                    .arg("-d")
-                    .arg(&distro)
-                    .arg("-u")
-                    .arg(&wsl_user)
-                    .arg("bash")
-                    .arg("-ic")
-                    .arg(&actual_cmd)
-                    .env_remove("PATH")
-                    .output()
-                    .map_err(|e| {
-                        AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e))
-                    })
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))??;
+            let mut wsl_cmd = tokio::process::Command::new("wsl.exe");
+            wsl_cmd
+                .args(["-d", &distro, "-u", &wsl_user, "bash", "-ic", &actual_cmd])
+                .env_remove("PATH")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+
+            let wsl_output = wsl_cmd
+                .output()
+                .await
+                .map_err(|e| AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e)))?;
 
             let exit_code = wsl_output.status.code().unwrap_or(-1);
             let stderr = String::from_utf8_lossy(&wsl_output.stderr)
