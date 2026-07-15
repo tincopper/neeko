@@ -143,12 +143,12 @@ impl CommandExecutor for SshExecutor {
             .await
             .map_err(|e| ExecError::Ssh(format!("exec: {e}")))?;
 
-        let remote_pid = read_pid(&mut channel).await?;
-
         let (stdin_tx, stdin_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(64);
         let (stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(64);
         let (exit_tx, exit_rx) = tokio::sync::watch::channel::<Option<u32>>(None);
+
+        let (remote_pid, pid_overflow) = read_pid(&mut channel, stdout_tx.clone()).await?;
 
         tokio::spawn(bridge_loop(
             channel, stdin_rx, stdout_tx, stderr_tx, exit_tx,
@@ -182,14 +182,29 @@ impl RusshReadAdapter {
     }
 }
 
-async fn read_pid(channel: &mut Channel<client::Msg>) -> Result<u32, ExecError> {
+async fn read_pid(
+    channel: &mut Channel<client::Msg>,
+    stdout_tx: mpsc::Sender<Vec<u8>>,
+) -> Result<(u32, Vec<u8>), ExecError> {
     let mut pid_buf = Vec::new();
     loop {
         match channel.wait().await {
             Some(ChannelMsg::Data { data }) => {
                 pid_buf.extend_from_slice(&data);
-                if pid_buf.contains(&b'\n') {
-                    break;
+                if let Some(pos) = pid_buf.iter().position(|&b| b == b'\n') {
+                    // PID 是换行符前的全部字节
+                    let pid_bytes = &pid_buf[..pos];
+                    let pid_str = String::from_utf8_lossy(pid_bytes).trim().to_string();
+                    let pid: u32 = pid_str.parse().map_err(|_| {
+                        ExecError::Ssh(format!("Failed to parse remote PID: '{pid_str}'"))
+                    })?;
+
+                    // 换行符后的字节是命令的首段 stdout
+                    let overflow = pid_buf[(pos + 1)..].to_vec();
+                    if !overflow.is_empty() {
+                        let _ = stdout_tx.send(overflow.clone()).await;
+                    }
+                    return Ok((pid, overflow));
                 }
             }
             Some(ChannelMsg::Eof) | None => {
@@ -200,11 +215,6 @@ async fn read_pid(channel: &mut Channel<client::Msg>) -> Result<u32, ExecError> 
             _ => {}
         }
     }
-    let pid_line = String::from_utf8_lossy(&pid_buf);
-    let pid_str = pid_line.trim();
-    pid_str
-        .parse()
-        .map_err(|_| ExecError::Ssh(format!("Failed to parse remote PID: '{pid_str}'")))
 }
 
 async fn bridge_loop(
@@ -214,9 +224,10 @@ async fn bridge_loop(
     stderr_tx: mpsc::Sender<Vec<u8>>,
     exit_tx: tokio::sync::watch::Sender<Option<u32>>,
 ) {
+    let mut eof_sent = false;
     loop {
         tokio::select! {
-            data = stdin_rx.recv() => {
+            data = stdin_rx.recv(), if !eof_sent => {
                 match data {
                     Some(bytes) => {
                         if channel.data(&bytes[..]).await.is_err() {
@@ -225,7 +236,8 @@ async fn bridge_loop(
                     }
                     None => {
                         let _ = channel.eof().await;
-                        break;
+                        eof_sent = true;
+                        // 继续循环以接收远端输出和退出状态
                     }
                 }
             }

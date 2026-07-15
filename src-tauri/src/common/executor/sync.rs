@@ -172,6 +172,36 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn collect_child_output_handles_overflow_stdout_before_exit() {
+        // 模拟 PID 帧后附带首段命令输出（SSH PID+溢出场景）
+        let output = collect_child_output(fake_child(b"line1\noutput-data".to_vec(), vec![], 0))
+            .await
+            .unwrap();
+        assert_eq!(output.stdout, b"line1\noutput-data");
+        assert_eq!(output.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn collect_child_output_normal_exit_not_killed() {
+        // 验证正常退出不会返回 Killed
+        let child = ExecChild::new(None, None, None, async move { Ok(0) }, || {
+            async { Ok(()) }.boxed()
+        });
+        let output = collect_child_output(child).await.unwrap();
+        assert_eq!(output.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn collect_child_output_nonzero_exit_not_killed() {
+        // 验证非零退出仍然返回 Ok(ExecOutput)，不是 Killed
+        let child = ExecChild::new(None, None, None, async move { Ok(7) }, || {
+            async { Ok(()) }.boxed()
+        });
+        let output = collect_child_output(child).await.unwrap();
+        assert_eq!(output.exit_code, 7);
+    }
+
     #[cfg(not(target_os = "windows"))]
     #[tokio::test]
     async fn wsl_target_is_constructible_and_returns_wsl_error() {
