@@ -9,24 +9,7 @@ mod local;
 mod ssh;
 pub mod ssh_auth;
 pub mod sync;
-
-#[cfg(target_os = "windows")]
-pub mod wsl;
-#[cfg(not(target_os = "windows"))]
-pub(crate) mod wsl {
-    use super::ExecError;
-    use async_trait::async_trait;
-    use super::{CommandExecutor, ExecChild};
-
-    pub struct WslExecutor;
-
-    #[async_trait]
-    impl CommandExecutor for WslExecutor {
-        async fn spawn(&self, _cmd: &str, _args: &[&str]) -> Result<ExecChild, ExecError> {
-            Err(ExecError::Wsl("WSL is only supported on Windows".into()))
-        }
-    }
-}
+mod wsl;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -44,6 +27,18 @@ pub type BoxAsyncRead = Pin<Box<dyn AsyncRead + Send>>;
 /// Type-erased asynchronous writable stream.
 pub type BoxAsyncWrite = Pin<Box<dyn AsyncWrite + Send>>;
 
+/// Fully collected process output, preserving raw bytes for all exit statuses.
+#[must_use]
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecOutput {
+    /// Raw standard output bytes.
+    pub stdout: Vec<u8>,
+    /// Raw standard error bytes.
+    pub stderr: Vec<u8>,
+    /// Numeric process exit code.
+    pub exit_code: i32,
+}
+
 /// Errors that can occur during command execution.
 #[derive(Error, Debug)]
 pub enum ExecError {
@@ -56,9 +51,16 @@ pub enum ExecError {
     /// WSL-specific error.
     #[error("WSL error: {0}")]
     Wsl(String),
-    /// Process exited with a non-zero status code.
-    #[error("Process exited with code: {0}")]
-    ExitCode(i32),
+    /// Command completed with a non-zero status code.
+    #[error("Command failed with code {code}: stdout={stdout:?}, stderr={stderr:?}")]
+    CommandFailed {
+        /// Numeric process exit code.
+        code: i32,
+        /// Raw standard output bytes.
+        stdout: Vec<u8>,
+        /// Raw standard error bytes.
+        stderr: Vec<u8>,
+    },
     /// Process was killed by a signal.
     #[error("Process killed by signal")]
     Killed,

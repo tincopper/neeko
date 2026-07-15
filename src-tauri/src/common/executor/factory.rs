@@ -6,21 +6,19 @@
 
 use super::local::LocalExecutor;
 use super::ssh::SshExecutor;
-use super::{CommandExecutor, ExecError};
-use crate::common::connection::types::AuthMethod;
-
-#[cfg(target_os = "windows")]
 use super::wsl::WslExecutor;
+use super::CommandExecutor;
+use crate::common::connection::types::AuthMethod;
 
 /// Describes which execution environment a command should run in.
 ///
 /// This is the public-facing enum that callers use instead of constructing
 /// concrete executor types. See [`create_executor`].
+#[derive(Clone)]
 pub enum ExecTarget {
     /// Run directly on the host machine.
     Local,
-    /// Run inside a WSL distribution (Windows only).
-    #[cfg(target_os = "windows")]
+    /// Run inside a WSL distribution (Windows only; fails on other platforms).
     Wsl {
         /// WSL distribution name (e.g. "Ubuntu-22.04").
         distro: String,
@@ -38,12 +36,12 @@ pub enum ExecTarget {
 pub fn create_executor(target: &ExecTarget) -> Box<dyn CommandExecutor> {
     match target {
         ExecTarget::Local => Box::new(LocalExecutor),
-        #[cfg(target_os = "windows")]
-        ExecTarget::Wsl { distro } => {
-            Box::new(WslExecutor { distro: Some(distro.clone()) })
-        }
-        ExecTarget::Remote { host, port, username, auth } => {
-            Box::new(SshExecutor::new(host, *port, username, auth.clone()))
-        }
+        ExecTarget::Wsl { distro } => Box::new(WslExecutor::new(distro.clone())),
+        ExecTarget::Remote {
+            host,
+            port,
+            username,
+            auth,
+        } => Box::new(SshExecutor::new(host, *port, username, auth.clone())),
     }
 }

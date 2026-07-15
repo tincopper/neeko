@@ -1,56 +1,185 @@
-//! Synchronous wrappers around [`CommandExecutor`].
-//!
-//! Uses [`Handle::block_on`] so the current thread must be inside a tokio
-//! runtime (e.g. a Tauri command or `spawn_blocking` closure).
+//! Asynchronous output collection for [`CommandExecutor`].
 
 use tokio::io::AsyncReadExt;
-use tokio::runtime::Handle;
 
 use super::factory::{create_executor, ExecTarget};
-use super::{CommandExecutor, ExecError};
+use super::{BoxAsyncRead, ExecChild, ExecError, ExecOutput};
 
-/// Create an executor for [`ExecTarget`], spawn the command, collect all
-/// stdout/stderr, and return the result as a string.
-pub fn exec_on(target: &ExecTarget, cmd: &str, args: &[&str]) -> Result<String, ExecError> {
-    let executor = create_executor(target);
-    exec_sync(&*executor, cmd, args)
-}
-
-/// Generic synchronous spawn + collect.
-///
-/// Internally uses [`Handle::block_on`].
-pub fn exec_sync(
-    executor: &dyn CommandExecutor,
+/// Create an executor for `target`, run a command without input, and collect
+/// its raw output for both successful and non-zero exits.
+pub async fn collect_output(
+    target: &ExecTarget,
     cmd: &str,
     args: &[&str],
-) -> Result<String, ExecError> {
-    let handle = Handle::current();
-    let _guard = handle.enter();
+) -> Result<ExecOutput, ExecError> {
+    let executor = create_executor(target);
+    let child = executor.spawn(cmd, args).await?;
+    collect_child_output(child).await
+}
 
-    handle.block_on(async {
-        let mut child = executor.spawn(cmd, args).await?;
+/// Collect a child process after closing stdin and draining both output streams
+/// concurrently.
+pub async fn collect_child_output(mut child: ExecChild) -> Result<ExecOutput, ExecError> {
+    drop(child.stdin.take());
 
-        let mut stdout = Vec::new();
-        if let Some(ref mut reader) = child.stdout {
-            reader.read_to_end(&mut stdout).await.map_err(ExecError::Io)?;
-        }
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let wait = child.wait;
+    let (stdout, stderr, exit_code) = tokio::try_join!(stdout, stderr, wait)?;
 
-        let mut stderr = Vec::new();
-        if let Some(ref mut reader) = child.stderr {
-            reader.read_to_end(&mut stderr).await.map_err(ExecError::Io)?;
-        }
-
-        match child.wait.await {
-            Ok(0) => Ok(String::from_utf8_lossy(&stdout).to_string()),
-            Ok(code) => {
-                let msg = if !stderr.is_empty() {
-                    String::from_utf8_lossy(&stderr).to_string()
-                } else {
-                    format!("Command exited with code {}", code)
-                };
-                Err(ExecError::Ssh(msg))
-            }
-            Err(e) => Err(e),
-        }
+    Ok(ExecOutput {
+        stdout,
+        stderr,
+        exit_code,
     })
+}
+
+/// Run a command and return lossy UTF-8 stdout only when it exits successfully.
+pub async fn exec_on(target: &ExecTarget, cmd: &str, args: &[&str]) -> Result<String, ExecError> {
+    let output = collect_output(target, cmd, args).await?;
+    if output.exit_code == 0 {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(ExecError::CommandFailed {
+            code: output.exit_code,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    }
+}
+
+async fn drain(mut reader: Option<BoxAsyncRead>) -> Result<Vec<u8>, ExecError> {
+    let mut bytes = Vec::new();
+    if let Some(reader) = reader.as_mut() {
+        reader.read_to_end(&mut bytes).await?;
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use futures::FutureExt;
+    use tokio::io::{duplex, AsyncWriteExt};
+
+    use super::*;
+
+    fn fake_child(stdout: Vec<u8>, stderr: Vec<u8>, exit_code: i32) -> ExecChild {
+        let (mut stdout_writer, stdout_reader) = duplex(64);
+        let (mut stderr_writer, stderr_reader) = duplex(64);
+        tokio::spawn(async move {
+            stdout_writer.write_all(&stdout).await.unwrap();
+        });
+        tokio::spawn(async move {
+            stderr_writer.write_all(&stderr).await.unwrap();
+        });
+
+        ExecChild::new(
+            None,
+            Some(Box::pin(stdout_reader) as BoxAsyncRead),
+            Some(Box::pin(stderr_reader) as BoxAsyncRead),
+            async move { Ok(exit_code) },
+            || async { Ok(()) }.boxed(),
+        )
+    }
+
+    #[tokio::test]
+    async fn collect_child_output_preserves_raw_bytes_and_nonzero_exit() {
+        let output = collect_child_output(fake_child(vec![0xff, 0x00], vec![0xfe], 7))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            output,
+            ExecOutput {
+                stdout: vec![0xff, 0x00],
+                stderr: vec![0xfe],
+                exit_code: 7,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn collect_output_runs_inside_tokio_runtime() {
+        let output = collect_output(&ExecTarget::Local, "sh", &["-c", "printf runtime-ok"])
+            .await
+            .unwrap();
+
+        assert_eq!(output.stdout, b"runtime-ok");
+        assert_eq!(output.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn collect_output_closes_stdin_for_eof_waiting_command() {
+        let output = tokio::time::timeout(
+            Duration::from_secs(3),
+            collect_output(
+                &ExecTarget::Local,
+                "sh",
+                &["-c", "cat >/dev/null; printf eof"],
+            ),
+        )
+        .await
+        .expect("collection should not wait indefinitely for stdin EOF")
+        .unwrap();
+
+        assert_eq!(output.stdout, b"eof");
+    }
+
+    #[tokio::test]
+    async fn collect_output_drains_large_stdout_and_stderr_concurrently() {
+        let output = tokio::time::timeout(
+            Duration::from_secs(5),
+            collect_output(
+                &ExecTarget::Local,
+                "sh",
+                &[
+                    "-c",
+                    "yes o | head -c 1048576 & yes e | head -c 1048576 >&2 & wait",
+                ],
+            ),
+        )
+        .await
+        .expect("collection should not deadlock on full stdio pipes")
+        .unwrap();
+
+        assert_eq!(output.stdout.len(), 1_048_576);
+        assert_eq!(output.stderr.len(), 1_048_576);
+    }
+
+    #[tokio::test]
+    async fn exec_on_returns_structured_command_failure() {
+        let error = exec_on(
+            &ExecTarget::Local,
+            "sh",
+            &["-c", "printf out; printf err >&2; exit 9"],
+        )
+        .await
+        .unwrap_err();
+
+        match error {
+            ExecError::CommandFailed {
+                code,
+                stdout,
+                stderr,
+            } => {
+                assert_eq!(code, 9);
+                assert_eq!(stdout, b"out");
+                assert_eq!(stderr, b"err");
+            }
+            other => panic!("expected CommandFailed, got {other:?}"),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[tokio::test]
+    async fn wsl_target_is_constructible_and_returns_wsl_error() {
+        let target = ExecTarget::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+        let error = collect_output(&target, "true", &[]).await.unwrap_err();
+
+        assert!(matches!(error, ExecError::Wsl(_)));
+    }
 }

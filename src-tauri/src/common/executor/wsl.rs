@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 
+#[cfg(target_os = "windows")]
 use super::local::LocalExecutor;
 use super::{CommandExecutor, ExecChild, ExecError};
 
@@ -15,9 +16,17 @@ use super::{CommandExecutor, ExecChild, ExecError};
 /// stub that always returns an error.
 #[cfg(target_os = "windows")]
 pub struct WslExecutor {
-    /// Optional distro name (e.g. "Ubuntu", "Debian").
-    /// When `None`, the default WSL distro is used.
-    pub distro: Option<String>,
+    distro: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+impl WslExecutor {
+    /// Create an executor for a named WSL distribution.
+    pub fn new(distro: String) -> Self {
+        Self {
+            distro: Some(distro),
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -41,6 +50,14 @@ impl CommandExecutor for WslExecutor {
 /// Stub for non-Windows platforms.
 #[cfg(not(target_os = "windows"))]
 pub struct WslExecutor;
+
+#[cfg(not(target_os = "windows"))]
+impl WslExecutor {
+    /// Create the platform stub while preserving the cross-platform API.
+    pub fn new(_distro: String) -> Self {
+        Self
+    }
+}
 
 #[cfg(not(target_os = "windows"))]
 #[async_trait]

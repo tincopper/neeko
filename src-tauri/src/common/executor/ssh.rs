@@ -257,11 +257,7 @@ fn wait_from_watch(
                 return Err(ExecError::Killed);
             }
             if let Some(code) = *rx.borrow() {
-                return if code == 0 {
-                    Ok(0)
-                } else {
-                    Err(ExecError::ExitCode(i32::try_from(code).unwrap_or(i32::MAX)))
-                };
+                return Ok(i32::try_from(code).unwrap_or(i32::MAX));
             }
         }
     }
