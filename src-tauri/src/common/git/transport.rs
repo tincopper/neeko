@@ -4,8 +4,8 @@ use anyhow::Result;
 use tokio::io::AsyncWriteExt;
 
 use crate::common::connection::types::AuthMethod;
-use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
+use crate::common::executor::factory::{create_executor, ExecTarget};
+use crate::common::executor::sync::{collect_child_output, exec_on};
 use crate::common::utils::command::local::safe_path;
 
 const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -295,7 +295,7 @@ impl GitTransport {
     }
 
     /// 执行 git 命令并向 stdin 写入字节（供 `git credential fill/approve/reject`）。
-    /// 仅 Local 实现真管道；WSL/Remote 通过 shell 管道传递（凭据经 base64 避免可见字符问题）。
+    /// Local、WSL、SSH 均通过真实 stdin 管道 + 统一输出收集执行。
     pub async fn run_git_with_stdin(
         &self,
         args: &[&str],
@@ -303,16 +303,17 @@ impl GitTransport {
         opts: GitExecOptions<'_>,
         stdin: &[u8],
     ) -> Result<String> {
-        let config_args = opts.config_args();
         let mut env: Vec<(&str, &str)> = opts.env.to_vec();
         env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
+
+        let config_args = opts.config_args();
+        let mut full_args: Vec<String> = config_args;
+        full_args.extend(args.iter().map(|s| s.to_string()));
+        let command = format!("git {}", full_args.join(" "));
 
         match self {
             GitTransport::Local => {
                 use tokio::process::Command as TokioCommand;
-
-                let mut full_args: Vec<String> = config_args;
-                full_args.extend(args.iter().map(|s| s.to_string()));
 
                 let mut cmd = TokioCommand::new("git");
                 cmd.args(&full_args)
@@ -324,28 +325,28 @@ impl GitTransport {
                     cmd.env(k, v);
                 }
 
-                let mut child = cmd
+                let mut tokio_child = cmd
                     .spawn()
                     .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
 
-                if let Some(mut child_stdin) = child.stdin.take() {
+                if let Some(mut child_stdin) = tokio_child.stdin.take() {
                     child_stdin
                         .write_all(stdin)
                         .await
                         .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
-                    // drop child_stdin to signal EOF
                 }
 
-                let output = tokio::time::timeout(LOCAL_GIT_TIMEOUT, child.wait_with_output())
-                    .await
-                    .map_err(|_| {
-                        anyhow::anyhow!(
-                            "git command timed out after {}s: git {}",
-                            LOCAL_GIT_TIMEOUT.as_secs(),
-                            full_args.join(" ")
-                        )
-                    })?
-                    .map_err(|e| anyhow::anyhow!("git command failed to await: {}", e))?;
+                let output =
+                    tokio::time::timeout(LOCAL_GIT_TIMEOUT, tokio_child.wait_with_output())
+                        .await
+                        .map_err(|_| {
+                            anyhow::anyhow!(
+                                "git command timed out after {}s: {}",
+                                LOCAL_GIT_TIMEOUT.as_secs(),
+                                command
+                            )
+                        })?
+                        .map_err(|e| anyhow::anyhow!("git command failed to await: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 if !output.status.success() {
@@ -354,7 +355,7 @@ impl GitTransport {
                         kind: classify_stderr(&stderr),
                         stderr,
                         stdout,
-                        command: format!("git {}", full_args.join(" ")),
+                        command,
                     }
                     .into());
                 }
@@ -362,39 +363,15 @@ impl GitTransport {
             }
             #[cfg(target_os = "windows")]
             GitTransport::Wsl { distro } => {
-                let sp = safe_path(work_dir);
-                let env_prefix: String = env
-                    .iter()
-                    .map(|(k, v)| format!("{}={} ", k, shell_quote(v)))
-                    .collect();
-                let mut parts: Vec<String> = config_args
-                    .iter()
-                    .map(|c| format!("-c {}", shell_quote(c)))
-                    .collect();
-                parts.extend(args.iter().map(|a| shell_quote(a)));
-                let b64 = base64_encode(stdin);
-                let cmd = format!(
-                    "cd '{sp}' && {}printf '%s' '{}' | base64 -d | git {}",
-                    env_prefix,
-                    b64,
-                    parts.join(" ")
-                );
-                let out = exec_on(
+                self.exec_git_with_stdin_remote(
                     &ExecTarget::Wsl {
                         distro: distro.clone(),
                     },
-                    "bash",
-                    &["-c", &cmd],
-                );
-                out.map_err(|e| {
-                    GitExecError {
-                        kind: classify_stderr(&e.to_string()),
-                        stderr: e.to_string(),
-                        stdout: String::new(),
-                        command: cmd,
-                    }
-                    .into()
-                })
+                    &full_args,
+                    &command,
+                    stdin,
+                )
+                .await
             }
             GitTransport::Remote {
                 host,
@@ -402,46 +379,60 @@ impl GitTransport {
                 username,
                 auth,
             } => {
-                let sp = safe_path(work_dir);
-                let env_prefix: String = env
-                    .iter()
-                    .map(|(k, v)| format!("{}={} ", k, shell_quote(v)))
-                    .collect();
-                let mut parts: Vec<String> = config_args
-                    .iter()
-                    .map(|c| format!("-c {}", shell_quote(c)))
-                    .collect();
-                parts.extend(args.iter().map(|a| shell_quote(a)));
-                let b64 = base64_encode(stdin);
-                let git_cmd = format!(
-                    "{}printf '%s' '{}' | base64 -d | git {}",
-                    env_prefix,
-                    b64,
-                    parts.join(" ")
-                );
-                let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_on(
+                self.exec_git_with_stdin_remote(
                     &ExecTarget::Remote {
                         host: host.clone(),
                         port: *port,
                         username: username.clone(),
                         auth: auth.clone(),
                     },
-                    "sh",
-                    &["-c", &cmd],
+                    &full_args,
+                    &command,
+                    stdin,
                 )
                 .await
-                .map_err(|e| {
-                    GitExecError {
-                        kind: classify_stderr(&e.to_string()),
-                        stderr: e.to_string(),
-                        stdout: String::new(),
-                        command: cmd,
-                    }
-                    .into()
-                })
             }
         }
+    }
+
+    /// WSL/Remote 共用的 stdin 管道执行路径：通过 executor spawn、写 stdin、收集输出。
+    async fn exec_git_with_stdin_remote(
+        &self,
+        target: &ExecTarget,
+        full_args: &[String],
+        command: &str,
+        stdin: &[u8],
+    ) -> Result<String> {
+        let executor = create_executor(target);
+        let args_refs: Vec<&str> = full_args.iter().map(|s| s.as_str()).collect();
+        let mut child = executor
+            .spawn("git", &args_refs)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to spawn git: {}", e))?;
+
+        if let Some(mut child_stdin) = child.stdin.take() {
+            child_stdin
+                .write_all(stdin)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
+        }
+
+        let output = collect_child_output(child)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        if output.exit_code != 0 {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(GitExecError {
+                kind: classify_stderr(&stderr),
+                stderr,
+                stdout,
+                command: command.to_string(),
+            }
+            .into());
+        }
+        Ok(stdout)
     }
 
     /// Open a git2 Repository for local transport, if git2 is available.
@@ -505,30 +496,6 @@ impl GitTransport {
 /// POSIX 单引号 shell 转义：把值包成 `'...'`，内部 `'` 转成 `'\''`。
 fn shell_quote(v: &str) -> String {
     format!("'{}'", v.replace('\'', "'\\''"))
-}
-
-/// 简易 base64 编码（避免引入额外依赖；用于 WSL/Remote stdin 传递凭据）。
-fn base64_encode(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0];
-        let b1 = chunk.get(1).copied().unwrap_or(0);
-        let b2 = chunk.get(2).copied().unwrap_or(0);
-        out.push(TABLE[(b0 >> 2) as usize] as char);
-        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(TABLE[(b2 & 0x3f) as usize] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
 }
 
 #[cfg(test)]
@@ -614,7 +581,7 @@ mod tests {
         );
     }
 
-    // ── shell_quote / base64 ───────────────────────────────────────────────
+    // ── shell_quote ────────────────────────────────────────────────────────
 
     #[test]
     fn should_shell_quote_simple_value() {
@@ -624,17 +591,6 @@ mod tests {
     #[test]
     fn should_shell_quote_embedded_quote() {
         assert_eq!(shell_quote("a'b"), "'a'\\''b'");
-    }
-
-    #[test]
-    fn should_base64_encode_roundtrip_known_vectors() {
-        assert_eq!(base64_encode(b""), "");
-        assert_eq!(base64_encode(b"f"), "Zg==");
-        assert_eq!(base64_encode(b"fo"), "Zm8=");
-        assert_eq!(base64_encode(b"foo"), "Zm9v");
-        assert_eq!(base64_encode(b"foob"), "Zm9vYg==");
-        assert_eq!(base64_encode(b"fooba"), "Zm9vYmE=");
-        assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
     }
 
     // ── run_git_opts: env + extra_config 注入 ───────────────────────────────
