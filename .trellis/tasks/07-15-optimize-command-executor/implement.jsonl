@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "Tokio、SSH I/O、锁生命周期与阻塞调用规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "结构化执行错误与 Tauri 边界错误映射规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "异步 Tauri command 与 await 前释放状态锁规范"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust TDD、测试位置和命名规范"}

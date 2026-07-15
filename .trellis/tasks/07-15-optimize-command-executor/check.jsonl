@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "检查 runtime 阻塞、双流并发、SSH 状态机和锁生命周期"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查平台 cfg、模块边界、fmt、clippy 与质量门禁"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "检查命令失败与传输错误分类及边界映射"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "检查 TDD 覆盖和 Rust 测试约定"}

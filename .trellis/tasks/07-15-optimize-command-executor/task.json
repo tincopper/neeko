@@ -1,0 +1,33 @@
+{
+  "id": "optimize-command-executor",
+  "name": "optimize-command-executor",
+  "title": "优化统一命令执行器实现",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-07-15",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-15-async-executor-contract",
+    "07-15-ssh-executor-state-machine",
+    "07-15-unify-git-stdin-execution",
+    "07-15-migrate-ai-commit-wsl",
+    "07-15-async-gh-pr-chain",
+    "07-15-migrate-executor-callers"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
