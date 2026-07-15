@@ -5,43 +5,35 @@ use std::sync::Mutex;
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 
+use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::sync::exec_on;
+
 pub struct GhCli {
     repo_path: PathBuf,
+    target: ExecTarget,
     owner: Mutex<Option<(String, String)>>,
 }
 
 impl GhCli {
-    pub fn new(repo_path: &Path) -> Self {
+    pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             repo_path: repo_path.to_path_buf(),
+            target: target.clone(),
             owner: Mutex::new(None),
         }
     }
 
-    fn cmd(&self) -> Command {
-        let mut cmd = Command::new("gh");
-        cmd.current_dir(&self.repo_path);
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-        }
-        cmd
+    pub async fn run(&self, args: &[&str]) -> Result<String> {
+        let repo_path = self.repo_path.to_string_lossy().to_string();
+        let mut full_args: Vec<&str> = vec!["-C", &repo_path];
+        full_args.extend_from_slice(args);
+        exec_on(&self.target, "gh", &full_args)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 
-    pub fn run(&self, build: impl FnOnce(&mut Command)) -> Result<String> {
-        let mut cmd = self.cmd();
-        build(&mut cmd);
-        let output = cmd.output().context("Failed to execute gh command")?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("gh command failed: {}", stderr.trim());
-        }
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    }
-
-    pub fn run_json<T: DeserializeOwned>(&self, build: impl FnOnce(&mut Command)) -> Result<T> {
-        let stdout = self.run(build)?;
+    pub async fn run_json<T: DeserializeOwned>(&self, args: &[&str]) -> Result<T> {
+        let stdout = self.run(args).await?;
         serde_json::from_str(&stdout).with_context(|| {
             format!(
                 "Failed to parse gh output as JSON: {}",
@@ -50,32 +42,32 @@ impl GhCli {
         })
     }
 
-    pub fn api_run(&self, path: &str, build: impl FnOnce(&mut Command)) -> Result<String> {
-        let (owner, repo) = self.repo_owner_name()?;
+    pub async fn api_run(&self, path: &str, extra_args: &[&str]) -> Result<String> {
+        let (owner, repo) = self.repo_owner_name().await?;
         let api_path = format!("repos/{}/{}/{}", owner, repo, path);
-        self.run(|cmd| {
-            cmd.args(["api", &api_path]);
-            build(cmd);
-        })
+        let mut args = vec!["api", &api_path];
+        args.extend_from_slice(extra_args);
+        self.run(&args).await
     }
 
-    pub fn api_json<T: DeserializeOwned>(
+    pub async fn api_json<T: DeserializeOwned>(
         &self,
         path: &str,
-        build: impl FnOnce(&mut Command),
+        extra_args: &[&str],
     ) -> Result<T> {
-        let stdout = self.api_run(path, build)?;
+        let stdout = self.api_run(path, extra_args).await?;
         serde_json::from_str(&stdout).with_context(|| "Failed to parse gh api output as JSON")
     }
 
-    pub fn repo_owner_name(&self) -> Result<(String, String)> {
-        let mut guard = self.owner.lock().unwrap();
-        if let Some(ref pair) = *guard {
-            return Ok(pair.clone());
+    pub async fn repo_owner_name(&self) -> Result<(String, String)> {
+        // Check cache without holding lock across await
+        {
+            let guard = self.owner.lock().unwrap();
+            if let Some(ref pair) = *guard {
+                return Ok(pair.clone());
+            }
         }
-        let stdout = self.run(|cmd| {
-            cmd.args(["repo", "view", "--json", "owner", "name"]);
-        })?;
+        let stdout = self.run(&["repo", "view", "--json", "owner,name"]).await?;
         let v: serde_json::Value =
             serde_json::from_str(&stdout).context("Failed to parse gh repo view output")?;
         let owner = v["owner"]["login"].as_str().unwrap_or("").to_string();
@@ -84,7 +76,9 @@ impl GhCli {
             anyhow::bail!("Failed to determine repo owner/name; is `gh repo view` working?");
         }
         let pair = (owner, repo);
-        *guard = Some(pair.clone());
+        if let Ok(mut guard) = self.owner.lock() {
+            *guard = Some(pair.clone());
+        }
         Ok(pair)
     }
 

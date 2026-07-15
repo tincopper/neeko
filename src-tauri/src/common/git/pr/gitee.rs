@@ -1,14 +1,29 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use async_trait::async_trait;
 
+use crate::common::executor::factory::ExecTarget;
 use crate::common::git::pr::PrProvider;
 use crate::project::types::{
     PRComment, PRCommit, PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
 
-pub struct GiteePrProvider;
+pub struct GiteePrProvider {
+    _repo_path: PathBuf,
+    _target: ExecTarget,
+}
 
+impl GiteePrProvider {
+    pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
+        Self {
+            _repo_path: repo_path.to_path_buf(),
+            _target: target.clone(),
+        }
+    }
+}
+
+#[async_trait]
 impl PrProvider for GiteePrProvider {
     fn name(&self) -> &'static str {
         "Gitee"
@@ -19,21 +34,20 @@ impl PrProvider for GiteePrProvider {
     fn is_authenticated(&self) -> bool {
         false
     }
-    fn list_prs(&self, _repo_path: &Path, _state: &str, _limit: usize) -> Result<Vec<PRListItem>> {
+    async fn list_prs(&self, _state: &str, _limit: usize) -> Result<Vec<PRListItem>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_repo_labels(&self, _repo_path: &Path) -> Result<Vec<PrLabel>> {
+    async fn list_repo_labels(&self) -> Result<Vec<PrLabel>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_repo_authors(&self, _repo_path: &Path) -> Result<Vec<String>> {
+    async fn list_repo_authors(&self) -> Result<Vec<String>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn view_pr(&self, _repo_path: &Path, _pr_number: u64) -> Result<PRInfo> {
+    async fn view_pr(&self, _pr_number: u64) -> Result<PRInfo> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn create_pr(
+    async fn create_pr(
         &self,
-        _repo_path: &Path,
         _title: &str,
         _body: &str,
         _base: Option<&str>,
@@ -41,53 +55,45 @@ impl PrProvider for GiteePrProvider {
     ) -> Result<u64> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn merge_pr(&self, _repo_path: &Path, _pr_number: u64, _method: &str) -> Result<PRMergeResult> {
+    async fn merge_pr(&self, _pr_number: u64, _method: &str) -> Result<PRMergeResult> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn close_pr(&self, _repo_path: &Path, _pr_number: u64) -> Result<()> {
+    async fn close_pr(&self, _pr_number: u64) -> Result<()> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_pr_files(&self, _repo_path: &Path, _pr_number: u64) -> Result<Vec<PRFileChange>> {
+    async fn list_pr_files(&self, _pr_number: u64) -> Result<Vec<PRFileChange>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_pr_commits(&self, _repo_path: &Path, _pr_number: u64) -> Result<Vec<PRCommit>> {
+    async fn list_pr_commits(&self, _pr_number: u64) -> Result<Vec<PRCommit>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_pr_comments(&self, _repo_path: &Path, _pr_number: u64) -> Result<Vec<PRComment>> {
+    async fn list_pr_comments(&self, _pr_number: u64) -> Result<Vec<PRComment>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn add_pr_comment(&self, _repo_path: &Path, _pr_number: u64, _body: &str) -> Result<PRComment> {
+    async fn add_pr_comment(&self, _pr_number: u64, _body: &str) -> Result<PRComment> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn edit_pr_comment(
+    async fn edit_pr_comment(
         &self,
-        _repo_path: &Path,
         _pr_number: u64,
         _comment_id: &str,
         _body: &str,
     ) -> Result<PRComment> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn delete_pr_comment(
-        &self,
-        _repo_path: &Path,
-        _pr_number: u64,
-        _comment_id: &str,
-    ) -> Result<()> {
+    async fn delete_pr_comment(&self, _pr_number: u64, _comment_id: &str) -> Result<()> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn add_comment_reaction(
+    async fn add_comment_reaction(
         &self,
-        _repo_path: &Path,
         _pr_number: u64,
         _comment_id: &str,
         _emoji: &str,
     ) -> Result<()> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn add_pr_review_comment(
+    async fn add_pr_review_comment(
         &self,
-        _repo_path: &Path,
         _pr_number: u64,
         _body: &str,
         _path: &str,
@@ -96,11 +102,7 @@ impl PrProvider for GiteePrProvider {
     ) -> Result<PRReviewComment> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
-    fn list_pr_review_comments(
-        &self,
-        _repo_path: &Path,
-        _pr_number: u64,
-    ) -> Result<Vec<PRReviewComment>> {
+    async fn list_pr_review_comments(&self, _pr_number: u64) -> Result<Vec<PRReviewComment>> {
         Err(anyhow::anyhow!("Gitee PR operations not yet supported"))
     }
 }

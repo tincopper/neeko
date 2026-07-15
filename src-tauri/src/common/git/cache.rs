@@ -279,6 +279,56 @@ pub fn get_cached_diff(
     Ok(result)
 }
 
+// ─── Public get/set for async pattern (no closure) ────────────────────────────
+
+/// Check cached PR list without fetching
+pub fn get_pr_list_cached(repo_path: &Path, state: &str, limit: usize) -> Option<Vec<PRListItem>> {
+    let key = format!("{}:pr_list:{}:{}", repo_key_prefix(repo_path), state, limit);
+    PR_LIST_CACHE.get(&key)
+}
+
+/// Set cached PR list
+pub fn set_pr_list_cache(repo_path: &Path, state: &str, limit: usize, value: Vec<PRListItem>) {
+    let key = format!("{}:pr_list:{}:{}", repo_key_prefix(repo_path), state, limit);
+    PR_LIST_CACHE.set(key, value);
+}
+
+/// Check cached PR info without fetching
+pub fn get_pr_info_cached(repo_path: &Path, pr_number: u64) -> Option<PRInfo> {
+    let key = format!("{}:pr_info:{}", repo_key_prefix(repo_path), pr_number);
+    PR_INFO_CACHE.get(&key)
+}
+
+/// Set cached PR info
+pub fn set_pr_info_cache(repo_path: &Path, pr_number: u64, value: PRInfo) {
+    let key = format!("{}:pr_info:{}", repo_key_prefix(repo_path), pr_number);
+    PR_INFO_CACHE.set(key, value);
+}
+
+/// Check cached repo labels without fetching
+pub fn get_repo_labels_cached(repo_path: &Path) -> Option<Vec<PrLabel>> {
+    let key = repo_key_prefix(repo_path);
+    REPO_LABELS_CACHE.get(&key)
+}
+
+/// Set cached repo labels
+pub fn set_repo_labels_cache(repo_path: &Path, value: Vec<PrLabel>) {
+    let key = repo_key_prefix(repo_path);
+    REPO_LABELS_CACHE.set(key, value);
+}
+
+/// Check cached repo authors without fetching
+pub fn get_repo_authors_cached(repo_path: &Path) -> Option<Vec<String>> {
+    let key = repo_key_prefix(repo_path);
+    REPO_AUTHORS_CACHE.get(&key)
+}
+
+/// Set cached repo authors
+pub fn set_repo_authors_cache(repo_path: &Path, value: Vec<String>) {
+    let key = repo_key_prefix(repo_path);
+    REPO_AUTHORS_CACHE.set(key, value);
+}
+
 /// Get cached diff stats or compute
 pub fn get_cached_diff_stats(
     repo_path: &Path,

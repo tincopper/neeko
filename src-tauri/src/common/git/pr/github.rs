@@ -1,7 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 
+use crate::common::executor::factory::ExecTarget;
 use crate::common::git::pr::PrProvider;
 use crate::common::utils::command::gh::GhCli;
 use crate::project::types::{
@@ -190,8 +192,21 @@ fn parse_review_comments_response(stdout: &str) -> Vec<PRReviewComment> {
 
 // ─── Trait Implementation ────────────────────────────────────────────────
 
-pub struct GitHubPrProvider;
+pub struct GitHubPrProvider {
+    repo_path: PathBuf,
+    target: ExecTarget,
+}
 
+impl GitHubPrProvider {
+    pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
+        Self {
+            repo_path: repo_path.to_path_buf(),
+            target: target.clone(),
+        }
+    }
+}
+
+#[async_trait]
 impl PrProvider for GitHubPrProvider {
     fn name(&self) -> &'static str {
         "GitHub"
@@ -205,40 +220,37 @@ impl PrProvider for GitHubPrProvider {
         GhCli::is_authenticated()
     }
 
-    fn list_prs(&self, repo_path: &Path, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
-        let cli = GhCli::new(repo_path);
-        let mut result: Vec<PRListItem> = cli.run_json(|cmd| {
-            cmd.args([
-                "pr",
-                "list",
-                "--json",
-                "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels,comments,assignees",
-                "--state",
-                state,
-                "--limit",
-                &limit.to_string(),
-            ]);
-        })?;
+    async fn list_prs(&self, state: &str, limit: usize) -> Result<Vec<PRListItem>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let mut result: Vec<PRListItem> = cli.run_json(&[
+            "pr",
+            "list",
+            "--json",
+            "number,title,state,author,headRefName,baseRefName,createdAt,isCrossRepository,headRepositoryOwner,labels,comments,assignees",
+            "--state",
+            state,
+            "--limit",
+            &limit.to_string(),
+        ]).await?;
         for item in &mut result {
             item.comment_count = item.comments.len() as u64;
         }
         Ok(result)
     }
 
-    fn list_repo_labels(&self, repo_path: &Path) -> Result<Vec<PrLabel>> {
-        let cli = GhCli::new(repo_path);
-        cli.run_json(|cmd| {
-            cmd.args(["label", "list", "--json", "name,color", "--limit", "200"]);
-        })
+    async fn list_repo_labels(&self) -> Result<Vec<PrLabel>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        cli.run_json(&["label", "list", "--json", "name,color", "--limit", "200"])
+            .await
     }
 
-    fn list_repo_authors(&self, repo_path: &Path) -> Result<Vec<String>> {
-        let cli = GhCli::new(repo_path);
-        let items: Vec<serde_json::Value> = cli.run_json(|cmd| {
-            cmd.args([
+    async fn list_repo_authors(&self) -> Result<Vec<String>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let items: Vec<serde_json::Value> = cli
+            .run_json(&[
                 "pr", "list", "--state", "all", "--limit", "1000", "--json", "author",
-            ]);
-        })?;
+            ])
+            .await?;
         let mut authors: Vec<String> = items
             .iter()
             .filter_map(|v| {
@@ -258,44 +270,43 @@ impl PrProvider for GitHubPrProvider {
         Ok(authors)
     }
 
-    fn view_pr(&self, repo_path: &Path, pr_number: u64) -> Result<PRInfo> {
-        let cli = GhCli::new(repo_path);
-        let mut info: PRInfo = cli.run_json(|cmd| {
-            cmd.args([
-                "pr",
-                "view",
-                &pr_number.to_string(),
-                "--json",
-                "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup,mergeCommit,mergedBy,mergedAt,closedAt",
-            ]);
-        })?;
+    async fn view_pr(&self, pr_number: u64) -> Result<PRInfo> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let mut info: PRInfo = cli.run_json(&[
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "number,title,state,body,author,headRefName,baseRefName,url,createdAt,mergeable,mergeStateStatus,isDraft,isCrossRepository,statusCheckRollup,mergeCommit,mergedBy,mergedAt,closedAt",
+        ]).await?;
         if info.closed_by.is_none() {
-            info.closed_by = fetch_pr_closed_by(repo_path, pr_number).ok().flatten();
+            info.closed_by = fetch_pr_closed_by(&self.repo_path, &self.target, pr_number)
+                .await
+                .ok()
+                .flatten();
         }
         Ok(info)
     }
 
-    fn create_pr(
+    async fn create_pr(
         &self,
-        repo_path: &Path,
         title: &str,
         body: &str,
         base: Option<&str>,
         draft: bool,
     ) -> Result<u64> {
-        let cli = GhCli::new(repo_path);
-        let stdout = cli.run(|cmd| {
-            cmd.arg("pr").arg("create").arg("--title").arg(title);
-            if !body.is_empty() {
-                cmd.args(["--body", body]);
-            }
-            if let Some(b) = base {
-                cmd.args(["--base", b]);
-            }
-            if draft {
-                cmd.arg("--draft");
-            }
-        })?;
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let mut args = vec!["pr", "create", "--title", title];
+        if !body.is_empty() {
+            args.extend_from_slice(&["--body", body]);
+        }
+        if let Some(b) = base {
+            args.extend_from_slice(&["--base", b]);
+        }
+        if draft {
+            args.push("--draft");
+        }
+        let stdout = cli.run(&args).await?;
         stdout
             .rsplit('/')
             .next()
@@ -303,42 +314,40 @@ impl PrProvider for GitHubPrProvider {
             .context("Failed to parse PR number from gh pr create output")
     }
 
-    fn merge_pr(&self, repo_path: &Path, pr_number: u64, method: &str) -> Result<PRMergeResult> {
+    async fn merge_pr(&self, pr_number: u64, method: &str) -> Result<PRMergeResult> {
         if !["merge", "squash", "rebase"].contains(&method) {
             anyhow::bail!(
                 "Invalid merge method '{}'. Use: merge, squash, or rebase",
                 method
             );
         }
-        let cli = GhCli::new(repo_path);
-        let stdout = cli.run(|cmd| {
-            cmd.args([
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let stdout = cli
+            .run(&[
                 "pr",
                 "merge",
                 &pr_number.to_string(),
                 "--delete-branch",
                 &format!("--{}", method),
-            ]);
-        })?;
+            ])
+            .await?;
         Ok(PRMergeResult {
             success: true,
             message: stdout,
         })
     }
 
-    fn close_pr(&self, repo_path: &Path, pr_number: u64) -> Result<()> {
-        let cli = GhCli::new(repo_path);
-        cli.run(|cmd| {
-            cmd.args(["pr", "close", &pr_number.to_string()]);
-        })?;
+    async fn close_pr(&self, pr_number: u64) -> Result<()> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        cli.run(&["pr", "close", &pr_number.to_string()]).await?;
         Ok(())
     }
 
-    fn list_pr_files(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRFileChange>> {
-        let cli = GhCli::new(repo_path);
-        let value: serde_json::Value = cli.run_json(|cmd| {
-            cmd.args(["pr", "view", &pr_number.to_string(), "--json", "files"]);
-        })?;
+    async fn list_pr_files(&self, pr_number: u64) -> Result<Vec<PRFileChange>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let value: serde_json::Value = cli
+            .run_json(&["pr", "view", &pr_number.to_string(), "--json", "files"])
+            .await?;
         let files = value
             .get("files")
             .and_then(|f| f.as_array())
@@ -371,11 +380,11 @@ impl PrProvider for GitHubPrProvider {
         Ok(files)
     }
 
-    fn list_pr_commits(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRCommit>> {
-        let cli = GhCli::new(repo_path);
-        let value: serde_json::Value = cli.run_json(|cmd| {
-            cmd.args(["pr", "view", &pr_number.to_string(), "--json", "commits"]);
-        })?;
+    async fn list_pr_commits(&self, pr_number: u64) -> Result<Vec<PRCommit>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let value: serde_json::Value = cli
+            .run_json(&["pr", "view", &pr_number.to_string(), "--json", "commits"])
+            .await?;
         let commits = value
             .get("commits")
             .and_then(|c| c.as_array())
@@ -416,12 +425,13 @@ impl PrProvider for GitHubPrProvider {
         Ok(commits)
     }
 
-    fn list_pr_comments(&self, repo_path: &Path, pr_number: u64) -> Result<Vec<PRComment>> {
-        let cli = GhCli::new(repo_path);
+    async fn list_pr_comments(&self, pr_number: u64) -> Result<Vec<PRComment>> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
         log::info!("[list_pr_comments] Loading comments for PR #{}", pr_number);
 
-        let issue_comments: Vec<serde_json::Value> =
-            cli.api_json(&format!("issues/{}/comments", pr_number), |_| {})?;
+        let issue_comments: Vec<serde_json::Value> = cli
+            .api_json(&format!("issues/{}/comments", pr_number), &[])
+            .await?;
         let issue_count = issue_comments.len();
         let issue_comments: Vec<PRComment> = issue_comments
             .iter()
@@ -429,7 +439,8 @@ impl PrProvider for GitHubPrProvider {
             .collect();
 
         let reviews: Vec<serde_json::Value> = cli
-            .api_json(&format!("pulls/{}/reviews", pr_number), |_| {})
+            .api_json(&format!("pulls/{}/reviews", pr_number), &[])
+            .await
             .unwrap_or_default();
         let review_count = reviews.len();
         let review_comments: Vec<PRComment> =
@@ -446,62 +457,66 @@ impl PrProvider for GitHubPrProvider {
         Ok(all)
     }
 
-    fn add_pr_comment(&self, repo_path: &Path, pr_number: u64, body: &str) -> Result<PRComment> {
+    async fn add_pr_comment(&self, pr_number: u64, body: &str) -> Result<PRComment> {
         log::info!("[add_pr_comment] Adding comment to PR #{}", pr_number);
-        let cli = GhCli::new(repo_path);
-        let stdout = cli.api_run(&format!("issues/{}/comments", pr_number), |cmd| {
-            cmd.args(["--method", "POST", "--raw-field", &format!("body={}", body)]);
-        })?;
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let stdout = cli
+            .api_run(
+                &format!("issues/{}/comments", pr_number),
+                &["--method", "POST", "--raw-field", &format!("body={}", body)],
+            )
+            .await?;
         parse_comment_response(&stdout)
     }
 
-    fn edit_pr_comment(
+    async fn edit_pr_comment(
         &self,
-        repo_path: &Path,
         _pr_number: u64,
         comment_id: &str,
         body: &str,
     ) -> Result<PRComment> {
-        let cli = GhCli::new(repo_path);
-        let stdout = cli.api_run(&format!("issues/comments/{}", comment_id), |cmd| {
-            cmd.args([
-                "--method",
-                "PATCH",
-                "--raw-field",
-                &format!("body={}", body),
-            ]);
-        })?;
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let stdout = cli
+            .api_run(
+                &format!("issues/comments/{}", comment_id),
+                &[
+                    "--method",
+                    "PATCH",
+                    "--raw-field",
+                    &format!("body={}", body),
+                ],
+            )
+            .await?;
         parse_comment_response(&stdout)
     }
 
-    fn delete_pr_comment(&self, repo_path: &Path, _pr_number: u64, comment_id: &str) -> Result<()> {
-        let cli = GhCli::new(repo_path);
-        cli.api_run(&format!("issues/comments/{}", comment_id), |cmd| {
-            cmd.args(["--method", "DELETE"]);
-        })?;
+    async fn delete_pr_comment(&self, _pr_number: u64, comment_id: &str) -> Result<()> {
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        cli.api_run(
+            &format!("issues/comments/{}", comment_id),
+            &["--method", "DELETE"],
+        )
+        .await?;
         Ok(())
     }
 
-    fn add_comment_reaction(
+    async fn add_comment_reaction(
         &self,
-        repo_path: &Path,
         _pr_number: u64,
         comment_id: &str,
         emoji: &str,
     ) -> Result<()> {
-        let cli = GhCli::new(repo_path);
+        let cli = GhCli::new(&self.repo_path, &self.target);
         cli.api_run(
             &format!("issues/comments/{}/reactions", comment_id),
-            |cmd| {
-                cmd.args(["--method", "POST", "--field", &format!("content={}", emoji)]);
-            },
-        )?;
+            &["--method", "POST", "--field", &format!("content={}", emoji)],
+        )
+        .await?;
         Ok(())
     }
 
-    fn add_pr_review_comment(
+    async fn add_pr_review_comment(
         &self,
-        repo_path: &Path,
         pr_number: u64,
         body: &str,
         path: &str,
@@ -515,32 +530,35 @@ impl PrProvider for GitHubPrProvider {
             line,
             side
         );
-        let cli = GhCli::new(repo_path);
-        let (owner, repo) = cli.repo_owner_name()?;
-        let commit_id = cli.run(|cmd| {
-            cmd.args([
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let (owner, repo) = cli.repo_owner_name().await?;
+        let commit_id = cli
+            .run(&[
                 "api",
                 &format!("repos/{}/{}/pulls/{}", owner, repo, pr_number),
                 "--jq",
                 ".head.sha",
-            ]);
-        })?;
-        let stdout = cli.api_run(&format!("pulls/{}/comments", pr_number), |cmd| {
-            cmd.args([
-                "--method",
-                "POST",
-                "--field",
-                &format!("body={}", body),
-                "--field",
-                &format!("commit_id={}", commit_id),
-                "--field",
-                &format!("path={}", path),
-                "--field",
-                &format!("line={}", line),
-                "--field",
-                &format!("side={}", side),
-            ]);
-        })?;
+            ])
+            .await?;
+        let stdout = cli
+            .api_run(
+                &format!("pulls/{}/comments", pr_number),
+                &[
+                    "--method",
+                    "POST",
+                    "--field",
+                    &format!("body={}", body),
+                    "--field",
+                    &format!("commit_id={}", commit_id),
+                    "--field",
+                    &format!("path={}", path),
+                    "--field",
+                    &format!("line={}", line),
+                    "--field",
+                    &format!("side={}", side),
+                ],
+            )
+            .await?;
         let comment = parse_review_comment_response(&stdout)?;
         log::info!(
             "[add_pr_review_comment] Comment added successfully: id={}",
@@ -549,14 +567,12 @@ impl PrProvider for GitHubPrProvider {
         Ok(comment)
     }
 
-    fn list_pr_review_comments(
-        &self,
-        repo_path: &Path,
-        pr_number: u64,
-    ) -> Result<Vec<PRReviewComment>> {
+    async fn list_pr_review_comments(&self, pr_number: u64) -> Result<Vec<PRReviewComment>> {
         log::info!("[list_pr_review_comments] Loading for PR #{}", pr_number);
-        let cli = GhCli::new(repo_path);
-        let stdout = cli.api_run(&format!("pulls/{}/comments", pr_number), |_| {})?;
+        let cli = GhCli::new(&self.repo_path, &self.target);
+        let stdout = cli
+            .api_run(&format!("pulls/{}/comments", pr_number), &[])
+            .await?;
         let comments = parse_review_comments_response(&stdout);
         log::info!(
             "[list_pr_review_comments] Loaded {} comments",
@@ -568,13 +584,15 @@ impl PrProvider for GitHubPrProvider {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-fn fetch_pr_closed_by(
+async fn fetch_pr_closed_by(
     repo_path: &Path,
+    target: &ExecTarget,
     pr_number: u64,
 ) -> Result<Option<crate::project::types::Actor>> {
-    let cli = GhCli::new(repo_path);
+    let cli = GhCli::new(repo_path, target);
     let events: Vec<serde_json::Value> = cli
-        .api_json(&format!("issues/{}/events", pr_number), |_| {})
+        .api_json(&format!("issues/{}/events", pr_number), &[])
+        .await
         .unwrap_or_default();
     for event in &events {
         if event.get("event").and_then(|e| e.as_str()) != Some("closed") {

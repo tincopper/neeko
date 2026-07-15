@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::common::connection::types::AuthMethod;
+use crate::common::executor::factory::ExecTarget;
 use crate::common::git::operations;
 use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffResult, PushOutcome};
@@ -80,6 +81,28 @@ fn into_transport_and_dir(kind: &GitTransportKind) -> (GitTransport, &str) {
             },
             project_path.as_str(),
         ),
+    }
+}
+
+fn into_exec_target(kind: &GitTransportKind) -> ExecTarget {
+    match kind {
+        GitTransportKind::Local { .. } => ExecTarget::Local,
+        #[cfg(target_os = "windows")]
+        GitTransportKind::Wsl { distro, .. } => ExecTarget::Wsl {
+            distro: distro.clone(),
+        },
+        GitTransportKind::Remote {
+            host,
+            port,
+            username,
+            auth,
+            ..
+        } => ExecTarget::Remote {
+            host: host.clone(),
+            port: *port,
+            username: username.clone(),
+            auth: auth.clone(),
+        },
     }
 }
 
@@ -623,7 +646,13 @@ async fn read_file_content_shell(
     // 文件大小
     let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
     let size: u64 = if let Some((h, p, u, a)) = &host {
-        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &stat_cmd)
+        let target = crate::common::executor::factory::ExecTarget::Remote {
+            host: h.to_string(),
+            port: *p,
+            username: u.to_string(),
+            auth: (**a).clone(),
+        };
+        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &stat_cmd])
             .await
             .ok()
             .and_then(|s| s.trim().parse().ok())
@@ -634,7 +663,12 @@ async fn read_file_content_shell(
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = stat_cmd.clone();
-                move || crate::common::utils::command::wsl::exec(&d, &c)
+                move || {
+                    let target =
+                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
+                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
+                        .map_err(|e| anyhow::anyhow!("{}", e))
+                }
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -652,7 +686,13 @@ async fn read_file_content_shell(
     let binary_cmd =
         format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
     let is_binary = if let Some((h, p, u, a)) = &host {
-        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &binary_cmd)
+        let target = crate::common::executor::factory::ExecTarget::Remote {
+            host: h.to_string(),
+            port: *p,
+            username: u.to_string(),
+            auth: (**a).clone(),
+        };
+        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &binary_cmd])
             .await
             .map(|out| out.trim() == "1")
             .unwrap_or(false)
@@ -662,7 +702,12 @@ async fn read_file_content_shell(
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = binary_cmd.clone();
-                move || crate::common::utils::command::wsl::exec(&d, &c)
+                move || {
+                    let target =
+                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
+                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
+                        .map_err(|e| anyhow::anyhow!("{}", e))
+                }
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -687,16 +732,27 @@ async fn read_file_content_shell(
     // 读取文件内容
     let cat_cmd = format!("cat '{safe_fp}'");
     let content = if let Some((h, p, u, a)) = &host {
-        crate::common::utils::command::ssh::exec_command(h, *p, u, a, &cat_cmd)
+        let target = crate::common::executor::factory::ExecTarget::Remote {
+            host: h.to_string(),
+            port: *p,
+            username: u.to_string(),
+            auth: (**a).clone(),
+        };
+        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &cat_cmd])
             .await
-            .map_err(AppError::from)?
+            .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))?
     } else {
         #[cfg(target_os = "windows")]
         {
             tokio::task::spawn_blocking({
                 let d = distro.to_string();
                 let c = cat_cmd.clone();
-                move || crate::common::utils::command::wsl::exec(&d, &c)
+                move || {
+                    let target =
+                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
+                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
+                        .map_err(|e| anyhow::anyhow!("{}", e))
+                }
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -802,7 +858,10 @@ pub async fn write_file_content(
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let d = distro.clone();
                 let _ = tokio::task::spawn_blocking(move || {
-                    crate::common::utils::command::wsl::exec(&d, &mkdir_cmd)
+                    let target =
+                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
+                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &mkdir_cmd])
+                        .map_err(|e| anyhow::anyhow!("{}", e))
                 })
                 .await
                 .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?;
@@ -813,7 +872,11 @@ pub async fn write_file_content(
             let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
             let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
             tokio::task::spawn_blocking(move || {
-                crate::common::utils::command::wsl::exec(&distro, &write_cmd)
+                let target = crate::common::executor::factory::ExecTarget::Wsl {
+                    distro: distro.clone(),
+                };
+                crate::common::executor::sync::exec_on(&target, "bash", &["-c", &write_cmd])
+                    .map_err(|e| anyhow::anyhow!("{}", e))
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
@@ -828,8 +891,6 @@ pub async fn write_file_content(
             auth,
             project_path,
         } => {
-            use crate::common::utils::command::ssh::exec_command;
-
             let base = root_path.unwrap_or(project_path);
             let full_path = format!("{}/{}", base, file_path);
             let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
@@ -839,16 +900,29 @@ pub async fn write_file_content(
                 let safe_parent =
                     crate::common::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
-                let _ = exec_command(&host, port, &username, &auth, &mkdir_cmd).await;
+                let target = crate::common::executor::factory::ExecTarget::Remote {
+                    host: host.clone(),
+                    port,
+                    username: username.clone(),
+                    auth: auth.clone(),
+                };
+                let _ = crate::common::executor::sync::exec_on(&target, "sh", &["-c", &mkdir_cmd])
+                    .await;
             }
 
             // 使用 base64 编码传输，避免 shell 转义问题
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
             let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
-            exec_command(&host, port, &username, &auth, &write_cmd)
+            let target = crate::common::executor::factory::ExecTarget::Remote {
+                host: host.clone(),
+                port,
+                username: username.clone(),
+                auth: auth.clone(),
+            };
+            crate::common::executor::sync::exec_on(&target, "sh", &["-c", &write_cmd])
                 .await
-                .map_err(AppError::from)?;
+                .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))?;
 
             Ok(())
         }
@@ -994,8 +1068,6 @@ pub async fn generate_commit_message(
             auth,
             project_path,
         } => {
-            use crate::common::utils::command::ssh;
-
             let sp = crate::common::utils::command::local::safe_path(&project_path);
             let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
@@ -1031,7 +1103,13 @@ pub async fn generate_commit_message(
             );
 
             // 通过 SSH 执行
-            match ssh::exec_command(&host, port, &username, &auth, &full_cmd).await {
+            let target = crate::common::executor::factory::ExecTarget::Remote {
+                host: host.clone(),
+                port,
+                username: username.clone(),
+                auth: auth.clone(),
+            };
+            match crate::common::executor::sync::exec_on(&target, "sh", &["-c", &full_cmd]).await {
                 Ok(o) => {
                     log::info!("[AI commit Remote] success, stdout_len={}", o.len());
                     if !o.is_empty() {
@@ -1156,10 +1234,16 @@ pub async fn get_remote_home_dir(
     username: String,
     auth: AuthMethod,
 ) -> Result<String, AppError> {
-    crate::common::utils::command::ssh::exec_command(&host, port, &username, &auth, "echo $HOME")
+    let target = crate::common::executor::factory::ExecTarget::Remote {
+        host: host.clone(),
+        port,
+        username: username.clone(),
+        auth: auth.clone(),
+    };
+    crate::common::executor::sync::exec_on(&target, "sh", &["-c", "echo $HOME"])
         .await
         .map(|s| s.trim().to_string())
-        .map_err(AppError::from)
+        .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))
 }
 
 // ─── PR Commands ────────────────────────────────────────────────────────────
@@ -1175,191 +1259,38 @@ pub fn is_gh_authenticated_command() -> bool {
 }
 
 #[tauri::command]
-pub fn list_prs_command(
+pub async fn list_prs_command(
     project_id: String,
+    transport: GitTransportKind,
     state: String,
     limit: usize,
-    state_w: State<AppStateWrapper>,
+    state_w: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRListItem>, AppError> {
-    let manager = state_w.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_prs(&project.path, &state, limit).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state_w.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::list_prs(&project_path, &target, &state, limit)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn list_repo_labels_command(
+pub async fn list_repo_labels_command(
     project_id: String,
-    state: State<AppStateWrapper>,
-) -> Result<Vec<PrLabel>, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_repo_labels(&project.path).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn list_repo_authors_command(
-    project_id: String,
-    state: State<AppStateWrapper>,
-) -> Result<Vec<String>, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_repo_authors(&project.path).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn view_pr_command(
-    project_id: String,
-    pr_number: u64,
-    state: State<AppStateWrapper>,
-) -> Result<PRInfo, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::view_pr(&project.path, pr_number).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn create_pr_command(
-    project_id: String,
-    title: String,
-    body: String,
-    base: Option<String>,
-    draft: bool,
-    state: State<AppStateWrapper>,
-) -> Result<u64, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::create_pr(&project.path, &title, &body, base.as_deref(), draft)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn merge_pr_command(
-    project_id: String,
-    pr_number: u64,
-    method: String,
-    state: State<AppStateWrapper>,
-) -> Result<PRMergeResult, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::merge_pr(&project.path, pr_number, &method).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn close_pr_command(
-    project_id: String,
-    pr_number: u64,
-    state: State<AppStateWrapper>,
-) -> Result<(), AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::close_pr(&project.path, pr_number).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn list_pr_files_command(
-    project_id: String,
-    pr_number: u64,
-    state: State<AppStateWrapper>,
-) -> Result<Vec<PRFileChange>, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_pr_files(&project.path, pr_number).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn list_pr_commits_command(
-    project_id: String,
-    pr_number: u64,
-    state: State<AppStateWrapper>,
-) -> Result<Vec<PRCommit>, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_pr_commits(&project.path, pr_number).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub fn add_pr_review_comment_command(
-    project_id: String,
-    pr_number: u64,
-    body: String,
-    file_path: String,
-    line: u64,
-    side: String,
-    state: State<AppStateWrapper>,
-) -> Result<PRReviewComment, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::add_pr_review_comment(&project.path, pr_number, &body, &file_path, line, &side)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
-}
-
-#[tauri::command]
-pub async fn list_pr_review_comments_command(
-    project_id: String,
-    pr_number: u64,
+    transport: GitTransportKind,
     state: State<'_, AppStateWrapper>,
-) -> Result<Vec<PRReviewComment>, AppError> {
-    let t0 = std::time::Instant::now();
+) -> Result<Vec<PrLabel>, AppError> {
+    let target = into_exec_target(&transport);
     let project_path = {
         let manager = state.project_manager.lock().map_err(AppError::from)?;
         match manager.get_project(&project_id) {
@@ -1372,11 +1303,257 @@ pub async fn list_pr_review_comments_command(
             }
         }
     };
-    let result = tokio::task::spawn_blocking(move || {
-        crate::git::list_pr_review_comments(&project_path, pr_number).map_err(AppError::from)
-    })
+    crate::git::list_repo_labels(&project_path, &target)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn list_repo_authors_command(
+    project_id: String,
+    transport: GitTransportKind,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<String>, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::list_repo_authors(&project_path, &target)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn view_pr_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<PRInfo, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::view_pr(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn create_pr_command(
+    project_id: String,
+    transport: GitTransportKind,
+    title: String,
+    body: String,
+    base: Option<String>,
+    draft: bool,
+    state: State<'_, AppStateWrapper>,
+) -> Result<u64, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::create_pr(
+        &project_path,
+        &target,
+        &title,
+        &body,
+        base.as_deref(),
+        draft,
+    )
     .await
-    .map_err(|e| AppError::Io(format!("spawn_blocking failed: {}", e)))??;
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn merge_pr_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    method: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<PRMergeResult, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::merge_pr(&project_path, &target, pr_number, &method)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn close_pr_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::close_pr(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn list_pr_files_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<PRFileChange>, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::list_pr_files(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn list_pr_commits_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<PRCommit>, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::list_pr_commits(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn add_pr_review_comment_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    body: String,
+    file_path: String,
+    line: u64,
+    side: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<PRReviewComment, AppError> {
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::add_pr_review_comment(
+        &project_path,
+        &target,
+        pr_number,
+        &body,
+        &file_path,
+        line,
+        &side,
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+#[tauri::command]
+pub async fn list_pr_review_comments_command(
+    project_id: String,
+    transport: GitTransportKind,
+    pr_number: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<PRReviewComment>, AppError> {
+    let t0 = std::time::Instant::now();
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    let result = crate::git::list_pr_review_comments(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)?;
     log::debug!(
         "[perf] Rust list_pr_review_comments: PR #{} {}ms",
         pr_number,
@@ -1388,94 +1565,132 @@ pub async fn list_pr_review_comments_command(
 // ─── PR Comment Commands ────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn list_pr_comments_command(
+pub async fn list_pr_comments_command(
     project_id: String,
+    transport: GitTransportKind,
     pr_number: u64,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRComment>, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::list_pr_comments(&project.path, pr_number).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::list_pr_comments(&project_path, &target, pr_number)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn add_pr_comment_command(
+pub async fn add_pr_comment_command(
     project_id: String,
+    transport: GitTransportKind,
     pr_number: u64,
     body: String,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PRComment, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::add_pr_comment(&project.path, pr_number, &body).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::add_pr_comment(&project_path, &target, pr_number, &body)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn edit_pr_comment_command(
+pub async fn edit_pr_comment_command(
     project_id: String,
+    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
     body: String,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PRComment, AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::edit_pr_comment(&project.path, pr_number, &comment_id, &body)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::edit_pr_comment(&project_path, &target, pr_number, &comment_id, &body)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn delete_pr_comment_command(
+pub async fn delete_pr_comment_command(
     project_id: String,
+    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::delete_pr_comment(&project.path, pr_number, &comment_id).map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::delete_pr_comment(&project_path, &target, pr_number, &comment_id)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub fn add_comment_reaction_command(
+pub async fn add_comment_reaction_command(
     project_id: String,
+    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
     emoji: String,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let manager = state.project_manager.lock().map_err(AppError::from)?;
-    if let Some(project) = manager.get_project(&project_id) {
-        crate::git::add_comment_reaction(&project.path, pr_number, &comment_id, &emoji)
-            .map_err(AppError::from)
-    } else {
-        Err(AppError::NotFound(format!(
-            "Project not found: {}",
-            project_id
-        )))
-    }
+    let target = into_exec_target(&transport);
+    let project_path = {
+        let manager = state.project_manager.lock().map_err(AppError::from)?;
+        match manager.get_project(&project_id) {
+            Some(p) => p.path.clone(),
+            None => {
+                return Err(AppError::NotFound(format!(
+                    "Project not found: {}",
+                    project_id
+                )))
+            }
+        }
+    };
+    crate::git::add_comment_reaction(&project_path, &target, pr_number, &comment_id, &emoji)
+        .await
+        .map_err(AppError::from)
 }
