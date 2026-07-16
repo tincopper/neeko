@@ -99,7 +99,6 @@ const ProjectsPanel: React.FC = () => {
           existing.projects.push(p);
           remoteMap.set(entry.id, existing);
         }
-        local.push(p);
       } else {
         local.push(p);
       }

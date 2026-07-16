@@ -12,12 +12,12 @@ interface UseAgentClickHandlerOptions {
     handleSelectLocalAgent: (agent: AgentConfig, cacheKey: string) => void;
   };
   wslActions: {
-    updateWslProjectAgent: (agent: AgentConfig) => void;
-    handleSelectWslAgent: (agent: AgentConfig) => void;
+    updateProjectAgent: (agent: AgentConfig | null) => void;
+    handleSelectAgent: (agent: AgentConfig | null) => void;
   };
   remoteActions: {
-    updateRemoteProjectAgent: (agent: AgentConfig) => void;
-    handleSelectRemoteAgent: (agent: AgentConfig) => void;
+    updateProjectAgent: (agent: AgentConfig | null) => void;
+    handleSelectAgent: (agent: AgentConfig | null) => void;
   };
 }
 
@@ -40,15 +40,15 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
 
       if (fullProject?.environment.type === 'Wsl') {
         if (newTab) {
-          wslActions.updateWslProjectAgent(agent);
+          wslActions.updateProjectAgent(agent);
         } else {
-          wslActions.handleSelectWslAgent(agent);
+          wslActions.handleSelectAgent(agent);
         }
       } else if (fullProject?.environment.type === 'Remote') {
         if (newTab) {
-          remoteActions.updateRemoteProjectAgent(agent);
+          remoteActions.updateProjectAgent(agent);
         } else {
-          remoteActions.handleSelectRemoteAgent(agent);
+          remoteActions.handleSelectAgent(agent);
         }
       } else if (activeProject) {
         setProjectAgent(activeProject.id, agent.id).catch((err: unknown) => {

@@ -16,9 +16,11 @@ import {
 } from '../components/terminalCache';
 import { setupTerminalLinks } from '../components/terminalLinks';
 
+import { createTerminalStrategy } from './factory';
 import type { TerminalStrategy } from './types';
 
-interface RemoteStrategyParams {
+/** @deprecated Use `TerminalView` with `environment` prop instead. */
+export interface RemoteStrategyParams {
   entryId: string;
   projectId: string;
   projectPath: string;
@@ -33,6 +35,12 @@ interface RemoteStrategyParams {
   cacheKeySuffix?: string;
 }
 
+/**
+ * Remote terminal strategy hook.
+ *
+ * Prefer using the unified `useTerminalStrategy` from `./index` instead; this
+ * export is kept for backward compatibility.
+ */
 export function useRemoteTerminalStrategy(params: RemoteStrategyParams): TerminalStrategy {
   const { config, showToast } = useAppContext();
   const { activeTabId, tabs } = useEditorContext();
@@ -55,8 +63,8 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
   return useMemo(() => {
     const cacheKey = `${remoteCacheKey(entryId, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
 
-    return {
-      kind: 'remote' as const,
+    return createTerminalStrategy({
+      kind: 'remote',
       cacheKey,
       cache: remoteTerminalCache as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: remoteRebuildCallbacks,
@@ -86,7 +94,7 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
           setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, showToast });
         }
       },
-    } satisfies TerminalStrategy;
+    });
   }, [
     entryId,
     projectId,

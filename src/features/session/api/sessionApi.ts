@@ -1,7 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { WSLEntrySession, RemoteEntrySession } from '@/features/connection/types';
-
 import type { SessionStore } from '@/shared/types';
 
 export function saveConfig(config: Record<string, unknown>): Promise<void> {
@@ -13,12 +11,10 @@ export function loadConfig(): Promise<Record<string, unknown>> {
 }
 
 export function saveSession(
-  wslEntries: WSLEntrySession[],
-  remoteEntries: RemoteEntrySession[],
   sidebarWidth?: number | null,
   worktreeState?: Record<string, string> | null,
 ): Promise<void> {
-  return invoke<void>('save_session', { wslEntries, remoteEntries, sidebarWidth, worktreeState });
+  return invoke<void>('save_session', { sidebarWidth, worktreeState });
 }
 
 export function loadSession(): Promise<SessionStore> {

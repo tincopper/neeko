@@ -4,8 +4,6 @@ import DiffView from "@/features/git/components/diff";
 import { PRDetailView } from '@/features/git/components/pr-detail';
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import TerminalView from '@/features/terminal/components/TerminalView';
-import WSLTerminalView from '@/features/terminal/components/WSLTerminalView';
-import RemoteTerminalView from '@/features/terminal/components/RemoteTerminalView';
 import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
@@ -19,7 +17,6 @@ import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { useProjectStore } from '@/features/project/store';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
 import { useEditorStore } from '@/shared/store';
 import { buildDiffSource } from '@/shared/utils/diffSource';
@@ -351,30 +348,13 @@ function EditorGroupPane({
               layoutId={layoutId}
               renderPane={(paneId) =>
                 remoteProject ? (
-                  <RemoteTerminalView
+                  <TerminalView
                     paneId={paneId}
-                    entryId={remoteProject.entryId}
-                    projectId={remoteProject.projectId}
-                    projectName={remoteProject.projectName}
-                    projectPath={remoteProject.projectPath}
-                    host={remoteProject.host}
-                    port={remoteProject.port}
-                    username={remoteProject.username}
-                    auth={remoteProject.auth}
-                    fontSize={config.terminalFontSize}
-                    fontFamily={config.fontFamily}
-                    cacheKeySuffix={remoteProject.cacheKeySuffix}
-                    onSessionReady={remoteProject.onSessionReady}
+                    remoteConfig={remoteProject}
                   />
-                ) : (() => {
-                  const p = useProjectStore.getState().activeProject;
-                  const isWsl = p?.environment.type === 'Wsl';
-                  return isWsl ? (
-                    <WSLTerminalView paneId={paneId} />
-                  ) : (
-                    <TerminalView paneId={paneId} />
-                  );
-                })()
+                ) : (
+                  <TerminalView paneId={paneId} />
+                )
               }
               onSplitStateChange={handleSplitStateChange}
               onSplitHorizontal={handleSetSplitHorizontal}

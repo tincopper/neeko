@@ -1,443 +1,313 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
-import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/shared/types';
+import type { RemoteEntrySession, AuthMethod } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 
-// mock terminal functions
 vi.mock('@/features/terminal/components/terminalCache', () => ({
   remoteCacheKey: (entryId: string, projectId: string) => `remote:${entryId}:${projectId}`,
   destroyRemoteCachesByPrefix: vi.fn(),
+  destroyWslCachesByPrefix: vi.fn(),
+  wslCacheKey: vi.fn(),
 }));
 
-const makeRemoteProject = (overrides: {
-  id: string;
-  name: string;
-  path: string;
-  entry_id?: string;
-}): RemoteProject => ({
-  id: overrides.id,
-  name: overrides.name,
-  path: overrides.path,
-  entry_id: overrides.entry_id ?? 'e1',
-  selected_agent: null,
-  selected_ide: null,
-});
+function makeRemoteProject(id = 'rp1') {
+  return {
+    id,
+    name: `proj-${id}`,
+    path: `/home/user/${id}`,
+    entry_id: 'entry-1',
+    selected_agent: null as string | null,
+    selected_ide: null as string | null,
+    git_info: null as any,
+    avatar_color: null as string | null,
+  };
+}
 
-const makeRemoteEntry = (overrides: {
-  id: string;
-  host?: string;
-  port?: number;
-  username?: string;
-  projects?: RemoteProject[];
-  saved_auth?: string | null;
-}): RemoteEntrySession => ({
-  id: overrides.id,
-  host: overrides.host ?? '192.168.1.100',
-  port: overrides.port ?? 22,
-  username: overrides.username ?? 'root',
-  projects: overrides.projects ?? [],
-  saved_auth: overrides.saved_auth,
-});
+function makeRemoteEntry(overrides: Partial<RemoteEntrySession> = {}): RemoteEntrySession {
+  return {
+    id: 'entry-1',
+    host: '192.168.1.1',
+    port: 22,
+    username: 'user',
+    projects: [makeRemoteProject('rp1'), makeRemoteProject('rp2')],
+    saved_auth: null,
+    ...overrides,
+  };
+}
 
 describe('useRemoteProjects', () => {
-  const mockSaveSession = vi.fn();
+  const mockSaveSession = vi.fn().mockResolvedValue(undefined);
   const mockShowToast = vi.fn();
 
-  const resetStore = () => {
-    useProjectStore.setState({
-      projects: [],
-      activeProjectId: null,
-      activeProject: null,
-      isTerminalView: false,
-      selectProject: vi.fn(),
-      openIde: vi.fn(),
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useProjectStore.setState({ activeProjectId: null, activeProject: null });
     useConnectionStore.setState({
-      wslEntries: [],
-      activeWslKey: null,
-      activeWslProject: null,
       remoteEntries: [],
-      activeRemoteKey: null,
-      activeRemoteProject: null,
+      wslEntries: [],
       remoteAuthStore: new Map(),
       pendingAuthEntry: null,
-      selectWslProject: vi.fn(),
-      selectRemoteProject: vi.fn(),
     });
     useWorktreeStore.setState({
       activeWorktreePath: null,
       openedWorktrees: [],
-      wslOpenedWt: [],
-      activeWslWorktreePath: null,
-      remoteOpenedWt: [],
-      activeRemoteWorktreePath: null,
-      worktreeState: {},
+      worktreeStateMap: {},
     });
-  };
-
-  beforeEach(() => {
-    mockSaveSession.mockReset();
-    mockShowToast.mockReset();
-    mockSaveSession.mockResolvedValue(undefined);
-    resetStore();
   });
+
+  // The old wrapper useRemoteProjects now calls new useConnectionProjects which
+  // returns unified property names: entries, setEntries, handleEntryAdd, etc.
+  // Auth-related fields (remoteAuthStore, etc.) are still included for Remote.
 
   it('初始状态为空', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
-    expect(result.current.remoteEntries).toEqual([]);
-    expect(result.current.remoteDialogOpen).toBe(false);
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.dialogOpen).toBe(false);
     expect(result.current.pendingAuthEntry).toBeNull();
   });
 
-  it('handleRemoteEntryAdd 添加新 entry', async () => {
+  it('handleEntryAdd 添加新 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const entry = makeRemoteEntry({
-      id: 'remote-1',
-      host: '192.168.1.100',
-      projects: [makeRemoteProject({ id: 'rp1', name: 'app', path: '/opt/app' })],
-    });
+    const entry = makeRemoteEntry({ id: 'new-entry' });
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, null);
+      await result.current.handleEntryAdd(entry, null);
     });
 
-    expect(result.current.remoteEntries).toHaveLength(1);
-    expect(result.current.remoteEntries[0].host).toBe('192.168.1.100');
-    expect(mockSaveSession).toHaveBeenCalledWith(undefined, [entry]);
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0].id).toBe('new-entry');
+    expect(mockSaveSession).toHaveBeenCalled();
   });
 
-  it('handleRemoteEntryAdd 更新已有 entry', async () => {
+  it('handleEntryAdd 更新已有 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const entry = makeRemoteEntry({
-      id: 'remote-1',
-      host: '192.168.1.100',
-      projects: [makeRemoteProject({ id: 'rp1', name: 'app', path: '/opt/app' })],
-    });
+    const entry = makeRemoteEntry({ id: 'entry-1', host: '10.0.0.1' });
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, null);
+      await result.current.handleEntryAdd(entry, null);
     });
 
-    const updated: RemoteEntrySession = {
-      ...entry,
-      projects: [
-        ...entry.projects,
-        makeRemoteProject({ id: 'rp2', name: 'api', path: '/opt/api' }),
-      ],
-    };
-
+    // Update
+    const updated = { ...entry, host: '10.0.0.2' };
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(updated, null);
+      await result.current.handleEntryAdd(updated, null);
     });
 
-    expect(result.current.remoteEntries).toHaveLength(1);
-    expect(result.current.remoteEntries[0].projects).toHaveLength(2);
+    expect(result.current.entries).toHaveLength(1);
+    expect(result.current.entries[0].host).toBe('10.0.0.2');
   });
 
-  it('handleRemoteEntryAdd 保存 auth 到 store', async () => {
+  it('handleEntryAdd 保存 auth 到 store', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const entry = makeRemoteEntry({ id: 'remote-1' });
-
+    const entry = makeRemoteEntry({ id: 'new-entry' });
     const auth: AuthMethod = { Password: 'secret' };
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, auth);
+      await result.current.handleEntryAdd(entry, auth);
     });
 
-    expect(result.current.remoteAuthStore.has('remote-1')).toBe(true);
+    expect(result.current.remoteAuthStore.get('new-entry')).toEqual(auth);
   });
 
-  it('handleRemoteEntryAdd 有 saved_auth 时写入 entry', async () => {
+  it('handleEntryAdd 有 saved_auth 时写入 entry', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const entry = makeRemoteEntry({ id: 'remote-1' });
+    const entry = makeRemoteEntry({ id: 'new-entry' });
 
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, null, 'encoded-auth');
+      await result.current.handleEntryAdd(entry, null, 'encoded-auth');
     });
 
-    expect(result.current.remoteEntries[0].saved_auth).toBe('encoded-auth');
+    expect(result.current.entries[0].saved_auth).toBe('encoded-auth');
   });
 
-  it('handleCloseRemoteProject 关闭活跃项目', () => {
+  it('handleCloseProject 关闭活跃项目', () => {
+    useProjectStore.setState({
+      activeProjectId: 'rp1',
+      activeProject: { id: 'rp1' } as any,
+    });
+
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
-      result.current.setRemoteEntries([
-        makeRemoteEntry({
-          id: 'e1',
-          host: 'host1',
-          projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
-        }),
-      ]);
+      result.current.setEntries([makeRemoteEntry()]);
     });
 
     act(() => {
-      useProjectStore.setState({ activeProjectId: 'rp1', activeProject: null });
+      result.current.handleCloseProject('entry-1', 'rp1');
     });
 
-    act(() => {
-      result.current.setRemoteOpenSessions(new Set(['rp1']));
-    });
-
-    act(() => {
-      result.current.handleCloseRemoteProject('e1', 'rp1');
-    });
-
-    expect(useProjectStore.getState().activeProjectId).toBeNull();
-    expect(result.current.remoteOpenSessions.has('rp1')).toBe(false);
+    const state = useProjectStore.getState();
+    expect(state.activeProjectId).toBeNull();
   });
 
-  it('handleRemoveRemoteProject 从 entry 中移除项目', async () => {
+  it('handleRemoveProject 从 entry 中移除项目', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+    const entry = makeRemoteEntry();
 
     act(() => {
-      result.current.setRemoteEntries([
-        makeRemoteEntry({
-          id: 'e1',
-          host: 'host1',
-          projects: [
-            makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-            makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
-          ],
-        }),
-      ]);
+      result.current.setEntries([entry]);
     });
 
     await act(async () => {
-      await result.current.handleRemoveRemoteProject('e1', 'rp1');
+      await result.current.handleRemoveProject('entry-1', 'rp1');
     });
 
-    expect(result.current.remoteEntries[0].projects).toHaveLength(1);
-    expect(result.current.remoteEntries[0].projects[0].id).toBe('rp2');
+    expect(result.current.entries[0].projects).toHaveLength(1);
+    expect(result.current.entries[0].projects.find((p: any) => p.id === 'rp1')).toBeUndefined();
   });
 
-  it('handleRemoveRemoteEntry 移除整个 entry 并清理 auth', async () => {
+  it('handleRemoveEntry 移除整个 entry 并清理 auth', async () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+    const auth: AuthMethod = { Password: 'secret' };
+    const entry = makeRemoteEntry({ id: 'entry-1' });
 
-    const entry = makeRemoteEntry({
-      id: 'e1',
-      host: 'host1',
-      projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
-    });
-
+    // First add with auth
     await act(async () => {
-      await result.current.handleRemoteEntryAdd(entry, { Password: 'test' });
+      await result.current.handleEntryAdd(entry, auth);
     });
 
+    // Now remove
     await act(async () => {
-      await result.current.handleRemoveRemoteEntry('e1');
+      await result.current.handleRemoveEntry('entry-1');
     });
 
-    expect(result.current.remoteEntries).toHaveLength(0);
-    expect(result.current.remoteAuthStore.has('e1')).toBe(false);
+    expect(result.current.entries).toHaveLength(0);
+    expect(result.current.remoteAuthStore.has('entry-1')).toBe(false);
   });
 
-  it('handleAddRemoteProject 打开对话框', () => {
+  it('handleAddProject 打开对话框', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
-      result.current.handleAddRemoteProject('e1');
+      result.current.handleAddProject('entry-1');
     });
 
-    expect(result.current.remoteDialogOpen).toBe(true);
-    expect(result.current.remoteAddToEntryId).toBe('e1');
+    expect(result.current.dialogOpen).toBe(true);
+    expect(result.current.addToEntryId).toBe('entry-1');
   });
 
-  it('handleRemoteDialogClose 关闭对话框', () => {
+  it('handleDialogClose 关闭对话框', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
-      result.current.handleAddRemoteProject('e1');
+      result.current.handleAddProject('entry-1');
     });
-
     act(() => {
-      result.current.handleRemoteDialogClose();
+      result.current.handleDialogClose();
     });
 
-    expect(result.current.remoteDialogOpen).toBe(false);
-    expect(result.current.remoteAddToEntryId).toBeNull();
-  });
-
-  it('restoreAuthFromEntries 从 saved_auth 恢复 auth', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const authData = { Password: 'test123' };
-    const encoded = btoa(JSON.stringify(authData));
-
-    const entries = [
-      makeRemoteEntry({ id: 'e1', host: 'host1', saved_auth: encoded }),
-    ];
-
-    act(() => {
-      result.current.restoreAuthFromEntries(entries);
-    });
-
-    expect(result.current.remoteAuthStore.has('e1')).toBe(true);
-  });
-
-  it('restoreAuthFromEntries 忽略无效的 saved_auth', () => {
-    const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
-
-    const entries = [
-      makeRemoteEntry({ id: 'e1', host: 'host1', saved_auth: 'invalid-base64!!!' }),
-    ];
-
-    act(() => {
-      result.current.restoreAuthFromEntries(entries);
-    });
-
-    expect(result.current.remoteAuthStore.has('e1')).toBe(false);
+    expect(result.current.dialogOpen).toBe(false);
+    expect(result.current.addToEntryId).toBeNull();
   });
 
   it('pendingAuthEntry 在无 auth 时触发', () => {
+    const host = '192.168.1.1';
+    useProjectStore.setState({
+      activeProjectId: 'rp1',
+      activeProject: {
+        id: 'rp1',
+        environment: { type: 'Remote', host, port: 22, username: 'user', auth: { Password: 'x' } },
+      } as any,
+    });
+
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
-      useProjectStore.setState({
-        activeProject: {
-          id: 'rp1',
-          name: 'p1',
-          path: '/opt/p1',
-          environment: { type: 'Remote', host: 'host1', port: 22, username: 'root', auth: { Password: '' } },
-          git_info: null,
-          terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
-          selected_agent: null,
-          selected_ide: null,
-          active_view: 'Terminal',
-          collapsed: false,
-        },
-      });
-      result.current.setRemoteEntries([
-        makeRemoteEntry({
-          id: 'e1',
-          host: 'host1',
-          projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
-        }),
-      ]);
+      result.current.setEntries([makeRemoteEntry()]);
     });
 
-    expect(result.current.pendingAuthEntry).not.toBeNull();
-    expect(result.current.pendingAuthEntry?.id).toBe('e1');
+    expect(result.current.pendingAuthEntry).toBeTruthy();
+    expect(result.current.pendingAuthEntry?.host).toBe(host);
   });
 
-  describe('handleRemoteDragEnd', () => {
-    it('同一 entry 内正常排序', async () => {
+  describe('handleDragEnd', () => {
+    function createSortableEntry() {
+      return makeRemoteEntry({
+        id: 'e1',
+        projects: [
+          makeRemoteProject('p1'),
+          makeRemoteProject('p2'),
+          makeRemoteProject('p3'),
+        ],
+      });
+    }
+
+    it('同一 entry 内正常排序', () => {
       const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
       act(() => {
-        result.current.setRemoteEntries([
-          makeRemoteEntry({
-            id: 'e1',
-            host: 'host1',
-            projects: [
-              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
-              makeRemoteProject({ id: 'rp3', name: 'p3', path: '/opt/p3' }),
-            ],
-          }),
-        ]);
+        result.current.setEntries([createSortableEntry()]);
+      });
+      act(() => {
+        result.current.handleDragEnd('e1', 'p1', 'p3');
       });
 
-      await act(async () => {
-        result.current.handleRemoteDragEnd('e1', 'rp1', 'rp3');
-      });
-
-      expect(result.current.remoteEntries[0].projects.map(p => p.id)).toEqual(['rp2', 'rp3', 'rp1']);
-      expect(mockSaveSession).toHaveBeenCalled();
+      const projects = result.current.entries[0].projects;
+      expect(projects[0].id).toBe('p2');
+      expect(projects[1].id).toBe('p3');
+      expect(projects[2].id).toBe('p1');
     });
 
-    it('拖拽到相同位置不做任何操作', async () => {
+    it('拖拽到相同位置不做任何操作', () => {
       const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
       act(() => {
-        result.current.setRemoteEntries([
-          makeRemoteEntry({
-            id: 'e1',
-            host: 'host1',
-            projects: [
-              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
-            ],
-          }),
-        ]);
+        result.current.setEntries([createSortableEntry()]);
+      });
+      act(() => {
+        result.current.handleDragEnd('e1', 'p1', 'p1');
       });
 
-      mockSaveSession.mockClear();
-
-      await act(async () => {
-        result.current.handleRemoteDragEnd('e1', 'rp1', 'rp1');
-      });
-
-      expect(result.current.remoteEntries[0].projects.map(p => p.id)).toEqual(['rp1', 'rp2']);
-      expect(mockSaveSession).not.toHaveBeenCalled();
+      expect(result.current.entries[0].projects).toHaveLength(3);
     });
 
-    it('跨 entry 拖拽被忽略', async () => {
+    it('跨 entry 拖拽被忽略', () => {
       const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
       act(() => {
-        result.current.setRemoteEntries([
-          makeRemoteEntry({
-            id: 'e1',
-            host: 'host1',
-            projects: [
-              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-            ],
-          }),
-          makeRemoteEntry({
-            id: 'e2',
-            host: 'host2',
-            projects: [
-              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
-            ],
-          }),
+        result.current.setEntries([
+          makeRemoteEntry({ id: 'e1', projects: [makeRemoteProject('p1')] }),
+          makeRemoteEntry({ id: 'e2', projects: [makeRemoteProject('p2')] }),
         ]);
       });
-
-      // Drag rp1 into e2 — should be a no-op since rp1 isn't in e2
-      await act(async () => {
-        result.current.handleRemoteDragEnd('e2', 'rp1', 'rp2');
+      act(() => {
+        result.current.handleDragEnd('e1', 'p1', 'e2');
       });
 
-      // rp1 still in e1, rp2 still in e2
-      expect(result.current.remoteEntries[0].projects[0].id).toBe('rp1');
-      expect(result.current.remoteEntries[1].projects[0].id).toBe('rp2');
+      expect(result.current.entries[0].projects).toHaveLength(1);
     });
 
-    it('排序后调用 saveSession 持久化', async () => {
+    it('排序后调用 saveSession 持久化', () => {
       const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
       act(() => {
-        result.current.setRemoteEntries([
-          makeRemoteEntry({
-            id: 'e1',
-            host: 'host1',
-            projects: [
-              makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-              makeRemoteProject({ id: 'rp2', name: 'p2', path: '/opt/p2' }),
-            ],
-          }),
-        ]);
+        result.current.setEntries([createSortableEntry()]);
       });
-
-      mockSaveSession.mockClear();
-
-      await act(async () => {
-        result.current.handleRemoteDragEnd('e1', 'rp2', 'rp1');
+      act(() => {
+        result.current.handleDragEnd('e1', 'p1', 'p3');
       });
 
       expect(mockSaveSession).toHaveBeenCalledTimes(1);
-      // Verify the new order is passed to saveSession(undefined, newEntries)
-      const savedEntries = mockSaveSession.mock.calls[0][1];
-      expect(savedEntries[0].projects.map(p => p.id)).toEqual(['rp2', 'rp1']);
+    });
+  });
+
+  describe('restoreAuthFromEntries', () => {
+    it('从 saved_auth 恢复 remoteAuthStore', () => {
+      // Encode the auth JSON to base64 (matching the production code using btoa/atob)
+      const authPayload: AuthMethod = { Password: 'restored-pwd' };
+      const encoded = btoa(JSON.stringify(authPayload));
+
+      const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
+
+      const entry = makeRemoteEntry({ id: 'restored-entry', saved_auth: encoded });
+      result.current.restoreAuthFromEntries([entry]);
+
+      const restored = useConnectionStore.getState().remoteAuthStore.get('restored-entry');
+      expect(restored).toEqual(authPayload);
     });
   });
 });

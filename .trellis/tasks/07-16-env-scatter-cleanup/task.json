@@ -1,0 +1,32 @@
+{
+  "id": "env-scatter-cleanup",
+  "name": "env-scatter-cleanup",
+  "title": "环境散乱代码统一重构（Post-Unification 清理）",
+  "description": "在 Project 数据模型统一（P1-P7）完成后，消除仍散落在文件I/O、会话持久化、终端管理及前端 connection feature 中的 WSL/SSH/Local 三路并行代码",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-07-16",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-16-c1-session-schema-flatten",
+    "07-16-c2-backend-fileio-unify",
+    "07-16-c3-frontend-hooks-merge",
+    "07-16-c4-terminal-strategy-merge",
+    "07-16-c5-naming-boundary-cleanup"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -116,7 +116,7 @@ export function useLocalProjects() {
           return;
         }
         const project = await addProject(selected, null, null, randomAvatarColor());
-        await saveSession([], []).catch((e) => console.error('[App] Failed to save session:', e));
+        await saveSession().catch((e) => console.error('[App] Failed to save session:', e));
         setProjects((prev) => [...prev, project]);
         setActiveProjectId(project.id);
         setActiveProject(project);

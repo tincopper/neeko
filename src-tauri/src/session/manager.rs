@@ -1,7 +1,5 @@
 use crate::project::types::Project;
-use crate::session::types::{
-    ProjectSession, RemoteEntrySession, RemoteProjectSession, SessionStore, WSLEntrySession,
-};
+use crate::session::types::{ProjectSession, SessionStore};
 use anyhow::Result;
 use chrono::Local;
 use std::fs;
@@ -74,45 +72,12 @@ impl StorageManager {
             SessionStore::new()
         };
 
-        // 迁移旧的独立文件到统一 sessions.json
-        let mut migrated = false;
-
-        if session.wsl_entries.is_empty() {
-            let old_wsl_file = self.config_dir.join("wsl_entries.json");
-            if old_wsl_file.exists() {
-                if let Ok(json) = fs::read_to_string(&old_wsl_file) {
-                    if let Ok(entries) = serde_json::from_str::<Vec<WSLEntrySession>>(&json) {
-                        // 过滤历史脏数据
-                        session.wsl_entries = entries
-                            .into_iter()
-                            .filter(|e| !e.distro.contains('\0'))
-                            .map(|mut e| {
-                                e.projects.retain(|p| !p.distro.contains('\0'));
-                                e
-                            })
-                            .collect();
-                        migrated = true;
-                    }
-                }
-                let _ = fs::remove_file(&old_wsl_file);
-            }
-        }
-
-        if session.remote_entries.is_empty() {
-            let old_remote_file = self.config_dir.join("remote_entries.json");
-            if old_remote_file.exists() {
-                if let Ok(json) = fs::read_to_string(&old_remote_file) {
-                    if let Ok(entries) = serde_json::from_str::<Vec<RemoteEntrySession>>(&json) {
-                        session.remote_entries = entries;
-                        migrated = true;
-                    }
-                }
-                let _ = fs::remove_file(&old_remote_file);
-            }
-        }
+        // 扁平化旧格式：wsl_entries / remote_entries → 统一的 projects 列表
+        let had_old_format = !session.wsl_entries.is_empty() || !session.remote_entries.is_empty();
+        session.flatten_old_format();
 
         // 迁移后立即保存统一格式
-        if migrated {
+        if had_old_format {
             if let Err(e) = self.save_session(&session) {
                 log::error!("Failed to save migrated session: {}", e);
             }
@@ -124,19 +89,15 @@ impl StorageManager {
     pub fn create_session_from_projects(
         &self,
         projects: &[Project],
-        wsl_entries: Option<&[WSLEntrySession]>,
-        remote_entries: Option<&[RemoteEntrySession]>,
         sidebar_width: Option<u32>,
     ) -> SessionStore {
-        use crate::core::ProjectEnvironment;
-
         let project_sessions = projects
             .iter()
-            .filter(|p| matches!(p.environment, ProjectEnvironment::Local))
             .map(|p| ProjectSession {
                 id: p.id.clone(),
                 name: p.name.clone(),
                 path: p.path.clone(),
+                environment: p.environment.clone(),
                 selected_agent: p.selected_agent.clone(),
                 selected_ide: p.selected_ide.clone(),
                 terminal_history: p.terminal.history.clone(),
@@ -146,107 +107,15 @@ impl StorageManager {
             })
             .collect();
 
-        // 优先使用传入的 wsl/remote entries；None 时从 projects 列表自动推导
-        let wsl = wsl_entries
-            .map(|v| v.to_vec())
-            .unwrap_or_else(|| Self::collect_wsl_projects(projects));
-        let remote = remote_entries
-            .map(|v| v.to_vec())
-            .unwrap_or_else(|| Self::collect_remote_projects(projects));
-
         SessionStore {
             projects: project_sessions,
             active_project_id: None,
             last_updated: Local::now().to_rfc3339(),
-            wsl_entries: wsl,
-            remote_entries: remote,
+            wsl_entries: Vec::new(),
+            remote_entries: Vec::new(),
             sidebar_width,
             worktree_state: std::collections::HashMap::new(),
         }
-    }
-
-    /// 从 Project 列表中提取 WSL 项目，按 distro 分组为 WSLEntrySession。
-    pub fn collect_wsl_projects(projects: &[Project]) -> Vec<WSLEntrySession> {
-        #[cfg(target_os = "windows")]
-        {
-            use crate::core::ProjectEnvironment;
-            use crate::session::types::WSLProjectSession;
-            use std::collections::HashMap;
-            let mut map: HashMap<String, WSLEntrySession> = HashMap::new();
-            for p in projects {
-                if let ProjectEnvironment::Wsl { distro } = &p.environment {
-                    let entry = map
-                        .entry(distro.clone())
-                        .or_insert_with(|| WSLEntrySession {
-                            id: format!("wsl-distro-{distro}"),
-                            distro: distro.clone(),
-                            projects: Vec::new(),
-                        });
-                    entry.projects.push(WSLProjectSession {
-                        id: p.id.clone(),
-                        name: p.name.clone(),
-                        path: p.path.to_string_lossy().to_string(),
-                        distro: distro.clone(),
-                        entry_id: entry.id.clone(),
-                        selected_agent: p.selected_agent.clone(),
-                        selected_ide: p.selected_ide.clone(),
-                        avatar_color: p.avatar_color.clone(),
-                    });
-                }
-            }
-            map.into_values().collect()
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = projects;
-            Vec::new()
-        }
-    }
-
-    /// 从 Project 列表中提取 Remote 项目，按 host 分组为 RemoteEntrySession。
-    pub fn collect_remote_projects(projects: &[Project]) -> Vec<RemoteEntrySession> {
-        use crate::core::ProjectEnvironment;
-        use base64::Engine;
-        use std::collections::HashMap;
-
-        let mut map: HashMap<String, RemoteEntrySession> = HashMap::new();
-        for p in projects {
-            if let ProjectEnvironment::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } = &p.environment
-            {
-                let key = format!("{host}:{port}:{username}");
-                let entry = map.entry(key).or_insert_with(|| {
-                    let auth_json = serde_json::to_value(auth).unwrap_or_default();
-                    let auth_bytes = serde_json::to_string(&auth_json)
-                        .unwrap_or_default()
-                        .into_bytes();
-                    let saved_auth =
-                        Some(base64::engine::general_purpose::STANDARD.encode(&auth_bytes));
-                    RemoteEntrySession {
-                        id: format!("remote-{host}"),
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        projects: Vec::new(),
-                        saved_auth,
-                    }
-                });
-                entry.projects.push(RemoteProjectSession {
-                    id: p.id.clone(),
-                    name: p.name.clone(),
-                    path: p.path.to_string_lossy().to_string(),
-                    entry_id: entry.id.clone(),
-                    selected_agent: p.selected_agent.clone(),
-                    selected_ide: p.selected_ide.clone(),
-                    avatar_color: p.avatar_color.clone(),
-                });
-            }
-        }
-        map.into_values().collect()
     }
 
     // 保存用户配置

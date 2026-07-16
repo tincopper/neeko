@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
-import { useWslActions } from '@/features/connection/hooks/useWslActions';
-import { useRemoteActions } from '@/features/connection/hooks/useRemoteActions';
+import { useConnectionProjects } from '@/features/project/hooks/useConnectionProjects';
+import { useProjectActions } from '@/features/project/hooks/useProjectActions';
 import { useSessionBootstrap } from '@/features/session/hooks/useSessionBootstrap';
 import { useSessionPersistence } from '@/features/session/hooks/useSessionPersistence';
 import { useAgentActions } from '@/features/agent/hooks/useAgentActions';
@@ -18,8 +18,6 @@ import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
 import { useProjectSelection } from '@/features/project/hooks/useProjectSelection';
 import { useTabManagement } from '@/features/editor/hooks/useTabManagement';
 import { useAgentClickHandler } from '@/features/agent/hooks/useAgentClickHandler';
-import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
-import { useWslProjects } from '@/features/connection/hooks/useWslProjects';
 import { useCrossTypeSelection } from '@/features/project/hooks/useCrossTypeSelection';
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useProjectList } from '@/features/project/hooks/useProjectList';
@@ -57,8 +55,8 @@ export function useAppShell(): UseAppShellResult {
   );
   const local = useLocalProjects();
   const session = useSessionPersistence();
-  const wsl = useWslProjects(session.saveSession);
-  const remote = useRemoteProjects(session.saveSession, showToast);
+  const wsl = useConnectionProjects({ environment: "wsl", saveSession: session.saveSession });
+  const remote = useConnectionProjects({ environment: "remote", saveSession: session.saveSession, showToast });
 
   const {
     activeProjectId,
@@ -75,40 +73,37 @@ export function useAppShell(): UseAppShellResult {
     handleDragEnd,
   } = local;
   const {
-    wslEntries,
-    setWslEntries,
-    wslOpenSessions,
-    setWslOpenSessions,
-    wslDialogOpen,
-    setWslDialogOpen,
-    wslAddToEntryId,
-    handleWSLEntryAdd,
-    handleCloseWslProject,
-    handleRemoveWslProject,
-    handleRemoveWslEntry,
-    handleAddWslProject,
-    handleWslDialogClose,
-    handleWslDragEnd,
+    entries: wslEntries,
+    openSessions: wslOpenSessions,
+    setOpenSessions: setWslOpenSessions,
+    dialogOpen: wslDialogOpen,
+    setDialogOpen: setWslDialogOpen,
+    addToEntryId: wslAddToEntryId,
+    handleEntryAdd: handleWSLEntryAdd,
+    handleCloseProject: handleCloseWslProject,
+    handleRemoveProject: handleRemoveWslProject,
+    handleRemoveEntry: handleRemoveWslEntry,
+    handleAddProject: handleAddWslProject,
+    handleDialogClose: handleWslDialogClose,
+    handleDragEnd: handleWslDragEnd,
   } = wsl;
   const {
-    remoteEntries,
-    setRemoteEntries,
-    remoteOpenSessions,
-    setRemoteOpenSessions,
-    remoteDialogOpen,
-    setRemoteDialogOpen,
-    remoteAddToEntryId,
+    entries: remoteEntries,
+    openSessions: remoteOpenSessions,
+    setOpenSessions: setRemoteOpenSessions,
+    dialogOpen: remoteDialogOpen,
+    setDialogOpen: setRemoteDialogOpen,
+    addToEntryId: remoteAddToEntryId,
     remoteAuthStore,
     pendingAuthEntry,
     setPendingAuthEntry,
-    handleRemoteEntryAdd,
-    handleCloseRemoteProject,
-    handleRemoveRemoteProject,
-    handleRemoveRemoteEntry,
-    handleAddRemoteProject,
-    handleRemoteDialogClose,
-    handleRemoteDragEnd,
-    restoreAuthFromEntries,
+    handleEntryAdd: handleRemoteEntryAdd,
+    handleCloseProject: handleCloseRemoteProject,
+    handleRemoveProject: handleRemoveRemoteProject,
+    handleRemoveEntry: handleRemoveRemoteEntry,
+    handleAddProject: handleAddRemoteProject,
+    handleDialogClose: handleRemoteDialogClose,
+    handleDragEnd: handleRemoteDragEnd,
   } = remote;
 
   const {
@@ -132,12 +127,8 @@ export function useAppShell(): UseAppShellResult {
     activeProject?.git_info,
   ]);
 
-  const remoteActionsWrap = useRemoteActions({
-    config,
-    showToast,
-    saveSession: session.saveSession,
-  });
-  const wslActionsWrap = useWslActions({ config, showToast, saveSession: session.saveSession });
+  const wslActionsWrap = useProjectActions({ environment: "wsl", config, showToast, saveSession: session.saveSession });
+  const remoteActionsWrap = useProjectActions({ environment: "remote", config, showToast, saveSession: session.saveSession });
   const agentActionsWrap = useAgentActions({
     terminal: {
       fontSize: config.terminalFontSize ?? 14,
@@ -197,15 +188,12 @@ export function useAppShell(): UseAppShellResult {
     fileView.loadFileTree(projectId, rootPath);
   }, [fileView.loadFileTree]);
   const handleWslDiffBack = useCallback(() => {
-    wslActionsWrap.setWslDiffState(null);
+    wslActionsWrap.setWslDiffState?.(null);
   }, [wslActionsWrap.setWslDiffState]);
 
   const { initializing } = useSessionBootstrap({
     loadProjects,
-    setWslEntries,
-    setRemoteEntries,
     restoreWorktreeState: session.restoreWorktreeState,
-    restoreAuthFromEntries,
   });
   useFileTabRefresh(activeContext.commands);
 
@@ -216,14 +204,14 @@ export function useAppShell(): UseAppShellResult {
     for (const entry of wslEntries) {
       for (const project of entry.projects) {
         if (!project.git_info)
-          void wslActionsWrap.handleRefreshWslGit(entry.distro, project.id, project.path);
+          void wslActionsWrap.handleRefreshGit(entry.distro, project.id, project.path);
       }
     }
     for (const entry of remoteEntries) {
       if (!remoteAuthStore.has(entry.id)) continue;
       for (const project of entry.projects) {
         if (!project.git_info)
-          void remoteActionsWrap.handleRefreshRemoteGit(entry.id, project.id, project.path);
+          void remoteActionsWrap.handleRefreshGit(entry.id, project.id, project.path);
       }
     }
   }, [initializing, wslEntries, remoteEntries, remoteAuthStore, wslActionsWrap, remoteActionsWrap]);
@@ -313,35 +301,35 @@ export function useAppShell(): UseAppShellResult {
     onLoadFileTree: fileView.loadFileTree,
     onExpandDir: fileView.expandSubTree,
   };
-  const wslValue = {
+  const connectionProjectValue = {
+    // WSL fields
     wslEntries,
     wslOpenSessions,
-    activeWslWorktreePath: wslActionsWrap.activeWslWorktreePath,
-    wslDiffState: wslActionsWrap.wslDiffState,
+    activeWslWorktreePath: wslActionsWrap.activeWorktreePath,
+    wslDiffState: wslActionsWrap.wslDiffState ?? null,
     setWslOpenSessions,
     onCloseWslProject: handleCloseWslProject,
     onRemoveWslProject: handleRemoveWslProject,
     onRemoveWslEntry: handleRemoveWslEntry,
     onAddWslProject: handleAddWslProject,
-    onSelectWslFile: wslActionsWrap.handleSelectWslFile,
-    onRefreshWslGit: wslActionsWrap.handleRefreshWslGit,
-    onOpenWslIde: wslActionsWrap.handleOpenWslIde,
+    onSelectWslFile: wslActionsWrap.handleSelectFile,
+    onRefreshWslGit: wslActionsWrap.handleRefreshGit,
+    onOpenWslIde: wslActionsWrap.handleOpenIde,
     onOpenWslWorktreeTerminal: cross.handleOpenWslWorktreeTerminal,
     onWslDiffBack: handleWslDiffBack,
     onWslDragEnd: handleWslDragEnd,
-  };
-  const remoteValue = {
+    // Remote fields
     remoteEntries,
     remoteOpenSessions,
-    activeRemoteWorktreePath: remoteActionsWrap.activeRemoteWorktreePath,
+    activeRemoteWorktreePath: remoteActionsWrap.activeWorktreePath,
     remoteAuthStore,
     setRemoteOpenSessions,
     onCloseRemoteProject: handleCloseRemoteProject,
     onRemoveRemoteProject: handleRemoveRemoteProject,
     onRemoveRemoteEntry: handleRemoveRemoteEntry,
     onAddRemoteProject: handleAddRemoteProject,
-    onRefreshRemoteGit: remoteActionsWrap.handleRefreshRemoteGit,
-    onOpenRemoteIde: remoteActionsWrap.handleOpenRemoteIde,
+    onRefreshRemoteGit: remoteActionsWrap.handleRefreshGit,
+    onOpenRemoteIde: remoteActionsWrap.handleOpenIde,
     onOpenRemoteWorktreeTerminal: cross.handleOpenRemoteWorktreeTerminal,
     invokeRemoteGit: remoteActionsWrap.invokeRemoteGit,
     onRemoteDragEnd: handleRemoteDragEnd,
@@ -375,8 +363,7 @@ export function useAppShell(): UseAppShellResult {
     },
     projectActionsValue,
     fileActionsValue,
-    wslValue,
-    remoteValue,
+    connectionProjectValue,
     editorValue,
   };
   const appLayoutProps = useAppLayoutProps({
@@ -390,7 +377,7 @@ export function useAppShell(): UseAppShellResult {
       await handleWSLEntryAdd(entry);
       for (const project of entry.projects) {
         if (!project.git_info)
-          void wslActionsWrap.handleRefreshWslGit(entry.distro, project.id, project.path);
+          void wslActionsWrap.handleRefreshGit(entry.distro, project.id, project.path);
       }
     },
     [handleWSLEntryAdd, wslActionsWrap],
@@ -402,7 +389,7 @@ export function useAppShell(): UseAppShellResult {
       if (hasAuth) {
         for (const project of entry.projects) {
           if (!project.git_info)
-            void remoteActionsWrap.handleRefreshRemoteGit(entry.id, project.id, project.path);
+            void remoteActionsWrap.handleRefreshGit(entry.id, project.id, project.path);
         }
       }
     },

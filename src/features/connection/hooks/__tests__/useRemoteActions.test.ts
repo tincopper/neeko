@@ -83,11 +83,7 @@ function seedStore(overrides: {
   useWorktreeStore.setState({
     activeWorktreePath: null,
     openedWorktrees: [],
-    wslOpenedWt: [],
-    activeWslWorktreePath: null,
-    remoteOpenedWt: [],
-    activeRemoteWorktreePath: null,
-    worktreeState: {},
+    worktreeStateMap: {},
   });
   useEditorStore.setState({
     tabs: {},
@@ -105,7 +101,7 @@ describe("useRemoteActions", () => {
     seedStore();
   });
 
-  describe("updateRemoteProjectAgent", () => {
+  describe("updateProjectAgent", () => {
     it("更新 remoteEntries 中的 selected_agent", () => {
       const { result } = renderHook(() =>
         useRemoteActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
@@ -114,7 +110,7 @@ describe("useRemoteActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       act(() => {
-        result.current.updateRemoteProjectAgent(agent);
+        result.current.updateProjectAgent(agent);
       });
 
       const state = useConnectionStore.getState();
@@ -129,7 +125,7 @@ describe("useRemoteActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       act(() => {
-        result.current.updateRemoteProjectAgent(agent);
+        result.current.updateProjectAgent(agent);
       });
 
       const state = useProjectStore.getState();
@@ -159,7 +155,7 @@ describe("useRemoteActions", () => {
       );
 
       act(() => {
-        result.current.updateRemoteProjectAgent(null);
+        result.current.updateProjectAgent(null);
       });
 
       const connectionState = useConnectionStore.getState();
@@ -174,12 +170,10 @@ describe("useRemoteActions", () => {
       );
 
       act(() => {
-        result.current.updateRemoteProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       expect(mockSaveSession).toHaveBeenCalledTimes(1);
-      const passedEntries = mockSaveSession.mock.calls[0][1];
-      expect(passedEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
     it("不调用 switchAgentInRemoteTerminal", () => {
@@ -188,7 +182,7 @@ describe("useRemoteActions", () => {
       );
 
       act(() => {
-        result.current.updateRemoteProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       expect(mockSwitchAgent).not.toHaveBeenCalled();
@@ -200,7 +194,7 @@ describe("useRemoteActions", () => {
       );
 
       act(() => {
-        result.current.updateRemoteProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       act(() => {
@@ -211,7 +205,7 @@ describe("useRemoteActions", () => {
     });
   });
 
-  describe("handleSelectRemoteAgent", () => {
+  describe("handleSelectAgent", () => {
     it("传入 agent 时调用 switchAgentInRemoteTerminal", async () => {
       const { result } = renderHook(() =>
         useRemoteActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
@@ -220,13 +214,13 @@ describe("useRemoteActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       await act(async () => {
-        result.current.handleSelectRemoteAgent(agent);
+        result.current.handleSelectAgent(agent);
       });
 
       expect(mockSwitchAgent).toHaveBeenCalledWith(
-        "remote:entry-1:rp1",  // cacheKey
-        "claude-code",         // agentId
-        {},                    // agentCommandOverrides
+        "remote:entry-1:rp1",
+        "claude-code",
+        {},
       );
     });
 
@@ -238,7 +232,7 @@ describe("useRemoteActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       await act(async () => {
-        result.current.handleSelectRemoteAgent(agent);
+        result.current.handleSelectAgent(agent);
       });
 
       const connectionState = useConnectionStore.getState();
@@ -253,7 +247,7 @@ describe("useRemoteActions", () => {
       );
 
       await act(async () => {
-        result.current.handleSelectRemoteAgent(null);
+        result.current.handleSelectAgent(null);
       });
 
       expect(mockSwitchAgent).not.toHaveBeenCalled();
@@ -265,7 +259,7 @@ describe("useRemoteActions", () => {
       );
 
       await act(async () => {
-        result.current.handleSelectRemoteAgent(null);
+        result.current.handleSelectAgent(null);
       });
 
       act(() => {

@@ -26,16 +26,25 @@ export type {
 // Store
 export { useConnectionStore } from "./store";
 
-// Hooks
+// Hooks (re-exported for backwards compatibility; prefer the unified versions from project/)
+/** @deprecated Use useConnectionProjects from features/project/hooks instead */
 export { useWslProjects } from "./hooks/useWslProjects";
+/** @deprecated Use useConnectionProjects from features/project/hooks instead */
 export type { SaveSessionFn } from "./hooks/useWslProjects";
+/** @deprecated Use useProjectActions from features/project/hooks instead */
 export { useWslActions } from "./hooks/useWslActions";
+/** @deprecated Use useConnectionProjects from features/project/hooks instead */
 export { useRemoteProjects } from "./hooks/useRemoteProjects";
+/** @deprecated Use useProjectActions from features/project/hooks instead */
 export { useRemoteActions } from "./hooks/useRemoteActions";
 export { useRemoteAuthActions } from "./hooks/useRemoteAuthActions";
 
-// Contexts
+// Contexts (re-exported for backwards compatibility; prefer ConnectionProjectContext)
+/** @deprecated Use ConnectionProjectContext from features/project/contexts instead */
 export { WslProvider, useWslContext } from "./contexts/WslContext";
+/** @deprecated Use ConnectionProjectContext from features/project/contexts instead */
 export type { WslContextValue } from "./contexts/WslContext";
+/** @deprecated Use ConnectionProjectContext from features/project/contexts instead */
 export { RemoteProvider, useRemoteContext } from "./contexts/RemoteContext";
+/** @deprecated Use ConnectionProjectContext from features/project/contexts instead */
 export type { RemoteContextValue } from "./contexts/RemoteContext";

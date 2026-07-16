@@ -1,5 +1,4 @@
-use crate::session::types::{RemoteEntrySession, SessionStore, WSLEntrySession};
-use crate::session::StorageManager;
+use crate::session::types::SessionStore;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
@@ -22,8 +21,6 @@ pub fn load_config(state: State<AppStateWrapper>) -> Result<serde_json::Value, A
 
 #[tauri::command]
 pub fn save_session(
-    _wsl_entries: Vec<WSLEntrySession>,
-    _remote_entries: Vec<RemoteEntrySession>,
     sidebar_width: Option<u32>,
     worktree_state: Option<std::collections::HashMap<String, String>>,
     state: State<AppStateWrapper>,
@@ -34,22 +31,15 @@ pub fn save_session(
         .map_err(AppError::from)?
         .list_projects();
 
-    // 从 ProjectManager 推导 WSL/Remote entries，忽略前端传入值
-    let wsl = StorageManager::collect_wsl_projects(&projects);
-    let remote = StorageManager::collect_remote_projects(&projects);
-
     let active_id = state
         .active_project_id
         .lock()
         .map_err(AppError::from)?
         .clone();
 
-    let mut session = state.storage_manager.create_session_from_projects(
-        &projects,
-        Some(&wsl),
-        Some(&remote),
-        sidebar_width,
-    );
+    let mut session = state
+        .storage_manager
+        .create_session_from_projects(&projects, sidebar_width);
     session.active_project_id = active_id;
     if let Some(wt) = worktree_state {
         session.worktree_state = wt;

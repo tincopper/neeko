@@ -544,7 +544,7 @@ pub async fn default_branch(
         .map_err(AppError::from)
 }
 
-// ─── File operations (unified Remote + WSL) ─────────────────────────────────
+// ─── File operations (unified via file service) ────────────────────────────
 
 /// 文件树默认递归深度
 const DEFAULT_TREE_DEPTH: u32 = 4;
@@ -559,189 +559,13 @@ pub async fn read_dir_tree(
 ) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
     let (t, wd) = state.resolve_project(&project_id)?;
-    match &t {
-        GitTransport::Local => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
-            tokio::task::spawn_blocking(move || {
-                crate::common::file::services::read_dir_tree(&base, sub_path.as_deref(), depth)
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)
-        }
-        #[cfg(target_os = "windows")]
-        GitTransport::Wsl { distro } => {
-            let base = root_path.unwrap_or(wd);
-            let d = distro.clone();
-            tokio::task::spawn_blocking(move || {
-                crate::common::git::wsl_read_dir_tree(&d, &base, sub_path.as_deref(), depth)
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)
-        }
-        GitTransport::Remote {
-            host,
-            port,
-            username,
-            auth,
-        } => {
-            let base = root_path.unwrap_or(wd);
-            crate::common::git::remote::remote_read_dir_tree_fn(
-                host,
-                *port,
-                username,
-                auth,
-                &base,
-                sub_path.as_deref(),
-                depth,
-            )
-            .await
-            .map_err(AppError::from)
-        }
-    }
+    let target = exec_target_from_git_transport(&t);
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::read_dir_tree(&target, &base, sub_path.as_deref(), depth).await
 }
 
 /// Shared implementation for reading file content via shell (stat -> binary-detect -> cat).
 /// Works for both Remote (SSH) and WSL transports.
-async fn read_file_content_shell(
-    full_path: &str,
-    file_path: String,
-    #[cfg(target_os = "windows")] distro: &str,
-    #[cfg(not(target_os = "windows"))] _distro: &str,
-    host: Option<(&str, u16, &str, &AuthMethod)>,
-) -> Result<FileContent, AppError> {
-    let safe_fp = crate::common::utils::command::local::safe_path(full_path);
-
-    // 文件大小
-    let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
-    let size: u64 = if let Some((h, p, u, a)) = &host {
-        let target = crate::common::executor::factory::ExecTarget::Remote {
-            host: h.to_string(),
-            port: *p,
-            username: u.to_string(),
-            auth: (**a).clone(),
-        };
-        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &stat_cmd])
-            .await
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
-    } else {
-        #[cfg(target_os = "windows")]
-        {
-            tokio::task::spawn_blocking({
-                let d = distro.to_string();
-                let c = stat_cmd.clone();
-                move || {
-                    let target =
-                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
-                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
-                        .map_err(|e| anyhow::anyhow!("{}", e))
-                }
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(0)
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            0
-        }
-    };
-
-    // 二进制检测
-    let binary_cmd =
-        format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
-    let is_binary = if let Some((h, p, u, a)) = &host {
-        let target = crate::common::executor::factory::ExecTarget::Remote {
-            host: h.to_string(),
-            port: *p,
-            username: u.to_string(),
-            auth: (**a).clone(),
-        };
-        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &binary_cmd])
-            .await
-            .map(|out| out.trim() == "1")
-            .unwrap_or(false)
-    } else {
-        #[cfg(target_os = "windows")]
-        {
-            tokio::task::spawn_blocking({
-                let d = distro.to_string();
-                let c = binary_cmd.clone();
-                move || {
-                    let target =
-                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
-                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
-                        .map_err(|e| anyhow::anyhow!("{}", e))
-                }
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map(|out| out.trim() == "1")
-            .unwrap_or(false)
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            false
-        }
-    };
-
-    if is_binary {
-        return Ok(FileContent {
-            path: file_path,
-            content: String::new(),
-            size,
-            is_binary: true,
-        });
-    }
-
-    // 读取文件内容
-    let cat_cmd = format!("cat '{safe_fp}'");
-    let content = if let Some((h, p, u, a)) = &host {
-        let target = crate::common::executor::factory::ExecTarget::Remote {
-            host: h.to_string(),
-            port: *p,
-            username: u.to_string(),
-            auth: (**a).clone(),
-        };
-        crate::common::executor::sync::exec_on(&target, "sh", &["-c", &cat_cmd])
-            .await
-            .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))?
-    } else {
-        #[cfg(target_os = "windows")]
-        {
-            tokio::task::spawn_blocking({
-                let d = distro.to_string();
-                let c = cat_cmd.clone();
-                move || {
-                    let target =
-                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
-                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &c])
-                        .map_err(|e| anyhow::anyhow!("{}", e))
-                }
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)?
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            return Err(AppError::Wsl("WSL is only supported on Windows".into()));
-        }
-    };
-
-    Ok(FileContent {
-        path: file_path,
-        content,
-        size,
-        is_binary: false,
-    })
-}
-
 #[tauri::command]
 pub async fn read_file_content(
     project_id: String,
@@ -750,45 +574,9 @@ pub async fn read_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    match &t {
-        GitTransport::Local => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
-            let base = Box::new(base);
-            let fp = file_path.clone();
-            tokio::task::spawn_blocking(move || {
-                crate::common::file::services::read_file_content(&base, &fp)
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)
-        }
-        #[cfg(target_os = "windows")]
-        GitTransport::Wsl { distro } => {
-            let base = root_path.unwrap_or(wd);
-            let full_path = format!("{}/{}", base, file_path);
-            let d = distro.clone();
-            read_file_content_shell(&full_path, file_path, &d, None).await
-        }
-        GitTransport::Remote {
-            host,
-            port,
-            username,
-            auth,
-        } => {
-            let base = root_path.unwrap_or(wd);
-            let full_path = format!("{}/{}", base, file_path);
-            read_file_content_shell(
-                &full_path,
-                file_path,
-                #[cfg(target_os = "windows")]
-                "",
-                #[cfg(not(target_os = "windows"))]
-                "",
-                Some((host.as_str(), *port, username.as_str(), auth)),
-            )
-            .await
-        }
-    }
+    let target = exec_target_from_git_transport(&t);
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::read_file_content(&target, &base, &file_path).await
 }
 
 #[tauri::command]
@@ -800,100 +588,9 @@ pub async fn write_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    match &t {
-        GitTransport::Local => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
-            let base = Box::new(base);
-            let fp = file_path.clone();
-            let c = content.clone();
-            tokio::task::spawn_blocking(move || {
-                crate::common::file::services::write_file_content(&base, &fp, &c)
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)
-        }
-        #[cfg(target_os = "windows")]
-        GitTransport::Wsl { distro } => {
-            let base = root_path.unwrap_or(wd);
-            let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
-
-            // 确保父目录存在
-            if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent =
-                    crate::common::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
-                let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
-                let d = distro.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    let target =
-                        crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
-                    crate::common::executor::sync::exec_on(&target, "bash", &["-c", &mkdir_cmd])
-                        .map_err(|e| anyhow::anyhow!("{}", e))
-                })
-                .await
-                .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?;
-            }
-
-            // 使用 base64 编码传输，避免 shell 转义问题（与 Remote 统一）
-            use base64::Engine;
-            let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
-            let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
-            let d = distro.clone();
-            tokio::task::spawn_blocking(move || {
-                let target =
-                    crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
-                crate::common::executor::sync::exec_on(&target, "bash", &["-c", &write_cmd])
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-            })
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
-            .map_err(AppError::from)?;
-
-            Ok(())
-        }
-        GitTransport::Remote {
-            host,
-            port,
-            username,
-            auth,
-        } => {
-            let base = root_path.unwrap_or(wd);
-            let full_path = format!("{}/{}", base, file_path);
-            let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
-
-            // 确保父目录存在
-            if let Some(parent) = std::path::Path::new(&full_path).parent() {
-                let safe_parent =
-                    crate::common::utils::command::local::safe_path(parent.to_str().unwrap_or(""));
-                let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
-                let target = crate::common::executor::factory::ExecTarget::Remote {
-                    host: host.clone(),
-                    port: *port,
-                    username: username.clone(),
-                    auth: auth.clone(),
-                };
-                let _ = crate::common::executor::sync::exec_on(&target, "sh", &["-c", &mkdir_cmd])
-                    .await;
-            }
-
-            // 使用 base64 编码传输，避免 shell 转义问题
-            use base64::Engine;
-            let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
-            let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
-            let target = crate::common::executor::factory::ExecTarget::Remote {
-                host: host.clone(),
-                port: *port,
-                username: username.clone(),
-                auth: auth.clone(),
-            };
-            crate::common::executor::sync::exec_on(&target, "sh", &["-c", &write_cmd])
-                .await
-                .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))?;
-
-            Ok(())
-        }
-    }
+    let target = exec_target_from_git_transport(&t);
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
 }
 
 // ─── Agent Config Resolution (private helpers) ──────────────────────────────

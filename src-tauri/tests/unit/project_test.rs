@@ -1,6 +1,7 @@
 use neeko_lib::common::terminal::types::TerminalStatus;
-use neeko_lib::project::types::ViewMode;
+use neeko_lib::project::types::{ProjectEnvironment, ViewMode};
 use neeko_lib::project::ProjectManager;
+use neeko_lib::session::types::ProjectSession;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -240,16 +241,19 @@ fn add_project_from_session() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new(|_| {});
 
-    let project = pm
-        .add_project_from_session(
-            "custom-id".into(),
-            tmp.path().to_path_buf(),
-            Some("gemini".into()),
-            Some("vim".into()),
-            false,
-            None,
-        )
-        .unwrap();
+    let ps = ProjectSession {
+        id: "custom-id".into(),
+        name: "test".into(),
+        path: tmp.path().to_path_buf(),
+        environment: ProjectEnvironment::Local,
+        selected_agent: Some("gemini".into()),
+        selected_ide: Some("vim".into()),
+        terminal_history: vec![],
+        last_status: TerminalStatus::Idle,
+        collapsed: false,
+        avatar_color: None,
+    };
+    let project = pm.add_project_from_session(&ps).unwrap();
 
     assert_eq!(project.id, "custom-id");
     assert_eq!(project.selected_agent, Some("gemini".into()));
@@ -259,8 +263,19 @@ fn add_project_from_session() {
 #[test]
 fn add_project_from_session_nonexistent_path_fails() {
     let mut pm = ProjectManager::new(|_| {});
-    let result =
-        pm.add_project_from_session("id".into(), "/nonexistent".into(), None, None, true, None);
+    let ps = ProjectSession {
+        id: "id".into(),
+        name: "nonexistent".into(),
+        path: "/nonexistent".into(),
+        environment: ProjectEnvironment::Local,
+        selected_agent: None,
+        selected_ide: None,
+        terminal_history: vec![],
+        last_status: TerminalStatus::Idle,
+        collapsed: true,
+        avatar_color: None,
+    };
+    let result = pm.add_project_from_session(&ps);
     assert!(result.is_err());
 }
 

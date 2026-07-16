@@ -102,7 +102,7 @@ impl AppStateWrapper {
         let persist = {
             let sm_clone = storage_manager.clone();
             move |projects: &[crate::project::types::Project]| {
-                let session = sm_clone.create_session_from_projects(projects, None, None, None);
+                let session = sm_clone.create_session_from_projects(projects, None);
                 if let Err(e) = sm_clone.save_session(&session) {
                     log::error!("Auto-save session failed: {}", e);
                 }

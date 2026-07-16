@@ -12,6 +12,9 @@ export {
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./terminalCommands";
 export { worktreeKey } from "./worktreeTerminalKey";
+
+// Deprecated WSL terminal exports — kept for backward compatibility.
+// Prefer using the unified TerminalView with environment prop instead.
 export { default as WSLTerminalView } from "./WSLTerminalView";
 export {
   wslCacheKey,
@@ -26,6 +29,8 @@ export {
   wslWrapperRefs,
   wslTerminalCache,
 } from "./terminalCache";
+
+// Deprecated Remote terminal exports — kept for backward compatibility.
 export { default as RemoteTerminalView } from "./RemoteTerminalView";
 export {
   remoteCacheKey,
@@ -37,6 +42,13 @@ export {
   remoteWrapperRefs,
   remoteTerminalCache,
 } from "./terminalCache";
+
+// New unified exports
+export {
+  launchAgentInAnyTerminal,
+  switchAgentInAnyTerminal,
+} from "./terminalCache";
+
 export { default as SplitLayout } from "./SplitLayout";
 
 import { buildTerminalTheme } from '@/shared/utils/terminal';

@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { saveSession as saveSessionApi } from "../api/sessionApi";
-import type { WSLEntrySession, RemoteEntrySession } from '@/shared/types';
 import type { SaveSessionFn } from "../../connection/hooks/useWslProjects";
-import { useConnectionStore } from '@/features/connection/store';
 
 export interface UseSessionPersistenceResult {
    worktreeState: Record<string, string>;
@@ -19,7 +17,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
    const persistWorktreeState = useCallback((next: Record<string, string>) => {
       if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
       wtSaveTimerRef.current = setTimeout(() => {
-         saveSessionApi([], [], null, next).catch(() => { });
+         saveSessionApi(null, next).catch(() => { });
       }, 500);
    }, []);
 
@@ -40,18 +38,14 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
       });
    }, [persistWorktreeState]);
 
-   const saveSession: SaveSessionFn = useCallback(async (wslEntriesParam?: WSLEntrySession[], remoteEntriesParam?: RemoteEntrySession[]) => {
-      const snapshot = useConnectionStore.getState();
-      const wsl = wslEntriesParam ?? snapshot.wslEntries;
-      const remote = remoteEntriesParam ?? snapshot.remoteEntries;
-      await saveSessionApi(wsl, remote);
+   const saveSession: SaveSessionFn = useCallback(async () => {
+      await saveSessionApi();
    }, []);
 
    const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
    const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
-      const snapshot = useConnectionStore.getState();
-      saveSessionApi(snapshot.wslEntries, snapshot.remoteEntries, opts.sidebarWidth ?? null).catch(console.error);
+      saveSessionApi(opts.sidebarWidth ?? null).catch(console.error);
    }, []);
 
    const saveSidebarWidth = useCallback((width: number) => {

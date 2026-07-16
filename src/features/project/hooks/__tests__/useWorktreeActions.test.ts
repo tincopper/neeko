@@ -32,12 +32,9 @@ function seedStore(overrides: Record<string, unknown> = {}) {
   };
   const worktreeDefaults = {
     activeWorktreePath: null as string | null,
+    activeWorktreeBranch: "",
     openedWorktrees: [] as unknown[],
-    wslOpenedWt: [] as unknown[],
-    activeWslWorktreePath: null as string | null,
-    remoteOpenedWt: [] as unknown[],
-    activeRemoteWorktreePath: null as string | null,
-    worktreeState: {},
+    worktreeStateMap: {},
   };
 
   // Apply overrides to matching fields

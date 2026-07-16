@@ -6,9 +6,9 @@ use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
 #[cfg(test)]
 use crate::project::types::FileStatus;
-use crate::project::types::{FileNode, GitInfo, GitProvider};
+use crate::project::types::{GitInfo, GitProvider};
 
-use super::parsers::{build_file_tree_from_find, parse_git_info_output};
+use super::parsers::parse_git_info_output;
 use super::provider::detect_provider;
 
 /// 通过 SSH 获取完整 GitInfo（1 次 SSH 连接）
@@ -61,62 +61,6 @@ pub async fn get_remote_git_info(
     let mut info = parse_git_info_output(&output);
     info.git_provider = git_provider;
     Ok(info)
-}
-
-/// 通过 SSH 读取目录树（使用 find 命令）
-pub async fn remote_read_dir_tree_fn(
-    host: &str,
-    port: u16,
-    username: &str,
-    auth: &AuthMethod,
-    root_path: &str,
-    sub_path: Option<&str>,
-    max_depth: u32,
-) -> Result<Vec<FileNode>> {
-    let effective_sub = sub_path.filter(|sp| !sp.is_empty());
-    let actual_path = match effective_sub {
-        Some(sp) => format!("{}/{}", root_path, sp),
-        None => root_path.to_string(),
-    };
-    let safe_ap = safe_path(&actual_path);
-
-    let cmd = format!(
-        "find '{safe_ap}' -maxdepth {max_depth} \
-         -not -path '*/.git/*' \
-         -not -path '*/node_modules/*' \
-         -not -path '*/target/*' \
-         -not -name '.git' \
-          2>/dev/null | sort"
-    );
-    let output = exec_on(
-        &ExecTarget::Remote {
-            host: host.to_string(),
-            port,
-            username: username.to_string(),
-            auth: auth.clone(),
-        },
-        "sh",
-        &["-c", &cmd],
-    )
-    .await?;
-    let mut tree = build_file_tree_from_find(&output, &actual_path)?;
-
-    // 如果使用了 sub_path，需要将路径修正为相对于项目根的完整路径
-    if let Some(sp) = effective_sub {
-        prefix_paths_remote(&mut tree, sp);
-    }
-
-    Ok(tree)
-}
-
-/// 递归给所有节点的 path 字段加上前缀（确保路径相对于项目根）
-fn prefix_paths_remote(nodes: &mut Vec<FileNode>, prefix: &str) {
-    for node in nodes.iter_mut() {
-        node.path = format!("{}/{}", prefix, node.path);
-        if !node.children.is_empty() {
-            prefix_paths_remote(&mut node.children, prefix);
-        }
-    }
 }
 
 #[cfg(test)]

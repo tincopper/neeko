@@ -10,11 +10,8 @@ import {
    FileActionsProvider,
 } from "@/features/editor/FileActionsContext";
 import {
-   WslProvider,
-} from "@/features/connection/contexts/WslContext";
-import {
-   RemoteProvider,
-} from "@/features/connection/contexts/RemoteContext";
+   ConnectionProjectProvider,
+} from "@/features/project/contexts/ConnectionProjectContext";
 import {
    EditorProvider,
 } from '@/shared/contexts';
@@ -22,16 +19,14 @@ import {
 type AppProviderValue = React.ComponentProps<typeof AppProvider>["value"];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>["value"];
 type FileActionsProviderValue = React.ComponentProps<typeof FileActionsProvider>["value"];
-type WslProviderValue = React.ComponentProps<typeof WslProvider>["value"];
-type RemoteProviderValue = React.ComponentProps<typeof RemoteProvider>["value"];
+type ConnectionProjectProviderValue = React.ComponentProps<typeof ConnectionProjectProvider>["value"];
 type EditorProviderValue = React.ComponentProps<typeof EditorProvider>["value"];
 
 interface AppProvidersProps {
    appValue: AppProviderValue;
    projectActionsValue: ProjectActionsProviderValue;
    fileActionsValue: FileActionsProviderValue;
-   wslValue: WslProviderValue;
-   remoteValue: RemoteProviderValue;
+   connectionProjectValue: ConnectionProjectProviderValue;
    editorValue: EditorProviderValue;
    children: React.ReactNode;
 }
@@ -40,8 +35,7 @@ function AppProviders({
    appValue,
    projectActionsValue,
    fileActionsValue,
-   wslValue,
-   remoteValue,
+   connectionProjectValue,
    editorValue,
    children,
 }: AppProvidersProps) {
@@ -50,11 +44,9 @@ function AppProviders({
          <SidebarProvider>
             <ProjectActionsProvider value={projectActionsValue}>
                <FileActionsProvider value={fileActionsValue}>
-                  <WslProvider value={wslValue}>
-                     <RemoteProvider value={remoteValue}>
-                        <EditorProvider value={editorValue}>{children}</EditorProvider>
-                     </RemoteProvider>
-                  </WslProvider>
+                  <ConnectionProjectProvider value={connectionProjectValue}>
+                     <EditorProvider value={editorValue}>{children}</EditorProvider>
+                  </ConnectionProjectProvider>
                </FileActionsProvider>
             </ProjectActionsProvider>
          </SidebarProvider>

@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { listProjects } from "../../project/api/projectApi";
 import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
 import { loadSession } from "../api/sessionApi";
-import type { WSLEntrySession, RemoteEntrySession, FileChange, Worktree, GitStatusDiff } from '@/shared/types';
+import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 
 /** 将后�?git status 字符串映射为前端 FileChange.status */
@@ -19,10 +19,7 @@ function mapGitStatus(status: string): FileChange["status"] {
 
 export function useSessionBootstrap(deps: {
    loadProjects: () => Promise<void>;
-   setWslEntries: React.Dispatch<React.SetStateAction<WSLEntrySession[]>>;
-   setRemoteEntries: React.Dispatch<React.SetStateAction<RemoteEntrySession[]>>;
    restoreWorktreeState: (worktreeState: Record<string, string>) => void;
-   restoreAuthFromEntries: (entries: RemoteEntrySession[]) => void;
 }) {
    const [initialSidebarWidth, setInitialSidebarWidth] = useState<number>(280);
    const [initializing, setInitializing] = useState(true);
@@ -82,10 +79,6 @@ export function useSessionBootstrap(deps: {
       });
 
       loadSession().then((session) => {
-         const wslE = session.wsl_entries ?? [];
-         const remoteE = session.remote_entries ?? [];
-         deps.setWslEntries(wslE);
-         deps.setRemoteEntries(remoteE);
          if (session.sidebar_width) {
             setInitialSidebarWidth(session.sidebar_width);
          }
@@ -93,7 +86,6 @@ export function useSessionBootstrap(deps: {
          if (wtState && typeof wtState === "object") {
             deps.restoreWorktreeState(wtState);
          }
-         deps.restoreAuthFromEntries(remoteE);
 
          // 恢复上次活动的项目（来自 session 持久化的 active_project_id）
          const activeId = session.active_project_id;

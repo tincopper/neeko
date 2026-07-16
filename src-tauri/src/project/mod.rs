@@ -4,10 +4,10 @@ pub mod types;
 
 pub use commands_ide::*;
 
-use crate::common::connection::types::AuthMethod;
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::git;
 use crate::project::types::{Project, ProjectEnvironment, ViewMode};
+use crate::session::types::ProjectSession;
 use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -79,124 +79,40 @@ impl ProjectManager {
         Ok(project)
     }
 
-    pub fn add_project_from_session(
-        &mut self,
-        id: String,
-        path: PathBuf,
-        agent_id: Option<String>,
-        ide: Option<String>,
-        collapsed: bool,
-        avatar_color: Option<String>,
-    ) -> Result<Project> {
-        if !path.exists() {
-            anyhow::bail!("Project path does not exist: {}", path.display());
-        }
-        let name = path
+    pub fn add_project_from_session(&mut self, session: &ProjectSession) -> Result<Project> {
+        let name = session
+            .path
             .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| session.name.clone());
+
+        // 只有 Local 项目需要检查路径是否存在
+        if matches!(session.environment, ProjectEnvironment::Local) && !session.path.exists() {
+            anyhow::bail!("Project path does not exist: {}", session.path.display());
+        }
+
         let terminal_session = TerminalSession {
             id: Uuid::new_v4().to_string(),
             pid: None,
             status: TerminalStatus::Idle,
-            history: Vec::new(),
+            history: session.terminal_history.clone(),
             agent: None,
         };
         let project = Project {
-            id,
+            id: session.id.clone(),
             name,
-            path,
-            environment: ProjectEnvironment::Local,
+            path: session.path.clone(),
+            environment: session.environment.clone(),
             git_info: None,
             terminal: terminal_session,
-            selected_agent: agent_id,
-            selected_ide: ide,
+            selected_agent: session.selected_agent.clone(),
+            selected_ide: session.selected_ide.clone(),
             active_view: ViewMode::Terminal,
-            collapsed,
-            avatar_color,
+            collapsed: session.collapsed,
+            avatar_color: session.avatar_color.clone(),
         };
         self.projects.push(project.clone());
         Ok(project)
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn add_wsl_project_from_session(
-        &mut self,
-        id: String,
-        name: String,
-        path: String,
-        distro: String,
-        agent: Option<String>,
-        ide: Option<String>,
-        avatar_color: Option<String>,
-        collapsed: bool,
-    ) -> Project {
-        let terminal_session = TerminalSession {
-            id: Uuid::new_v4().to_string(),
-            pid: None,
-            status: TerminalStatus::Idle,
-            history: Vec::new(),
-            agent: None,
-        };
-        let project = Project {
-            id,
-            name,
-            path: PathBuf::from(&path),
-            environment: ProjectEnvironment::Wsl { distro },
-            git_info: None,
-            terminal: terminal_session,
-            selected_agent: agent,
-            selected_ide: ide,
-            active_view: ViewMode::Terminal,
-            collapsed,
-            avatar_color,
-        };
-        self.projects.push(project.clone());
-        project
-    }
-
-    pub fn add_remote_project_from_session(
-        &mut self,
-        id: String,
-        name: String,
-        path: String,
-        host: String,
-        port: u16,
-        username: String,
-        auth: AuthMethod,
-        agent: Option<String>,
-        ide: Option<String>,
-        avatar_color: Option<String>,
-        collapsed: bool,
-    ) -> Project {
-        let terminal_session = TerminalSession {
-            id: Uuid::new_v4().to_string(),
-            pid: None,
-            status: TerminalStatus::Idle,
-            history: Vec::new(),
-            agent: None,
-        };
-        let project = Project {
-            id,
-            name,
-            path: PathBuf::from(&path),
-            environment: ProjectEnvironment::Remote {
-                host,
-                port,
-                username,
-                auth,
-            },
-            git_info: None,
-            terminal: terminal_session,
-            selected_agent: agent,
-            selected_ide: ide,
-            active_view: ViewMode::Terminal,
-            collapsed,
-            avatar_color,
-        };
-        self.projects.push(project.clone());
-        project
     }
 
     pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {

@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::common::agent::types::AgentConfig;
 
 /// 终端状态
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum TerminalStatus {
-    Idle,    // 空闲
+    #[default]
+    Idle, // 空闲
     Running, // 运行中
     Failed,  // 失败
 }

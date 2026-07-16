@@ -6,7 +6,6 @@ use tauri::{Emitter, Manager};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
-use crate::common::connection::types::AuthMethod;
 
 #[cfg(unix)]
 fn resolve_user_path() -> Option<String> {
@@ -76,64 +75,7 @@ pub fn run() {
                 active_id_from_session = session.active_project_id;
                 if let Ok(mut pm) = state.project_manager.lock() {
                     for p in &session.projects {
-                        let _ = pm.add_project_from_session(
-                            p.id.clone(),
-                            p.path.clone(),
-                            p.selected_agent.clone(),
-                            p.selected_ide.clone(),
-                            p.collapsed,
-                            p.avatar_color.clone(),
-                        );
-                    }
-
-                    // 恢复 WSL 项目
-                    #[cfg(target_os = "windows")]
-                    for entry in &session.wsl_entries {
-                        for wp in &entry.projects {
-                            pm.add_wsl_project_from_session(
-                                wp.id.clone(),
-                                wp.name.clone(),
-                                wp.path.clone(),
-                                wp.distro.clone(),
-                                wp.selected_agent.clone(),
-                                wp.selected_ide.clone(),
-                                wp.avatar_color.clone(),
-                                true,
-                            );
-                        }
-                    }
-
-                    // 恢复 Remote 项目
-                    for entry in &session.remote_entries {
-                        let auth = entry.saved_auth.as_ref().and_then(|b64| {
-                            use base64::Engine;
-                            base64::engine::general_purpose::STANDARD
-                                .decode(b64)
-                                .ok()
-                                .and_then(|bytes| serde_json::from_slice::<AuthMethod>(&bytes).ok())
-                        });
-                        if let Some(auth) = auth {
-                            for rp in &entry.projects {
-                                pm.add_remote_project_from_session(
-                                    rp.id.clone(),
-                                    rp.name.clone(),
-                                    rp.path.clone(),
-                                    entry.host.clone(),
-                                    entry.port,
-                                    entry.username.clone(),
-                                    auth.clone(),
-                                    rp.selected_agent.clone(),
-                                    rp.selected_ide.clone(),
-                                    rp.avatar_color.clone(),
-                                    true,
-                                );
-                            }
-                        } else {
-                            log::warn!(
-                                "Skipping remote entry {}: missing or invalid saved_auth",
-                                entry.id
-                            );
-                        }
+                        let _ = pm.add_project_from_session(p);
                     }
                 }
             }

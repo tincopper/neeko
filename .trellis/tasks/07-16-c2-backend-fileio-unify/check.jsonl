@@ -1,0 +1,2 @@
+{"file": "src-tauri/src/common/file/service.rs", "check": "All 4 functions compile and pass tests"}
+{"file": "src-tauri/src/git/commands.rs", "check": "No GitTransport match for file operations; only for git operations"}

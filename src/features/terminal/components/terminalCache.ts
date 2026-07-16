@@ -415,3 +415,88 @@ export async function switchAgentInRemoteTerminal(
   }
   oldCache?.term.dispose();
 }
+
+// =============================================================================
+// Unified terminal cache manager
+// =============================================================================
+
+/**
+ * Resolves the appropriate cache backend for a cache key by inspecting its
+ * prefix ("wsl:", "remote:", or bare key for local).
+ */
+function resolveBackendForKey(
+  key: string,
+): {
+  cache: Map<string, unknown>;
+  rebuildCallbacks: Map<string, () => void>;
+  wrapperRefs: Map<string, HTMLDivElement>;
+  resolveCacheKey: (k: string) => string | null;
+  launchAgentInTerminal: (k: string, cmd: string, args: string[]) => void;
+  destroyCache: (k: string) => void;
+  refreshTerminal: (k: string) => void;
+} {
+  if (key.startsWith("wsl:")) {
+    return wslBackend;
+  }
+  if (key.startsWith("remote:")) {
+    return remoteBackend;
+  }
+  return backend;
+}
+
+/**
+ * Unified launch agent — works for any cache key (local, wsl, remote).
+ *
+ * Dispatches to the correct backend based on the key prefix.
+ */
+export function launchAgentInAnyTerminal(
+  cacheKey: string,
+  command: string,
+  args: string[],
+): void {
+  const bk = resolveBackendForKey(cacheKey);
+  bk.launchAgentInTerminal(cacheKey, command, args);
+}
+
+/**
+ * Unified switch agent — works for any cache key (local, wsl, remote).
+ *
+ * Dispatches to the correct backend based on the key prefix.
+ */
+export async function switchAgentInAnyTerminal(
+  cacheKey: string,
+  agentId: string,
+  agentCommandOverrides?: Record<string, string>,
+): Promise<void> {
+  const bk = resolveBackendForKey(cacheKey);
+  const resolved = bk.resolveCacheKey(cacheKey) ?? cacheKey;
+  const wrapper = bk.wrapperRefs.get(resolved);
+
+  if (!wrapper) {
+    const agent = await getAgent(agentId).catch(() => null);
+    if (agent) {
+      const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
+      bk.launchAgentInTerminal(cacheKey, cmd, agent.args);
+    }
+    return;
+  }
+
+  // Destroy old cache entry
+  const oldCache = bk.cache.get(resolved) as CacheEntry | undefined;
+  if (oldCache) {
+    oldCache.unlisten?.();
+    oldCache.inputController?.dispose();
+  }
+
+  bk.cache.delete(resolved);
+  while (wrapper.firstChild) {
+    wrapper.removeChild(wrapper.firstChild);
+  }
+
+  bk.rebuildCallbacks.get(resolved)?.();
+
+  if (oldCache?.sessionId) {
+    closeTerminalSession(oldCache.sessionId).catch(() => {});
+  }
+  oldCache?.term.dispose();
+}

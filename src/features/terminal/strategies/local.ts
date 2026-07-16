@@ -14,13 +14,19 @@ import {
 } from '../components/terminalCache';
 import { setupTerminalLinks } from '../components/terminalLinks';
 
-import type { TerminalStrategy } from './types';
+import { createTerminalStrategy } from './factory';
 
+/**
+ * Local terminal strategy hook.
+ *
+ * Prefer using the unified `useTerminalStrategy` from `./index` instead; this
+ * export is kept for backward compatibility.
+ */
 export function useLocalTerminalStrategy(
   paneId: string,
   worktreePathOverride?: string,
   worktreeBranchOverride?: string,
-): TerminalStrategy | null {
+) {
   const { config, showToast } = useAppContext();
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
@@ -33,7 +39,7 @@ export function useLocalTerminalStrategy(
 
     const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
     const effWorktreeBranch = worktreeBranchOverride ?? activeWorktreeBranch;
-    const isWorktree = !!effWorktreePath;
+    const isWorktree = Boolean(effWorktreePath);
     const projectPath = effWorktreePath ?? activeProject?.path ?? null;
     const baseName = activeProject?.name ?? null;
     const projectName =
@@ -45,8 +51,8 @@ export function useLocalTerminalStrategy(
         : terminalCacheKey(projectId, activeTabId, paneId)
       : `local:none:${paneId}`;
 
-    return {
-      kind: 'local' as const,
+    return createTerminalStrategy({
+      kind: 'local',
       cacheKey,
       cache: terminalCache as unknown as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: terminalRebuildCallbacks,
@@ -87,7 +93,7 @@ export function useLocalTerminalStrategy(
           setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },
-    } satisfies TerminalStrategy;
+    });
   }, [
     activeProject,
     activeWorktreePath,

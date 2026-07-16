@@ -1,50 +1,21 @@
-import React, { createContext, useContext } from "react";
-import type { AuthMethod, RemoteEntrySession } from '@/shared/types';
+/**
+ * @deprecated Use ConnectionProjectContext from features/project/contexts instead.
+ * This file re-exports from the unified ConnectionProjectContext for backwards compatibility.
+ */
+import {
+  ConnectionProjectProvider,
+  useConnectionProjectContext,
+} from "@/features/project/contexts/ConnectionProjectContext";
+import type { RemoteContextValue } from "@/features/project/contexts/ConnectionProjectContext";
 
-export interface RemoteContextValue {
-  remoteEntries: RemoteEntrySession[];
-  remoteOpenSessions: Set<string>;
-  activeRemoteWorktreePath: string | null;
-  remoteAuthStore: Map<string, AuthMethod>;
-  setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-  onCloseRemoteProject: (entryId: string, projectId: string) => void;
-  onRemoveRemoteProject: (entryId: string, projectId: string) => void;
-  onRemoveRemoteEntry: (entryId: string) => void;
-  onAddRemoteProject: (entryId: string) => void;
-  onRefreshRemoteGit?: (entryId: string, projectId: string, projectPath: string) => void;
-  onOpenRemoteIde?: (entryId: string, projectPath: string, ide: string) => void;
-  onOpenRemoteWorktreeTerminal?: (
-    entryId: string,
-    worktreePath: string,
-    branch: string,
-  ) => void;
-   invokeRemoteGit?: (
-    command: string,
-    entryId: string,
-    extra: Record<string, unknown>,
-  ) => Promise<unknown>;
-   onRemoteDragEnd?: (entryId: string, draggedId: string, targetId: string) => void;
-   setPendingAuthEntry: React.Dispatch<React.SetStateAction<RemoteEntrySession | null>>;
+// Re-export the provider with the old name for backwards compatibility
+export const RemoteProvider = ConnectionProjectProvider;
+
+/**
+ * @deprecated Use useConnectionProjectContext instead.
+ */
+export function useRemoteContext(): RemoteContextValue {
+  return useConnectionProjectContext();
 }
 
-const RemoteContext = createContext<RemoteContextValue | null>(null);
-
-export function RemoteProvider({
-  value,
-  children,
-}: {
-  value: RemoteContextValue;
-  children: React.ReactNode;
-}) {
-  return (
-    <RemoteContext.Provider value={value}>{children}</RemoteContext.Provider>
-  );
-}
-
-export function useRemoteContext() {
-  const ctx = useContext(RemoteContext);
-  if (!ctx) {
-    throw new Error("useRemoteContext must be used within RemoteProvider");
-  }
-  return ctx;
-}
+export type { RemoteContextValue };

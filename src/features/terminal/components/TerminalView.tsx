@@ -2,21 +2,42 @@ import React, { useCallback } from "react";
 import { useAppContext } from '@/shared/contexts';
 import { useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
+import type { AuthMethod } from '@/shared/types';
 import TerminalViewBase from "./TerminalViewBase";
-import { useLocalTerminalStrategy } from "../strategies";
-import type { TerminalViewProps } from "./terminalTypes";
+import { useTerminalStrategy } from "../strategies";
 
-function TerminalView({ paneId, worktreePath, worktreeBranch }: TerminalViewProps) {
+export interface TerminalViewProps {
+  paneId: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  /** Remote-specific configuration. Required when the active project is Remote. */
+  remoteConfig?: {
+    entryId: string;
+    host: string;
+    port: number;
+    username: string;
+    auth: AuthMethod;
+    cacheKeySuffix?: string;
+    onSessionReady?: (pid: string) => void;
+  };
+}
+
+function TerminalView({ paneId, worktreePath, worktreeBranch, remoteConfig }: TerminalViewProps) {
   const { config } = useAppContext();
   const { activeTabId, tabs, onTabStatusChange } = useEditorContext();
-  const strategy = useLocalTerminalStrategy(paneId, worktreePath, worktreeBranch);
+  const strategy = useTerminalStrategy({
+    paneId,
+    worktreePathOverride: worktreePath,
+    worktreeBranchOverride: worktreeBranch,
+    remoteConfig,
+  });
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const tabAgentId = activeTab?.agentId ?? null;
 
   const agentCommandOverride = config.agentCommandOverrides?.[tabAgentId ?? ""];
 
-  // Task terminal fields �?read from full Tab data in editorStore
+  // Task terminal fields — read from full Tab data in editorStore
   const projectId = strategy ? strategy.cacheKey.split(":")[0] : null;
   const fullTabData = useEditorStore((s) => {
     if (!projectId || !activeTabId) return null;

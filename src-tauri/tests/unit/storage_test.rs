@@ -31,6 +31,7 @@ fn save_and_load_session_with_projects() {
             id: "p1".into(),
             name: "test".into(),
             path: PathBuf::from("/tmp/test"),
+            environment: ProjectEnvironment::Local,
             selected_agent: Some("claude-code".into()),
             selected_ide: None,
             terminal_history: vec!["hello".into()],
@@ -111,7 +112,7 @@ fn create_session_from_projects() {
         avatar_color: Some("#61afef".into()),
     }];
 
-    let store = manager.create_session_from_projects(&projects, None, None, Some(300));
+    let store = manager.create_session_from_projects(&projects, Some(300));
     assert_eq!(store.projects.len(), 1);
     assert_eq!(store.projects[0].id, "p1");
     assert!(!store.projects[0].collapsed);

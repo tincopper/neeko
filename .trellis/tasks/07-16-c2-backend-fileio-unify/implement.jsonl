@@ -1,0 +1,5 @@
+{"file": "src-tauri/src/common/file/service.rs", "reason": "New unified file service with read_dir_tree, read_file_content, write_file_content, read_file_content_shell"}
+{"file": "src-tauri/src/common/git/wsl.rs", "reason": "Delete after migrating wsl_read_dir_tree to file/service.rs"}
+{"file": "src-tauri/src/common/git/remote.rs", "reason": "Remove remote_read_dir_tree_fn (migrate to file/service.rs); keep get_remote_git_info"}
+{"file": "src-tauri/src/git/commands.rs", "reason": "Remove 3-way match in read_dir_tree/read_file_content/write_file_content"}
+{"file": "src-tauri/src/git/commands.rs", "reason": "Remove exec_target_from_git_transport; use ProjectEnvironment::to_exec_target"}

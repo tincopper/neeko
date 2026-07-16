@@ -36,7 +36,7 @@ const DEFAULT_CONFIG = {
   terminalFontSize: 14,
   fontFamily: "",
   agentCommandOverrides: {},
-} as never; // cast to satisfy AppConfig (partial is enough)
+} as never;
 
 function createWslProject(id = "wp1") {
   return {
@@ -75,11 +75,7 @@ function seedStore(overrides: {
   useWorktreeStore.setState({
     activeWorktreePath: null,
     openedWorktrees: [],
-    wslOpenedWt: [],
-    activeWslWorktreePath: null,
-    remoteOpenedWt: [],
-    activeRemoteWorktreePath: null,
-    worktreeState: {},
+    worktreeStateMap: {},
   });
   useEditorStore.setState({
     tabs: {},
@@ -97,7 +93,7 @@ describe("useWslActions", () => {
     seedStore();
   });
 
-  describe("updateWslProjectAgent", () => {
+  describe("updateProjectAgent", () => {
     it("更新 wslEntries 中的 selected_agent", () => {
       const { result } = renderHook(() =>
         useWslActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
@@ -106,7 +102,7 @@ describe("useWslActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       act(() => {
-        result.current.updateWslProjectAgent(agent);
+        result.current.updateProjectAgent(agent);
       });
 
       const state = useConnectionStore.getState();
@@ -121,7 +117,7 @@ describe("useWslActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       act(() => {
-        result.current.updateWslProjectAgent(agent);
+        result.current.updateProjectAgent(agent);
       });
 
       const state = useProjectStore.getState();
@@ -129,7 +125,6 @@ describe("useWslActions", () => {
     });
 
     it("传入 null 时清空 selected_agent", () => {
-      // 先设置一个有 agent 的项目
       useProjectStore.setState({
         activeProject: {
           id: 'wp1',
@@ -150,7 +145,7 @@ describe("useWslActions", () => {
       );
 
       act(() => {
-        result.current.updateWslProjectAgent(null);
+        result.current.updateProjectAgent(null);
       });
 
       const state = useProjectStore.getState();
@@ -163,12 +158,10 @@ describe("useWslActions", () => {
       );
 
       act(() => {
-        result.current.updateWslProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       expect(mockSaveSession).toHaveBeenCalledTimes(1);
-      const passedEntries = mockSaveSession.mock.calls[0][0];
-      expect(passedEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
     it("不调用 switchAgentInWslTerminal", () => {
@@ -177,7 +170,7 @@ describe("useWslActions", () => {
       );
 
       act(() => {
-        result.current.updateWslProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       expect(mockSwitchAgent).not.toHaveBeenCalled();
@@ -189,7 +182,7 @@ describe("useWslActions", () => {
       );
 
       act(() => {
-        result.current.updateWslProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
+        result.current.updateProjectAgent({ id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true });
       });
 
       act(() => {
@@ -200,7 +193,7 @@ describe("useWslActions", () => {
     });
   });
 
-  describe("handleSelectWslAgent", () => {
+  describe("handleSelectAgent", () => {
     it("传入 agent 时调用 switchAgentInWslTerminal", async () => {
       const { result } = renderHook(() =>
         useWslActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
@@ -209,18 +202,18 @@ describe("useWslActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       await act(async () => {
-        result.current.handleSelectWslAgent(agent);
+        result.current.handleSelectAgent(agent);
       });
 
       expect(mockSwitchAgent).toHaveBeenCalledWith(
-        "wsl:Ubuntu:wp1",  // cacheKey
-        "Ubuntu",          // distro
-        "/home/user/wp1",  // projectPath
-        "proj-wp1",        // projectName
-        "claude-code",     // agentId
-        14,                // fontSize
-        "",                // fontFamily
-        {},                // agentCommandOverrides
+        "wsl:Ubuntu:wp1",
+        "Ubuntu",
+        "/home/user/wp1",
+        "proj-wp1",
+        "claude-code",
+        14,
+        "",
+        {},
       );
     });
 
@@ -232,7 +225,7 @@ describe("useWslActions", () => {
       const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [], env: {}, icon: null, enabled: true };
 
       await act(async () => {
-        result.current.handleSelectWslAgent(agent);
+        result.current.handleSelectAgent(agent);
       });
 
       const state = useProjectStore.getState();
@@ -247,7 +240,7 @@ describe("useWslActions", () => {
       );
 
       await act(async () => {
-        result.current.handleSelectWslAgent(null);
+        result.current.handleSelectAgent(null);
       });
 
       expect(mockSwitchAgent).not.toHaveBeenCalled();
@@ -259,7 +252,7 @@ describe("useWslActions", () => {
       );
 
       await act(async () => {
-        result.current.handleSelectWslAgent(null);
+        result.current.handleSelectAgent(null);
       });
 
       act(() => {

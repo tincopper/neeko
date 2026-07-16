@@ -14,8 +14,15 @@ import {
 } from '../components/terminalCache';
 import { setupTerminalLinks } from '../components/terminalLinks';
 
+import { createTerminalStrategy } from './factory';
 import type { TerminalStrategy } from './types';
 
+/**
+ * WSL terminal strategy hook.
+ *
+ * Prefer using the unified `useTerminalStrategy` from `./index` instead; this
+ * export is kept for backward compatibility.
+ */
 export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null {
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
@@ -36,8 +43,8 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
 
     const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
 
-    return {
-      kind: 'wsl' as const,
+    return createTerminalStrategy({
+      kind: 'wsl',
       cacheKey,
       cache: wslTerminalCache as Map<string, import('./types').CacheEntry>,
       rebuildCallbacks: wslRebuildCallbacks,
@@ -62,7 +69,7 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
           setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },
-    } satisfies TerminalStrategy;
+    });
   }, [
     activeProject,
     activeWorktreePath,

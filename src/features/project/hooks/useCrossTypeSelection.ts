@@ -5,24 +5,22 @@ import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useAppViewStore } from '@/shared/store/appViewStore';
 
 interface WslActions {
-  setWslDiffState: (state: null) => void;
-  resetWslTransientState: () => void;
-  handleRefreshWslGit: (distro: string, projectId: string, projectPath: string) => void;
-  handleOpenWslWorktreeTerminal: (distro: string, worktreePath: string, branch: string) => void;
-  setActiveWslWorktreePath: (path: string | null) => void;
-  setWslActiveWtBranch: (branch: string) => void;
+  setWslDiffState: ((state: null) => void) | undefined;
+  resetTransientState: () => void;
+  handleRefreshGit: (distro: string, projectId: string, projectPath: string) => void;
+  handleOpenWorktreeTerminal: (distro: string, worktreePath: string, branch: string) => void;
+  setActiveWorktreePath: (path: string | null) => void;
 }
 
 interface RemoteActions {
-  resetRemoteTransientState: () => void;
-  handleRefreshRemoteGit: (entryId: string, projectId: string, projectPath: string) => void;
-  handleOpenRemoteWorktreeTerminal: (
+  resetTransientState: () => void;
+  handleRefreshGit: (entryId: string, projectId: string, projectPath: string) => void;
+  handleOpenWorktreeTerminal: (
     entryId: string,
     worktreePath: string,
     branch: string,
   ) => void;
-  setActiveRemoteWorktreePath: (path: string | null) => void;
-  setRemoteActiveWtBranch: (branch: string) => void;
+  setActiveWorktreePath: (path: string | null) => void;
 }
 
 interface UseCrossTypeSelectionOptions {
@@ -49,11 +47,10 @@ export function useCrossTypeSelection({
       // Reset all transient worktree state
       useWorktreeStore.setState({
         activeWorktreePath: null,
-        wslActiveWtBranch: "",
-        wslOpenedWt: [],
+        activeWorktreeBranch: "",
       });
-      wslActions.setWslDiffState(null);
-      remoteActions.resetRemoteTransientState();
+      wslActions.setWslDiffState?.(null);
+      remoteActions.resetTransientState();
 
       // Find project in unified store
       const project = useProjectStore.getState().projects.find(p => p.id === projectId);
@@ -66,12 +63,12 @@ export function useCrossTypeSelection({
       });
 
       if (project.environment.type === 'Wsl') {
-        void wslActions.handleRefreshWslGit(project.environment.distro, project.id, project.path);
+        void wslActions.handleRefreshGit(project.environment.distro, project.id, project.path);
       } else if (project.environment.type === 'Remote') {
         const host = project.environment.host;
         const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === host) ?? null;
         if (entry) {
-          void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
+          void remoteActions.handleRefreshGit(entry.id, project.id, project.path);
         }
       } else {
         await selectProject(projectId);
@@ -82,16 +79,16 @@ export function useCrossTypeSelection({
 
   const handleOpenWslWorktreeTerminal = useCallback(
     (distro: string, worktreePath: string, branch: string) => {
-      remoteActions.resetRemoteTransientState();
-      wslActions.handleOpenWslWorktreeTerminal(distro, worktreePath, branch);
+      remoteActions.resetTransientState();
+      wslActions.handleOpenWorktreeTerminal(distro, worktreePath, branch);
     },
     [remoteActions, wslActions],
   );
 
   const handleOpenRemoteWorktreeTerminal = useCallback(
     (entryId: string, worktreePath: string, branch: string) => {
-      wslActions.resetWslTransientState();
-      remoteActions.handleOpenRemoteWorktreeTerminal(entryId, worktreePath, branch);
+      wslActions.resetTransientState();
+      remoteActions.handleOpenWorktreeTerminal(entryId, worktreePath, branch);
     },
     [wslActions, remoteActions],
   );

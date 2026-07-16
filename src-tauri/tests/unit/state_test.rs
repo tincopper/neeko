@@ -2,7 +2,7 @@ use neeko_lib::common::agent::types::AgentConfig;
 use neeko_lib::common::connection::types::AuthMethod;
 use neeko_lib::common::git::types::DiffLine;
 use neeko_lib::common::terminal::types::TerminalStatus;
-use neeko_lib::project::types::{FileChange, FileStatus, ViewMode};
+use neeko_lib::project::types::{FileChange, FileStatus, ProjectEnvironment, ViewMode};
 use neeko_lib::session::types::{
     ProjectSession, RemoteEntrySession, RemoteProjectSession, SessionStore, WSLProjectSession,
 };
@@ -108,6 +108,7 @@ fn session_store_serde_roundtrip() {
             id: "p1".into(),
             name: "test".into(),
             path: PathBuf::from("/tmp/test"),
+            environment: ProjectEnvironment::Local,
             selected_agent: Some("claude-code".into()),
             selected_ide: None,
             terminal_history: vec!["line1".into()],
@@ -203,6 +204,7 @@ fn project_session_avatar_color_serde_roundtrip() {
         id: "p1".into(),
         name: "test".into(),
         path: PathBuf::from("/tmp/test"),
+        environment: ProjectEnvironment::Local,
         selected_agent: None,
         selected_ide: None,
         terminal_history: vec![],

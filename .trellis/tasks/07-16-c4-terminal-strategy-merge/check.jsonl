@@ -1,0 +1,2 @@
+{"file": "src/features/terminal/strategies/factory.ts", "check": "All 3 environments produce correct strategy with matching cache keys"}
+{"file": "src/features/terminal/components/TerminalView.tsx", "check": "Replaces WSLTerminalView and RemoteTerminalView usage"}
