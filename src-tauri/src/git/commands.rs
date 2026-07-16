@@ -1,11 +1,10 @@
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::git::operations;
-use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, GitProvider, PRComment, PRCommit,
+    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRComment, PRCommit,
     PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
 use crate::AppError;
@@ -21,7 +20,7 @@ pub async fn stage_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::stage_files(&t, &wd, &file_paths)
+    operations::stage_files(&*t, &wd, &file_paths)
         .await
         .map_err(AppError::from)
 }
@@ -33,7 +32,7 @@ pub async fn unstage_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::unstage_files(&t, &wd, &file_paths)
+    operations::unstage_files(&*t, &wd, &file_paths)
         .await
         .map_err(AppError::from)
 }
@@ -44,7 +43,9 @@ pub async fn stage_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::stage_all(&t, &wd).await.map_err(AppError::from)
+    operations::stage_all(&*t, &wd)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -53,7 +54,7 @@ pub async fn unstage_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::unstage_all(&t, &wd)
+    operations::unstage_all(&*t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -65,7 +66,7 @@ pub async fn discard_file(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::discard_file(&t, &wd, &file_path)
+    operations::discard_file(&*t, &wd, &file_path)
         .await
         .map_err(AppError::from)
 }
@@ -76,7 +77,7 @@ pub async fn discard_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::discard_all(&t, &wd)
+    operations::discard_all(&*t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -89,7 +90,7 @@ pub async fn fetch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::fetch(&t, &wd).await.map_err(AppError::from)
+    operations::fetch(&*t, &wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -98,7 +99,7 @@ pub async fn pull(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::pull(&t, &wd).await.map_err(AppError::from)
+    operations::pull(&*t, &wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -108,7 +109,7 @@ pub async fn push(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::push(&t, &wd, set_upstream.unwrap_or(false))
+    operations::push(&*t, &wd, set_upstream.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
@@ -121,7 +122,7 @@ pub async fn fetch_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::fetch_with_credentials(&t, &wd, &username, &password)
+    operations::fetch_with_credentials(&*t, &wd, &username, &password)
         .await
         .map_err(AppError::from)
 }
@@ -134,7 +135,7 @@ pub async fn pull_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::pull_with_credentials(&t, &wd, &username, &password)
+    operations::pull_with_credentials(&*t, &wd, &username, &password)
         .await
         .map_err(AppError::from)
 }
@@ -148,9 +149,15 @@ pub async fn push_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::push_with_credentials(&t, &wd, set_upstream.unwrap_or(false), &username, &password)
-        .await
-        .map_err(AppError::from)
+    operations::push_with_credentials(
+        &*t,
+        &wd,
+        set_upstream.unwrap_or(false),
+        &username,
+        &password,
+    )
+    .await
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -161,7 +168,7 @@ pub async fn commit_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::commit_files(&t, &wd, &file_paths, &message)
+    operations::commit_files(&*t, &wd, &file_paths, &message)
         .await
         .map_err(AppError::from)
 }
@@ -175,7 +182,7 @@ pub async fn cherry_pick(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::cherry_pick(&t, &wd, &commit_hash)
+    operations::cherry_pick(&*t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -187,7 +194,7 @@ pub async fn revert(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::revert(&t, &wd, &commit_hash)
+    operations::revert(&*t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -200,7 +207,7 @@ pub async fn create_tag(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_tag(&t, &wd, &name, &message)
+    operations::create_tag(&*t, &wd, &name, &message)
         .await
         .map_err(AppError::from)
 }
@@ -214,7 +221,7 @@ pub async fn checkout_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::checkout_branch(&t, &wd, &branch_name)
+    operations::checkout_branch(&*t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
@@ -227,7 +234,7 @@ pub async fn create_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_branch(&t, &wd, &branch_name, start_point.as_deref())
+    operations::create_branch(&*t, &wd, &branch_name, start_point.as_deref())
         .await
         .map_err(AppError::from)
 }
@@ -240,7 +247,7 @@ pub async fn delete_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::delete_branch(&t, &wd, &branch_name, force.unwrap_or(false))
+    operations::delete_branch(&*t, &wd, &branch_name, force.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
@@ -253,7 +260,7 @@ pub async fn rename_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::rename_branch(&t, &wd, &old_name, &new_name)
+    operations::rename_branch(&*t, &wd, &old_name, &new_name)
         .await
         .map_err(AppError::from)
 }
@@ -265,7 +272,7 @@ pub async fn create_and_switch_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_and_switch_branch(&t, &wd, &branch_name)
+    operations::create_and_switch_branch(&*t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
@@ -277,7 +284,7 @@ pub async fn checkout_detached(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::checkout_detached(&t, &wd, &commit_hash)
+    operations::checkout_detached(&*t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -297,7 +304,7 @@ pub async fn create_worktree(
     if let Some(parent) = std::path::Path::new(&worktree_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    operations::create_worktree(&t, &wd, &worktree_path, &branch_name, new_branch)
+    operations::create_worktree(&*t, &wd, &worktree_path, &branch_name, new_branch)
         .await
         .map_err(AppError::from)
 }
@@ -309,7 +316,7 @@ pub async fn remove_worktree(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::remove_worktree(&t, &wd, &worktree_path)
+    operations::remove_worktree(&*t, &wd, &worktree_path)
         .await
         .map_err(AppError::from)
 }
@@ -322,7 +329,7 @@ pub async fn rename_worktree(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::rename_worktree(&t, &wd, &old_path, &new_path)
+    operations::rename_worktree(&*t, &wd, &old_path, &new_path)
         .await
         .map_err(AppError::from)
 }
@@ -334,7 +341,7 @@ pub async fn is_worktree_dirty(
     state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
     let (t, _wd) = state.resolve_project(&project_id)?;
-    operations::is_worktree_dirty(&t, &worktree_path)
+    operations::is_worktree_dirty(&*t, &worktree_path)
         .await
         .map_err(AppError::from)
 }
@@ -346,37 +353,10 @@ pub async fn get_git_info(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitInfo, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    if t.supports_git2() {
-        let repo = t
-            .open_repo(&wd)
-            .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        let branch_info = crate::common::git::local::get_git_branch_info_from_repo(&repo)
-            .map_err(AppError::from)?;
-        let changed_files = crate::common::git::local::get_changed_files_from_repo(&repo)
-            .map_err(AppError::from)?;
-        let is_clean = changed_files.is_empty();
-
-        let git_provider = repo
-            .find_remote("origin")
-            .ok()
-            .and_then(|r| r.url().map(|u| u.to_string()))
-            .map(|u| crate::common::git::provider::detect_provider(&u))
-            .unwrap_or(GitProvider::Unknown);
-
-        Ok(GitInfo {
-            current_branch: branch_info.current_branch,
-            branches: branch_info.branches,
-            worktrees: branch_info.worktrees,
-            changed_files,
-            is_clean,
-            git_provider,
-        })
-    } else {
-        operations::get_git_info_shell(&t, &wd)
-            .await
-            .map_err(AppError::from)
-    }
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    operations::get_git_info(&*backend, &wd)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -384,17 +364,10 @@ pub async fn get_git_branch_info(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitBranchInfo, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    if t.supports_git2() {
-        let repo = t
-            .open_repo(&wd)
-            .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        crate::common::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)
-    } else {
-        operations::get_git_branch_info_shell(&t, &wd)
-            .await
-            .map_err(AppError::from)
-    }
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    operations::get_git_branch_info(&*backend, &wd)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -403,23 +376,16 @@ pub async fn get_worktree_changed_files(
     worktree_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileChange>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
+    let (backend, wd) = state.resolve_project(&project_id)?;
     // When worktree_path is empty, use the main project path
     let repo_path = if worktree_path.is_empty() {
         &wd
     } else {
         &worktree_path
     };
-    if t.supports_git2() {
-        let repo = t
-            .open_repo(repo_path)
-            .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
-        crate::common::git::local::get_changed_files_from_repo(&repo).map_err(AppError::from)
-    } else {
-        operations::get_worktree_changed_files(&t, repo_path)
-            .await
-            .map_err(AppError::from)
-    }
+    operations::get_worktree_changed_files(&*backend, repo_path)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -427,15 +393,10 @@ pub async fn get_changed_files_diff_stats(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileDiffStats>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    if t.supports_git2() {
-        let repo_path = std::path::Path::new(&wd);
-        crate::common::git::local::get_changed_files_diff_stats(repo_path).map_err(AppError::from)
-    } else {
-        operations::get_changed_files_diff_stats_local(&wd)
-            .await
-            .map_err(AppError::from)
-    }
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    operations::get_changed_files_diff_stats(&*backend, &wd)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -445,15 +406,10 @@ pub async fn get_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let result = if t.supports_git2() {
-        crate::common::git::local::get_file_diff(std::path::Path::new(&wd), &file_path)
-            .map_err(AppError::from)
-    } else {
-        operations::get_file_diff(&t, &wd, &file_path)
-            .await
-            .map_err(AppError::from)
-    };
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    let result = operations::get_file_diff(&*backend, &wd, &file_path)
+        .await
+        .map_err(AppError::from);
     let elapsed_ms = t0.elapsed().as_millis();
     log::debug!("[perf] Rust get_file_diff: {} {}ms", file_path, elapsed_ms);
     result
@@ -478,7 +434,7 @@ pub async fn get_commit_log(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitEntry>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_log(&t, &wd, count, skip.unwrap_or(0))
+    operations::get_commit_log(&*t, &wd, count, skip.unwrap_or(0))
         .await
         .map_err(AppError::from)
 }
@@ -490,7 +446,7 @@ pub async fn get_commit_detail(
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitDetail, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_detail(&t, &wd, &commit_hash)
+    operations::get_commit_detail(&*t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -502,7 +458,7 @@ pub async fn get_commit_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_files(&t, &wd, &commit_hash)
+    operations::get_commit_files(&*t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -515,7 +471,7 @@ pub async fn get_commit_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_file_diff(&t, &wd, &commit_hash, &file_path)
+    operations::get_commit_file_diff(&*t, &wd, &commit_hash, &file_path)
         .await
         .map_err(AppError::from)
 }
@@ -526,7 +482,7 @@ pub async fn get_ahead_behind(
     state: State<'_, AppStateWrapper>,
 ) -> Result<AheadBehind, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_ahead_behind(&t, &wd)
+    operations::get_ahead_behind(&*t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -539,7 +495,7 @@ pub async fn default_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::default_branch(&t, &wd)
+    operations::default_branch(&*t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -559,7 +515,7 @@ pub async fn read_dir_tree(
 ) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::read_dir_tree(&target, &base, sub_path.as_deref(), depth).await
 }
@@ -574,7 +530,7 @@ pub async fn read_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::read_file_content(&target, &base, &file_path).await
 }
@@ -588,7 +544,7 @@ pub async fn write_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
 }
@@ -696,196 +652,6 @@ fn resolve_agent_for_remote(
     (selected_agent.to_string(), vec![], vec![])
 }
 
-// ─── Commit message generation (unified Remote + WSL) ───────────────────────
-
-/// 通过 agent CLI 生成 commit message（Remote/WSL 统一入口）。
-/// Agent 在远程/WSL 服务器上执行，自行分析变更，不传入 diff 内容。
-#[tauri::command]
-pub async fn generate_commit_message(
-    project_id: String,
-    agent_id: String,
-    agent_command_override: Option<String>,
-    file_paths: Vec<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<String, AppError> {
-    use crate::common::agent::services::commit as ai_svc;
-    let _ = agent_command_override; // Remote/WSL 不使用宿主机 override
-
-    // 1. 解析 agent 配置（selected_agent 可能是 ID 或完整路径）
-    let (agent_cmd, prompt_args, post_prompt_args) = resolve_agent_for_remote(&state, &agent_id);
-
-    // 2. 构建 prompt
-    let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
-
-    // 3. 构建命令字符串（共享函数）— 差异在 transport 分支中处理
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let output = match &t {
-        GitTransport::Local => {
-            let sp = std::path::PathBuf::from(&wd);
-            let config =
-                resolve_agent_config(&state, &agent_id, agent_command_override.as_deref())?;
-            ai_svc::generate_commit_message(&sp, &config, &file_paths).map_err(AppError::from)?
-        }
-        GitTransport::Remote {
-            host,
-            port,
-            username,
-            auth,
-        } => {
-            let sp = crate::common::utils::command::local::safe_path(&wd);
-            let actual_cmd = ai_svc::build_agent_commit_cmd(
-                &sp,
-                &agent_cmd,
-                &prompt_args,
-                &post_prompt_args,
-                &prompt,
-            );
-
-            log::info!(
-                "[AI commit Remote] agent_cmd='{}' prompt_args={:?} post_prompt_args={:?}",
-                agent_cmd,
-                prompt_args,
-                post_prompt_args
-            );
-            log::info!(
-                "[AI commit Remote] actual_cmd (first 500 chars): {}",
-                &actual_cmd[..actual_cmd.len().min(500)]
-            );
-
-            // 注入环境加载前缀，bash -ic 交互模式绕过 .bashrc 的 non-interactive guard
-            let env_prefix = r#"source ~/.profile 2>/dev/null"#;
-            let full_cmd = format!(
-                "bash -ic <<'NEEKO_BASH'\n{}; {}\nNEEKO_BASH",
-                env_prefix, actual_cmd
-            );
-
-            log::info!(
-                "[AI commit Remote] host={}:{} full_cmd_len={}",
-                host,
-                port,
-                full_cmd.len()
-            );
-
-            // 通过 SSH 执行
-            let target = crate::common::executor::factory::ExecTarget::Remote {
-                host: host.clone(),
-                port: *port,
-                username: username.clone(),
-                auth: auth.clone(),
-            };
-            match crate::common::executor::sync::exec_on(&target, "sh", &["-c", &full_cmd]).await {
-                Ok(o) => {
-                    log::info!("[AI commit Remote] success, stdout_len={}", o.len());
-                    if !o.is_empty() {
-                        log::info!(
-                            "[AI commit Remote] stdout (first 500 chars): {}",
-                            &o[..o.len().min(500)]
-                        );
-                    }
-                    o
-                }
-                Err(e) => {
-                    log::error!("[AI commit Remote] exec failed: {}", e);
-                    return Err(AppError::InvalidInput(format!(
-                        "Failed to run agent on remote: {}",
-                        e
-                    )));
-                }
-            }
-        }
-        #[cfg(target_os = "windows")]
-        GitTransport::Wsl { distro } => {
-            let sp = crate::common::utils::command::local::safe_path(&wd);
-            let actual_cmd = ai_svc::build_agent_commit_cmd(
-                &sp,
-                &agent_cmd,
-                &prompt_args,
-                &post_prompt_args,
-                &prompt,
-            );
-
-            // 注入环境加载前缀，source ~/.profile 加载用户路径（.cargo/bin 等）
-            let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
-
-            // 通过 ExecTarget::Wsl + exec_on 获取 WSL 默认用户名
-            let target = crate::common::executor::factory::ExecTarget::Wsl {
-                distro: distro.clone(),
-            };
-            let wsl_user = match crate::common::executor::sync::exec_on(&target, "whoami", &[])
-                .await
-            {
-                Ok(s) => s.trim().to_string(),
-                Err(e) => {
-                    log::warn!(
-                        "[AI commit WSL] Failed to get WSL user via executor: {}, falling back to root",
-                        e
-                    );
-                    "root".to_string()
-                }
-            };
-            log::info!("[AI commit WSL] wsl_user={}", wsl_user);
-
-            // 使用 bash -ic 交互模式执行（绕过 .bashrc 的 non-interactive guard，确保 nvm 加载）
-            //    -u <user>: 确保 HOME=/home/<user>，profile 路径正确
-            //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
-            let wsl_output = crate::common::executor::wsl::exec_wsl(
-                distro,
-                Some(&wsl_user),
-                &["PATH"],
-                "bash",
-                &["-ic", &actual_cmd],
-            )
-            .await
-            .map_err(|e| AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e)))?;
-
-            let exit_code = wsl_output.exit_code;
-            let stderr = String::from_utf8_lossy(&wsl_output.stderr)
-                .trim()
-                .to_string();
-            let stdout = String::from_utf8_lossy(&wsl_output.stdout)
-                .trim()
-                .to_string();
-
-            log::info!(
-                "[AI commit WSL] exit_code={} stdout_len={} stderr_len={}",
-                exit_code,
-                stdout.len(),
-                stderr.len()
-            );
-            if !stdout.is_empty() {
-                log::info!(
-                    "[AI commit WSL] stdout (first 500 chars): {}",
-                    &stdout[..stdout.len().min(500)]
-                );
-            }
-            if !stderr.is_empty() {
-                log::warn!(
-                    "[AI commit WSL] stderr (first 500 chars): {}",
-                    &stderr[..stderr.len().min(500)]
-                );
-            }
-
-            if exit_code != 0 {
-                let msg = if !stderr.is_empty() { stderr } else { stdout };
-                return Err(AppError::InvalidInput(format!(
-                    "Failed to run agent in WSL: {}",
-                    msg
-                )));
-            }
-            String::from_utf8_lossy(&wsl_output.stdout).to_string()
-        }
-    };
-
-    // 清理输出
-    let message = ai_svc::clean_ai_output(&output);
-    if message.is_empty() {
-        return Err(AppError::InvalidInput(
-            "Agent returned an empty response.".to_string(),
-        ));
-    }
-    Ok(message)
-}
-
 // ─── Remote/SSH utilities ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -928,7 +694,7 @@ pub async fn list_prs_command(
 ) -> Result<Vec<PRListItem>, AppError> {
     let (t, wd) = state_w.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_prs(wd_path, &target, &state, limit)
         .await
         .map_err(AppError::from)
@@ -941,7 +707,7 @@ pub async fn list_repo_labels_command(
 ) -> Result<Vec<PrLabel>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_repo_labels(wd_path, &target)
         .await
         .map_err(AppError::from)
@@ -954,7 +720,7 @@ pub async fn list_repo_authors_command(
 ) -> Result<Vec<String>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_repo_authors(wd_path, &target)
         .await
         .map_err(AppError::from)
@@ -968,7 +734,7 @@ pub async fn view_pr_command(
 ) -> Result<PRInfo, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::view_pr(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
@@ -985,7 +751,7 @@ pub async fn create_pr_command(
 ) -> Result<u64, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::create_pr(wd_path, &target, &title, &body, base.as_deref(), draft)
         .await
         .map_err(AppError::from)
@@ -1000,7 +766,7 @@ pub async fn merge_pr_command(
 ) -> Result<PRMergeResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::merge_pr(wd_path, &target, pr_number, &method)
         .await
         .map_err(AppError::from)
@@ -1014,7 +780,7 @@ pub async fn close_pr_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::close_pr(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
@@ -1028,7 +794,7 @@ pub async fn list_pr_files_command(
 ) -> Result<Vec<PRFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_pr_files(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
@@ -1042,7 +808,7 @@ pub async fn list_pr_commits_command(
 ) -> Result<Vec<PRCommit>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_pr_commits(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
@@ -1060,7 +826,7 @@ pub async fn add_pr_review_comment_command(
 ) -> Result<PRReviewComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::add_pr_review_comment(wd_path, &target, pr_number, &body, &file_path, line, &side)
         .await
         .map_err(AppError::from)
@@ -1075,7 +841,7 @@ pub async fn list_pr_review_comments_command(
     let t0 = std::time::Instant::now();
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     let result = crate::git::list_pr_review_comments(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)?;
@@ -1097,7 +863,7 @@ pub async fn list_pr_comments_command(
 ) -> Result<Vec<PRComment>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::list_pr_comments(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
@@ -1112,7 +878,7 @@ pub async fn add_pr_comment_command(
 ) -> Result<PRComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::add_pr_comment(wd_path, &target, pr_number, &body)
         .await
         .map_err(AppError::from)
@@ -1128,7 +894,7 @@ pub async fn edit_pr_comment_command(
 ) -> Result<PRComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::edit_pr_comment(wd_path, &target, pr_number, &comment_id, &body)
         .await
         .map_err(AppError::from)
@@ -1143,7 +909,7 @@ pub async fn delete_pr_comment_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::delete_pr_comment(wd_path, &target, pr_number, &comment_id)
         .await
         .map_err(AppError::from)
@@ -1159,30 +925,8 @@ pub async fn add_comment_reaction_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = exec_target_from_git_transport(&t);
+    let target = t.exec_target();
     crate::git::add_comment_reaction(wd_path, &target, pr_number, &comment_id, &emoji)
         .await
         .map_err(AppError::from)
-}
-
-/// Helper: convert GitTransport to ExecTarget for PR operations.
-fn exec_target_from_git_transport(t: &GitTransport) -> ExecTarget {
-    match t {
-        GitTransport::Local => ExecTarget::Local,
-        #[cfg(target_os = "windows")]
-        GitTransport::Wsl { distro } => ExecTarget::Wsl {
-            distro: distro.clone(),
-        },
-        GitTransport::Remote {
-            host,
-            port,
-            username,
-            auth,
-        } => ExecTarget::Remote {
-            host: host.clone(),
-            port: *port,
-            username: username.clone(),
-            auth: auth.clone(),
-        },
-    }
 }

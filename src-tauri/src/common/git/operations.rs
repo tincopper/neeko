@@ -16,7 +16,7 @@ use crate::project::types::{
 
 /// Stage specific files: `git add -- <files>`
 pub async fn stage_files(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     file_paths: &[String],
 ) -> Result<()> {
@@ -30,7 +30,7 @@ pub async fn stage_files(
 
 /// Unstage specific files: `git restore --staged -- <files>`
 pub async fn unstage_files(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     file_paths: &[String],
 ) -> Result<()> {
@@ -43,13 +43,13 @@ pub async fn unstage_files(
 }
 
 /// Stage all changes: `git add -A`
-pub async fn stage_all(transport: &GitTransport, work_dir: &str) -> Result<()> {
+pub async fn stage_all(transport: &dyn GitTransport, work_dir: &str) -> Result<()> {
     transport.run_git(&["add", "-A"], work_dir).await?;
     Ok(())
 }
 
 /// Unstage all changes: `git restore --staged .`
-pub async fn unstage_all(transport: &GitTransport, work_dir: &str) -> Result<()> {
+pub async fn unstage_all(transport: &dyn GitTransport, work_dir: &str) -> Result<()> {
     transport
         .run_git(&["restore", "--staged", "."], work_dir)
         .await?;
@@ -57,7 +57,11 @@ pub async fn unstage_all(transport: &GitTransport, work_dir: &str) -> Result<()>
 }
 
 /// Discard file changes: `git checkout -- <file>`
-pub async fn discard_file(transport: &GitTransport, work_dir: &str, file_path: &str) -> Result<()> {
+pub async fn discard_file(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    file_path: &str,
+) -> Result<()> {
     transport
         .run_git(&["checkout", "--", file_path], work_dir)
         .await?;
@@ -65,7 +69,7 @@ pub async fn discard_file(transport: &GitTransport, work_dir: &str, file_path: &
 }
 
 /// Discard all changes: `git checkout -- .`
-pub async fn discard_all(transport: &GitTransport, work_dir: &str) -> Result<()> {
+pub async fn discard_all(transport: &dyn GitTransport, work_dir: &str) -> Result<()> {
     transport
         .run_git(&["checkout", "--", "."], work_dir)
         .await?;
@@ -74,7 +78,7 @@ pub async fn discard_all(transport: &GitTransport, work_dir: &str) -> Result<()>
 }
 
 /// Fetch from all remotes: `git fetch --all`
-pub async fn fetch(transport: &GitTransport, work_dir: &str) -> Result<PushOutcome> {
+pub async fn fetch(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOutcome> {
     let result = transport.run_git(&["fetch", "--all"], work_dir).await;
     match result {
         Ok(_) => Ok(PushOutcome::Success {}),
@@ -84,7 +88,7 @@ pub async fn fetch(transport: &GitTransport, work_dir: &str) -> Result<PushOutco
 
 /// Fetch with cached credentials (approve before fetch).
 pub async fn fetch_with_credentials(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     username: &str,
     password: &str,
@@ -94,7 +98,7 @@ pub async fn fetch_with_credentials(
 
 /// Push to remote: `git push [--set-upstream [-o origin <branch>]]`
 pub async fn push(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     set_upstream: bool,
 ) -> Result<PushOutcome> {
@@ -109,7 +113,7 @@ pub async fn push(
 
 /// Push with pre-approved credentials (credential_approve + push).
 pub async fn push_with_credentials(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     set_upstream: bool,
     username: &str,
@@ -121,7 +125,7 @@ pub async fn push_with_credentials(
 }
 
 /// Pull: fetch + merge --ff-only
-pub async fn pull(transport: &GitTransport, work_dir: &str) -> Result<PushOutcome> {
+pub async fn pull(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOutcome> {
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;
@@ -141,7 +145,7 @@ pub async fn pull(transport: &GitTransport, work_dir: &str) -> Result<PushOutcom
 
 /// Pull with pre-approved credentials.
 pub async fn pull_with_credentials(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     username: &str,
     password: &str,
@@ -170,7 +174,7 @@ pub async fn pull_with_credentials(
 
 /// Commit staged changes: `git commit -m <message>`
 pub async fn commit_files(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     file_paths: &[String],
     message: &str,
@@ -191,7 +195,7 @@ pub async fn commit_files(
 
 /// Cherry-pick a commit: `git cherry-pick <commit_hash>`
 pub async fn cherry_pick(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
 ) -> Result<()> {
@@ -202,7 +206,7 @@ pub async fn cherry_pick(
 }
 
 /// Revert a commit: `git revert --no-edit <commit_hash>`
-pub async fn revert(transport: &GitTransport, work_dir: &str, commit_hash: &str) -> Result<()> {
+pub async fn revert(transport: &dyn GitTransport, work_dir: &str, commit_hash: &str) -> Result<()> {
     transport
         .run_git(&["revert", "--no-edit", commit_hash], work_dir)
         .await?;
@@ -211,7 +215,7 @@ pub async fn revert(transport: &GitTransport, work_dir: &str, commit_hash: &str)
 
 /// Create a tag: `git tag -a <name> -m <message>`
 pub async fn create_tag(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     name: &str,
     message: &str,
@@ -226,7 +230,7 @@ pub async fn create_tag(
 
 /// Checkout a branch: `git checkout <branch_name>`
 pub async fn checkout_branch(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     branch_name: &str,
 ) -> Result<()> {
@@ -238,7 +242,7 @@ pub async fn checkout_branch(
 
 /// Create a branch: `git branch <branch_name> [<start_point>]`
 pub async fn create_branch(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     branch_name: &str,
     start_point: Option<&str>,
@@ -253,7 +257,7 @@ pub async fn create_branch(
 
 /// Delete a branch: `git branch -d <branch_name>` (force: `-D`)
 pub async fn delete_branch(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     branch_name: &str,
     force: bool,
@@ -267,7 +271,7 @@ pub async fn delete_branch(
 
 /// Rename a branch: `git branch -m <old_name> <new_name>`
 pub async fn rename_branch(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     old_name: &str,
     new_name: &str,
@@ -280,7 +284,7 @@ pub async fn rename_branch(
 
 /// Create and switch to a new branch: `git checkout -b <branch_name>`
 pub async fn create_and_switch_branch(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     branch_name: &str,
 ) -> Result<()> {
@@ -292,7 +296,7 @@ pub async fn create_and_switch_branch(
 
 /// Checkout detached HEAD
 pub async fn checkout_detached(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
 ) -> Result<()> {
@@ -306,7 +310,7 @@ pub async fn checkout_detached(
 
 /// Remove a worktree: `git worktree remove --force <path>`
 pub async fn remove_worktree(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     worktree_path: &str,
 ) -> Result<()> {
@@ -318,7 +322,7 @@ pub async fn remove_worktree(
 
 /// Rename a worktree: `git worktree move <old_path> <new_path>`
 pub async fn rename_worktree(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     old_path: &str,
     new_path: &str,
@@ -330,7 +334,7 @@ pub async fn rename_worktree(
 }
 
 /// Check if a worktree is dirty: `git status --porcelain` returns output
-pub async fn is_worktree_dirty(transport: &GitTransport, worktree_path: &str) -> Result<bool> {
+pub async fn is_worktree_dirty(transport: &dyn GitTransport, worktree_path: &str) -> Result<bool> {
     let output = transport
         .run_git(&["status", "--porcelain"], worktree_path)
         .await?;
@@ -339,7 +343,7 @@ pub async fn is_worktree_dirty(transport: &GitTransport, worktree_path: &str) ->
 
 /// Create a worktree: `git worktree add <path> <branch>`
 pub async fn create_worktree(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     worktree_path: &str,
     branch_name: &str,
@@ -359,7 +363,7 @@ pub async fn create_worktree(
 }
 
 /// Get default branch: `git remote show origin | grep HEAD`
-pub async fn default_branch(transport: &GitTransport, work_dir: &str) -> Result<String> {
+pub async fn default_branch(transport: &dyn GitTransport, work_dir: &str) -> Result<String> {
     let output = transport
         .run_git(&["remote", "show", "origin"], work_dir)
         .await?;
@@ -382,7 +386,7 @@ pub async fn default_branch(transport: &GitTransport, work_dir: &str) -> Result<
 
 /// Get commit log: `git log --format=...`
 pub async fn get_commit_log(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     count: usize,
     skip: usize,
@@ -411,7 +415,7 @@ pub async fn get_commit_log(
 
 /// Get commit detail: `git show --format=... --no-patch <hash>`
 pub async fn get_commit_detail(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
 ) -> Result<CommitDetail> {
@@ -446,7 +450,7 @@ pub async fn get_commit_detail(
 
 /// Get files changed in a commit: `git diff-tree --numstat <hash>`
 pub async fn get_commit_files(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
 ) -> Result<Vec<CommitFileChange>> {
@@ -516,7 +520,7 @@ pub async fn get_commit_files(
 
 /// Get file diff for a commit: `git diff <hash>^ <hash> -- <file>`
 pub async fn get_commit_file_diff(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
     file_path: &str,
@@ -539,7 +543,7 @@ pub async fn get_commit_file_diff(
 }
 
 /// Get ahead/behind counts: `git rev-list --left-right --count`
-pub async fn get_ahead_behind(transport: &GitTransport, work_dir: &str) -> Result<AheadBehind> {
+pub async fn get_ahead_behind(transport: &dyn GitTransport, work_dir: &str) -> Result<AheadBehind> {
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;
@@ -564,7 +568,7 @@ pub async fn get_ahead_behind(transport: &GitTransport, work_dir: &str) -> Resul
 
 /// Get diff for specific files against HEAD
 pub async fn get_diff_for_files(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     file_paths: &[String],
     line_limit: usize,
@@ -597,7 +601,7 @@ pub async fn get_diff_for_files(
 
 /// Get staged diff: `git diff --cached`
 pub async fn get_staged_diff(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     line_limit: usize,
 ) -> Result<String> {
@@ -625,7 +629,7 @@ pub async fn get_staged_diff(
 // ─── Info operations (shell-based, works for all transports) ─────────────────
 
 /// Get git info using shell commands. Falls back to shell even for local.
-pub async fn get_git_info_shell(transport: &GitTransport, work_dir: &str) -> Result<GitInfo> {
+pub async fn get_git_info_shell(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
     let branch_info = get_git_branch_info_shell(transport, work_dir).await?;
     let changed_files = transport
         .run_git(&["status", "--porcelain"], work_dir)
@@ -660,7 +664,7 @@ pub async fn get_git_info_shell(transport: &GitTransport, work_dir: &str) -> Res
 
 /// Get git branch info using shell commands
 pub async fn get_git_branch_info_shell(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
 ) -> Result<GitBranchInfo> {
     let head = transport
@@ -766,8 +770,8 @@ fn parse_porcelain_status(output: &str) -> Vec<FileChange> {
 }
 
 /// Get changed files for a worktree path (shell-based) with additions/deletions
-pub async fn get_worktree_changed_files(
-    transport: &GitTransport,
+async fn get_worktree_changed_files_shell(
+    transport: &dyn GitTransport,
     worktree_path: &str,
 ) -> Result<Vec<FileChange>> {
     let output = transport
@@ -821,9 +825,9 @@ pub async fn get_worktree_changed_files(
     Ok(files)
 }
 
-/// Get file diff for a worktree path
-pub async fn get_file_diff(
-    transport: &GitTransport,
+/// Get file diff for a worktree path (shell-based)
+async fn get_file_diff_shell(
+    transport: &dyn GitTransport,
     work_dir: &str,
     file_path: &str,
 ) -> Result<DiffResult> {
@@ -923,9 +927,88 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
     Ok(stats)
 }
 
+// ── Optimized dispatch: git2 when available, shell fallback ────────────────
+
+/// Get git info. Uses git2 for local transports, shell fallback otherwise.
+pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
+    if let Some(repo) = transport.open_repo(work_dir) {
+        let branch_info = super::local::get_git_branch_info_from_repo(&repo)?;
+        let changed_files = super::local::get_changed_files_from_repo(&repo)?;
+        let is_clean = changed_files.is_empty();
+        let git_provider = repo
+            .find_remote("origin")
+            .ok()
+            .and_then(|r| r.url().map(|u| u.to_string()))
+            .map(|u| detect_provider(&u))
+            .unwrap_or(GitProvider::Unknown);
+        Ok(GitInfo {
+            current_branch: branch_info.current_branch,
+            branches: branch_info.branches,
+            worktrees: branch_info.worktrees,
+            changed_files,
+            is_clean,
+            git_provider,
+        })
+    } else {
+        get_git_info_shell(transport, work_dir).await
+    }
+}
+
+/// Get git branch info. Uses git2 for local transports, shell fallback otherwise.
+pub async fn get_git_branch_info(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+) -> Result<GitBranchInfo> {
+    if let Some(repo) = transport.open_repo(work_dir) {
+        Ok(super::local::get_git_branch_info_from_repo(&repo)?)
+    } else {
+        get_git_branch_info_shell(transport, work_dir).await
+    }
+}
+
+/// Get changed files for a worktree path. Uses git2 for local transports,
+/// shell fallback otherwise.
+pub async fn get_worktree_changed_files(
+    transport: &dyn GitTransport,
+    worktree_path: &str,
+) -> Result<Vec<FileChange>> {
+    if let Some(repo) = transport.open_repo(worktree_path) {
+        Ok(super::local::get_changed_files_from_repo(&repo)?)
+    } else {
+        get_worktree_changed_files_shell(transport, worktree_path).await
+    }
+}
+
+/// Get changed files diff stats (additions/deletions).
+/// Uses git2 for local transports, local shell fallback otherwise.
+pub async fn get_changed_files_diff_stats(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+) -> Result<Vec<FileDiffStats>> {
+    if transport.open_repo(work_dir).is_some() {
+        super::local::get_changed_files_diff_stats(std::path::Path::new(work_dir))
+    } else {
+        get_changed_files_diff_stats_local(work_dir).await
+    }
+}
+
+/// Get file diff for a worktree path. Uses git2 for local transports,
+/// shell fallback otherwise.
+pub async fn get_file_diff(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    file_path: &str,
+) -> Result<DiffResult> {
+    if let Some(_repo) = transport.open_repo(work_dir) {
+        super::local::get_file_diff(std::path::Path::new(work_dir), file_path)
+    } else {
+        get_file_diff_shell(transport, work_dir, file_path).await
+    }
+}
+
 /// Get recent commit messages
 pub async fn get_recent_commit_messages(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     count: usize,
 ) -> Result<Vec<String>> {
@@ -944,7 +1027,11 @@ pub async fn get_recent_commit_messages(
 // ── HTTPS credential helpers (AC1-AC6) ──────────────────────────────────────
 
 /// 构造 push 参数列表（带 --set-upstream 时附加 origin branch）。返回 String 避免生命周期问题。
-async fn push_args(transport: &GitTransport, work_dir: &str, set_upstream: bool) -> Vec<String> {
+async fn push_args(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    set_upstream: bool,
+) -> Vec<String> {
     if set_upstream {
         if let Some(branch) = get_current_branch_opt(transport, work_dir).await {
             vec![
@@ -963,7 +1050,7 @@ async fn push_args(transport: &GitTransport, work_dir: &str, set_upstream: bool)
 
 /// 跑一条 git 命令并在鉴权失败时返回 AuthRequired（approve 后重试用）。
 async fn exec_with_credentials(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     args: &[&str],
     username: &str,
@@ -1015,7 +1102,7 @@ async fn exec_with_credentials(
 /// 从 GitExecError 分类为 PushOutcome（Auth / AuthSsh → AuthRequired；其他 bail）。
 /// 异步版本，直接 await remote URL 获取，避免嵌套 tokio Runtime。
 async fn classify_git_error(
-    transport: &GitTransport,
+    transport: &dyn GitTransport,
     work_dir: &str,
     err: anyhow::Error,
 ) -> Result<PushOutcome> {
@@ -1058,7 +1145,7 @@ async fn classify_git_error(
 }
 
 /// 获取 origin remote URL。
-async fn get_remote_url(transport: &GitTransport, work_dir: &str) -> Result<String> {
+async fn get_remote_url(transport: &dyn GitTransport, work_dir: &str) -> Result<String> {
     transport
         .run_git(&["remote", "get-url", "origin"], work_dir)
         .await
@@ -1066,7 +1153,7 @@ async fn get_remote_url(transport: &GitTransport, work_dir: &str) -> Result<Stri
 }
 
 /// 获取当前分支名（Option 版，失败返回 None）。
-async fn get_current_branch_opt(transport: &GitTransport, work_dir: &str) -> Option<String> {
+async fn get_current_branch_opt(transport: &dyn GitTransport, work_dir: &str) -> Option<String> {
     transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await

@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use async_trait::async_trait;
 use tokio::io::AsyncWriteExt;
 
 use crate::common::connection::types::AuthMethod;
@@ -142,7 +143,48 @@ impl<'a> GitExecOptions<'a> {
     }
 }
 
-pub enum GitTransport {
+// ── Trait ──────────────────────────────────────────────────────────────────
+
+/// Transport-agnostic git operations trait.
+/// Each variant knows how to run git commands in its environment
+/// (local subprocess, WSL, or SSH remote).
+#[async_trait]
+pub trait GitTransport: Send + Sync {
+    /// Execute a raw git command, returning stdout.
+    async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String>;
+
+    /// Execute a git command with custom options (env, extra config).
+    async fn run_git_opts(
+        &self,
+        args: &[&str],
+        work_dir: &str,
+        opts: GitExecOptions<'_>,
+    ) -> Result<String>;
+
+    /// Execute a git command with stdin bytes (for credential helpers etc.).
+    async fn run_git_with_stdin(
+        &self,
+        args: &[&str],
+        work_dir: &str,
+        opts: GitExecOptions<'_>,
+        stdin: &[u8],
+    ) -> Result<String>;
+
+    /// Open a git2 Repository for local transport, if git2 is available.
+    /// Returns None for non-Local transports.
+    fn open_repo(&self, path: &str) -> Option<git2::Repository>;
+
+    /// Check if a directory is a git repo.
+    async fn is_git_repo(&self, path: &str) -> bool;
+
+    /// Return the ExecTarget corresponding to this transport.
+    fn exec_target(&self) -> ExecTarget;
+}
+
+// ── Concrete enum ──────────────────────────────────────────────────────────
+
+/// Concrete transport kinds. Implements [`GitTransport`].
+pub enum GitTransportKind {
     Local,
     #[cfg(target_os = "windows")]
     Wsl {
@@ -156,16 +198,19 @@ pub enum GitTransport {
     },
 }
 
-impl GitTransport {
+// ── Trait implementation ───────────────────────────────────────────────────
+
+#[async_trait]
+impl GitTransport for GitTransportKind {
     /// Execute a raw git command, returning stdout. 旧签名保留，委托默认选项。
-    pub async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
+    async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
         self.run_git_opts(args, work_dir, GitExecOptions::default())
             .await
     }
 
     /// 同 `run_git`，但允许注入 env 与 `-c` 配置。网络操作统一由调用方传入
     /// `GIT_TERMINAL_PROMPT=0` 与 `credential.helper`（见 `network_opts`）。
-    pub async fn run_git_opts(
+    async fn run_git_opts(
         &self,
         args: &[&str],
         work_dir: &str,
@@ -190,19 +235,38 @@ impl GitTransport {
         let config_args = opts.config_args();
 
         match self {
-            GitTransport::Local => {
-                use tokio::process::Command as TokioCommand;
+            GitTransportKind::Local => {
+                let executor = create_executor(&ExecTarget::Local);
 
                 let mut full_args: Vec<String> = config_args;
                 full_args.extend(args.iter().map(|s| s.to_string()));
 
-                let mut cmd = TokioCommand::new("git");
-                cmd.args(&full_args).current_dir(work_dir);
-                for (k, v) in &env {
-                    cmd.env(k, v);
-                }
+                let env_prefix: String = env
+                    .iter()
+                    .map(|(k, v)| format!("{}={} ", k, shell_quote(v)))
+                    .collect();
 
-                let output = tokio::time::timeout(timeout, cmd.output())
+                let quoted_args: String = full_args
+                    .iter()
+                    .map(|a| shell_quote(a))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                let shell_cmd = format!(
+                    "cd {} && {}exec git {}",
+                    shell_quote(work_dir),
+                    env_prefix,
+                    quoted_args,
+                );
+
+                let mut child = executor
+                    .spawn("sh", &["-c", &shell_cmd])
+                    .await
+                    .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
+
+                child.stdin.take();
+
+                let output = tokio::time::timeout(timeout, collect_child_output(child))
                     .await
                     .map_err(|_| {
                         anyhow::anyhow!(
@@ -211,10 +275,10 @@ impl GitTransport {
                             full_args.join(" ")
                         )
                     })?
-                    .map_err(|e| anyhow::anyhow!("git command failed to execute: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
 
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                if !output.status.success() {
+                if output.exit_code != 0 {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     return Err(GitExecError {
                         kind: classify_stderr(&stderr),
@@ -227,7 +291,7 @@ impl GitTransport {
                 Ok(stdout)
             }
             #[cfg(target_os = "windows")]
-            GitTransport::Wsl { distro } => {
+            GitTransportKind::Wsl { distro } => {
                 let sp = safe_path(work_dir);
                 let env_prefix: String = env
                     .iter()
@@ -254,7 +318,7 @@ impl GitTransport {
                     .into()
                 })
             }
-            GitTransport::Remote {
+            GitTransportKind::Remote {
                 host,
                 port,
                 username,
@@ -296,7 +360,7 @@ impl GitTransport {
 
     /// 执行 git 命令并向 stdin 写入字节（供 `git credential fill/approve/reject`）。
     /// Local、WSL、SSH 均通过真实 stdin 管道 + 统一输出收集执行。
-    pub async fn run_git_with_stdin(
+    async fn run_git_with_stdin(
         &self,
         args: &[&str],
         work_dir: &str,
@@ -312,7 +376,7 @@ impl GitTransport {
         let command = format!("git {}", full_args.join(" "));
 
         match self {
-            GitTransport::Local => {
+            GitTransportKind::Local => {
                 let executor = create_executor(&ExecTarget::Local);
 
                 // Build env prefix: ENV=VAL ENV2=VAL2 ...
@@ -375,8 +439,8 @@ impl GitTransport {
                 Ok(stdout_str)
             }
             #[cfg(target_os = "windows")]
-            GitTransport::Wsl { distro } => {
-                self.exec_git_with_stdin_remote(
+            GitTransportKind::Wsl { distro } => {
+                exec_git_with_stdin_remote(
                     &ExecTarget::Wsl {
                         distro: distro.clone(),
                     },
@@ -386,13 +450,13 @@ impl GitTransport {
                 )
                 .await
             }
-            GitTransport::Remote {
+            GitTransportKind::Remote {
                 host,
                 port,
                 username,
                 auth,
             } => {
-                self.exec_git_with_stdin_remote(
+                exec_git_with_stdin_remote(
                     &ExecTarget::Remote {
                         host: host.clone(),
                         port: *port,
@@ -408,68 +472,23 @@ impl GitTransport {
         }
     }
 
-    /// WSL/Remote 共用的 stdin 管道执行路径：通过 executor spawn、写 stdin、收集输出。
-    async fn exec_git_with_stdin_remote(
-        &self,
-        target: &ExecTarget,
-        full_args: &[String],
-        command: &str,
-        stdin: &[u8],
-    ) -> Result<String> {
-        let executor = create_executor(target);
-        let args_refs: Vec<&str> = full_args.iter().map(|s| s.as_str()).collect();
-        let mut child = executor
-            .spawn("git", &args_refs)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to spawn git: {}", e))?;
-
-        if let Some(mut child_stdin) = child.stdin.take() {
-            child_stdin
-                .write_all(stdin)
-                .await
-                .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
-        }
-
-        let output = collect_child_output(child)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        if output.exit_code != 0 {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(GitExecError {
-                kind: classify_stderr(&stderr),
-                stderr,
-                stdout,
-                command: command.to_string(),
-            }
-            .into());
-        }
-        Ok(stdout)
-    }
-
     /// Open a git2 Repository for local transport, if git2 is available.
     /// Returns None for non-Local transports.
-    pub fn open_repo(&self, path: &str) -> Option<git2::Repository> {
+    fn open_repo(&self, path: &str) -> Option<git2::Repository> {
         match self {
-            GitTransport::Local => git2::Repository::open(path).ok(),
+            GitTransportKind::Local => git2::Repository::open(path).ok(),
             #[cfg(target_os = "windows")]
-            GitTransport::Wsl { .. } => None,
-            GitTransport::Remote { .. } => None,
+            GitTransportKind::Wsl { .. } => None,
+            GitTransportKind::Remote { .. } => None,
         }
-    }
-
-    /// Check if this transport supports git2 operations
-    pub fn supports_git2(&self) -> bool {
-        matches!(self, GitTransport::Local)
     }
 
     /// Check if a directory is a git repo
-    pub async fn is_git_repo(&self, path: &str) -> bool {
+    async fn is_git_repo(&self, path: &str) -> bool {
         match self {
-            GitTransport::Local => std::path::Path::new(path).join(".git").exists(),
+            GitTransportKind::Local => std::path::Path::new(path).join(".git").exists(),
             #[cfg(target_os = "windows")]
-            GitTransport::Wsl { distro } => {
+            GitTransportKind::Wsl { distro } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
                 exec_on(
@@ -481,7 +500,7 @@ impl GitTransport {
                 )
                 .is_ok()
             }
-            GitTransport::Remote {
+            GitTransportKind::Remote {
                 host,
                 port,
                 username,
@@ -504,6 +523,66 @@ impl GitTransport {
             }
         }
     }
+
+    fn exec_target(&self) -> ExecTarget {
+        match self {
+            GitTransportKind::Local => ExecTarget::Local,
+            #[cfg(target_os = "windows")]
+            GitTransportKind::Wsl { distro } => ExecTarget::Wsl {
+                distro: distro.clone(),
+            },
+            GitTransportKind::Remote {
+                host,
+                port,
+                username,
+                auth,
+            } => ExecTarget::Remote {
+                host: host.clone(),
+                port: *port,
+                username: username.clone(),
+                auth: auth.clone(),
+            },
+        }
+    }
+}
+
+/// WSL/Remote 共用的 stdin 管道执行路径：通过 executor spawn、写 stdin、收集输出。
+async fn exec_git_with_stdin_remote(
+    target: &ExecTarget,
+    full_args: &[String],
+    command: &str,
+    stdin: &[u8],
+) -> Result<String> {
+    let executor = create_executor(target);
+    let args_refs: Vec<&str> = full_args.iter().map(|s| s.as_str()).collect();
+    let mut child = executor
+        .spawn("git", &args_refs)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to spawn git: {}", e))?;
+
+    if let Some(mut child_stdin) = child.stdin.take() {
+        child_stdin
+            .write_all(stdin)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
+    }
+
+    let output = collect_child_output(child)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(GitExecError {
+            kind: classify_stderr(&stderr),
+            stderr,
+            stdout,
+            command: command.to_string(),
+        }
+        .into());
+    }
+    Ok(stdout)
 }
 
 /// POSIX 单引号 shell 转义：把值包成 `'...'`，内部 `'` 转成 `'\''`。
@@ -614,7 +693,7 @@ mod tests {
     #[tokio::test]
     async fn should_inject_env_into_git() {
         // 通过 GIT_AUTHOR_NAME 环境变量，git var GIT_AUTHOR_IDENT 返回该作者信息
-        let transport = GitTransport::Local;
+        let transport = GitTransportKind::Local;
         let opts = GitExecOptions {
             env: &[("GIT_AUTHOR_NAME", "Neeko Test")],
             extra_config: &[],
@@ -631,7 +710,7 @@ mod tests {
     #[tokio::test]
     async fn should_feed_stdin_to_git_hash_object() {
         // git hash-object --stdin 对输入字节计算 blob hash
-        let transport = GitTransport::Local;
+        let transport = GitTransportKind::Local;
         let opts = GitExecOptions::default();
         let out = transport
             .run_git_with_stdin(&["hash-object", "--stdin"], ".", opts, b"hello\n")
@@ -649,7 +728,7 @@ mod tests {
     async fn should_return_classified_error_on_auth_failure() {
         // git push 到一个不存在的本地路径会失败；这里用一个必失败的命令触发 GitExecError
         // 用 `git --no-such-flag` 触发非零退出，stderr 不含鉴权模式 → Other
-        let transport = GitTransport::Local;
+        let transport = GitTransportKind::Local;
         let result = transport
             .run_git_opts(&["--no-such-flag"], ".", GitExecOptions::default())
             .await;
@@ -662,7 +741,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_run_git() {
-        let transport = GitTransport::Local;
+        let transport = GitTransportKind::Local;
         let result = transport.run_git(&["--version"], ".").await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("git version"));
@@ -670,7 +749,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_is_git_repo() {
-        let transport = GitTransport::Local;
+        let transport = GitTransportKind::Local;
         assert!(!transport.is_git_repo("/tmp").await);
     }
 }

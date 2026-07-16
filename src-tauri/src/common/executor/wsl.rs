@@ -3,17 +3,19 @@
 //! Bridges command execution into a Windows Subsystem for Linux distribution
 //! by spawning `wsl.exe` with the appropriate distro flag.
 
-use async_trait::async_trait;
+use std::sync::Arc;
 
-#[cfg(target_os = "windows")]
-use super::local::LocalExecutor;
-use super::{CommandExecutor, ExecChild, ExecError, ExecOutput};
+use async_trait::async_trait;
+use futures::FutureExt;
+use tokio::sync::Mutex;
+
+use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError};
 
 /// Executor that runs commands inside a WSL distribution.
 ///
-/// Internally delegates to [`LocalExecutor`] with `wsl.exe` as the program.
-/// Only available on `cfg(windows)`; on other platforms the executor is a
-/// stub that always returns an error.
+/// On Windows spawns `wsl.exe` with `env_remove("PATH")` to prevent Windows
+/// PATH entries from leaking into the WSL environment. On other platforms
+/// this executor is a stub that always returns an error.
 #[cfg(target_os = "windows")]
 pub struct WslExecutor {
     distro: Option<String>,
@@ -21,7 +23,6 @@ pub struct WslExecutor {
 
 #[cfg(target_os = "windows")]
 impl WslExecutor {
-    /// Create an executor for a named WSL distribution.
     pub fn new(distro: String) -> Self {
         Self {
             distro: Some(distro),
@@ -42,18 +43,40 @@ impl CommandExecutor for WslExecutor {
         wsl_args.push(cmd);
         wsl_args.extend(args.iter().copied());
 
-        let local = LocalExecutor;
-        local.spawn("wsl.exe", &wsl_args).await
+        let mut command = tokio::process::Command::new("wsl.exe");
+        command.args(&wsl_args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        command.env_remove("PATH");
+
+        let mut child = command.spawn().map_err(ExecError::Io)?;
+
+        let stdin: Option<BoxAsyncWrite> = child.stdin.take().map(|w| Box::pin(w) as BoxAsyncWrite);
+        let stdout: Option<BoxAsyncRead> = child.stdout.take().map(|r| Box::pin(r) as BoxAsyncRead);
+        let stderr: Option<BoxAsyncRead> = child.stderr.take().map(|r| Box::pin(r) as BoxAsyncRead);
+
+        let child_lock = Arc::new(Mutex::new(child));
+        let wait_child = Arc::clone(&child_lock);
+        let wait = async move {
+            let mut guard = wait_child.lock().await;
+            guard.wait().await.map_err(ExecError::Io)?.code().ok_or(ExecError::Killed)
+        };
+        let kill_child = Arc::clone(&child_lock);
+        let kill_fn = move || async move {
+            kill_child.lock().await.kill().await?;
+            Ok(())
+        }.boxed();
+
+        Ok(ExecChild::new(stdin, stdout, stderr, wait, kill_fn))
     }
 }
 
-/// Stub for non-Windows platforms.
 #[cfg(not(target_os = "windows"))]
 pub struct WslExecutor;
 
 #[cfg(not(target_os = "windows"))]
 impl WslExecutor {
-    /// Create the platform stub while preserving the cross-platform API.
     pub fn new(_distro: String) -> Self {
         Self
     }
@@ -63,69 +86,6 @@ impl WslExecutor {
 #[async_trait]
 impl CommandExecutor for WslExecutor {
     async fn spawn(&self, _cmd: &str, _args: &[&str]) -> Result<ExecChild, ExecError> {
-        Err(ExecError::Wsl(
-            "WSL is only supported on Windows".to_string(),
-        ))
+        Err(ExecError::Wsl("WSL is only supported on Windows".to_string()))
     }
-}
-
-/// Execute a command inside a WSL distribution with full control over
-/// WSL-specific flags (`-u <user>`, `env_remove`, etc.) that the standard
-/// [`CommandExecutor`] trait does not expose through its generic `spawn`.
-///
-/// On non-Windows platforms this function returns `ExecError::Wsl`.
-///
-/// # Arguments
-///
-/// * `distro` - WSL distribution name (e.g. `"Ubuntu-22.04"`)
-/// * `user` - Optional WSL user to run as (sets the `-u` flag)
-/// * `env_remove_keys` - Environment variable keys to remove before execution
-/// * `cmd` - Command to run inside the distribution
-/// * `args` - Arguments to pass to the command
-#[cfg(target_os = "windows")]
-pub async fn exec_wsl(
-    distro: &str,
-    user: Option<&str>,
-    env_remove_keys: &[&str],
-    cmd: &str,
-    args: &[&str],
-) -> Result<ExecOutput, ExecError> {
-    let mut command = tokio::process::Command::new("wsl.exe");
-    command.arg("-d").arg(distro);
-    if let Some(user) = user {
-        command.arg("-u").arg(user);
-    }
-    command.arg("--").arg(cmd);
-    command.args(args);
-    for key in env_remove_keys {
-        command.env_remove(key);
-    }
-
-    let output = command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await
-        .map_err(ExecError::Io)?;
-
-    Ok(ExecOutput {
-        stdout: output.stdout,
-        stderr: output.stderr,
-        exit_code: output.status.code().unwrap_or(-1),
-    })
-}
-
-/// Non-Windows stub for [`exec_wsl`].
-#[cfg(not(target_os = "windows"))]
-pub async fn exec_wsl(
-    _distro: &str,
-    _user: Option<&str>,
-    _env_remove_keys: &[&str],
-    _cmd: &str,
-    _args: &[&str],
-) -> Result<ExecOutput, ExecError> {
-    Err(ExecError::Wsl(
-        "WSL is only supported on Windows".to_string(),
-    ))
 }

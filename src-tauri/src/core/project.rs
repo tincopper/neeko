@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::common::connection::types::AuthMethod;
+use crate::common::git::transport::GitTransportKind;
 use crate::common::terminal::types::TerminalSession;
 use crate::common::types::GitInfo;
 
@@ -29,18 +30,12 @@ impl Default for ProjectEnvironment {
 }
 
 impl ProjectEnvironment {
-    pub fn to_git_transport<'a>(
-        &'a self,
-        project_path: &'a str,
-    ) -> (crate::common::git::transport::GitTransport, &'a str) {
+    pub fn to_git_transport<'a>(&'a self, project_path: &'a str) -> (GitTransportKind, &'a str) {
         match self {
-            Self::Local => (
-                crate::common::git::transport::GitTransport::Local,
-                project_path,
-            ),
+            Self::Local => (GitTransportKind::Local, project_path),
             #[cfg(target_os = "windows")]
             Self::Wsl { distro } => (
-                crate::common::git::transport::GitTransport::Wsl {
+                GitTransportKind::Wsl {
                     distro: distro.clone(),
                 },
                 project_path,
@@ -51,7 +46,7 @@ impl ProjectEnvironment {
                 username,
                 auth,
             } => (
-                crate::common::git::transport::GitTransport::Remote {
+                GitTransportKind::Remote {
                     host: host.clone(),
                     port: *port,
                     username: username.clone(),
