@@ -28,10 +28,10 @@ impl PrProvider for GitLabPrProvider {
     fn name(&self) -> &'static str {
         "GitLab"
     }
-    fn is_installed(&self) -> bool {
+    async fn is_installed(&self) -> bool {
         false
     }
-    fn is_authenticated(&self) -> bool {
+    async fn is_authenticated(&self) -> bool {
         false
     }
     async fn list_prs(&self, _state: &str, _limit: usize) -> Result<Vec<PRListItem>> {

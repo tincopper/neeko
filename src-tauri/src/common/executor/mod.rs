@@ -9,7 +9,7 @@ mod local;
 mod ssh;
 pub mod ssh_auth;
 pub mod sync;
-mod wsl;
+pub mod wsl;
 
 use std::future::Future;
 use std::pin::Pin;

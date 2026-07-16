@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
@@ -135,23 +134,16 @@ impl GhCli {
         }
     }
 
-    pub fn is_installed() -> bool {
-        Command::new("gh")
-            .args(["--version"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+    pub async fn is_installed(&self) -> bool {
+        exec_on(&self.target, "gh", &["--version"])
+            .await
+            .is_ok()
     }
 
-    pub fn is_authenticated() -> bool {
-        let mut cmd = Command::new("gh");
-        cmd.args(["auth", "status"]);
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-        }
-        cmd.output().map(|o| o.status.success()).unwrap_or(false)
+    pub async fn is_authenticated(&self) -> bool {
+        exec_on(&self.target, "gh", &["auth", "status"])
+            .await
+            .is_ok()
     }
 }
 

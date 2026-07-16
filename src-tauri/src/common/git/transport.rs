@@ -313,53 +313,66 @@ impl GitTransport {
 
         match self {
             GitTransport::Local => {
-                use tokio::process::Command as TokioCommand;
+                let executor = create_executor(&ExecTarget::Local);
 
-                let mut cmd = TokioCommand::new("git");
-                cmd.args(&full_args)
-                    .current_dir(work_dir)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped());
-                for (k, v) in &env {
-                    cmd.env(k, v);
-                }
+                // Build env prefix: ENV=VAL ENV2=VAL2 ...
+                // (always includes GIT_TERMINAL_PROMPT=0 from above)
+                let env_prefix: String = env
+                    .iter()
+                    .map(|(k, v)| format!("{}={} ", k, shell_quote(v)))
+                    .collect();
 
-                let mut tokio_child = cmd
-                    .spawn()
+                // Shell-quote each arg so they survive sh -c
+                let quoted_args: String = full_args
+                    .iter()
+                    .map(|a| shell_quote(a))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                // Shell wrapper: cd work_dir, set env, then exec git
+                // (exec replaces the shell so stdin goes directly to git)
+                let shell_cmd = format!(
+                    "cd {} && {}exec git {}",
+                    shell_quote(work_dir),
+                    env_prefix,
+                    quoted_args,
+                );
+
+                let mut child = executor
+                    .spawn("sh", &["-c", &shell_cmd])
+                    .await
                     .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
 
-                if let Some(mut child_stdin) = tokio_child.stdin.take() {
+                if let Some(mut child_stdin) = child.stdin.take() {
                     child_stdin
                         .write_all(stdin)
                         .await
                         .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
                 }
 
-                let output =
-                    tokio::time::timeout(LOCAL_GIT_TIMEOUT, tokio_child.wait_with_output())
-                        .await
-                        .map_err(|_| {
-                            anyhow::anyhow!(
-                                "git command timed out after {}s: {}",
-                                LOCAL_GIT_TIMEOUT.as_secs(),
-                                command
-                            )
-                        })?
-                        .map_err(|e| anyhow::anyhow!("git command failed to await: {}", e))?;
+                let output = tokio::time::timeout(LOCAL_GIT_TIMEOUT, collect_child_output(child))
+                    .await
+                    .map_err(|_| {
+                        anyhow::anyhow!(
+                            "git command timed out after {}s: {}",
+                            LOCAL_GIT_TIMEOUT.as_secs(),
+                            command
+                        )
+                    })?
+                    .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
 
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                if !output.status.success() {
+                let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+                if output.exit_code != 0 {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     return Err(GitExecError {
                         kind: classify_stderr(&stderr),
                         stderr,
-                        stdout,
+                        stdout: stdout_str,
                         command,
                     }
                     .into());
                 }
-                Ok(stdout)
+                Ok(stdout_str)
             }
             #[cfg(target_os = "windows")]
             GitTransport::Wsl { distro } => {

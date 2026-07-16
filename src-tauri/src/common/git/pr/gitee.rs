@@ -28,10 +28,10 @@ impl PrProvider for GiteePrProvider {
     fn name(&self) -> &'static str {
         "Gitee"
     }
-    fn is_installed(&self) -> bool {
+    async fn is_installed(&self) -> bool {
         false
     }
-    fn is_authenticated(&self) -> bool {
+    async fn is_authenticated(&self) -> bool {
         false
     }
     async fn list_prs(&self, _state: &str, _limit: usize) -> Result<Vec<PRListItem>> {

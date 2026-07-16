@@ -212,12 +212,16 @@ impl PrProvider for GitHubPrProvider {
         "GitHub"
     }
 
-    fn is_installed(&self) -> bool {
-        GhCli::is_installed()
+    async fn is_installed(&self) -> bool {
+        GhCli::new(&self.repo_path, &self.target)
+            .is_installed()
+            .await
     }
 
-    fn is_authenticated(&self) -> bool {
-        GhCli::is_authenticated()
+    async fn is_authenticated(&self) -> bool {
+        GhCli::new(&self.repo_path, &self.target)
+            .is_authenticated()
+            .await
     }
 
     async fn list_prs(&self, state: &str, limit: usize) -> Result<Vec<PRListItem>> {

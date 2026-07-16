@@ -232,7 +232,7 @@ pub fn get_cached_default_branch(
     Ok(result)
 }
 
-/// Check if gh is installed (cached for TTL)
+/// Check if gh is installed (cached for TTL) — sync closure variant
 pub fn get_cached_gh_installed(check: impl FnOnce() -> bool) -> bool {
     if let Ok(guard) = GH_INSTALLED_CACHE.lock() {
         if let Some((ts, val)) = &*guard {
@@ -248,7 +248,25 @@ pub fn get_cached_gh_installed(check: impl FnOnce() -> bool) -> bool {
     result
 }
 
-/// Check if gh is authenticated (cached for TTL)
+/// Check cached gh installed status without computing
+pub fn get_gh_installed_cached() -> Option<bool> {
+    let guard = GH_INSTALLED_CACHE.lock().ok()?;
+    let (ts, val) = guard.as_ref()?;
+    if ts.elapsed() < METADATA_TTL {
+        Some(*val)
+    } else {
+        None
+    }
+}
+
+/// Set cached gh installed status
+pub fn set_gh_installed_cache(val: bool) {
+    if let Ok(mut guard) = GH_INSTALLED_CACHE.lock() {
+        *guard = Some((Instant::now(), val));
+    }
+}
+
+/// Check if gh is authenticated (cached for TTL) — sync closure variant
 pub fn get_cached_gh_authenticated(check: impl FnOnce() -> bool) -> bool {
     if let Ok(guard) = GH_AUTHENTICATED_CACHE.lock() {
         if let Some((ts, val)) = &*guard {
@@ -262,6 +280,24 @@ pub fn get_cached_gh_authenticated(check: impl FnOnce() -> bool) -> bool {
         *guard = Some((Instant::now(), result));
     }
     result
+}
+
+/// Check cached gh authenticated status without computing
+pub fn get_gh_authenticated_cached() -> Option<bool> {
+    let guard = GH_AUTHENTICATED_CACHE.lock().ok()?;
+    let (ts, val) = guard.as_ref()?;
+    if ts.elapsed() < METADATA_TTL {
+        Some(*val)
+    } else {
+        None
+    }
+}
+
+/// Set cached gh authenticated status
+pub fn set_gh_authenticated_cache(val: bool) {
+    if let Ok(mut guard) = GH_AUTHENTICATED_CACHE.lock() {
+        *guard = Some((Instant::now(), val));
+    }
 }
 
 /// Get cached diff or compute

@@ -807,32 +807,37 @@ pub async fn generate_commit_message(
             // 注入环境加载前缀，source ~/.profile 加载用户路径（.cargo/bin 等）
             let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
 
-            // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
-            let wsl_user = tokio::process::Command::new("wsl.exe")
-                .args(["-d", distro, "whoami"])
-                .output()
-                .await
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_else(|_| "root".to_string());
+            // 通过 ExecTarget::Wsl + exec_on 获取 WSL 默认用户名
+            let target = crate::common::executor::factory::ExecTarget::Wsl {
+                distro: distro.clone(),
+            };
+            let wsl_user = match crate::common::executor::sync::exec_on(&target, "whoami", &[]).await
+            {
+                Ok(s) => s.trim().to_string(),
+                Err(e) => {
+                    log::warn!(
+                        "[AI commit WSL] Failed to get WSL user via executor: {}, falling back to root",
+                        e
+                    );
+                    "root".to_string()
+                },
+            };
             log::info!("[AI commit WSL] wsl_user={}", wsl_user);
 
             // 使用 bash -ic 交互模式执行（绕过 .bashrc 的 non-interactive guard，确保 nvm 加载）
             //    -u <user>: 确保 HOME=/home/<user>，profile 路径正确
             //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
-            let mut wsl_cmd = tokio::process::Command::new("wsl.exe");
-            wsl_cmd
-                .args(["-d", distro, "-u", &wsl_user, "bash", "-ic", &actual_cmd])
-                .env_remove("PATH")
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
+            let wsl_output = crate::common::executor::wsl::exec_wsl(
+                distro,
+                Some(&wsl_user),
+                &["PATH"],
+                "bash",
+                &["-ic", &actual_cmd],
+            )
+            .await
+            .map_err(|e| AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e)))?;
 
-            let wsl_output = wsl_cmd
-                .output()
-                .await
-                .map_err(|e| AppError::InvalidInput(format!("Failed to execute wsl.exe: {}", e)))?;
-
-            let exit_code = wsl_output.status.code().unwrap_or(-1);
+            let exit_code = wsl_output.exit_code;
             let stderr = String::from_utf8_lossy(&wsl_output.stderr)
                 .trim()
                 .to_string();
@@ -859,7 +864,7 @@ pub async fn generate_commit_message(
                 );
             }
 
-            if !wsl_output.status.success() {
+            if exit_code != 0 {
                 let msg = if !stderr.is_empty() { stderr } else { stdout };
                 return Err(AppError::InvalidInput(format!(
                     "Failed to run agent in WSL: {}",
@@ -904,13 +909,13 @@ pub async fn get_remote_home_dir(
 // ─── PR Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn is_gh_installed_command() -> bool {
-    crate::git::is_gh_installed()
+pub async fn is_gh_installed_command() -> bool {
+    crate::git::is_gh_installed().await
 }
 
 #[tauri::command]
-pub fn is_gh_authenticated_command() -> bool {
-    crate::git::is_gh_authenticated()
+pub async fn is_gh_authenticated_command() -> bool {
+    crate::git::is_gh_authenticated().await
 }
 
 #[tauri::command]

@@ -24,8 +24,8 @@ use crate::project::types::{
 #[async_trait]
 pub trait PrProvider: Send + Sync {
     fn name(&self) -> &'static str;
-    fn is_installed(&self) -> bool;
-    fn is_authenticated(&self) -> bool;
+    async fn is_installed(&self) -> bool;
+    async fn is_authenticated(&self) -> bool;
     async fn list_prs(&self, state: &str, limit: usize) -> Result<Vec<PRListItem>>;
     async fn list_repo_labels(&self) -> Result<Vec<PrLabel>>;
     async fn list_repo_authors(&self) -> Result<Vec<String>>;
@@ -130,16 +130,26 @@ fn invalidate_after_write(repo_path: &Path) {
 
 // ─── Dispatch Functions ──────────────────────────────────────────────────────
 
-pub fn is_gh_installed() -> bool {
-    cache::get_cached_gh_installed(|| {
-        github::GitHubPrProvider::new(Path::new(""), &ExecTarget::Local).is_installed()
-    })
+pub async fn is_gh_installed() -> bool {
+    if let Some(cached) = cache::get_gh_installed_cached() {
+        return cached;
+    }
+    let result = github::GitHubPrProvider::new(Path::new(""), &ExecTarget::Local)
+        .is_installed()
+        .await;
+    cache::set_gh_installed_cache(result);
+    result
 }
 
-pub fn is_gh_authenticated() -> bool {
-    cache::get_cached_gh_authenticated(|| {
-        github::GitHubPrProvider::new(Path::new(""), &ExecTarget::Local).is_authenticated()
-    })
+pub async fn is_gh_authenticated() -> bool {
+    if let Some(cached) = cache::get_gh_authenticated_cached() {
+        return cached;
+    }
+    let result = github::GitHubPrProvider::new(Path::new(""), &ExecTarget::Local)
+        .is_authenticated()
+        .await;
+    cache::set_gh_authenticated_cache(result);
+    result
 }
 
 pub async fn list_prs(
