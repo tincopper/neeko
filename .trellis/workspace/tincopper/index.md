@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 86
+- **Total Sessions**: 87
 - **Last Active**: 2026-07-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~983 | Active |
+| `journal-2.md` | ~1016 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 87 | 2026-07-16 | 07-16-env-scatter-cleanup C1-C5 | `1aa8695` | `main` |
 | 86 | 2026-07-16 | refactor: unify project selection + eliminate dual-track WSL/Remote state | `0297ef1` | `main` |
 | 85 | 2026-07-13 | Git provider detection & PR backend refactoring | `6d26687`, `cafa1b8` | `main` |
 | 84 | 2026-07-13 | 通知系统：StatusBar 通知图标 + 浮动通知 + 通知记录 | `cd1e790` | `main` |
