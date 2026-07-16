@@ -948,3 +948,36 @@ Phase 1: detect Git provider (GitHub/GitLab/Gitee) from remote URL, display on f
 ### Next Steps
 
 - None - task complete
+
+
+## Session 86: refactor: unify project selection + eliminate dual-track WSL/Remote state
+
+**Date**: 2026-07-16
+**Task**: refactor: unify project selection + eliminate dual-track WSL/Remote state
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0297ef1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
