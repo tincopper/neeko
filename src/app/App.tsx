@@ -1,4 +1,5 @@
-import { AppLayout, TitleBar, StatusBar } from "@/layout";
+import { AppLayout, TitleBar } from "@/layout";
+import { StatusBar } from "@/features/status-bar";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";

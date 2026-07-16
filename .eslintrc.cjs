@@ -114,7 +114,7 @@ module.exports = {
           'error',
           {
             '**/*.tsx': 'PASCAL_CASE',
-            'src/app/main.tsx': 'CAMEL_CASE',
+            '**/src/app/main.tsx': 'CAMEL_CASE',
           },
           { ignoreMiddleExtensions: true },
         ],

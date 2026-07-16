@@ -5,11 +5,11 @@ import { useShallow } from 'zustand/shallow';
 
 import { lspListSessions, lspRestartSession, lspStopSession } from '@/features/lsp/api/lspApi';
 import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore';
+import { NotificationButton } from '@/features/notification/components/NotificationButton';
+import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/shared/utils/cn';
-import { NotificationButton } from '@/features/notification/components/NotificationButton';
-import { useNotificationStore } from '@/features/notification/notificationStore';
 
 function serverName(languageId: string): string {
   const names: Record<string, string> = {
@@ -36,6 +36,7 @@ export function StatusBar() {
   const activeProjectPath = useProjectStore((s) => s.activeProject?.path);
   const [installProgress, setInstallProgress] = useState<LspInstallProgressEvent | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties | undefined>(undefined);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const subscribedRef = useRef<string | null>(null);
@@ -47,7 +48,7 @@ export function StatusBar() {
       if (!activeProjectPath) return [] as LspSessionState[];
       const projectSessions = s.sessions[activeProjectPath];
       if (!projectSessions) return [] as LspSessionState[];
-      return Object.values(projectSessions).filter(se => se.status !== 'stopped');
+      return Object.values(projectSessions).filter((se) => se.status !== 'stopped');
     }),
   );
 
@@ -61,7 +62,10 @@ export function StatusBar() {
 
     // Subscribe first, then poll — ensures events aren't lost between sub and poll
     store.subscribeToProject(activeProjectPath).then((unlisten) => {
-      if (cancelled) { unlisten(); return; }
+      if (cancelled) {
+        unlisten();
+        return;
+      }
       // Now event listener is ready; fetch sessions already running
       lspListSessions().then((sessions) => {
         if (cancelled) return;
@@ -98,10 +102,24 @@ export function StatusBar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (dropdownOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        bottom: window.innerHeight - rect.top + 4,
+        left: rect.left,
+        minWidth: 200,
+      });
+    } else {
+      setDropdownStyle(undefined);
+    }
+  }, [dropdownOpen]);
+
   const handleRestart = async (languageId: string) => {
     if (!activeProjectPath) return;
     const store = useLspStore.getState();
-    const name = sessionEntries.find(s => s.languageId === languageId)?.serverName;
+    const name = sessionEntries.find((s) => s.languageId === languageId)?.serverName;
     setDropdownOpen(false);
     store.setSessionState(activeProjectPath, languageId, {
       status: 'starting',
@@ -169,83 +187,92 @@ export function StatusBar() {
     }
 
     if (sessionEntries.length > 0) {
-      const dropdownStyle: React.CSSProperties | undefined = dropdownOpen && buttonRef.current
-        ? (() => {
-            const rect = buttonRef.current.getBoundingClientRect();
-            return {
-              position: 'fixed',
-              bottom: window.innerHeight - rect.top + 4,
-              left: rect.left,
-              minWidth: 200,
-            };
-          })()
-        : undefined;
-
       return (
         <div className="relative" ref={dropdownRef}>
           <button
             ref={buttonRef}
             type="button"
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-1.5 hover:text-text-primary transition-colors"
+            className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors"
             title="Click to manage LSP servers"
           >
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessionEntries.some(s => s.status === 'error') ? 'bg-status-error' :
-              sessionEntries.some(s => s.status === 'indexing' || s.status === 'starting') ? 'bg-status-running animate-pulse' :
-              'bg-status-idle'
-            )} />
-            <span className="truncate text-xs">{sessionEntries.length > 1 ? `${sessionEntries.length} LSPs` : serverName(sessionEntries[0].languageId)}</span>
+            <span
+              className={cn(
+                'w-1.5 h-1.5 rounded-full shrink-0',
+                sessionEntries.some((s) => s.status === 'error')
+                  ? 'bg-status-error'
+                  : sessionEntries.some((s) => s.status === 'indexing' || s.status === 'starting')
+                    ? 'bg-status-running animate-pulse'
+                    : 'bg-status-idle',
+              )}
+            />
+            <span className="truncate">
+              {sessionEntries.length > 1
+                ? `${sessionEntries.length} LSPs`
+                : serverName(sessionEntries[0].languageId)}
+            </span>
           </button>
-          {dropdownOpen && dropdownStyle && createPortal(
-            <div
-              className="bg-popover border border-border rounded-md shadow-lg py-1 z-50"
-              data-lsp-dropdown
-              style={dropdownStyle}
-            >
-              {sessionEntries.map((session) => (
-                <div
-                  key={session.languageId}
-                  className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-hover"
-                  title={`${session.status}${session.statusMessage ? `: ${session.statusMessage}` : ''}${session.progressPct != null ? ` (${session.progressPct}%)` : ''}`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className={
-                      cn('w-1.5 h-1.5 rounded-full shrink-0',
-                        session.status === 'ready' ? 'bg-status-idle' :
-                        session.status === 'error' ? 'bg-status-error' :
-                        session.status === 'stopped' ? 'bg-text-muted' :
-                        'bg-status-running animate-pulse'
-                      )
-                    } />
-                    <span>{serverName(session.languageId)}</span>
-                    {session.progressPct != null && (
-                      <span className="text-text-muted">{session.progressPct}%</span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleRestart(session.languageId); }}
-                      className="text-text-muted hover:text-text-primary px-1"
-                      title="Restart"
-                    >
-                      ↻
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleStop(session.languageId); }}
-                      className="text-text-muted hover:text-status-error px-1"
-                      title="Stop"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>,
-            document.body,
-          )}
+          {dropdownOpen &&
+            dropdownStyle &&
+            createPortal(
+              <div
+                className="bg-popover border border-border rounded-md shadow-lg py-1 z-50"
+                data-lsp-dropdown
+                style={dropdownStyle}
+              >
+                {sessionEntries.map((session) => (
+                  <div
+                    key={session.languageId}
+                    className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-hover"
+                    title={`${session.status}${session.statusMessage ? `: ${session.statusMessage}` : ''}${session.progressPct != null ? ` (${session.progressPct}%)` : ''}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          'w-1.5 h-1.5 rounded-full shrink-0',
+                          session.status === 'ready'
+                            ? 'bg-status-idle'
+                            : session.status === 'error'
+                              ? 'bg-status-error'
+                              : session.status === 'stopped'
+                                ? 'bg-text-muted'
+                                : 'bg-status-running animate-pulse',
+                        )}
+                      />
+                      <span>{serverName(session.languageId)}</span>
+                      {session.progressPct != null && (
+                        <span className="text-text-muted">{session.progressPct}%</span>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRestart(session.languageId);
+                        }}
+                        className="text-text-muted hover:text-text-primary px-1"
+                        title="Restart"
+                      >
+                        ↻
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStop(session.languageId);
+                        }}
+                        className="text-text-muted hover:text-status-error px-1"
+                        title="Stop"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>,
+              document.body,
+            )}
         </div>
       );
     }
@@ -259,7 +286,8 @@ export function StatusBar() {
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
-        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
         !(target as Element).closest?.('[data-lsp-dropdown]')
       ) {
         setDropdownOpen(false);
@@ -270,15 +298,15 @@ export function StatusBar() {
   }, [dropdownOpen]);
 
   return (
-    <div className="flex items-center justify-between h-6 px-3 text-xs text-text-secondary shrink-0 select-none">
-      <div className="flex items-center gap-3 min-w-0">{leftContent()}</div>
-      <div className="flex items-center gap-2 shrink-0">
-        <NotificationButton />
+    <div className="flex h-4 items-center justify-between px-3 text-xs leading-4 text-text-secondary shrink-0 select-none">
+      <div className="flex h-full min-w-0 items-center gap-3">{leftContent()}</div>
+      <div className="flex h-full shrink-0 items-center gap-3">
         {cursorPosition && (
           <span>
             Ln {cursorPosition.line}, Col {cursorPosition.col}
           </span>
         )}
+        <NotificationButton />
       </div>
     </div>
   );
