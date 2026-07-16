@@ -3,11 +3,7 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import type { AuthMethod } from '@/shared/types';
 
-import {
-  createRemoteTerminalSession,
-  resizeRemoteTerminal,
-  closeRemoteTerminalSession,
-} from '../api/terminalApi';
+import { createTerminalSession, closeTerminalSession, resizeTerminal } from '../api/terminalApi';
 import {
   remoteCacheKey,
   remoteRebuildCallbacks,
@@ -70,19 +66,11 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
       rebuildCallbacks: remoteRebuildCallbacks,
       wrapperRefs: remoteWrapperRefs,
       createSession: async (cols: number, rows: number) => {
-        const session = await createRemoteTerminalSession(
-          host,
-          port,
-          username,
-          auth,
-          projectPath,
-          cols,
-          rows,
-        );
+        const session = await createTerminalSession(projectId, cols, rows);
         return session.id;
       },
-      resize: resizeRemoteTerminal,
-      closeSession: closeRemoteTerminalSession,
+      resize: resizeTerminal,
+      closeSession: closeTerminalSession,
       agentDelayMs: 800,
       connectingMessage: `\x1b[33m[SSH] Connecting to ${username}@${host}:${port}${projectPath}...\x1b[0m\r\n`,
       fontSize,

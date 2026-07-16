@@ -5,7 +5,7 @@ import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
-import { createWslTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
+import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
   wslCacheKey,
   wslRebuildCallbacks,
@@ -50,7 +50,7 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       rebuildCallbacks: wslRebuildCallbacks,
       wrapperRefs: wslWrapperRefs,
       createSession: async (cols: number, rows: number) => {
-        const session = await createWslTerminalSession(distro, projectPath, cols, rows);
+        const session = await createTerminalSession(projectId, cols, rows);
         return session.id;
       },
       resize: resizeTerminal,

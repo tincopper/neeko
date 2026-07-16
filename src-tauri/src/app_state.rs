@@ -8,9 +8,17 @@ use crate::session::StorageManager;
 use crate::skill;
 use crate::terminal::TerminalManager;
 use crate::AppError;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
+
+/// Routing tag for terminal sessions — tracks which backend owns each session.
+#[derive(Clone, PartialEq)]
+enum SessionOwner {
+    Pty,
+    Ssh,
+}
 
 pub struct AppStateWrapper {
     pub project_manager: Mutex<ProjectManager>,
@@ -23,6 +31,7 @@ pub struct AppStateWrapper {
     pub skill_store: Arc<skill::skill_store::SkillStore>,
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     pub conversation_manager: ConversationManager,
+    session_owner: Mutex<HashMap<String, SessionOwner>>,
 }
 
 impl AppStateWrapper {
@@ -97,6 +106,136 @@ impl AppStateWrapper {
         Ok((Arc::new(kind), path))
     }
 
+    // ── Terminal dispatch ──────────────────────────────────────────────────
+
+    /// Create a terminal session, routing to the correct backend based on project environment.
+    pub async fn create_terminal_session(
+        &self,
+        project_id: &str,
+        cols: u16,
+        rows: u16,
+        shell: Option<String>,
+        working_dir: Option<String>,
+        command: Option<String>,
+        app_handle: tauri::AppHandle,
+    ) -> Result<crate::common::terminal::types::TerminalSession, AppError> {
+        let (env, path_string) = {
+            let manager = self.project_manager.lock().map_err(AppError::from)?;
+            let project = manager
+                .get_project(project_id)
+                .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
+            (project.environment.clone(), project.path.to_string_lossy().to_string())
+        };
+
+        match env {
+            crate::core::project::ProjectEnvironment::Local => {
+                // Theme sync — skip for task terminals
+                if command.is_none() {
+                    let _ = crate::theme::service::write_project_theme_config(
+                        &crate::theme::service::ThemeContext::Local,
+                        &path_string,
+                    )
+                    .await;
+                }
+
+                let session = self
+                    .terminal_manager
+                    .create_session(&path_string, cols, rows, shell, working_dir, command, app_handle)
+                    .map_err(AppError::from)?;
+
+                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                Ok(session)
+            }
+            #[cfg(target_os = "windows")]
+            crate::core::project::ProjectEnvironment::Wsl { ref distro } => {
+                // WSL theme sync (non-fatal)
+                {
+                    use crate::theme::{
+                        common::read_neeko_theme,
+                        opencode::{
+                            install_wsl_theme_files, read_enable_opencode_theme_sync,
+                            read_enable_pi_theme_sync, write_wsl_tui_config,
+                        },
+                        pi,
+                    };
+
+                    if let Err(e) = install_wsl_theme_files(distro).await {
+                        log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
+                    }
+                    if let Err(e) = pi::install_wsl_pi_theme_files(distro).await {
+                        log::warn!("[WSL] Failed to install Pi theme files: {}", e);
+                    }
+                    let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
+                    if read_enable_opencode_theme_sync() {
+                        if let Err(e) = write_wsl_tui_config(distro, &path_string, &current_theme).await {
+                            log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
+                        }
+                    }
+                    if read_enable_pi_theme_sync() {
+                        if let Err(e) = pi::write_wsl_pi_settings(distro, &path_string, &current_theme).await {
+                            log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
+                        }
+                    }
+                }
+
+                let session = self
+                    .terminal_manager
+                    .create_wsl_session(distro, &path_string, cols, rows, app_handle)
+                    .map_err(AppError::from)?;
+
+                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                Ok(session)
+            }
+            crate::core::project::ProjectEnvironment::Remote {
+                host,
+                port,
+                username,
+                auth,
+            } => {
+                let session = self
+                    .remote_terminal_manager
+                    .create_session(&host, port, &username, &auth, &path_string, cols, rows, app_handle)
+                    .await
+                    .map_err(AppError::from)?;
+
+                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Ssh));
+                Ok(session)
+            }
+        }
+    }
+
+    /// Resize a terminal session, routing to the correct backend.
+    pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
+        let owner = self
+            .session_owner
+            .lock()
+            .ok()
+            .and_then(|m| m.get(session_id).cloned());
+        match owner {
+            Some(SessionOwner::Pty) => self
+                .terminal_manager
+                .resize_session(session_id, cols, rows)
+                .map_err(AppError::from),
+            Some(SessionOwner::Ssh) => self
+                .remote_terminal_manager
+                .resize_session(session_id, cols, rows)
+                .map_err(AppError::from),
+            None => Err(AppError::NotFound(format!(
+                "Terminal session not found: {session_id}"
+            ))),
+        }
+    }
+
+    /// Close a terminal session, routing to the correct backend.
+    pub fn close_session(&self, session_id: &str) {
+        let owner = self.session_owner.lock().ok().and_then(|mut m| m.remove(session_id));
+        match owner {
+            Some(SessionOwner::Pty) => self.terminal_manager.close_session_in_background(session_id),
+            Some(SessionOwner::Ssh) => self.remote_terminal_manager.close_session(session_id),
+            None => log::warn!("[Terminal] Attempted to close unknown session: {session_id}"),
+        }
+    }
+
     /// Create with an external shared Arc<SkillStore> (used for Tauri state injection)
     pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
         let storage_manager = StorageManager::new().expect("Failed to create storage manager");
@@ -125,6 +264,7 @@ impl AppStateWrapper {
             conversation_manager: ConversationManager::new(
                 crate::conversation::adapters::all_adapters(),
             ),
+            session_owner: Mutex::new(HashMap::new()),
         }
     }
 

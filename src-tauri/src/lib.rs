@@ -73,10 +73,6 @@ macro_rules! neeko_invoke_handler {
             $crate::terminal::commands::create_terminal_session,
             $crate::terminal::commands::close_terminal_session,
             $crate::terminal::commands::resize_terminal,
-            $crate::terminal::commands::create_wsl_terminal_session,
-            $crate::terminal::commands::create_remote_terminal_session,
-            $crate::terminal::commands::close_remote_terminal_session,
-            $crate::terminal::commands::resize_remote_terminal,
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,

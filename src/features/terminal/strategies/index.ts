@@ -8,12 +8,8 @@ import type { AuthMethod } from '@/shared/types';
 
 import {
   createTerminalSession,
-  createWslTerminalSession,
-  createRemoteTerminalSession,
   resizeTerminal,
-  resizeRemoteTerminal,
   closeTerminalSession,
-  closeRemoteTerminalSession,
 } from '../api/terminalApi';
 import {
   terminalCache,
@@ -175,7 +171,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         rebuildCallbacks: wslRebuildCallbacks,
         wrapperRefs: wslWrapperRefs,
         createSession: async (cols, rows) => {
-          const session = await createWslTerminalSession(distro, projectPath, cols, rows);
+          const session = await createTerminalSession(projectId, cols, rows);
           return session.id;
         },
         resize: resizeTerminal,
@@ -213,19 +209,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         rebuildCallbacks: remoteRebuildCallbacks,
         wrapperRefs: remoteWrapperRefs,
         createSession: async (cols, rows) => {
-          const session = await createRemoteTerminalSession(
-            remoteConfig.host,
-            remoteConfig.port,
-            remoteConfig.username,
-            remoteConfig.auth,
-            projectPath,
-            cols,
-            rows,
-          );
+          const session = await createTerminalSession(projectId, cols, rows);
           return session.id;
         },
-        resize: resizeRemoteTerminal,
-        closeSession: closeRemoteTerminalSession,
+        resize: resizeTerminal,
+        closeSession: closeTerminalSession,
         agentDelayMs: 800,
         connectingMessage: `\x1b[33m[SSH] Connecting to ${remoteConfig.username}@${remoteConfig.host}:${remoteConfig.port}${projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,

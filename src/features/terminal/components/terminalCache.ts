@@ -4,7 +4,7 @@ import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal } from "@xterm/xterm";
 import type { TerminalInputController } from "./terminalInput";
 import type { TerminalCache } from "./terminalTypes";
-import { closeTerminalSession, closeRemoteTerminalSession } from "../api/terminalApi";
+import { closeTerminalSession } from "../api/terminalApi";
 
 // =============================================================================
 // Factory — shared by local / WSL / remote cache modules
@@ -346,7 +346,7 @@ export interface RemoteTerminalCache {
 
 const remoteBackend = createTerminalCacheBackend<RemoteTerminalCache>({
   prefix: "remote:",
-  closeSession: closeRemoteTerminalSession,
+  closeSession: closeTerminalSession,
   logPrefix: "[SSH]",
 });
 
@@ -411,7 +411,7 @@ export async function switchAgentInRemoteTerminal(
   remoteRebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    closeRemoteTerminalSession(oldCache.sessionId).catch(() => {});
+    closeTerminalSession(oldCache.sessionId).catch(() => {});
   }
   oldCache?.term.dispose();
 }
