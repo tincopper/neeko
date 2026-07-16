@@ -113,7 +113,7 @@ function OpenIdeButton() {
 
   return (
     <div className="relative flex items-center" ref={dropdownRef}>
-      <div className="flex items-center h-7 rounded-md hover:bg-bg-hover transition-colors">
+      <div className="flex items-center h-5 rounded-md hover:bg-bg-hover transition-colors">
         {/* IDE 图标 + 名称 — 点击直接打开 */}
         <button
           className="flex items-center gap-1.5 pl-1.5 pr-1.5 h-full text-text-primary transition-colors cursor-pointer"

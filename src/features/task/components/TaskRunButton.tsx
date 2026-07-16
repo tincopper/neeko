@@ -94,7 +94,7 @@ function TaskRunButton() {
   const handleDialogSubmit = useCallback(
     (name: string, command: string) => {
       if (editingConfig) {
-        // Edit mode â€?update existing config preserving id + scope
+        // Edit mode ï¿½?update existing config preserving id + scope
         const updated: TaskConfig = {
           ...editingConfig,
           name: name || command,
@@ -102,7 +102,7 @@ function TaskRunButton() {
         };
         updateConfig(updated, projectPath ?? undefined);
       } else {
-        // Add mode â€?create new config
+        // Add mode ï¿½?create new config
         const config: TaskConfig = {
           id: crypto.randomUUID(),
           name: name || command,
@@ -122,7 +122,7 @@ function TaskRunButton() {
     <>
       <div className="relative flex items-center" ref={dropdownRef}>
         {/* Run widget */}
-        <div className="flex items-center h-7 rounded-md hover:bg-bg-hover transition-colors">
+        <div className="flex items-center h-5 rounded-md hover:bg-bg-hover transition-colors">
           {/* Play / Stop button */}
           <button
             className={`flex items-center gap-1.5 pl-1.5 pr-2 h-full text-text-primary transition-colors cursor-pointer ${!canRun ? "opacity-50" : ""}`}
@@ -206,7 +206,7 @@ function TaskRunButton() {
         )}
       </div>
 
-      {/* Task Dialog (Add / Edit) â€?rendered at body level via portal */}
+      {/* Task Dialog (Add / Edit) ï¿½?rendered at body level via portal */}
       {dialogOpen && (
         <TaskDialog
           onClose={() => { setDialogOpen(false); setEditingConfig(null); }}

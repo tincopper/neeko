@@ -11,7 +11,7 @@ function TitleBar() {
 
   return (
     <div
-      className={`titlebar flex items-center h-9 shrink-0 select-none ${IS_MACOS && !isFullscreen ? 'pl-[72px]' : ''}`}
+      className={`titlebar flex items-center h-8 shrink-0 select-none ${IS_MACOS && !isFullscreen ? 'pl-[72px]' : ''}`}
       data-tauri-drag-region
     >
       {/* Left: Neeko icon (visual anchor for the drag region) */}

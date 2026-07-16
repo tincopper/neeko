@@ -366,6 +366,7 @@ function EditorGroupPane({
 
         {activeTab?.data.kind === "diff" && (
           <DiffView
+            projectId={activeTab.projectId}
             diffSource={activeTab.data.diffSource}
             filePath={activeTab.data.filePath}
             initialMode={config.diffMode}
