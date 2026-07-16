@@ -19,8 +19,6 @@ import {
   getWorktreeChangedFiles,
   isWorktreeDirty,
 } from '../../git/api/gitApi';
-import { useConnectionStore } from '../store';
-
 import ConnectionWorktreeList from './ConnectionWorktreeList';
 import type { ConnectionProjectCardProps } from './types';
 
@@ -47,28 +45,18 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     config,
     onSaveProjectSettings,
   }) => {
-    // Extract primitives for stable useCallback dependencies
     const isWsl = source.type === 'wsl';
-    const distro = source.type === 'wsl' ? source.distro : '';
-    const remoteEntryId = source.type === 'remote' ? source.entryId : '';
-    const host = source.type === 'remote' ? source.host : '';
-    const remoteInvoke = source.type === 'remote' ? source.invokeRemoteGit : undefined;
+    const identifier = source.type === 'wsl' ? source.distro : source.entryId;
     const logTag = LOG_TAG[source.type] ?? '';
+    const connectionId = identifier;
 
-    // connectionId: scope identifier used for most callbacks (worktree, IDE)
-    const connectionId = isWsl ? distro : remoteEntryId;
-    // selectProjectId: scope identifier for onSelectProject (WSL uses distro, Remote uses host)
-    const selectProjectId = isWsl ? distro : host;
-
-    // Active worktree path lives in connection-specific store fields
-    const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
-    const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
-    const activeWorktreePath = isWsl ? activeWslWorktreePath : activeRemoteWorktreePath;
+    // Active worktree path from unified store field
+    const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
     // ahead/behind 仅在 active 项目时显�?
     const aheadKey = aheadBehindKey(
       isWsl ? 'wsl' : 'remote',
-      isWsl ? distro : remoteEntryId,
+      identifier,
       project.id,
     );
     const aheadBehind = useGitStore((s) => s.aheadBehind[aheadKey]);
@@ -100,61 +88,21 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       [onOpenWorktreeTerminal, connectionId],
     );
 
-    const remoteAuthStore = useConnectionStore((s) => s.remoteAuthStore);
-    const remoteEntries = useConnectionStore((s) => s.remoteEntries);
-
-    const getRemoteTransport = useCallback(() => {
-      const auth = remoteAuthStore.get(remoteEntryId);
-      const entry = remoteEntries.find((e) => e.id === remoteEntryId);
-      if (!auth || !entry) return null;
-      return {
-        Remote: {
-          host: entry.host,
-          port: entry.port,
-          username: entry.username,
-          auth,
-          project_path: project.path,
-        },
-      };
-    }, [remoteAuthStore, remoteEntries, remoteEntryId, project.path]);
-
     const handleRenameWorktree = useCallback(
       (oldPath: string, newName: string) => {
         const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
-        if (isWsl) {
-          renameWorktree(
-            { Wsl: { distro, project_path: project.path } },
-            oldPath,
-            newFullPath,
-          ).catch(console.error);
-        } else if (remoteInvoke) {
-          const rt = getRemoteTransport();
-          if (rt) {
-            renameWorktree(rt, oldPath, newFullPath).catch(console.error);
-          }
-        }
+        renameWorktree(project.id, oldPath, newFullPath).catch(console.error);
       },
-      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
+      [project.id],
     );
 
     const handleRemoveWorktree = useCallback(
       (wtPath: string, _branch: string) => {
-        if (isWsl) {
-          removeWorktree({ Wsl: { distro, project_path: project.path } }, wtPath).catch(
-            (e: unknown) => {
-              console.error(`${logTag} Failed to remove worktree:`, e);
-            },
-          );
-        } else if (remoteInvoke) {
-          const rt = getRemoteTransport();
-          if (rt) {
-            removeWorktree(rt, wtPath).catch((e: unknown) => {
-              console.error(`${logTag} Failed to remove worktree:`, e);
-            });
-          }
-        }
+        removeWorktree(project.id, wtPath).catch((e: unknown) => {
+          console.error(`${logTag} Failed to remove worktree:`, e);
+        });
       },
-      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport, logTag],
+      [project.id, logTag],
     );
 
     const handleRemove = useCallback(() => {
@@ -171,37 +119,16 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     const handleGetWorktreeChangedFiles = useCallback(
       (worktreePath: string): Promise<FileChange[]> => {
-        if (isWsl) {
-          return getWorktreeChangedFiles(
-            { Wsl: { distro, project_path: project.path } },
-            worktreePath,
-          );
-        }
-        if (remoteInvoke) {
-          const rt = getRemoteTransport();
-          if (rt) {
-            return getWorktreeChangedFiles(rt, worktreePath);
-          }
-        }
-        return Promise.resolve([] as FileChange[]);
+        return getWorktreeChangedFiles(project.id, worktreePath).catch(() => [] as FileChange[]);
       },
-      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
+      [project.id],
     );
 
     const handleIsWorktreeDirty = useCallback(
       (worktreePath: string): Promise<boolean> => {
-        if (isWsl) {
-          return isWorktreeDirty({ Wsl: { distro, project_path: project.path } }, worktreePath);
-        }
-        if (remoteInvoke) {
-          const rt = getRemoteTransport();
-          if (rt) {
-            return isWorktreeDirty(rt, worktreePath);
-          }
-        }
-        return Promise.resolve(false);
+        return isWorktreeDirty(project.id, worktreePath).catch(() => false);
       },
-      [isWsl, distro, project.path, remoteInvoke, getRemoteTransport],
+      [project.id],
     );
 
     const handleContextMenu = (e: React.MouseEvent) => {
@@ -310,7 +237,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               title="Open primary terminal"
               onClick={(e) => {
                 e.stopPropagation();
-                onSelectProject(selectProjectId, project);
+                onSelectProject(project.id);
               }}
             />
             <ConnectionWorktreeList

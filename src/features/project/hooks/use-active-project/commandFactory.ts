@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AuthMethod } from '@/shared/types/connection';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import type {
   GitInfo,
@@ -13,139 +12,90 @@ import type {
 } from '@/shared/types/git';
 import type { FileNode, FileContent } from '@/shared/types/file';
 
-export type GitTransportKind =
-  | { type: "Local"; projectId: string; projectPath: string }
-  | { type: "Wsl"; distro: string; projectPath: string }
-  | { type: "Remote"; host: string; port: number; username: string; auth: AuthMethod; projectPath: string };
-
-function transportArg(t: GitTransportKind): Record<string, unknown> {
-  switch (t.type) {
-    case "Local":
-      return { transport: { Local: { project_path: t.projectPath } } };
-    case "Wsl":
-      return { transport: { Wsl: { distro: t.distro, project_path: t.projectPath } } };
-    case "Remote":
-      return {
-        transport: {
-          Remote: {
-            host: t.host,
-            port: t.port,
-            username: t.username,
-            auth: t.auth as AuthMethod,
-            project_path: t.projectPath,
-          },
-        },
-      };
-  }
-}
-
-function fileTransportArg(t: GitTransportKind): Record<string, unknown> {
-  switch (t.type) {
-    case "Local":
-      return { transport: { Local: { project_path: t.projectPath } } };
-    case "Wsl":
-      return { transport: { Wsl: { distro: t.distro, project_path: t.projectPath } } };
-    case "Remote":
-      return {
-        transport: {
-          Remote: {
-            host: t.host,
-            port: t.port,
-            username: t.username,
-            auth: t.auth as AuthMethod,
-            project_path: t.projectPath,
-          },
-        },
-      };
-  }
-}
-
-export function createProjectCommands(transport: GitTransportKind): ProjectCommands {
-  const tp = () => transportArg(transport);
-
+export function createProjectCommands(projectId: string): ProjectCommands {
   return {
     refreshGitInfo(): Promise<GitInfo> {
-      return invoke<GitInfo>("get_git_info", tp());
+      return invoke<GitInfo>("get_git_info", { projectId });
     },
     getAheadBehind(): Promise<AheadBehind> {
-      return invoke<AheadBehind>("get_ahead_behind", tp());
+      return invoke<AheadBehind>("get_ahead_behind", { projectId });
     },
     getChangedFilesDiffStats(): Promise<Array<{ path: string; additions: number; deletions: number }>> {
-      return invoke<Array<{ path: string; additions: number; deletions: number }>>("get_changed_files_diff_stats", tp());
+      return invoke<Array<{ path: string; additions: number; deletions: number }>>("get_changed_files_diff_stats", { projectId });
     },
     getFileDiff(filePath: string): Promise<DiffResult> {
-      return invoke<DiffResult>("get_file_diff", { ...tp(), filePath });
+      return invoke<DiffResult>("get_file_diff", { projectId, filePath });
     },
 
     stageFiles(filePaths: string[]): Promise<void> {
-      return invoke<void>("stage_files", { ...tp(), filePaths });
+      return invoke<void>("stage_files", { projectId, filePaths });
     },
     unstageFiles(filePaths: string[]): Promise<void> {
-      return invoke<void>("unstage_files", { ...tp(), filePaths });
+      return invoke<void>("unstage_files", { projectId, filePaths });
     },
     discardFile(filePath: string): Promise<void> {
-      return invoke<void>("discard_file", { ...tp(), filePath });
+      return invoke<void>("discard_file", { projectId, filePath });
     },
 
     commitFiles(filePaths: string[], message: string): Promise<CommitResult> {
-      return invoke<CommitResult>("commit_files", { ...tp(), filePaths, message });
+      return invoke<CommitResult>("commit_files", { projectId, filePaths, message });
     },
 
     fetch(): Promise<PushOutcome> {
-      return invoke<PushOutcome>("fetch", tp());
+      return invoke<PushOutcome>("fetch", { projectId });
     },
     pull(): Promise<PushOutcome> {
-      return invoke<PushOutcome>("pull", tp());
+      return invoke<PushOutcome>("pull", { projectId });
     },
     push(setUpstream?: boolean): Promise<PushOutcome> {
-      return invoke<PushOutcome>("push", { ...tp(), setUpstream: setUpstream ?? false });
+      return invoke<PushOutcome>("push", { projectId, setUpstream: setUpstream ?? false });
     },
     fetchWithCredentials(username: string, password: string): Promise<PushOutcome> {
-      return invoke<PushOutcome>("fetch_with_credentials", { ...tp(), username, password });
+      return invoke<PushOutcome>("fetch_with_credentials", { projectId, username, password });
     },
     pullWithCredentials(username: string, password: string): Promise<PushOutcome> {
-      return invoke<PushOutcome>("pull_with_credentials", { ...tp(), username, password });
+      return invoke<PushOutcome>("pull_with_credentials", { projectId, username, password });
     },
     pushWithCredentials(setUpstream: boolean, username: string, password: string): Promise<PushOutcome> {
-      return invoke<PushOutcome>("push_with_credentials", { ...tp(), setUpstream, username, password });
+      return invoke<PushOutcome>("push_with_credentials", { projectId, setUpstream, username, password });
     },
 
     checkoutBranch(branchName: string): Promise<void> {
-      return invoke<void>("checkout_branch", { ...tp(), branchName });
+      return invoke<void>("checkout_branch", { projectId, branchName });
     },
     createBranch(branchName: string, startPoint?: string): Promise<void> {
-      return invoke<void>("create_branch", { ...tp(), branchName, startPoint });
+      return invoke<void>("create_branch", { projectId, branchName, startPoint });
     },
     deleteBranch(branchName: string): Promise<void> {
-      return invoke<void>("delete_branch", { ...tp(), branchName });
+      return invoke<void>("delete_branch", { projectId, branchName });
     },
 
     getCommitLog(count: number, skip?: number): Promise<CommitEntry[]> {
-      return invoke<CommitEntry[]>("get_commit_log", { ...tp(), count, skip });
+      return invoke<CommitEntry[]>("get_commit_log", { projectId, count, skip });
     },
     getCommitDetail(commitHash: string): Promise<CommitDetail> {
-      return invoke<CommitDetail>("get_commit_detail", { ...tp(), commitHash });
+      return invoke<CommitDetail>("get_commit_detail", { projectId, commitHash });
     },
     getCommitFiles(commitHash: string): Promise<CommitFileChange[]> {
-      return invoke<CommitFileChange[]>("get_commit_files", { ...tp(), commitHash });
+      return invoke<CommitFileChange[]>("get_commit_files", { projectId, commitHash });
     },
     getCommitFileDiff(commitHash: string, filePath: string): Promise<DiffResult> {
-      return invoke<DiffResult>("get_commit_file_diff", { ...tp(), commitHash, filePath });
+      return invoke<DiffResult>("get_commit_file_diff", { projectId, commitHash, filePath });
     },
 
     cherryPick(commitHash: string): Promise<void> {
-      return invoke<void>("cherry_pick", { ...tp(), commitHash });
+      return invoke<void>("cherry_pick", { projectId, commitHash });
     },
     revert(commitHash: string): Promise<void> {
-      return invoke<void>("revert", { ...tp(), commitHash });
+      return invoke<void>("revert", { projectId, commitHash });
     },
     createTag(tagName: string, message?: string): Promise<void> {
-      return invoke<void>("create_tag", { ...tp(), tagName, message });
+      return invoke<void>("create_tag", { projectId, tagName, message });
     },
 
     readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
       return invoke<FileNode[]>("read_dir_tree", {
-        ...fileTransportArg(transport),
+        projectId,
         rootPath: rootPath ?? null,
         subPath: subPath ?? null,
         maxDepth: maxDepth ?? 4,
@@ -153,14 +103,14 @@ export function createProjectCommands(transport: GitTransportKind): ProjectComma
     },
     readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {
       return invoke<FileContent>("read_file_content", {
-        ...fileTransportArg(transport),
+        projectId,
         filePath,
         rootPath,
       });
     },
     writeFileContent(filePath: string, content: string, rootPath?: string): Promise<void> {
       return invoke<void>("write_file_content", {
-        ...fileTransportArg(transport),
+        projectId,
         filePath,
         content,
         rootPath,
@@ -173,7 +123,7 @@ export function createProjectCommands(transport: GitTransportKind): ProjectComma
       agentCommandOverride?: string | null,
     ): Promise<string> {
       return invoke<string>("generate_commit_message", {
-        ...fileTransportArg(transport),
+        projectId,
         agentId,
         agentCommandOverride: agentCommandOverride ?? null,
         filePaths,

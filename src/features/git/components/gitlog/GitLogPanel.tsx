@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
 import { useEditorStore } from '@/shared/store';
 import { useAppContext } from "@/shared/contexts/AppContext";
 import { useActiveProject } from "@/features/project/hooks/use-active-project";
@@ -153,15 +152,8 @@ const GitLogPanel: React.FC = () => {
           break;
       }
 
-      // tabKey 需要与 MainContent 对齐：使�?store 中的原始项目 ID�?
-      // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path�?
-      const projectState = useProjectStore.getState();
-      const connectionState = useConnectionStore.getState();
-      const tabKey =
-        projectState.activeProjectId
-        ?? connectionState.activeWslProject?.project.id
-        ?? connectionState.activeRemoteProject?.project.id
-        ?? project.id;
+      // 使用 unified store 的 activeProjectId（适用于所有项目类型）
+      const tabKey = useProjectStore.getState().activeProjectId ?? project.id;
 
       const tabId = `diff_${selectedHash.slice(0, 7)}_${filePath.replace(/[/\\]/g, "_")}`;
       const editorState = useEditorStore.getState();

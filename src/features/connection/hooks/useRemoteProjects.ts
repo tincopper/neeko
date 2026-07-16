@@ -1,40 +1,21 @@
 import { useState, useCallback, useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { remoteCacheKey, destroyRemoteCachesByPrefix } from "@/features/terminal/components/terminalCache";
-import type { RemoteEntrySession, RemoteProject, AuthMethod } from '@/shared/types';
+import type { RemoteEntrySession, AuthMethod } from '@/shared/types';
 import type { SaveSessionFn } from "./useWslProjects";
-import type { ActiveRemoteKey } from "../components/types";
+import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "../store";
 import { useShallow } from "zustand/shallow";
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
-export type { ActiveRemoteKey };
-
 export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (message: string, type?: "info" | "error") => void) {
   const remoteEntries = useConnectionStore(useShallow((state) => state.remoteEntries));
-  const activeRemoteKey = useConnectionStore((state) => state.activeRemoteKey);
-  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
   const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
   const pendingAuthEntry = useConnectionStore((state) => state.pendingAuthEntry);
 
   const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
     useConnectionStore.setState((state) => ({
       remoteEntries: applyStateAction(state.remoteEntries, updater),
-    }));
-  }, []);
-
-  const setActiveRemoteKey: Dispatch<SetStateAction<ActiveRemoteKey>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeRemoteKey: applyStateAction(state.activeRemoteKey, updater),
-    }));
-  }, []);
-
-  const setActiveRemoteProject: Dispatch<SetStateAction<{
-    entry: RemoteEntrySession;
-    project: RemoteProject;
-  } | null>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeRemoteProject: applyStateAction(state.activeRemoteProject, updater),
     }));
   }, []);
 
@@ -54,25 +35,24 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
   const [remoteDialogOpen, setRemoteDialogOpen] = useState(false);
   const [remoteAddToEntryId, setRemoteAddToEntryId] = useState<string | null>(null);
 
-  // Trigger SSH auth dialog via effect (only depend on activeRemoteProject to avoid
-  // unnecessary re-triggers when remoteAuthStore Map reference changes)
+  // Trigger SSH auth dialog when a Remote project is active without credentials
   useEffect(() => {
-    if (!activeRemoteProject) {
-      setPendingAuthEntry(null);
-      return;
-    }
-    // Read auth store directly to avoid Map reference dependency
-    const hasAuth = useConnectionStore.getState().remoteAuthStore.has(activeRemoteProject.entry.id);
-    if (!hasAuth) {
-      setPendingAuthEntry(activeRemoteProject.entry);
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject) { setPendingAuthEntry(null); return; }
+    const env = activeProject.environment;
+    if (env.type !== 'Remote') { setPendingAuthEntry(null); return; }
+    const entry = remoteEntries.find(e => e.host === env.host);
+    if (!entry) { setPendingAuthEntry(null); return; }
+    if (!remoteAuthStore.has(entry.id)) {
+      setPendingAuthEntry(entry);
     } else {
       setPendingAuthEntry(null);
     }
-  }, [activeRemoteProject, setPendingAuthEntry]);
+  }, [remoteEntries, remoteAuthStore, setPendingAuthEntry]);
 
   const handleRemoteEntryAdd = useCallback(async (entry: RemoteEntrySession, auth: AuthMethod | null, saved_auth?: string | null) => {
     try {
-      // 如果�?saved_auth，写�?entry 用于持久�?
+      // 如果�?saved_auth，写�?entry 用于持久�?
       const persistEntry = saved_auth ? { ...entry, saved_auth } : entry;
       const newEntries = upsertEntryById(remoteEntries, persistEntry);
       setRemoteEntries(newEntries);
@@ -87,18 +67,18 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
 
   const handleCloseRemoteProject = useCallback((entryId: string, projectId: string) => {
     destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
-    if (activeRemoteKey?.projectId === projectId) {
-      setActiveRemoteKey(null);
-      setActiveRemoteProject(null);
+    const activeId = useProjectStore.getState().activeProjectId;
+    if (activeId === projectId) {
+      useProjectStore.setState({ activeProjectId: null, activeProject: null });
     }
     setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-  }, [activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject]);
+  }, []);
 
   const handleRemoveRemoteProject = useCallback(async (entryId: string, projectId: string) => {
     destroyRemoteCachesByPrefix(remoteCacheKey(entryId, projectId));
-    if (activeRemoteKey?.projectId === projectId) {
-      setActiveRemoteKey(null);
-      setActiveRemoteProject(null);
+    const activeId = useProjectStore.getState().activeProjectId;
+    if (activeId === projectId) {
+      useProjectStore.setState({ activeProjectId: null, activeProject: null });
     }
     setRemoteOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
     const newEntries = remoteEntries.map(e => {
@@ -107,7 +87,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     });
     setRemoteEntries(newEntries);
     await saveSession(undefined, newEntries).catch(console.error);
-  }, [remoteEntries, activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject, setRemoteEntries, saveSession]);
+  }, [remoteEntries, setRemoteEntries, saveSession]);
 
   const handleRemoveRemoteEntry = useCallback(async (entryId: string) => {
     const entry = remoteEntries.find(e => e.id === entryId);
@@ -115,16 +95,16 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
       entry.projects.forEach(p => {
         destroyRemoteCachesByPrefix(remoteCacheKey(entryId, p.id));
       });
-      if (activeRemoteKey && entry.projects.some(p => p.id === activeRemoteKey.projectId)) {
-        setActiveRemoteKey(null);
-        setActiveRemoteProject(null);
+      const activeId = useProjectStore.getState().activeProjectId;
+      if (activeId && entry.projects.some(p => p.id === activeId)) {
+        useProjectStore.setState({ activeProjectId: null, activeProject: null });
       }
       setRemoteAuthStore(prev => { const next = new Map(prev); next.delete(entryId); return next; });
     }
     const newEntries = remoteEntries.filter(e => e.id !== entryId);
     setRemoteEntries(newEntries);
     await saveSession(undefined, newEntries).catch(console.error);
-  }, [remoteEntries, activeRemoteKey, setActiveRemoteKey, setActiveRemoteProject, setRemoteEntries, setRemoteAuthStore, saveSession]);
+  }, [remoteEntries, setRemoteEntries, setRemoteAuthStore, saveSession]);
 
   const handleAddRemoteProject = useCallback((entryId: string) => {
     setRemoteAddToEntryId(entryId);
@@ -164,7 +144,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
     });
   }, [saveSession]);
 
-  /** 从持久化�?saved_auth 恢复 remoteAuthStore（同步更�?store�?*/
+  /** 从持久化�?saved_auth 恢复 remoteAuthStore（同步更�?store�?*/
   const restoreAuthFromEntries = useCallback((entries: RemoteEntrySession[]) => {
     const restored = new Map<string, AuthMethod>();
     for (const entry of entries) {
@@ -179,7 +159,7 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
       }
     }
     if (restored.size > 0) {
-      // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就�?
+      // 使用 useAppStore.setState 直接同步更新，确保在 setInitializing(false) 之前 store 已就�?
       useConnectionStore.setState((state) => {
         const merged = new Map(state.remoteAuthStore);
         for (const [k, v] of restored) merged.set(k, v);
@@ -190,8 +170,6 @@ export function useRemoteProjects(saveSession: SaveSessionFn, showToast: (messag
 
   return {
     remoteEntries, setRemoteEntries,
-    activeRemoteKey, setActiveRemoteKey,
-    activeRemoteProject, setActiveRemoteProject,
     remoteOpenSessions, setRemoteOpenSessions,
     remoteDialogOpen, setRemoteDialogOpen,
     remoteAddToEntryId,

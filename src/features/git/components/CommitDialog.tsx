@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import type { FileChange } from '@/shared/types';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/button';
@@ -25,9 +24,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const projectPath =
-      useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-    getWorktreeChangedFiles({ Local: { project_path: projectPath } }, '')
+    getWorktreeChangedFiles(projectId, '')
       .then((result) => {
         const untracked = result.filter((f) => f.status === 'Untracked');
         setUntrackedCount(untracked.length);
@@ -42,18 +39,12 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       setMessage('');
       return;
     }
-    const projectPath =
-      useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-    getCommitLog({ Local: { project_path: projectPath } }, 1)
+    getCommitLog(projectId, 1)
       .then((entries) => {
         if (entries.length > 0) setMessage(entries[0].message);
       })
       .catch(() => {});
   }, [amend, projectId]);
-
-  const getProjectPath = useCallback(() => {
-    return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-  }, [projectId]);
 
   /** Convert a PushOutcome into an error message string if it's AuthRequired, or return undefined for Success. */
   function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
@@ -75,11 +66,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       setError(null);
       try {
         const filePaths = files.map((f) => f.path);
-        const projectPath = getProjectPath();
-        const transport = { Local: { project_path: projectPath } } as const;
-        await commitFiles(transport, filePaths, message.trim());
+        await commitFiles(projectId, filePaths, message.trim());
         if (pushAfter) {
-          const outcome = await withTimeout(push(transport, false), 30_000, 'push');
+          const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
           const msg = pushOutcomeMsg(outcome);
           if (msg) { setError(msg); return; }
         }
@@ -91,15 +80,14 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         setSubmitting(false);
       }
     },
-    [projectId, message, files, onRefreshGit, onClose, getProjectPath],
+    [projectId, message, files, onRefreshGit, onClose],
   );
 
   const handlePush = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const projectPath = getProjectPath();
-      const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 30_000, 'push');
+      const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
       const msg = pushOutcomeMsg(outcome);
       if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
@@ -109,14 +97,13 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, onRefreshGit, onClose, getProjectPath]);
+  }, [projectId, onRefreshGit, onClose]);
 
   const handlePull = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const projectPath = getProjectPath();
-      const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 30_000, 'pull');
+      const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
       const msg = pushOutcomeMsg(outcome);
       if (msg) { setError(msg); return; }
       onRefreshGit(projectId);
@@ -126,7 +113,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, onRefreshGit, onClose, getProjectPath]);
+  }, [projectId, onRefreshGit, onClose]);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>

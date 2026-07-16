@@ -1,11 +1,13 @@
 import { useCallback } from "react";
-import type { WSLProject, RemoteProject } from '@/shared/types';
+import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
+import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useAppViewStore } from '@/shared/store/appViewStore';
 
 interface WslActions {
   setWslDiffState: (state: null) => void;
   resetWslTransientState: () => void;
-  handleSelectWslProject: (distro: string, project: WSLProject) => void;
+  handleRefreshWslGit: (distro: string, projectId: string, projectPath: string) => void;
   handleOpenWslWorktreeTerminal: (distro: string, worktreePath: string, branch: string) => void;
   setActiveWslWorktreePath: (path: string | null) => void;
   setWslActiveWtBranch: (branch: string) => void;
@@ -13,7 +15,7 @@ interface WslActions {
 
 interface RemoteActions {
   resetRemoteTransientState: () => void;
-  handleSelectRemoteProject: (host: string, project: RemoteProject) => void;
+  handleRefreshRemoteGit: (entryId: string, projectId: string, projectPath: string) => void;
   handleOpenRemoteWorktreeTerminal: (
     entryId: string,
     worktreePath: string,
@@ -40,27 +42,44 @@ export function useCrossTypeSelection({
     }
   }, []);
 
-  // Local project selection: clear WSL diff state
   const handleSelectProject = useCallback(
     async (projectId: string) => {
       closeSettingsView();
+
+      // Reset all transient worktree state
+      useWorktreeStore.setState({
+        activeWorktreePath: null,
+        wslActiveWtBranch: "",
+        wslOpenedWt: [],
+      });
       wslActions.setWslDiffState(null);
-      await selectProject(projectId);
-    },
-    [closeSettingsView, wslActions, selectProject],
-  );
-
-  // WSL project selection: clear Remote transient state
-  const handleSelectWslProject = useCallback(
-    (distro: string, project: WSLProject) => {
-      closeSettingsView();
       remoteActions.resetRemoteTransientState();
-      wslActions.handleSelectWslProject(distro, project);
+
+      // Find project in unified store
+      const project = useProjectStore.getState().projects.find(p => p.id === projectId);
+      if (!project) return;
+
+      // Always set unified active project (environment type is transparent)
+      useProjectStore.setState({
+        activeProjectId: project.id,
+        activeProject: project,
+      });
+
+      if (project.environment.type === 'Wsl') {
+        void wslActions.handleRefreshWslGit(project.environment.distro, project.id, project.path);
+      } else if (project.environment.type === 'Remote') {
+        const host = project.environment.host;
+        const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === host) ?? null;
+        if (entry) {
+          void remoteActions.handleRefreshRemoteGit(entry.id, project.id, project.path);
+        }
+      } else {
+        await selectProject(projectId);
+      }
     },
-    [closeSettingsView, remoteActions, wslActions],
+    [closeSettingsView, selectProject, wslActions, remoteActions],
   );
 
-  // WSL worktree terminal: clear Remote transient state
   const handleOpenWslWorktreeTerminal = useCallback(
     (distro: string, worktreePath: string, branch: string) => {
       remoteActions.resetRemoteTransientState();
@@ -69,17 +88,6 @@ export function useCrossTypeSelection({
     [remoteActions, wslActions],
   );
 
-  // Remote project selection: clear WSL transient state
-  const handleSelectRemoteProject = useCallback(
-    (host: string, project: RemoteProject) => {
-      closeSettingsView();
-      wslActions.resetWslTransientState();
-      remoteActions.handleSelectRemoteProject(host, project);
-    },
-    [closeSettingsView, wslActions, remoteActions],
-  );
-
-  // Remote worktree terminal: clear WSL transient state
   const handleOpenRemoteWorktreeTerminal = useCallback(
     (entryId: string, worktreePath: string, branch: string) => {
       wslActions.resetWslTransientState();
@@ -90,8 +98,6 @@ export function useCrossTypeSelection({
 
   return {
     handleSelectProject,
-    handleSelectWslProject,
-    handleSelectRemoteProject,
     handleOpenWslWorktreeTerminal,
     handleOpenRemoteWorktreeTerminal,
   };

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import type { AheadBehind } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
 import { useGitStore } from '@/features/git/store';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
@@ -10,25 +9,25 @@ interface AheadBehindCommands {
 }
 
 /**
- * useAheadBehindSync â€?when the active project changes, fetch ahead/behind counts.
+ * useAheadBehindSync - when the active project changes, fetch ahead/behind counts.
  *
- * If `commands` is provided (from use-active-project), uses the unified transport.
- * Otherwise falls back to legacy manual invoke (not used in new code).
+ * Reads from unified Project store; WSL/remote are resolved via
+ * activeProject.environment.
  */
 export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
+  const activeProject = useProjectStore((s) => s.activeProject);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
-  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
   const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
   useEffect(() => {
-    if (!commands) return;
-    if (!activeProjectId && !activeWslProject && !activeRemoteProject) return;
+    if (!commands || !activeProjectId || !activeProject) return;
 
-    const id = (activeProjectId ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id)!;
-    const kind = (activeProjectId ? "local" : activeWslProject ? "wsl" : "remote") as "local" | "wsl" | "remote";
-    const entryId = activeWslProject?.distro ?? activeRemoteProject?.entry.id ?? id;
-    const key = aheadBehindKey(kind, entryId, id);
+    const env = activeProject.environment;
+    const kind = env.type === "Local" ? "local" : env.type === "Wsl" ? "wsl" : "remote";
+    const entryId = env.type === "Wsl" ? env.distro
+      : env.type === "Remote" ? `${env.host}:${env.port}`
+      : activeProjectId;
+    const key = aheadBehindKey(kind, entryId, activeProjectId);
 
     let cancelled = false;
     commands.getAheadBehind()
@@ -39,5 +38,5 @@ export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
         if (!cancelled) setAheadBehind(key, null);
       });
     return () => { cancelled = true; };
-  }, [activeProjectId, activeWslProject, activeRemoteProject, commands, setAheadBehind]);
+  }, [activeProjectId, activeProject, commands, setAheadBehind]);
 }

@@ -4,7 +4,7 @@ import { readFileContent } from "@/features/file/api/fileApi";
 import { Globe, RefreshCw } from "@/shared/components/icons"
 import type { FileChangedEvent } from '@/shared/types';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
-import { useProjectStore } from '@/features/project/store';
+
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -34,9 +34,8 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     setError(null);
 
     try {
-      const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? projectId;
       const fileContent = await readFileContent(
-        { Local: { project_path: projectPath } },
+        projectId,
         filePath,
       );
 

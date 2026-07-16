@@ -1,38 +1,20 @@
 import type { Project } from '@/shared/types/project';
-import type { WSLProject, RemoteProject, RemoteEntrySession } from '@/shared/types/connection';
 import type { ProjectView } from '@/shared/types/activeProject';
 
+const ENV_TYPE_TO_VIEW_TYPE: Record<string, "local" | "wsl" | "remote"> = {
+  Local: "local",
+  Wsl: "wsl",
+  Remote: "remote",
+};
+
+/**
+ * Convert unified Project to ProjectView (all environments — local, WSL, remote).
+ * The unified Project already carries environment info via its `environment` field.
+ */
 export function toLocalView(project: Project): ProjectView {
   return {
-    type: "local",
+    type: ENV_TYPE_TO_VIEW_TYPE[project.environment.type] ?? "local",
     id: project.id,
-    name: project.name,
-    path: project.path,
-    gitInfo: project.git_info ?? null,
-    selectedAgent: project.selected_agent,
-    selectedIde: project.selected_ide,
-  };
-}
-
-export function toWslView(distro: string, project: WSLProject): ProjectView {
-  return {
-    type: "wsl",
-    id: `wsl:${distro}:${project.path}`,
-    name: project.name,
-    path: project.path,
-    gitInfo: project.git_info ?? null,
-    selectedAgent: project.selected_agent,
-    selectedIde: project.selected_ide,
-  };
-}
-
-export function toRemoteView(
-  entry: RemoteEntrySession,
-  project: RemoteProject,
-): ProjectView {
-  return {
-    type: "remote",
-    id: `remote:${entry.host}:${project.path}`,
     name: project.name,
     path: project.path,
     gitInfo: project.git_info ?? null,

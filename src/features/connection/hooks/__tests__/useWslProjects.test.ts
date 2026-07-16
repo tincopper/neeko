@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWslProjects } from '@/features/connection/hooks/useWslProjects';
+import { useProjectStore } from '@/features/project/store';
 import type { WSLEntrySession } from '@/shared/types';
 
 // mock terminal functions
@@ -47,8 +48,6 @@ describe('useWslProjects', () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
     expect(result.current.wslEntries).toEqual([]);
-    expect(result.current.activeWslKey).toBeNull();
-    expect(result.current.activeWslProject).toBeNull();
     expect(result.current.wslDialogOpen).toBe(false);
     expect(result.current.wslAddToEntryId).toBeNull();
   });
@@ -114,7 +113,7 @@ describe('useWslProjects', () => {
     });
 
     act(() => {
-      result.current.setActiveWslKey({ distro: 'Ubuntu', projectId: 'wp1' });
+      useProjectStore.setState({ activeProjectId: 'wp1', activeProject: null });
     });
 
     act(() => {
@@ -125,8 +124,7 @@ describe('useWslProjects', () => {
       result.current.handleCloseWslProject('e1', 'wp1');
     });
 
-    expect(result.current.activeWslKey).toBeNull();
-    expect(result.current.activeWslProject).toBeNull();
+    expect(useProjectStore.getState().activeProjectId).toBeNull();
     expect(result.current.wslOpenSessions.has('wp1')).toBe(false);
   });
 

@@ -79,7 +79,6 @@ export async function createTerminalForProject(
     projectPath,
     tabKey: backendProjectId,
     projectId: backendProjectId,
-    transport: { Local: { project_path: projectPath } },
   });
 
   const initCols = term.cols;

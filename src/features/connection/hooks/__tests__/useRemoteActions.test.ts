@@ -52,22 +52,31 @@ const DEFAULT_CONFIG = {
 
 function seedStore(overrides: {
   remoteEntries?: RemoteEntrySession[];
-  activeRemoteProject?: { entry: RemoteEntrySession; project: ReturnType<typeof makeRemoteProject> };
 } = {}) {
   const entry = makeRemoteEntry();
   const project = makeRemoteProject("rp1");
+  const unifiedProject = {
+    id: "rp1",
+    name: "proj-rp1",
+    path: "/home/user/rp1",
+    environment: { type: "Remote" as const, host: "192.168.1.1", port: 22, username: "user", auth: { Password: "pass" } },
+    git_info: null,
+    terminal: { id: "t1", pid: null, status: "Idle" as const, history: [], agent: null },
+    selected_agent: null as string | null,
+    selected_ide: null as string | null,
+    active_view: "Terminal" as const,
+    collapsed: false,
+    avatar_color: null,
+  };
   useProjectStore.setState({
-    activeProjectId: null,
-    activeProject: null,
+    projects: [unifiedProject],
+    activeProjectId: "rp1",
+    activeProject: unifiedProject,
     isTerminalView: false,
   });
   useConnectionStore.setState({
     remoteEntries: overrides.remoteEntries ?? [entry],
-    activeRemoteProject: overrides.activeRemoteProject ?? { entry, project },
     wslEntries: [],
-    activeWslKey: null,
-    activeWslProject: null,
-    activeRemoteKey: { host: "192.168.1.1", projectId: "rp1" },
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
   });
@@ -112,7 +121,7 @@ describe("useRemoteActions", () => {
       expect(state.remoteEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
-    it("更新 activeRemoteProject 的 selected_agent", () => {
+    it("更新 useProjectStore 中 activeProject 的 selected_agent", () => {
       const { result } = renderHook(() =>
         useRemoteActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
       );
@@ -123,14 +132,27 @@ describe("useRemoteActions", () => {
         result.current.updateRemoteProjectAgent(agent);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeRemoteProject?.project.selected_agent).toBe("claude-code");
+      const state = useProjectStore.getState();
+      expect(state.activeProject?.selected_agent).toBe("claude-code");
     });
 
     it("传入 null 时清空 selected_agent", () => {
       const entry = makeRemoteEntry();
-      const project = makeRemoteProject("rp1", { selected_agent: "old-agent" });
-      seedStore({ activeRemoteProject: { entry, project } });
+      const unifiedProject = {
+        id: "rp1",
+        name: "proj-rp1",
+        path: "/home/user/rp1",
+        environment: { type: "Remote" as const, host: "192.168.1.1", port: 22, username: "user", auth: { Password: "[redacted]" } },
+        git_info: null,
+        terminal: { id: "t1", pid: null, status: "Idle" as const, history: [], agent: null },
+        selected_agent: "old-agent" as string | null,
+        selected_ide: null as string | null,
+        active_view: "Terminal" as const,
+        collapsed: false,
+        avatar_color: null,
+      };
+      useProjectStore.setState({ projects: [unifiedProject], activeProjectId: "rp1", activeProject: unifiedProject });
+      useConnectionStore.setState({ remoteEntries: [entry] });
 
       const { result } = renderHook(() =>
         useRemoteActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
@@ -140,8 +162,10 @@ describe("useRemoteActions", () => {
         result.current.updateRemoteProjectAgent(null);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeRemoteProject?.project.selected_agent).toBeNull();
+      const connectionState = useConnectionStore.getState();
+      expect(connectionState.remoteEntries[0].projects[0].selected_agent).toBeNull();
+      const projectState = useProjectStore.getState();
+      expect(projectState.activeProject?.selected_agent).toBeNull();
     });
 
     it("调用 saveSession 持久化", () => {
@@ -217,9 +241,10 @@ describe("useRemoteActions", () => {
         result.current.handleSelectRemoteAgent(agent);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeRemoteProject?.project.selected_agent).toBe("claude-code");
-      expect(state.remoteEntries[0].projects[0].selected_agent).toBe("claude-code");
+      const connectionState = useConnectionStore.getState();
+      expect(connectionState.remoteEntries[0].projects[0].selected_agent).toBe("claude-code");
+      const projectState = useProjectStore.getState();
+      expect(projectState.activeProject?.selected_agent).toBe("claude-code");
     });
 
     it("传入 null 时不调用 switchAgentInRemoteTerminal", async () => {

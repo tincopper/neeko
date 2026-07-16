@@ -89,8 +89,6 @@ describe('useRemoteProjects', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     expect(result.current.remoteEntries).toEqual([]);
-    expect(result.current.activeRemoteKey).toBeNull();
-    expect(result.current.activeRemoteProject).toBeNull();
     expect(result.current.remoteDialogOpen).toBe(false);
     expect(result.current.pendingAuthEntry).toBeNull();
   });
@@ -182,7 +180,7 @@ describe('useRemoteProjects', () => {
     });
 
     act(() => {
-      result.current.setActiveRemoteKey({ host: 'host1', projectId: 'rp1' });
+      useProjectStore.setState({ activeProjectId: 'rp1', activeProject: null });
     });
 
     act(() => {
@@ -193,8 +191,7 @@ describe('useRemoteProjects', () => {
       result.current.handleCloseRemoteProject('e1', 'rp1');
     });
 
-    expect(result.current.activeRemoteKey).toBeNull();
-    expect(result.current.activeRemoteProject).toBeNull();
+    expect(useProjectStore.getState().activeProjectId).toBeNull();
     expect(result.current.remoteOpenSessions.has('rp1')).toBe(false);
   });
 
@@ -304,6 +301,20 @@ describe('useRemoteProjects', () => {
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
 
     act(() => {
+      useProjectStore.setState({
+        activeProject: {
+          id: 'rp1',
+          name: 'p1',
+          path: '/opt/p1',
+          environment: { type: 'Remote', host: 'host1', port: 22, username: 'root', auth: { Password: '' } },
+          git_info: null,
+          terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
+          selected_agent: null,
+          selected_ide: null,
+          active_view: 'Terminal',
+          collapsed: false,
+        },
+      });
       result.current.setRemoteEntries([
         makeRemoteEntry({
           id: 'e1',
@@ -311,13 +322,6 @@ describe('useRemoteProjects', () => {
           projects: [makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' })],
         }),
       ]);
-    });
-
-    act(() => {
-      result.current.setActiveRemoteProject({
-        entry: makeRemoteEntry({ id: 'e1', host: 'host1' }),
-        project: makeRemoteProject({ id: 'rp1', name: 'p1', path: '/opt/p1' }),
-      });
     });
 
     expect(result.current.pendingAuthEntry).not.toBeNull();

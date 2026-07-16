@@ -5,11 +5,11 @@ import EditorGroupLayout from "@/features/editor/components/EditorGroupLayout";
 import { Button } from "@/ui/button";
 import { useAppContext } from "@/shared/contexts";
 import { useProjectActionsContext } from "@/features/project/context";
-import { useWslContext } from "@/features/connection/contexts/WslContext";
 import { useRemoteContext } from "@/features/connection/contexts/RemoteContext";
 import { useEditorContext } from '@/shared/contexts';
 import type { AgentConfig, Tab } from '@/shared/types';
 import { useProjectStore } from "@/features/project/store";
+import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
 import { useShallow } from "zustand/shallow";
@@ -31,10 +31,6 @@ function MainContent() {
       onOpenIde,
    } = useProjectActionsContext();
    const {
-      activeWslProject,
-   } = useWslContext();
-   const {
-      activeRemoteProject,
       remoteAuthStore,
       activeRemoteWorktreePath,
       setRemoteOpenSessions,
@@ -47,8 +43,8 @@ function MainContent() {
    const activeProject = useProjectStore((state) => state.activeProject);
    const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
 
-   // Determine the current project ID (local, WSL, or Remote)
-   const currentProjectId = activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
+   // Determine the current project ID (all types via unified store)
+   const currentProjectId = activeProject?.id ?? null;
 
    // Composite tab key: worktree gets its own independent tab space
    const tabKey = activeWorktreePath && currentProjectId
@@ -63,7 +59,7 @@ function MainContent() {
 
    const tabs = projectTabs?.tabs ?? [];
 
-   const hasActiveProject = !!(activeProject || activeWslProject || activeRemoteProject);
+   const hasActiveProject = !!activeProject;
 
    // Wire up file drag-to-agent: on dragend, paste the stored file path into
    // the agent terminal without auto-submitting (no \r).
@@ -153,15 +149,19 @@ function MainContent() {
    }, []);
 
    const buildLayoutId = useCallback((groupId: string, tabId: string | null) => {
-      const base = activeProject
-         ? `local:${activeProject.id}`
-         : activeWslProject
-            ? `wsl:${activeWslProject.distro}:${activeWslProject.project.id}`
-            : activeRemoteProject
-               ? `remote:${activeRemoteProject.entry.id}:${activeRemoteProject.project.id}`
-               : "none";
+      const p = useProjectStore.getState().activeProject;
+      if (!p) return `none:${groupId}:${tabId ?? "default"}`;
+      const env = p.environment;
+      let base: string;
+      if (env.type === 'Wsl') {
+         base = `wsl:${env.distro}:${p.id}`;
+      } else if (env.type === 'Remote') {
+         base = `remote:${env.host}:${p.id}`;
+      } else {
+         base = `local:${p.id}`;
+      }
       return `${base}:${groupId}:${tabId ?? "default"}`;
-   }, [activeProject, activeWslProject, activeRemoteProject]);
+   }, []);
 
    const onRemoteSessionReady = useCallback(
       (pid: string) => {
@@ -171,22 +171,29 @@ function MainContent() {
    );
 
    // Remote project needs authentication but has no credentials yet
-   const needsRemoteAuth = !!(activeRemoteProject && !activeProject && !activeWslProject
-      && !remoteAuthStore.get(activeRemoteProject.entry.id));
+   const needsRemoteAuth = (() => {
+      if (!activeProject || activeProject.environment.type !== 'Remote') return false;
+      const env = activeProject.environment;
+      const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === env.host);
+      return !!entry && !remoteAuthStore.get(entry.id);
+   })();
 
    const remoteProjectProp = useMemo(() => {
-      if (!activeRemoteProject || activeProject || activeWslProject) return null;
-      const { entry, project } = activeRemoteProject;
+      const p = useProjectStore.getState().activeProject;
+      if (!p || p.environment.type !== 'Remote') return null;
+      const env = p.environment;
+      const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === env.host);
+      if (!entry) return null;
       const auth = remoteAuthStore.get(entry.id);
       if (!auth) return null;
-      const projectPath = activeRemoteWorktreePath ?? project.path;
+      const projectPath = activeRemoteWorktreePath ?? p.path;
       const cacheKeySuffix = activeRemoteWorktreePath
          ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, "")}`
          : "";
       return {
          entryId: entry.id,
-         projectId: project.id,
-         projectName: project.name,
+         projectId: p.id,
+         projectName: p.name,
          projectPath,
          host: entry.host,
          port: entry.port,
@@ -195,7 +202,7 @@ function MainContent() {
          cacheKeySuffix,
          onSessionReady: onRemoteSessionReady,
       };
-   }, [activeRemoteProject, activeProject, activeWslProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
+   }, [activeProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
 
    return (
       <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full">
@@ -206,7 +213,15 @@ function MainContent() {
                   <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
                   <Button
                      variant="primary"
-                     onClick={() => setPendingAuthEntry(activeRemoteProject!.entry)}
+                      onClick={() => {
+                        const p = useProjectStore.getState().activeProject;
+                        if (!p) return;
+                        const env = p.environment;
+                        if (env.type === 'Remote') {
+                          const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === env.host);
+                          if (entry) setPendingAuthEntry(entry);
+                        }
+                      }}
                      style={{ color: 'var(--text-on-accent)' }}
                   >
                      Enter Credentials

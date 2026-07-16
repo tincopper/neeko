@@ -132,6 +132,7 @@ describe('useKeyboardShortcuts', () => {
   it('Ctrl+N 循环 worktree', () => {
     storeState = seedStore({
       ...storeState,
+      activeProjectId: 'p1',
       isTerminalView: true,
       openedWorktrees: [
         { path: '/wt1', branch: 'main' },
@@ -150,6 +151,7 @@ describe('useKeyboardShortcuts', () => {
   it('Ctrl+N 在最后一个 worktree 后回到 null', () => {
     storeState = seedStore({
       ...storeState,
+      activeProjectId: 'p1',
       isTerminalView: true,
       openedWorktrees: [
         { path: '/wt1', branch: 'main' },
@@ -166,7 +168,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+N 无 worktree 时不崩溃', () => {
-    storeState = seedStore({ ...storeState, isTerminalView: true, openedWorktrees: [] });
+    storeState = seedStore({ ...storeState, activeProjectId: 'p1', isTerminalView: true, openedWorktrees: [] });
 
     renderHook(() => useKeyboardShortcuts(params));
 

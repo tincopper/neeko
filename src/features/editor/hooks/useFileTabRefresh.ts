@@ -1,7 +1,6 @@
 import { readFileContent } from "@/features/file/api/fileApi";
 import type { FileChangedEvent, FileContent } from '@/shared/types';
 import { useEditorStore } from '@/shared/store';
-import { useProjectStore } from '@/features/project/store';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
 
 interface FileRefreshCommands {
@@ -38,9 +37,8 @@ export function useFileTabRefresh(commands?: FileRefreshCommands | null) {
               if (commands) {
                 content = await commands.readFileContent(tab.data.filePath);
               } else {
-                const projectPath = useProjectStore.getState().projects.find(p => p.id === project_id)?.path ?? project_id;
                 content = await readFileContent(
-                  { Local: { project_path: projectPath } },
+                  project_id,
                   tab.data.filePath,
                 );
               }

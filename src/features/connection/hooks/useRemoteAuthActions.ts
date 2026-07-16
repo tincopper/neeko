@@ -16,8 +16,6 @@ export function useRemoteAuthActions({ saveSession }: UseRemoteAuthActionsParams
   const handleRemoteAuthCancel = useCallback(() => {
     useConnectionStore.setState({
       pendingAuthEntry: null,
-      activeRemoteKey: null,
-      activeRemoteProject: null,
     });
   }, []);
 

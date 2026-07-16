@@ -3,7 +3,6 @@ import { setProjectIde } from "../../project/api/projectApi";
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
 import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
 import type { AgentConfig } from '@/shared/types';
 import type { SaveSessionFn } from "@/features/connection/hooks/useWslProjects";
 
@@ -166,44 +165,7 @@ export function useAgentActions({
         };
       });
 
-      useConnectionStore.setState((state) => {
-        const nextWslEntries = state.wslEntries.map((entry) => ({
-          ...entry,
-          projects: entry.projects.map((p) =>
-            p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
-          ),
-        }));
-        const nextActiveWslProject =
-          state.activeWslProject && state.activeWslProject.project.id === projectId
-            ? {
-                ...state.activeWslProject,
-                project: { ...state.activeWslProject.project, selected_ide: ideCommand },
-              }
-            : state.activeWslProject;
-
-        const nextRemoteEntries = state.remoteEntries.map((entry) => ({
-          ...entry,
-          projects: entry.projects.map((p) =>
-            p.id === projectId ? { ...p, selected_ide: ideCommand } : p,
-          ),
-        }));
-        const nextActiveRemoteProject =
-          state.activeRemoteProject && state.activeRemoteProject.project.id === projectId
-            ? {
-                ...state.activeRemoteProject,
-                project: { ...state.activeRemoteProject.project, selected_ide: ideCommand },
-              }
-            : state.activeRemoteProject;
-
-        return {
-          wslEntries: nextWslEntries,
-          activeWslProject: nextActiveWslProject,
-          remoteEntries: nextRemoteEntries,
-          activeRemoteProject: nextActiveRemoteProject,
-        };
-      });
-
-      // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错�?
+      // 本地项目同步后端 project_manager；WSL/SSH 项目命中不到也不报错
       setProjectIde(projectId, ideCommand).catch(() => {
         // ignore: WSL/remote projects are not tracked by local project_manager
       });

@@ -1,23 +1,23 @@
 import { useCallback, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { openRemoteIde } from "../../project/api/projectApi";
-import { invokeRemoteGitCommand, getRemoteGitInfo } from "../api/connectionApi";
+import { invokeRemoteGitCommand } from "../api/connectionApi";
+import { getGitInfo } from "@/features/git/api/gitApi";
 import {
   refreshRemoteTerminal,
   remoteCacheKey,
   switchAgentInRemoteTerminal,
 } from "@/features/terminal/components/terminalCache";
 import { useConnectionStore } from "../store";
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useShallow } from "zustand/shallow";
 import type {
   AgentConfig,
   AppConfig,
   RemoteEntrySession,
-  RemoteProject,
 } from '@/shared/types';
-import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
+import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
 import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";
 
@@ -35,7 +35,6 @@ export function useRemoteActions({
   saveSession,
 }: UseRemoteActionsParams) {
   const remoteEntries = useConnectionStore(useShallow((state) => state.remoteEntries));
-  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
   const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
 
   const setRemoteEntries: Dispatch<SetStateAction<RemoteEntrySession[]>> = useCallback((updater) => {
@@ -44,27 +43,14 @@ export function useRemoteActions({
     }));
   }, []);
 
-  const setActiveRemoteProject: Dispatch<SetStateAction<{
-    entry: RemoteEntrySession;
-    project: RemoteProject;
-  } | null>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeRemoteProject: typeof updater === "function" ? updater(state.activeRemoteProject) : updater,
-    }));
-  }, []);
-
   // ── Remote transient worktree state ──
-  // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
-  // to avoid useState �?useSyncToStore double-render and enable merged setState.
-  const activeRemoteWorktreePath = useWorktreeStore((s) => s.activeRemoteWorktreePath);
+  // Uses unified activeWorktreePath for path; Remote-specific branch/opened
+  // remain separate until Remote fully migrates to worktreeStateMap.
+  const unifiedActiveWtPath = useWorktreeStore((s) => s.activeWorktreePath);
   const remoteActiveWtBranch = useWorktreeStore((s) => s.remoteActiveWtBranch);
   const remoteOpenedWt = useWorktreeStore((s) => s.remoteOpenedWt);
 
 
-
-  const setActiveRemoteWorktreePath = useCallback((path: string | null) => {
-    useWorktreeStore.setState({ activeRemoteWorktreePath: path });
-  }, []);
 
   const setRemoteActiveWtBranch = useCallback((branch: string) => {
     useWorktreeStore.setState({ remoteActiveWtBranch: branch });
@@ -77,18 +63,18 @@ export function useRemoteActions({
   }, []);
 
   const openWorktreeTerminal = useCallback((worktreePath: string, branch: string) => {
-    setActiveRemoteWorktreePath(worktreePath);
+    useWorktreeStore.setState({ activeWorktreePath: worktreePath });
     setRemoteActiveWtBranch(branch);
     setRemoteOpenedWt((prev) =>
       prev.some((item) => item.path === worktreePath)
         ? prev
         : [...prev, { path: worktreePath, branch }],
     );
-  }, [setActiveRemoteWorktreePath, setRemoteActiveWtBranch, setRemoteOpenedWt]);
+  }, [setRemoteActiveWtBranch, setRemoteOpenedWt]);
 
   const resetRemoteTransientState = useCallback(() => {
     useWorktreeStore.setState({
-      activeRemoteWorktreePath: null,
+      activeWorktreePath: null,
       remoteActiveWtBranch: "",
       remoteOpenedWt: [],
     });
@@ -106,68 +92,40 @@ export function useRemoteActions({
     [remoteEntries, remoteAuthStore],
   );
 
-  const refreshRemoteGit = useMemo(() => buildRefreshGitHandler<
-    RemoteProject,
-    RemoteEntrySession,
-    { entry: RemoteEntrySession; project: RemoteProject },
-    string
-  >({
-    refreshGitInfo: async (projectPath, entryId) => {
+  const refreshRemoteGit = useMemo(() => {
+    const handler = async (entryId: string, projectId: string, _projectPath: string): Promise<void> => {
       const entry = remoteEntries.find((item) => item.id === entryId);
       const auth = remoteAuthStore.get(entryId);
       if (!entry || !auth) {
         console.error("[SSH] No auth for entry");
-        return null;
+        return;
       }
-      const result = await getRemoteGitInfo({
-        Remote: {
-          host: entry.host,
-          port: entry.port,
-          username: entry.username,
-          auth,
-          project_path: projectPath,
-        },
-      }).catch((e) => {
+      const gitInfo = await getGitInfo(projectId).catch((e) => {
         console.error("[SSH] Failed to refresh git info:", e);
         return null;
       });
-      return result;
-    },
-    setEntries: setRemoteEntries,
-    setActiveProject: setActiveRemoteProject,
-    isActiveProject: (activeProject, projectId) => activeProject.project.id === projectId,
-    updateActiveProject: (activeProject, gitInfo) => ({
-      ...activeProject,
-      project: {
-        ...activeProject.project,
-        git_info: gitInfo,
-      },
-    }),
-  }), [remoteEntries, remoteAuthStore, setRemoteEntries, setActiveRemoteProject]);
+      if (!gitInfo) return;
 
-  const handleSelectRemoteProject = useCallback((host: string, project: RemoteProject) => {
-    useProjectStore.setState({
-      activeProjectId: null,
-      activeProject: null,
-    });
-    useConnectionStore.setState({
-      activeWslKey: null,
-      activeWslProject: null,
-      activeRemoteKey: { host, projectId: project.id },
-    });
-    resetRemoteTransientState();
+      setRemoteEntries((prev) =>
+        updateProjectInEntries(prev, projectId, (project) => ({
+          ...project,
+          git_info: gitInfo,
+        }))
+      );
 
-    const entry = remoteEntries.find((item) => item.host === host);
-    if (!entry) {
-      setActiveRemoteProject(null);
-      return;
-    }
-
-    setActiveRemoteProject({ entry, project });
-    if (remoteAuthStore.has(entry.id)) {
-      void refreshRemoteGit(entry.id, project.id, project.path);
-    }
-  }, [remoteEntries, remoteAuthStore, resetRemoteTransientState, setActiveRemoteProject, refreshRemoteGit]);
+      // Sync updated git_info to unified project store
+      useProjectStore.setState((state) => {
+        if (!state.activeProject || state.activeProject.id !== projectId) return state;
+        return {
+          activeProject: { ...state.activeProject, git_info: gitInfo },
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, git_info: gitInfo } : p,
+          ),
+        };
+      });
+    };
+    return handler;
+  }, [remoteEntries, remoteAuthStore, setRemoteEntries]);
 
 
 
@@ -204,58 +162,49 @@ export function useRemoteActions({
   }, [openWorktreeTerminal]);
 
   const updateRemoteProjectAgent = useCallback((agent: AgentConfig | null) => {
-    if (!activeRemoteProject) return;
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject || activeProject.environment.type !== 'Remote') return;
 
     const agentId = agent?.id ?? null;
     const nextEntries = updateProjectInEntries(
       remoteEntries,
-      activeRemoteProject.project.id,
+      activeProject.id,
       (project) => ({ ...project, selected_agent: agentId }),
     );
     setRemoteEntries(nextEntries);
-    setActiveRemoteProject((prev) => (
-      prev ? {
-        ...prev,
-        project: { ...prev.project, selected_agent: agentId },
-      } : prev
-    ));
+    useProjectStore.setState((state) => {
+      if (state.activeProject?.id !== activeProject.id) return state;
+      return { activeProject: { ...state.activeProject, selected_agent: agentId } };
+    });
     saveSession(undefined, nextEntries).catch(console.error);
-  }, [activeRemoteProject, remoteEntries, saveSession, setActiveRemoteProject, setRemoteEntries]);
+  }, [remoteEntries, saveSession, setRemoteEntries]);
 
   const handleSelectRemoteAgent = useCallback((agent: AgentConfig | null) => {
-    if (!activeRemoteProject) {
-      return;
-    }
-
-    const cacheKey = remoteCacheKey(
-      activeRemoteProject.entry.id,
-      activeRemoteProject.project.id,
-    );
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject || activeProject.environment.type !== 'Remote') return;
+    const env = activeProject.environment;
+    const entryId = remoteEntries.find(e => e.host === env.host)?.id ?? '';
+    const cacheKey = remoteCacheKey(entryId, activeProject.id);
     if (agent) {
-      void switchAgentInRemoteTerminal(
-        cacheKey,
-        agent.id,
-        config.agentCommandOverrides,
-      );
+      void switchAgentInRemoteTerminal(cacheKey, agent.id, config.agentCommandOverrides);
     }
-
     updateRemoteProjectAgent(agent);
-
     if (!agent) {
       setTimeout(() => refreshRemoteTerminal(cacheKey), 50);
     }
-  }, [activeRemoteProject, config.agentCommandOverrides, updateRemoteProjectAgent]);
+  }, [config.agentCommandOverrides, remoteEntries, updateRemoteProjectAgent]);
 
   return {
-    activeRemoteWorktreePath,
-    setActiveRemoteWorktreePath,
+    // @deprecated - use activeWorktreePath from worktreeStore instead
+    activeRemoteWorktreePath: unifiedActiveWtPath,
+    // @deprecated - use worktreeStore.setState({ activeWorktreePath }) instead
+    setActiveRemoteWorktreePath: (path: string | null) => useWorktreeStore.setState({ activeWorktreePath: path }),
     remoteActiveWtBranch,
     setRemoteActiveWtBranch,
     remoteOpenedWt,
     setRemoteOpenedWt,
     resetRemoteTransientState,
     invokeRemoteGit,
-    handleSelectRemoteProject,
     handleRefreshRemoteGit,
     handleOpenRemoteIde,
     handleOpenRemoteWorktreeTerminal,

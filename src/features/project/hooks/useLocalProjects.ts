@@ -230,14 +230,13 @@ export function useLocalProjects() {
     };
 
     try {
-      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       const changedFiles = await getWorktreeChangedFiles(
-        { Local: { project_path: projectPath } },
+        projectId,
         '',
       );
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
-      getGitBranchInfo({ Local: { project_path: projectPath } })
+      getGitBranchInfo(projectId)
         .then((branchInfo) => {
           updateProjectGitInfo({
             current_branch: branchInfo.current_branch,

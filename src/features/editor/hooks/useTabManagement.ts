@@ -7,14 +7,12 @@ const APP_SETTINGS_PROJECT_ID = "__app__";
 
 interface UseTabManagementOptions {
   activeProject: { id: string; selected_agent?: string | null } | null;
-  activeWslProject: { project: { id: string } } | null;
-  activeRemoteProject: { project: { id: string } } | null;
   activeWorktreePath: string | null;
   agents: { id: string; name?: string }[] | null;
 }
 
 export function useTabManagement(options: UseTabManagementOptions) {
-  const { activeProject, activeWslProject, activeRemoteProject, activeWorktreePath, agents } = options;
+  const { activeProject, activeWorktreePath, agents } = options;
 
   const {
     getTabs,
@@ -25,8 +23,7 @@ export function useTabManagement(options: UseTabManagementOptions) {
     handleAgentClick: handleTabAgentClick,
   } = useTerminalTabs();
 
-  const currentProjectId =
-    activeProject?.id ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
+  const currentProjectId = activeProject?.id ?? null;
 
   const tabKey = activeWorktreePath && currentProjectId
     ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)

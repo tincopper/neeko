@@ -1,5 +1,6 @@
 export type {
   Project,
+  ProjectEnvironment,
   TerminalEntry,
   ProjectType,
   ProjectData,
@@ -11,4 +12,8 @@ export type {
   ProjectCommands,
   ProjectCapabilities,
   ActiveProjectContext,
+} from "@/features/project/types";
+
+export {
+  environmentToConnectionContext,
 } from "@/features/project/types";

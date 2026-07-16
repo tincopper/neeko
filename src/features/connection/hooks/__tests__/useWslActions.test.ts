@@ -38,27 +38,37 @@ const DEFAULT_CONFIG = {
   agentCommandOverrides: {},
 } as never; // cast to satisfy AppConfig (partial is enough)
 
+function createWslProject(id = "wp1") {
+  return {
+    id,
+    name: `proj-${id}`,
+    path: `/home/user/${id}`,
+    environment: { type: 'Wsl' as const, distro: 'Ubuntu' },
+    git_info: null,
+    terminal: { id: 't1', pid: null, status: 'Idle' as const, history: [], agent: null },
+    selected_agent: null as string | null,
+    selected_ide: null,
+    active_view: 'Terminal' as const,
+    collapsed: false,
+  };
+}
+
 function seedStore(overrides: {
   wslEntries?: WSLEntrySession[];
   activeWslProject?: { distro: string; project: ReturnType<typeof makeWslProject> };
 } = {}) {
   const project = makeWslProject("wp1");
+  const coreProject = createWslProject("wp1");
   useProjectStore.setState({
-    activeProjectId: null,
-    activeProject: null,
+    activeProjectId: "wp1",
+    activeProject: coreProject,
     isTerminalView: false,
   });
   useConnectionStore.setState({
     wslEntries: overrides.wslEntries ?? [
       { id: "e1", distro: "Ubuntu", projects: [project] },
     ],
-    activeWslProject: overrides.activeWslProject ?? {
-      distro: "Ubuntu",
-      project,
-    },
     remoteEntries: [],
-    activeRemoteKey: null,
-    activeRemoteProject: null,
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
   });
@@ -103,7 +113,7 @@ describe("useWslActions", () => {
       expect(state.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
-    it("更新 activeWslProject 的 selected_agent", () => {
+    it("更新 activeProject 的 selected_agent", () => {
       const { result } = renderHook(() =>
         useWslActions({ config: DEFAULT_CONFIG, showToast: vi.fn(), saveSession: mockSaveSession }),
       );
@@ -114,16 +124,24 @@ describe("useWslActions", () => {
         result.current.updateWslProjectAgent(agent);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeWslProject?.project.selected_agent).toBe("claude-code");
+      const state = useProjectStore.getState();
+      expect(state.activeProject?.selected_agent).toBe("claude-code");
     });
 
     it("传入 null 时清空 selected_agent", () => {
       // 先设置一个有 agent 的项目
-      seedStore({
-        activeWslProject: {
-          distro: "Ubuntu",
-          project: makeWslProject("wp1", { selected_agent: "old-agent" }),
+      useProjectStore.setState({
+        activeProject: {
+          id: 'wp1',
+          name: 'proj-wp1',
+          path: '/home/user/wp1',
+          environment: { type: 'Wsl', distro: 'Ubuntu' },
+          git_info: null,
+          terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
+          selected_agent: 'old-agent',
+          selected_ide: null,
+          active_view: 'Terminal',
+          collapsed: false,
         },
       });
 
@@ -135,8 +153,8 @@ describe("useWslActions", () => {
         result.current.updateWslProjectAgent(null);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeWslProject?.project.selected_agent).toBeNull();
+      const state = useProjectStore.getState();
+      expect(state.activeProject?.selected_agent).toBeNull();
     });
 
     it("调用 saveSession 持久化", () => {
@@ -217,9 +235,10 @@ describe("useWslActions", () => {
         result.current.handleSelectWslAgent(agent);
       });
 
-      const state = useConnectionStore.getState();
-      expect(state.activeWslProject?.project.selected_agent).toBe("claude-code");
-      expect(state.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
+      const state = useProjectStore.getState();
+      expect(state.activeProject?.selected_agent).toBe("claude-code");
+      const connState = useConnectionStore.getState();
+      expect(connState.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
     });
 
     it("传入 null 时不调用 switchAgentInWslTerminal", async () => {

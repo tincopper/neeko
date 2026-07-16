@@ -1,11 +1,13 @@
 use crate::agent::AgentManager;
 use crate::common::file::watcher::WatcherManager;
+use crate::common::git::transport::GitTransport;
 use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::conversation::ConversationManager;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
 use crate::skill;
 use crate::terminal::TerminalManager;
+use crate::AppError;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -77,6 +79,19 @@ impl AppStateWrapper {
             );
             std::process::exit(0);
         });
+    }
+
+    /// 通过 project_id 一站式解析项目路径与 GitTransport。
+    /// 供 git 等命令使用，无需调用方关心项目类型。
+    pub fn resolve_project(&self, project_id: &str) -> Result<(GitTransport, String), AppError> {
+        let manager = self.project_manager.lock().map_err(AppError::from)?;
+        let project = manager
+            .get_project(project_id)
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
+
+        let path = project.path.to_string_lossy().to_string();
+        let transport = project.environment.to_git_transport(&path).0;
+        Ok((transport, path))
     }
 
     /// Create with an external shared Arc<SkillStore> (used for Tauri state injection)

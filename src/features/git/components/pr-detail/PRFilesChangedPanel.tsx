@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
@@ -32,10 +31,7 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
-function getProjectPath(projectId: string): string {
-  const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
-  return project?.path ?? projectId;
-}
+
 
 // 模块级缓存：避免多个 DiffBody 对同一 PR 重复请求 review comments
 const reviewCommentsCache = new Map<string, Promise<PRReviewComment[]>>();
@@ -549,9 +545,8 @@ const AddedFileContent: React.FC<AddedFileContentProps> = ({ projectId, filePath
   const [contentError, setContentError] = useState<string | null>(null);
 
   useEffect(() => {
-    const projectPath = getProjectPath(projectId);
     let cancelled = false;
-    readFileContent({ Local: { project_path: projectPath } }, filePath)
+    readFileContent(projectId, filePath)
       .then((result) => {
         if (!cancelled) {
           setContent(result.content);

@@ -20,6 +20,7 @@ export interface DialogState {
     distro?: string;
     entryId?: string;
     projectPath: string;
+    projectId: string;
   };
 }
 
@@ -74,18 +75,15 @@ const GitDialog: React.FC<GitDialogProps> = ({
     setError(null);
     try {
       const src = dialog.source;
-      let transport;
       if (src?.type === "wsl") {
-        transport = { Wsl: { distro: src.distro!, project_path: src.projectPath } };
-        await createBranch(transport, branchName.trim());
+        await createBranch(src.projectId, branchName.trim());
         onRefreshAfterWslSsh?.();
       } else if (src?.type === "remote") {
         setError("SSH branch creation not yet supported");
         setSubmitting(false);
         return;
       } else {
-        transport = { Local: { project_path: dialog.projectPath ?? "" } };
-        await createBranch(transport, branchName.trim());
+        await createBranch(dialog.projectId ?? "", branchName.trim());
         onRefreshGit(dialog.projectId ?? "");
       }
       onClose();
@@ -106,7 +104,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
       const src = dialog.source;
       if (src?.type === "wsl") {
         await createWorktree(
-          { Wsl: { distro: src.distro!, project_path: src.projectPath } },
+          src.projectId,
           computedPath, name, true,
         );
         onRefreshAfterWslSsh?.();
@@ -116,7 +114,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         return;
       } else {
         await createWorktree(
-          { Local: { project_path: dialog.projectPath ?? "" } },
+          dialog.projectId ?? "",
           computedPath, name, true,
         );
         onRefreshGit(dialog.projectId ?? "");
@@ -137,7 +135,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
       const src = dialog.source;
       if (src?.type === "wsl") {
         await createWorktree(
-          { Wsl: { distro: src.distro!, project_path: src.projectPath } },
+          src.projectId,
           worktreePath.trim(), worktreeBranch.trim(), newBranch,
         );
         onRefreshAfterWslSsh?.();
@@ -147,7 +145,7 @@ const GitDialog: React.FC<GitDialogProps> = ({
         return;
       } else {
         await createWorktree(
-          { Local: { project_path: dialog.projectPath ?? "" } },
+          dialog.projectId ?? "",
           worktreePath.trim(), worktreeBranch.trim(), newBranch,
         );
         onRefreshGit(dialog.projectId ?? "");

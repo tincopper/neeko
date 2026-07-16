@@ -1,5 +1,3 @@
-use serde::Deserialize;
-
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::git::operations;
@@ -14,148 +12,71 @@ use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
-#[derive(Debug, Deserialize)]
-pub enum GitTransportKind {
-    Local {
-        project_path: String,
-    },
-    #[cfg(target_os = "windows")]
-    Wsl {
-        distro: String,
-        project_path: String,
-    },
-    Remote {
-        host: String,
-        port: u16,
-        username: String,
-        auth: AuthMethod,
-        project_path: String,
-    },
-}
-
-/// Transport for file operations and commit message generation (Local + WSL + Remote).
-#[derive(Debug, Deserialize)]
-pub enum FileTransportKind {
-    Local {
-        project_path: String,
-    },
-    #[cfg(target_os = "windows")]
-    Wsl {
-        distro: String,
-        project_path: String,
-    },
-    Remote {
-        host: String,
-        port: u16,
-        username: String,
-        auth: AuthMethod,
-        project_path: String,
-    },
-}
-
-fn into_transport_and_dir(kind: &GitTransportKind) -> (GitTransport, &str) {
-    match kind {
-        GitTransportKind::Local { project_path } => (GitTransport::Local, project_path.as_str()),
-        #[cfg(target_os = "windows")]
-        GitTransportKind::Wsl {
-            distro,
-            project_path,
-        } => (
-            GitTransport::Wsl {
-                distro: distro.clone(),
-            },
-            project_path.as_str(),
-        ),
-        GitTransportKind::Remote {
-            host,
-            port,
-            username,
-            auth,
-            project_path,
-        } => (
-            GitTransport::Remote {
-                host: host.clone(),
-                port: *port,
-                username: username.clone(),
-                auth: auth.clone(),
-            },
-            project_path.as_str(),
-        ),
-    }
-}
-
-fn into_exec_target(kind: &GitTransportKind) -> ExecTarget {
-    match kind {
-        GitTransportKind::Local { .. } => ExecTarget::Local,
-        #[cfg(target_os = "windows")]
-        GitTransportKind::Wsl { distro, .. } => ExecTarget::Wsl {
-            distro: distro.clone(),
-        },
-        GitTransportKind::Remote {
-            host,
-            port,
-            username,
-            auth,
-            ..
-        } => ExecTarget::Remote {
-            host: host.clone(),
-            port: *port,
-            username: username.clone(),
-            auth: auth.clone(),
-        },
-    }
-}
-
 // ─── Staging ─────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn stage_files(
-    transport: GitTransportKind,
+    project_id: String,
     file_paths: Vec<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::stage_files(&t, wd, &file_paths)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::stage_files(&t, &wd, &file_paths)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn unstage_files(
-    transport: GitTransportKind,
+    project_id: String,
     file_paths: Vec<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::unstage_files(&t, wd, &file_paths)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::unstage_files(&t, &wd, &file_paths)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn stage_all(transport: GitTransportKind) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::stage_all(&t, wd).await.map_err(AppError::from)
+pub async fn stage_all(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::stage_all(&t, &wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn unstage_all(transport: GitTransportKind) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::unstage_all(&t, wd)
+pub async fn unstage_all(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::unstage_all(&t, &wd)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn discard_file(transport: GitTransportKind, file_path: String) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::discard_file(&t, wd, &file_path)
+pub async fn discard_file(
+    project_id: String,
+    file_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::discard_file(&t, &wd, &file_path)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn discard_all(transport: GitTransportKind) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::discard_all(&t, wd)
+pub async fn discard_all(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::discard_all(&t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -163,73 +84,84 @@ pub async fn discard_all(transport: GitTransportKind) -> Result<(), AppError> {
 // ─── Remote operations ───────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn fetch(transport: GitTransportKind) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::fetch(&t, wd).await.map_err(AppError::from)
+pub async fn fetch(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<PushOutcome, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::fetch(&t, &wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn pull(transport: GitTransportKind) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::pull(&t, wd).await.map_err(AppError::from)
+pub async fn pull(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<PushOutcome, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::pull(&t, &wd).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn push(
-    transport: GitTransportKind,
+    project_id: String,
     set_upstream: Option<bool>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::push(&t, wd, set_upstream.unwrap_or(false))
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::push(&t, &wd, set_upstream.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn fetch_with_credentials(
-    transport: GitTransportKind,
+    project_id: String,
     username: String,
     password: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::fetch_with_credentials(&t, wd, &username, &password)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::fetch_with_credentials(&t, &wd, &username, &password)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn pull_with_credentials(
-    transport: GitTransportKind,
+    project_id: String,
     username: String,
     password: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::pull_with_credentials(&t, wd, &username, &password)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::pull_with_credentials(&t, &wd, &username, &password)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn push_with_credentials(
-    transport: GitTransportKind,
+    project_id: String,
     set_upstream: Option<bool>,
     username: String,
     password: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::push_with_credentials(&t, wd, set_upstream.unwrap_or(false), &username, &password)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::push_with_credentials(&t, &wd, set_upstream.unwrap_or(false), &username, &password)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn commit_files(
-    transport: GitTransportKind,
+    project_id: String,
     file_paths: Vec<String>,
     message: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<CommitResult, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::commit_files(&t, wd, &file_paths, &message)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::commit_files(&t, &wd, &file_paths, &message)
         .await
         .map_err(AppError::from)
 }
@@ -237,29 +169,38 @@ pub async fn commit_files(
 // ─── Cherry-pick / Revert / Tag ──────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn cherry_pick(transport: GitTransportKind, commit_hash: String) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::cherry_pick(&t, wd, &commit_hash)
+pub async fn cherry_pick(
+    project_id: String,
+    commit_hash: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::cherry_pick(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn revert(transport: GitTransportKind, commit_hash: String) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::revert(&t, wd, &commit_hash)
+pub async fn revert(
+    project_id: String,
+    commit_hash: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::revert(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_tag(
-    transport: GitTransportKind,
+    project_id: String,
     name: String,
     message: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::create_tag(&t, wd, &name, &message)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::create_tag(&t, &wd, &name, &message)
         .await
         .map_err(AppError::from)
 }
@@ -268,69 +209,75 @@ pub async fn create_tag(
 
 #[tauri::command]
 pub async fn checkout_branch(
-    transport: GitTransportKind,
+    project_id: String,
     branch_name: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::checkout_branch(&t, wd, &branch_name)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::checkout_branch(&t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_branch(
-    transport: GitTransportKind,
+    project_id: String,
     branch_name: String,
     start_point: Option<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::create_branch(&t, wd, &branch_name, start_point.as_deref())
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::create_branch(&t, &wd, &branch_name, start_point.as_deref())
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn delete_branch(
-    transport: GitTransportKind,
+    project_id: String,
     branch_name: String,
     force: Option<bool>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::delete_branch(&t, wd, &branch_name, force.unwrap_or(false))
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::delete_branch(&t, &wd, &branch_name, force.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn rename_branch(
-    transport: GitTransportKind,
+    project_id: String,
     old_name: String,
     new_name: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::rename_branch(&t, wd, &old_name, &new_name)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::rename_branch(&t, &wd, &old_name, &new_name)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn create_and_switch_branch(
-    transport: GitTransportKind,
+    project_id: String,
     branch_name: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::create_and_switch_branch(&t, wd, &branch_name)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::create_and_switch_branch(&t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn checkout_detached(
-    transport: GitTransportKind,
+    project_id: String,
     commit_hash: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::checkout_detached(&t, wd, &commit_hash)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::checkout_detached(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -339,52 +286,54 @@ pub async fn checkout_detached(
 
 #[tauri::command]
 pub async fn create_worktree(
-    transport: GitTransportKind,
+    project_id: String,
     worktree_path: String,
     branch_name: String,
     new_branch: bool,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    // Ensure parent directory exists for local
-    if let GitTransportKind::Local { project_path: _ } = &transport {
-        if let Some(parent) = std::path::Path::new(&worktree_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+    let (t, wd) = state.resolve_project(&project_id)?;
+    // Ensure parent directory exists (no-op for WSL/Remote)
+    if let Some(parent) = std::path::Path::new(&worktree_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
     }
-    operations::create_worktree(&t, wd, &worktree_path, &branch_name, new_branch)
+    operations::create_worktree(&t, &wd, &worktree_path, &branch_name, new_branch)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn remove_worktree(
-    transport: GitTransportKind,
+    project_id: String,
     worktree_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::remove_worktree(&t, wd, &worktree_path)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::remove_worktree(&t, &wd, &worktree_path)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn rename_worktree(
-    transport: GitTransportKind,
+    project_id: String,
     old_path: String,
     new_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::rename_worktree(&t, wd, &old_path, &new_path)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::rename_worktree(&t, &wd, &old_path, &new_path)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn is_worktree_dirty(
-    transport: GitTransportKind,
+    project_id: String,
     worktree_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
-    let (t, _wd) = into_transport_and_dir(&transport);
+    let (t, _wd) = state.resolve_project(&project_id)?;
     operations::is_worktree_dirty(&t, &worktree_path)
         .await
         .map_err(AppError::from)
@@ -393,11 +342,14 @@ pub async fn is_worktree_dirty(
 // ─── Info / Read operations ──────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_git_info(transport: GitTransportKind) -> Result<GitInfo, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
+pub async fn get_git_info(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<GitInfo, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
     if t.supports_git2() {
         let repo = t
-            .open_repo(wd)
+            .open_repo(&wd)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
         let branch_info = crate::common::git::local::get_git_branch_info_from_repo(&repo)
             .map_err(AppError::from)?;
@@ -421,22 +373,25 @@ pub async fn get_git_info(transport: GitTransportKind) -> Result<GitInfo, AppErr
             git_provider,
         })
     } else {
-        operations::get_git_info_shell(&t, wd)
+        operations::get_git_info_shell(&t, &wd)
             .await
             .map_err(AppError::from)
     }
 }
 
 #[tauri::command]
-pub async fn get_git_branch_info(transport: GitTransportKind) -> Result<GitBranchInfo, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
+pub async fn get_git_branch_info(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<GitBranchInfo, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
     if t.supports_git2() {
         let repo = t
-            .open_repo(wd)
+            .open_repo(&wd)
             .ok_or_else(|| AppError::from(anyhow::anyhow!("Failed to open git repository")))?;
         crate::common::git::local::get_git_branch_info_from_repo(&repo).map_err(AppError::from)
     } else {
-        operations::get_git_branch_info_shell(&t, wd)
+        operations::get_git_branch_info_shell(&t, &wd)
             .await
             .map_err(AppError::from)
     }
@@ -444,13 +399,14 @@ pub async fn get_git_branch_info(transport: GitTransportKind) -> Result<GitBranc
 
 #[tauri::command]
 pub async fn get_worktree_changed_files(
-    transport: GitTransportKind,
+    project_id: String,
     worktree_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileChange>, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
+    let (t, wd) = state.resolve_project(&project_id)?;
     // When worktree_path is empty, use the main project path
     let repo_path = if worktree_path.is_empty() {
-        wd
+        &wd
     } else {
         &worktree_path
     };
@@ -468,14 +424,15 @@ pub async fn get_worktree_changed_files(
 
 #[tauri::command]
 pub async fn get_changed_files_diff_stats(
-    transport: GitTransportKind,
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileDiffStats>, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
+    let (t, wd) = state.resolve_project(&project_id)?;
     if t.supports_git2() {
-        let repo_path = std::path::Path::new(wd);
+        let repo_path = std::path::Path::new(&wd);
         crate::common::git::local::get_changed_files_diff_stats(repo_path).map_err(AppError::from)
     } else {
-        operations::get_changed_files_diff_stats_local(wd)
+        operations::get_changed_files_diff_stats_local(&wd)
             .await
             .map_err(AppError::from)
     }
@@ -483,16 +440,17 @@ pub async fn get_changed_files_diff_stats(
 
 #[tauri::command]
 pub async fn get_file_diff(
-    transport: GitTransportKind,
+    project_id: String,
     file_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
-    let (t, wd) = into_transport_and_dir(&transport);
+    let (t, wd) = state.resolve_project(&project_id)?;
     let result = if t.supports_git2() {
-        crate::common::git::local::get_file_diff(std::path::Path::new(wd), &file_path)
+        crate::common::git::local::get_file_diff(std::path::Path::new(&wd), &file_path)
             .map_err(AppError::from)
     } else {
-        operations::get_file_diff(&t, wd, &file_path)
+        operations::get_file_diff(&t, &wd, &file_path)
             .await
             .map_err(AppError::from)
     };
@@ -502,63 +460,73 @@ pub async fn get_file_diff(
 }
 
 #[tauri::command]
-pub async fn is_git_repo(transport: GitTransportKind) -> Result<bool, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    Ok(t.is_git_repo(wd).await)
+pub async fn is_git_repo(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<bool, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    Ok(t.is_git_repo(&wd).await)
 }
 
 // ─── Commit log / history ────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn get_commit_log(
-    transport: GitTransportKind,
+    project_id: String,
     count: usize,
     skip: Option<usize>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitEntry>, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::get_commit_log(&t, wd, count, skip.unwrap_or(0))
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::get_commit_log(&t, &wd, count, skip.unwrap_or(0))
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_commit_detail(
-    transport: GitTransportKind,
+    project_id: String,
     commit_hash: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<CommitDetail, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::get_commit_detail(&t, wd, &commit_hash)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::get_commit_detail(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_commit_files(
-    transport: GitTransportKind,
+    project_id: String,
     commit_hash: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::get_commit_files(&t, wd, &commit_hash)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::get_commit_files(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_commit_file_diff(
-    transport: GitTransportKind,
+    project_id: String,
     commit_hash: String,
     file_path: String,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::get_commit_file_diff(&t, wd, &commit_hash, &file_path)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::get_commit_file_diff(&t, &wd, &commit_hash, &file_path)
         .await
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_ahead_behind(transport: GitTransportKind) -> Result<AheadBehind, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::get_ahead_behind(&t, wd)
+pub async fn get_ahead_behind(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<AheadBehind, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::get_ahead_behind(&t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -566,9 +534,12 @@ pub async fn get_ahead_behind(transport: GitTransportKind) -> Result<AheadBehind
 // ─── Default branch ──────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn default_branch(transport: GitTransportKind) -> Result<String, AppError> {
-    let (t, wd) = into_transport_and_dir(&transport);
-    operations::default_branch(&t, wd)
+pub async fn default_branch(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<String, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    operations::default_branch(&t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -580,15 +551,17 @@ const DEFAULT_TREE_DEPTH: u32 = 4;
 
 #[tauri::command]
 pub async fn read_dir_tree(
-    transport: FileTransportKind,
+    project_id: String,
     root_path: Option<String>,
     sub_path: Option<String>,
     max_depth: Option<u32>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
     let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
-    match transport {
-        FileTransportKind::Local { project_path } => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or(project_path));
+    let (t, wd) = state.resolve_project(&project_id)?;
+    match &t {
+        GitTransport::Local => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
             tokio::task::spawn_blocking(move || {
                 crate::common::file::services::read_dir_tree(&base, sub_path.as_deref(), depth)
             })
@@ -597,31 +570,28 @@ pub async fn read_dir_tree(
             .map_err(AppError::from)
         }
         #[cfg(target_os = "windows")]
-        FileTransportKind::Wsl {
-            distro,
-            project_path,
-        } => {
-            let base = root_path.unwrap_or(project_path);
+        GitTransport::Wsl { distro } => {
+            let base = root_path.unwrap_or(wd);
+            let d = distro.clone();
             tokio::task::spawn_blocking(move || {
-                crate::common::git::wsl_read_dir_tree(&distro, &base, sub_path.as_deref(), depth)
+                crate::common::git::wsl_read_dir_tree(&d, &base, sub_path.as_deref(), depth)
             })
             .await
             .map_err(|e| AppError::InvalidInput(format!("Task join error: {}", e)))?
             .map_err(AppError::from)
         }
-        FileTransportKind::Remote {
+        GitTransport::Remote {
             host,
             port,
             username,
             auth,
-            project_path,
         } => {
-            let base = root_path.unwrap_or(project_path);
+            let base = root_path.unwrap_or(wd);
             crate::common::git::remote::remote_read_dir_tree_fn(
-                &host,
-                port,
-                &username,
-                &auth,
+                host,
+                *port,
+                username,
+                auth,
                 &base,
                 sub_path.as_deref(),
                 depth,
@@ -774,13 +744,15 @@ async fn read_file_content_shell(
 
 #[tauri::command]
 pub async fn read_file_content(
-    transport: FileTransportKind,
+    project_id: String,
     file_path: String,
     root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
-    match &transport {
-        FileTransportKind::Local { project_path } => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or_else(|| project_path.clone()));
+    let (t, wd) = state.resolve_project(&project_id)?;
+    match &t {
+        GitTransport::Local => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
             let base = Box::new(base);
             let fp = file_path.clone();
             tokio::task::spawn_blocking(move || {
@@ -791,22 +763,19 @@ pub async fn read_file_content(
             .map_err(AppError::from)
         }
         #[cfg(target_os = "windows")]
-        FileTransportKind::Wsl {
-            distro,
-            project_path,
-        } => {
-            let base = root_path.unwrap_or_else(|| project_path.clone());
+        GitTransport::Wsl { distro } => {
+            let base = root_path.unwrap_or(wd);
             let full_path = format!("{}/{}", base, file_path);
-            read_file_content_shell(&full_path, file_path, distro, None).await
+            let d = distro.clone();
+            read_file_content_shell(&full_path, file_path, &d, None).await
         }
-        FileTransportKind::Remote {
+        GitTransport::Remote {
             host,
             port,
             username,
             auth,
-            project_path,
         } => {
-            let base = root_path.unwrap_or_else(|| project_path.clone());
+            let base = root_path.unwrap_or(wd);
             let full_path = format!("{}/{}", base, file_path);
             read_file_content_shell(
                 &full_path,
@@ -815,7 +784,7 @@ pub async fn read_file_content(
                 "",
                 #[cfg(not(target_os = "windows"))]
                 "",
-                Some((host, *port, username, auth)),
+                Some((host.as_str(), *port, username.as_str(), auth)),
             )
             .await
         }
@@ -824,14 +793,16 @@ pub async fn read_file_content(
 
 #[tauri::command]
 pub async fn write_file_content(
-    transport: FileTransportKind,
+    project_id: String,
     file_path: String,
     content: String,
     root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    match transport {
-        FileTransportKind::Local { project_path } => {
-            let base = std::path::PathBuf::from(root_path.unwrap_or(project_path));
+    let (t, wd) = state.resolve_project(&project_id)?;
+    match &t {
+        GitTransport::Local => {
+            let base = std::path::PathBuf::from(root_path.unwrap_or(wd));
             let base = Box::new(base);
             let fp = file_path.clone();
             let c = content.clone();
@@ -843,11 +814,8 @@ pub async fn write_file_content(
             .map_err(AppError::from)
         }
         #[cfg(target_os = "windows")]
-        FileTransportKind::Wsl {
-            distro,
-            project_path,
-        } => {
-            let base = root_path.unwrap_or(project_path);
+        GitTransport::Wsl { distro } => {
+            let base = root_path.unwrap_or(wd);
             let full_path = format!("{}/{}", base, file_path);
             let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
 
@@ -871,10 +839,10 @@ pub async fn write_file_content(
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
             let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
+            let d = distro.clone();
             tokio::task::spawn_blocking(move || {
-                let target = crate::common::executor::factory::ExecTarget::Wsl {
-                    distro: distro.clone(),
-                };
+                let target =
+                    crate::common::executor::factory::ExecTarget::Wsl { distro: d.clone() };
                 crate::common::executor::sync::exec_on(&target, "bash", &["-c", &write_cmd])
                     .map_err(|e| anyhow::anyhow!("{}", e))
             })
@@ -884,14 +852,13 @@ pub async fn write_file_content(
 
             Ok(())
         }
-        FileTransportKind::Remote {
+        GitTransport::Remote {
             host,
             port,
             username,
             auth,
-            project_path,
         } => {
-            let base = root_path.unwrap_or(project_path);
+            let base = root_path.unwrap_or(wd);
             let full_path = format!("{}/{}", base, file_path);
             let safe_fp = crate::common::utils::command::local::safe_path(&full_path);
 
@@ -902,7 +869,7 @@ pub async fn write_file_content(
                 let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
                 let target = crate::common::executor::factory::ExecTarget::Remote {
                     host: host.clone(),
-                    port,
+                    port: *port,
                     username: username.clone(),
                     auth: auth.clone(),
                 };
@@ -916,7 +883,7 @@ pub async fn write_file_content(
             let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
             let target = crate::common::executor::factory::ExecTarget::Remote {
                 host: host.clone(),
-                port,
+                port: *port,
                 username: username.clone(),
                 auth: auth.clone(),
             };
@@ -1038,7 +1005,7 @@ fn resolve_agent_for_remote(
 /// Agent 在远程/WSL 服务器上执行，自行分析变更，不传入 diff 内容。
 #[tauri::command]
 pub async fn generate_commit_message(
-    transport: FileTransportKind,
+    project_id: String,
     agent_id: String,
     agent_command_override: Option<String>,
     file_paths: Vec<String>,
@@ -1054,21 +1021,21 @@ pub async fn generate_commit_message(
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
 
     // 3. 构建命令字符串（共享函数）— 差异在 transport 分支中处理
-    let output = match transport {
-        FileTransportKind::Local { project_path } => {
-            let sp = std::path::PathBuf::from(&project_path);
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let output = match &t {
+        GitTransport::Local => {
+            let sp = std::path::PathBuf::from(&wd);
             let config =
                 resolve_agent_config(&state, &agent_id, agent_command_override.as_deref())?;
             ai_svc::generate_commit_message(&sp, &config, &file_paths).map_err(AppError::from)?
         }
-        FileTransportKind::Remote {
+        GitTransport::Remote {
             host,
             port,
             username,
             auth,
-            project_path,
         } => {
-            let sp = crate::common::utils::command::local::safe_path(&project_path);
+            let sp = crate::common::utils::command::local::safe_path(&wd);
             let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
@@ -1105,7 +1072,7 @@ pub async fn generate_commit_message(
             // 通过 SSH 执行
             let target = crate::common::executor::factory::ExecTarget::Remote {
                 host: host.clone(),
-                port,
+                port: *port,
                 username: username.clone(),
                 auth: auth.clone(),
             };
@@ -1130,11 +1097,8 @@ pub async fn generate_commit_message(
             }
         }
         #[cfg(target_os = "windows")]
-        FileTransportKind::Wsl {
-            distro,
-            project_path,
-        } => {
-            let sp = crate::common::utils::command::local::safe_path(&project_path);
+        GitTransport::Wsl { distro } => {
+            let sp = crate::common::utils::command::local::safe_path(&wd);
             let actual_cmd = ai_svc::build_agent_commit_cmd(
                 &sp,
                 &agent_cmd,
@@ -1148,7 +1112,7 @@ pub async fn generate_commit_message(
 
             // 获取 WSL 默认用户名，确保以正确用户身份启动（HOME=/home/<user>）
             let wsl_user = tokio::process::Command::new("wsl.exe")
-                .args(["-d", &distro, "whoami"])
+                .args(["-d", distro, "whoami"])
                 .output()
                 .await
                 .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
@@ -1160,7 +1124,7 @@ pub async fn generate_commit_message(
             //    env_remove("PATH"): 清除 Windows 污染 PATH，从干净基础开始
             let mut wsl_cmd = tokio::process::Command::new("wsl.exe");
             wsl_cmd
-                .args(["-d", &distro, "-u", &wsl_user, "bash", "-ic", &actual_cmd])
+                .args(["-d", distro, "-u", &wsl_user, "bash", "-ic", &actual_cmd])
                 .env_remove("PATH")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
@@ -1255,25 +1219,14 @@ pub fn is_gh_authenticated_command() -> bool {
 #[tauri::command]
 pub async fn list_prs_command(
     project_id: String,
-    transport: GitTransportKind,
     state: String,
     limit: usize,
     state_w: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRListItem>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state_w.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_prs(&project_path, &target, &state, limit)
+    let (t, wd) = state_w.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_prs(wd_path, &target, &state, limit)
         .await
         .map_err(AppError::from)
 }
@@ -1281,23 +1234,12 @@ pub async fn list_prs_command(
 #[tauri::command]
 pub async fn list_repo_labels_command(
     project_id: String,
-    transport: GitTransportKind,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PrLabel>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_repo_labels(&project_path, &target)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_repo_labels(wd_path, &target)
         .await
         .map_err(AppError::from)
 }
@@ -1305,23 +1247,12 @@ pub async fn list_repo_labels_command(
 #[tauri::command]
 pub async fn list_repo_authors_command(
     project_id: String,
-    transport: GitTransportKind,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<String>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_repo_authors(&project_path, &target)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_repo_authors(wd_path, &target)
         .await
         .map_err(AppError::from)
 }
@@ -1329,24 +1260,13 @@ pub async fn list_repo_authors_command(
 #[tauri::command]
 pub async fn view_pr_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PRInfo, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::view_pr(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::view_pr(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
 }
@@ -1354,60 +1274,31 @@ pub async fn view_pr_command(
 #[tauri::command]
 pub async fn create_pr_command(
     project_id: String,
-    transport: GitTransportKind,
     title: String,
     body: String,
     base: Option<String>,
     draft: bool,
     state: State<'_, AppStateWrapper>,
 ) -> Result<u64, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::create_pr(
-        &project_path,
-        &target,
-        &title,
-        &body,
-        base.as_deref(),
-        draft,
-    )
-    .await
-    .map_err(AppError::from)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::create_pr(wd_path, &target, &title, &body, base.as_deref(), draft)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn merge_pr_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     method: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PRMergeResult, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::merge_pr(&project_path, &target, pr_number, &method)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::merge_pr(wd_path, &target, pr_number, &method)
         .await
         .map_err(AppError::from)
 }
@@ -1415,24 +1306,13 @@ pub async fn merge_pr_command(
 #[tauri::command]
 pub async fn close_pr_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::close_pr(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::close_pr(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
 }
@@ -1440,24 +1320,13 @@ pub async fn close_pr_command(
 #[tauri::command]
 pub async fn list_pr_files_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRFileChange>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_pr_files(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_pr_files(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
 }
@@ -1465,24 +1334,13 @@ pub async fn list_pr_files_command(
 #[tauri::command]
 pub async fn list_pr_commits_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRCommit>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_pr_commits(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_pr_commits(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
 }
@@ -1490,7 +1348,6 @@ pub async fn list_pr_commits_command(
 #[tauri::command]
 pub async fn add_pr_review_comment_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     body: String,
     file_path: String,
@@ -1498,54 +1355,25 @@ pub async fn add_pr_review_comment_command(
     side: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PRReviewComment, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::add_pr_review_comment(
-        &project_path,
-        &target,
-        pr_number,
-        &body,
-        &file_path,
-        line,
-        &side,
-    )
-    .await
-    .map_err(AppError::from)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::add_pr_review_comment(wd_path, &target, pr_number, &body, &file_path, line, &side)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn list_pr_review_comments_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRReviewComment>, AppError> {
     let t0 = std::time::Instant::now();
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    let result = crate::git::list_pr_review_comments(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    let result = crate::git::list_pr_review_comments(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)?;
     log::debug!(
@@ -1561,24 +1389,13 @@ pub async fn list_pr_review_comments_command(
 #[tauri::command]
 pub async fn list_pr_comments_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<PRComment>, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::list_pr_comments(&project_path, &target, pr_number)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::list_pr_comments(wd_path, &target, pr_number)
         .await
         .map_err(AppError::from)
 }
@@ -1586,25 +1403,14 @@ pub async fn list_pr_comments_command(
 #[tauri::command]
 pub async fn add_pr_comment_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     body: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PRComment, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::add_pr_comment(&project_path, &target, pr_number, &body)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::add_pr_comment(wd_path, &target, pr_number, &body)
         .await
         .map_err(AppError::from)
 }
@@ -1612,26 +1418,15 @@ pub async fn add_pr_comment_command(
 #[tauri::command]
 pub async fn edit_pr_comment_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
     body: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PRComment, AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::edit_pr_comment(&project_path, &target, pr_number, &comment_id, &body)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::edit_pr_comment(wd_path, &target, pr_number, &comment_id, &body)
         .await
         .map_err(AppError::from)
 }
@@ -1639,25 +1434,14 @@ pub async fn edit_pr_comment_command(
 #[tauri::command]
 pub async fn delete_pr_comment_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::delete_pr_comment(&project_path, &target, pr_number, &comment_id)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::delete_pr_comment(wd_path, &target, pr_number, &comment_id)
         .await
         .map_err(AppError::from)
 }
@@ -1665,26 +1449,37 @@ pub async fn delete_pr_comment_command(
 #[tauri::command]
 pub async fn add_comment_reaction_command(
     project_id: String,
-    transport: GitTransportKind,
     pr_number: u64,
     comment_id: String,
     emoji: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let target = into_exec_target(&transport);
-    let project_path = {
-        let manager = state.project_manager.lock().map_err(AppError::from)?;
-        match manager.get_project(&project_id) {
-            Some(p) => p.path.clone(),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "Project not found: {}",
-                    project_id
-                )))
-            }
-        }
-    };
-    crate::git::add_comment_reaction(&project_path, &target, pr_number, &comment_id, &emoji)
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let wd_path = std::path::Path::new(&wd);
+    let target = exec_target_from_git_transport(&t);
+    crate::git::add_comment_reaction(wd_path, &target, pr_number, &comment_id, &emoji)
         .await
         .map_err(AppError::from)
+}
+
+/// Helper: convert GitTransport to ExecTarget for PR operations.
+fn exec_target_from_git_transport(t: &GitTransport) -> ExecTarget {
+    match t {
+        GitTransport::Local => ExecTarget::Local,
+        #[cfg(target_os = "windows")]
+        GitTransport::Wsl { distro } => ExecTarget::Wsl {
+            distro: distro.clone(),
+        },
+        GitTransport::Remote {
+            host,
+            port,
+            username,
+            auth,
+        } => ExecTarget::Remote {
+            host: host.clone(),
+            port: *port,
+            username: username.clone(),
+            auth: auth.clone(),
+        },
+    }
 }

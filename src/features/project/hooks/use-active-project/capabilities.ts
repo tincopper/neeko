@@ -1,77 +1,57 @@
-import type { ProjectType, ProjectCapabilities } from '@/shared/types/activeProject';
+import type { ProjectEnvironment } from '@/shared/types/project';
+import type { ProjectCapabilities } from '@/shared/types/activeProject';
 
-export function getCapabilities(type: ProjectType): ProjectCapabilities {
-  switch (type) {
-    case "local":
-      return {
-        canCommit: true,
-        canPush: true,
-        canPull: true,
-        canFetch: true,
-        canStage: true,
-        canDiscard: true,
-        canViewLog: true,
-        canCherryPick: true,
-        canRevert: true,
-        canCreateTag: true,
-        canBrowseFiles: true,
-        canEditFiles: true,
-        canGenerateCommitMessage: true,
-        canManagePRs: true,
-      };
+const CAPABILITIES_MAP: Record<ProjectEnvironment['type'], ProjectCapabilities> = {
+  Local: {
+    canCommit: true,
+    canPush: true,
+    canPull: true,
+    canFetch: true,
+    canStage: true,
+    canDiscard: true,
+    canViewLog: true,
+    canCherryPick: true,
+    canRevert: true,
+    canCreateTag: true,
+    canBrowseFiles: true,
+    canEditFiles: true,
+    canGenerateCommitMessage: true,
+    canManagePRs: true,
+  },
+  Wsl: {
+    canCommit: true,
+    canPush: true,
+    canPull: true,
+    canFetch: true,
+    canStage: true,
+    canDiscard: true,
+    canViewLog: true,
+    canCherryPick: true,
+    canRevert: true,
+    canCreateTag: true,
+    canBrowseFiles: true,
+    canEditFiles: false,
+    canGenerateCommitMessage: true,
+    canManagePRs: false,
+  },
+  Remote: {
+    canCommit: true,
+    canPush: true,
+    canPull: true,
+    canFetch: true,
+    canStage: true,
+    canDiscard: true,
+    canViewLog: true,
+    canCherryPick: true,
+    canRevert: true,
+    canCreateTag: true,
+    canBrowseFiles: true,
+    canEditFiles: false,
+    canGenerateCommitMessage: true,
+    canManagePRs: false,
+  },
+};
 
-    case "wsl":
-      return {
-        canCommit: true,
-        canPush: true,
-        canPull: true,
-        canFetch: true,
-        canStage: true,
-        canDiscard: true,
-        canViewLog: true,
-        canCherryPick: true,
-        canRevert: true,
-        canCreateTag: true,
-        canBrowseFiles: true,
-        canEditFiles: false,
-        canGenerateCommitMessage: true,
-        canManagePRs: false,
-      };
-
-    case "remote":
-      return {
-        canCommit: true,
-        canPush: true,
-        canPull: true,
-        canFetch: true,
-        canStage: true,
-        canDiscard: true,
-        canViewLog: true,
-        canCherryPick: true,
-        canRevert: true,
-        canCreateTag: true,
-        canBrowseFiles: true,
-        canEditFiles: false,
-        canGenerateCommitMessage: true,
-        canManagePRs: false,
-      };
-
-    default:
-      return {
-        canCommit: true,
-        canPush: true,
-        canPull: true,
-        canFetch: true,
-        canStage: true,
-        canDiscard: true,
-        canViewLog: true,
-        canCherryPick: true,
-        canRevert: true,
-        canCreateTag: true,
-        canBrowseFiles: true,
-        canEditFiles: true,
-        canGenerateCommitMessage: true,
-        canManagePRs: true,
-      };
-  }
+export function getCapabilities(type: ProjectEnvironment['type']): ProjectCapabilities {
+  return CAPABILITIES_MAP[type];
 }

@@ -1,16 +1,12 @@
 import React, { createContext, useContext } from "react";
-import type { ActiveRemoteKey } from "../components/types";
-import type { AuthMethod, RemoteEntrySession, RemoteProject } from '@/shared/types';
+import type { AuthMethod, RemoteEntrySession } from '@/shared/types';
 
 export interface RemoteContextValue {
   remoteEntries: RemoteEntrySession[];
-  activeRemoteKey: ActiveRemoteKey;
   remoteOpenSessions: Set<string>;
-  activeRemoteProject: { entry: RemoteEntrySession; project: RemoteProject } | null;
   activeRemoteWorktreePath: string | null;
   remoteAuthStore: Map<string, AuthMethod>;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-  onSelectRemoteProject: (host: string, project: RemoteProject) => void;
   onCloseRemoteProject: (entryId: string, projectId: string) => void;
   onRemoveRemoteProject: (entryId: string, projectId: string) => void;
   onRemoveRemoteEntry: (entryId: string) => void;

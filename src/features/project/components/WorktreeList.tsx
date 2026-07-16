@@ -5,7 +5,6 @@ import { Worktree } from '@/shared/types';
 import { BranchIcon, TrashIcon, FolderGitIcon } from "@/shared/components/icons";
 import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
 import { cn } from '@/lib/utils';
-import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import ConfirmDialog from "@/shared/components/ConfirmDialog";
 import SessionChips from "./SessionChips";
@@ -25,18 +24,12 @@ interface ChangeStat {
 }
 
 const WorktreeList: React.FC<WorktreeListProps> = ({
-   worktrees,
-   projectId,
-   projectPath: propProjectPath,
-   onOpenWorktreeTerminal,
-   onRefreshGit,
-   onShowToast,
+worktrees,
+    projectId,
+    onOpenWorktreeTerminal,
+    onRefreshGit,
+    onShowToast,
 }) => {
-   // Look up project path from store if not provided as prop
-   const storeProjectPath = useProjectStore((s) =>
-      s.projects.find((p) => p.id === projectId)?.path
-   );
-   const projectPath = propProjectPath ?? storeProjectPath ?? "";
    const [changeStats, setChangeStats] = useState<Record<string, ChangeStat>>({});
    const [renaming, setRenaming] = useState<string | null>(null);
    const [renameValue, setRenameValue] = useState("");
@@ -60,9 +53,9 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
       let cancelled = false;
       for (const wt of filteredWorktrees) {
          if (changeStats[wt.path]) continue;
-         getWorktreeChangedFiles(
-            { Local: { project_path: projectPath } },
-            wt.path,
+          getWorktreeChangedFiles(
+             projectId,
+             wt.path,
          )
             .then((files) => {
                if (cancelled) return;
@@ -85,7 +78,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
       e.stopPropagation();
       try {
          const isDirty = await isWorktreeDirty(
-            { Local: { project_path: projectPath } },
+            projectId,
             worktreePath,
          );
          setConfirmDelete({ path: worktreePath, branch, isDirty });
@@ -105,14 +98,14 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
          }
          destroyTerminalCache(wtCacheKey);
          await removeWorktree(
-            { Local: { project_path: projectPath } },
+            projectId,
             worktreePath,
          );
-         let branchError: string | null = null;
-         try {
-            await deleteBranch(
-               { Local: { project_path: projectPath } },
-               branch,
+          let branchError: string | null = null;
+          try {
+             await deleteBranch(
+                projectId,
+                branch,
                false,
             );
          } catch (e: unknown) {
@@ -147,7 +140,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
       try {
          const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
          await renameWorktree(
-            { Local: { project_path: projectPath } },
+            projectId,
             oldPath,
             newFullPath,
          );

@@ -17,8 +17,6 @@ export type {
 
 // Component Types
 export type {
-  ActiveWslKey,
-  ActiveRemoteKey,
   ConnectionSource,
   ConnectionProjectCardProps,
   WSLItemProps,

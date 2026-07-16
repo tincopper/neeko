@@ -16,10 +16,9 @@ import type {
   AgentConfig,
   AppConfig,
   Tab,
-  WSLProject,
   WSLEntrySession,
 } from '@/shared/types';
-import { buildRefreshGitHandler, updateProjectInEntries } from '@/shared/utils/entryUpdates';
+import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
 import type { SaveSessionFn } from "./useWslProjects";
 import type { WorktreeItem } from "@/features/project/hooks/useWorktreeState";
 
@@ -41,7 +40,6 @@ export function useWslActions({
   saveSession,
 }: UseWslActionsParams) {
   const wslEntries = useConnectionStore(useShallow((state) => state.wslEntries));
-  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
 
   const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {
     useConnectionStore.setState((state) => ({
@@ -49,25 +47,15 @@ export function useWslActions({
     }));
   }, []);
 
-  const setActiveWslProject: Dispatch<SetStateAction<{ distro: string; project: WSLProject } | null>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeWslProject: typeof updater === "function" ? updater(state.activeWslProject) : updater,
-    }));
-  }, []);
-
   // ── WSL transient worktree state ──
-  // activeWorktreePath / activeWorktreeBranch / openedWorktrees live in appStore
-  // to avoid useState �?useSyncToStore double-render and enable merged setState.
-  const activeWslWorktreePath = useWorktreeStore((s) => s.activeWslWorktreePath);
+  // Uses unified activeWorktreePath for path; WSL-specific branch/opened
+  // remain separate until WSL fully migrates to worktreeStateMap.
+  const unifiedActiveWtPath = useWorktreeStore((s) => s.activeWorktreePath);
   const wslActiveWtBranch = useWorktreeStore((s) => s.wslActiveWtBranch);
   const wslOpenedWt = useWorktreeStore((s) => s.wslOpenedWt);
 
   // diffState stays local (typed per-connection and only consumed via context)
   const [wslDiffState, setWslDiffState] = useState<WslDiffState | null>(null);
-
-  const setActiveWslWorktreePath = useCallback((path: string | null) => {
-    useWorktreeStore.setState({ activeWslWorktreePath: path });
-  }, []);
 
   const setWslActiveWtBranch = useCallback((branch: string) => {
     useWorktreeStore.setState({ wslActiveWtBranch: branch });
@@ -80,7 +68,7 @@ export function useWslActions({
   }, []);
 
   const openWorktreeTerminal = useCallback((worktreePath: string, branch: string) => {
-    setActiveWslWorktreePath(worktreePath);
+    useWorktreeStore.setState({ activeWorktreePath: worktreePath });
     setWslActiveWtBranch(branch);
     setWslOpenedWt((prev) =>
       prev.some((item) => item.path === worktreePath)
@@ -88,60 +76,51 @@ export function useWslActions({
         : [...prev, { path: worktreePath, branch }],
     );
     setWslDiffState(null);
-  }, [setActiveWslWorktreePath, setWslActiveWtBranch, setWslOpenedWt]);
+  }, [setWslActiveWtBranch, setWslOpenedWt]);
 
   const resetWslTransientState = useCallback(() => {
     useWorktreeStore.setState({
-      activeWslWorktreePath: null,
+      activeWorktreePath: null,
       wslActiveWtBranch: "",
       wslOpenedWt: [],
     });
     setWslDiffState(null);
   }, []);
 
-  const refreshWslGit = useMemo(() => buildRefreshGitHandler<
-    WSLProject,
-    WSLEntrySession,
-    { distro: string; project: WSLProject },
-    string
-  >({
-    refreshGitInfo: async (projectPath, distro) => (
-      getGitInfo({ Wsl: { distro, project_path: projectPath } }).catch((e) => {
+  const refreshWslGit = useMemo(() => {
+    const handler = async (_distro: string, projectId: string, _projectPath: string): Promise<void> => {
+      const gitInfo = await getGitInfo(projectId).catch((e) => {
         console.error("[WSL] Failed to refresh git info:", e);
         return null;
-      })
-    ),
-    setEntries: setWslEntries,
-    setActiveProject: setActiveWslProject,
-    isActiveProject: (activeProject, projectId) => activeProject.project.id === projectId,
-    updateActiveProject: (activeProject, gitInfo) => ({
-      ...activeProject,
-      project: {
-        ...activeProject.project,
-        git_info: gitInfo,
-      },
-    }),
-  }), [setWslEntries, setActiveWslProject]);
+      });
+      if (!gitInfo) return;
 
-  const handleSelectWslProject = useCallback((distro: string, project: WSLProject) => {
-    useProjectStore.setState({
-      activeProjectId: null,
-      activeProject: null,
-    });
-    useConnectionStore.setState({
-      activeWslKey: { distro, projectId: project.id },
-      activeWslProject: { distro, project },
-      activeRemoteKey: null,
-      activeRemoteProject: null,
-    });
-    resetWslTransientState();
-    void refreshWslGit(distro, project.id, project.path);
-  }, [resetWslTransientState, refreshWslGit]);
+      setWslEntries((prev) =>
+        updateProjectInEntries(prev, projectId, (project) => ({
+          ...project,
+          git_info: gitInfo,
+        }))
+      );
+
+      // Sync updated git_info to unified project store
+      useProjectStore.setState((state) => {
+        if (!state.activeProject || state.activeProject.id !== projectId) return state;
+        return {
+          activeProject: { ...state.activeProject, git_info: gitInfo },
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, git_info: gitInfo } : p,
+          ),
+        };
+      });
+    };
+    return handler;
+  }, [setWslEntries]);
 
   const handleSelectWslFile = useCallback((distro: string, projectPath: string, filePath: string) => {
-    if (!activeWslProject) return;
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject) return;
 
-    const projectId = activeWslProject.project.id;
+    const projectId = activeProject.id;
     const existingTabs = useEditorStore.getState().tabs[projectId];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === "diff" && t.data.filePath === filePath
@@ -167,7 +146,7 @@ export function useWslActions({
     };
     useEditorStore.getState().addTab(projectId, tab);
     useEditorStore.getState().activateTab(projectId, tabId);
-  }, [activeWslProject]);
+  }, []);
 
   const handleRefreshWslGit = useCallback(async (
     distro: string,
@@ -196,36 +175,35 @@ export function useWslActions({
   }, [openWorktreeTerminal]);
 
   const updateWslProjectAgent = useCallback((agent: AgentConfig | null) => {
-    if (!activeWslProject) return;
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject) return;
 
     const agentId = agent?.id ?? null;
     const nextEntries = updateProjectInEntries(
       wslEntries,
-      activeWslProject.project.id,
+      activeProject.id,
       (project) => ({ ...project, selected_agent: agentId }),
     );
     setWslEntries(nextEntries);
-    setActiveWslProject((prev) => (
-      prev ? {
-        ...prev,
-        project: { ...prev.project, selected_agent: agentId },
-      } : prev
-    ));
+    useProjectStore.setState((state) => {
+      if (state.activeProject?.id !== activeProject.id) return state;
+      return { activeProject: { ...state.activeProject, selected_agent: agentId } };
+    });
     saveSession(nextEntries, undefined).catch(console.error);
-  }, [activeWslProject, saveSession, setActiveWslProject, setWslEntries, wslEntries]);
+  }, [saveSession, setWslEntries, wslEntries]);
 
   const handleSelectWslAgent = useCallback((agent: AgentConfig | null) => {
-    if (!activeWslProject) {
-      return;
-    }
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject || activeProject.environment.type !== 'Wsl') return;
 
-    const cacheKey = wslCacheKey(activeWslProject.distro, activeWslProject.project.id);
+    const distro = activeProject.environment.distro;
+    const cacheKey = wslCacheKey(distro, activeProject.id);
     if (agent) {
       void switchAgentInWslTerminal(
         cacheKey,
-        activeWslProject.distro,
-        activeWslProject.project.path,
-        activeWslProject.project.name,
+        distro,
+        activeProject.path,
+        activeProject.name,
         agent.id,
         config.terminalFontSize ?? 14,
         config.fontFamily ?? "",
@@ -238,19 +216,20 @@ export function useWslActions({
     if (!agent) {
       setTimeout(() => refreshWslTerminal(cacheKey), 50);
     }
-  }, [activeWslProject, config, updateWslProjectAgent]);
+  }, [config, updateWslProjectAgent]);
 
   return {
     wslDiffState,
     setWslDiffState,
-    activeWslWorktreePath,
-    setActiveWslWorktreePath,
+    // @deprecated - use activeWorktreePath from worktreeStore instead
+    activeWslWorktreePath: unifiedActiveWtPath,
+    // @deprecated - use worktreeStore.setState({ activeWorktreePath }) instead
+    setActiveWslWorktreePath: (path: string | null) => useWorktreeStore.setState({ activeWorktreePath: path }),
     wslActiveWtBranch,
     setWslActiveWtBranch,
     wslOpenedWt,
     setWslOpenedWt,
     resetWslTransientState,
-    handleSelectWslProject,
     handleSelectWslFile,
     handleRefreshWslGit,
     handleOpenWslIde,

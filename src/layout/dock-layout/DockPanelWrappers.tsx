@@ -9,7 +9,7 @@ import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useGitStore } from '@/features/git/store';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { useEditorStore } from '@/shared/store';
-import { useConnectionStore } from '@/features/connection/store';
+
 import { useDockStore } from '@/shared/store/dockStore';
 import FilesPanel from '@/features/file/components/FilesPanel';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
@@ -116,7 +116,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
       if (!isActive || !fileRootPath) return;
       // 静默刷新：直接调用 API，不触发 loading 状态，旧树保持可见
-      readDirTree({ Local: { project_path: fileRootPath } }, null, null, DEFAULT_TREE_DEPTH)
+      readDirTree(activeProjectId!, null, null, DEFAULT_TREE_DEPTH)
         .then((tree) => {
           useFileStore.setState({ fileTree: tree });
         })
@@ -289,13 +289,8 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
     // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
     const projectState = useProjectStore.getState();
-    const connectionState = useConnectionStore.getState();
     const editorState = useEditorStore.getState();
-    const tabKey =
-      projectState.activeProjectId ??
-      connectionState.activeWslProject?.project.id ??
-      connectionState.activeRemoteProject?.project.id ??
-      project.id;
+    const tabKey = projectState.activeProjectId ?? project.id;
     const existingTabs = editorState.tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
@@ -363,11 +358,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
   });
 
   // Determine project ID and tab key for opening conversation tabs
-  const localActiveProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
-  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
-  const currentProjectId =
-    localActiveProjectId ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
+  const currentProjectId = useProjectStore((s) => s.activeProjectId);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const tabKey =
     activeWorktreePath && currentProjectId

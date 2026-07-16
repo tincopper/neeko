@@ -2,10 +2,7 @@ import { AppLayout, TitleBar, StatusBar } from "@/layout";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
-import type { ActiveWslKey, ActiveRemoteKey } from "@/features/connection/components/types";
 import { useAppShell } from "@/app/hooks";
-
-export type { ActiveWslKey, ActiveRemoteKey };
 
 function App() {
   const {

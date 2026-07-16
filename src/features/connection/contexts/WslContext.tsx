@@ -1,16 +1,12 @@
 import React, { createContext, useContext } from "react";
-import type { ActiveWslKey } from "../components/types";
-import type { WSLEntrySession, WSLProject } from '@/shared/types';
+import type { WSLEntrySession } from '@/shared/types';
 
 export interface WslContextValue {
   wslEntries: WSLEntrySession[];
-  activeWslKey: ActiveWslKey;
   wslOpenSessions: Set<string>;
-  activeWslProject: { distro: string; project: WSLProject } | null;
   activeWslWorktreePath: string | null;
   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
-  onSelectWslProject: (distro: string, project: WSLProject) => void;
   onCloseWslProject: (entryId: string, projectId: string) => void;
   onRemoveWslProject: (entryId: string, projectId: string) => void;
   onRemoveWslEntry: (entryId: string) => void;

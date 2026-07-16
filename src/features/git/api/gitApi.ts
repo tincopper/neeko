@@ -16,327 +16,281 @@ import type {
 } from '../types';
 export type { PushOutcome };
 
-// The transport types used by git commands
-export interface LocalTransport {
-  Local: { project_path: string };
-}
-
-export interface WslTransport {
-  Wsl: { distro: string; project_path: string };
-}
-
-export interface RemoteTransport {
-  Remote: {
-    host: string;
-    port: number;
-    username: string;
-    auth:
-      | { Password: string }
-      | { KeyFile: string }
-      | { KeyFileWithPassphrase: { key_path: string; passphrase: string } };
-    project_path: string;
-  };
-}
-
-export interface FileTransportLocal {
-  Local: { project_path: string };
-}
-
-export interface FileTransportWsl {
-  Wsl: { distro: string; project_path: string };
-}
-
-export interface FileTransportRemote {
-  Remote: {
-    host: string;
-    port: number;
-    username: string;
-    auth:
-      | { Password: string }
-      | { KeyFile: string }
-      | { KeyFileWithPassphrase: { key_path: string; passphrase: string } };
-    project_path: string;
-  };
-}
-
-export type GitTransportKind = LocalTransport | WslTransport | RemoteTransport;
-export type FileTransportKind = FileTransportLocal | FileTransportWsl | FileTransportRemote;
-
 // ─── Staging ─────────────────────────────────────────────────────────────────
 
-export function stageFiles(transport: GitTransportKind, filePaths: string[]): Promise<void> {
-  return invoke<void>('stage_files', { transport, filePaths });
+export function stageFiles(projectId: string, filePaths: string[]): Promise<void> {
+  return invoke<void>('stage_files', { projectId, filePaths });
 }
 
-export function unstageFiles(transport: GitTransportKind, filePaths: string[]): Promise<void> {
-  return invoke<void>('unstage_files', { transport, filePaths });
+export function unstageFiles(projectId: string, filePaths: string[]): Promise<void> {
+  return invoke<void>('unstage_files', { projectId, filePaths });
 }
 
-export function stageAll(transport: GitTransportKind): Promise<void> {
-  return invoke<void>('stage_all', { transport });
+export function stageAll(projectId: string): Promise<void> {
+  return invoke<void>('stage_all', { projectId });
 }
 
-export function unstageAll(transport: GitTransportKind): Promise<void> {
-  return invoke<void>('unstage_all', { transport });
+export function unstageAll(projectId: string): Promise<void> {
+  return invoke<void>('unstage_all', { projectId });
 }
 
-export function discardFile(transport: GitTransportKind, filePath: string): Promise<void> {
-  return invoke<void>('discard_file', { transport, filePath });
+export function discardFile(projectId: string, filePath: string): Promise<void> {
+  return invoke<void>('discard_file', { projectId, filePath });
 }
 
-export function discardAll(transport: GitTransportKind): Promise<void> {
-  return invoke<void>('discard_all', { transport });
+export function discardAll(projectId: string): Promise<void> {
+  return invoke<void>('discard_all', { projectId });
 }
 
 // ─── Remote operations ───────────────────────────────────────────────────────
 
-export function fetch(transport: GitTransportKind): Promise<PushOutcome> {
-  return invoke<PushOutcome>('fetch', { transport });
+export function fetch(projectId: string): Promise<PushOutcome> {
+  return invoke<PushOutcome>('fetch', { projectId });
 }
 
-export function pull(transport: GitTransportKind): Promise<PushOutcome> {
-  return invoke<PushOutcome>('pull', { transport });
+export function pull(projectId: string): Promise<PushOutcome> {
+  return invoke<PushOutcome>('pull', { projectId });
 }
 
-export function push(transport: GitTransportKind, setUpstream?: boolean): Promise<PushOutcome> {
-  return invoke<PushOutcome>('push', { transport, setUpstream });
+export function push(projectId: string, setUpstream?: boolean): Promise<PushOutcome> {
+  return invoke<PushOutcome>('push', { projectId, setUpstream });
 }
 
 export function fetchWithCredentials(
-  transport: GitTransportKind,
+  projectId: string,
   username: string,
   password: string,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('fetch_with_credentials', { transport, username, password });
+  return invoke<PushOutcome>('fetch_with_credentials', { projectId, username, password });
 }
 
 export function pullWithCredentials(
-  transport: GitTransportKind,
+  projectId: string,
   username: string,
   password: string,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('pull_with_credentials', { transport, username, password });
+  return invoke<PushOutcome>('pull_with_credentials', { projectId, username, password });
 }
 
 export function pushWithCredentials(
-  transport: GitTransportKind,
+  projectId: string,
   setUpstream: boolean,
   username: string,
   password: string,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('push_with_credentials', { transport, setUpstream, username, password });
+  return invoke<PushOutcome>('push_with_credentials', { projectId, setUpstream, username, password });
 }
 
 export function commitFiles(
-  transport: GitTransportKind,
+  projectId: string,
   filePaths: string[],
   message: string,
 ): Promise<CommitResult> {
-  return invoke<CommitResult>('commit_files', { transport, filePaths, message });
+  return invoke<CommitResult>('commit_files', { projectId, filePaths, message });
 }
 
 // ─── Cherry-pick / Revert / Tag ──────────────────────────────────────────────
 
-export function cherryPick(transport: GitTransportKind, commitHash: string): Promise<void> {
-  return invoke<void>('cherry_pick', { transport, commitHash });
+export function cherryPick(projectId: string, commitHash: string): Promise<void> {
+  return invoke<void>('cherry_pick', { projectId, commitHash });
 }
 
-export function revert(transport: GitTransportKind, commitHash: string): Promise<void> {
-  return invoke<void>('revert', { transport, commitHash });
+export function revert(projectId: string, commitHash: string): Promise<void> {
+  return invoke<void>('revert', { projectId, commitHash });
 }
 
 export function createTag(
-  transport: GitTransportKind,
+  projectId: string,
   name: string,
   message: string,
 ): Promise<void> {
-  return invoke<void>('create_tag', { transport, name, message });
+  return invoke<void>('create_tag', { projectId, name, message });
 }
 
 // ─── Branching ───────────────────────────────────────────────────────────────
 
-export function checkoutBranch(transport: GitTransportKind, branchName: string): Promise<void> {
-  return invoke<void>('checkout_branch', { transport, branchName });
+export function checkoutBranch(projectId: string, branchName: string): Promise<void> {
+  return invoke<void>('checkout_branch', { projectId, branchName });
 }
 
 export function createBranch(
-  transport: GitTransportKind,
+  projectId: string,
   branchName: string,
   startPoint?: string | null,
 ): Promise<void> {
-  return invoke<void>('create_branch', { transport, branchName, startPoint });
+  return invoke<void>('create_branch', { projectId, branchName, startPoint });
 }
 
 export function deleteBranch(
-  transport: GitTransportKind,
+  projectId: string,
   branchName: string,
   force?: boolean,
 ): Promise<void> {
-  return invoke<void>('delete_branch', { transport, branchName, force });
+  return invoke<void>('delete_branch', { projectId, branchName, force });
 }
 
 export function renameBranch(
-  transport: GitTransportKind,
+  projectId: string,
   oldName: string,
   newName: string,
 ): Promise<void> {
-  return invoke<void>('rename_branch', { transport, oldName, newName });
+  return invoke<void>('rename_branch', { projectId, oldName, newName });
 }
 
 export function createAndSwitchBranch(
-  transport: GitTransportKind,
+  projectId: string,
   branchName: string,
 ): Promise<void> {
-  return invoke<void>('create_and_switch_branch', { transport, branchName });
+  return invoke<void>('create_and_switch_branch', { projectId, branchName });
 }
 
-export function checkoutDetached(transport: GitTransportKind, commitHash: string): Promise<void> {
-  return invoke<void>('checkout_detached', { transport, commitHash });
+export function checkoutDetached(projectId: string, commitHash: string): Promise<void> {
+  return invoke<void>('checkout_detached', { projectId, commitHash });
 }
 
 // ─── Worktree ────────────────────────────────────────────────────────────────
 
 export function createWorktree(
-  transport: GitTransportKind,
+  projectId: string,
   worktreePath: string,
   branchName: string,
   newBranch: boolean,
 ): Promise<void> {
-  return invoke<void>('create_worktree', { transport, worktreePath, branchName, newBranch });
+  return invoke<void>('create_worktree', { projectId, worktreePath, branchName, newBranch });
 }
 
-export function removeWorktree(transport: GitTransportKind, worktreePath: string): Promise<void> {
-  return invoke<void>('remove_worktree', { transport, worktreePath });
+export function removeWorktree(projectId: string, worktreePath: string): Promise<void> {
+  return invoke<void>('remove_worktree', { projectId, worktreePath });
 }
 
 export function renameWorktree(
-  transport: GitTransportKind,
+  projectId: string,
   oldPath: string,
   newPath: string,
 ): Promise<void> {
-  return invoke<void>('rename_worktree', { transport, oldPath, newPath });
+  return invoke<void>('rename_worktree', { projectId, oldPath, newPath });
 }
 
 export function isWorktreeDirty(
-  transport: GitTransportKind,
+  projectId: string,
   worktreePath: string,
 ): Promise<boolean> {
-  return invoke<boolean>('is_worktree_dirty', { transport, worktreePath });
+  return invoke<boolean>('is_worktree_dirty', { projectId, worktreePath });
 }
 
 // ─── Info / Read operations ──────────────────────────────────────────────────
 
-export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
-  return invoke<GitInfo>('get_git_info', { transport });
+export function getGitInfo(projectId: string): Promise<GitInfo> {
+  return invoke<GitInfo>('get_git_info', { projectId });
 }
 
-export function getGitBranchInfo(transport: GitTransportKind): Promise<GitBranchInfo> {
-  return invoke<GitBranchInfo>('get_git_branch_info', { transport });
+export function getGitBranchInfo(projectId: string): Promise<GitBranchInfo> {
+  return invoke<GitBranchInfo>('get_git_branch_info', { projectId });
 }
 
 export function getWorktreeChangedFiles(
-  transport: GitTransportKind,
+  projectId: string,
   worktreePath: string,
 ): Promise<FileChange[]> {
-  return invoke<FileChange[]>('get_worktree_changed_files', { transport, worktreePath });
+  return invoke<FileChange[]>('get_worktree_changed_files', { projectId, worktreePath });
 }
 
-export function getChangedFilesDiffStats(transport: GitTransportKind): Promise<FileDiffStats[]> {
-  return invoke<FileDiffStats[]>('get_changed_files_diff_stats', { transport });
+export function getChangedFilesDiffStats(projectId: string): Promise<FileDiffStats[]> {
+  return invoke<FileDiffStats[]>('get_changed_files_diff_stats', { projectId });
 }
 
-export function getFileDiff(transport: GitTransportKind, filePath: string): Promise<DiffResult> {
+export function getFileDiff(projectId: string, filePath: string): Promise<DiffResult> {
   const t0 = performance.now();
-  return invoke<DiffResult>('get_file_diff', { transport, filePath }).then((r) => {
+  return invoke<DiffResult>('get_file_diff', { projectId, filePath }).then((r) => {
     console.debug('[perf] invoke get_file_diff:', filePath, `${(performance.now() - t0).toFixed(0)}ms`);
     return r;
   });
 }
 
-export function isGitRepo(transport: GitTransportKind): Promise<boolean> {
-  return invoke<boolean>('is_git_repo', { transport });
+export function isGitRepo(projectId: string): Promise<boolean> {
+  return invoke<boolean>('is_git_repo', { projectId });
 }
 
 // ─── Commit log / history ────────────────────────────────────────────────────
 
 export function getCommitLog(
-  transport: GitTransportKind,
+  projectId: string,
   count: number,
   skip?: number | null,
 ): Promise<CommitEntry[]> {
-  return invoke<CommitEntry[]>('get_commit_log', { transport, count, skip });
+  return invoke<CommitEntry[]>('get_commit_log', { projectId, count, skip });
 }
 
 export function getCommitDetail(
-  transport: GitTransportKind,
+  projectId: string,
   commitHash: string,
 ): Promise<CommitDetail> {
-  return invoke<CommitDetail>('get_commit_detail', { transport, commitHash });
+  return invoke<CommitDetail>('get_commit_detail', { projectId, commitHash });
 }
 
 export function getCommitFiles(
-  transport: GitTransportKind,
+  projectId: string,
   commitHash: string,
 ): Promise<CommitFileChange[]> {
-  return invoke<CommitFileChange[]>('get_commit_files', { transport, commitHash });
+  return invoke<CommitFileChange[]>('get_commit_files', { projectId, commitHash });
 }
 
 export function getCommitFileDiff(
-  transport: GitTransportKind,
+  projectId: string,
   commitHash: string,
   filePath: string,
 ): Promise<DiffResult> {
-  return invoke<DiffResult>('get_commit_file_diff', { transport, commitHash, filePath });
+  return invoke<DiffResult>('get_commit_file_diff', { projectId, commitHash, filePath });
 }
 
-export function getAheadBehind(transport: GitTransportKind): Promise<AheadBehind> {
-  return invoke<AheadBehind>('get_ahead_behind', { transport });
+export function getAheadBehind(projectId: string): Promise<AheadBehind> {
+  return invoke<AheadBehind>('get_ahead_behind', { projectId });
 }
 
 // ─── Default branch ──────────────────────────────────────────────────────────
 
-export function defaultBranch(transport: GitTransportKind): Promise<string> {
-  return invoke<string>('default_branch', { transport });
+export function defaultBranch(projectId: string): Promise<string> {
+  return invoke<string>('default_branch', { projectId });
 }
 
 // ─── File operations ─────────────────────────────────────────────────────────
 
 export function readDirTree(
-  transport: FileTransportKind,
+  projectId: string,
   rootPath?: string | null,
   subPath?: string | null,
   maxDepth?: number | null,
 ): Promise<FileNode[]> {
-  return invoke<FileNode[]>('read_dir_tree', { transport, rootPath, subPath, maxDepth });
+  return invoke<FileNode[]>('read_dir_tree', { projectId, rootPath, subPath, maxDepth });
 }
 
 export function readFileContent(
-  transport: FileTransportKind,
+  projectId: string,
   filePath: string,
   rootPath?: string | null,
 ): Promise<FileContent> {
-  return invoke<FileContent>('read_file_content', { transport, filePath, rootPath });
+  return invoke<FileContent>('read_file_content', { projectId, filePath, rootPath });
 }
 
 export function writeFileContent(
-  transport: FileTransportKind,
+  projectId: string,
   filePath: string,
   content: string,
   rootPath?: string | null,
 ): Promise<void> {
-  return invoke<void>('write_file_content', { transport, filePath, content, rootPath });
+  return invoke<void>('write_file_content', { projectId, filePath, content, rootPath });
 }
 
 // ─── Commit message generation ───────────────────────────────────────────────
 
 export function generateCommitMessage(
-  transport: FileTransportKind,
+  projectId: string,
   agentId: string,
   agentCommandOverride: string | null,
   filePaths: string[],
 ): Promise<string> {
   return invoke<string>('generate_commit_message', {
-    transport,
+    projectId,
     agentId,
     agentCommandOverride,
     filePaths,

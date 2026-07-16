@@ -1,14 +1,13 @@
 pub mod commands;
 pub mod commands_ide;
-pub mod model;
 pub mod types;
 
 pub use commands_ide::*;
 
+use crate::common::connection::types::AuthMethod;
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::git;
-use crate::project::types::Project;
-use crate::project::types::ViewMode;
+use crate::project::types::{Project, ProjectEnvironment, ViewMode};
 use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -65,6 +64,7 @@ impl ProjectManager {
             id: Uuid::new_v4().to_string(),
             name,
             path: path.clone(),
+            environment: ProjectEnvironment::Local,
             git_info,
             terminal: terminal_session,
             selected_agent: agent_id,
@@ -107,6 +107,7 @@ impl ProjectManager {
             id,
             name,
             path,
+            environment: ProjectEnvironment::Local,
             git_info: None,
             terminal: terminal_session,
             selected_agent: agent_id,
@@ -117,6 +118,85 @@ impl ProjectManager {
         };
         self.projects.push(project.clone());
         Ok(project)
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn add_wsl_project_from_session(
+        &mut self,
+        id: String,
+        name: String,
+        path: String,
+        distro: String,
+        agent: Option<String>,
+        ide: Option<String>,
+        avatar_color: Option<String>,
+        collapsed: bool,
+    ) -> Project {
+        let terminal_session = TerminalSession {
+            id: Uuid::new_v4().to_string(),
+            pid: None,
+            status: TerminalStatus::Idle,
+            history: Vec::new(),
+            agent: None,
+        };
+        let project = Project {
+            id,
+            name,
+            path: PathBuf::from(&path),
+            environment: ProjectEnvironment::Wsl { distro },
+            git_info: None,
+            terminal: terminal_session,
+            selected_agent: agent,
+            selected_ide: ide,
+            active_view: ViewMode::Terminal,
+            collapsed,
+            avatar_color,
+        };
+        self.projects.push(project.clone());
+        project
+    }
+
+    pub fn add_remote_project_from_session(
+        &mut self,
+        id: String,
+        name: String,
+        path: String,
+        host: String,
+        port: u16,
+        username: String,
+        auth: AuthMethod,
+        agent: Option<String>,
+        ide: Option<String>,
+        avatar_color: Option<String>,
+        collapsed: bool,
+    ) -> Project {
+        let terminal_session = TerminalSession {
+            id: Uuid::new_v4().to_string(),
+            pid: None,
+            status: TerminalStatus::Idle,
+            history: Vec::new(),
+            agent: None,
+        };
+        let project = Project {
+            id,
+            name,
+            path: PathBuf::from(&path),
+            environment: ProjectEnvironment::Remote {
+                host,
+                port,
+                username,
+                auth,
+            },
+            git_info: None,
+            terminal: terminal_session,
+            selected_agent: agent,
+            selected_ide: ide,
+            active_view: ViewMode::Terminal,
+            collapsed,
+            avatar_color,
+        };
+        self.projects.push(project.clone());
+        project
     }
 
     pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {

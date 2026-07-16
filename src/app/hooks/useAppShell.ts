@@ -9,7 +9,6 @@ import { useAgentActions } from '@/features/agent/hooks/useAgentActions';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
 import { useRemoteAuthActions } from '@/features/connection/hooks/useRemoteAuthActions';
 import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useFileView } from '@/features/editor/hooks/useFileView';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
@@ -78,8 +77,6 @@ export function useAppShell(): UseAppShellResult {
   const {
     wslEntries,
     setWslEntries,
-    activeWslKey,
-    activeWslProject,
     wslOpenSessions,
     setWslOpenSessions,
     wslDialogOpen,
@@ -96,8 +93,6 @@ export function useAppShell(): UseAppShellResult {
   const {
     remoteEntries,
     setRemoteEntries,
-    activeRemoteKey,
-    activeRemoteProject,
     remoteOpenSessions,
     setRemoteOpenSessions,
     remoteDialogOpen,
@@ -181,8 +176,6 @@ export function useAppShell(): UseAppShellResult {
     handleTabAgentClick,
   } = useTabManagement({
     activeProject,
-    activeWslProject,
-    activeRemoteProject,
     activeWorktreePath,
     agents,
   });
@@ -195,17 +188,11 @@ export function useAppShell(): UseAppShellResult {
   const handleFileRefresh = useCallback(() => {
     const projectId =
       useProjectStore.getState().activeProjectId ??
-      useConnectionStore.getState().activeWslProject?.project.id ??
-      useConnectionStore.getState().activeRemoteProject?.project.id ??
       null;
     if (!projectId) return;
     const rootPath =
       useWorktreeStore.getState().activeWorktreePath ??
-      useWorktreeStore.getState().activeWslWorktreePath ??
-      useWorktreeStore.getState().activeRemoteWorktreePath ??
       useProjectStore.getState().activeProject?.path ??
-      useConnectionStore.getState().activeWslProject?.project.path ??
-      useConnectionStore.getState().activeRemoteProject?.project.path ??
       undefined;
     fileView.loadFileTree(projectId, rootPath);
   }, [fileView.loadFileTree]);
@@ -265,19 +252,8 @@ export function useAppShell(): UseAppShellResult {
     agentActionsWrap.handleOpenIdeCallback,
     agentActionsWrap.handleSetProjectIde,
   ]);
-  useEffect(() => {
-    useConnectionStore.setState({
-      selectWslProject: cross.handleSelectWslProject,
-      selectRemoteProject: cross.handleSelectRemoteProject,
-    });
-  }, [cross.handleSelectWslProject, cross.handleSelectRemoteProject]);
-
   useKeyboardShortcuts({
     updateWtPath,
-    setWslWorktreePath: wslActionsWrap.setActiveWslWorktreePath,
-    setWslWtBranch: wslActionsWrap.setWslActiveWtBranch,
-    setRemoteWorktreePath: remoteActionsWrap.setActiveRemoteWorktreePath,
-    setRemoteWtBranch: remoteActionsWrap.setRemoteActiveWtBranch,
     activeTabId,
     onCloseTab: handleCloseTab,
     shortcuts: config.shortcuts,
@@ -299,8 +275,6 @@ export function useAppShell(): UseAppShellResult {
     tabKey,
     handleTabAgentClick,
     activeProject,
-    activeWslProject,
-    activeRemoteProject,
     agentActions: agentActionsWrap,
     wslActions: wslActionsWrap,
     remoteActions: remoteActionsWrap,
@@ -341,13 +315,10 @@ export function useAppShell(): UseAppShellResult {
   };
   const wslValue = {
     wslEntries,
-    activeWslKey,
     wslOpenSessions,
-    activeWslProject,
     activeWslWorktreePath: wslActionsWrap.activeWslWorktreePath,
     wslDiffState: wslActionsWrap.wslDiffState,
     setWslOpenSessions,
-    onSelectWslProject: cross.handleSelectWslProject,
     onCloseWslProject: handleCloseWslProject,
     onRemoveWslProject: handleRemoveWslProject,
     onRemoveWslEntry: handleRemoveWslEntry,
@@ -361,13 +332,10 @@ export function useAppShell(): UseAppShellResult {
   };
   const remoteValue = {
     remoteEntries,
-    activeRemoteKey,
     remoteOpenSessions,
-    activeRemoteProject,
     activeRemoteWorktreePath: remoteActionsWrap.activeRemoteWorktreePath,
     remoteAuthStore,
     setRemoteOpenSessions,
-    onSelectRemoteProject: cross.handleSelectRemoteProject,
     onCloseRemoteProject: handleCloseRemoteProject,
     onRemoveRemoteProject: handleRemoveRemoteProject,
     onRemoveRemoteEntry: handleRemoveRemoteEntry,

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { setProjectAgent } from "../api/agentApi";
+import { useProjectStore } from '@/features/project/store';
 import type { AgentConfig } from '@/shared/types';
 import type { TerminalTab } from '@/shared/types/terminal';
 
@@ -7,8 +8,6 @@ interface UseAgentClickHandlerOptions {
   tabKey: string | null;
   handleTabAgentClick: (tabKey: string, agent: AgentConfig) => TerminalTab | null;
   activeProject: { id: string } | null;
-  activeWslProject: { project: { id: string } } | null;
-  activeRemoteProject: { project: { id: string } } | null;
   agentActions: {
     handleSelectLocalAgent: (agent: AgentConfig, cacheKey: string) => void;
   };
@@ -27,8 +26,6 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
     tabKey,
     handleTabAgentClick,
     activeProject,
-    activeWslProject,
-    activeRemoteProject,
     agentActions,
     wslActions,
     remoteActions,
@@ -39,7 +36,21 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
       if (!tabKey) return;
       const newTab = handleTabAgentClick(tabKey, agent);
 
-      if (activeProject) {
+      const fullProject = useProjectStore.getState().activeProject;
+
+      if (fullProject?.environment.type === 'Wsl') {
+        if (newTab) {
+          wslActions.updateWslProjectAgent(agent);
+        } else {
+          wslActions.handleSelectWslAgent(agent);
+        }
+      } else if (fullProject?.environment.type === 'Remote') {
+        if (newTab) {
+          remoteActions.updateRemoteProjectAgent(agent);
+        } else {
+          remoteActions.handleSelectRemoteAgent(agent);
+        }
+      } else if (activeProject) {
         setProjectAgent(activeProject.id, agent.id).catch((err: unknown) => {
           console.error("[TitleBar] Failed to set agent:", err);
         });
@@ -47,26 +58,12 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
           const cacheKey = `${activeProject.id}:1`;
           agentActions.handleSelectLocalAgent(agent, cacheKey);
         }
-      } else if (activeWslProject) {
-        if (newTab) {
-          wslActions.updateWslProjectAgent(agent);
-        } else {
-          wslActions.handleSelectWslAgent(agent);
-        }
-      } else if (activeRemoteProject) {
-        if (newTab) {
-          remoteActions.updateRemoteProjectAgent(agent);
-        } else {
-          remoteActions.handleSelectRemoteAgent(agent);
-        }
       }
     },
     [
       tabKey,
       handleTabAgentClick,
       activeProject,
-      activeWslProject,
-      activeRemoteProject,
       agentActions,
       wslActions,
       remoteActions,

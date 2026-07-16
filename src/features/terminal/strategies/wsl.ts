@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 
-import { useWslContext } from '@/features/connection/contexts/WslContext';
+import { useProjectStore } from '@/features/project/store';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
-import type { FileTransportKind } from '@/shared/types';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 import { createWslTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -19,17 +19,19 @@ import type { TerminalStrategy } from './types';
 export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null {
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
-  const { activeWslProject, activeWslWorktreePath, setWslOpenSessions } = useWslContext();
+  const activeProject = useProjectStore((state) => state.activeProject);
+  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
 
   return useMemo(() => {
-    if (!activeWslProject) return null;
+    if (!activeProject || activeProject.environment.type !== 'Wsl') return null;
 
-    const distro = activeWslProject.distro;
-    const projectId = activeWslProject.project.id;
-    const projectPath = activeWslWorktreePath ?? activeWslProject.project.path ?? '';
+    const env = activeProject.environment;
+    const distro = env.distro;
+    const projectId = activeProject.id;
+    const projectPath = activeWorktreePath ?? activeProject.path ?? '';
 
-    const cacheKeySuffix = activeWslWorktreePath
-      ? `:wt:${btoa(activeWslWorktreePath).replace(/=/g, '')}`
+    const cacheKeySuffix = activeWorktreePath
+      ? `:wt:${btoa(activeWorktreePath).replace(/=/g, '')}`
       : '';
 
     const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
@@ -51,27 +53,23 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       fontSize: config.terminalFontSize,
       fontFamily: config.fontFamily ?? '',
       gpuAccel: config.terminalGpuAcceleration ?? false,
-      onSessionReady: () => {
-        setWslOpenSessions((prev) => new Set(prev).add(projectId));
-      },
+      onSessionReady: () => {},
       setupFileLinks: (term) => {
         if (projectPath) {
-          const tabKey = activeWslWorktreePath
-            ? buildWorktreeTabKey(projectId, activeWslWorktreePath)
+          const tabKey = activeWorktreePath
+            ? buildWorktreeTabKey(projectId, activeWorktreePath)
             : projectId;
-          const transport: FileTransportKind = { Wsl: { distro, project_path: projectPath } };
-          setupTerminalLinks(term, { projectPath, tabKey, projectId, transport, showToast });
+          setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },
     } satisfies TerminalStrategy;
   }, [
-    activeWslProject,
-    activeWslWorktreePath,
+    activeProject,
+    activeWorktreePath,
     activeTabId,
     paneId,
     config.terminalFontSize,
     config.fontFamily,
     config.terminalGpuAcceleration,
-    setWslOpenSessions,
   ]);
 }

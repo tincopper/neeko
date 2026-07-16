@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
-import type { FileTransportKind } from '@/shared/types';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -85,8 +84,7 @@ export function useLocalTerminalStrategy(
             isWorktree && effWorktreePath
               ? buildWorktreeTabKey(projectId, effWorktreePath)
               : projectId;
-          const transport: FileTransportKind = { Local: { project_path: projectPath } };
-          setupTerminalLinks(term, { projectPath, tabKey, projectId, transport, showToast });
+          setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },
     } satisfies TerminalStrategy;

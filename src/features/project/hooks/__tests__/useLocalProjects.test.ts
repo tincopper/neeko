@@ -197,7 +197,7 @@ describe('useLocalProjects', () => {
     });
 
     expect(mockInvoke).toHaveBeenCalledWith('get_worktree_changed_files', {
-      transport: { Local: { project_path: '' } },
+      projectId: 'p1',
       worktreePath: '',
     });
   });

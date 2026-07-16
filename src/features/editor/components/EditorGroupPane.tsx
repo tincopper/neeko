@@ -19,7 +19,7 @@ import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { useWslContext } from '@/features/connection/contexts/WslContext';
+import { useProjectStore } from '@/features/project/store';
 import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
 import { useEditorStore } from '@/shared/store';
 import { buildDiffSource } from '@/shared/utils/diffSource';
@@ -57,7 +57,6 @@ function EditorGroupPane({
   const globalEditorCtx = useEditorContext();
   const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
   const { config, showToast } = useAppContext();
-  const { activeWslProject: wslProject } = useWslContext();
 
   const layoutState = useEditorGroupLayout(tabKey);
   const {
@@ -367,11 +366,15 @@ function EditorGroupPane({
                     cacheKeySuffix={remoteProject.cacheKeySuffix}
                     onSessionReady={remoteProject.onSessionReady}
                   />
-                ) : wslProject ? (
-                  <WSLTerminalView paneId={paneId} />
-                ) : (
-                  <TerminalView paneId={paneId} />
-                )
+                ) : (() => {
+                  const p = useProjectStore.getState().activeProject;
+                  const isWsl = p?.environment.type === 'Wsl';
+                  return isWsl ? (
+                    <WSLTerminalView paneId={paneId} />
+                  ) : (
+                    <TerminalView paneId={paneId} />
+                  );
+                })()
               }
               onSplitStateChange={handleSplitStateChange}
               onSplitHorizontal={handleSetSplitHorizontal}

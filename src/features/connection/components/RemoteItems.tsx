@@ -13,11 +13,12 @@ import React from 'react';
 
 import { PlusIcon, TrashIcon } from '@/shared/components/icons';
 import { getDistroIcon } from '@/shared/utils/distros';
+import { useProjectStore } from '@/features/project/store';
 
 import serverIcon from '../../../assets/server.svg';
 
 import ConnectionProjectCard from './ConnectionProjectCard';
-import type { WSLItemProps, RemoteItemProps, ConnectionProjectCardProps } from './types';
+import type { WSLItemProps, RemoteItemProps } from './types';
 
 interface SectionActionButtonProps {
   title: string;
@@ -71,7 +72,7 @@ interface SectionHeaderProps {
   onRemove: () => void;
 }
 
-const SectionHeader: React.FC<SectionHeaderProps> = ({
+export const SectionHeader: React.FC<SectionHeaderProps> = ({
   iconSrc,
   iconAlt,
   kindLabel,
@@ -103,7 +104,6 @@ const SectionHeader: React.FC<SectionHeaderProps> = ({
 export const WSLItem = React.memo<WSLItemProps>(
   ({
     entry,
-    activeKey,
     lastProjectId,
     onSelectProject,
     onRemoveProject,
@@ -120,6 +120,7 @@ export const WSLItem = React.memo<WSLItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
+    const activeProjectId = useProjectStore((s) => s.activeProjectId);
     const sensors = useSensors(
       useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
       useSensor(KeyboardSensor),
@@ -159,19 +160,16 @@ export const WSLItem = React.memo<WSLItemProps>(
               strategy={verticalListSortingStrategy}
             >
               {entry.projects.map((project) => {
-                const isActive =
-                  activeKey?.distro === entry.distro && activeKey?.projectId === project.id;
+                const isActive = activeProjectId === project.id;
                 return (
                   <ConnectionProjectCard
                     key={project.id}
-                    project={project}
+                    project={project as unknown as import('@/features/project/types').Project}
                     entryId={entry.id}
                     source={{ type: 'wsl', distro: entry.distro }}
                     isActive={isActive}
                     isLast={lastProjectId === project.id}
-                    onSelectProject={
-                      onSelectProject as ConnectionProjectCardProps['onSelectProject']
-                    }
+                    onSelectProject={onSelectProject}
                     onRemoveProject={onRemoveProject}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}
@@ -189,16 +187,15 @@ export const WSLItem = React.memo<WSLItemProps>(
           </DndContext>
         )}
       </>
+
     );
   },
 );
-
 WSLItem.displayName = 'WSLItem';
 
 export const RemoteItem = React.memo<RemoteItemProps>(
   ({
     entry,
-    activeKey,
     lastProjectId,
     onSelectProject,
     onRemoveProject,
@@ -206,7 +203,6 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     onAddProject,
     onOpenIde,
     onOpenWorktreeTerminal,
-    invokeRemoteGit,
     ideCommandOverrides,
     onOpenSettings,
     onRefresh,
@@ -216,14 +212,13 @@ export const RemoteItem = React.memo<RemoteItemProps>(
     onShowToast,
     onDragEnd,
   }) => {
+    const activeProjectId = useProjectStore((s) => s.activeProjectId);
     const label = `${entry.host}:${entry.port}`;
 
     const sensors = useSensors(
       useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
       useSensor(KeyboardSensor),
     );
-
-    if (!invokeRemoteGit) return null;
 
     const handleDndEnd = (event: DragEndEvent) => {
       const { active, over } = event;
@@ -259,24 +254,16 @@ export const RemoteItem = React.memo<RemoteItemProps>(
               strategy={verticalListSortingStrategy}
             >
               {entry.projects.map((project) => {
-                const isActive =
-                  activeKey?.host === entry.host && activeKey?.projectId === project.id;
+                const isActive = activeProjectId === project.id;
                 return (
                   <ConnectionProjectCard
                     key={project.id}
-                    project={project}
+                    project={project as unknown as import('@/features/project/types').Project}
                     entryId={entry.id}
-                    source={{
-                      type: 'remote',
-                      entryId: entry.id,
-                      host: entry.host,
-                      invokeRemoteGit: invokeRemoteGit,
-                    }}
+                    source={{ type: 'remote', entryId: entry.id, host: entry.host }}
                     isActive={isActive}
                     isLast={lastProjectId === project.id}
-                    onSelectProject={
-                      onSelectProject as ConnectionProjectCardProps['onSelectProject']
-                    }
+                    onSelectProject={onSelectProject}
                     onRemoveProject={onRemoveProject}
                     onOpenIde={onOpenIde}
                     onOpenWorktreeTerminal={onOpenWorktreeTerminal}

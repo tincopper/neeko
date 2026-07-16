@@ -58,16 +58,16 @@ export function useSessionBootstrap(deps: {
             for (const p of projects) {
                if (!p.git_info?.changed_files?.length) {
                   // split 轻量路径：与 watcher git-changed 处理一致，避免重量�?refresh_git_info
-                  getWorktreeChangedFiles(
-                     { Local: { project_path: p.path } },
-                     "",
-                  )
-                     .then((changedFiles) => {
-                        patchGitInfo(p.id, { changed_files: changedFiles, is_clean: changedFiles.length === 0 });
-                     })
-                     .catch(() => { });
+               getWorktreeChangedFiles(
+                  p.id,
+                  "",
+               )
+                  .then((changedFiles) => {
+                     patchGitInfo(p.id, { changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+                  })
+                  .catch(() => { });
 
-                  getGitBranchInfo({ Local: { project_path: p.path } })
+               getGitBranchInfo(p.id)
                      .then((branchInfo) => {
                         patchGitInfo(p.id, {
                            current_branch: branchInfo.current_branch,
@@ -94,12 +94,58 @@ export function useSessionBootstrap(deps: {
             deps.restoreWorktreeState(wtState);
          }
          deps.restoreAuthFromEntries(remoteE);
+
+         // 恢复上次活动的项目（来自 session 持久化的 active_project_id）
+         const activeId = session.active_project_id;
+         if (activeId) {
+           const state = useProjectStore.getState();
+           const activeProj = state.projects.find((p) => p.id === activeId) ?? null;
+           if (activeProj) {
+             useProjectStore.setState({
+               activeProjectId: activeId,
+               activeProject: activeProj,
+             });
+
+             // 触发 git info 刷新，确保 commit panel 立即展示数据
+             const defaultGitInfo = {
+               current_branch: "",
+               branches: [] as string[],
+               worktrees: [] as Worktree[],
+               changed_files: [] as FileChange[],
+               is_clean: true,
+               git_provider: "",
+             };
+             const patchGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
+               useProjectStore.setState((s) => {
+                 const nextProjects = s.projects.map((p) =>
+                   p.id === activeId ? { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } } : p,
+                 );
+                 return {
+                   projects: nextProjects,
+                   activeProject: s.activeProjectId === activeId
+                     ? nextProjects.find((p) => p.id === activeId) ?? s.activeProject
+                     : s.activeProject,
+                 };
+               });
+             };
+             getWorktreeChangedFiles(activeId, "").then((changedFiles) => {
+               patchGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+             }).catch(() => {});
+             getGitBranchInfo(activeId).then((branchInfo) => {
+               patchGitInfo({
+                 current_branch: branchInfo.current_branch,
+                 branches: branchInfo.branches,
+                 worktrees: branchInfo.worktrees,
+               });
+             }).catch(() => {});
+           }
+         }
+
          setInitializing(false);
       }).catch(console.error);
 
       const unlistenPromise = listen<string>("git-changed", (event) => {
          const projectId = event.payload;
-         const projectPath = useProjectStore.getState().projects.find(p => p.id === projectId)?.path ?? "";
 
          // split 轻量路径：分别获�?changed_files �?branch_info，避免全�?refresh_git_info
          const defaultGitInfo = {
@@ -128,7 +174,7 @@ export function useSessionBootstrap(deps: {
 
           // 1. 获取变更文件列表（轻量）
           getWorktreeChangedFiles(
-             { Local: { project_path: projectPath } },
+             projectId,
              "",
           )
              .then((changedFiles) => {
@@ -137,7 +183,7 @@ export function useSessionBootstrap(deps: {
              .catch((e) => console.error("[SessionBootstrap] get_worktree_changed_files failed:", e));
 
           // 2. 获取分支信息（异步，不阻塞文件列表更新）
-          getGitBranchInfo({ Local: { project_path: projectPath } })
+          getGitBranchInfo(projectId)
              .then((branchInfo) => {
                 updateGitInfo({
                    current_branch: branchInfo.current_branch,

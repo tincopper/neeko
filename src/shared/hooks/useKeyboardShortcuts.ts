@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
-import { IS_WINDOWS } from "@/shared/utils/platform";
-import { refreshTerminal, refreshWslTerminal, refreshRemoteTerminal, terminalCacheKey } from "@/features/terminal/components/terminalCache";
+import { refreshTerminal, terminalCacheKey } from "@/features/terminal/components/terminalCache";
 import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
@@ -11,10 +9,6 @@ import type { ProjectListItem } from "@/features/project/hooks/useProjectList";
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;
-  setWslWorktreePath: (path: string | null) => void;
-  setWslWtBranch: (branch: string) => void;
-  setRemoteWorktreePath: (path: string | null) => void;
-  setRemoteWtBranch: (branch: string) => void;
   activeTabId: string | null;
   onCloseTab: (tabId: string) => void;
   shortcuts: Record<string, string>;
@@ -23,10 +17,6 @@ interface UseKeyboardShortcutsParams {
 
 export function useKeyboardShortcuts({
   updateWtPath,
-  setWslWorktreePath,
-  setWslWtBranch,
-  setRemoteWorktreePath,
-  setRemoteWtBranch,
   activeTabId,
   onCloseTab,
   shortcuts,
@@ -63,55 +53,19 @@ export function useKeyboardShortcuts({
           case "cycleWorktree": {
             e.preventDefault();
             const proj = useProjectStore.getState();
-            const conn = useConnectionStore.getState();
             const wt = useWorktreeStore.getState();
-            if (proj.isTerminalView) {
-              const opened = wt.openedWorktrees ?? [];
-              if (opened.length === 0) break;
-              const cur = wt.activeWorktreePath;
-              if (cur === null) {
-                updateWtPath(opened[0].path, opened[0].branch);
+            if (!proj.activeProjectId) break;
+            const opened = wt.openedWorktrees ?? [];
+            if (opened.length === 0) break;
+            const cur = wt.activeWorktreePath;
+            if (cur === null) {
+              updateWtPath(opened[0].path, opened[0].branch);
+            } else {
+              const idx = opened.findIndex((w) => w.path === cur);
+              if (idx === opened.length - 1) {
+                updateWtPath(null, "");
               } else {
-                const idx = opened.findIndex((w) => w.path === cur);
-                if (idx === opened.length - 1) {
-                  updateWtPath(null, "");
-                } else {
-                  updateWtPath(opened[idx + 1].path, opened[idx + 1].branch);
-                }
-              }
-            } else if (conn.activeWslKey) {
-              const opened = wt.wslOpenedWt ?? [];
-              if (opened.length === 0) break;
-              const cur = wt.activeWslWorktreePath;
-              if (cur === null) {
-                setWslWorktreePath(opened[0].path);
-                setWslWtBranch(opened[0].branch);
-              } else {
-                const idx = opened.findIndex((w) => w.path === cur);
-                if (idx === opened.length - 1) {
-                  setWslWorktreePath(null);
-                  setWslWtBranch("");
-                } else {
-                  setWslWorktreePath(opened[idx + 1].path);
-                  setWslWtBranch(opened[idx + 1].branch);
-                }
-              }
-            } else if (conn.activeRemoteKey) {
-              const opened = wt.remoteOpenedWt ?? [];
-              if (opened.length === 0) break;
-              const cur = wt.activeRemoteWorktreePath;
-              if (cur === null) {
-                setRemoteWorktreePath(opened[0].path);
-                setRemoteWtBranch(opened[0].branch);
-              } else {
-                const idx = opened.findIndex((w) => w.path === cur);
-                if (idx === opened.length - 1) {
-                  setRemoteWorktreePath(null);
-                  setRemoteWtBranch("");
-                } else {
-                  setRemoteWorktreePath(opened[idx + 1].path);
-                  setRemoteWtBranch(opened[idx + 1].branch);
-                }
+                updateWtPath(opened[idx + 1].path, opened[idx + 1].branch);
               }
             }
             break;
@@ -130,16 +84,9 @@ export function useKeyboardShortcuts({
           case "refreshTerminal": {
             e.preventDefault();
             const proj = useProjectStore.getState();
-            const conn = useConnectionStore.getState();
             if (proj.activeProjectId && proj.isTerminalView) {
               const key = terminalCacheKey(proj.activeProjectId, activeTabIdRef.current);
               refreshTerminal(key);
-            } else if (IS_WINDOWS && conn.activeWslKey) {
-              const k = `wsl:${conn.activeWslKey.distro}:${conn.activeWslKey.projectId}`;
-              refreshWslTerminal(k);
-            } else if (conn.activeRemoteKey) {
-              const k = `remote:${conn.activeRemoteKey.host}:${conn.activeRemoteKey.projectId}`;
-              refreshRemoteTerminal(k);
             }
             break;
           }
@@ -186,53 +133,31 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [updateWtPath, setWslWorktreePath, setWslWtBranch, setRemoteWorktreePath, setRemoteWtBranch, onCloseTab, unifiedItems]);
+  }, [updateWtPath, onCloseTab, unifiedItems]);
 }
 
 /** Find current position in the unified project list */
 function findCurrentIndex(items: ProjectListItem[]): number {
   const proj = useProjectStore.getState();
-  const conn = useConnectionStore.getState();
-  return items.findIndex((item) => {
-    if (item.kind === "local") return item.id === proj.activeProjectId;
-    if (item.kind === "wsl") {
-      return item.distro === conn.activeWslKey?.distro && item.id === conn.activeWslKey?.projectId;
-    }
-    return item.host === conn.activeRemoteKey?.host && item.id === conn.activeRemoteKey?.projectId;
-  });
+  return items.findIndex((item) => item.id === proj.activeProjectId);
 }
 
 /** Dispatch selection to the correct store callback */
 function switchToItem(item: ProjectListItem) {
-  if (item.kind === "local") {
-    const store = useProjectStore.getState();
-    store.selectProject?.(item.id);
-  } else if (item.kind === "wsl" && item.distro) {
-    const store = useConnectionStore.getState();
-    store.selectWslProject?.(item.distro, { id: item.id, path: item.path, name: item.name } as any);
-  } else if (item.kind === "remote" && item.host) {
-    const store = useConnectionStore.getState();
-    store.selectRemoteProject?.(item.host, { id: item.id, path: item.path, name: item.name } as any);
-  }
+  const store = useProjectStore.getState();
+  store.selectProject?.(item.id);
 }
 
 function cycleTab(direction: 1 | -1) {
   const proj = useProjectStore.getState();
-  const conn = useConnectionStore.getState();
   const wt = useWorktreeStore.getState();
   const editor = useEditorStore.getState();
 
-  const currentProjectId =
-    proj.activeProjectId ??
-    conn.activeWslKey?.projectId ??
-    conn.activeRemoteKey?.projectId ??
-    null;
+  const currentProjectId = proj.activeProjectId ?? null;
   if (!currentProjectId) return;
 
   const worktreePath =
     wt.activeWorktreePath ??
-    wt.activeWslWorktreePath ??
-    wt.activeRemoteWorktreePath ??
     null;
 
   const tabKey = worktreePath

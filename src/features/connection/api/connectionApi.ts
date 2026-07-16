@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AuthMethod, GitInfo } from '@/shared/types';
+import type { AuthMethod } from '@/shared/types';
 
 export function invokeRemoteGitCommand(
   command: string,
@@ -43,6 +43,4 @@ export function listRemoteDirectories(
   return invoke<string[]>('list_remote_directories', { host, port, username, auth, path });
 }
 
-export function getRemoteGitInfo(transport: Record<string, unknown>): Promise<GitInfo> {
-  return invoke<GitInfo>('get_git_info', { transport });
-}
+

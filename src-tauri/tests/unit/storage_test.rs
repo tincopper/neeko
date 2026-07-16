@@ -1,5 +1,5 @@
 use neeko_lib::common::terminal::types::{TerminalSession, TerminalStatus};
-use neeko_lib::project::types::{Project, ViewMode};
+use neeko_lib::project::types::{Project, ProjectEnvironment, ViewMode};
 use neeko_lib::session::types::{ProjectSession, SessionStore};
 use neeko_lib::session::StorageManager;
 use std::path::PathBuf;
@@ -107,6 +107,7 @@ fn create_session_from_projects() {
         selected_ide: None,
         active_view: ViewMode::Terminal,
         collapsed: false,
+        environment: ProjectEnvironment::Local,
         avatar_color: Some("#61afef".into()),
     }];
 

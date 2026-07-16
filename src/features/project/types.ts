@@ -1,11 +1,38 @@
 import type { AgentConfig } from "@/features/agent/types";
-import type { WSLProject, RemoteProject } from "@/features/connection/types";
 import type { GitInfo, PushOutcome } from "@/features/git/types";
+
+export type ProjectEnvironment =
+  | { type: "Local" }
+  | { type: "Wsl"; distro: string }
+  | { type: "Remote"; host: string; port: number; username: string; auth: AuthMethod };
+
+export function environmentToConnectionContext(
+  env: ProjectEnvironment,
+  projectPath: string,
+  projectId: string,
+): ConnectionContext {
+  switch (env.type) {
+    case "Local":
+      return { type: "local", projectId };
+    case "Wsl":
+      return { type: "wsl", distro: env.distro, projectPath };
+    case "Remote":
+      return {
+        type: "remote",
+        host: env.host,
+        port: env.port,
+        username: env.username,
+        auth: env.auth,
+        projectPath,
+      };
+  }
+}
 
 export interface Project {
   id: string;
   name: string;
   path: string;
+  environment: ProjectEnvironment;
   git_info: GitInfo | null;
   terminal: {
     id: string;
@@ -21,10 +48,9 @@ export interface Project {
   avatar_color?: string | null;
 }
 
-export type TerminalEntry =
-  | { type: "local"; project: Project }
-  | { type: "wsl"; distro: string; project: WSLProject }
-  | { type: "remote"; host: string; project: RemoteProject };
+export type TerminalEntry = {
+  project: Project;
+};
 
 export type ProjectType = "local" | "wsl" | "remote";
 

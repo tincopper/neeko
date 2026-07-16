@@ -193,9 +193,9 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       console.error('[skillStore] updateSkillDocument: skill not found', skillId);
       return;
     }
-    // 复用 unified_write_file_content，通过 transport.project_path 指定 central_path
+    // 复用 unified_write_file_content
     await writeFileContentApi(
-      { Local: { project_path: skill.central_path } },
+      skill.central_path,
       SKILL_DOC_FILENAME,
       content,
     );

@@ -51,7 +51,7 @@ interface BuildRefreshGitHandlerOptions<
   TActiveProject,
   TContext,
 > {
-  refreshGitInfo: (projectPath: string, context: TContext) => Promise<GitInfo | null>;
+  refreshGitInfo: (projectPath: string, projectId: string, context: TContext) => Promise<GitInfo | null>;
   setEntries: Dispatch<SetStateAction<TEntry[]>>;
   setActiveProject: Dispatch<SetStateAction<TActiveProject | null>>;
   isActiveProject: (activeProject: TActiveProject, projectId: string) => boolean;
@@ -67,7 +67,7 @@ export function buildRefreshGitHandler<
   options: BuildRefreshGitHandlerOptions<TProject, TEntry, TActiveProject, TContext>,
 ) {
   return async (context: TContext, projectId: string, projectPath: string): Promise<void> => {
-    const gitInfo = await options.refreshGitInfo(projectPath, context);
+    const gitInfo = await options.refreshGitInfo(projectPath, projectId, context);
     if (!gitInfo) {
       return;
     }

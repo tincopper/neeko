@@ -1,34 +1,19 @@
 import { useState, useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { wslCacheKey, destroyWslCachesByPrefix } from "@/features/terminal/components/terminalCache";
-import type { WSLEntrySession, RemoteEntrySession, WSLProject } from '@/shared/types';
-import type { ActiveWslKey } from "../components/types";
+import type { WSLEntrySession, RemoteEntrySession } from '@/shared/types';
+import { useProjectStore } from "@/features/project/store";
 import { useConnectionStore } from "../store";
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
-export type { ActiveWslKey };
 export type SaveSessionFn = (wslEntries?: WSLEntrySession[], remoteEntries?: RemoteEntrySession[]) => Promise<void>;
 
 export function useWslProjects(saveSession: SaveSessionFn) {
   const wslEntries = useConnectionStore((state) => state.wslEntries);
-  const activeWslKey = useConnectionStore((state) => state.activeWslKey);
-  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
 
   const setWslEntries: Dispatch<SetStateAction<WSLEntrySession[]>> = useCallback((updater) => {
     useConnectionStore.setState((state) => ({
       wslEntries: applyStateAction(state.wslEntries, updater),
-    }));
-  }, []);
-
-  const setActiveWslKey: Dispatch<SetStateAction<ActiveWslKey>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeWslKey: applyStateAction(state.activeWslKey, updater),
-    }));
-  }, []);
-
-  const setActiveWslProject: Dispatch<SetStateAction<{ distro: string; project: WSLProject } | null>> = useCallback((updater) => {
-    useConnectionStore.setState((state) => ({
-      activeWslProject: applyStateAction(state.activeWslProject, updater),
     }));
   }, []);
 
@@ -51,21 +36,21 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     if (entry) {
       destroyWslCachesByPrefix(wslCacheKey(entry.distro, projectId));
     }
-    if (activeWslKey?.projectId === projectId) {
-      setActiveWslKey(null);
-      setActiveWslProject(null);
+    const activeId = useProjectStore.getState().activeProjectId;
+    if (activeId === projectId) {
+      useProjectStore.setState({ activeProjectId: null, activeProject: null });
     }
     setWslOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
-  }, [wslEntries, activeWslKey, setActiveWslKey, setActiveWslProject]);
+  }, [wslEntries]);
 
   const handleRemoveWslProject = useCallback(async (entryId: string, projectId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
     if (entry) {
       destroyWslCachesByPrefix(wslCacheKey(entry.distro, projectId));
     }
-    if (activeWslKey?.projectId === projectId) {
-      setActiveWslKey(null);
-      setActiveWslProject(null);
+    const activeId = useProjectStore.getState().activeProjectId;
+    if (activeId === projectId) {
+      useProjectStore.setState({ activeProjectId: null, activeProject: null });
     }
     setWslOpenSessions(prev => { const n = new Set(prev); n.delete(projectId); return n; });
     const newEntries = wslEntries.map((entryItem) => {
@@ -79,7 +64,7 @@ export function useWslProjects(saveSession: SaveSessionFn) {
     });
     setWslEntries(newEntries);
     await saveSession(newEntries).catch(console.error);
-  }, [wslEntries, activeWslKey, setActiveWslKey, setActiveWslProject, setWslEntries, saveSession]);
+  }, [wslEntries, setWslEntries, saveSession]);
 
   const handleRemoveWslEntry = useCallback(async (entryId: string) => {
     const entry = wslEntries.find(e => e.id === entryId);
@@ -89,15 +74,15 @@ export function useWslProjects(saveSession: SaveSessionFn) {
         destroyWslCachesByPrefix(key);
         setWslOpenSessions(prev => { const next = new Set(prev); next.delete(p.id); return next; });
       });
-      if (activeWslKey && entry.projects.some(p => p.id === activeWslKey.projectId)) {
-        setActiveWslKey(null);
-        setActiveWslProject(null);
+      const activeId = useProjectStore.getState().activeProjectId;
+      if (activeId && entry.projects.some(p => p.id === activeId)) {
+        useProjectStore.setState({ activeProjectId: null, activeProject: null });
       }
     }
     const newEntries = wslEntries.filter(e => e.id !== entryId);
     setWslEntries(newEntries);
     await saveSession(newEntries).catch(console.error);
-  }, [wslEntries, activeWslKey, setActiveWslKey, setActiveWslProject, setWslEntries, saveSession]);
+  }, [wslEntries, setWslEntries, saveSession]);
 
   const handleAddWslProject = useCallback((entryId: string) => {
     setWslAddToEntryId(entryId);
@@ -139,8 +124,6 @@ export function useWslProjects(saveSession: SaveSessionFn) {
 
   return {
     wslEntries, setWslEntries,
-    activeWslKey, setActiveWslKey,
-    activeWslProject, setActiveWslProject,
     wslOpenSessions, setWslOpenSessions,
     wslDialogOpen, setWslDialogOpen,
     wslAddToEntryId,

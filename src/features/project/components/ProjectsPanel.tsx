@@ -11,19 +11,20 @@ import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifi
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 
-import { WSLItem, RemoteItem } from '@/features/connection/components/RemoteItems';
+import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
 import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
+import { SectionHeader } from '@/features/connection/components/RemoteItems';
+import { getDistroIcon } from '@/shared/utils/distros';
 import CommitDialog from '@/features/git/components/CommitDialog';
 import GitDialog, { DialogState } from '@/features/git/components/GitDialog';
 import { useAheadBehindSync } from '@/features/git/hooks/useAheadBehindSync';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { useProjectActionsContext } from '@/features/project/context';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
-import { useProjectList } from '@/features/project/hooks/useProjectList';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { IS_WINDOWS } from '@/shared/utils/platform';
+import serverIcon from '../../../assets/server.svg';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
@@ -46,20 +47,15 @@ const ProjectsPanel: React.FC = () => {
   } = useProjectActionsContext();
   const {
     wslEntries,
-    activeWslKey,
-    onSelectWslProject,
     onRemoveWslProject,
     onRemoveWslEntry,
     onAddWslProject,
     onRefreshWslGit,
     onOpenWslIde,
     onOpenWslWorktreeTerminal,
-    onWslDragEnd,
   } = useWslContext();
   const {
     remoteEntries,
-    activeRemoteKey,
-    onSelectRemoteProject,
     onRemoveRemoteProject,
     onRemoveRemoteEntry,
     onAddRemoteProject,
@@ -67,14 +63,12 @@ const ProjectsPanel: React.FC = () => {
     onOpenRemoteIde,
     onOpenRemoteWorktreeTerminal,
     invokeRemoteGit,
-    onRemoteDragEnd,
   } = useRemoteContext();
 
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [commitProjectId, setCommitProjectId] = useState<string | null>(null);
   const [remoteHomeDir, setRemoteHomeDir] = useState<string>('');
 
-  const { items: unifiedItems, isEmpty: isEmpty } = useProjectList();
   const { commands } = useActiveProject();
 
   useAheadBehindSync(commands);
@@ -84,36 +78,67 @@ const ProjectsPanel: React.FC = () => {
     useSensor(KeyboardSensor),
   );
 
-  /// The very last item across all three sections
-  const lastCardId = useMemo<{
-    kind: 'local' | 'wsl' | 'remote';
-    entryId?: string;
-    projectId: string;
-  } | null>(() => {
-    if (unifiedItems.length === 0) return null;
-    const last = unifiedItems[unifiedItems.length - 1];
-    return { kind: last.kind, entryId: last.entryId, projectId: last.id };
-  }, [unifiedItems]);
+  const isEmpty = projects.length === 0;
+
+  // Derived: WSL projects grouped by distro, Remote projects grouped by host
+  const { localProjects, wslGroups, remoteGroups, lastGroup, lastProjectId } = useMemo(() => {
+    const local: typeof projects = [];
+    const wslMap = new Map<string, typeof projects>();
+    const remoteMap = new Map<string, { entry: (typeof remoteEntries)[number]; projects: typeof projects }>();
+
+    for (const p of projects) {
+      const env = p.environment;
+      if (env.type === 'Wsl') {
+        const group = wslMap.get(env.distro) ?? [];
+        group.push(p);
+        wslMap.set(env.distro, group);
+      } else if (env.type === 'Remote') {
+        const entry = remoteEntries.find(e => e.host === env.host);
+        if (entry) {
+          const existing = remoteMap.get(entry.id) ?? { entry, projects: [] };
+          existing.projects.push(p);
+          remoteMap.set(entry.id, existing);
+        }
+        local.push(p);
+      } else {
+        local.push(p);
+      }
+    }
+
+    const wslGroups = Array.from(wslMap.entries()).map(([distro, projects]) => ({ distro, projects }));
+    const remoteGroups = Array.from(remoteMap.values());
+
+    // Determine which group has the last project across all sections
+    let lastGroup: 'local' | 'wsl' | 'remote' | null = null;
+    let lastProjectId: string | null = null;
+    if (local.length > 0) { lastGroup = 'local'; lastProjectId = local[local.length - 1].id; }
+    for (const g of wslGroups) {
+      if (g.projects.length > 0) { lastGroup = 'wsl'; lastProjectId = g.projects[g.projects.length - 1].id; }
+    }
+    for (const g of remoteGroups) {
+      if (g.projects.length > 0) { lastGroup = 'remote'; lastProjectId = g.projects[g.projects.length - 1].id; }
+    }
+
+    return { localProjects: local, wslGroups, remoteGroups, lastGroup, lastProjectId };
+  }, [projects, remoteEntries]);
 
   useEffect(() => {
-    if (
-      !dialog ||
-      dialog.type !== 'new-worktree' ||
-      dialog.source?.type !== 'remote' ||
-      !dialog.source.entryId ||
-      !invokeRemoteGit
-    ) {
+    if (!dialog || dialog.type !== 'new-worktree' || dialog.source?.type !== 'remote' || !dialog.source.entryId) {
       setRemoteHomeDir('');
       return;
     }
-    invokeRemoteGit('get_remote_home_dir', dialog.source.entryId, {})
-      .then((dir) => setRemoteHomeDir(dir as string))
-      .catch(() => setRemoteHomeDir(''));
+    if (invokeRemoteGit) {
+      invokeRemoteGit('get_remote_home_dir', dialog.source.entryId, {})
+        .then((dir) => setRemoteHomeDir(dir as string))
+        .catch(() => setRemoteHomeDir(''));
+    }
   }, [dialog, invokeRemoteGit]);
 
   const handleCommit = useCallback((projectId: string) => {
     setCommitProjectId(projectId);
   }, []);
+
+
 
   /** Convert PushOutcome to error string if AuthRequired. */
   function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
@@ -131,9 +156,7 @@ const ProjectsPanel: React.FC = () => {
   const handlePush = useCallback(
     async (projectId: string) => {
       try {
-        const projectPath =
-          useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-        const outcome = await withTimeout(push({ Local: { project_path: projectPath } }, false), 30_000, 'push');
+        const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
         const msg = pushOutcomeMsg(outcome);
         if (msg) { showToast?.(msg, 'error'); return; }
         onRefreshGit(projectId);
@@ -147,9 +170,7 @@ const ProjectsPanel: React.FC = () => {
   const handlePull = useCallback(
     async (projectId: string) => {
       try {
-        const projectPath =
-          useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-        const outcome = await withTimeout(pull({ Local: { project_path: projectPath } }), 30_000, 'pull');
+        const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
         const msg = pushOutcomeMsg(outcome);
         if (msg) { showToast?.(msg, 'error'); return; }
         onRefreshGit(projectId);
@@ -184,9 +205,8 @@ const ProjectsPanel: React.FC = () => {
                 items={projects.map((p) => p.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {projects.map((project) => {
-                  const isLast =
-                    lastCardId?.kind === 'local' && lastCardId.projectId === project.id;
+                {localProjects.map((project) => {
+                  const isLast = lastGroup === 'local' && lastProjectId === project.id;
                   return (
                     <ProjectItem
                       key={project.id}
@@ -195,7 +215,7 @@ const ProjectsPanel: React.FC = () => {
                       isLast={isLast}
                       actions={{
                         onSelectProject,
-                        onRemoveProject,
+                         onRemoveProject,
                         onSelectFile,
                         onRefreshGit,
                         onBackToMainTerminal,
@@ -218,94 +238,105 @@ const ProjectsPanel: React.FC = () => {
                     />
                   );
                 })}
+
+                {wslGroups.map(({ distro, projects: wslProjs }) => (
+                  <React.Fragment key={distro}>
+                    <SectionHeader
+                      iconSrc={getDistroIcon(distro)}
+                      iconAlt={distro}
+                      kindLabel="WSL"
+                      name={distro}
+                      count={wslProjs.length}
+                      addTitle="Add WSL project"
+                      removeTitle="Remove distro"
+                      onAdd={() => onAddWslProject(distro)}
+                      onRemove={() => {
+                        const entry = wslEntries.find(e => e.distro === distro);
+                        if (entry) onRemoveWslEntry(entry.id);
+                      }}
+                    />
+                    {wslProjs.map((project) => {
+                      const isLast = lastGroup === 'wsl' && lastProjectId === project.id;
+                      return (
+                        <ConnectionProjectCard
+                          key={project.id}
+                          project={project}
+                          entryId={distro}
+                          source={{ type: 'wsl', distro }}
+                          isActive={activeProjectId === project.id}
+                          isLast={isLast}
+                          onSelectProject={onSelectProject}
+                          onRemoveProject={onRemoveWslProject}
+                          onOpenIde={onOpenWslIde}
+                          onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
+                          ideCommandOverrides={ideCommandOverrides}
+                          onRefresh={
+                            onRefreshWslGit
+                              ? () => onRefreshWslGit(distro, project.id, project.path)
+                              : undefined
+                          }
+                          agents={agents}
+                          config={config}
+                          onSaveProjectSettings={
+                            onSaveProjectSettings
+                              ? (a, i) => onSaveProjectSettings!(project.id, a, i)
+                              : undefined
+                          }
+                          onShowToast={showToast}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+
+                {remoteGroups.map(({ entry, projects: remoteProjs }) => (
+                  <React.Fragment key={entry.id}>
+                    <SectionHeader
+                      iconSrc={serverIcon}
+                      iconAlt="server"
+                      kindLabel="SSH"
+                      name={`${entry.host}:${entry.port}`}
+                      count={remoteProjs.length}
+                      addTitle="Add Remote project"
+                      removeTitle="Remove server"
+                      onAdd={() => onAddRemoteProject(entry.id)}
+                      onRemove={() => onRemoveRemoteEntry(entry.id)}
+                    />
+                    {remoteProjs.map((project) => {
+                      const isLast = lastGroup === 'remote' && lastProjectId === project.id;
+                      return (
+                        <ConnectionProjectCard
+                          key={project.id}
+                          project={project}
+                          entryId={entry.id}
+                          source={{ type: 'remote', entryId: entry.id, host: entry.host }}
+                          isActive={activeProjectId === project.id}
+                          isLast={isLast}
+                          onSelectProject={onSelectProject}
+                          onRemoveProject={onRemoveRemoteProject}
+                          onOpenIde={onOpenRemoteIde}
+                          onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
+                          ideCommandOverrides={ideCommandOverrides}
+                          onRefresh={
+                            onRefreshRemoteGit
+                              ? () => onRefreshRemoteGit(entry.id, project.id, project.path)
+                              : undefined
+                          }
+                          agents={agents}
+                          config={config}
+                          onSaveProjectSettings={
+                            onSaveProjectSettings
+                              ? (agentId, ideCmd) => onSaveProjectSettings(project.id, agentId, ideCmd)
+                              : undefined
+                          }
+                          onShowToast={showToast}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
               </SortableContext>
             </DndContext>
-
-            {IS_WINDOWS &&
-              wslEntries.map((entry) => (
-                <WSLItem
-                  key={entry.id}
-                  entry={entry}
-                  activeKey={activeWslKey}
-                  lastProjectId={
-                    lastCardId?.kind === 'wsl' && lastCardId.entryId === entry.id
-                      ? lastCardId.projectId
-                      : null
-                  }
-                  onSelectProject={onSelectWslProject}
-                  onRemoveProject={onRemoveWslProject}
-                  onRemoveEntry={onRemoveWslEntry}
-                  onAddProject={onAddWslProject}
-                  onOpenIde={onOpenWslIde}
-                  onOpenWorktreeTerminal={onOpenWslWorktreeTerminal}
-                  ideCommandOverrides={ideCommandOverrides}
-                  onRefresh={
-                    onRefreshWslGit
-                      ? (distro, projectId) => {
-                          const e = wslEntries.find((en) => en.distro === distro);
-                          const p = e?.projects.find((pr) => pr.id === projectId);
-                          if (p) onRefreshWslGit(distro, p.id, p.path);
-                        }
-                      : undefined
-                  }
-                  agents={agents}
-                  config={config}
-                  onSaveProjectSettings={
-                    onSaveProjectSettings
-                      ? (agentId, ideCmd) => {
-                          const e = wslEntries.find((en) => en.distro === activeWslKey?.distro);
-                          const p = e?.projects.find((pr) => pr.id === activeWslKey?.projectId);
-                          if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                        }
-                      : undefined
-                  }
-                  onShowToast={showToast}
-                  onDragEnd={onWslDragEnd}
-                />
-              ))}
-
-            {remoteEntries.map((entry) => (
-              <RemoteItem
-                key={entry.id}
-                entry={entry}
-                activeKey={activeRemoteKey}
-                lastProjectId={
-                  lastCardId?.kind === 'remote' && lastCardId.entryId === entry.id
-                    ? lastCardId.projectId
-                    : null
-                }
-                onSelectProject={onSelectRemoteProject}
-                onRemoveProject={onRemoveRemoteProject}
-                onRemoveEntry={onRemoveRemoteEntry}
-                onAddProject={onAddRemoteProject}
-                onOpenIde={onOpenRemoteIde}
-                onOpenWorktreeTerminal={onOpenRemoteWorktreeTerminal}
-                invokeRemoteGit={invokeRemoteGit}
-                ideCommandOverrides={ideCommandOverrides}
-                onRefresh={
-                  onRefreshRemoteGit
-                    ? (entryId, projectId) => {
-                        const e = remoteEntries.find((en) => en.id === entryId);
-                        const p = e?.projects.find((pr) => pr.id === projectId);
-                        if (p) onRefreshRemoteGit(entryId, p.id, p.path);
-                      }
-                    : undefined
-                }
-                agents={agents}
-                config={config}
-                onSaveProjectSettings={
-                  onSaveProjectSettings
-                    ? (agentId, ideCmd) => {
-                        const e = remoteEntries.find((en) => en.id === activeRemoteKey?.host);
-                        const p = e?.projects.find((pr) => pr.id === activeRemoteKey?.projectId);
-                        if (p) onSaveProjectSettings(p.id, agentId, ideCmd);
-                      }
-                    : undefined
-                }
-                onShowToast={showToast}
-                onDragEnd={onRemoteDragEnd}
-              />
-            ))}
           </>
         )}
       </div>

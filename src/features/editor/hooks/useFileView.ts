@@ -4,7 +4,6 @@ import type { FileNode, FileContent, Tab } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store';
@@ -27,18 +26,14 @@ export function useFileView(
   externalWorktreePath?: string | null,
 ) {
   const fileTree = useFileStore(useShallow((state) => state.fileTree));
+  const activeProject = useProjectStore((state) => state.activeProject);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
-  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
-  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
   const fileTreeLoading = useFileStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
-  // Unified current project ID �?covers local/WSL/remote (matches MainContent tabKey logic)
-  const currentProjectId = activeProjectId
-    ?? activeWslProject?.project.id
-    ?? activeRemoteProject?.project.id
-    ?? null;
+  // Unified current project ID — covers local/WSL/remote via unified store
+  const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
 
   // Resolve effective worktree path: external takes priority
   const effectiveWorktreePath = externalWorktreePath !== undefined
@@ -104,11 +99,9 @@ export function useFileView(
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
         tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
       } else {
-        // Local 模式：通过 unified 命令调用，需获取项目的实际路�?
-        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
-        const resolvedPath = worktreePath ?? localProject?.path ?? projectId;
+        // Local 模式：通过 unified 命令调用
         tree = await readDirTree(
-          { Local: { project_path: resolvedPath } },
+          projectId,
           "",
           worktreePath ?? null,
         );
@@ -133,8 +126,6 @@ export function useFileView(
     const cmds = externalCommandsRef.current;
     const projectId =
       useProjectStore.getState().activeProjectId ??
-      useConnectionStore.getState().activeWslProject?.project.id ??
-      useConnectionStore.getState().activeRemoteProject?.project.id ??
       null;
     if (!projectId) return;
     const rootPath = worktreePathRef.current ?? undefined;
@@ -146,10 +137,8 @@ export function useFileView(
         subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
       } else {
         // Local 模式：通过 unified 命令
-        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
-        const resolvedPath = rootPath ?? localProject?.path ?? projectId;
         subChildren = await readDirTree(
-          { Local: { project_path: resolvedPath } },
+          projectId,
           dirPath,
           rootPath ?? null,
         );
@@ -194,10 +183,8 @@ export function useFileView(
         content = await cmds.readFileContent(filePath, rootPath);
       } else {
         // Local 模式：通过 unified 命令
-        const localProject = useProjectStore.getState().projects.find(p => p.id === projectId);
-        const resolvedPath = rootPath ?? localProject?.path ?? projectId;
         content = await readFileContent(
-          { Local: { project_path: resolvedPath } },
+          projectId,
           filePath,
           rootPath ?? null,
         );
@@ -286,10 +273,8 @@ export function useFileView(
         await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
       } else {
         // Local 模式：通过 unified 命令
-        const localProject = useProjectStore.getState().projects.find(p => p.id === fileTab.projectId);
-        const resolvedPath = rootPath ?? localProject?.path ?? fileTab.projectId;
         await writeFileContent(
-          { Local: { project_path: resolvedPath } },
+          fileTab.projectId,
           fileTab.data.filePath,
           content,
         );

@@ -6,6 +6,7 @@ export function createProject(overrides?: Partial<Project>): Project {
     id: 'test-project-id',
     name: 'test-project',
     path: '/tmp/test-project',
+    environment: { type: 'Local' },
     git_info: null,
     terminal: {
       id: 'terminal-1',

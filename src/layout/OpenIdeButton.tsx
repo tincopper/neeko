@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Play } from "@/shared/components/icons"
 import { loadConfig } from "@/features/session/api/sessionApi";
 import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
 import {
   getIdeCommand,
   getIdeIconByCommand,
@@ -21,8 +20,6 @@ import type { AppConfig } from '@/shared/types';
  */
 function OpenIdeButton() {
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWslProject = useConnectionStore((s) => s.activeWslProject);
-  const activeRemoteProject = useConnectionStore((s) => s.activeRemoteProject);
   const openIde = useProjectStore((s) => s.openIde);
   const setProjectIde = useProjectStore((s) => s.setProjectIde);
 
@@ -49,18 +46,9 @@ function OpenIdeButton() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
-  // 当前活跃项目的 IDE 命令 与 ID
-  const ideCommand =
-    activeProject?.selected_ide ??
-    activeWslProject?.project.selected_ide ??
-    activeRemoteProject?.project.selected_ide ??
-    null;
-
-  const projectId =
-    activeProject?.id ??
-    activeWslProject?.project.id ??
-    activeRemoteProject?.project.id ??
-    null;
+  // 当前活跃项目的 IDE 命令 与 ID（统一 store 包含所有项目类型）
+  const ideCommand = activeProject?.selected_ide ?? null;
+  const projectId = activeProject?.id ?? null;
 
   // 整合所有可用的 IDE 选项
   const allIdeOptions = React.useMemo(() => {

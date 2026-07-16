@@ -21,7 +21,6 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useConnectionStore } from '@/features/connection/store';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
 import { fromFileUri, getLspLanguageId, toFileUri } from '@/features/lsp/languageMap';
@@ -93,11 +92,7 @@ function FileViewer() {
   const { config } = useAppContext();
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWslProject = useConnectionStore((state) => state.activeWslProject);
-  const activeRemoteProject = useConnectionStore((state) => state.activeRemoteProject);
   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
-  const activeWslWorktreePath = useWorktreeStore((state) => state.activeWslWorktreePath);
-  const activeRemoteWorktreePath = useWorktreeStore((state) => state.activeRemoteWorktreePath);
   const { onFileSave: onSave, onFileContentChange: onContentChange } = useFileActionsContext();
 
   const theme = config.theme;
@@ -105,10 +100,8 @@ function FileViewer() {
   const fontSize = config.editorFontSize;
 
   // Composite tab key: unified across local/WSL/remote projects
-  const currentProjectId =
-    activeProjectId ?? activeWslProject?.project.id ?? activeRemoteProject?.project.id ?? null;
-  const effectiveWorktreePath =
-    activeWorktreePath ?? activeWslWorktreePath ?? activeRemoteWorktreePath ?? null;
+  const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
+  const effectiveWorktreePath = activeWorktreePath ?? null;
   const tabKey =
     effectiveWorktreePath && currentProjectId
       ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
@@ -143,8 +136,6 @@ function FileViewer() {
 
   const projectPath =
     activeProject?.path ??
-    activeWslProject?.project.path ??
-    activeRemoteProject?.project.path ??
     null;
 
   return (
@@ -223,10 +214,7 @@ function FileEditor({
   // 处理外部文件修改：重新加载
   const handleReload = useCallback(async () => {
     try {
-      const projectPath =
-        useProjectStore.getState().projects.find((p) => p.id === tab.projectId)?.path ??
-        tab.projectId;
-      const content = await readFileContent({ Local: { project_path: projectPath } }, tab.filePath);
+      const content = await readFileContent(tab.projectId, tab.filePath);
       useEditorStore.getState().updateTab(tabKey, tabId, {
         kind: 'file',
         content,
@@ -359,7 +347,7 @@ function FileEditor({
   const navigateToLocation = useCallback(
     async (
       location: LspLocation,
-      projPath: string,
+      _projPath: string,
       tKey: string,
       projId: string,
       currentFilePath: string,
@@ -409,7 +397,7 @@ function FileEditor({
                     is_binary: false,
                   }
                 : await readFileContent(
-                    { Local: { project_path: projPath } },
+                    projId,
                     targetPath,
                   );
             const newTab: Tab = {

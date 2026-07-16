@@ -4,7 +4,7 @@ import type { Terminal } from '@xterm/xterm';
 import { useBrowserStore } from '@/features/browser/store';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
-import type { FileTransportKind, Tab } from '@/shared/types';
+import type { Tab } from '@/shared/types';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
@@ -13,7 +13,6 @@ interface FilePathLinkOptions {
   projectPath: string;
   tabKey: string;
   projectId: string;
-  transport: FileTransportKind;
   showToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
@@ -35,7 +34,7 @@ function resolveToAbsolute(matchedPath: string, projectPath: string): string {
 }
 
 function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions) {
-  const { projectPath, tabKey, projectId, transport, showToast } = options;
+  const { projectPath, tabKey, projectId, showToast } = options;
 
   return {
     provideLinks(bufferLineNumber: number, callback: (links: any[] | undefined) => void) {
@@ -66,7 +65,7 @@ function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions
           text: match[0],
           activate: (event: MouseEvent) => {
             if (event.metaKey || event.ctrlKey) {
-              openFileInEditor(fullPath, tabKey, projectId, transport, showToast, lineNum, colNum);
+              openFileInEditor(fullPath, tabKey, projectId, showToast, lineNum, colNum);
             } else {
               revealInFileManager(fullPath).catch((err) => {
                 console.error(`[TerminalLinks] Failed to reveal file '${fullPath}':`, err);
@@ -85,7 +84,6 @@ async function openFileInEditor(
   fullPath: string,
   tabKey: string,
   projId: string,
-  transport: FileTransportKind,
   showToast?: (message: string, type?: 'info' | 'error') => void,
   line?: number,
   col?: number,
@@ -106,7 +104,7 @@ async function openFileInEditor(
   }
 
   try {
-    const content = await readFileContent(transport, fullPath);
+    const content = await readFileContent(projId, fullPath);
     const newTab: Tab = {
       id: tabId,
       projectId: projId,

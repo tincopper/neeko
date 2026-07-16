@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
-import type { AuthMethod, FileTransportKind } from '@/shared/types';
+import type { AuthMethod } from '@/shared/types';
 
 import {
   createRemoteTerminalSession,
@@ -83,10 +83,7 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
       onSessionReady: onSessionReady ? () => onSessionReady(projectId) : undefined,
       setupFileLinks: (term) => {
         if (projectPath) {
-          const transport: FileTransportKind = {
-            Remote: { host, port, username, auth, project_path: projectPath },
-          };
-          setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, transport, showToast });
+          setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, showToast });
         }
       },
     } satisfies TerminalStrategy;

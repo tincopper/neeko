@@ -85,7 +85,7 @@ describe("ConnectionProjectCard (WSL)", () => {
     );
 
     fireEvent.click(screen.getByText("local"));
-    expect(onSelectProject).toHaveBeenCalledWith("Ubuntu", project);
+    expect(onSelectProject).toHaveBeenCalledWith(project.id);
   });
 
   it("点击 worktree 行触发 onOpenWorktreeTerminal (传入 distro)", () => {
@@ -133,7 +133,7 @@ describe("ConnectionProjectCard (WSL)", () => {
   it("active worktree 与 isActive 都成立时 local 行不显示 ↑N", () => {
     const project = makeWslProject();
     useWorktreeStore.setState({
-      activeWslWorktreePath: "/home/user/wts/feature-x",
+      activeWorktreePath: "/home/user/wts/feature-x",
     });
     useGitStore.setState({
       aheadBehind: { "wsl:Ubuntu:wsl-p1": { ahead: 3, behind: 0 } },
