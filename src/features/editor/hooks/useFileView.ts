@@ -165,9 +165,37 @@ export function useFileView(
     const projectId = parseProjectIdFromTabKey(tk);
     const tabId = getTabId(tk, filePath);
 
-    // Check if tab already exists in unified store �?just activate, no loading
+    // If tab already exists, re-read content from disk and activate
     const existing = useEditorStore.getState().tabs[tk];
-    if (existing?.tabs.some((t) => t.id === tabId)) {
+    const existingTab = existing?.tabs.find((t) => t.id === tabId);
+    if (existingTab) {
+      if (existingTab.data.kind === "file") {
+        try {
+          const rootPath = worktreePathRef.current ?? undefined;
+          const cmds = externalCommandsRef.current;
+          const newContent = cmds
+            ? await cmds.readFileContent(filePath, rootPath)
+            : await readFileContent(projectId, filePath, rootPath ?? null);
+          const oldContent = existingTab.data.content.content;
+          if (newContent.content !== oldContent) {
+            if (existingTab.data.isDirty) {
+              useEditorStore.getState().updateTab(tk, tabId, {
+                kind: "file",
+                externallyModified: true,
+              });
+            } else {
+              useEditorStore.getState().updateTab(tk, tabId, {
+                kind: "file",
+                content: newContent,
+                isDirty: false,
+                externallyModified: false,
+              });
+            }
+          }
+        } catch {
+          // 读取失败时保持现有内容
+        }
+      }
       useEditorStore.getState().activateTab(tk, tabId);
       return;
     }
