@@ -3,7 +3,6 @@ export { default as ConnectionProjectCard } from "./components/ConnectionProject
 export { default as ConnectionWorktreeList } from "./components/ConnectionWorktreeList";
 export { RemoteAuthDialog } from "./components/RemoteAuthDialog";
 export { RemoteDialog } from "./components/RemoteDialog";
-export { WSLItem, RemoteItem } from "./components/RemoteItems";
 export { WSLDialog } from "./components/WSLDialog";
 
 // Domain Types
@@ -19,8 +18,6 @@ export type {
 export type {
   ConnectionSource,
   ConnectionProjectCardProps,
-  WSLItemProps,
-  RemoteItemProps,
 } from "./components/types";
 
 // Store

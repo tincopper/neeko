@@ -1,4 +1,3 @@
-export * from "./adapter";
 export * from "./agent";
 export * from "./app";
 export * from "./connection";

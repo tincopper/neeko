@@ -68,7 +68,7 @@ pub async fn create_wsl_terminal_session(
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err(AppError::Wsl(
+        return Err(AppError::Unsupported(
             "WSL is only supported on Windows".to_string(),
         ));
     }

@@ -14,7 +14,7 @@ fn wsl_command(program: &str) -> std::process::Command {
 /// Get list of installed WSL distributions.
 pub fn get_wsl_distros() -> Result<Vec<String>, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err(AppError::Wsl(
+        return Err(AppError::Unsupported(
             "WSL is only supported on Windows".to_string(),
         ));
     }
@@ -41,7 +41,7 @@ pub fn get_wsl_distros() -> Result<Vec<String>, AppError> {
 /// List subdirectories in a WSL distribution at the given path.
 pub fn get_wsl_directories(distro: &str, path: Option<&str>) -> Result<Vec<String>, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err(AppError::Wsl(
+        return Err(AppError::Unsupported(
             "WSL is only supported on Windows".to_string(),
         ));
     }
@@ -71,7 +71,7 @@ pub fn get_wsl_directories(distro: &str, path: Option<&str>) -> Result<Vec<Strin
 /// Get the home directory path inside a WSL distribution.
 pub fn get_wsl_home_dir(distro: &str) -> Result<String, AppError> {
     if !cfg!(target_os = "windows") {
-        return Err(AppError::Wsl(
+        return Err(AppError::Unsupported(
             "WSL is only supported on Windows".to_string(),
         ));
     }

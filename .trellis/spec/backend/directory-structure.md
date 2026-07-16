@@ -34,7 +34,7 @@ src-tauri/
     ├── app_state.rs          # AppStateWrapper —— 运行时状态组装
     ├── core/                 # 核心基础设施
     │   ├── mod.rs
-    │   ├── error.rs          # AppError —— 统一可序列化错误类型
+    │   ├── error.rs          # AppError —— 统一可序列化错误类型（Io、Git、Storage、Wsl、Unsupported 等）
     │   ├── logger.rs         # 自定义文件日志
     │   └── db.rs             # SQLite 连接管理（open/open_in_memory，WAL + foreign keys）
     ├── agent/                # Agent 子系统（自包含）
@@ -54,7 +54,7 @@ src-tauri/
     ├── connection/           # 连接管理层（WSL + Remote 共享）
     │   ├── mod.rs
     │   ├── commands.rs       # Tauri 命令（委派到 services 或 Manager）
-    │   ├── services.rs       # WSL 函数提取：get_wsl_distros, get_wsl_directories, get_wsl_home_dir
+    │   ├── services.rs       # WSL 枚举 + 目录列表（get_wsl_distros, get_wsl_directories, get_wsl_home_dir）
     │   ├── model.rs
     │   └── types.rs          # AuthMethod 等共享类型
     ├── file/                 # 文件系统操作
@@ -199,7 +199,7 @@ pub struct AppStateWrapper {
 | 领域模块 | 模型文件 | 关键类型 |
 |----------|----------|----------|
 | `project/` | `types.rs` | `Project`、`GitInfo`、`Worktree`、`FileChange`、`FileStatus`、`ViewMode`、`FileNode`、`FileContent` |
-| `session/` | `types.rs` | `SessionStore`、`ProjectSession`、`WSLEntrySession`、`RemoteEntrySession` |
+| `session/` | `types.rs` | `SessionStore`、`ProjectSession` |
 | `terminal/` | `types.rs` | `TerminalSession`、`TerminalStatus` |
 | `connection/` | `types.rs` | `AuthMethod` |
 | `agent/` | `types.rs` + `model.rs` | `AgentConfig` |

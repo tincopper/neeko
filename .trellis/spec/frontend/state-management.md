@@ -21,8 +21,8 @@
 ```tsx
 export function useAppContainer() {
   const local = useLocalProjects();
-  const wsl = useWslProjects(saveSession);
-  const remote = useRemoteProjects(saveSession);
+  const wsl = useWslProjects(saveSession);       // legacy, unified via useConnectionProjects
+  const remote = useRemoteProjects(saveSession);  // legacy, unified via useConnectionProjects
   const worktree = useWorktreeState(activeProjectId);
   const fileView = useFileView();
   const agentActions = useAgentActions(...);
@@ -39,6 +39,8 @@ export function useAppContainer() {
 }
 ```
 
+> **注意**：`useWslProjects` / `useRemoteProjects` 已废弃，统一入口请使用 `useConnectionProjects`（见 `features/project/hooks/`）。
+
 ### 2. Context 分发层
 
 用于消除 prop drilling，按职责拆分为细粒度 Context：
@@ -47,10 +49,10 @@ export function useAppContainer() {
 |--------|---------|-----------|
 | `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`MainContent` |
 | `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
-| `ProjectActionsContext` | 本地项目与 worktree 副作用动作 | `ProjectsPanel`、`MainContent` |
+| `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`MainContent` |
 | `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作 | `AppLayout`、`FileViewer` |
-| `WslContext` | WSL 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
-| `RemoteContext` | SSH 项目状态 + 操作 | `ProjectsPanel`、`MainContent` |
+| `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`MainContent` |
+| `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`MainContent` |
 | `EditorContext` | 终端 tabs 与 agent bar | `MainContent` |
 | `SkillContext` | skill 面板领域状态 | `SkillsPanel`、`SkillContent` |
 
@@ -168,7 +170,7 @@ const debouncedSave = useCallback(() => {
                     ▼
 ┌────────────────────────────────────────────────┐
 │ useAppContainer 状态协调器                      │
-│  useLocalProjects / useWslProjects / ...       │
+│  useLocalProjects / useConnectionProjects      │
 │  useAgentActions / useWorktreeActions / ...    │
 │  useFileView / useSyncToStore                  │
 └────────────────────────────────────────────────┘
@@ -183,13 +185,13 @@ const debouncedSave = useCallback(() => {
 ┌────────────────────────────────────────────────┐
 │ Providers                                       │
 │  App + Sidebar + ProjectActions + FileActions  │
-│  Wsl + Remote + Editor + Skill                 │
+│  Wsl (legacy) + Remote (legacy) + Editor + Skill│
 └────────────────────────────────────────────────┘
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Consumer Components / Hooks / Stores           │
-│  AppLayout / ProjectsPanel / useLocalProjects  │
+│  AppLayout / ProjectsPanel / useActiveProject  │
 └────────────────────────────────────────────────┘
                     │
                     ▼

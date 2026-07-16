@@ -52,20 +52,6 @@ export type TerminalEntry = {
   project: Project;
 };
 
-export type ProjectType = "local" | "wsl" | "remote";
-
-export interface ProjectData {
-  type: ProjectType;
-  id: string;
-  name: string;
-  path: string;
-  gitInfo?: GitInfo | null;
-  selectedAgent?: string | null;
-  selectedIde?: string | null;
-  activeView: "Terminal" | { Diff: { file_path: string } };
-  collapsed: boolean;
-}
-
 // ─── Active Project Types ───────────────────────────────────────────────────
 import type {
   AheadBehind, CommitEntry, CommitDetail, CommitFileChange, CommitResult, DiffResult,
@@ -99,7 +85,7 @@ export type ConnectionContext =
   | RemoteConnectionContext;
 
 export interface ProjectView {
-  readonly type: ProjectType;
+  readonly type: ProjectEnvironment['type'];
   readonly id: string;
   readonly name: string;
   readonly path: string;

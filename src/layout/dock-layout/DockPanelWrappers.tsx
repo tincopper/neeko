@@ -47,7 +47,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const changedFiles = project?.gitInfo?.changed_files;
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
-  const projectId = project ? (project.type === 'local' ? activeProjectId : project.id) : null;
+  const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;
 
   // Load file tree when this panel is the active tab in any zone
   const isActive = useDockStore((s) => {
@@ -72,7 +72,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       return;
     }
 
-    const projectId = project.type === 'local' ? activeProjectId : project.id;
+    const projectId = project.type === 'Local' ? activeProjectId : project.id;
     const justBecameActive = !prevIsActiveRef.current && isActive;
     const sameProject = prevProjectIdRef.current === projectId;
     const fileRootPathChanged = fileRootPath !== prevFileRootPathRef.current;
@@ -82,11 +82,11 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     // fileRootPath actually changed within the same project (e.g., worktree switch).
     // Skip when only the project object reference changed (e.g., git-changed re-fetch)
     // but the project ID and fileRootPath are the same.
-    if (project.type === 'local' && activeProjectId) {
+    if (project.type === 'Local' && activeProjectId) {
       if (justBecameActive || !sameProject || (sameProject && fileRootPathChanged)) {
         onLoadFileTree(activeProjectId, fileRootPath);
       }
-    } else if (project.type !== 'local' && commands) {
+    } else if (project.type !== 'Local' && commands) {
       // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
       useFileStore.setState({ fileViewLoading: true });
       commands
@@ -131,7 +131,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // useFileView.loadFileTree to avoid stale ref issues.
   // Local: delegate to onFileRefresh (context → useFileView.loadFileTree).
   const handleRefresh = useCallback(() => {
-    if (project?.type !== 'local' && commands && fileRootPath) {
+    if (project?.type !== 'Local' && commands && fileRootPath) {
       useFileStore.setState({ fileViewLoading: true });
       commands
         .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH)
@@ -150,7 +150,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 懒加载子目录：WSL/Remote 直接通过 commands，Local 通过 context（useFileView.expandSubTree）
   const handleExpandDir = useCallback(
     async (dirPath: string) => {
-      if (project?.type !== 'local' && commands && fileRootPath) {
+      if (project?.type !== 'Local' && commands && fileRootPath) {
         // WSL/Remote：直接通过 commands.readDirTree 加载子树
         const subChildren = await commands.readDirTree(fileRootPath, dirPath, DEFAULT_TREE_DEPTH);
         const currentTree = useFileStore.getState().fileTree;
@@ -168,7 +168,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // filePath 是相对于项目根的路径，需要拼接为绝对路径
   const handleOpenInBrowser = useCallback(
     (filePath: string) => {
-      if (project?.type === 'local' && projectPath) {
+      if (project?.type === 'Local' && projectPath) {
         openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, filePath));
       }
     },
@@ -491,7 +491,7 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
 
   const tabKey = useMemo(() => {
     if (!project) return '';
-    if (project.type === 'local' && worktreePath) {
+    if (project.type === 'Local' && worktreePath) {
       return buildWorktreeTabKey(project.id, worktreePath);
     }
     return project.id;

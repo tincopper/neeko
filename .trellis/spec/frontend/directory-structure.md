@@ -43,9 +43,9 @@ src/
 │   │   └── api/browserApi.ts
 │   ├── connection/
 │   │   ├── api/connectionApi.ts
-│   │   ├── components/          # Remote/WSL 连接对话框
-│   │   ├── contexts/           # RemoteContext.tsx, WslContext.tsx
-│   │   ├── hooks/              # 连接 hooks（useRemoteProjects, useWslProjects）
+│   │   ├── components/          # Remote/WSL 连接对话框（ConnectionProjectCard, RemoteDialog, WSLDialog 等）
+│   │   ├── contexts/           # RemoteContext.tsx, WslContext.tsx（legacy, prefer ConnectionProjectContext）
+│   │   ├── hooks/              # 连接 hooks（useRemoteAuthActions 等）
 │   │   ├── store.ts
 │   │   └── types.ts
 │   ├── file/
@@ -59,7 +59,7 @@ src/
 │   ├── project/
 │   │   ├── api/projectApi.ts
 │   │   ├── hooks/               # 含 use-active-project/ 子目录（kebab-case）
-│   │   ├── components/
+│   │   ├── components/          # 含 ProjectsPanel、SectionHeader、ContextMenu 等
 │   │   ├── context.tsx
 │   │   ├── store.ts
 │   │   └── types.ts
@@ -124,7 +124,7 @@ src/
 │   │   └── icons/
 │   ├── hooks/               # 共享 hooks（含 __tests__）
 │   ├── store/               # 共享状态（appStore）
-│   ├── types/               # 共享类型
+│   ├── types/               # 共享类型（project、session、connection、file 等，无 adapter.ts）
 │   └── utils/               # 纯工具函数
 │       ├── agents.ts
 │       ├── codemirror.ts

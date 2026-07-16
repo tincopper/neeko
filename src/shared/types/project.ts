@@ -2,8 +2,6 @@ export type {
   Project,
   ProjectEnvironment,
   TerminalEntry,
-  ProjectType,
-  ProjectData,
   LocalConnectionContext,
   WslConnectionContext,
   RemoteConnectionContext,

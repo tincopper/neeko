@@ -14,7 +14,7 @@ import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
 import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
-import { SectionHeader } from '@/features/connection/components/RemoteItems';
+import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { getDistroIcon } from '@/shared/utils/distros';
 import CommitDialog from '@/features/git/components/CommitDialog';
 import GitDialog, { DialogState } from '@/features/git/components/GitDialog';

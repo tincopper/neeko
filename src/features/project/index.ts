@@ -36,8 +36,6 @@ export { useWorktreeStore, type WorktreeSnapshotItem } from './worktreeStore';
 export type {
   Project,
   TerminalEntry,
-  ProjectType,
-  ProjectData,
   LocalConnectionContext,
   WslConnectionContext,
   RemoteConnectionContext,

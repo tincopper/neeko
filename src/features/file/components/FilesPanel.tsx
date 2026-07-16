@@ -4,7 +4,6 @@ import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import type { FileNode, FileChange } from '@/shared/types';
 import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
-import type { ProjectType } from '@/shared/types/project';
 import { setDragFile } from "../hooks/useFileDrop";
 
 /** git status �?文件名颜�?class */
@@ -29,7 +28,7 @@ interface FilesPanelProps {
   /** 懒加载：按需加载超过初始深度的子目录 */
   onExpandDir: (dirPath: string) => Promise<void>;
   /** 项目类型 */
-  projectType?: ProjectType | null;
+  projectType?: "Local" | "Wsl" | "Remote" | null;
   /** �?Browser Panel 中打开 HTML 文件 */
   onOpenInBrowser?: (filePath: string) => void;
   /** 在系统文件管理器中显�?*/
@@ -315,7 +314,7 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
       });
     }
 
-    if (isHtmlFile && projectType === "local" && onOpenInBrowser) {
+    if (isHtmlFile && projectType === "Local" && onOpenInBrowser) {
       items.push({
         label: "Open in Browser",
         icon: Globe,
@@ -345,7 +344,7 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
       });
     }
 
-    if (projectType === "local" && onRevealInExplorer) {
+    if (projectType === "Local" && onRevealInExplorer) {
       items.push({ separator: true });
       items.push({
         label: "Reveal in File Manager",

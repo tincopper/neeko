@@ -27,6 +27,8 @@ pub enum AppError {
     Agent(String),
     #[error("IDE error: {0}")]
     Ide(String),
+    #[error("Unsupported: {0}")]
+    Unsupported(String),
     #[error("File error: {0}")]
     File(String),
     #[error("Lock poisoned: {0}")]

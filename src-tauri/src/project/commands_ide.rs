@@ -236,7 +236,7 @@ pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (distro, project_path, ide);
-        Err(AppError::Wsl(
+        Err(AppError::Unsupported(
             "WSL is only supported on Windows".to_string(),
         ))
     }

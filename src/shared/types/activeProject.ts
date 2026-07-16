@@ -1,5 +1,4 @@
 export type {
-  ProjectType,
   LocalConnectionContext,
   WslConnectionContext,
   RemoteConnectionContext,

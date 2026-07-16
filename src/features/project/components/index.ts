@@ -8,6 +8,7 @@ export { default as SessionRow } from './SessionRow';
 export { default as SessionChips } from './SessionChips';
 export { default as ProjectGuidePage } from './ProjectGuidePage';
 export { useProjectItemMenu } from './useProjectItemMenu';
+export { SectionHeader } from './SectionHeader';
 export type {
   ProjectItemProps,
   ProjectItemActions,
