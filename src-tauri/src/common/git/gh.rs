@@ -135,9 +135,7 @@ impl GhCli {
     }
 
     pub async fn is_installed(&self) -> bool {
-        exec_on(&self.target, "gh", &["--version"])
-            .await
-            .is_ok()
+        exec_on(&self.target, "gh", &["--version"]).await.is_ok()
     }
 
     pub async fn is_authenticated(&self) -> bool {

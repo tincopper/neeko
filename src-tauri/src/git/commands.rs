@@ -811,7 +811,8 @@ pub async fn generate_commit_message(
             let target = crate::common::executor::factory::ExecTarget::Wsl {
                 distro: distro.clone(),
             };
-            let wsl_user = match crate::common::executor::sync::exec_on(&target, "whoami", &[]).await
+            let wsl_user = match crate::common::executor::sync::exec_on(&target, "whoami", &[])
+                .await
             {
                 Ok(s) => s.trim().to_string(),
                 Err(e) => {
@@ -820,7 +821,7 @@ pub async fn generate_commit_message(
                         e
                     );
                     "root".to_string()
-                },
+                }
             };
             log::info!("[AI commit WSL] wsl_user={}", wsl_user);
 

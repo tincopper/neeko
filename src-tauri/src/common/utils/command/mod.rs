@@ -1,4 +1,3 @@
-pub mod gh;
 pub mod local;
 
 /// Thin re-export: fire-and-forget IDE launch in WSL.

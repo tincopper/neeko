@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 
 use crate::common::executor::factory::ExecTarget;
+use crate::common::git::gh::GhCli;
 use crate::common::git::pr::PrProvider;
-use crate::common::utils::command::gh::GhCli;
 use crate::project::types::{
     PRComment, PRCommit, PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };

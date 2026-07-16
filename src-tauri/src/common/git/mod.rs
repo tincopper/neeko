@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod credential;
+pub mod gh;
 pub mod local;
 pub mod model;
 pub mod operations;
