@@ -1,2 +1,0 @@
-{"file": "src-tauri/src/error.rs", "check": "No AppError::Wsl used for platform errors"}
-{"file": "src/shared/types/", "check": "No parallel type system; single taxonomy via ProjectEnvironment"}

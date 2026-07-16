@@ -1,5 +1,0 @@
-{"file": "src/features/project/hooks/useProjectActions.ts", "reason": "New unified hook merging useWslActions + useRemoteActions"}
-{"file": "src/features/project/hooks/useConnectionProjects.ts", "reason": "New unified hook merging useWslProjects + useRemoteProjects"}
-{"file": "src/features/project/contexts/ConnectionProjectContext.tsx", "reason": "Merged context from WslContext + RemoteContext"}
-{"file": "src/features/project/worktreeStore.ts", "reason": "Remove deprecated wslActiveWtBranch, remoteActiveWtBranch, wslOpenedWt, remoteOpenedWt"}
-{"file": "src/features/project/components/ProjectsPanel.tsx", "reason": "Fix remote push bug; no longer pushes remote items into local"}

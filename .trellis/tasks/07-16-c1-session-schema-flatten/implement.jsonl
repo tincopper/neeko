@@ -1,9 +1,0 @@
-{"file": "src-tauri/src/session/types.rs", "reason": "Add environment field to ProjectSession; remove wsl_entries/remote_entries from SessionStore"}
-{"file": "src-tauri/src/session/manager.rs", "reason": "Add migration logic for old sessions.json; simplify create_session_from_projects"}
-{"file": "src-tauri/src/session/commands.rs", "reason": "Remove wsl_entries/remote_entries params from save_session"}
-{"file": "src-tauri/src/project/mod.rs", "reason": "Merge add_*_from_session into single add_project_from_session"}
-{"file": "src/features/session/types.ts", "reason": "Remove wsl_entries/remote_entries from SessionStore; add environment to ProjectSession"}
-{"file": "src/features/session/api/sessionApi.ts", "reason": "Drop wsl/remote params from saveSession"}
-{"file": "src/features/session/hooks/useSessionPersistence.ts", "reason": "Remove wsl/remote from save path"}
-{"file": "src/features/session/hooks/useSessionBootstrap.ts", "reason": "Remove wsl_entries/remote_entries handling; use unified projects"}
-{"file": "src/features/connection/store.ts", "reason": "Decouple from persistence; wslEntries/remoteEntries derived from projectStore"}

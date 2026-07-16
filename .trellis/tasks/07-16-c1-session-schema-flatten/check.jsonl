@@ -1,4 +1,0 @@
-{"file": "src-tauri/src/session/types.rs", "check": "serde round-trip with both old and new format"}
-{"file": "src-tauri/src/session/manager.rs", "check": "migration test: old sessions.json with wsl_entries/remote_entries → flat format"}
-{"file": "src-tauri/src/session/commands.rs", "check": "save_session compiles without wsl/remote params"}
-{"file": "src/features/session/types.ts", "check": "TypeScript compiles without wsl_entries/remote_entries"}
