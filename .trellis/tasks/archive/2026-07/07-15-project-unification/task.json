@@ -1,7 +1,7 @@
 {
   "id": "project-unification",
   "name": "project-unification",
-  "title": "Project \u8de8\u7aef\u7edf\u4e00\u91cd\u6784",
+  "title": "Project 跨端统一重构",
   "description": "",
   "status": "completed",
   "dev_type": null,
@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-07-15",
-  "completedAt": null,
+  "completedAt": "2026-07-16",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
