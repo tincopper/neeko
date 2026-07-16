@@ -1,0 +1,7 @@
+{"file": "src/features/terminal/strategies/factory.ts", "reason": "New strategy factory createTerminalStrategy(environment, options)"}
+{"file": "src/features/terminal/strategies/local.ts", "reason": "Refactor to export config object"}
+{"file": "src/features/terminal/strategies/wsl.ts", "reason": "Refactor to export config object"}
+{"file": "src/features/terminal/strategies/remote.ts", "reason": "Refactor to export config object"}
+{"file": "src/features/terminal/components/terminalCache.ts", "reason": "Consolidate exports into single manager"}
+{"file": "src/features/terminal/components/TerminalView.tsx", "reason": "Unified view replacing all 3"}
+{"file": "src/features/editor/components/EditorGroupPane.tsx", "reason": "Remove inline IIFE environment check"}

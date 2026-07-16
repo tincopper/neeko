@@ -1,0 +1,3 @@
+{"file": "src/features/project/hooks/useProjectActions.ts", "check": "All WSL/Remote action handlers present and parameterized"}
+{"file": "src/features/project/worktreeStore.ts", "check": "No wslActiveWtBranch/remoteActiveWtBranch references remain"}
+{"file": "src/features/project/components/ProjectsPanel.tsx", "check": "Remote items not duplicated in local section"}

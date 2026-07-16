@@ -1,0 +1,5 @@
+{"file": "src-tauri/src/error.rs", "reason": "Add AppError::Unsupported; fix AppError::Wsl misuse"}
+{"file": "src/features/connection/components/RemoteItems.tsx", "reason": "Rename WSLItem/RemoteItem to neutral names; move SectionHeader"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Update for C1-C2 changes"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Update for C3-C4 changes"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Update for unified store structure"}
