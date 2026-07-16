@@ -20,7 +20,6 @@
   "subtasks": [],
   "children": [
     "07-06-lsp-phase",
-    "07-06-dap-phase",
     "07-14-07-14-lsp-build-fix"
   ],
   "parent": null,
