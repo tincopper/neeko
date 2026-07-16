@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getFileDiff, getCommitFileDiff } from "../../api/gitApi";
-import { useProjectStore } from "@/features/project/store";
 import type { DiffResult, DiffSource, DiffLine } from "./types";
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
@@ -9,100 +7,6 @@ const diffCache = new Map<string, DiffResult>();
 
 function getCacheKey(projectId?: string, diffSource?: DiffSource, filePath?: string): string {
   return `${projectId ?? ""}|${JSON.stringify(diffSource ?? "")}|${filePath ?? ""}`;
-}
-
-function lookupLocalProjectPath(projectId: string): string {
-  const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
-  return project?.path ?? projectId;
-}
-
-function buildLocalTransport(projectPath: string): Record<string, unknown> {
-  return { Local: { project_path: projectPath } };
-}
-
-function buildWslTransport(distro: string, projectPath: string): Record<string, unknown> {
-  return { Wsl: { distro, project_path: projectPath } };
-}
-
-function buildRemoteTransport(
-  host: string,
-  port: number,
-  username: string,
-  auth: unknown,
-  projectPath: string,
-): Record<string, unknown> {
-  return { Remote: { host, port, username, auth, project_path: projectPath } };
-}
-
-function buildFileDiffArgs(diffSource: DiffSource): {
-  transport: Record<string, unknown>;
-  filePath: string;
-} {
-  switch (diffSource.type) {
-    case "local":
-      return {
-        transport: buildLocalTransport(lookupLocalProjectPath(diffSource.projectId)),
-        filePath: "",
-      };
-    case "wsl":
-      return {
-        transport: buildWslTransport(diffSource.distro, diffSource.projectPath),
-        filePath: "",
-      };
-    case "remote":
-      return {
-        transport: buildRemoteTransport(
-          diffSource.host,
-          diffSource.port,
-          diffSource.username,
-          diffSource.auth,
-          diffSource.projectPath,
-        ),
-        filePath: "",
-      };
-    case "worktree":
-      return {
-        transport: buildLocalTransport(diffSource.worktreePath),
-        filePath: "",
-      };
-    default:
-      return { transport: {}, filePath: "" };
-  }
-}
-
-function buildCommitDiffArgs(diffSource: DiffSource): {
-  transport: Record<string, unknown>;
-  commitHash: string;
-  filePath: string;
-} {
-  switch (diffSource.type) {
-    case "commit":
-      return {
-        transport: buildLocalTransport(lookupLocalProjectPath(diffSource.projectId)),
-        commitHash: diffSource.commitHash,
-        filePath: "",
-      };
-    case "wsl-commit":
-      return {
-        transport: buildWslTransport(diffSource.distro, diffSource.projectPath),
-        commitHash: diffSource.commitHash,
-        filePath: "",
-      };
-    case "remote-commit":
-      return {
-        transport: buildRemoteTransport(
-          diffSource.host,
-          diffSource.port,
-          diffSource.username,
-          diffSource.auth,
-          diffSource.projectPath,
-        ),
-        commitHash: diffSource.commitHash,
-        filePath: "",
-      };
-    default:
-      return { transport: {}, commitHash: "", filePath: "" };
-  }
 }
 
 interface UseDiffDataParams {
@@ -142,27 +46,20 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
       let result: DiffResult;
       const ds = diffSource;
 
-      if (!ds?.type) {
-        const projectPath = lookupLocalProjectPath(projectId ?? "");
-        result = await getFileDiff(buildLocalTransport(projectPath) as any, filePath);
-      } else if (
-        ds.type === "commit" ||
-        ds.type === "wsl-commit" ||
-        ds.type === "remote-commit"
-      ) {
+      // 所有 diff 加载统一走 commands（ProjectCommands 在各环境下都可用）
+      // commands 不可用时降级为 projectId 直调
+      if (ds?.type === "commit" || ds?.type === "wsl-commit" || ds?.type === "remote-commit") {
         if (commands) {
           result = await commands.getCommitFileDiff(ds.commitHash, filePath);
         } else {
-          const args = buildCommitDiffArgs(ds);
-          result = await getCommitFileDiff(args.transport as any, args.commitHash, filePath);
+          const { getCommitFileDiff } = await import("../../api/gitApi");
+          result = await getCommitFileDiff(projectId ?? "", ds.commitHash, filePath);
         }
-      } else if (ds.type === "worktree") {
-        result = await getFileDiff(buildLocalTransport(ds.worktreePath) as any, filePath);
       } else if (commands) {
         result = await commands.getFileDiff(filePath);
       } else {
-        const args = buildFileDiffArgs(ds);
-        result = await getFileDiff(args.transport as any, filePath);
+        const { getFileDiff } = await import("../../api/gitApi");
+        result = await getFileDiff(projectId ?? "", filePath);
       }
 
       const elapsed = (performance.now() - t0).toFixed(0);
