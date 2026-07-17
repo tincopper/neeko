@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 const mockInvoke = vi.mocked(invoke);
 
 const defaultConfig: AppConfig = {
+   theme: "dark",
    appearanceFontSize: 12,
    editorFontSize: 14,
    terminalFontSize: 14,
@@ -19,6 +20,19 @@ const defaultConfig: AppConfig = {
    customAgents: [],
    ideCommandOverrides: {},
    agentCommandOverrides: {},
+   agentSkillPathOverrides: {},
+   agentSelectorShowPresetBar: true,
+   agentSelectorCompactMode: false,
+   hiddenAgentIds: [],
+   shortcuts: {},
+   terminalGpuAcceleration: false,
+   enablePiThemeSync: false,
+   enableOpenCodeThemeSync: false,
+   lsp: {
+      autoStart: "onFirstFile",
+      deactivateStopMinutes: 30,
+      customServers: [],
+   },
 };
 
 function renderPanel(overrides: Partial<AppConfig> = {}) {
@@ -27,11 +41,13 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
    const onClose = vi.fn();
    const appContext = {
       config,
+      customThemes: [],
       agents: [],
       agentInstalledMap: {},
       loading: false,
       ideCommandOverrides: config.ideCommandOverrides ?? {},
       showToast: vi.fn(),
+      saveConfig: vi.fn(),
    };
    const result = render(
       <AppProvider value={appContext}>
@@ -230,11 +246,13 @@ describe("SettingsPanel", () => {
           const config = { ...defaultConfig };
           const appContext = {
              config,
+             customThemes: [],
              agents: [],
              agentInstalledMap: {},
              loading: false,
              ideCommandOverrides: config.ideCommandOverrides ?? {},
              showToast: vi.fn(),
+             saveConfig: vi.fn(),
           };
           render(
              <AppProvider value={appContext}>
@@ -250,11 +268,13 @@ describe("SettingsPanel", () => {
           const config = { ...defaultConfig };
           const appContext = {
              config,
+             customThemes: [],
              agents: [],
              agentInstalledMap: {},
              loading: false,
              ideCommandOverrides: config.ideCommandOverrides ?? {},
              showToast: vi.fn(),
+             saveConfig: vi.fn(),
           };
           render(
              <AppProvider value={appContext}>

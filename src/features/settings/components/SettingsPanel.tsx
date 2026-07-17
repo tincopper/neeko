@@ -13,6 +13,7 @@ import AgentsPanel from "./AgentsPanel";
 import IdePanel from "./IdePanel";
 import GitPanel from "./GitPanel";
 import ShortcutPanel from "./ShortcutPanel";
+import LspPanel from "./LspPanel";
 
 export type { AppConfig, DiffMode };
 export { BUILTIN_FONTS, PRESET_SHELLS };
@@ -76,6 +77,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
                   <EditorPanel
                      editorFontSize={config.editorFontSize}
                      onEditorFontSizeChange={state.setEditorFontSize}
+                  />
+               );
+
+            case "lsp":
+               return (
+                  <LspPanel
+                     config={config}
+                     onConfigChange={onConfigChange}
                   />
                );
 

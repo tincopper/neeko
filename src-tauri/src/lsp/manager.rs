@@ -17,8 +17,10 @@ use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::inflight::InflightRequestTracker;
-use super::plugin::{LspPlugin, LspPluginRegistry};
-use super::profile::{detect_project_profile, ProjectLanguageProfile};
+use super::plugin::{
+    CustomLspServerConfig, LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
+};
+use super::profile::{detect_project_profile_with_extras, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport, ProgressKind};
 use super::types::LspSessionInfo;
 
@@ -28,9 +30,8 @@ use super::types::LspSessionInfo;
 const MAX_RESTART_COUNT: u32 = 5;
 /// Base delay for exponential backoff (ms).
 const RESTART_BASE_DELAY_MS: u64 = 500;
-/// After a project is deactivated, wait this long before closing its LSP sessions.
-/// Avoids thrash when the user switches projects back and forth.
-const DEACTIVATE_STOP_SECS: u64 = 30 * 60;
+/// Default: after a project is deactivated, wait this long before closing sessions.
+const DEFAULT_DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 
 /// Tracked open document for session restart recovery.
 #[derive(Clone)]
@@ -253,7 +254,10 @@ impl LspSession {
             }
         }
 
-        let cmd = plugin.server_command;
+        let cmd = &plugin.server_command;
+        if cmd.is_empty() {
+            anyhow::bail!("LSP server command is empty for {}", language_id);
+        }
         log::info!(
             "[LSP] Spawning server: language={} binary={:?} project={}",
             language_id,
@@ -264,7 +268,7 @@ impl LspSession {
             "[LSP] PATH before spawn: {}",
             std::env::var("PATH").unwrap_or_default()
         );
-        let mut child = cmd_from_path(cmd[0])
+        let mut child = cmd_from_path(&cmd[0])
             .args(&cmd[1..])
             .current_dir(project_path)
             .stdin(Stdio::piped())
@@ -693,6 +697,10 @@ pub struct LspManager {
     profiles: Mutex<HashMap<String, ProjectLanguageProfile>>,
     /// Generation counter per project path to cancel pending deactivate timers.
     deactivate_gens: Arc<Mutex<HashMap<String, u64>>>,
+    /// Seconds after deactivation before closing sessions (from settings).
+    deactivate_stop_secs: Mutex<u64>,
+    /// Default auto-start policy for built-in languages.
+    default_auto_start: Mutex<LspAutoStart>,
 }
 
 impl LspManager {
@@ -707,6 +715,69 @@ impl LspManager {
             app_handle: Mutex::new(None),
             profiles: Mutex::new(HashMap::new()),
             deactivate_gens: Arc::new(Mutex::new(HashMap::new())),
+            deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
+            default_auto_start: Mutex::new(LspAutoStart::OnFirstFile),
+        }
+    }
+
+    /// Apply LSP settings from config.json (`lsp` object).
+    pub fn apply_settings(&self, settings: &LspSettings) {
+        *self.deactivate_stop_secs.lock().expect("infallible") =
+            settings.deactivate_stop_minutes.saturating_mul(60).max(60);
+        *self.default_auto_start.lock().expect("infallible") =
+            LspAutoStart::parse(&settings.auto_start);
+
+        let mut registry = self.plugin_registry.lock().expect("infallible");
+        registry.reset_to_defaults();
+        for custom in &settings.custom_servers {
+            if custom.language_id.trim().is_empty() || custom.command.is_empty() {
+                log::warn!(
+                    "[LSP] Skipping invalid custom server id={}",
+                    custom.id
+                );
+                continue;
+            }
+            registry.register(LspPlugin::from_custom(custom));
+            log::info!(
+                "[LSP] Registered custom server language={} cmd={:?}",
+                custom.language_id,
+                custom.command
+            );
+        }
+    }
+
+    pub fn apply_settings_from_json(&self, config: &serde_json::Value) {
+        let settings = config
+            .get("lsp")
+            .cloned()
+            .and_then(|v| serde_json::from_value::<LspSettings>(v).ok())
+            .unwrap_or_default();
+        self.apply_settings(&settings);
+    }
+
+    pub fn extension_map(&self) -> Vec<super::plugin::LspExtensionMapEntry> {
+        self.plugin_registry
+            .lock()
+            .expect("infallible")
+            .extension_map()
+    }
+
+    pub fn get_settings_snapshot(&self) -> LspSettings {
+        // Reconstruct from runtime state is incomplete for custom list —
+        // prefer reading config; this returns defaults + empty customs for API convenience.
+        LspSettings {
+            auto_start: self
+                .default_auto_start
+                .lock()
+                .expect("infallible")
+                .as_str()
+                .to_string(),
+            deactivate_stop_minutes: self
+                .deactivate_stop_secs
+                .lock()
+                .expect("infallible")
+                .saturating_div(60),
+            custom_servers: Vec::new(),
         }
     }
 
@@ -1047,10 +1118,11 @@ impl LspManager {
             *entry
         };
 
+        let stop_secs = *self.deactivate_stop_secs.lock().expect("infallible");
         let this = Arc::clone(self);
         let pp = project_path.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(DEACTIVATE_STOP_SECS)).await;
+            tokio::time::sleep(Duration::from_secs(stop_secs)).await;
             let current = this
                 .deactivate_gens
                 .lock()
@@ -1061,7 +1133,7 @@ impl LspManager {
             if current == my_gen {
                 log::info!(
                     "[LSP] Project deactivated for {}s, stopping sessions: {}",
-                    DEACTIVATE_STOP_SECS,
+                    stop_secs,
                     pp
                 );
                 this.close_sessions_for_project(&pp);
@@ -1076,15 +1148,21 @@ impl LspManager {
         });
         log::info!(
             "[LSP] Scheduled deactivate in {}s for project {}",
-            DEACTIVATE_STOP_SECS,
+            stop_secs,
             project_path
         );
     }
 
     /// Detect profile, cancel stop timer, emit profile event. Call when project becomes active.
+    /// If autoStart is onProjectSelect, spawns the primary language server in the background.
     pub fn activate_project(self: &Arc<Self>, project_path: &str) -> ProjectLanguageProfile {
         self.cancel_deactivate(project_path);
-        let profile = detect_project_profile(project_path);
+        let extra_markers = self
+            .plugin_registry
+            .lock()
+            .expect("infallible")
+            .custom_root_markers();
+        let profile = detect_project_profile_with_extras(project_path, &extra_markers);
         if let Ok(mut map) = self.profiles.lock() {
             map.insert(project_path.to_string(), profile.clone());
         }
@@ -1092,14 +1170,29 @@ impl LspManager {
         if let Ok(handle) = self.app_handle.lock() {
             if let Some(app) = handle.as_ref() {
                 use tauri::Emitter;
-                let event = format!("lsp-project-profile-{}", project_path);
-                if let Err(e) = app.emit(&event, &profile) {
-                    log::warn!("[LSP] Failed to emit profile event: {}", e);
-                }
-                // Also a global event for status bar without path encoding issues
                 if let Err(e) = app.emit("lsp-project-profile", &profile) {
                     log::warn!("[LSP] Failed to emit global profile event: {}", e);
                 }
+            }
+        }
+
+        // Optional: spawn primary when policy is onProjectSelect
+        if let Some(ref primary) = profile.primary {
+            let policy = self.resolve_auto_start(&primary.language_id);
+            if policy == LspAutoStart::OnProjectSelect {
+                let this = Arc::clone(self);
+                let pp = project_path.to_string();
+                let lid = primary.language_id.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = this.get_or_create_session(&pp, &lid) {
+                        log::warn!(
+                            "[LSP] onProjectSelect failed to start {} for {}: {}",
+                            lid,
+                            pp,
+                            e
+                        );
+                    }
+                });
             }
         }
 
@@ -1110,6 +1203,16 @@ impl LspManager {
             profile.candidates.len()
         );
         profile
+    }
+
+    fn resolve_auto_start(&self, language_id: &str) -> LspAutoStart {
+        let registry = self.plugin_registry.lock().expect("infallible");
+        if let Some(p) = registry.resolve_by_language(language_id) {
+            if p.is_custom {
+                return p.auto_start;
+            }
+        }
+        *self.default_auto_start.lock().expect("infallible")
     }
 
     /// Cached profile if available.
@@ -1238,11 +1341,14 @@ mod tests {
     fn test_custom_plugin_registration() {
         let manager = LspManager::new();
         manager.register_plugin(LspPlugin {
-            language_id: "testlang",
-            extensions: &["tl"],
-            server_binary: "test-lsp",
-            server_command: &["test-lsp"],
+            language_id: "testlang".into(),
+            extensions: vec!["tl".into()],
+            server_binary: "test-lsp".into(),
+            server_command: vec!["test-lsp".into()],
             install: None,
+            root_markers: vec![],
+            auto_start: LspAutoStart::OnFirstFile,
+            is_custom: true,
         });
 
         let registry = manager.plugin_registry.lock().unwrap();

@@ -53,32 +53,45 @@ const ROOT_MARKERS: &[(&str, &str, &str)] = &[
 
 /// Detect languages for a project by inspecting root marker files only.
 pub fn detect_project_profile(project_path: &str) -> ProjectLanguageProfile {
+    detect_project_profile_with_extras(project_path, &[])
+}
+
+/// Like [`detect_project_profile`], but also checks custom root markers
+/// `(marker_filename, language_id, server_name)`.
+pub fn detect_project_profile_with_extras(
+    project_path: &str,
+    extra_markers: &[(String, String, String)],
+) -> ProjectLanguageProfile {
     let root = Path::new(project_path);
     let mut by_lang: Vec<DetectedLanguage> = Vec::new();
 
     // Collect markers present
-    let mut found: Vec<(&str, &str, &str)> = Vec::new();
+    let mut found: Vec<(String, String, String)> = Vec::new();
     for &(marker, lang, server) in ROOT_MARKERS {
         if root.join(marker).is_file() {
-            found.push((marker, lang, server));
+            found.push((marker.to_string(), lang.to_string(), server.to_string()));
+        }
+    }
+    for (marker, lang, server) in extra_markers {
+        if root.join(marker).is_file() {
+            found.push((marker.clone(), lang.clone(), server.clone()));
         }
     }
 
     // Special case: package.json + tsconfig → prefer typescript over javascript
-    let has_tsconfig = found.iter().any(|(m, _, _)| *m == "tsconfig.json");
-    let has_package = found.iter().any(|(m, _, _)| *m == "package.json");
+    let has_tsconfig = found.iter().any(|(m, _, _)| m == "tsconfig.json");
+    let has_package = found.iter().any(|(m, _, _)| m == "package.json");
 
     for (marker, lang, server) in &found {
         // Skip bare package.json javascript entry when tsconfig elevates to typescript
-        if *marker == "package.json" && has_tsconfig {
-            // Still record package.json under typescript if we add typescript from tsconfig
+        if marker == "package.json" && has_tsconfig {
             continue;
         }
         // go.sum alone is weak; if go.mod/go.work already added go, just attach marker
-        if *marker == "go.sum" {
+        if marker == "go.sum" {
             if let Some(existing) = by_lang.iter_mut().find(|d| d.language_id == "go") {
                 if !existing.markers.iter().any(|m| m == marker) {
-                    existing.markers.push((*marker).to_string());
+                    existing.markers.push(marker.clone());
                 }
                 continue;
             }
@@ -86,13 +99,13 @@ pub fn detect_project_profile(project_path: &str) -> ProjectLanguageProfile {
 
         if let Some(existing) = by_lang.iter_mut().find(|d| d.language_id == *lang) {
             if !existing.markers.iter().any(|m| m == marker) {
-                existing.markers.push((*marker).to_string());
+                existing.markers.push(marker.clone());
             }
         } else {
             by_lang.push(DetectedLanguage {
-                language_id: (*lang).to_string(),
-                server_name: (*server).to_string(),
-                markers: vec![(*marker).to_string()],
+                language_id: lang.clone(),
+                server_name: server.clone(),
+                markers: vec![marker.clone()],
             });
         }
     }

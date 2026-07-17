@@ -11,7 +11,10 @@ pub fn save_config(
     state
         .storage_manager
         .save_config(&config)
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // Keep LSP registry / policies in sync with config.lsp
+    state.lsp_manager.apply_settings_from_json(&config);
+    Ok(())
 }
 
 #[tauri::command]

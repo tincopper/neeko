@@ -16,7 +16,8 @@ export type NavCategory =
   | "ide"
   | "git"
   | "shortcuts"
-  | "appearance";
+  | "appearance"
+  | "lsp";
 
 export type SettingsNavId = NavCategory | `project:${string}`;
 
@@ -36,6 +37,11 @@ export const NAV_ITEMS: NavItem[] = [
     id: "editor",
     label: "Editor",
     icon: React.createElement(EditorIcon, { size: 16 }),
+  },
+  {
+    id: "lsp",
+    label: "Language Servers",
+    icon: React.createElement(CodeIcon, { size: 16 }),
   },
   {
     id: "terminal",

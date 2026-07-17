@@ -11,6 +11,9 @@ pub mod transport;
 pub mod types;
 
 pub use manager::LspManager;
-pub use plugin::LspPluginRegistry;
+pub use plugin::{
+    CustomLspServerConfig, LspAutoStart, LspExtensionMapEntry, LspPlugin, LspPluginRegistry,
+    LspSettings,
+};
 pub use profile::{detect_project_profile, ProjectLanguageProfile};
 pub use types::*;

@@ -2,8 +2,13 @@ import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
-import { lspCheckServerInstalled, lspDetectProjectProfile } from '../api/lspApi';
+import {
+  lspCheckServerInstalled,
+  lspDetectProjectProfile,
+  lspGetExtensionMap,
+} from '../api/lspApi';
 import type { ProjectLanguageProfile } from '../types';
+import { setCustomLspExtensionMap } from '../languageMap';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 
 export interface LspSessionState {
@@ -134,6 +139,21 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
 
   onProjectActivated: async (projectPath) => {
     try {
+      // Keep frontend extension router in sync with custom servers
+      try {
+        const map = await lspGetExtensionMap();
+        setCustomLspExtensionMap(
+          map.map((e) => ({
+            extension: e.extension,
+            languageId: e.languageId,
+            serverName: e.serverName,
+            isCustom: e.isCustom,
+          })),
+        );
+      } catch {
+        // non-fatal
+      }
+
       // Backend also runs activate_project from set_active_project; calling again
       // is idempotent (re-detect + cancel deactivate + emit).
       const profile = await lspDetectProjectProfile(projectPath);

@@ -17,6 +17,30 @@ export interface CustomThemeData {
   variables: Record<string, string>;
 }
 
+/** Global LSP auto-start policy. */
+export type LspAutoStart = 'onFirstFile' | 'onProjectSelect' | 'manual';
+
+/** User-defined language server bound by file_extensions. */
+export interface CustomLspServerConfig {
+  id: string;
+  languageId: string;
+  displayName?: string;
+  /** argv, e.g. ["foo-lsp", "--stdio"] */
+  command: string[];
+  /** Extensions without leading dots, e.g. ["proto", "foo"] */
+  file_extensions: string[];
+  rootMarkers?: string[];
+  autoStart?: LspAutoStart;
+}
+
+export interface LspConfig {
+  /** Default auto-start for built-in servers. */
+  autoStart: LspAutoStart;
+  /** Minutes after leaving a project before stopping its LSP sessions. */
+  deactivateStopMinutes: number;
+  customServers: CustomLspServerConfig[];
+}
+
 export interface AppConfig {
   theme: AppTheme;
   appearanceFontSize: number;
@@ -37,4 +61,6 @@ export interface AppConfig {
   terminalGpuAcceleration: boolean;
   enablePiThemeSync: boolean;
   enableOpenCodeThemeSync: boolean;
+  /** Language server settings (profile soft-warm, custom servers, idle recycle). */
+  lsp: LspConfig;
 }

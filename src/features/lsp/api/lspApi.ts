@@ -144,3 +144,20 @@ export function lspDetectProjectProfile(projectPath: string): Promise<ProjectLan
 export function lspCheckServerInstalled(languageId: string): Promise<boolean> {
   return invoke<boolean>('lsp_check_server_installed', { languageId });
 }
+
+export interface LspExtensionMapEntryDto {
+  extension: string;
+  languageId: string;
+  serverName: string;
+  isCustom: boolean;
+}
+
+/** Built-in + custom extension map from the live backend registry. */
+export function lspGetExtensionMap(): Promise<LspExtensionMapEntryDto[]> {
+  return invoke<LspExtensionMapEntryDto[]>('lsp_get_extension_map');
+}
+
+/** Reload LSP settings from config.json into the backend registry. */
+export function lspApplySettings(): Promise<LspExtensionMapEntryDto[]> {
+  return invoke<LspExtensionMapEntryDto[]>('lsp_apply_settings');
+}

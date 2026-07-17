@@ -6,7 +6,14 @@ import {
   listCustomThemes,
   getCustomTheme,
 } from "../api/settingsApi";
-import type { AppConfig, ThemeListItem, CustomThemeData } from '@/features/settings/types';
+import type {
+  AppConfig,
+  ThemeListItem,
+  CustomThemeData,
+  LspConfig,
+  CustomLspServerConfig,
+  LspAutoStart,
+} from '@/features/settings/types';
 import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useProjectStore } from '@/features/project/store';
@@ -32,12 +39,47 @@ const DEFAULT_CONFIG: AppConfig = {
    terminalGpuAcceleration: false,
    enablePiThemeSync: false,
    enableOpenCodeThemeSync: false,
+   lsp: {
+      autoStart: "onFirstFile",
+      deactivateStopMinutes: 30,
+      customServers: [],
+   },
 };
 
 type PartialLoadedConfig = Partial<AppConfig> & {
    fontSize?: number;
    theme?: unknown;
+   lsp?: Partial<LspConfig> & { customServers?: unknown };
 };
+
+function parseAutoStart(v: unknown): LspAutoStart {
+  if (v === 'onProjectSelect' || v === 'manual' || v === 'onFirstFile') return v;
+  return 'onFirstFile';
+}
+
+function mergeLspConfig(raw: unknown): LspConfig {
+  const base = DEFAULT_CONFIG.lsp;
+  if (!raw || typeof raw !== 'object') return { ...base, customServers: [] };
+  const o = raw as Record<string, unknown>;
+  const servers: CustomLspServerConfig[] = Array.isArray(o.customServers)
+    ? (o.customServers as CustomLspServerConfig[]).filter(
+        (s) =>
+          s &&
+          typeof s === 'object' &&
+          typeof s.languageId === 'string' &&
+          Array.isArray(s.command) &&
+          Array.isArray(s.file_extensions),
+      )
+    : [];
+  return {
+    autoStart: parseAutoStart(o.autoStart),
+    deactivateStopMinutes:
+      typeof o.deactivateStopMinutes === 'number' && o.deactivateStopMinutes > 0
+        ? Math.floor(o.deactivateStopMinutes)
+        : base.deactivateStopMinutes,
+    customServers: servers,
+  };
+}
 
 function isBuiltinTheme(theme: string): boolean {
   return (BUILTIN_THEMES as readonly string[]).includes(theme);
@@ -281,6 +323,7 @@ export function useAppConfig() {
                       typeof saved.enableOpenCodeThemeSync === "boolean"
                          ? saved.enableOpenCodeThemeSync
                          : DEFAULT_CONFIG.enableOpenCodeThemeSync,
+                  lsp: mergeLspConfig(saved.lsp),
                });
             }
          } catch (e) {

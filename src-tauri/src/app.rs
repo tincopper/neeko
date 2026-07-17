@@ -127,8 +127,11 @@ pub fn run() {
                 }
             }
 
-            // Initialize LSP manager with AppHandle
+            // Initialize LSP manager with AppHandle + load custom LSP settings
             state.lsp_manager.set_app_handle(app.handle().clone());
+            if let Ok(config) = state.storage_manager.load_config() {
+                state.lsp_manager.apply_settings_from_json(&config);
+            }
 
             // Auto-create Default tag group if none exist
             {

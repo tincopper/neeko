@@ -246,6 +246,45 @@ pub fn lsp_check_server_installed(language_id: String) -> bool {
     crate::lsp::installer::check_server_installed(&language_id)
 }
 
+/// Full extension → language map (built-in + custom) for the frontend router.
+#[tauri::command]
+pub fn lsp_get_extension_map(
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<crate::lsp::LspExtensionMapEntry>, AppError> {
+    Ok(state.lsp_manager.extension_map())
+}
+
+/// Apply LSP settings from the full app config (reads `config.lsp`).
+#[tauri::command]
+pub fn lsp_apply_settings(
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<crate::lsp::LspExtensionMapEntry>, AppError> {
+    let config = state
+        .storage_manager
+        .load_config()
+        .map_err(AppError::from)?;
+    state.lsp_manager.apply_settings_from_json(&config);
+    Ok(state.lsp_manager.extension_map())
+}
+
+/// Resolve language id for a file path using the live registry (custom first).
+#[tauri::command]
+pub fn lsp_resolve_language(
+    file_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Option<String> {
+    let ext = std::path::Path::new(&file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    state
+        .lsp_manager
+        .plugin_registry()
+        .lock()
+        .ok()
+        .and_then(|r| r.resolve_by_extension(ext).map(|p| p.language_id.clone()))
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // JSON-RPC Transport Proxy (for @codemirror/lsp-client)
 // ═══════════════════════════════════════════════════════════════════════
