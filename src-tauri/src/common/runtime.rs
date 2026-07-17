@@ -2,8 +2,9 @@
 //!
 //! # Design
 //!
-//! - **Logic**: application business code (LSP, terminal workers, …) only
-//!   schedules work through [`AppRuntime`], never via bare `tokio::spawn`.
+//! - **Logic**: application business code (LSP, terminal workers, skill DB, …)
+//!   only schedules work through [`AppRuntime`], never via bare `tokio::spawn`
+//!   or `tauri::async_runtime::spawn_blocking`.
 //! - **Implementation**: a single [`tokio::runtime::Handle`]. Today that handle
 //!   comes from Tauri's process-wide async runtime; tomorrow it can be a
 //!   dedicated `Runtime` without changing call sites.
@@ -16,6 +17,8 @@ use std::sync::Arc;
 
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
+
+use crate::AppError;
 
 /// Process-wide business async executor.
 ///
@@ -79,6 +82,32 @@ impl AppRuntime {
     }
 }
 
+/// Run a blocking closure on the process-wide business executor and await it.
+///
+/// Prefer this over `tauri::async_runtime::spawn_blocking` in Tauri commands
+/// that do not hold an injected [`AppRuntime`] (e.g. skill store commands).
+pub async fn run_blocking<F, R>(func: F) -> Result<R, AppError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    AppRuntime::try_current_or_tauri()
+        .spawn_blocking(func)
+        .await
+        .map_err(|e| AppError::Unknown(format!("blocking task join error: {e}")))
+}
+
+/// Like [`run_blocking`], but the closure itself returns [`Result<T, AppError>`]
+/// (the common skill / storage command pattern). Join errors and closure errors
+/// both surface as [`AppError`].
+pub async fn run_blocking_result<F, T>(func: F) -> Result<T, AppError>
+where
+    F: FnOnce() -> Result<T, AppError> + Send + 'static,
+    T: Send + 'static,
+{
+    run_blocking(func).await?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +134,23 @@ mod tests {
         let join = rt.spawn(async { 7 + 8 });
         let value = tauri::async_runtime::block_on(join).expect("join");
         assert_eq!(value, 15);
+    }
+
+    #[test]
+    fn should_run_blocking_result_on_business_runtime() {
+        let value = tauri::async_runtime::block_on(async {
+            run_blocking_result(|| Ok::<_, AppError>(21 * 2)).await
+        })
+        .expect("ok");
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn should_surface_closure_error_from_run_blocking_result() {
+        let err = tauri::async_runtime::block_on(async {
+            run_blocking_result(|| Err::<i32, _>(AppError::Skill("boom".into()))).await
+        })
+        .expect_err("error");
+        assert!(err.to_string().contains("boom"));
     }
 }

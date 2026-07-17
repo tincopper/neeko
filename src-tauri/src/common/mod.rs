@@ -12,4 +12,4 @@ pub mod theme_types;
 pub mod types;
 pub mod utils;
 
-pub use runtime::AppRuntime;
+pub use runtime::{run_blocking, run_blocking_result, AppRuntime};

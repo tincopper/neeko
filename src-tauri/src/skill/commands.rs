@@ -7,6 +7,7 @@ use tauri::State;
 use super::skill_store::SkillStore;
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
+use crate::common::runtime::{run_blocking, run_blocking_result};
 use crate::AppError;
 
 #[derive(Debug, Serialize)]
@@ -47,7 +48,7 @@ pub async fn get_managed_skills(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<Vec<ManagedSkillDtoOut>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
         let tags_map = store.get_tags_map().map_err(AppError::from)?;
         Ok(skills
@@ -67,9 +68,7 @@ pub async fn get_managed_skills(
                 updated_at: s.updated_at,
             })
             .collect())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -78,7 +77,7 @@ pub async fn get_skill_document(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<SkillDocumentDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skill = store
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
@@ -101,9 +100,7 @@ pub async fn get_skill_document(
         Err(AppError::NotFound(
             "No documentation file found".to_string(),
         ))
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -112,7 +109,7 @@ pub async fn delete_managed_skill(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skill = store
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
@@ -122,9 +119,7 @@ pub async fn delete_managed_skill(
             std::fs::remove_dir_all(&central).ok();
         }
         store.delete_skill(&skill_id).map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -132,7 +127,7 @@ pub async fn get_tag_groups(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<Vec<TagGroupDtoOut>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let groups = store.get_all_tag_groups().map_err(AppError::from)?;
         Ok(groups
             .into_iter()
@@ -150,9 +145,7 @@ pub async fn get_tag_groups(
                 }
             })
             .collect())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -163,7 +156,7 @@ pub async fn create_tag_group(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<TagGroupDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let now = chrono::Utc::now().timestamp_millis();
         let id = uuid::Uuid::new_v4().to_string();
         let tg = TagGroupRecord {
@@ -186,9 +179,7 @@ pub async fn create_tag_group(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -197,11 +188,9 @@ pub async fn delete_tag_group_cmd(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store.delete_tag_group(&id).map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -211,7 +200,7 @@ pub async fn install_local_skill(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let path = std::path::PathBuf::from(&source_path);
         let result =
             super::installer::install_from_local(&path, name.as_deref()).map_err(AppError::from)?;
@@ -253,9 +242,7 @@ pub async fn install_local_skill(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -271,7 +258,7 @@ pub async fn scan_local_skills(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<Vec<DiscoveredSkillDto>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
         let managed_paths: Vec<String> = skills.iter().map(|s| s.central_path.clone()).collect();
         let discovered =
@@ -285,9 +272,7 @@ pub async fn scan_local_skills(
                 name_guess: d.name_guess,
             })
             .collect())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -297,7 +282,7 @@ pub async fn import_discovered_skill(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let src = std::path::PathBuf::from(&discovered_path);
         let result =
             super::installer::install_from_local(&src, name.as_deref()).map_err(AppError::from)?;
@@ -339,9 +324,7 @@ pub async fn import_discovered_skill(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -384,7 +367,7 @@ pub async fn confirm_git_install(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let result = super::installer::confirm_git_install(
             &input.preview_id,
             &input.selected_path,
@@ -429,9 +412,7 @@ pub async fn confirm_git_install(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -451,7 +432,7 @@ pub async fn check_skill_update(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<CheckUpdateResult, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skill = store
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
@@ -477,9 +458,7 @@ pub async fn check_skill_update(
                 remote_revision: None,
             }),
         }
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -488,7 +467,7 @@ pub async fn update_skill(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skill = store
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
@@ -509,9 +488,7 @@ pub async fn update_skill(
             created_at: updated.created_at,
             updated_at: updated.updated_at,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -523,13 +500,11 @@ pub async fn update_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .update_tag_group(&id, &name, description.as_deref(), icon.as_deref())
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -538,11 +513,9 @@ pub async fn reorder_tag_groups_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store.reorder_tag_groups(&ids).map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -552,13 +525,11 @@ pub async fn add_skill_to_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .add_skill_to_tag_group(&tag_group_id, &skill_id)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -568,13 +539,11 @@ pub async fn remove_skill_from_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .remove_skill_from_tag_group(&tag_group_id, &skill_id)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -583,7 +552,7 @@ pub async fn get_skills_for_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<Vec<ManagedSkillDtoOut>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skills = store
             .get_skills_for_tag_group(&tag_group_id)
             .map_err(AppError::from)?;
@@ -605,9 +574,7 @@ pub async fn get_skills_for_tag_group_cmd(
                 updated_at: s.updated_at,
             })
             .collect())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -615,9 +582,7 @@ pub async fn get_all_tags_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<Vec<String>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || store.get_all_tags().map_err(AppError::from))
-        .await
-        .map_err(AppError::from)?
+    run_blocking_result(move || store.get_all_tags().map_err(AppError::from)).await
 }
 
 #[tauri::command]
@@ -627,13 +592,11 @@ pub async fn set_skill_tags_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .set_tags_for_skill(&skill_id, &tags)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -645,13 +608,11 @@ pub async fn set_skill_tool_toggle_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .set_tag_group_skill_tool_enabled(&tag_group_id, &skill_id, &tool, enabled)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -660,7 +621,7 @@ pub async fn sync_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skills = store
             .get_skills_for_tag_group(&tag_group_id)
             .map_err(AppError::from)?;
@@ -717,9 +678,7 @@ pub async fn sync_tag_group_cmd(
             }
         }
         Ok(())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -728,7 +687,7 @@ pub async fn unsync_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let skill_ids = store
             .get_skills_for_tag_group(&tag_group_id)
             .map_err(AppError::from)?;
@@ -741,9 +700,7 @@ pub async fn unsync_tag_group_cmd(
             }
         }
         Ok(())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -752,7 +709,7 @@ pub async fn get_project_tag_groups_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<Vec<TagGroupDtoOut>, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let tg_ids = store
             .get_project_tag_groups(&project_id)
             .map_err(AppError::from)?;
@@ -774,9 +731,7 @@ pub async fn get_project_tag_groups_cmd(
                 }
             })
             .collect())
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -786,13 +741,11 @@ pub async fn set_project_tag_groups_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .set_project_tag_groups(&project_id, &tag_group_ids)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -802,13 +755,11 @@ pub async fn add_project_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .add_project_tag_group(&project_id, &tag_group_id)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -818,13 +769,11 @@ pub async fn remove_project_tag_group_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         store
             .remove_project_tag_group(&project_id, &tag_group_id)
             .map_err(AppError::from)
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 #[tauri::command]
@@ -834,7 +783,7 @@ pub async fn create_skill(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking_result(move || {
         let sanitized = super::skill_metadata::sanitize_skill_name(&name)
             .ok_or_else(|| AppError::InvalidInput(format!("Invalid skill name: {}", name)))?;
 
@@ -894,9 +843,7 @@ pub async fn create_skill(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(AppError::from)?
+    }).await
 }
 
 // --- Marketplace Commands ---
@@ -925,7 +872,7 @@ pub async fn fetch_leaderboard(
         }
     }
 
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let board_type = super::skillssh_api::LeaderboardType::from_str(&board);
         let proxy_url = store.get_setting("proxy_url").ok().flatten();
         let skills = super::skillssh_api::fetch_leaderboard(board_type, proxy_url.as_deref())
@@ -948,9 +895,7 @@ pub async fn fetch_leaderboard(
         }
 
         Ok(dtos)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -969,7 +914,7 @@ pub async fn search_skillssh(
         }
     }
 
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let proxy_url = store.get_setting("proxy_url").ok().flatten();
         let skills =
             super::skillssh_api::search_skills(&query, limit.unwrap_or(20), proxy_url.as_deref())
@@ -992,9 +937,7 @@ pub async fn search_skillssh(
         }
 
         Ok(dtos)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1007,7 +950,7 @@ pub async fn install_from_skillssh(
     let store = store.inner().clone();
     let app_handle = app_handle.clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         // Emit progress: cloning
         let _ = app_handle.emit(
             "install-progress",
@@ -1112,7 +1055,5 @@ pub async fn install_from_skillssh(
             created_at: now,
             updated_at: now,
         })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    }).await.map_err(|e| e.to_string())?
 }

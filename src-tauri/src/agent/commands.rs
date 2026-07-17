@@ -135,10 +135,12 @@ pub async fn check_agents_installed(
             .find(|a| a.id == *id)
             .map(|a| a.command.clone());
         let installed = match command {
-            Some(cmd) => match tokio::task::spawn_blocking(move || {
-                crate::common::utils::command::local::check_command_exists(&cmd)
-            })
-            .await
+            Some(cmd) => match state
+                .runtime
+                .spawn_blocking(move || {
+                    crate::common::utils::command::local::check_command_exists(&cmd)
+                })
+                .await
             {
                 Ok(result) => result,
                 Err(e) => {
