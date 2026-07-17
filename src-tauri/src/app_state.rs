@@ -33,6 +33,7 @@ pub struct AppStateWrapper {
     pub watcher_manager: WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
     pub lsp_manager: Arc<crate::lsp::LspManager>,
+    pub dap_manager: crate::dap::DapManager,
     pub conversation_manager: ConversationManager,
     session_owner: Mutex<HashMap<String, SessionOwner>>,
 }
@@ -313,6 +314,7 @@ impl AppStateWrapper {
             watcher_manager: WatcherManager::new(),
             skill_store,
             lsp_manager,
+            dap_manager: crate::dap::DapManager::new(),
             conversation_manager: ConversationManager::new(
                 crate::conversation::adapters::all_adapters(),
             ),

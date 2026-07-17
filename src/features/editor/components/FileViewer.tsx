@@ -64,6 +64,13 @@ import {
 } from '@/shared/utils/editorViewState';
 
 import { useEditorAgentActions } from '../hooks/useEditorAgentActions';
+import { useBreakpointGutterExtensions } from '@/features/debug/hooks/useBreakpointGutter';
+import {
+  applyDebugCurrentLine,
+  resolveDebugHighlightLine,
+  useCurrentLineHighlight,
+} from '@/features/debug/hooks/useCurrentLineHighlight';
+import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
 
 import InlineHtmlPreview from './InlineHtmlPreview';
 import SelectionToolbar from './SelectionToolbar';
@@ -216,6 +223,62 @@ function FileEditor({
   // CodeMirror EditorView 引用 + 是否已恢复过位置
   const editorViewRef = useRef<EditorView | null>(null);
   const editorRestoredRef = useRef(false);
+  /** Bumped when EditorView mounts so debug highlight can re-apply. */
+  const [editorViewEpoch, setEditorViewEpoch] = useState(0);
+
+  // DAP breakpoints (absolute path for adapter)
+  const absFilePath = useMemo(() => {
+    const fp = tab.filePath;
+    if (fp.startsWith('/') || /^[A-Za-z]:[\\/]/.test(fp)) return fp;
+    if (!projectPath) return fp;
+    const base = projectPath.replace(/[/\\]+$/, '');
+    const rel = fp.replace(/^[/\\]+/, '');
+    return `${base}/${rel}`.replace(/\\/g, '/');
+  }, [projectPath, tab.filePath]);
+
+  const loadBreakpoints = useDebugStore((s) => s.loadBreakpoints);
+  // Select the stored array reference directly — never allocate a new [] here
+  // (that would trip zustand's Object.is check and infinite-loop renders).
+  const bpLines = useDebugStore(
+    (s) => s.breakpoints[tab.projectId]?.[absFilePath] ?? EMPTY_BP_LINES,
+  );
+  const {
+    extensions: bpGutterExt,
+    syncEffect: bpSyncEffect,
+    onLineNumberClick,
+    onLineNumberHover,
+    onLineNumberLeave,
+  } = useBreakpointGutterExtensions(tab.projectId, absFilePath);
+  // Current-line highlight field lives inside bpGutterExt; this only re-applies on stop.
+  useCurrentLineHighlight(
+    absFilePath,
+    tab.filePath,
+    editorViewRef,
+    editorViewEpoch,
+  );
+
+  // Stable refs so lineNumbers handlers stay fresh without rebuilding extensions every render
+  const lnClickRef = useRef(onLineNumberClick);
+  const lnHoverRef = useRef(onLineNumberHover);
+  const lnLeaveRef = useRef(onLineNumberLeave);
+  lnClickRef.current = onLineNumberClick;
+  lnHoverRef.current = onLineNumberHover;
+  lnLeaveRef.current = onLineNumberLeave;
+  const lastSyncedBpKey = useRef<string>('');
+
+  useEffect(() => {
+    void loadBreakpoints(tab.projectId);
+  }, [tab.projectId, loadBreakpoints]);
+
+  // Sync store → CodeMirror breakpoint field (also after editor is created)
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    const key = `${absFilePath}:${bpLines.join(',')}`;
+    if (key === lastSyncedBpKey.current) return;
+    lastSyncedBpKey.current = key;
+    view.dispatch({ effects: bpSyncEffect(bpLines) });
+  }, [bpLines, bpSyncEffect, absFilePath]);
 
   // Selection state for AI toolbar
   const [selectionLines, setSelectionLines] = useState<{
@@ -723,6 +786,21 @@ function FileEditor({
   const handleCreateEditor = useCallback(
     (view: EditorView) => {
       editorViewRef.current = view;
+      setEditorViewEpoch((n) => n + 1);
+      // Apply any breakpoints already in the store (effect may have run before view existed)
+      const lines =
+        useDebugStore.getState().breakpoints[tab.projectId]?.[absFilePath] ?? [];
+      lastSyncedBpKey.current = `${absFilePath}:${lines.join(',')}`;
+      view.dispatch({ effects: bpSyncEffect(lines) });
+      // Re-apply debug current-line if we stopped before the editor mounted.
+      const dbg = useDebugStore.getState();
+      const hl = resolveDebugHighlightLine(
+        absFilePath,
+        tab.filePath,
+        dbg.stoppedAt,
+        dbg.session?.status,
+      );
+      applyDebugCurrentLine(view, hl);
       if (editorRestoredRef.current) return;
 
       // Check for pending LSP navigation target (go-to-definition / find-references)
@@ -779,7 +857,7 @@ function FileEditor({
         }
       });
     },
-    [tabKey, tabId],
+    [tabKey, tabId, tab.projectId, absFilePath, bpSyncEffect],
   );
 
   // 卸载兜底：再保存一次（updateListener 大多已覆盖，但保险起见）
@@ -821,8 +899,31 @@ function FileEditor({
 
   // Build CodeMirror extensions
   const extensions = useMemo(() => {
-    const exts: import('@codemirror/state').Extension[] = [
-      lineNumbers(),
+    const exts: import('@codemirror/state').Extension[] = [];
+
+    // Order: breakpoint gutter (optional) → line numbers (always) → rest.
+    // lineNumbers is ALWAYS registered here so debug sessions never remove it.
+    if (bpGutterExt.length > 0) {
+      exts.push(...bpGutterExt);
+    }
+    exts.push(
+      lineNumbers({
+        formatNumber: (n) => String(n),
+        domEventHandlers: {
+          mousedown(view, line) {
+            return lnClickRef.current(view, line.from);
+          },
+          mouseover(view, line) {
+            return lnHoverRef.current(view, line.from);
+          },
+          mouseout(view) {
+            return lnLeaveRef.current(view);
+          },
+        },
+      }),
+    );
+
+    exts.push(
       highlightActiveLineGutter(),
       highlightSpecialChars(),
       history(),
@@ -844,7 +945,7 @@ function FileEditor({
       saveKeymap,
       cmTheme,
       viewStateExt,
-    ];
+    );
 
     if (langExtension) exts.push(langExtension);
 
@@ -865,6 +966,7 @@ function FileEditor({
     lspClientExt,
     lspKeymap,
     linkHighlightExt,
+    bpGutterExt,
   ]);
 
   // Breadcrumb path segments

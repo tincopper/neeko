@@ -20,6 +20,7 @@ pub mod common;
 pub mod connection;
 pub mod conversation;
 pub mod core;
+pub mod dap;
 pub mod file;
 pub mod git;
 pub mod lsp;
@@ -247,6 +248,21 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_get_extension_conflicts,
             $crate::lsp::commands::lsp_apply_settings,
             $crate::lsp::commands::lsp_resolve_language,
+            // ── dap ──────────────────────────────────────────────────────────
+            $crate::dap::commands::dap_list_configs,
+            $crate::dap::commands::dap_save_configs,
+            $crate::dap::commands::dap_discover_entries,
+            $crate::dap::commands::dap_start_session,
+            $crate::dap::commands::dap_stop_session,
+            $crate::dap::commands::dap_get_session,
+            $crate::dap::commands::dap_list_sessions,
+            $crate::dap::commands::dap_set_breakpoints,
+            $crate::dap::commands::dap_get_breakpoints,
+            $crate::dap::commands::dap_control,
+            $crate::dap::commands::dap_stack_trace,
+            $crate::dap::commands::dap_variables,
+            $crate::dap::commands::dap_evaluate,
+            $crate::dap::commands::dap_check_adapter,
             $crate::settings::commands::get_system_fonts,
         ]
     };

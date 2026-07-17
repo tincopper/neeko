@@ -1,6 +1,7 @@
 import React from "react";
 import WindowControls from "./WindowControls";
 import TaskRunButton from "@/features/task/components/TaskRunButton";
+import { DebugRunButton } from "@/features/debug";
 import OpenIdeButton from "./OpenIdeButton";
 import { IS_MACOS } from "@/shared/utils/platform";
 import { useFullscreen } from "./useFullscreen";
@@ -24,10 +25,11 @@ function TitleBar() {
       {/* Center spacer (draggable) */}
       <div className="flex-1" data-tauri-drag-region />
 
-      {/* Right: OpenIdeButton + TaskRunButton + WindowControls */}
+      {/* Right: OpenIde + Task + Debug + WindowControls */}
       <div className="flex items-center gap-2 shrink-0 px-2">
         <OpenIdeButton />
         <TaskRunButton />
+        <DebugRunButton />
         {!IS_MACOS && <WindowControls />}
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { AppLayout, TitleBar } from "@/layout";
 import { StatusBar } from "@/features/status-bar";
+import { DebugPanel } from "@/features/debug";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
@@ -27,7 +28,12 @@ function App() {
       <TitleBar />
 
       <AppProviders {...appProvidersProps}>
-        <AppLayout {...appLayoutProps} />
+        <div className="flex-1 flex flex-col min-h-0 bg-bg-primary">
+          <div className="flex-1 min-h-0 flex flex-col">
+            <AppLayout {...appLayoutProps} />
+          </div>
+          <DebugPanel />
+        </div>
         <AppModals {...appModalsProps} />
       </AppProviders>
 

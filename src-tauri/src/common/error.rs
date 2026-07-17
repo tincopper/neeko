@@ -35,6 +35,8 @@ pub enum AppError {
     LockPoisoned(String),
     #[error("LSP error: {0}")]
     Lsp(String),
+    #[error("DAP error: {0}")]
+    Dap(String),
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

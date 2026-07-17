@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 
+import { useDebugStore } from '@/features/debug/store/debugStore';
 import { lspListSessions, lspRestartSession, lspStopSession } from '@/features/lsp/api/lspApi';
 import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore';
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
+import { Bug } from '@/shared/components/icons';
 import { cn } from '@/shared/utils/cn';
 
 const BUILTIN_SERVER_NAMES: Record<string, string> = {
@@ -40,6 +42,10 @@ interface LspInstallProgressEvent {
 export function StatusBar() {
   const cursorPosition = useEditorStore((s) => s.cursorPosition);
   const activeProjectPath = useProjectStore((s) => s.activeProject?.path);
+  const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
+  const debugSession = useDebugStore((s) => s.session);
+  const debugPanelOpen = useDebugStore((s) => s.panelOpen);
+  const toggleDebugPanel = useDebugStore((s) => s.togglePanel);
   const [installProgress, setInstallProgress] = useState<LspInstallProgressEvent | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties | undefined>(undefined);
@@ -362,6 +368,39 @@ export function StatusBar() {
         ) : null}
       </div>
       <div className="flex h-full shrink-0 items-center gap-3">
+        {activeProjectId ? (
+          <button
+            type="button"
+            className={cn(
+              'flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
+              debugPanelOpen ? 'text-text-primary' : '',
+            )}
+            title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+            onClick={() => toggleDebugPanel()}
+          >
+            <Bug size={12} className="shrink-0" />
+            {debugSession ? (
+              <>
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full shrink-0',
+                    debugSession.status === 'stopped'
+                      ? 'bg-accent-yellow'
+                      : debugSession.status === 'running' ||
+                          debugSession.status === 'starting'
+                        ? 'bg-accent-green animate-pulse'
+                        : 'bg-text-muted',
+                  )}
+                />
+                <span className="truncate max-w-[140px]">
+                  Debug · {debugSession.status}
+                </span>
+              </>
+            ) : (
+              <span>Debug</span>
+            )}
+          </button>
+        ) : null}
         {cursorPosition && (
           <span>
             Ln {cursorPosition.line}, Col {cursorPosition.col}
