@@ -258,6 +258,42 @@ describe('useKeyboardShortcuts', () => {
     expect(storeState.selectProject).not.toHaveBeenCalled();
   });
 
+  it('输入框聚焦时不触发 Ctrl+W', () => {
+    params.activeTabId = 't1';
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    const event = new KeyboardEvent('keydown', {
+      code: 'KeyW',
+      key: 'w',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'target', { value: input });
+    window.dispatchEvent(event);
+
+    expect(params.onCloseTab).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('设置页打开时不触发快捷键', () => {
+    params.activeTabId = 't1';
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const root = document.createElement('div');
+    root.setAttribute('data-settings-view', '');
+    document.body.appendChild(root);
+
+    dispatchKey('KeyW', { ctrlKey: true });
+
+    expect(params.onCloseTab).not.toHaveBeenCalled();
+    root.remove();
+  });
+
   it('Ctrl+W 关闭当前活跃 tab', () => {
     params.activeTabId = 't1';
     renderHook(() => useKeyboardShortcuts(params));

@@ -225,7 +225,10 @@ function SettingsView() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-bg-secondary rounded-lg shadow-sm">
+    <div
+      className="flex-1 flex flex-col overflow-hidden bg-bg-secondary rounded-lg shadow-sm"
+      data-settings-view
+    >
       <div className="flex flex-1 overflow-hidden">
         {/* Left navigation sidebar */}
         <nav className="w-[200px] shrink-0 border-r border-border flex flex-col overflow-hidden">

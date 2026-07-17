@@ -30,8 +30,20 @@ export function useKeyboardShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const el = document.querySelector("[data-modal]");
-      if (el) return;
+      // Modal dialogs and full-page settings own the keyboard.
+      if (
+        document.querySelector("[data-modal]") ||
+        document.querySelector("[data-settings-view]")
+      ) {
+        return;
+      }
+
+      // Never steal keys while the user is typing in a form field.
+      // Capture-phase listeners run before the input; without this check,
+      // shortcuts like Ctrl+W / Alt+Left fire while editing settings.
+      if (isEditableKeyboardTarget(e.target)) {
+        return;
+      }
 
       if (e.ctrlKey && e.key === "Tab") {
         e.preventDefault();
@@ -134,6 +146,19 @@ export function useKeyboardShortcuts({
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [updateWtPath, onCloseTab, unifiedItems]);
+}
+
+/** True when focus is in an element that should receive normal typing / caret keys. */
+export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  // Radix / design-system slots
+  if (target.closest("input, textarea, select, [contenteditable=true], [role='textbox']")) {
+    return true;
+  }
+  return false;
 }
 
 /** Find current position in the unified project list */
