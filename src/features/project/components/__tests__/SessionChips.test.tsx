@@ -26,6 +26,13 @@ describe("SessionChips.Changes", () => {
     expect(screen.getByText("-7182")).toBeInTheDocument();
   });
 
+  it("add 与 del 上下左对齐（flex-col items-start），不放同一行", () => {
+    const { container } = render(<SessionChips.Changes add={10} del={3} />);
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.className).toMatch(/flex-col/);
+    expect(root.className).toMatch(/items-start/);
+  });
+
   it("仅 add > 0 时只渲染 +A", () => {
     render(<SessionChips.Changes add={120} del={0} />);
     expect(screen.getByText("+120")).toBeInTheDocument();

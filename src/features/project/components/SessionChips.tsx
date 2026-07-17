@@ -24,11 +24,9 @@ interface ChangesChipProps {
 const ChangesChip: React.FC<ChangesChipProps> = ({ add, del }) => {
   if (add <= 0 && del <= 0) return null;
   return (
-    <span className="text-[0.92em] font-mono">
+    <span className="flex flex-col items-start text-[0.92em] font-mono leading-tight">
       {add > 0 && <span className="text-[#3fb950]">+{add}</span>}
-      {del > 0 && (
-        <span className={add > 0 ? "ml-1.5 text-[#f85149]" : "text-[#f85149]"}>-{del}</span>
-      )}
+      {del > 0 && <span className="text-[#f85149]">-{del}</span>}
     </span>
   );
 };

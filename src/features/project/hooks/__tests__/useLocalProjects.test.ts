@@ -187,8 +187,15 @@ describe('useLocalProjects', () => {
     expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'sel-1' });
   });
 
-  it('handleRefreshGit 刷新 git 信息', async () => {
-    mockInvoke.mockResolvedValue([]);
+  it('handleRefreshGit 刷新 git 信息与 ahead/behind', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_worktree_changed_files') return [];
+      if (cmd === 'get_git_branch_info') {
+        return { current_branch: 'main', branches: ['main'], worktrees: [] };
+      }
+      if (cmd === 'get_ahead_behind') return { ahead: 2, behind: 0 };
+      return undefined;
+    });
 
     const { result } = renderHook(() => useLocalProjects());
 
@@ -200,6 +207,7 @@ describe('useLocalProjects', () => {
       projectId: 'p1',
       worktreePath: '',
     });
+    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', { projectId: 'p1' });
   });
 
   it('handleOpenIde 不做任何操作当无 IDE', async () => {

@@ -358,13 +358,15 @@ const handleCredentialSubmit = useCallback(
     try {
       const outcome = await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
       if (handlePushOutcome(outcome, 'fetch')) return;
+      // fetch 后刷新 changed_files + ahead/behind（待 push/pull 数量）
+      await onRefreshGit();
       onShowToast?.('Fetched successfully', 'info');
     } catch (e: unknown) {
       onShowToast?.(String(e), 'error');
     } finally {
       setLoading(false);
     }
-  }, [commands, onShowToast, handlePushOutcome]);
+  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
 
   const handlePull = useCallback(async () => {
     setLoading(true);

@@ -12,7 +12,9 @@ import { getMacAppNameByCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 
 import { listAgents } from '../../agent/api/agentApi';
-import { getWorktreeChangedFiles, getGitBranchInfo } from '../../git/api/gitApi';
+import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+import { useGitStore } from '@/features/git/store';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { saveSession } from '../../session/api/sessionApi';
 import {
   addProject,
@@ -245,6 +247,16 @@ export function useLocalProjects() {
           });
         })
         .catch((error) => console.error('Failed to refresh git branch info:', error));
+
+      // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
+      getAheadBehind(projectId)
+        .then((ab) => {
+          useGitStore.getState().setAheadBehind(
+            aheadBehindKey('local', projectId, projectId),
+            ab,
+          );
+        })
+        .catch((error) => console.error('Failed to refresh ahead/behind:', error));
     } catch (error) {
       console.error('Failed to refresh git info:', error);
     }

@@ -38,14 +38,14 @@ describe("SessionRow", () => {
     expect(screen.getByText("-7182")).toBeInTheDocument();
   });
 
-  it("active + shortcut 时渲染 ⌘N", () => {
-    render(<SessionRow kind="local" label="local" isActive shortcut="⌘1" />);
+  it("有 shortcut 时渲染 ⌘N（hover 可见，不依赖 active）", () => {
+    render(<SessionRow kind="local" label="local" shortcut="⌘1" />);
     expect(screen.getByText("⌘1")).toBeInTheDocument();
   });
 
-  it("非 active 时即使有 shortcut 也不渲染 ⌘N", () => {
-    render(<SessionRow kind="local" label="local" shortcut="⌘1" />);
-    expect(screen.queryByText("⌘1")).toBeNull();
+  it("无 shortcut 时不渲染 ⌘N", () => {
+    render(<SessionRow kind="local" label="local" isActive />);
+    expect(screen.queryByText(/⌘|Ctrl\+/)).toBeNull();
   });
 
   it("worktree kind 渲染 trailing 节点", () => {

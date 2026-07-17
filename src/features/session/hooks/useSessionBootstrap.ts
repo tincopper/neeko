@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { listProjects } from "../../project/api/projectApi";
-import { getWorktreeChangedFiles, getGitBranchInfo } from "../../git/api/gitApi";
+import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from "../../git/api/gitApi";
 import { loadSession } from "../api/sessionApi";
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
+import { useGitStore } from '@/features/git/store';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
 /** 将后�?git status 字符串映射为前端 FileChange.status */
 function mapGitStatus(status: string): FileChange["status"] {
@@ -184,6 +186,16 @@ export function useSessionBootstrap(deps: {
                 });
              })
              .catch((e) => console.error("[SessionBootstrap] get_git_branch_info_command failed:", e));
+
+          // 3. 同步 ahead/behind（待 push / 待 pull 数量），与 changed_files 一并刷新
+          getAheadBehind(projectId)
+             .then((ab) => {
+                useGitStore.getState().setAheadBehind(
+                   aheadBehindKey("local", projectId, projectId),
+                   ab,
+                );
+             })
+             .catch((e) => console.error("[SessionBootstrap] get_ahead_behind failed:", e));
       });
 
       // 增量 diff 事件：直�?patch store，无需重新请求后端
