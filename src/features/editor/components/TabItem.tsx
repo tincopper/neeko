@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Terminal, FileText, ArrowLeftRight, GitBranch, Globe, MessageSquareText, Pin, GitPullRequest } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
-import { getAgentIconSrc } from '@/shared/utils/agents';
+import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import type { Tab } from '@/shared/types/tab';
 import type { AgentConfig } from '@/shared/types';
@@ -90,7 +90,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(
     const data = tab.data;
     const agentIconSrc =
       data.kind === "terminal" && data.agentId
-        ? getAgentIconSrc(
+        ? resolveAgentIconSrc(
             agents.find((a) => a.id === data.agentId)?.icon
           )
         : null;
