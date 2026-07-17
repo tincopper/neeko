@@ -1,6 +1,7 @@
 use crate::agent::AgentManager;
 use crate::common::file::watcher::WatcherManager;
 use crate::common::git::transport::{GitTransport, GitTransportKind};
+use crate::common::runtime::AppRuntime;
 use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::conversation::ConversationManager;
 use crate::project::ProjectManager;
@@ -21,6 +22,8 @@ enum SessionOwner {
 }
 
 pub struct AppStateWrapper {
+    /// Business async executor (Scheme C: logical own runtime, one Handle).
+    pub runtime: Arc<AppRuntime>,
     pub project_manager: Mutex<ProjectManager>,
     pub terminal_manager: TerminalManager,
     pub remote_terminal_manager: RemoteTerminalManager,
@@ -251,7 +254,12 @@ impl AppStateWrapper {
             }
         };
 
+        // Bind business runtime to Tauri's global Tokio handle (safe before/after setup).
+        let runtime = AppRuntime::shared_default();
+        let lsp_manager = Arc::new(crate::lsp::LspManager::new(Arc::clone(&runtime)));
+
         Self {
+            runtime,
             project_manager: Mutex::new(ProjectManager::new(persist)),
             terminal_manager: TerminalManager::new(),
             remote_terminal_manager: RemoteTerminalManager::new(),
@@ -260,7 +268,7 @@ impl AppStateWrapper {
             active_project_id: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
             skill_store,
-            lsp_manager: Arc::new(crate::lsp::LspManager::new()),
+            lsp_manager,
             conversation_manager: ConversationManager::new(
                 crate::conversation::adapters::all_adapters(),
             ),

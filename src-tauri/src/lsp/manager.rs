@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
 
+use crate::common::runtime::AppRuntime;
 use crate::common::utils::command::local::cmd_from_path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -688,6 +689,8 @@ fn handle_progress_notification(
 /// Manages LSP server sessions with plugin-based language discovery
 /// and exponential backoff restart strategy.
 pub struct LspManager {
+    /// Business async executor (never bare `tokio::spawn`).
+    runtime: Arc<AppRuntime>,
     sessions: Arc<Mutex<HashMap<SessionKey, LspSession>>>,
     open_docs: Arc<Mutex<HashMap<SessionKey, Vec<OpenDocument>>>>,
     plugin_registry: Mutex<LspPluginRegistry>,
@@ -704,10 +707,12 @@ pub struct LspManager {
 }
 
 impl LspManager {
-    pub fn new() -> Self {
+    /// Create a manager that schedules work on the given business runtime.
+    pub fn new(runtime: Arc<AppRuntime>) -> Self {
         let diag_bus = DiagnosticBus::new();
 
         Self {
+            runtime,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             open_docs: Arc::new(Mutex::new(HashMap::new())),
             plugin_registry: Mutex::new(LspPluginRegistry::with_defaults()),
@@ -718,6 +723,11 @@ impl LspManager {
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
             default_auto_start: Mutex::new(LspAutoStart::OnFirstFile),
         }
+    }
+
+    /// Convenience constructor for tests / simple call sites.
+    pub fn new_default() -> Self {
+        Self::new(AppRuntime::shared_default())
     }
 
     /// Apply LSP settings from config.json (`lsp` object).
@@ -1121,9 +1131,8 @@ impl LspManager {
         let stop_secs = *self.deactivate_stop_secs.lock().expect("infallible");
         let this = Arc::clone(self);
         let pp = project_path.clone();
-        // Use Tauri's runtime — this method may be called from sync commands
-        // (no current tokio::Handle), so bare `tokio::spawn` panics.
-        tauri::async_runtime::spawn(async move {
+        // Business runtime — safe from sync Tauri commands (no current Handle).
+        self.runtime.spawn(async move {
             tokio::time::sleep(Duration::from_secs(stop_secs)).await;
             let current = this
                 .deactivate_gens
@@ -1178,15 +1187,14 @@ impl LspManager {
             }
         }
 
-        // Optional: spawn primary when policy is onProjectSelect.
-        // Must use Tauri async_runtime — sync invoke handlers have no tokio reactor.
+        // Optional: start primary when policy is onProjectSelect (via AppRuntime).
         if let Some(ref primary) = profile.primary {
             let policy = self.resolve_auto_start(&primary.language_id);
             if policy == LspAutoStart::OnProjectSelect {
                 let this = Arc::clone(self);
                 let pp = project_path.to_string();
                 let lid = primary.language_id.clone();
-                tauri::async_runtime::spawn_blocking(move || {
+                self.runtime.spawn_blocking(move || {
                     if let Err(e) = this.get_or_create_session(&pp, &lid) {
                         log::warn!(
                             "[LSP] onProjectSelect failed to start {} for {}: {}",
@@ -1283,7 +1291,7 @@ impl LspManager {
 
 impl Default for LspManager {
     fn default() -> Self {
-        Self::new()
+        Self::new_default()
     }
 }
 
@@ -1326,7 +1334,7 @@ mod tests {
 
     #[test]
     fn test_plugin_registry_integration() {
-        let manager = LspManager::new();
+        let manager = LspManager::new_default();
         let registry = manager.plugin_registry.lock().unwrap();
 
         assert!(registry.resolve_by_extension("rs").is_some());
@@ -1336,13 +1344,13 @@ mod tests {
 
     #[test]
     fn test_diag_bus_creation() {
-        let manager = LspManager::new();
+        let manager = LspManager::new_default();
         assert_eq!(manager.diag_bus().subscriber_count(), 0);
     }
 
     #[test]
     fn test_custom_plugin_registration() {
-        let manager = LspManager::new();
+        let manager = LspManager::new_default();
         manager.register_plugin(LspPlugin {
             language_id: "testlang".into(),
             extensions: vec!["tl".into()],
