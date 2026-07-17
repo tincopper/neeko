@@ -11,6 +11,7 @@ import {
   applyCustomServersFromConfig,
   setCustomLspExtensionMap,
 } from '@/features/lsp/languageMap';
+import { useLspStore } from '@/features/lsp/store/lspStore';
 import {
   Button,
   Input,
@@ -54,6 +55,8 @@ interface ServerDraftForm {
   /** Free text, e.g. "buf.yaml, .foorc" — split on save */
   rootMarkersText: string;
   autoStart: LspAutoStart;
+  /** Raw JSON for initializationOptions (optional). */
+  initializationOptionsText: string;
 }
 
 function emptyDraftForm(): ServerDraftForm {
@@ -65,6 +68,7 @@ function emptyDraftForm(): ServerDraftForm {
     extensionsText: '',
     rootMarkersText: '',
     autoStart: 'onFirstFile',
+    initializationOptionsText: '',
   };
 }
 
@@ -77,6 +81,10 @@ function serverToDraftForm(s: CustomLspServerConfig): ServerDraftForm {
     extensionsText: s.file_extensions.join(', '),
     rootMarkersText: (s.rootMarkers ?? []).join(', '),
     autoStart: s.autoStart ?? 'onFirstFile',
+    initializationOptionsText:
+      s.initializationOptions === undefined || s.initializationOptions === null
+        ? ''
+        : JSON.stringify(s.initializationOptions, null, 2),
   };
 }
 
@@ -109,6 +117,7 @@ async function refreshFrontendExtensionMap(): Promise<void> {
         isCustom: e.isCustom,
       })),
     );
+    await useLspStore.getState().refreshExtensionConflicts();
   } catch (e) {
     console.warn('[LSP] Failed to refresh extension map:', e);
   }
@@ -213,6 +222,17 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
       return;
     }
 
+    let initializationOptions: unknown | undefined;
+    const initText = draft.initializationOptionsText.trim();
+    if (initText) {
+      try {
+        initializationOptions = JSON.parse(initText);
+      } catch {
+        setError('initializationOptions must be valid JSON (object or array)');
+        return;
+      }
+    }
+
     const entry: CustomLspServerConfig = {
       id: draft.id,
       languageId,
@@ -221,6 +241,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
       file_extensions,
       rootMarkers,
       autoStart: draft.autoStart,
+      initializationOptions,
     };
 
     const others = lsp.customServers.filter((s) => s.id !== entry.id);
@@ -478,6 +499,24 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                   <SelectItem value="manual">Manual</SelectItem>
                 </SelectContent>
               </Select>
+            </Field>
+
+            <Field
+              label="initializationOptions (optional)"
+              hint='JSON passed to the server on initialize, e.g. {"hoverKind":"FullDocumentation"}'
+            >
+              <textarea
+                value={draft.initializationOptionsText}
+                onChange={(e) =>
+                  setDraft({ ...draft, initializationOptionsText: e.target.value })
+                }
+                placeholder='{"hoverKind": "FullDocumentation"}'
+                rows={3}
+                className="w-full min-h-[72px] rounded-md border border-border bg-bg-tertiary px-3 py-2 text-[0.86em] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-blue resize-y"
+                spellCheck={false}
+                autoComplete="off"
+                data-form-type="other"
+              />
             </Field>
 
             {error && (

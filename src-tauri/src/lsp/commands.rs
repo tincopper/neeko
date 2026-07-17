@@ -269,6 +269,14 @@ pub fn lsp_get_extension_map(
     Ok(state.lsp_manager.extension_map())
 }
 
+/// Extensions claimed by more than one language server (winner = last registration).
+#[tauri::command]
+pub fn lsp_get_extension_conflicts(
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<crate::lsp::LspExtensionConflict>, AppError> {
+    Ok(state.lsp_manager.extension_conflicts())
+}
+
 /// Apply LSP settings from the full app config (reads `config.lsp`).
 #[tauri::command]
 pub fn lsp_apply_settings(

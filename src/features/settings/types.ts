@@ -31,6 +31,15 @@ export interface CustomLspServerConfig {
   file_extensions: string[];
   rootMarkers?: string[];
   autoStart?: LspAutoStart;
+  /** LSP InitializeParams.initializationOptions (any JSON). */
+  initializationOptions?: unknown;
+}
+
+/** Extension claimed by multiple language servers (last registration wins). */
+export interface LspExtensionConflict {
+  extension: string;
+  winnerLanguageId: string;
+  displacedLanguageIds: string[];
 }
 
 export interface LspConfig {

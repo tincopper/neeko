@@ -12,8 +12,8 @@ pub mod types;
 
 pub use manager::LspManager;
 pub use plugin::{
-    CustomLspServerConfig, LspAutoStart, LspExtensionMapEntry, LspPlugin, LspPluginRegistry,
-    LspSettings,
+    CustomLspServerConfig, LspAutoStart, LspExtensionConflict, LspExtensionMapEntry, LspPlugin,
+    LspPluginRegistry, LspSettings,
 };
 pub use profile::{detect_project_profile, ProjectLanguageProfile};
 pub use types::*;

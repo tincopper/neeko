@@ -52,6 +52,8 @@ pub struct LspPlugin {
     pub root_markers: Vec<String>,
     pub auto_start: LspAutoStart,
     pub is_custom: bool,
+    /// Optional `InitializeParams.initializationOptions` for the server.
+    pub initialization_options: Option<serde_json::Value>,
 }
 
 impl LspPlugin {
@@ -71,6 +73,7 @@ impl LspPlugin {
             root_markers: Vec::new(),
             auto_start: LspAutoStart::OnFirstFile,
             is_custom: false,
+            initialization_options: None,
         }
     }
 
@@ -100,6 +103,7 @@ impl LspPlugin {
                 .map(LspAutoStart::parse)
                 .unwrap_or(LspAutoStart::OnFirstFile),
             is_custom: true,
+            initialization_options: cfg.initialization_options.clone(),
         }
     }
 }
@@ -127,6 +131,20 @@ pub struct CustomLspServerConfig {
     /// "onFirstFile" | "onProjectSelect" | "manual"
     #[serde(default)]
     pub auto_start: Option<String>,
+    /// Passed as LSP `InitializeParams.initializationOptions` (any JSON object/array).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initialization_options: Option<serde_json::Value>,
+}
+
+/// An extension claimed by more than one language server (later registration wins).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LspExtensionConflict {
+    pub extension: String,
+    /// Language currently winning the route (last registration).
+    pub winner_language_id: String,
+    /// Other language ids that also declared this extension.
+    pub displaced_language_ids: Vec<String>,
 }
 
 /// Global LSP settings stored in config.json under `lsp`.
@@ -175,6 +193,8 @@ pub struct LspExtensionMapEntry {
 pub struct LspPluginRegistry {
     plugins: HashMap<String, LspPlugin>,
     ext_index: HashMap<String, String>,
+    /// ext → language ids that have claimed it (order = registration order; last wins).
+    ext_claimants: HashMap<String, Vec<String>>,
 }
 
 impl LspPluginRegistry {
@@ -182,6 +202,7 @@ impl LspPluginRegistry {
         let mut registry = Self {
             plugins: HashMap::new(),
             ext_index: HashMap::new(),
+            ext_claimants: HashMap::new(),
         };
 
         registry.register(LspPlugin::builtin(
@@ -356,19 +377,41 @@ impl LspPluginRegistry {
 
     /// Register (or overwrite) a language plugin. Later registrations win on extension conflicts.
     pub fn register(&mut self, plugin: LspPlugin) {
+        // If re-registering the same language, drop its previous extension claims first.
+        if self.plugins.contains_key(&plugin.language_id) {
+            self.drop_language_claims(&plugin.language_id);
+        }
+
         for ext in &plugin.extensions {
+            let key = ext.to_lowercase();
+            let claimants = self.ext_claimants.entry(key.clone()).or_default();
+            if !claimants.iter().any(|id| id == &plugin.language_id) {
+                claimants.push(plugin.language_id.clone());
+            }
+            // Last registration wins the live route.
             self.ext_index
-                .insert(ext.to_lowercase(), plugin.language_id.clone());
+                .insert(key, plugin.language_id.clone());
         }
         self.plugins.insert(plugin.language_id.clone(), plugin);
     }
 
-    /// Remove a custom plugin by language_id and purge its extensions from the index.
+    /// Remove a plugin by language_id and rebuild extension routing from remaining claimants.
     pub fn unregister(&mut self, language_id: &str) {
-        if let Some(plugin) = self.plugins.remove(language_id) {
-            for ext in &plugin.extensions {
-                if self.ext_index.get(ext).map(|s| s.as_str()) == Some(language_id) {
-                    self.ext_index.remove(ext);
+        if self.plugins.remove(language_id).is_some() {
+            self.drop_language_claims(language_id);
+        }
+    }
+
+    fn drop_language_claims(&mut self, language_id: &str) {
+        let exts: Vec<String> = self.ext_claimants.keys().cloned().collect();
+        for ext in exts {
+            if let Some(claimants) = self.ext_claimants.get_mut(&ext) {
+                claimants.retain(|id| id != language_id);
+                if claimants.is_empty() {
+                    self.ext_claimants.remove(&ext);
+                    self.ext_index.remove(&ext);
+                } else if let Some(winner) = claimants.last() {
+                    self.ext_index.insert(ext, winner.clone());
                 }
             }
         }
@@ -408,6 +451,34 @@ impl LspPluginRegistry {
                     is_custom: plugin.is_custom,
                 });
             }
+        }
+        out.sort_by(|a, b| a.extension.cmp(&b.extension));
+        out
+    }
+
+    /// Extensions claimed by more than one language (winner = last registration).
+    pub fn extension_conflicts(&self) -> Vec<LspExtensionConflict> {
+        let mut out = Vec::new();
+        for (ext, claimants) in &self.ext_claimants {
+            if claimants.len() < 2 {
+                continue;
+            }
+            let Some(winner) = claimants.last() else {
+                continue;
+            };
+            let displaced: Vec<String> = claimants
+                .iter()
+                .filter(|id| *id != winner)
+                .cloned()
+                .collect();
+            if displaced.is_empty() {
+                continue;
+            }
+            out.push(LspExtensionConflict {
+                extension: ext.clone(),
+                winner_language_id: winner.clone(),
+                displaced_language_ids: displaced,
+            });
         }
         out.sort_by(|a, b| a.extension.cmp(&b.extension));
         out
@@ -465,6 +536,7 @@ mod tests {
             file_extensions: vec!["proto".into(), ".PROTO".into()],
             root_markers: vec!["buf.yaml".into()],
             auto_start: Some("onFirstFile".into()),
+            initialization_options: None,
         }));
 
         let p = registry.resolve_by_extension("proto").unwrap();
@@ -486,6 +558,7 @@ mod tests {
             file_extensions: vec!["foo".into()],
             root_markers: vec![],
             auto_start: None,
+            initialization_options: None,
         }));
         let map = registry.extension_map();
         assert!(map.iter().any(|e| e.extension == "foo" && e.is_custom));
@@ -505,5 +578,52 @@ mod tests {
         let registry = LspPluginRegistry::with_defaults();
         let all = registry.list_all();
         assert!(all.iter().any(|p| p.language_id == "go"));
+    }
+
+    #[test]
+    fn should_report_extension_conflict_when_custom_overrides_builtin() {
+        let mut registry = LspPluginRegistry::with_defaults();
+        assert!(registry.extension_conflicts().is_empty());
+
+        // Steal "go" from gopls with a custom server.
+        registry.register(LspPlugin::from_custom(&CustomLspServerConfig {
+            id: "alt-go".into(),
+            language_id: "go-alt".into(),
+            display_name: Some("Alt Go".into()),
+            command: vec!["alt-gopls".into()],
+            file_extensions: vec!["go".into()],
+            root_markers: vec![],
+            auto_start: None,
+            initialization_options: None,
+        }));
+
+        let conflicts = registry.extension_conflicts();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].extension, "go");
+        assert_eq!(conflicts[0].winner_language_id, "go-alt");
+        assert!(conflicts[0]
+            .displaced_language_ids
+            .iter()
+            .any(|id| id == "go"));
+        assert_eq!(
+            registry.resolve_by_extension("go").unwrap().language_id,
+            "go-alt"
+        );
+    }
+
+    #[test]
+    fn should_carry_initialization_options_from_custom_config() {
+        let opts = serde_json::json!({ "hoverKind": "FullDocumentation" });
+        let plugin = LspPlugin::from_custom(&CustomLspServerConfig {
+            id: "gopls-custom".into(),
+            language_id: "go".into(),
+            display_name: None,
+            command: vec!["gopls".into()],
+            file_extensions: vec!["go".into()],
+            root_markers: vec![],
+            auto_start: None,
+            initialization_options: Some(opts.clone()),
+        });
+        assert_eq!(plugin.initialization_options, Some(opts));
     }
 }

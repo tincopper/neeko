@@ -61,6 +61,7 @@ export function StatusBar() {
   const projectProfile = useLspStore((s) =>
     activeProjectPath ? (s.profiles[activeProjectPath] ?? null) : null,
   );
+  const extensionConflicts = useLspStore((s) => s.extensionConflicts);
 
   // Subscribe to LSP session events + load initial state + soft-warm profile
   useEffect(() => {
@@ -315,6 +316,16 @@ export function StatusBar() {
     return null;
   };
 
+  const conflictTitle =
+    extensionConflicts.length > 0
+      ? extensionConflicts
+          .map(
+            (c) =>
+              `*.${c.extension}: ${c.winnerLanguageId} wins over ${c.displacedLanguageIds.join(', ')}`,
+          )
+          .join('\n')
+      : undefined;
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -334,7 +345,22 @@ export function StatusBar() {
 
   return (
     <div className="flex h-4 items-center justify-between px-3 text-xs leading-4 text-text-secondary shrink-0 select-none">
-      <div className="flex h-full min-w-0 items-center gap-3">{leftContent()}</div>
+      <div className="flex h-full min-w-0 items-center gap-3">
+        {leftContent()}
+        {extensionConflicts.length > 0 ? (
+          <span
+            className="flex items-center gap-1 text-status-running truncate max-w-[220px]"
+            title={conflictTitle}
+          >
+            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-status-running" />
+            <span className="truncate">
+              {extensionConflicts.length === 1
+                ? `*.${extensionConflicts[0].extension} conflict`
+                : `${extensionConflicts.length} ext conflicts`}
+            </span>
+          </span>
+        ) : null}
+      </div>
       <div className="flex h-full shrink-0 items-center gap-3">
         {cursorPosition && (
           <span>

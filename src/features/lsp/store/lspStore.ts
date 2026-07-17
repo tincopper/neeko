@@ -5,7 +5,9 @@ import type { UnlistenFn } from '@tauri-apps/api/event';
 import {
   lspCheckServerInstalled,
   lspDetectProjectProfile,
+  lspGetExtensionConflicts,
   lspGetExtensionMap,
+  type LspExtensionConflictDto,
 } from '../api/lspApi';
 import type { ProjectLanguageProfile } from '../types';
 import { setCustomLspExtensionMap } from '../languageMap';
@@ -44,9 +46,13 @@ interface LspStoreState {
   sessions: Record<string, Record<string, LspSessionState>>;
   /** Detected profile per project path (marker scan, may have no running session). */
   profiles: Record<string, ProjectLanguageProfile>;
+  /** Extension routing conflicts from the live registry. */
+  extensionConflicts: LspExtensionConflictDto[];
   setSessionState: (projectPath: string, languageId: string, state: Partial<LspSessionState>) => void;
   removeSession: (projectPath: string, languageId: string) => void;
   setProfile: (profile: ProjectLanguageProfile) => void;
+  setExtensionConflicts: (conflicts: LspExtensionConflictDto[]) => void;
+  refreshExtensionConflicts: () => Promise<void>;
   subscribeToProject: (projectPath: string) => Promise<UnlistenFn>;
   getProjectSessions: (projectPath: string | null) => Record<string, LspSessionState>;
   /**
@@ -59,6 +65,7 @@ interface LspStoreState {
 export const useLspStore = create<LspStoreState>((set, get) => ({
   sessions: {},
   profiles: {},
+  extensionConflicts: [],
 
   setSessionState: (projectPath, languageId, state) => {
     set((prev) => ({
@@ -108,6 +115,19 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
     }));
   },
 
+  setExtensionConflicts: (conflicts) => {
+    set({ extensionConflicts: conflicts });
+  },
+
+  refreshExtensionConflicts: async () => {
+    try {
+      const conflicts = await lspGetExtensionConflicts();
+      set({ extensionConflicts: conflicts });
+    } catch {
+      // non-fatal
+    }
+  },
+
   subscribeToProject: async (projectPath) => {
     const eventName = `lsp-session-${projectPath}`;
     const unlistenSession = await listen<LspSessionStatusEventPayload>(eventName, (event) => {
@@ -153,6 +173,8 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
       } catch {
         // non-fatal
       }
+
+      void get().refreshExtensionConflicts();
 
       // Backend also runs activate_project from set_active_project; calling again
       // is idempotent (re-detect + cancel deactivate + emit).

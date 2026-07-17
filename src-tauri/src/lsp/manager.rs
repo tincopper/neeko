@@ -432,7 +432,7 @@ impl LspSession {
         // ── Initialize handshake ─────────────────────────────────────────
         let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Message>();
 
-        let init_params = serde_json::json!({
+        let mut init_params = serde_json::json!({
             "processId": std::process::id(),
             "rootUri": root_uri,
             "rootPath": project_path,
@@ -470,6 +470,11 @@ impl LspSession {
                 "version": env!("CARGO_PKG_VERSION"),
             },
         });
+        if let Some(opts) = plugin.initialization_options.clone() {
+            if let Some(obj) = init_params.as_object_mut() {
+                obj.insert("initializationOptions".into(), opts);
+            }
+        }
 
         let init_req_id = RequestId::from(1i32);
 
@@ -787,6 +792,14 @@ impl LspManager {
             .lock()
             .expect("infallible")
             .extension_map()
+    }
+
+    /// Extension conflicts from the live registry (later registration wins).
+    pub fn extension_conflicts(&self) -> Vec<super::plugin::LspExtensionConflict> {
+        self.plugin_registry
+            .lock()
+            .expect("infallible")
+            .extension_conflicts()
     }
 
     pub fn get_settings_snapshot(&self) -> LspSettings {
@@ -1393,6 +1406,7 @@ mod tests {
             root_markers: vec![],
             auto_start: LspAutoStart::OnFirstFile,
             is_custom: true,
+            initialization_options: None,
         });
         assert_eq!(
             manager.resolve_language_for_path("api/v1.proto"),
@@ -1412,6 +1426,7 @@ mod tests {
             root_markers: vec![],
             auto_start: LspAutoStart::OnFirstFile,
             is_custom: true,
+            initialization_options: None,
         });
 
         let registry = manager.plugin_registry.lock().unwrap();

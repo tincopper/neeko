@@ -165,6 +165,17 @@ export function lspGetExtensionMap(): Promise<LspExtensionMapEntryDto[]> {
   return invoke<LspExtensionMapEntryDto[]>('lsp_get_extension_map');
 }
 
+export interface LspExtensionConflictDto {
+  extension: string;
+  winnerLanguageId: string;
+  displacedLanguageIds: string[];
+}
+
+/** Extensions claimed by more than one server (winner = last registration). */
+export function lspGetExtensionConflicts(): Promise<LspExtensionConflictDto[]> {
+  return invoke<LspExtensionConflictDto[]>('lsp_get_extension_conflicts');
+}
+
 /** Reload LSP settings from config.json into the backend registry. */
 export function lspApplySettings(): Promise<LspExtensionMapEntryDto[]> {
   return invoke<LspExtensionMapEntryDto[]>('lsp_apply_settings');

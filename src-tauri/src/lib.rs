@@ -244,6 +244,7 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_detect_project_profile,
             $crate::lsp::commands::lsp_check_server_installed,
             $crate::lsp::commands::lsp_get_extension_map,
+            $crate::lsp::commands::lsp_get_extension_conflicts,
             $crate::lsp::commands::lsp_apply_settings,
             $crate::lsp::commands::lsp_resolve_language,
             $crate::settings::commands::get_system_fonts,
