@@ -173,18 +173,18 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
     return () => document.removeEventListener("mousedown", handler);
   }, [isAddMenuOpen, activeMode]);
 
-  // Check installed status when menu opens
+  // Check installed status when menu opens (in this project's environment)
   useEffect(() => {
     if (!isAddMenuOpen || agents.length === 0) return;
     const agentIds = agents.map((a) => a.id);
-      checkAgentsInstalled(agentIds)
+    checkAgentsInstalled(agentIds, projectId)
       .then((result) => {
         setInstalledMap(new Map(Object.entries(result)));
       })
       .catch((err) => {
         console.error("Failed to check agents installed:", err);
       });
-  }, [isAddMenuOpen, agents]);
+  }, [isAddMenuOpen, agents, projectId]);
 
   const loadAgents = async () => {
     try {

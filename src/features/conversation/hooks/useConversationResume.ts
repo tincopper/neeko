@@ -23,7 +23,7 @@ export function useConversationResume(projectId: string | null) {
       // Check if agent is installed
       let installed = false;
       try {
-        const installedResult = await checkAgentsInstalled([agentId]);
+        const installedResult = await checkAgentsInstalled([agentId], projectId);
         installed = installedResult[agentId] ?? false;
       } catch {
         // If check fails, assume agent is installed

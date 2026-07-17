@@ -108,9 +108,14 @@ pub fn set_project_agent(
     Ok(())
 }
 
+/// Check whether agent CLIs exist in a project's environment (Local/WSL/SSH).
+///
+/// `project_id`: when set, use that project; when omitted, use the active
+/// project; fall back to Local if none.
 #[tauri::command]
 pub async fn check_agents_installed(
     agent_ids: Option<Vec<String>>,
+    project_id: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<HashMap<String, bool>, AppError> {
     let ids = agent_ids.unwrap_or_else(|| {
@@ -120,14 +125,23 @@ pub async fn check_agents_installed(
             .map(|am| am.get_agents().iter().map(|a| a.id.clone()).collect())
             .unwrap_or_default()
     });
-    // Drop lock before await point
     let agents = state
         .agent_manager
         .lock()
         .map_err(AppError::from)?
         .get_agents()
         .to_vec();
-    // Perform async check without holding lock
+
+    let env = match project_id.as_deref() {
+        Some(pid) => state.project_environment(pid)?,
+        None => state.active_project_environment(),
+    };
+    log::info!(
+        "[agent] check_agents_installed env={:?} count={}",
+        std::mem::discriminant(&env),
+        ids.len()
+    );
+
     let mut result = HashMap::new();
     for id in &ids {
         let command = agents
@@ -135,19 +149,7 @@ pub async fn check_agents_installed(
             .find(|a| a.id == *id)
             .map(|a| a.command.clone());
         let installed = match command {
-            Some(cmd) => match state
-                .runtime
-                .spawn_blocking(move || {
-                    crate::common::utils::command::local::check_command_exists(&cmd)
-                })
-                .await
-            {
-                Ok(result) => result,
-                Err(e) => {
-                    log::error!("check_command_exists task failed: {e}");
-                    false
-                }
-            },
+            Some(cmd) => crate::core::exec::command_exists_on_project(&env, &cmd).await,
             None => false,
         };
         result.insert(id.clone(), installed);

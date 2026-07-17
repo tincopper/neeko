@@ -23,8 +23,18 @@ export function setProjectAgent(projectId: string, agentId?: string | null): Pro
   return invoke<void>('set_project_agent', { projectId, agentId });
 }
 
-export function checkAgentsInstalled(agentIds?: string[]): Promise<Record<string, boolean>> {
-  return invoke<Record<string, boolean>>('check_agents_installed', { agentIds });
+/**
+ * Check whether agent CLIs exist in the project's execution environment
+ * (Local / WSL / SSH). Prefer always passing `projectId` for the active project.
+ */
+export function checkAgentsInstalled(
+  agentIds?: string[],
+  projectId?: string | null,
+): Promise<Record<string, boolean>> {
+  return invoke<Record<string, boolean>>('check_agents_installed', {
+    agentIds,
+    projectId: projectId ?? null,
+  });
 }
 
 export function importAgentIcon(sourcePath: string): Promise<string> {

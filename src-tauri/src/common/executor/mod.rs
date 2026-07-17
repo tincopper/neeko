@@ -135,6 +135,56 @@ impl ExecChild {
     pub async fn kill(self) -> Result<(), ExecError> {
         (self.kill_fn)().await
     }
+
+    /// Take stdio handles and leave wait/kill for lifecycle management.
+    #[allow(clippy::type_complexity)]
+    pub fn take_stdio(
+        &mut self,
+    ) -> (
+        Option<BoxAsyncWrite>,
+        Option<BoxAsyncRead>,
+        Option<BoxAsyncRead>,
+    ) {
+        (
+            self.stdin.take(),
+            self.stdout.take(),
+            self.stderr.take(),
+        )
+    }
+
+    /// Consume into wait future + kill future factory (after stdio taken).
+    #[allow(clippy::type_complexity)]
+    pub fn into_wait_and_kill(
+        self,
+    ) -> (
+        Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>,
+        Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>,
+    ) {
+        (self.wait, self.kill_fn)
+    }
+}
+
+/// Options for spawning a command via [`CommandExecutor::spawn_with`].
+#[derive(Debug, Clone, Copy)]
+pub struct SpawnOptions<'a> {
+    /// Program to run (resolved per environment PATH rules).
+    pub cmd: &'a str,
+    /// Arguments.
+    pub args: &'a [&'a str],
+    /// Working directory in the target environment (host path for Local,
+    /// Linux path for WSL/SSH).
+    pub current_dir: Option<&'a str>,
+}
+
+impl<'a> SpawnOptions<'a> {
+    /// Spawn options without a working directory override.
+    pub fn new(cmd: &'a str, args: &'a [&'a str]) -> Self {
+        Self {
+            cmd,
+            args,
+            current_dir: None,
+        }
+    }
 }
 
 /// Unified command executor that abstracts over execution environments.
@@ -150,8 +200,16 @@ impl ExecChild {
 pub trait CommandExecutor: Send + Sync {
     /// Spawn a command and return a handle to the child process.
     ///
-    /// `cmd` is the program to run. Resolution follows environment-specific
-    /// PATH rules (local uses `resolve_full_path`, WSL uses WSL's own PATH,
-    /// SSH uses the remote server's PATH).
-    async fn spawn(&self, cmd: &str, args: &[&str]) -> Result<ExecChild, ExecError>;
+    /// Equivalent to [`spawn_with`](Self::spawn_with) without `current_dir`.
+    async fn spawn(&self, cmd: &str, args: &[&str]) -> Result<ExecChild, ExecError> {
+        self.spawn_with(SpawnOptions::new(cmd, args)).await
+    }
+
+    /// Spawn with optional working directory.
+    ///
+    /// PATH / login-shell rules:
+    /// * Local — host process PATH (after `core::exec_env::init_host_user_path`)
+    /// * WSL — distro login shell (`bash -lc`)
+    /// * SSH — remote login shell (`bash -lc`)
+    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError>;
 }

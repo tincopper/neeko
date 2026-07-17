@@ -66,16 +66,14 @@ async fn run_agent_remote(
 
     log::info!("[AI commit Remote] agent_cmd='{}'", agent_cmd);
 
-    let env_prefix = r#"source ~/.profile 2>/dev/null"#;
-    let full_cmd = format!("bash -ic <<'NEEKO_BASH'\n{}; {}\nNEEKO_BASH", env_prefix, actual_cmd);
-
+    // PATH/profile loading is handled by SshExecutor (login shell).
     let target = ExecTarget::Remote {
         host: host.to_string(),
         port,
         username: username.to_string(),
         auth: auth.clone(),
     };
-    match exec_on(&target, "sh", &["-c", &full_cmd]).await {
+    match exec_on(&target, "bash", &["-c", &actual_cmd]).await {
         Ok(o) => {
             log::info!("[AI commit Remote] success, stdout_len={}", o.len());
             Ok(o)
@@ -97,17 +95,22 @@ async fn run_agent_wsl(
 ) -> Result<String, AppError> {
     let sp = crate::common::utils::command::local::safe_path(wd);
     let actual_cmd = ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
-    let actual_cmd = format!(r#"source ~/.profile 2>/dev/null; {}"#, actual_cmd);
 
-    let target = ExecTarget::Wsl { distro: distro.to_string() };
-    match exec_on(&target, "bash", &["-ic", &actual_cmd]).await {
+    // PATH/profile loading is handled by WslExecutor (login shell).
+    let target = ExecTarget::Wsl {
+        distro: distro.to_string(),
+    };
+    match exec_on(&target, "bash", &["-c", &actual_cmd]).await {
         Ok(o) => {
             log::info!("[AI commit WSL] success, stdout_len={}", o.len());
             Ok(o)
         }
         Err(e) => {
             log::error!("[AI commit WSL] exec failed: {}", e);
-            Err(AppError::InvalidInput(format!("Failed to run agent in WSL: {}", e)))
+            Err(AppError::InvalidInput(format!(
+                "Failed to run agent in WSL: {}",
+                e
+            )))
         }
     }
 }

@@ -139,14 +139,19 @@ pub async fn set_active_project(
             state.lsp_manager.schedule_deactivate(old_str);
         }
     }
-    let primary_override = state
-        .project_manager
-        .lock()
-        .ok()
-        .and_then(|pm| {
-            pm.get_project(&project_id)
-                .and_then(|p| p.primary_language.clone())
-        });
+    let (primary_override, exec_target) = {
+        let pm = state.project_manager.lock().map_err(AppError::from)?;
+        let project = pm
+            .get_project(&project_id)
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?;
+        (
+            project.primary_language.clone(),
+            project.environment.to_exec_target(),
+        )
+    };
+    state
+        .lsp_manager
+        .set_project_exec_target(&new_path_str, exec_target);
     let _profile = state
         .lsp_manager
         .activate_project(&new_path_str, primary_override.as_deref());

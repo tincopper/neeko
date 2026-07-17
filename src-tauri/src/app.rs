@@ -7,19 +7,6 @@ use tauri::{Emitter, Manager};
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
 
-#[cfg(unix)]
-fn resolve_user_path() -> Option<String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-    std::process::Command::new(&shell)
-        .args(["-lc", "echo $PATH"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().lines().last().unwrap_or("").trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
 pub fn run() {
     crate::common::logger::init_logger();
     log::info!("Neeko starting");
@@ -33,23 +20,9 @@ pub fn run() {
         log::warn!("Failed to install theme files: {e}");
     }
 
-    // Unix: resolve full PATH from user's login shell to fix GUI app Agent detection issues
-    #[cfg(unix)]
-    {
-        match resolve_user_path() {
-            Some(full_path) => {
-                log::info!("Resolved user PATH from login shell, injecting into process env");
-                std::env::set_var("PATH", &full_path);
-            }
-            None => {
-                log::warn!("Failed to resolve user PATH from login shell, using default PATH");
-            }
-        }
-        log::info!(
-            "[LSP] Effective PATH after resolve: {}",
-            std::env::var("PATH").unwrap_or_default()
-        );
-    }
+    // Resolve host user PATH once (login+interactive shell) so Local executor /
+    // LSP / agent detection match the interactive terminal environment.
+    crate::core::exec_env::init_host_user_path();
 
     let skill_store: Arc<crate::skill::skill_store::SkillStore> = {
         crate::skill::central_repo::ensure_central_repo()

@@ -109,6 +109,50 @@ impl AppStateWrapper {
         Ok((Arc::new(kind), path))
     }
 
+    /// Resolve a project's execution environment (Local / WSL / SSH).
+    pub fn project_environment(
+        &self,
+        project_id: &str,
+    ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
+        let manager = self.project_manager.lock().map_err(AppError::from)?;
+        let project = manager
+            .get_project(project_id)
+            .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
+        Ok(project.environment.clone())
+    }
+
+    /// Resolve environment for the active project, or Local if none is active.
+    pub fn active_project_environment(&self) -> crate::core::project::ProjectEnvironment {
+        let id = self
+            .active_project_id
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+        match id {
+            Some(pid) => self
+                .project_environment(&pid)
+                .unwrap_or_default(),
+            None => crate::core::project::ProjectEnvironment::Local,
+        }
+    }
+
+    /// Resolve environment by project filesystem path (for LSP soft-warm etc.).
+    pub fn environment_for_project_path(
+        &self,
+        project_path: &str,
+    ) -> crate::core::project::ProjectEnvironment {
+        let manager = match self.project_manager.lock() {
+            Ok(m) => m,
+            Err(_) => return crate::core::project::ProjectEnvironment::Local,
+        };
+        manager
+            .list_projects()
+            .into_iter()
+            .find(|p| p.path.to_string_lossy() == project_path)
+            .map(|p| p.environment)
+            .unwrap_or_default()
+    }
+
     // ── Terminal dispatch ──────────────────────────────────────────────────
 
     /// Create a terminal session, routing to the correct backend based on project environment.

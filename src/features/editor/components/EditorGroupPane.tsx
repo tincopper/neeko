@@ -127,14 +127,16 @@ function EditorGroupPane({
 
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId) ?? null, [tabs, activeTabId]);
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
+  const projectIdForCheck =
+    remoteProject?.projectId ?? activeTab?.projectId ?? null;
 
   useEffect(() => {
     if (agents.length === 0) return;
     const agentIds = agents.map((a) => a.id);
-    checkAgentsInstalled(agentIds)
+    checkAgentsInstalled(agentIds, projectIdForCheck)
       .then((result) => setInstalledMap(new Map(Object.entries(result))))
       .catch(() => {});
-  }, [agents]);
+  }, [agents, projectIdForCheck]);
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {

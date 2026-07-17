@@ -140,9 +140,18 @@ export function lspDetectProjectProfile(projectPath: string): Promise<ProjectLan
   return invoke<ProjectLanguageProfile>('lsp_detect_project_profile', { projectPath });
 }
 
-/** Soft-warm: check if language server binary is installed (does not spawn). */
-export function lspCheckServerInstalled(languageId: string): Promise<boolean> {
-  return invoke<boolean>('lsp_check_server_installed', { languageId });
+/**
+ * Soft-warm: check if language server binary is available in the project's
+ * environment (Local / WSL / SSH). Does not spawn the server.
+ */
+export function lspCheckServerInstalled(
+  languageId: string,
+  projectPath?: string | null,
+): Promise<boolean> {
+  return invoke<boolean>('lsp_check_server_installed', {
+    languageId,
+    projectPath: projectPath ?? null,
+  });
 }
 
 /**

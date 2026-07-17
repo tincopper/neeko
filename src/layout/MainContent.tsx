@@ -19,10 +19,12 @@ import { useFileDrop } from "@/features/file/hooks/useFileDrop";
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
-// Module-level agent install status cache — survives component remounts.
-// check_agents_installed IPC 只在 agent 列表真正变化时触发（通过 ID 比对），
-// 不会随项目切换重复执行。
+// Module-level cache: `${projectId}::${agentId}` — status is environment-specific.
 const agentInstalledCache = new Map<string, boolean>();
+
+function agentInstallCacheKey(projectId: string | null, agentId: string): string {
+   return `${projectId ?? "__none__"}::${agentId}`;
+}
 
 function MainContent() {
    const { showToast } = useAppContext();
@@ -87,29 +89,46 @@ function MainContent() {
       useEditorStore.getState().activateTab(tabKey, tabId);
    }, [tabKey, currentProjectId]);
 
-   // Agent installed status — cached at module level, only checks new agents
-   // whose ID hasn't been seen yet. agentIdFingerprint ensures re-check
-   // only when the agent list identity changes, not on project switches.
+   // Agent installed status — re-check when agents or active project change
+   // (Local / WSL / SSH each have their own PATH).
    const agentIdFingerprint = useMemo(
       () => agents.map((a) => a.id).sort().join(','),
       [agents],
    );
-   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map(agentInstalledCache));
+   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
 
    useEffect(() => {
       const ids = agents.map((a) => a.id);
       if (ids.length === 0) return;
-      const newIds = ids.filter((id) => !agentInstalledCache.has(id));
-      if (newIds.length === 0) return;
-      checkAgentsInstalled(newIds)
+
+      const buildMap = () => {
+         const map = new Map<string, boolean>();
+         for (const id of ids) {
+            map.set(
+               id,
+               agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true,
+            );
+         }
+         return map;
+      };
+
+      const missing = ids.filter(
+         (id) => !agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
+      );
+      if (missing.length === 0) {
+         setInstalledMap(buildMap());
+         return;
+      }
+
+      checkAgentsInstalled(missing, currentProjectId)
          .then((result) => {
             for (const [id, installed] of Object.entries(result)) {
-               agentInstalledCache.set(id, installed);
+               agentInstalledCache.set(agentInstallCacheKey(currentProjectId, id), installed);
             }
-            setInstalledMap(new Map(agentInstalledCache));
+            setInstalledMap(buildMap());
          })
          .catch((err) => console.error("[MainContent] Failed to check agents installed:", err));
-   }, [agentIdFingerprint]);
+   }, [agentIdFingerprint, currentProjectId]);
 
    const handleAgentClick = useCallback(
       (agent: AgentConfig) => {

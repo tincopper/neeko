@@ -34,8 +34,11 @@ impl AgentManager {
         self.agents.retain(|a| a.id != agent_id);
     }
 
-    /// Check if agents are installed on the system.
-    /// Returns a map of agent_id -> whether the agent's command exists.
+    /// Check if agents are installed on the **host** PATH (Local only).
+    ///
+    /// Production UI must use `check_agents_installed` with a `project_id` so
+    /// WSL/SSH projects are checked in the correct environment. This method is
+    /// retained for unit tests and host-only tooling.
     pub fn check_installed(&self, agent_ids: &[String]) -> HashMap<String, bool> {
         agent_ids
             .iter()
@@ -44,7 +47,7 @@ impl AgentManager {
                     .agents
                     .iter()
                     .find(|a| a.id == *id)
-                    .map(|a| crate::common::utils::command::local::check_command_exists(&a.command))
+                    .map(|a| crate::core::exec::local_command_exists(&a.command))
                     .unwrap_or(false);
                 (id.clone(), installed)
             })

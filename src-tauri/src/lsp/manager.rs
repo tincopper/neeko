@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::process::Stdio;
 
 use crate::common::runtime::AppRuntime;
-use crate::common::utils::command::local::cmd_from_path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -208,7 +206,8 @@ struct LspSession {
     /// Current lifecycle status.
     status: LspSessionStatus,
     /// Child process handle for lifecycle management (kill on close).
-    child: Option<std::process::Child>,
+    /// Local / WSL / SSH are unified via [`super::process::LspProcess`].
+    child: Option<super::process::LspProcess>,
     /// Transport for emitting session lifecycle events to the frontend.
     transport: Arc<dyn LspTransport>,
 }
@@ -220,23 +219,25 @@ impl LspSession {
         app_handle: tauri::AppHandle,
         diag_bus: Arc<DiagnosticBus>,
         transport: Arc<dyn LspTransport>,
+        exec_target: crate::common::executor::factory::ExecTarget,
     ) -> Result<Self> {
         let language_id = plugin.language_id.to_string();
         let server_name = plugin.server_binary.to_string();
 
-        // ── Auto-install check ──────────────────────────────────────────
-        if !crate::lsp::installer::check_server_installed(&language_id) {
+        // ── Binary presence + auto-install in project environment ───────
+        if !crate::lsp::installer::check_server_installed_in(&language_id, &exec_target) {
             log::info!(
-                "[LSP] {} not found, attempting auto-install for: {}",
+                "[LSP] {} not found in project env, attempting auto-install for: {}",
                 server_name,
                 language_id
             );
-            match crate::lsp::installer::install_server(&language_id, &app_handle) {
+            match crate::lsp::installer::install_server(&language_id, &app_handle, &exec_target) {
                 Ok(true) => {
                     log::info!("[LSP] Auto-install succeeded for {}", language_id);
-                    if !crate::lsp::installer::check_server_installed(&language_id) {
+                    if !crate::lsp::installer::check_server_installed_in(&language_id, &exec_target)
+                    {
                         anyhow::bail!(
-                            "{} was installed but still not found on PATH. Try restarting Neeko.",
+                            "{} was installed but still not found in project PATH. Try restarting Neeko.",
                             server_name
                         );
                     }
@@ -260,23 +261,21 @@ impl LspSession {
             anyhow::bail!("LSP server command is empty for {}", language_id);
         }
         log::info!(
-            "[LSP] Spawning server: language={} binary={:?} project={}",
+            "[LSP] Spawning server: language={} binary={:?} project={} env={:?}",
             language_id,
             cmd,
-            project_path
+            project_path,
+            std::mem::discriminant(&exec_target)
         );
-        log::debug!(
-            "[LSP] PATH before spawn: {}",
-            std::env::var("PATH").unwrap_or_default()
-        );
-        let mut child = cmd_from_path(&cmd[0])
-            .args(&cmd[1..])
-            .current_dir(project_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .with_context(|| format!("Failed to spawn LSP server: {}", server_name))?;
+
+        let args: Vec<&str> = cmd[1..].iter().map(|s| s.as_str()).collect();
+        let mut process = super::process::spawn_lsp_process(
+            &exec_target,
+            &cmd[0],
+            &args,
+            Some(project_path),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e))?;
 
         transport.push_session_event(
             project_path,
@@ -286,19 +285,9 @@ impl LspSession {
             None,
         );
 
-        let child_stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to open LSP server stdin"))?;
-        let child_stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to open LSP server stdout"))?;
-        let child_stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to open LSP server stderr"))?;
-
+        let (child_stdin, child_stdout, child_stderr) = process
+            .take_stdio()
+            .map_err(|e| anyhow::anyhow!(e))?;
         // Channel for writing messages to server
         let (writer_tx, writer_rx): (Sender<Message>, Receiver<Message>) =
             crossbeam_channel::unbounded();
@@ -528,7 +517,7 @@ impl LspSession {
             restart_count: 0,
             server_capabilities,
             status: LspSessionStatus::Ready,
-            child: Some(child),
+            child: Some(process),
             transport,
         })
     }
@@ -564,9 +553,8 @@ impl LspSession {
 
     /// Kill the child process and wait for it to exit.
     fn kill_child(&mut self) {
-        if let Some(ref mut child) = self.child.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(mut child) = self.child.take() {
+            child.kill();
         }
     }
 
@@ -709,6 +697,8 @@ pub struct LspManager {
     deactivate_stop_secs: Mutex<u64>,
     /// Default auto-start policy for built-in languages.
     default_auto_start: Mutex<LspAutoStart>,
+    /// Project path → execution target (Local/WSL/SSH) for env-aware binary checks.
+    project_exec_targets: Mutex<HashMap<String, crate::common::executor::factory::ExecTarget>>,
 }
 
 impl LspManager {
@@ -727,7 +717,31 @@ impl LspManager {
             deactivate_gens: Arc::new(Mutex::new(HashMap::new())),
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
             default_auto_start: Mutex::new(LspAutoStart::OnFirstFile),
+            project_exec_targets: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Record which environment a project path uses (for PATH/binary checks).
+    pub fn set_project_exec_target(
+        &self,
+        project_path: &str,
+        target: crate::common::executor::factory::ExecTarget,
+    ) {
+        if let Ok(mut map) = self.project_exec_targets.lock() {
+            map.insert(project_path.to_string(), target);
+        }
+    }
+
+    /// Execution target for a project path (defaults to Local).
+    pub fn project_exec_target(
+        &self,
+        project_path: &str,
+    ) -> crate::common::executor::factory::ExecTarget {
+        self.project_exec_targets
+            .lock()
+            .ok()
+            .and_then(|m| m.get(project_path).cloned())
+            .unwrap_or(crate::common::executor::factory::ExecTarget::Local)
     }
 
     /// Convenience constructor for tests / simple call sites.
@@ -940,8 +954,16 @@ impl LspManager {
         let diag_bus = Arc::new(self.diag_bus.clone());
         let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
 
-        let session = LspSession::new(&plugin, project_path, app_handle, diag_bus, transport)
-            .map_err(|e| AppError::Lsp(e.to_string()))?;
+        let exec_target = self.project_exec_target(project_path);
+        let session = LspSession::new(
+            &plugin,
+            project_path,
+            app_handle,
+            diag_bus,
+            transport,
+            exec_target,
+        )
+        .map_err(|e| AppError::Lsp(e.to_string()))?;
 
         // Re-open any previously open documents for this session (covers restart)
         let open_count = self.reopen_documents(&key, &session);

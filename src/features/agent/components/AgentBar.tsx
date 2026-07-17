@@ -7,6 +7,8 @@ interface AgentBarProps {
   agents: AgentConfig[];
   selectedAgentId: string | null;
   compactMode?: boolean;
+  /** Project whose Local/WSL/SSH environment is used for install checks. */
+  projectId?: string | null;
   onSelectAgent: (agentId: string | null) => void;
   onShowToast?: (message: string, type?: "info" | "error") => void;
 }
@@ -46,21 +48,28 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
 );
 
 const AgentBar: React.FC<AgentBarProps> = React.memo(
-  ({ agents, selectedAgentId, compactMode = false, onSelectAgent, onShowToast }) => {
+  ({
+    agents,
+    selectedAgentId,
+    compactMode = false,
+    projectId = null,
+    onSelectAgent,
+    onShowToast,
+  }) => {
     const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
 
-    // Check agent installation status
+    // Check agent installation status in the project's environment
     useEffect(() => {
       if (agents.length === 0) return;
       const agentIds = agents.map((a) => a.id);
-      checkAgentsInstalled(agentIds)
+      checkAgentsInstalled(agentIds, projectId)
         .then((result) => {
           setInstalledMap(new Map(Object.entries(result)));
         })
         .catch((err) => {
           console.error("[AgentBar] Failed to check agents installed:", err);
         });
-    }, [agents]);
+    }, [agents, projectId]);
 
     const handleSelectAgent = useCallback(
       (agentId: string | null) => {

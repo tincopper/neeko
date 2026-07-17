@@ -26,7 +26,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use russh::client;
 use russh::client::Handle;
 
-use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError};
+use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
 use crate::common::executor::ssh_auth::Client;
@@ -121,7 +121,9 @@ impl SshExecutor {
 
 #[async_trait]
 impl CommandExecutor for SshExecutor {
-    async fn spawn(&self, cmd: &str, args: &[&str]) -> Result<ExecChild, ExecError> {
+    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+        use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
+
         let handle =
             ssh_auth::connect_and_authenticate(&self.host, self.port, &self.username, &self.auth)
                 .await
@@ -132,14 +134,21 @@ impl CommandExecutor for SshExecutor {
             .await
             .map_err(|e| ExecError::Ssh(format!("channel_open_session: {e}")))?;
 
-        let args_quoted: Vec<String> = args
-            .iter()
-            .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
-            .collect();
-        let full_cmd = format!("sh -c 'echo $$; exec {} {}'", cmd, args_quoted.join(" "));
+        // Login shell so remote profile PATH applies (nvm/fnm/cargo, …).
+        // First line prints remote PID for kill support; then exec the user command.
+        let mut body = String::new();
+        if let Some(dir) = opts.current_dir {
+            body.push_str("cd ");
+            body.push_str(&quote_shell_arg(dir));
+            body.push_str(" && ");
+        }
+        body.push_str("exec ");
+        body.push_str(&join_quoted_command(opts.cmd, opts.args));
+        let script = format!("echo $$; {body}");
+        let full_cmd = format!("bash -lc {}", quote_shell_arg(&script));
 
         channel
-            .exec(true, &full_cmd[..])
+            .exec(true, full_cmd.as_str())
             .await
             .map_err(|e| ExecError::Ssh(format!("exec: {e}")))?;
 
@@ -148,7 +157,7 @@ impl CommandExecutor for SshExecutor {
         let (stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(64);
         let (exit_tx, exit_rx) = tokio::sync::watch::channel::<Option<u32>>(None);
 
-        let (remote_pid, pid_overflow) = read_pid(&mut channel, stdout_tx.clone()).await?;
+        let (remote_pid, _pid_overflow) = read_pid(&mut channel, stdout_tx.clone()).await?;
 
         tokio::spawn(bridge_loop(
             channel, stdin_rx, stdout_tx, stderr_tx, exit_tx,

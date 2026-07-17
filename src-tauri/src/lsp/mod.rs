@@ -4,6 +4,7 @@ pub mod inflight;
 pub mod installer;
 pub mod manager;
 pub mod plugin;
+pub mod process;
 pub mod profile;
 pub mod server_request;
 pub mod symbol;

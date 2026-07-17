@@ -190,11 +190,14 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
         preloadLanguageExtension(sample);
       }
 
-      // Soft warm: binary presence (no spawn)
-      const installed = await lspCheckServerInstalled(primary.languageId);
+      // Soft warm: binary presence in this project's environment (no spawn)
+      const installed = await lspCheckServerInstalled(
+        primary.languageId,
+        projectPath,
+      );
       if (!installed) {
         console.info(
-          `[LSP] Soft-warm: ${primary.serverName} not on PATH for ${primary.languageId}`,
+          `[LSP] Soft-warm: ${primary.serverName} not on PATH for ${primary.languageId} (project=${projectPath})`,
         );
       }
     } catch (e) {

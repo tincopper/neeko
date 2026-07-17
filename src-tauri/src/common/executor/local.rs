@@ -1,7 +1,8 @@
 //! Local command executor.
 //!
 //! Spawns processes on the local machine using `tokio::process::Command`
-//! with full PATH resolution (fnm, nvm, homebrew, etc.).
+//! with host PATH resolution (process PATH after `core::exec_env` init,
+//! plus common package-manager extras via `resolve_full_path`).
 
 use std::sync::Arc;
 
@@ -10,31 +11,35 @@ use futures::FutureExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError};
+use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
 
 /// Executor that runs commands on the local machine.
 ///
 /// Binary resolution uses [`crate::common::utils::command::local::resolve_command_path`]
-/// with [`crate::common::utils::command::local::resolve_full_path`] so that
-/// tools installed via fnm, nvm, npm global, etc. are found even when the
-/// Tauri GUI process has a minimal PATH.
+/// with [`crate::common::utils::command::local::resolve_full_path`]. The resolved
+/// PATH is also injected into the child env so shebang scripts (`#!/usr/bin/env node`)
+/// keep working.
 pub struct LocalExecutor;
 
 #[async_trait]
 impl CommandExecutor for LocalExecutor {
-    async fn spawn(&self, cmd: &str, args: &[&str]) -> Result<ExecChild, ExecError> {
-        let resolved = crate::common::utils::command::local::resolve_command_path(
-            cmd,
-            &crate::common::utils::command::local::resolve_full_path(),
-        );
+    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+        let path = crate::common::utils::command::local::resolve_full_path();
+        let resolved =
+            crate::common::utils::command::local::resolve_command_path(opts.cmd, &path);
 
-        let mut child = Command::new(&resolved)
-            .args(args)
+        let mut command = Command::new(&resolved);
+        command
+            .args(opts.args)
+            .env("PATH", &path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(ExecError::Io)?;
+            .stderr(std::process::Stdio::piped());
+        if let Some(dir) = opts.current_dir {
+            command.current_dir(dir);
+        }
+
+        let mut child = command.spawn().map_err(ExecError::Io)?;
 
         let stdin: Option<BoxAsyncWrite> = child.stdin.take().map(|w| Box::pin(w) as BoxAsyncWrite);
         let stdout: Option<BoxAsyncRead> = child.stdout.take().map(|r| Box::pin(r) as BoxAsyncRead);

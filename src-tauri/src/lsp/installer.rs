@@ -1,16 +1,19 @@
 use std::sync::Mutex;
 
-use crate::common::utils::command::local::cmd_from_path;
-
 use serde::Serialize;
 use tauri::Emitter;
+
+use crate::common::executor::factory::ExecTarget;
+use crate::lsp::process::run_command_blocking;
 
 /// Language server binary name for each language.
 fn server_binary(language_id: &str) -> Option<&'static str> {
     match language_id {
         "rust" => Some("rust-analyzer"),
         "go" => Some("gopls"),
-        "typescript" | "javascript" => Some("typescript-language-server"),
+        "typescript" | "javascript" | "typescriptreact" | "javascriptreact" => {
+            Some("typescript-language-server")
+        }
         "python" => Some("pyright-langserver"),
         "java" => Some("jdtls"),
         _ => None,
@@ -23,7 +26,7 @@ fn install_command(language_id: &str) -> Option<(&'static str, &'static [&'stati
     match language_id {
         "rust" => Some(("rustup", &["rustup", "component", "add", "rust-analyzer"])),
         "go" => Some(("go", &["go", "install", "golang.org/x/tools/gopls@latest"])),
-        "typescript" | "javascript" => Some((
+        "typescript" | "javascript" | "typescriptreact" | "javascriptreact" => Some((
             "npm",
             &["npm", "install", "-g", "typescript-language-server"],
         )),
@@ -55,8 +58,8 @@ fn emit_progress(app_handle: &tauri::AppHandle, language_id: &str, phase: &str, 
     }
 }
 
-/// Check whether the server binary for the given language ID exists on PATH.
-pub fn check_server_installed(language_id: &str) -> bool {
+/// Check whether the server binary exists in the given execution environment.
+pub fn check_server_installed_in(language_id: &str, target: &ExecTarget) -> bool {
     let binary = match server_binary(language_id) {
         Some(b) => b,
         None => {
@@ -67,21 +70,28 @@ pub fn check_server_installed(language_id: &str) -> bool {
             return false;
         }
     };
-    let found = crate::common::utils::command::local::check_command_exists(binary);
+    let found = crate::core::exec::command_exists_blocking(target, binary);
     log::info!(
-        "[LSP][installer] check_server_installed: language={} binary={} found={}",
+        "[LSP][installer] check_server_installed: language={} binary={} target={:?} found={}",
         language_id,
         binary,
+        std::mem::discriminant(target),
         found,
     );
     found
 }
 
-/// Try to auto-install the LSP server for the given language.
-/// Returns Ok(true) if installed successfully, Ok(false) if auto-install is
-/// not supported for this language, Err if installation was attempted but failed.
-pub fn install_server(language_id: &str, app_handle: &tauri::AppHandle) -> Result<bool, String> {
-    // Claim install lock; release on every exit path
+/// Host-local check (convenience). Prefer [`check_server_installed_in`].
+pub fn check_server_installed(language_id: &str) -> bool {
+    check_server_installed_in(language_id, &ExecTarget::Local)
+}
+
+/// Try to auto-install the LSP server **in the project's environment**.
+pub fn install_server(
+    language_id: &str,
+    app_handle: &tauri::AppHandle,
+    target: &ExecTarget,
+) -> Result<bool, String> {
     {
         let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
         if let Some(ref current) = *in_progress {
@@ -93,9 +103,8 @@ pub fn install_server(language_id: &str, app_handle: &tauri::AppHandle) -> Resul
         *in_progress = Some(language_id.to_string());
     }
 
-    let result = install_server_impl(language_id, app_handle);
+    let result = install_server_impl(language_id, app_handle, target);
 
-    // Release install lock
     {
         let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
         *in_progress = None;
@@ -104,7 +113,11 @@ pub fn install_server(language_id: &str, app_handle: &tauri::AppHandle) -> Resul
     result
 }
 
-fn install_server_impl(language_id: &str, app_handle: &tauri::AppHandle) -> Result<bool, String> {
+fn install_server_impl(
+    language_id: &str,
+    app_handle: &tauri::AppHandle,
+    target: &ExecTarget,
+) -> Result<bool, String> {
     let bin = match server_binary(language_id) {
         Some(b) => b,
         None => return Ok(false),
@@ -122,10 +135,9 @@ fn install_server_impl(language_id: &str, app_handle: &tauri::AppHandle) -> Resu
         &format!("Installing {}...", bin),
     );
 
-    // Check prerequisite tool exists
-    if !crate::common::utils::command::local::check_command_exists(prerequisite) {
+    if !crate::core::exec::command_exists_blocking(target, prerequisite) {
         let msg = format!(
-            "Cannot install {}: '{}' not found on PATH. Install it first.",
+            "Cannot install {}: '{}' not found on project PATH. Install it first.",
             bin, prerequisite
         );
         log::warn!("[LSP] {}", msg);
@@ -133,22 +145,29 @@ fn install_server_impl(language_id: &str, app_handle: &tauri::AppHandle) -> Resu
         return Err(msg);
     }
 
-    log::info!("[LSP] Installing {} via: {:?}", bin, cmd_and_args);
+    log::info!(
+        "[LSP] Installing {} via {:?} in project env: {:?}",
+        bin,
+        cmd_and_args,
+        std::mem::discriminant(target)
+    );
 
-    let result = cmd_from_path(cmd_and_args[0])
-        .args(&cmd_and_args[1..])
-        .output();
-
-    match result {
-        Ok(output) if output.status.success() => {
+    let program = cmd_and_args[0];
+    let args: Vec<&str> = cmd_and_args[1..].to_vec();
+    match run_command_blocking(target, program, &args) {
+        Ok((0, _, _)) => {
             let msg = format!("{} installed successfully", bin);
             log::info!("[LSP] {}", msg);
             emit_progress(app_handle, language_id, "done", &msg);
             Ok(true)
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let msg = format!("Failed to install {}: {}", bin, stderr);
+        Ok((code, stdout, stderr)) => {
+            let detail = if !stderr.trim().is_empty() {
+                stderr.trim().to_string()
+            } else {
+                stdout.trim().to_string()
+            };
+            let msg = format!("Failed to install {} (exit {}): {}", bin, code, detail);
             log::error!("[LSP] {}", msg);
             emit_progress(app_handle, language_id, "error", &msg);
             Err(msg)

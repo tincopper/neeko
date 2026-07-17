@@ -239,7 +239,7 @@ pub fn lsp_detect_project_profile(
     project_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<crate::lsp::ProjectLanguageProfile, AppError> {
-    let primary_override = state
+    let (primary_override, exec_target) = state
         .project_manager
         .lock()
         .ok()
@@ -247,18 +247,45 @@ pub fn lsp_detect_project_profile(
             pm.list_projects()
                 .into_iter()
                 .find(|p| p.path.to_string_lossy() == project_path)
-                .and_then(|p| p.primary_language)
-        });
+                .map(|p| (p.primary_language, p.environment.to_exec_target()))
+        })
+        .unwrap_or((
+            None,
+            crate::common::executor::factory::ExecTarget::Local,
+        ));
+    state
+        .lsp_manager
+        .set_project_exec_target(&project_path, exec_target);
     Ok(state
         .lsp_manager
         .activate_project(&project_path, primary_override.as_deref()))
 }
 
-/// Soft-warm check: whether the language server binary is on PATH.
-/// Does not spawn the server (autoStart=onFirstFile).
+/// Soft-warm check: whether the language server binary is available in the
+/// project's execution environment (Local / WSL / SSH). Does not spawn the server.
+///
+/// `project_path` resolves Local/WSL/SSH; when omitted, uses the active project.
 #[tauri::command]
-pub fn lsp_check_server_installed(language_id: String) -> bool {
-    crate::lsp::installer::check_server_installed(&language_id)
+pub async fn lsp_check_server_installed(
+    language_id: String,
+    project_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<bool, AppError> {
+    let env = match project_path.as_deref() {
+        Some(path) => {
+            let env = state.environment_for_project_path(path);
+            state
+                .lsp_manager
+                .set_project_exec_target(path, env.to_exec_target());
+            env
+        }
+        None => state.active_project_environment(),
+    };
+    let target = env.to_exec_target();
+    Ok(crate::lsp::installer::check_server_installed_in(
+        &language_id,
+        &target,
+    ))
 }
 
 /// Full extension → language map (built-in + custom) for the frontend router.

@@ -33,44 +33,50 @@ pub fn exec_detached(program: &str) -> Command {
     cmd
 }
 
-/// Create a Command with full PATH resolution.
+/// Create a Command with full PATH resolution and PATH injected into the child.
 ///
-/// Resolves `program` to an absolute path by merging the current process PATH
-/// with common user shell paths (fnm, nvm, homebrew, etc.), then delegates to
-/// [`exec`] for platform-specific flags. Use this for binaries installed via
-/// package managers (npm, pip, rustup, go) that may not be on the Tauri GUI
-/// process's default PATH.
-///
-/// Resolution is done via [`resolve_command_path`] + [`resolve_full_path`].
+/// Prefer [`crate::common::executor`] / `core::exec` for new business code.
+/// This helper remains for sync local spawns (e.g. long-lived LSP stdio) that
+/// share the same PATH rules as [`crate::common::executor::local::LocalExecutor`].
 pub fn cmd_from_path(program: &str) -> Command {
-    let resolved = resolve_command_path(program, &resolve_full_path());
-    exec(&resolved)
+    let path = resolve_full_path();
+    let resolved = resolve_command_path(program, &path);
+    let mut cmd = exec(&resolved);
+    cmd.env("PATH", path);
+    cmd
 }
 
-/// Check if a command exists on the system PATH.
+/// Check if a command exists on the (process + extras) PATH.
+///
+/// Uses the same PATH source as [`cmd_from_path`] / LocalExecutor — not a
+/// separate interactive shell probe — so detection and spawn stay consistent.
 pub fn check_command_exists(command: &str) -> bool {
-    if cfg!(target_os = "windows") {
-        which::which(command).is_ok()
-    } else {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string());
-        let interactive_path = Command::new(&shell)
-            .args(["-i", "-c", "echo $PATH"])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .filter(|p| !p.is_empty());
+    command_exists_on_path(command, &resolve_full_path())
+}
 
-        let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
-        match interactive_path {
-            Some(path) => which::which_in(command, Some(path), cwd.as_path()).is_ok(),
-            None => which::which(command).is_ok(),
-        }
-    }
+/// Whether `command` is found under the given PATH string.
+pub fn command_exists_on_path(command: &str, path_env: &str) -> bool {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
+    which::which_in(command, Some(path_env), cwd.as_path()).is_ok()
 }
 
 /// Escape single quotes in a path for safe shell interpolation.
 pub fn safe_path(path: &str) -> String {
     path.replace('\'', "'\\''")
+}
+
+/// Single-quote a string for POSIX shells (`'foo'\''bar'` style via embedding).
+pub fn quote_shell_arg(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Build a POSIX argv string with each argument shell-quoted.
+pub fn join_quoted_command(cmd: &str, args: &[&str]) -> String {
+    std::iter::once(cmd)
+        .chain(args.iter().copied())
+        .map(quote_shell_arg)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Resolve a command to its full executable path using where.exe (Windows) or which (Unix).
@@ -160,14 +166,46 @@ pub fn resolve_full_path() -> String {
         let home = std::env::var("HOME").unwrap_or_default();
         let extra = [
             format!("{}/.local/bin", home),
+            format!("{}/.cargo/bin", home),
             format!("{}/.nvm/versions/node/current/bin", home),
+            // fnm default aliases (best-effort fallback when shell init missed)
+            format!("{}/.local/share/fnm/aliases/default/bin", home),
             "/usr/local/bin".to_string(),
             "/opt/homebrew/bin".to_string(),
         ];
-        let mut parts: Vec<&str> = current.split(':').collect();
+        let mut parts: Vec<String> = current
+            .split(':')
+            .filter(|p| !p.is_empty())
+            .map(|s| s.to_string())
+            .collect();
         for e in &extra {
-            if !parts.contains(&e.as_str()) {
-                parts.push(e);
+            if !parts.iter().any(|p| p == e) {
+                parts.push(e.clone());
+            }
+        }
+        // Append latest fnm node-versions/*/installation/bin if present
+        let fnm_versions = std::path::PathBuf::from(&home)
+            .join(".local/share/fnm/node-versions");
+        if let Ok(entries) = std::fs::read_dir(&fnm_versions) {
+            let mut version_bins: Vec<String> = entries
+                .flatten()
+                .filter_map(|e| {
+                    let bin = e.path().join("installation/bin");
+                    if bin.is_dir() {
+                        Some(bin.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            version_bins.sort();
+            // Prefer newer versions last so earlier PATH entries win if already present;
+            // we only add missing ones — put highest sort last so they don't override
+            // an already-selected node from process PATH.
+            for b in version_bins {
+                if !parts.iter().any(|p| p == &b) {
+                    parts.push(b);
+                }
             }
         }
         parts.join(":")
@@ -251,5 +289,19 @@ mod tests {
     fn should_escape_single_quotes_in_path() {
         assert_eq!(safe_path("/path/to/file"), "/path/to/file");
         assert_eq!(safe_path("/path/it's/file"), "/path/it'\\''s/file");
+    }
+
+    #[test]
+    fn should_quote_shell_args() {
+        assert_eq!(quote_shell_arg("foo"), "'foo'");
+        assert_eq!(quote_shell_arg("a'b"), "'a'\\''b'");
+    }
+
+    #[test]
+    fn should_join_quoted_command() {
+        assert_eq!(
+            join_quoted_command("echo", &["hello world"]),
+            "'echo' 'hello world'"
+        );
     }
 }
