@@ -42,16 +42,60 @@ const AUTO_START_OPTIONS: { value: LspAutoStart; label: string }[] = [
   { value: 'manual', label: 'Manual' },
 ];
 
-function newServerDraft(): CustomLspServerConfig {
+/** Form-local draft: list fields stay as raw strings so spaces/commas can be typed. */
+interface ServerDraftForm {
+  id: string;
+  languageId: string;
+  displayName: string;
+  /** Free text, e.g. "buf beta lsp" — split on save */
+  commandText: string;
+  /** Free text, e.g. "proto, pb" — split on save */
+  extensionsText: string;
+  /** Free text, e.g. "buf.yaml, .foorc" — split on save */
+  rootMarkersText: string;
+  autoStart: LspAutoStart;
+}
+
+function emptyDraftForm(): ServerDraftForm {
   return {
     id: crypto.randomUUID(),
     languageId: '',
     displayName: '',
-    command: [],
-    file_extensions: [],
-    rootMarkers: [],
+    commandText: '',
+    extensionsText: '',
+    rootMarkersText: '',
     autoStart: 'onFirstFile',
   };
+}
+
+function serverToDraftForm(s: CustomLspServerConfig): ServerDraftForm {
+  return {
+    id: s.id,
+    languageId: s.languageId,
+    displayName: s.displayName ?? '',
+    commandText: s.command.join(' '),
+    extensionsText: s.file_extensions.join(', '),
+    rootMarkersText: (s.rootMarkers ?? []).join(', '),
+    autoStart: s.autoStart ?? 'onFirstFile',
+  };
+}
+
+/** Split command line on whitespace after trim. */
+function parseCommandText(text: string): string[] {
+  return text.trim().split(/\s+/).filter(Boolean);
+}
+
+/** Split comma-separated list (spaces around items allowed). */
+function parseCommaList(text: string): string[] {
+  return text
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+/** Extensions: comma list, strip leading dots, lowercase. */
+function parseExtensionsText(text: string): string[] {
+  return parseCommaList(text).map((e) => e.replace(/^\./, '').toLowerCase()).filter(Boolean);
 }
 
 async function refreshFrontendExtensionMap(): Promise<void> {
@@ -93,15 +137,20 @@ function SettingRow({
 
 function Field({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5 w-full">
       <span className="text-[0.79em] text-text-muted font-medium">{label}</span>
       {children}
+      {hint ? (
+        <span className="text-[0.72em] text-text-muted/80 leading-snug">{hint}</span>
+      ) : null}
     </label>
   );
 }
@@ -112,7 +161,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
     ...(config.lsp ?? {}),
     customServers: config.lsp?.customServers ?? [],
   };
-  const [draft, setDraft] = useState<CustomLspServerConfig | null>(null);
+  const [draft, setDraft] = useState<ServerDraftForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -145,11 +194,11 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
   const handleSaveDraft = async () => {
     if (!draft) return;
     setError(null);
+
     const languageId = draft.languageId.trim();
-    const command = draft.command.map((c) => c.trim()).filter(Boolean);
-    const file_extensions = draft.file_extensions
-      .map((e) => e.replace(/^\./, '').trim().toLowerCase())
-      .filter(Boolean);
+    const command = parseCommandText(draft.commandText);
+    const file_extensions = parseExtensionsText(draft.extensionsText);
+    const rootMarkers = parseCommaList(draft.rootMarkersText);
 
     if (!languageId) {
       setError('Language ID is required');
@@ -165,11 +214,13 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
     }
 
     const entry: CustomLspServerConfig = {
-      ...draft,
+      id: draft.id,
       languageId,
+      displayName: draft.displayName.trim() || undefined,
       command,
       file_extensions,
-      rootMarkers: (draft.rootMarkers ?? []).map((m) => m.trim()).filter(Boolean),
+      rootMarkers,
+      autoStart: draft.autoStart,
     };
 
     const others = lsp.customServers.filter((s) => s.id !== entry.id);
@@ -198,7 +249,6 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
       </p>
       <Separator className="mb-1" />
 
-      {/* ── Startup & lifecycle ─────────────────────────────────────── */}
       <SettingRow
         title="Auto-start"
         description="When to launch language servers for a project."
@@ -254,7 +304,6 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
         </div>
       </SettingRow>
 
-      {/* ── Custom servers ──────────────────────────────────────────── */}
       <div className="flex flex-col items-start gap-3 py-3 mt-2 border-b border-white/[0.04] last:border-b-0">
         <div className="flex w-full items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -271,7 +320,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
             variant="secondary"
             size="sm"
             disabled={saving || draft != null}
-            onClick={() => setDraft(newServerDraft())}
+            onClick={() => setDraft(emptyDraftForm())}
           >
             Add server
           </Button>
@@ -308,7 +357,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                 <button
                   type="button"
                   className="bg-none border-none text-text-muted cursor-pointer text-[0.79em] py-0.5 px-1.5 rounded shrink-0 hover:text-text-primary hover:bg-bg-hover"
-                  onClick={() => setDraft({ ...s })}
+                  onClick={() => setDraft(serverToDraftForm(s))}
                   title="Edit"
                 >
                   Edit
@@ -328,7 +377,8 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
 
         {lsp.customServers.length === 0 && !draft && (
           <div className="w-full rounded border border-dashed border-border/80 bg-bg-primary/40 px-3 py-4 text-center text-[0.79em] text-text-muted">
-            No custom servers yet. Example: bind <span className="font-mono text-text-secondary">proto</span> to{' '}
+            No custom servers yet. Example: bind{' '}
+            <span className="font-mono text-text-secondary">proto</span> to{' '}
             <span className="font-mono text-text-secondary">buf beta lsp</span>.
           </div>
         )}
@@ -346,70 +396,66 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                   onChange={(e) => setDraft({ ...draft, languageId: e.target.value })}
                   placeholder="protobuf"
                   className="h-9 py-1.5 text-[0.86em]"
+                  autoComplete="off"
                 />
               </Field>
               <Field label="Display name">
                 <Input
-                  value={draft.displayName ?? ''}
+                  value={draft.displayName}
                   onChange={(e) => setDraft({ ...draft, displayName: e.target.value })}
                   placeholder="Buf LSP"
                   className="h-9 py-1.5 text-[0.86em] !font-sans"
+                  autoComplete="off"
                 />
               </Field>
             </div>
 
-            <Field label="Command">
+            <Field
+              label="Command"
+              hint="Space-separated arguments, e.g. buf beta lsp or gopls"
+            >
               <Input
-                value={draft.command.join(' ')}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    command: e.target.value.split(/\s+/).filter(Boolean),
-                  })
-                }
+                value={draft.commandText}
+                onChange={(e) => setDraft({ ...draft, commandText: e.target.value })}
                 placeholder="buf beta lsp"
                 className="h-9 py-1.5 text-[0.86em]"
+                autoComplete="off"
+                spellCheck={false}
               />
             </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="File extensions">
+              <Field
+                label="File extensions"
+                hint="Comma-separated, without dots, e.g. proto, pb"
+              >
                 <Input
-                  value={draft.file_extensions.join(', ')}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      file_extensions: e.target.value
-                        .split(/[,\s]+/)
-                        .map((x) => x.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder="proto"
+                  value={draft.extensionsText}
+                  onChange={(e) => setDraft({ ...draft, extensionsText: e.target.value })}
+                  placeholder="proto, pb"
                   className="h-9 py-1.5 text-[0.86em] !font-sans"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </Field>
-              <Field label="Root markers (optional)">
+              <Field
+                label="Root markers (optional)"
+                hint="Comma-separated filenames, e.g. buf.yaml, go.mod"
+              >
                 <Input
-                  value={(draft.rootMarkers ?? []).join(', ')}
-                  onChange={(e) =>
-                    setDraft({
-                      ...draft,
-                      rootMarkers: e.target.value
-                        .split(/[,\s]+/)
-                        .map((x) => x.trim())
-                        .filter(Boolean),
-                    })
-                  }
+                  value={draft.rootMarkersText}
+                  onChange={(e) => setDraft({ ...draft, rootMarkersText: e.target.value })}
                   placeholder="buf.yaml"
                   className="h-9 py-1.5 text-[0.86em] !font-sans"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </Field>
             </div>
 
             <Field label="Auto-start">
               <Select
-                value={draft.autoStart ?? 'onFirstFile'}
+                value={draft.autoStart}
                 onValueChange={(value) =>
                   setDraft({ ...draft, autoStart: value as LspAutoStart })
                 }
