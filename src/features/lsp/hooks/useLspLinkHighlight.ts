@@ -5,8 +5,13 @@ import { StateEffect, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 
 import { lspGoToDefinition } from '../api/lspApi';
+import { resolveLspPositionFromOffset } from '../position';
+import { createDebouncedLatestRunner } from '../requestTracker';
 import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
 import { IS_MACOS } from '@/shared/utils/platform';
+
+/** Debounce for Cmd/Ctrl+hover definition probes (reduces gopls flood). */
+const LINK_HIGHLIGHT_DEBOUNCE_MS = 150;
 
 const setLinkDeco = StateEffect.define<DecorationSet>();
 
@@ -38,12 +43,26 @@ const linkTheme = EditorView.theme({
   },
 });
 
+type LinkProbeArg = {
+  clientX: number;
+  clientY: number;
+  view: EditorView;
+};
+
+type LinkProbeHit = {
+  view: EditorView;
+  from: number;
+  to: number;
+};
+
 /**
  * CodeMirror extension that shows a clickable underline when
  * Cmd/Ctrl is held and the cursor hovers over a navigable symbol.
  *
- * Works by sending a textDocument/definition request on hover
- * and underlining the word if the server responds with a location.
+ * Flood control:
+ * - 150ms debounce on mousemove
+ * - latest-wins: only the newest probe may update decorations
+ * - backend cancels prior textDocument/definition via $/cancelRequest
  */
 export function useLspLinkHighlightExtension(
   projectPath: string | null,
@@ -53,8 +72,9 @@ export function useLspLinkHighlightExtension(
   return useMemo(() => {
     if (!projectPath || !languageId || !uri) return [];
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let requestSeq = 0;
+    const runner = createDebouncedLatestRunner<LinkProbeArg>({
+      debounceMs: LINK_HIGHLIGHT_DEBOUNCE_MS,
+    });
 
     function applyHighlight(view: EditorView, from: number, to: number) {
       const deco = Decoration.mark({ class: 'cm-lsp-link' });
@@ -72,62 +92,67 @@ export function useLspLinkHighlightExtension(
       linkTheme,
       EditorView.domEventHandlers({
         mousemove(event, view) {
-          if (debounceTimer) clearTimeout(debounceTimer);
-
           const modKey = IS_MACOS ? event.metaKey : event.ctrlKey;
           if (!modKey) {
-            requestSeq++;
+            runner.cancel();
             clearHighlight(view);
             return;
           }
 
-          const seq = ++requestSeq;
+          void runner
+            .schedule(
+              { clientX: event.clientX, clientY: event.clientY, view },
+              async ({ clientX, clientY, view: v }): Promise<LinkProbeHit | false> => {
+                const pos = v.posAtCoords({ x: clientX, y: clientY });
+                const lspPos = resolveLspPositionFromOffset(pos, (p) =>
+                  v.state.doc.lineAt(p),
+                );
+                if (pos === null || !lspPos) return false;
 
-          debounceTimer = setTimeout(async () => {
-            debounceTimer = null;
-            if (seq !== requestSeq) return;
+                const word = v.state.wordAt(pos);
+                if (!word) return false;
 
-            const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
-            if (pos === null) return;
+                const key = definitionCacheKey(
+                  projectPath,
+                  uri,
+                  lspPos.line,
+                  lspPos.character,
+                );
+                const wrapped = await getOrFetchDefinition(key, () =>
+                  lspGoToDefinition(
+                    projectPath!,
+                    languageId!,
+                    uri,
+                    lspPos.line,
+                    lspPos.character,
+                  ),
+                );
 
-            const word = view.state.wordAt(pos);
-            if (!word) return;
+                if (!wrapped?.lspResult) return false;
 
-            const lineObj = view.state.doc.lineAt(pos);
-            const line = lineObj.number - 1;
-            const character = pos - lineObj.from;
-
-            try {
-              const key = definitionCacheKey(projectPath, uri, line, character);
-              const wrapped = await getOrFetchDefinition(key, () =>
-                lspGoToDefinition(projectPath!, languageId!, uri, line, character),
-              );
-
-              if (seq !== requestSeq) return;
-
-              if (wrapped && wrapped.lspResult) {
-                const currentWord = view.state.wordAt(pos);
-                if (currentWord) {
-                  applyHighlight(view, currentWord.from, currentWord.to);
-                } else {
-                  applyHighlight(view, word.from, word.to);
-                }
-              } else {
+                const currentWord = v.state.wordAt(pos);
+                return {
+                  view: v,
+                  from: currentWord?.from ?? word.from,
+                  to: currentWord?.to ?? word.to,
+                };
+              },
+            )
+            .then((result) => {
+              // null = superseded/cancelled — leave existing decorations alone
+              if (result === null) return;
+              if (result === false) {
                 clearHighlight(view);
+                return;
               }
-            } catch {
-              if (seq === requestSeq) {
-                clearHighlight(view);
-              }
-            }
-          }, 50);
+              applyHighlight(result.view, result.from, result.to);
+            })
+            .catch(() => {
+              // ignore — a newer schedule may already be in flight
+            });
         },
         mouseleave(_event, view) {
-          if (debounceTimer) {
-            clearTimeout(debounceTimer);
-            debounceTimer = null;
-          }
-          requestSeq++;
+          runner.cancel();
           clearHighlight(view);
         },
       }),

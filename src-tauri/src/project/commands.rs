@@ -95,13 +95,18 @@ pub async fn set_active_project(
         return Ok(());
     }
 
-    // 校验新 id 存在于 project_manager
-    let new_path = {
+    // 校验新 id 存在于 project_manager；同时取出旧项目 path（LSP 回收用）
+    let (new_path, old_path) = {
         let pm = state.project_manager.lock().map_err(AppError::from)?;
-        pm.get_project(&project_id)
+        let new_path = pm
+            .get_project(&project_id)
             .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
             .path
-            .clone()
+            .clone();
+        let old_path = current.as_ref().and_then(|id| {
+            pm.get_project(id).map(|p| p.path.clone())
+        });
+        (new_path, old_path)
     };
 
     // unwatch 旧激活项目（轻量，保留在主线程）
@@ -114,14 +119,25 @@ pub async fn set_active_project(
     // → 移入 spawn_blocking，避免阻塞当前 tokio worker 与 WebView IPC 通道
     let watcher_manager = state.watcher_manager.clone();
     let pid = project_id.clone();
+    let path_for_watch = new_path.clone();
     tokio::task::spawn_blocking(move || {
-        watcher_manager.watch(pid, new_path, app_handle);
+        watcher_manager.watch(pid, path_for_watch, app_handle);
     })
     .await
     .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
 
     // 更新 active_project_id
     *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id);
+
+    // LSP: schedule 30min stop for previous project; detect + soft-warm profile for new
+    let new_path_str = new_path.to_string_lossy().to_string();
+    if let Some(old) = old_path {
+        let old_str = old.to_string_lossy().to_string();
+        if old_str != new_path_str {
+            state.lsp_manager.schedule_deactivate(old_str);
+        }
+    }
+    let _profile = state.lsp_manager.activate_project(&new_path_str);
 
     Ok(())
 }

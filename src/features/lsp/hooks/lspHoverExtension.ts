@@ -6,6 +6,8 @@ import { hoverTooltip } from '@codemirror/view';
 import { useBrowserStore } from '@/features/browser/store';
 import { useDockStore } from '@/shared/store/dockStore';
 
+import { LatestRequestTracker } from '../requestTracker';
+
 /**
  * Convert an LSP `{line, character}` position to a CodeMirror document
  * offset. Equivalent to `fromPosition` in @codemirror/lsp-client/src/pos.ts
@@ -15,6 +17,9 @@ function offsetFromPos(doc: Text, pos: { line: number; character: number }): num
   const line = doc.line(pos.line + 1);
   return line.from + pos.character;
 }
+
+/** Module-level tracker: only the newest hover response updates the tooltip. */
+const hoverTracker = new LatestRequestTracker();
 
 /**
  * Custom hover tooltip extension that replaces @codemirror/lsp-client's
@@ -31,10 +36,15 @@ function offsetFromPos(doc: Text, pos: { line: number; character: number }): num
  * 3. Links in hover tooltips open in the app's built-in browser panel
  *    instead of as bare `<a>` tags. We attach a delegated click handler
  *    that intercepts `<a>` clicks and navigates the browser panel.
+ *
+ * 4. Flood control: only the latest hover generation may produce a tooltip
+ *    (stale in-flight responses are dropped). Backend also cancels prior
+ *    textDocument/hover via $/cancelRequest.
  */
 export function createLspHoverTooltips(config: { hoverTime?: number } = {}): Extension {
   return hoverTooltip(lspTooltipSource, {
     hideOn: (tr) => tr.docChanged,
+    // Slightly higher than CodeMirror default to cut mousemove noise
     hoverTime: config.hoverTime ?? 300,
   });
 }
@@ -56,8 +66,13 @@ function hoverRequest(plugin: LSPPlugin, pos: number) {
 function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise<Tooltip | null> {
   const plugin = LSPPlugin.get(view);
   if (!plugin) return Promise.resolve(null);
-  return hoverRequest(plugin, pos).then((result: any) => {
-    if (!result) return null;
+
+  const token = hoverTracker.next();
+
+  return hoverTracker.runIfCurrent(token, () => hoverRequest(plugin, pos)).then((result: any) => {
+    // Stale or empty — do not show a tooltip
+    if (!result || !hoverTracker.isCurrent(token)) return null;
+
     const tooltip: Tooltip = {
       pos: result.range ? offsetFromPos(view.state.doc, result.range.start) : pos,
       end: result.range ? offsetFromPos(view.state.doc, result.range.end) : pos,

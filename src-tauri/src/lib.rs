@@ -240,6 +240,8 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_stop_session,
             $crate::lsp::commands::lsp_go_to_definition,
             $crate::lsp::commands::lsp_transport,
+            $crate::lsp::commands::lsp_detect_project_profile,
+            $crate::lsp::commands::lsp_check_server_installed,
             $crate::settings::commands::get_system_fonts,
         ]
     };

@@ -27,6 +27,7 @@ import { fromFileUri, getLspLanguageId, toFileUri } from '@/features/lsp/languag
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
+import { resolveLspPositionFromOffset } from '@/features/lsp/position';
 import type { LspLocation } from '@/features/lsp/types';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
@@ -38,7 +39,13 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { useEditorStore } from '@/shared/store';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
-import { getLanguageExtension, createCmTheme, isMarkdownFile } from '@/shared/utils/codemirror';
+import {
+  getCachedLanguageExtension,
+  getLanguageExtension,
+  preloadLanguageExtension,
+  createCmTheme,
+  isMarkdownFile,
+} from '@/shared/utils/codemirror';
 import { MarkdownPreview } from '@/ui';
 
 import { useFileActionsContext } from '../FileActionsContext';
@@ -196,8 +203,10 @@ function FileEditor({
 }: FileEditorProps) {
   const [previewMode, setPreviewMode] = useState<PreviewMode>('preview');
   const [isSaving, setIsSaving] = useState(false);
+  // Prefer sync cache so cross-file go-to-definition mounts CodeMirror once
+  // with language highlighting already applied (avoids expensive reconfigure).
   const [langExtension, setLangExtension] = useState<import('@codemirror/state').Extension | null>(
-    null,
+    () => getCachedLanguageExtension(tab.filePath),
   );
   // CodeMirror EditorView 引用 + 是否已恢复过位置
   const editorViewRef = useRef<EditorView | null>(null);
@@ -250,9 +259,14 @@ function FileEditor({
     return lastSlash >= 0 ? absFilePath.substring(0, lastSlash) : projectPath.replace(/\\/g, '/');
   }, [projectPath, tab.filePath]);
 
-  // Load language extension lazily
+  // Load language extension lazily (instant when cache is warm from preload)
   useEffect(() => {
     let cancelled = false;
+    const cached = getCachedLanguageExtension(tab.filePath);
+    if (cached) {
+      setLangExtension(cached);
+      return;
+    }
     getLanguageExtension(tab.filePath).then((ext) => {
       if (!cancelled) setLangExtension(ext);
     });
@@ -353,6 +367,7 @@ function FileEditor({
       currentFilePath: string,
       preloadedContent?: string | null,
     ) => {
+      const tNav = performance.now();
       const targetPath = fromFileUri(location.uri);
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
@@ -372,53 +387,69 @@ function FileEditor({
         } catch (e) {
           console.warn('[LSP] Navigation within file failed:', e);
         }
-      } else {
-        // Cross-file – set pending cursor position, then open/activate target tab
-        const targetTabId = getTabId(tKey, targetPath);
-        const existing = useEditorStore.getState().tabs[tKey];
-        useEditorStore.getState().setPendingNavigateTarget({
-          tabKey: tKey,
-          tabId: targetTabId,
-          line: targetLine + 1,
-          col: targetChar,
-        });
-        if (existing?.tabs.some((t) => t.id === targetTabId)) {
-          console.log('[perf] navigate: cross-file existing-tab');
-          useEditorStore.getState().activateTab(tKey, targetTabId);
-        } else {
-          console.log(`[perf] navigate: cross-file new-tab content=${preloadedContent ? 'preloaded' : 'ipc-fallback'}`);
-          try {
-            const content =
-              preloadedContent
-                ? {
-                    path: targetPath,
-                    content: preloadedContent,
-                    size: preloadedContent.length,
-                    is_binary: false,
-                  }
-                : await readFileContent(
-                    projId,
-                    targetPath,
-                  );
-            const newTab: Tab = {
-              id: targetTabId,
-              projectId: projId,
-              title: getFileName(targetPath),
-              order: 0,
-              data: {
-                kind: 'file' as const,
-                filePath: targetPath,
-                fileName: getFileName(targetPath),
-                content,
-                isDirty: false,
-              },
-            };
-            useEditorStore.getState().addTab(tKey, newTab);
-          } catch (e) {
-            useEditorStore.getState().setPendingNavigateTarget(null);
-            console.error('[LSP] Failed to open definition target:', e);
-          }
-        }
+        return;
+      }
+
+      // Cross-file – warm language pack before mounting so CM configures once
+      const langWarm = getLanguageExtension(targetPath);
+      const targetTabId = getTabId(tKey, targetPath);
+      const existing = useEditorStore.getState().tabs[tKey];
+      useEditorStore.getState().setPendingNavigateTarget({
+        tabKey: tKey,
+        tabId: targetTabId,
+        line: targetLine + 1,
+        col: targetChar,
+      });
+
+      if (existing?.tabs.some((t) => t.id === targetTabId)) {
+        // Ensure language cache is warm even for existing tabs (cheap if cached)
+        void langWarm;
+        console.log(
+          `[perf] navigate: cross-file existing-tab ${(performance.now() - tNav).toFixed(0)}ms`,
+        );
+        useEditorStore.getState().activateTab(tKey, targetTabId);
+        return;
+      }
+
+      try {
+        // Await language first-time import so FileViewer mounts with lang ready
+        const tLang = performance.now();
+        await langWarm;
+        const langMs = performance.now() - tLang;
+
+        const tContent = performance.now();
+        const content = preloadedContent
+          ? {
+              path: targetPath,
+              content: preloadedContent,
+              size: preloadedContent.length,
+              is_binary: false,
+            }
+          : await readFileContent(projId, targetPath);
+        const contentMs = performance.now() - tContent;
+
+        const newTab: Tab = {
+          id: targetTabId,
+          projectId: projId,
+          title: getFileName(targetPath),
+          order: 0,
+          data: {
+            kind: 'file' as const,
+            filePath: targetPath,
+            fileName: getFileName(targetPath),
+            content,
+            isDirty: false,
+          },
+        };
+        useEditorStore.getState().addTab(tKey, newTab);
+        console.log(
+          `[perf] navigate: cross-file new-tab content=${preloadedContent ? 'preloaded' : 'ipc'} ` +
+            `lang=${langMs.toFixed(0)}ms content=${contentMs.toFixed(0)}ms ` +
+            `total=${(performance.now() - tNav).toFixed(0)}ms`,
+        );
+      } catch (e) {
+        useEditorStore.getState().setPendingNavigateTarget(null);
+        console.error('[LSP] Failed to open definition target:', e);
       }
     },
     [],
@@ -444,6 +475,9 @@ function FileEditor({
           const t0 = performance.now();
           definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
             if (!result) return;
+            // Kick language preload ASAP (overlaps with navigate setup)
+            preloadLanguageExtension(fromFileUri(result.location.uri));
+            const tLsp = performance.now() - t0;
             navigateToLocation(
               result.location,
               projectPath,
@@ -452,7 +486,10 @@ function FileEditor({
               tab.filePath,
               result.fileContent,
             ).then(() => {
-              console.log(`[perf] total (F12→rendered): ${(performance.now() - t0).toFixed(0)}ms`);
+              console.log(
+                `[perf] total (F12→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
+                  `(lsp=${tLsp.toFixed(0)}ms)`,
+              );
             });
           });
 
@@ -510,23 +547,35 @@ function FileEditor({
       const lid = getLspLanguageId(tab.filePath);
       if (!lid) return;
 
-      const pos = view.state.selection.main.head;
-      const lineObj = view.state.doc.lineAt(pos);
-      const line = lineObj.number - 1;
-      const character = pos - lineObj.from;
+      // Use click coordinates — not the current selection — so Cmd+Click jumps
+      // to the symbol under the mouse (matches link-highlight hover behavior).
+      const offset = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      const lspPos = resolveLspPositionFromOffset(offset, (p) => view.state.doc.lineAt(p));
+      if (!lspPos) return;
+
       const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
-      definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
-        if (!result) return;
-        navigateToLocation(
-          result.location,
-          projectPath,
-          tabKey,
-          tab.projectId,
-          tab.filePath,
-          result.fileContent,
-        );
-      });
+      const t0 = performance.now();
+      definition
+        .goToDefinitionWithContent(lid, uri, lspPos.line, lspPos.character)
+        .then((result) => {
+          if (!result) return;
+          preloadLanguageExtension(fromFileUri(result.location.uri));
+          const tLsp = performance.now() - t0;
+          return navigateToLocation(
+            result.location,
+            projectPath,
+            tabKey,
+            tab.projectId,
+            tab.filePath,
+            result.fileContent,
+          ).then(() => {
+            console.log(
+              `[perf] total (Cmd+Click→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
+                `(lsp=${tLsp.toFixed(0)}ms)`,
+            );
+          });
+        });
     };
 
     editorEl.addEventListener('click', handler);

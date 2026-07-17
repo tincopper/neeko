@@ -10,13 +10,15 @@ use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use crossbeam_channel::{Receiver, Sender};
-use lsp_server::{Message, Notification, Request, RequestId};
+use lsp_server::{ErrorCode, Message, Notification, Request, RequestId, Response};
 use serde_json::Value;
 
 use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
+use super::inflight::InflightRequestTracker;
 use super::plugin::{LspPlugin, LspPluginRegistry};
+use super::profile::{detect_project_profile, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport, ProgressKind};
 use super::types::LspSessionInfo;
 
@@ -26,6 +28,9 @@ use super::types::LspSessionInfo;
 const MAX_RESTART_COUNT: u32 = 5;
 /// Base delay for exponential backoff (ms).
 const RESTART_BASE_DELAY_MS: u64 = 500;
+/// After a project is deactivated, wait this long before closing its LSP sessions.
+/// Avoids thrash when the user switches projects back and forth.
+const DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 
 /// Tracked open document for session restart recovery.
 #[derive(Clone)]
@@ -78,18 +83,67 @@ impl LspSessionStatus {
 
 // ── LspSession ──────────────────────────────────────────────────────────
 
+/// Cancel a previous in-flight request: notify the server and unblock its waiter.
+fn cancel_inflight_request(
+    pending: &Mutex<HashMap<RequestId, PendingSender>>,
+    writer: &crossbeam_channel::Sender<Message>,
+    prev_id: RequestId,
+    method: &str,
+) {
+    {
+        let mut map = pending.lock().expect("infallible");
+        if let Some(tx) = map.remove(&prev_id) {
+            let _ = tx.send(Message::Response(Response::new_err(
+                prev_id.clone(),
+                ErrorCode::RequestCanceled as i32,
+                "superseded by newer request".into(),
+            )));
+        }
+    }
+    let cancel = Notification::new(
+        "$/cancelRequest".to_string(),
+        serde_json::json!({ "id": prev_id }),
+    );
+    if let Err(e) = writer.send(Message::Notification(cancel)) {
+        log::warn!(
+            "[LSP] Failed to send $/cancelRequest for {} id={:?}: {}",
+            method,
+            prev_id,
+            e
+        );
+    } else {
+        log::debug!(
+            "[LSP] Cancelled previous {} request id={:?}",
+            method,
+            prev_id
+        );
+    }
+}
+
 /// Send an LSP request and await the response.
 ///
 /// This free function takes cloned session ingredients (writer + pending map)
 /// so it can be called without borrowing a MutexGuard across the await point.
+///
+/// For single-flight methods (hover/definition/…), a newer request cancels the
+/// previous in-flight one via `$/cancelRequest` to prevent flooding the server.
 async fn do_send_request(
     pending: Arc<Mutex<HashMap<RequestId, PendingSender>>>,
     writer: crossbeam_channel::Sender<Message>,
+    inflight: Arc<Mutex<InflightRequestTracker>>,
     method: &str,
     params: Value,
 ) -> Result<Value> {
     let req_id = NEXT_REQ_ID.fetch_add(1, Ordering::Relaxed);
     let request_id = RequestId::from(req_id);
+
+    // Single-flight: cancel previous request of the same method if still pending
+    {
+        let mut tracker = inflight.lock().expect("infallible");
+        if let Some(prev_id) = tracker.register(method, request_id.clone()) {
+            cancel_inflight_request(&pending, &writer, prev_id, method);
+        }
+    }
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
@@ -97,7 +151,7 @@ async fn do_send_request(
         map.insert(request_id.clone(), tx);
     }
 
-    let req = Request::new(request_id, method.to_string(), params);
+    let req = Request::new(request_id.clone(), method.to_string(), params);
     writer
         .send(Message::Request(req))
         .with_context(|| format!("Failed to send LSP request: {}", method))?;
@@ -112,9 +166,19 @@ async fn do_send_request(
         t0.elapsed()
     );
 
+    // Clear tracking if we are still the current request for this method
+    {
+        let mut tracker = inflight.lock().expect("infallible");
+        tracker.complete(method, &request_id);
+    }
+
     match response {
         Message::Response(resp) => {
             if let Some(err) = resp.error {
+                // Cancelled / superseded requests are not user-facing errors
+                if err.code == ErrorCode::RequestCanceled as i32 {
+                    return Ok(Value::Null);
+                }
                 bail!("LSP error ({}): {}", err.code, err.message);
             }
             // A null result is valid per LSP spec — means "no data" (e.g. hover on whitespace)
@@ -132,6 +196,8 @@ struct LspSession {
     server_name: String,
     writer: crossbeam_channel::Sender<Message>,
     pending: Arc<Mutex<HashMap<RequestId, PendingSender>>>,
+    /// Latest in-flight request per single-flight method (hover/definition/…).
+    inflight: Arc<Mutex<InflightRequestTracker>>,
     reader: Option<thread::JoinHandle<Result<()>>>,
     stderr_logger: Option<thread::JoinHandle<()>>,
     restart_count: u32,
@@ -200,6 +266,7 @@ impl LspSession {
         );
         let mut child = cmd_from_path(cmd[0])
             .args(&cmd[1..])
+            .current_dir(project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -284,6 +351,9 @@ impl LspSession {
         let pp_reader = project_path.to_string();
         let lang_id_clone = language_id.clone();
         let transport_clone = Arc::clone(&transport);
+        // Clone writer so the reader can answer server→client requests
+        // (e.g. window/workDoneProgress/create) without blocking the server.
+        let writer_for_reader = writer_tx.clone();
 
         let reader_handle = thread::Builder::new()
             .name(format!(
@@ -325,7 +395,28 @@ impl LspSession {
                             }
                         }
                         Message::Request(req) => {
-                            log::debug!("[LSP] Ignored server request: {}", req.method);
+                            // Server→client requests must be answered. Ignoring them
+                            // stalls gopls (workDoneProgress/create) so hover/definition
+                            // never complete. See server_request.rs.
+                            let root = url::Url::from_directory_path(&pp_reader)
+                                .ok()
+                                .map(|u| u.to_string());
+                            let resp = super::server_request::respond_to_server_request(
+                                req,
+                                root.as_deref(),
+                            );
+                            log::debug!(
+                                "[LSP] Answered server request: {} id={:?}",
+                                req.method,
+                                req.id
+                            );
+                            if let Err(e) = writer_for_reader.send(Message::Response(resp)) {
+                                log::warn!(
+                                    "[LSP] Failed to send response for server request {}: {}",
+                                    req.method,
+                                    e
+                                );
+                            }
                         }
                     }
                 }
@@ -339,6 +430,14 @@ impl LspSession {
         let init_params = serde_json::json!({
             "processId": std::process::id(),
             "rootUri": root_uri,
+            "rootPath": project_path,
+            "workspaceFolders": [{
+                "uri": root_uri,
+                "name": std::path::Path::new(project_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("workspace"),
+            }],
             "capabilities": {
                 "textDocument": {
                     "hover": { "contentFormat": ["markdown", "plaintext"] },
@@ -351,6 +450,11 @@ impl LspSession {
                         }
                     },
                     "publishDiagnostics": { "relatedInformation": true }
+                },
+                "workspace": {
+                    "workspaceFolders": true,
+                    "configuration": true,
+                    "didChangeConfiguration": { "dynamicRegistration": false }
                 },
                 "window": {
                     "workDoneProgress": true
@@ -408,6 +512,7 @@ impl LspSession {
             server_name,
             writer: writer_tx,
             pending,
+            inflight: Arc::new(Mutex::new(InflightRequestTracker::new())),
             reader: Some(reader_handle),
             stderr_logger: stderr_handle,
             restart_count: 0,
@@ -430,42 +535,14 @@ impl LspSession {
     /// `self` across the await point — safe even if the session is removed
     /// from the session map while waiting.
     async fn send_request_async(&self, method: &str, params: Value) -> Result<Value> {
-        let req_id = NEXT_REQ_ID.fetch_add(1, Ordering::Relaxed);
-        let request_id = RequestId::from(req_id);
-
-        let rx = {
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            let mut map = self.pending.lock().expect("infallible");
-            map.insert(request_id.clone(), tx);
-            rx
-        };
-
-        let req = Request::new(request_id, method.to_string(), params);
-        self.writer
-            .send(Message::Request(req))
-            .with_context(|| format!("Failed to send LSP request: {}", method))?;
-
-        let t0 = std::time::Instant::now();
-        // self is no longer used beyond this point — rx is owned, not borrowed
-        let response = rx
-            .await
-            .with_context(|| format!("No response received for LSP request: {}", method))?;
-        log::info!(
-            "[perf] send_request_async {}: awaited {:?}",
+        do_send_request(
+            Arc::clone(&self.pending),
+            self.writer.clone(),
+            Arc::clone(&self.inflight),
             method,
-            t0.elapsed()
-        );
-
-        match response {
-            Message::Response(resp) => {
-                if let Some(err) = resp.error {
-                    bail!("LSP error ({}): {}", err.code, err.message);
-                }
-                // A null result is valid per LSP spec (e.g. hover on empty space)
-                Ok(resp.result.unwrap_or(Value::Null))
-            }
-            _ => bail!("Unexpected message type for request: {}", method),
-        }
+            params,
+        )
+        .await
     }
 
     fn send_notification_raw(&self, method: &str, params: Value) -> Result<()> {
@@ -612,6 +689,10 @@ pub struct LspManager {
     plugin_registry: Mutex<LspPluginRegistry>,
     diag_bus: DiagnosticBus,
     app_handle: Mutex<Option<tauri::AppHandle>>,
+    /// Cached language profiles per project path (from root-marker detection).
+    profiles: Mutex<HashMap<String, ProjectLanguageProfile>>,
+    /// Generation counter per project path to cancel pending deactivate timers.
+    deactivate_gens: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl LspManager {
@@ -624,6 +705,8 @@ impl LspManager {
             plugin_registry: Mutex::new(LspPluginRegistry::with_defaults()),
             diag_bus,
             app_handle: Mutex::new(None),
+            profiles: Mutex::new(HashMap::new()),
+            deactivate_gens: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -813,7 +896,8 @@ impl LspManager {
                 if session.is_alive() {
                     let pending = Arc::clone(&session.pending);
                     let writer = session.writer.clone();
-                    Some((pending, writer))
+                    let inflight = Arc::clone(&session.inflight);
+                    Some((pending, writer, inflight))
                 } else {
                     log::warn!("[LSP] Session {} is not alive, will restart", key);
                     None
@@ -823,8 +907,8 @@ impl LspManager {
             }
         };
 
-        if let Some((pending, writer)) = fast_result {
-            match do_send_request(pending, writer, method, params.clone()).await {
+        if let Some((pending, writer, inflight)) = fast_result {
+            match do_send_request(pending, writer, inflight, method, params.clone()).await {
                 Ok(val) => return Ok(val),
                 Err(e) => {
                     log::warn!(
@@ -863,21 +947,24 @@ impl LspManager {
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
-        let (pending, writer) = {
+        let (pending, writer, inflight) = {
             let sessions = self.sessions.lock().expect("infallible");
             match sessions.get(&key) {
                 Some(session) => (
                     Some(Arc::clone(&session.pending)),
                     Some(session.writer.clone()),
+                    Some(Arc::clone(&session.inflight)),
                 ),
-                None => (None, None),
+                None => (None, None, None),
             }
         };
 
-        match (pending, writer) {
-            (Some(pending), Some(writer)) => do_send_request(pending, writer, method, params)
-                .await
-                .map_err(|e| AppError::Lsp(e.to_string())),
+        match (pending, writer, inflight) {
+            (Some(pending), Some(writer), Some(inflight)) => {
+                do_send_request(pending, writer, inflight, method, params)
+                    .await
+                    .map_err(|e| AppError::Lsp(e.to_string()))
+            }
             _ => Err(AppError::Lsp(format!(
                 "Failed to create LSP session: {}",
                 key
@@ -919,6 +1006,118 @@ impl LspManager {
             docs.remove(&key);
         }
         Ok(())
+    }
+
+    /// Close every LSP session belonging to `project_path`.
+    pub fn close_sessions_for_project(&self, project_path: &str) {
+        let to_close: Vec<(String, String)> = {
+            let sessions = self.sessions.lock().expect("infallible");
+            sessions
+                .values()
+                .filter(|s| s.project_path == project_path)
+                .map(|s| (s.project_path.clone(), s.language_id.clone()))
+                .collect()
+        };
+        for (pp, lid) in to_close {
+            let _ = self.close_session(&pp, &lid);
+        }
+        if let Ok(mut profiles) = self.profiles.lock() {
+            profiles.remove(project_path);
+        }
+        log::info!(
+            "[LSP] Closed all sessions for deactivated project: {}",
+            project_path
+        );
+    }
+
+    /// Invalidate any pending deactivate timer for this project.
+    pub fn cancel_deactivate(&self, project_path: &str) {
+        let mut gens = self.deactivate_gens.lock().expect("infallible");
+        let entry = gens.entry(project_path.to_string()).or_insert(0);
+        *entry = entry.saturating_add(1);
+        log::debug!("[LSP] Cancelled deactivate timer for {}", project_path);
+    }
+
+    /// After leaving a project, schedule session teardown in DEACTIVATE_STOP_SECS.
+    pub fn schedule_deactivate(self: &Arc<Self>, project_path: String) {
+        let my_gen = {
+            let mut gens = self.deactivate_gens.lock().expect("infallible");
+            let entry = gens.entry(project_path.clone()).or_insert(0);
+            *entry = entry.saturating_add(1);
+            *entry
+        };
+
+        let this = Arc::clone(self);
+        let pp = project_path.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(DEACTIVATE_STOP_SECS)).await;
+            let current = this
+                .deactivate_gens
+                .lock()
+                .expect("infallible")
+                .get(&pp)
+                .copied()
+                .unwrap_or(0);
+            if current == my_gen {
+                log::info!(
+                    "[LSP] Project deactivated for {}s, stopping sessions: {}",
+                    DEACTIVATE_STOP_SECS,
+                    pp
+                );
+                this.close_sessions_for_project(&pp);
+            } else {
+                log::debug!(
+                    "[LSP] Deactivate timer for {} superseded (gen {} → {})",
+                    pp,
+                    my_gen,
+                    current
+                );
+            }
+        });
+        log::info!(
+            "[LSP] Scheduled deactivate in {}s for project {}",
+            DEACTIVATE_STOP_SECS,
+            project_path
+        );
+    }
+
+    /// Detect profile, cancel stop timer, emit profile event. Call when project becomes active.
+    pub fn activate_project(self: &Arc<Self>, project_path: &str) -> ProjectLanguageProfile {
+        self.cancel_deactivate(project_path);
+        let profile = detect_project_profile(project_path);
+        if let Ok(mut map) = self.profiles.lock() {
+            map.insert(project_path.to_string(), profile.clone());
+        }
+
+        if let Ok(handle) = self.app_handle.lock() {
+            if let Some(app) = handle.as_ref() {
+                use tauri::Emitter;
+                let event = format!("lsp-project-profile-{}", project_path);
+                if let Err(e) = app.emit(&event, &profile) {
+                    log::warn!("[LSP] Failed to emit profile event: {}", e);
+                }
+                // Also a global event for status bar without path encoding issues
+                if let Err(e) = app.emit("lsp-project-profile", &profile) {
+                    log::warn!("[LSP] Failed to emit global profile event: {}", e);
+                }
+            }
+        }
+
+        log::info!(
+            "[LSP] Project profile for {}: primary={:?} candidates={}",
+            project_path,
+            profile.primary.as_ref().map(|p| &p.language_id),
+            profile.candidates.len()
+        );
+        profile
+    }
+
+    /// Cached profile if available.
+    pub fn get_profile(&self, project_path: &str) -> Option<ProjectLanguageProfile> {
+        self.profiles
+            .lock()
+            .ok()
+            .and_then(|m| m.get(project_path).cloned())
     }
 
     pub fn close_all_sessions(&self) {

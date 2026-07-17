@@ -52,13 +52,18 @@ export function StatusBar() {
     }),
   );
 
-  // Subscribe to LSP session events + load initial state
+  const projectProfile = useLspStore((s) =>
+    activeProjectPath ? (s.profiles[activeProjectPath] ?? null) : null,
+  );
+
+  // Subscribe to LSP session events + load initial state + soft-warm profile
   useEffect(() => {
     if (!activeProjectPath || subscribedRef.current === activeProjectPath) return;
     subscribedRef.current = activeProjectPath;
 
     const store = useLspStore.getState();
     let cancelled = false;
+    let unlistenFn: (() => void) | null = null;
 
     // Subscribe first, then poll — ensures events aren't lost between sub and poll
     store.subscribeToProject(activeProjectPath).then((unlisten) => {
@@ -66,6 +71,7 @@ export function StatusBar() {
         unlisten();
         return;
       }
+      unlistenFn = unlisten;
       // Now event listener is ready; fetch sessions already running
       lspListSessions().then((sessions) => {
         if (cancelled) return;
@@ -82,9 +88,13 @@ export function StatusBar() {
       });
     });
 
+    // Detect profile + soft-warm primary (no server spawn)
+    void store.onProjectActivated(activeProjectPath);
+
     return () => {
       cancelled = true;
       subscribedRef.current = null;
+      unlistenFn?.();
     };
   }, [activeProjectPath]);
 
@@ -274,6 +284,24 @@ export function StatusBar() {
               document.body,
             )}
         </div>
+      );
+    }
+
+    // Profile detected but no server running yet (autoStart=onFirstFile)
+    if (projectProfile?.primary) {
+      const p = projectProfile.primary;
+      const label = serverName(p.languageId);
+      const markers = p.markers.join(', ');
+      return (
+        <span
+          className="flex items-center gap-1.5 text-text-muted"
+          title={`Detected ${p.languageId} (${markers}). Opens a .${p.languageId === 'typescript' ? 'ts' : p.languageId === 'rust' ? 'rs' : p.languageId} file to start ${label}.`}
+        >
+          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-text-muted" />
+          <span className="truncate">
+            {label} · detected
+          </span>
+        </span>
       );
     }
 

@@ -7,6 +7,19 @@ export interface LspSessionInfo {
   progress_pct?: number;
 }
 
+/** Root-marker detection result (no server spawn). camelCase from Rust serde. */
+export interface DetectedLanguage {
+  languageId: string;
+  serverName: string;
+  markers: string[];
+}
+
+export interface ProjectLanguageProfile {
+  projectPath: string;
+  primary: DetectedLanguage | null;
+  candidates: DetectedLanguage[];
+}
+
 export interface LspSessionStatusEvent {
   languageId: string;
   status: string;

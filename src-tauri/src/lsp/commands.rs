@@ -230,6 +230,22 @@ pub fn lsp_stop_session(
     state.lsp_manager.close_session(&project_path, &language_id)
 }
 
+/// Detect project languages from root markers (no server spawn).
+#[tauri::command]
+pub fn lsp_detect_project_profile(
+    project_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<crate::lsp::ProjectLanguageProfile, AppError> {
+    Ok(state.lsp_manager.activate_project(&project_path))
+}
+
+/// Soft-warm check: whether the language server binary is on PATH.
+/// Does not spawn the server (autoStart=onFirstFile).
+#[tauri::command]
+pub fn lsp_check_server_installed(language_id: String) -> bool {
+    crate::lsp::installer::check_server_installed(&language_id)
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // JSON-RPC Transport Proxy (for @codemirror/lsp-client)
 // ═══════════════════════════════════════════════════════════════════════

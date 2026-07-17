@@ -264,66 +264,99 @@ const FILENAME_MAP: Record<string, () => Promise<Extension>> = {
   },
 };
 
-// Cache for loaded language extensions
+// Cache for loaded language extensions (sync hit path for tab switches)
 const langCache = new Map<string, Extension>();
+// In-flight loads so concurrent open/prefetch share one dynamic import
+const langPending = new Map<string, Promise<Extension | null>>();
+
+function languageCacheKey(filename: string): { key: string; ext: string; baseName: string } {
+  const ext = getFileExtension(filename);
+  const baseName = filename.split(/[/\\]/).pop()?.toLowerCase() || "";
+  const key = ext || baseName;
+  return { key, ext, baseName };
+}
+
+/**
+ * Synchronous cache lookup — used so FileViewer can mount CodeMirror
+ * with a language extension already applied (avoids double reconfigure).
+ */
+export function getCachedLanguageExtension(filename: string): Extension | null {
+  const { ext, baseName } = languageCacheKey(filename);
+  if (ext && langCache.has(ext)) return langCache.get(ext)!;
+  if (baseName && langCache.has(baseName)) return langCache.get(baseName)!;
+  return null;
+}
+
+/**
+ * Prefetch language support for a file path without blocking the caller.
+ * Fire this as soon as go-to-definition knows the target path.
+ */
+export function preloadLanguageExtension(filename: string): void {
+  if (getCachedLanguageExtension(filename)) return;
+  void getLanguageExtension(filename);
+}
 
 /**
  * Get the CodeMirror language extension for a file based on its extension.
  * Falls back to properties mode for unknown text files.
  */
 export async function getLanguageExtension(filename: string): Promise<Extension | null> {
-  const ext = getFileExtension(filename);
-  const baseName = filename.split(/[/\\]/).pop()?.toLowerCase() || "";
+  const cached = getCachedLanguageExtension(filename);
+  if (cached) return cached;
 
-  // 1. Check extension-based cache
-  if (langCache.has(ext) && ext) {
-    return langCache.get(ext)!;
-  }
+  const { key, ext, baseName } = languageCacheKey(filename);
+  if (!key) return null;
 
-  // 2. Check filename-based cache
-  if (langCache.has(baseName)) {
-    return langCache.get(baseName)!;
-  }
+  const pending = langPending.get(key);
+  if (pending) return pending;
 
-  // 3. Try extension-based mapping
-  const extLoader = LANG_MAP[ext];
-  if (extLoader) {
-    try {
-      const lang = await extLoader();
-      langCache.set(ext, lang);
-      return lang;
-    } catch {
-      return null;
+  const load = (async (): Promise<Extension | null> => {
+    // 1. Try extension-based mapping
+    const extLoader = LANG_MAP[ext];
+    if (extLoader) {
+      try {
+        const lang = await extLoader();
+        langCache.set(ext, lang);
+        return lang;
+      } catch {
+        return null;
+      }
     }
-  }
 
-  // 4. Try filename-based mapping (Dockerfile, Makefile, etc.)
-  const fnLoader = FILENAME_MAP[baseName];
-  if (fnLoader) {
-    try {
-      const lang = await fnLoader();
-      langCache.set(baseName, lang);
-      return lang;
-    } catch {
-      return null;
+    // 2. Try filename-based mapping (Dockerfile, Makefile, etc.)
+    const fnLoader = FILENAME_MAP[baseName];
+    if (fnLoader) {
+      try {
+        const lang = await fnLoader();
+        langCache.set(baseName, lang);
+        return lang;
+      } catch {
+        return null;
+      }
     }
-  }
 
-  // 5. Fallback: use properties mode for unknown files with extensions
-  //    (gives basic key-value / comment highlighting)
-  if (ext) {
-    try {
-      const { StreamLanguage } = await import("@codemirror/language");
-      const { properties } = await import("@codemirror/legacy-modes/mode/properties");
-      const fallback = StreamLanguage.define(properties);
-      langCache.set(ext, fallback);
-      return fallback;
-    } catch {
-      return null;
+    // 3. Fallback: properties mode for unknown files with extensions
+    if (ext) {
+      try {
+        const { StreamLanguage } = await import("@codemirror/language");
+        const { properties } = await import(
+          "@codemirror/legacy-modes/mode/properties"
+        );
+        const fallback = StreamLanguage.define(properties);
+        langCache.set(ext, fallback);
+        return fallback;
+      } catch {
+        return null;
+      }
     }
-  }
 
-  return null;
+    return null;
+  })().finally(() => {
+    langPending.delete(key);
+  });
+
+  langPending.set(key, load);
+  return load;
 }
 
 /**

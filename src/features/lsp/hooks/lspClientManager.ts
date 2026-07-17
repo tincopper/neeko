@@ -1,18 +1,34 @@
 import { LSPClient, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
+import { IdleRefCountedCache } from '../idleRefCountedCache';
 import { TauriLspTransport } from '../transport/TauriLspTransport';
 
 import { createLspHoverTooltips } from './lspHoverExtension';
 
-interface LspClientEntry {
+interface LspClientBundle {
   client: LSPClient;
   transport: TauriLspTransport;
-  refCount: number;
 }
 
-/** Shared LSP clients keyed by `projectPath:languageId`. */
-const clients = new Map<string, LspClientEntry>();
+/**
+ * Keep idle LSP clients warm long enough to survive tab switches during
+ * go-to-definition (unmount source → mount target of the same language).
+ * Previously the client was deleted immediately on refCount=0, forcing a
+ * full reconnect + re-plugin on every cross-file jump (~0.5–3s perceived).
+ */
+const LSP_CLIENT_IDLE_DESTROY_MS = 15_000;
+
+const pool = new IdleRefCountedCache<LspClientBundle>({
+  destroyDelayMs: LSP_CLIENT_IDLE_DESTROY_MS,
+  onDestroy: (_key, bundle) => {
+    try {
+      bundle.transport.destroy();
+    } catch {
+      // ignore cleanup errors
+    }
+  },
+});
 
 function clientKey(projectPath: string, languageId: string): string {
   return `${projectPath}:${languageId}`;
@@ -22,8 +38,8 @@ function clientKey(projectPath: string, languageId: string): string {
  * Acquire a shared LSP client for the given project + language.
  *
  * Returns a CodeMirror plugin extension for the specific file URI.
- * Multiple files of the same language share one LSP client + transport,
- * avoiding redundant LSP server processes and re-initialization on tab switch.
+ * Multiple files of the same language share one LSP client + transport.
+ * Tab switches cancel the idle destroy timer so the client is reused.
  */
 export function acquireLspPlugin(
   projectPath: string,
@@ -31,42 +47,31 @@ export function acquireLspPlugin(
   fileUri: string,
 ): Extension {
   const key = clientKey(projectPath, languageId);
-  let entry = clients.get(key);
-
-  if (!entry) {
-    // timeout: 10000ms covers slow LSP server startup (spawn + init handshake).
-    // After server is ready, session status is reflected via lspStore (subscribed
-    // from lsp-session-{projectPath} events emitted by the Rust backend).
+  const bundle = pool.acquire(key, () => {
+    // timeout: 15000ms covers slow LSP server startup (spawn + init handshake).
     const client = new LSPClient({
       extensions: [serverCompletion(), createLspHoverTooltips(), serverDiagnostics()],
       timeout: 15000,
     });
     const transport = new TauriLspTransport(projectPath, languageId);
     client.connect(transport);
-    entry = { client, transport, refCount: 0 };
-    clients.set(key, entry);
-  }
+    return { client, transport };
+  });
 
-  entry.refCount++;
-  return entry.client.plugin(fileUri, languageId);
+  return bundle.client.plugin(fileUri, languageId);
 }
 
 /**
  * Release a reference to a shared LSP client.
  *
- * When the last file using this client is closed, the transport is
- * destroyed after a short delay to allow pending didClose messages
- * to flush through the IPC layer.
+ * When the last file using this client is closed, destruction is delayed
+ * so a quick re-acquire (tab switch / go-to-definition) reuses the client.
  */
 export function releaseLspClient(projectPath: string, languageId: string): void {
-  const key = clientKey(projectPath, languageId);
-  const entry = clients.get(key);
-  if (!entry) return;
+  pool.release(clientKey(projectPath, languageId));
+}
 
-  entry.refCount--;
-  if (entry.refCount <= 0) {
-    const { transport } = entry;
-    clients.delete(key);
-    setTimeout(() => transport.destroy(), 200);
-  }
+/** @internal test helper */
+export function __resetLspClientPoolForTests(): void {
+  pool.clear();
 }

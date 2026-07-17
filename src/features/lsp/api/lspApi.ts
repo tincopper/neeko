@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { LspSessionInfo } from '../types';
+import type { LspSessionInfo, ProjectLanguageProfile } from '../types';
 
 export function lspRequest(
   projectPath: string,
@@ -133,4 +133,14 @@ export function lspGoToDefinition(
     line,
     character,
   });
+}
+
+/** Detect languages from root markers; also activates project profile on the backend. */
+export function lspDetectProjectProfile(projectPath: string): Promise<ProjectLanguageProfile> {
+  return invoke<ProjectLanguageProfile>('lsp_detect_project_profile', { projectPath });
+}
+
+/** Soft-warm: check if language server binary is installed (does not spawn). */
+export function lspCheckServerInstalled(languageId: string): Promise<boolean> {
+  return invoke<boolean>('lsp_check_server_installed', { languageId });
 }
