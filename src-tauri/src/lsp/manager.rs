@@ -730,6 +730,23 @@ impl LspManager {
         Self::new(AppRuntime::shared_default())
     }
 
+    /// Business executor used for session spawn / timers (Scheme C).
+    pub fn runtime(&self) -> Arc<AppRuntime> {
+        Arc::clone(&self.runtime)
+    }
+
+    /// Resolve language id for a file path from the live plugin registry (custom first).
+    pub fn resolve_language_for_path(&self, file_path: &str) -> Option<String> {
+        let ext = std::path::Path::new(file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        self.plugin_registry
+            .lock()
+            .ok()
+            .and_then(|r| r.resolve_by_extension(ext).map(|p| p.language_id.clone()))
+    }
+
     /// Apply LSP settings from config.json (`lsp` object).
     pub fn apply_settings(&self, settings: &LspSettings) {
         *self.deactivate_stop_secs.lock().expect("infallible") =
@@ -1020,11 +1037,12 @@ impl LspManager {
             tokio::time::sleep(delay).await;
         }
 
-        // Spawn session creation on blocking thread pool — it spawns OS processes
+        // Spawn session creation on the business AppRuntime blocking pool
         let this = Arc::clone(self);
         let pp = project_path.to_string();
         let lid = language_id.to_string();
-        tokio::task::spawn_blocking(move || this.get_or_create_session(&pp, &lid))
+        self.runtime
+            .spawn_blocking(move || this.get_or_create_session(&pp, &lid))
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
@@ -1357,6 +1375,29 @@ mod tests {
     fn test_diag_bus_creation() {
         let manager = LspManager::new_default();
         assert_eq!(manager.diag_bus().subscriber_count(), 0);
+    }
+
+    #[test]
+    fn should_resolve_language_from_live_registry_including_custom() {
+        let manager = LspManager::new_default();
+        assert_eq!(
+            manager.resolve_language_for_path("/repo/main.go"),
+            Some("go".into())
+        );
+        manager.register_plugin(LspPlugin {
+            language_id: "protobuf".into(),
+            extensions: vec!["proto".into()],
+            server_binary: "buf".into(),
+            server_command: vec!["buf".into(), "lsp".into()],
+            install: None,
+            root_markers: vec![],
+            auto_start: LspAutoStart::OnFirstFile,
+            is_custom: true,
+        });
+        assert_eq!(
+            manager.resolve_language_for_path("api/v1.proto"),
+            Some("protobuf".into())
+        );
     }
 
     #[test]

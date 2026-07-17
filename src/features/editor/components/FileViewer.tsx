@@ -23,7 +23,12 @@ import { useShallow } from 'zustand/shallow';
 
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
-import { fromFileUri, getLspLanguageId, toFileUri } from '@/features/lsp/languageMap';
+import {
+  fromFileUri,
+  getLspLanguageId,
+  resolveLspLanguageId,
+  toFileUri,
+} from '@/features/lsp/languageMap';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
@@ -329,13 +334,34 @@ function FileEditor({
     [projectPath, tab.filePath],
   );
 
+  // Language id: sync map first, then tighten with live backend registry (custom plugins).
+  const [lspLanguageId, setLspLanguageId] = useState<string | null>(() =>
+    getLspLanguageId(tab.filePath),
+  );
+  const lspLanguageIdRef = useRef(lspLanguageId);
+  lspLanguageIdRef.current = lspLanguageId;
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = getLspLanguageId(tab.filePath);
+    setLspLanguageId(sync);
+    void resolveLspLanguageId(tab.filePath).then((live) => {
+      if (!cancelled && live) {
+        setLspLanguageId(live);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab.filePath]);
+
   // @codemirror/lsp-client plugin — handles hover, diagnostics, completion, document lifecycle
   // Shared per (projectPath, languageId) so switching between files of the same
   // language reuses the existing LSP client instead of destroying and re-initializing.
   const [lspClientExt, setLspClientExt] = useState<import('@codemirror/state').Extension[]>([]);
 
   useEffect(() => {
-    const lang = getLspLanguageId(tab.filePath);
+    const lang = lspLanguageId;
     if (!projectPath || !lang || !fileUri) {
       setLspClientExt([]);
       return;
@@ -348,12 +374,12 @@ function FileEditor({
       setLspClientExt([]);
       releaseLspClient(projectPath, lang);
     };
-  }, [projectPath, tab.filePath, fileUri]);
+  }, [projectPath, lspLanguageId, fileUri]);
 
   // LSP link highlight (Cmd/Ctrl+hover underline) — visual cue only, does not affect navigation
   const linkHighlightExt = useLspLinkHighlightExtension(
     projectPath,
-    projectPath ? getLspLanguageId(tab.filePath) : null,
+    projectPath ? lspLanguageId : null,
     projectPath ? toFileUri(projectPath, tab.filePath) : '',
   );
 
@@ -463,7 +489,7 @@ function FileEditor({
       {
         key: 'F12',
         run: (view) => {
-          const lid = getLspLanguageId(tab.filePath);
+          const lid = lspLanguageIdRef.current;
           if (!lid) return false;
 
           const pos = view.state.selection.main.head;
@@ -499,7 +525,7 @@ function FileEditor({
       {
         key: 'Shift-F12',
         run: (view) => {
-          const lid = getLspLanguageId(tab.filePath);
+          const lid = lspLanguageIdRef.current;
           if (!lid) return false;
 
           const pos = view.state.selection.main.head;
@@ -544,7 +570,7 @@ function FileEditor({
       // Clear link highlight immediately to prevent visual stutter
       clearLinkHighlight(view);
 
-      const lid = getLspLanguageId(tab.filePath);
+      const lid = lspLanguageIdRef.current;
       if (!lid) return;
 
       // Use click coordinates — not the current selection — so Cmd+Click jumps

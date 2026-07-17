@@ -116,15 +116,17 @@ pub async fn set_active_project(
 
     // watch 新激活项目：notify::RecommendedWatcher 在 Linux 上对 RecursiveMode
     // 会同步遍历整树并逐个 inotify_add_watch，阻塞 Tauri IPC 线程会引发 UI 冻结
-    // → 移入 spawn_blocking，避免阻塞当前 tokio worker 与 WebView IPC 通道
+    // → 经 AppRuntime spawn_blocking，避免阻塞当前 worker / WebView IPC 通道
     let watcher_manager = state.watcher_manager.clone();
     let pid = project_id.clone();
     let path_for_watch = new_path.clone();
-    tokio::task::spawn_blocking(move || {
-        watcher_manager.watch(pid, path_for_watch, app_handle);
-    })
-    .await
-    .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
+    state
+        .runtime
+        .spawn_blocking(move || {
+            watcher_manager.watch(pid, path_for_watch, app_handle);
+        })
+        .await
+        .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
 
     // 更新 active_project_id
     *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id.clone());

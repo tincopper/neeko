@@ -8,8 +8,8 @@ use crate::lsp::types::LspSessionInfo;
 use crate::AppError;
 use crate::AppStateWrapper;
 
-/// Run blocking session-creation work on Tauri's async blocking thread pool
-/// so it never occupies a tokio worker thread.
+/// Run blocking session-creation work on the business AppRuntime pool
+/// so it never occupies a tokio worker thread (and is safe without a current Handle).
 async fn ensure_session_async(
     manager: Arc<crate::lsp::LspManager>,
     project_path: &str,
@@ -17,7 +17,9 @@ async fn ensure_session_async(
 ) -> Result<(), AppError> {
     let pp = project_path.to_string();
     let lid = language_id.to_string();
-    tokio::task::spawn_blocking(move || manager.get_or_create_session(&pp, &lid))
+    let runtime = manager.runtime();
+    runtime
+        .spawn_blocking(move || manager.get_or_create_session(&pp, &lid))
         .await
         .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))?
         .map(|_| ())
@@ -286,16 +288,7 @@ pub fn lsp_resolve_language(
     file_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Option<String> {
-    let ext = std::path::Path::new(&file_path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    state
-        .lsp_manager
-        .plugin_registry()
-        .lock()
-        .ok()
-        .and_then(|r| r.resolve_by_extension(ext).map(|p| p.language_id.clone()))
+    state.lsp_manager.resolve_language_for_path(&file_path)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

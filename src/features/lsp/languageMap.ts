@@ -4,7 +4,12 @@
  * Built-in defaults are always present. Custom servers (from config.lsp)
  * are merged at runtime via `setCustomLspExtensionMap` so that opening a
  * matching file routes to the user-defined language server.
+ *
+ * Prefer {@link resolveLspLanguageId} when opening files so the live backend
+ * registry (custom plugins) is authoritative; the local map is a sync cache.
  */
+
+import * as lspApi from './api/lspApi';
 
 const BUILTIN_LSP_LANGUAGE_MAP: Record<string, string> = {
   rs: 'rust',
@@ -72,10 +77,48 @@ export function applyCustomServersFromConfig(
   customExtMap = next;
 }
 
+function extensionOf(filePath: string): string {
+  const base = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0 || dot === base.length - 1) return '';
+  return base.slice(dot + 1).toLowerCase();
+}
+
 export function getLspLanguageId(filePath: string): string | null {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
+  const ext = extensionOf(filePath);
   if (!ext) return null;
   return customExtMap[ext] ?? BUILTIN_LSP_LANGUAGE_MAP[ext] ?? null;
+}
+
+/**
+ * Cache a live registry resolution so subsequent synchronous lookups match the backend.
+ * Only writes into the custom map (does not mutate built-in defaults).
+ */
+export function cacheLiveLanguageResolution(filePath: string, languageId: string): void {
+  const ext = extensionOf(filePath);
+  const lang = languageId.trim();
+  if (!ext || !lang) return;
+  // Skip if already the effective mapping
+  if (getLspLanguageId(filePath) === lang) return;
+  customExtMap = { ...customExtMap, [ext]: lang };
+}
+
+/**
+ * Resolve language id using the live backend registry (custom plugins first).
+ * Falls back to the local extension map when the IPC call fails or returns null.
+ * Successful live results are cached for subsequent sync lookups.
+ */
+export async function resolveLspLanguageId(filePath: string): Promise<string | null> {
+  try {
+    const live = await lspApi.lspResolveLanguage(filePath);
+    if (live) {
+      cacheLiveLanguageResolution(filePath, live);
+      return live;
+    }
+  } catch {
+    // offline / test environment — use local map
+  }
+  return getLspLanguageId(filePath);
 }
 
 export function toFileUri(projectPath: string, filePath: string): string {

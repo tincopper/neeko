@@ -145,6 +145,14 @@ export function lspCheckServerInstalled(languageId: string): Promise<boolean> {
   return invoke<boolean>('lsp_check_server_installed', { languageId });
 }
 
+/**
+ * Resolve language id for a file path from the live backend plugin registry
+ * (custom servers override built-ins by extension).
+ */
+export function lspResolveLanguage(filePath: string): Promise<string | null> {
+  return invoke<string | null>('lsp_resolve_language', { filePath });
+}
+
 export interface LspExtensionMapEntryDto {
   extension: string;
   languageId: string;
