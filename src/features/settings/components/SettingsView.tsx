@@ -15,6 +15,7 @@ import IdePanel from "./IdePanel";
 import GitPanel from "./GitPanel";
 import ShortcutPanel from "./ShortcutPanel";
 import ProjectPanel from "./ProjectPanel";
+import LspPanel from "./LspPanel";
 import type { AgentConfig, AppConfig } from '@/shared/types';
 
 function SettingsView() {
@@ -104,6 +105,14 @@ function SettingsView() {
           <EditorPanel
             editorFontSize={config.editorFontSize}
             onEditorFontSizeChange={state.setEditorFontSize}
+          />
+        );
+
+      case "lsp":
+        return (
+          <LspPanel
+            config={config}
+            onConfigChange={onConfigChange}
           />
         );
 
