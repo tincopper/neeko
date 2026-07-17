@@ -1014,3 +1014,37 @@ Phase 1: detect Git provider (GitHub/GitLab/Gitee) from remote URL, display on f
 ### Next Steps
 
 - None - task complete
+
+
+## Session 88: PR list load error friendly UX
+
+**Date**: 2026-07-17
+**Task**: PR list load error friendly UX
+**Branch**: `main`
+
+### Summary
+
+Improved PR list failure UX: classify gh errors (repo access/auth/network), fix CommandFailed UTF-8 stderr display, map PR commands to AppError::Git, and show actionable English empty states with Retry/Login in PullRequestsPanel.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a79a51c` | (see git log) |
+| `3f2ba7e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
