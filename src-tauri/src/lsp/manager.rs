@@ -1121,7 +1121,9 @@ impl LspManager {
         let stop_secs = *self.deactivate_stop_secs.lock().expect("infallible");
         let this = Arc::clone(self);
         let pp = project_path.clone();
-        tokio::spawn(async move {
+        // Use Tauri's runtime — this method may be called from sync commands
+        // (no current tokio::Handle), so bare `tokio::spawn` panics.
+        tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(stop_secs)).await;
             let current = this
                 .deactivate_gens
@@ -1176,14 +1178,15 @@ impl LspManager {
             }
         }
 
-        // Optional: spawn primary when policy is onProjectSelect
+        // Optional: spawn primary when policy is onProjectSelect.
+        // Must use Tauri async_runtime — sync invoke handlers have no tokio reactor.
         if let Some(ref primary) = profile.primary {
             let policy = self.resolve_auto_start(&primary.language_id);
             if policy == LspAutoStart::OnProjectSelect {
                 let this = Arc::clone(self);
                 let pp = project_path.to_string();
                 let lid = primary.language_id.clone();
-                tokio::task::spawn_blocking(move || {
+                tauri::async_runtime::spawn_blocking(move || {
                     if let Err(e) = this.get_or_create_session(&pp, &lid) {
                         log::warn!(
                             "[LSP] onProjectSelect failed to start {} for {}: {}",
