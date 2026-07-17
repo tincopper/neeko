@@ -1,14 +1,21 @@
 import React, { useCallback, useState } from 'react';
 
-import type { AppConfig, CustomLspServerConfig, LspAutoStart } from '@/features/settings/types';
-import { lspApplySettings } from '@/features/lsp/api/lspApi';
+import type { AppConfig, CustomLspServerConfig, LspAutoStart, LspConfig } from '@/features/settings/types';
+import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
 import { applyCustomServersFromConfig, setCustomLspExtensionMap } from '@/features/lsp/languageMap';
 import { cn } from '@/lib/utils';
 
 interface LspPanelProps {
   config: AppConfig;
-  onConfigChange: (next: AppConfig) => void;
+  /** Must persist the full AppConfig (including `lsp`) to config.json. */
+  onConfigChange: (next: AppConfig) => void | Promise<void>;
 }
+
+const DEFAULT_LSP: LspConfig = {
+  autoStart: 'onFirstFile',
+  deactivateStopMinutes: 30,
+  customServers: [],
+};
 
 function newServerDraft(): CustomLspServerConfig {
   return {
@@ -22,44 +29,61 @@ function newServerDraft(): CustomLspServerConfig {
   };
 }
 
+async function refreshFrontendExtensionMap(): Promise<void> {
+  try {
+    const map = await lspGetExtensionMap();
+    setCustomLspExtensionMap(
+      map.map((e) => ({
+        extension: e.extension,
+        languageId: e.languageId,
+        serverName: e.serverName,
+        isCustom: e.isCustom,
+      })),
+    );
+  } catch (e) {
+    console.warn('[LSP] Failed to refresh extension map:', e);
+  }
+}
+
 const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
-  const lsp = config.lsp ?? {
-    autoStart: 'onFirstFile' as LspAutoStart,
-    deactivateStopMinutes: 30,
-    customServers: [],
+  const lsp: LspConfig = {
+    ...DEFAULT_LSP,
+    ...(config.lsp ?? {}),
+    customServers: config.lsp?.customServers ?? [],
   };
   const [draft, setDraft] = useState<CustomLspServerConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const patchLsp = useCallback(
-    (partial: Partial<typeof lsp>) => {
-      onConfigChange({
+  /** Write `config.lsp` into global AppConfig → ~/.neeko/config.json */
+  const persistLsp = useCallback(
+    async (nextLsp: LspConfig) => {
+      const nextConfig: AppConfig = {
         ...config,
-        lsp: { ...lsp, ...partial },
-      });
+        lsp: nextLsp,
+      };
+      applyCustomServersFromConfig(nextLsp.customServers);
+      await onConfigChange(nextConfig);
+      // Backend save_config already applied settings; refresh FE router from registry
+      await refreshFrontendExtensionMap();
     },
-    [config, lsp, onConfigChange],
+    [config, onConfigChange],
   );
 
-  const syncRegistry = useCallback(
-    async (nextServers: CustomLspServerConfig[]) => {
-      applyCustomServersFromConfig(nextServers);
+  const patchLsp = useCallback(
+    async (partial: Partial<LspConfig>) => {
+      setSaving(true);
+      setError(null);
       try {
-        // saveConfig already applies on backend; refresh map for good measure
-        const map = await lspApplySettings();
-        setCustomLspExtensionMap(
-          map.map((e) => ({
-            extension: e.extension,
-            languageId: e.languageId,
-            serverName: e.serverName,
-            isCustom: e.isCustom,
-          })),
-        );
+        await persistLsp({ ...lsp, ...partial });
       } catch (e) {
-        console.warn('[LSP] Failed to apply settings to backend:', e);
+        setError(String(e));
+        console.error('[LSP] Failed to save settings to config.json:', e);
+      } finally {
+        setSaving(false);
       }
     },
-    [],
+    [lsp, persistLsp],
   );
 
   const handleSaveDraft = async () => {
@@ -94,15 +118,21 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
 
     const others = lsp.customServers.filter((s) => s.id !== entry.id);
     const nextServers = [...others, entry];
-    patchLsp({ customServers: nextServers });
-    await syncRegistry(nextServers);
-    setDraft(null);
+
+    setSaving(true);
+    try {
+      await persistLsp({ ...lsp, customServers: nextServers });
+      setDraft(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleRemove = async (id: string) => {
     const nextServers = lsp.customServers.filter((s) => s.id !== id);
-    patchLsp({ customServers: nextServers });
-    await syncRegistry(nextServers);
+    await patchLsp({ customServers: nextServers });
   };
 
   return (
@@ -110,8 +140,9 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
       <section className="flex flex-col gap-3">
         <h3 className="text-base font-medium">Language Servers</h3>
         <p className="text-text-muted text-xs">
-          Projects are detected from root markers (go.mod, package.json, …). Servers start when you
-          open a matching file by default. Leaving a project stops its servers after the idle delay.
+          Global settings stored in <code className="text-text-secondary">~/.neeko/config.json</code>{' '}
+          under the <code className="text-text-secondary">lsp</code> key. Projects are detected from
+          root markers; servers start when you open a matching file by default.
         </p>
 
         <label className="flex flex-col gap-1">
@@ -119,7 +150,8 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
           <select
             className="bg-bg-secondary border border-border rounded px-2 py-1.5"
             value={lsp.autoStart}
-            onChange={(e) => patchLsp({ autoStart: e.target.value as LspAutoStart })}
+            disabled={saving}
+            onChange={(e) => void patchLsp({ autoStart: e.target.value as LspAutoStart })}
           >
             <option value="onFirstFile">On first file (recommended)</option>
             <option value="onProjectSelect">On project select</option>
@@ -135,10 +167,11 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
             type="number"
             min={1}
             max={24 * 60}
+            disabled={saving}
             className="bg-bg-secondary border border-border rounded px-2 py-1.5 w-32"
             value={lsp.deactivateStopMinutes}
             onChange={(e) =>
-              patchLsp({
+              void patchLsp({
                 deactivateStopMinutes: Math.max(1, Number(e.target.value) || 30),
               })
             }
@@ -152,6 +185,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
           <button
             type="button"
             className="text-xs px-2 py-1 rounded border border-border hover:bg-hover"
+            disabled={saving}
             onClick={() => setDraft(newServerDraft())}
           >
             Add server
@@ -298,17 +332,22 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
               </button>
               <button
                 type="button"
+                disabled={saving}
                 className={cn(
-                  'text-xs px-2 py-1 rounded border border-border bg-accent-blue text-text-on-accent',
+                  'text-xs px-2 py-1 rounded border border-border bg-accent-blue text-text-on-accent disabled:opacity-50',
                 )}
                 onClick={() => void handleSaveDraft()}
               >
-                Save
+                {saving ? 'Saving…' : 'Save to config.json'}
               </button>
             </div>
           </div>
         )}
       </section>
+
+      {error && !draft && (
+        <p className="text-status-error text-xs">{error}</p>
+      )}
     </div>
   );
 };

@@ -143,21 +143,64 @@ describe('useAppConfig', () => {
     expect(mockInvoke).toHaveBeenCalledWith('save_config', { config: newConfig });
   });
 
-  it('保存失败时记录错误但不崩溃', async () => {
+  it('保存失败时记录错误并向上抛出', async () => {
     mockInvoke.mockRejectedValue(new Error('save failed'));
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { result } = renderHook(() => useAppConfig());
 
     await act(async () => {
-      await result.current.saveConfig({
-        ...result.current.config,
-        terminalFontSize: 20,
-      });
+      await expect(
+        result.current.saveConfig({
+          ...result.current.config,
+          terminalFontSize: 20,
+        }),
+      ).rejects.toThrow('save failed');
     });
 
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('saveConfig 始终写入 lsp 全局配置块', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') return {};
+      if (cmd === 'list_custom_themes') return [];
+      return undefined;
+    });
+    const { result } = renderHook(() => useAppConfig());
+
+    // Wait for initial load_config effect to settle
+    await waitFor(() => {
+      expect(result.current.config.lsp).toBeDefined();
+    });
+
+    await act(async () => {
+      await result.current.saveConfig({
+        ...result.current.config,
+        lsp: {
+          autoStart: 'onProjectSelect',
+          deactivateStopMinutes: 45,
+          customServers: [],
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.config.lsp.autoStart).toBe('onProjectSelect');
+      expect(result.current.config.lsp.deactivateStopMinutes).toBe(45);
+    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'save_config',
+      expect.objectContaining({
+        config: expect.objectContaining({
+          lsp: expect.objectContaining({
+            autoStart: 'onProjectSelect',
+            deactivateStopMinutes: 45,
+          }),
+        }),
+      }),
+    );
   });
 
   it('配置不变时浅比较避免重渲染', async () => {

@@ -48,9 +48,7 @@ function SettingsView() {
   }, [setAppView]);
 
   const onConfigChange = useCallback(
-    (next: AppConfig) => {
-      saveConfig(next);
-    },
+    (next: AppConfig) => saveConfig(next),
     [saveConfig],
   );
 

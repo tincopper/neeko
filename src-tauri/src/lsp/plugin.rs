@@ -114,7 +114,13 @@ pub struct CustomLspServerConfig {
     pub display_name: Option<String>,
     /// argv, e.g. ["foo-lsp", "--stdio"]
     pub command: Vec<String>,
-    /// File extensions without leading dots, e.g. ["proto", "foo"]
+    /// File extensions without leading dots, e.g. ["proto", "foo"].
+    /// JSON key is `file_extensions` (also accepts camelCase `fileExtensions`).
+    #[serde(
+        default,
+        rename = "file_extensions",
+        alias = "fileExtensions"
+    )]
     pub file_extensions: Vec<String>,
     #[serde(default)]
     pub root_markers: Vec<String>,

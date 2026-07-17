@@ -19,7 +19,7 @@ export type { AppConfig, DiffMode };
 export { BUILTIN_FONTS, PRESET_SHELLS };
 
 interface SettingsPanelProps {
-   onConfigChange: (next: AppConfig) => void;
+   onConfigChange: (next: AppConfig) => void | Promise<void>;
    onClose: () => void;
    fullPage?: boolean;
 }

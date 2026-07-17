@@ -189,37 +189,22 @@ export function useAppConfig() {
    }, [config.theme]);
 
    const saveConfig = useCallback(async (next: AppConfig) => {
-      setConfig(prev => {
-         if (
-            prev.theme === next.theme &&
-            prev.appearanceFontSize === next.appearanceFontSize &&
-            prev.editorFontSize === next.editorFontSize &&
-            prev.terminalFontSize === next.terminalFontSize &&
-            prev.diffMode === next.diffMode &&
-            prev.shell === next.shell &&
-            prev.fontFamily === next.fontFamily &&
-            prev.customIdes === next.customIdes &&
-            prev.ideCommandOverrides === next.ideCommandOverrides &&
-            prev.agentCommandOverrides === next.agentCommandOverrides &&
-            prev.agentSkillPathOverrides === next.agentSkillPathOverrides &&
-            prev.customAgents === next.customAgents &&
-            prev.agentSelectorShowPresetBar === next.agentSelectorShowPresetBar &&
-            prev.agentSelectorCompactMode === next.agentSelectorCompactMode &&
-            prev.hiddenAgentIds === next.hiddenAgentIds &&
-            prev.shortcuts === next.shortcuts &&
-            prev.terminalGpuAcceleration === next.terminalGpuAcceleration &&
-            prev.enablePiThemeSync === next.enablePiThemeSync &&
-            prev.enableOpenCodeThemeSync === next.enableOpenCodeThemeSync
-         ) return prev;
-         return next;
-      });
-      if (!isBuiltinTheme(next.theme)) {
-        await loadCustomThemeVars(next.theme);
+      // Always normalize global lsp block so it is part of config.json
+      const normalized: AppConfig = {
+         ...next,
+         lsp: mergeLspConfig(next.lsp),
+      };
+      setConfig(normalized);
+      if (!isBuiltinTheme(normalized.theme)) {
+        await loadCustomThemeVars(normalized.theme);
       }
       try {
-         await saveConfigApi(next as unknown as Record<string, unknown>);
+         // Persists entire AppConfig (including lsp) to ~/.neeko/config.json
+         // Backend save_config also applies config.lsp to the live LSP registry.
+         await saveConfigApi(normalized as unknown as Record<string, unknown>);
       } catch (e) {
          console.error("[App] Failed to save config:", e);
+         throw e;
       }
    }, [loadCustomThemeVars]);
 
