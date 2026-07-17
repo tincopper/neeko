@@ -697,7 +697,7 @@ pub async fn list_prs_command(
     let target = t.exec_target();
     crate::git::list_prs(wd_path, &target, &state, limit)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -710,7 +710,7 @@ pub async fn list_repo_labels_command(
     let target = t.exec_target();
     crate::git::list_repo_labels(wd_path, &target)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -723,7 +723,7 @@ pub async fn list_repo_authors_command(
     let target = t.exec_target();
     crate::git::list_repo_authors(wd_path, &target)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -737,7 +737,7 @@ pub async fn view_pr_command(
     let target = t.exec_target();
     crate::git::view_pr(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -754,7 +754,7 @@ pub async fn create_pr_command(
     let target = t.exec_target();
     crate::git::create_pr(wd_path, &target, &title, &body, base.as_deref(), draft)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -769,7 +769,7 @@ pub async fn merge_pr_command(
     let target = t.exec_target();
     crate::git::merge_pr(wd_path, &target, pr_number, &method)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -783,7 +783,7 @@ pub async fn close_pr_command(
     let target = t.exec_target();
     crate::git::close_pr(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -797,7 +797,7 @@ pub async fn list_pr_files_command(
     let target = t.exec_target();
     crate::git::list_pr_files(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -811,7 +811,7 @@ pub async fn list_pr_commits_command(
     let target = t.exec_target();
     crate::git::list_pr_commits(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -829,7 +829,7 @@ pub async fn add_pr_review_comment_command(
     let target = t.exec_target();
     crate::git::add_pr_review_comment(wd_path, &target, pr_number, &body, &file_path, line, &side)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -844,7 +844,7 @@ pub async fn list_pr_review_comments_command(
     let target = t.exec_target();
     let result = crate::git::list_pr_review_comments(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)?;
+        .map_err(|e| AppError::Git(e.to_string()))?;
     log::debug!(
         "[perf] Rust list_pr_review_comments: PR #{} {}ms",
         pr_number,
@@ -866,7 +866,7 @@ pub async fn list_pr_comments_command(
     let target = t.exec_target();
     crate::git::list_pr_comments(wd_path, &target, pr_number)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -881,7 +881,7 @@ pub async fn add_pr_comment_command(
     let target = t.exec_target();
     crate::git::add_pr_comment(wd_path, &target, pr_number, &body)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -897,7 +897,7 @@ pub async fn edit_pr_comment_command(
     let target = t.exec_target();
     crate::git::edit_pr_comment(wd_path, &target, pr_number, &comment_id, &body)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -912,7 +912,7 @@ pub async fn delete_pr_comment_command(
     let target = t.exec_target();
     crate::git::delete_pr_comment(wd_path, &target, pr_number, &comment_id)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }
 
 #[tauri::command]
@@ -928,5 +928,5 @@ pub async fn add_comment_reaction_command(
     let target = t.exec_target();
     crate::git::add_comment_reaction(wd_path, &target, pr_number, &comment_id, &emoji)
         .await
-        .map_err(AppError::from)
+        .map_err(|e| AppError::Git(e.to_string()))
 }

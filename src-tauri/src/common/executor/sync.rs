@@ -148,6 +148,19 @@ mod tests {
         assert_eq!(output.stderr.len(), 1_048_576);
     }
 
+    #[test]
+    fn format_command_failed_msg_prefers_stderr_utf8() {
+        let msg = crate::common::executor::format_command_failed_msg(1, b"out", b"GraphQL: boom\n");
+        assert_eq!(msg, "Command failed with code 1: GraphQL: boom");
+        assert!(!msg.contains('['));
+    }
+
+    #[test]
+    fn format_command_failed_msg_falls_back_to_stdout() {
+        let msg = crate::common::executor::format_command_failed_msg(2, b"only-out", b"");
+        assert_eq!(msg, "Command failed with code 2: only-out");
+    }
+
     #[tokio::test]
     async fn exec_on_returns_structured_command_failure() {
         let error = exec_on(
@@ -158,18 +171,27 @@ mod tests {
         .await
         .unwrap_err();
 
-        match error {
+        match &error {
             ExecError::CommandFailed {
                 code,
                 stdout,
                 stderr,
             } => {
-                assert_eq!(code, 9);
+                assert_eq!(*code, 9);
                 assert_eq!(stdout, b"out");
                 assert_eq!(stderr, b"err");
             }
             other => panic!("expected CommandFailed, got {other:?}"),
         }
+        let display = error.to_string();
+        assert!(
+            display.contains("Command failed with code 9: err"),
+            "display should use UTF-8 stderr text, got: {display}"
+        );
+        assert!(
+            !display.contains("stderr=["),
+            "display must not dump raw byte arrays, got: {display}"
+        );
     }
 
     #[tokio::test]

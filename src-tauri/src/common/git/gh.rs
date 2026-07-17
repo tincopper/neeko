@@ -6,6 +6,114 @@ use serde::de::DeserializeOwned;
 
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::exec_on;
+use crate::common::executor::ExecError;
+
+/// Extract `owner/repo` from a GraphQL "Could not resolve to a Repository" message.
+fn extract_repo_name_from_resolve_error(text: &str) -> Option<String> {
+    // GraphQL: Could not resolve to a Repository with the name 'owner/repo'. (repository)
+    const MARKER: &str = "with the name '";
+    let start = text.find(MARKER)? + MARKER.len();
+    let rest = &text[start..];
+    let end = rest.find('\'')?;
+    let name = &rest[..end];
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+/// Classify common `gh` CLI stderr into stable, user-facing English messages.
+///
+/// Returns `None` when no known pattern matches (caller should use cleaned stderr).
+pub fn classify_gh_error(stderr_or_stdout: &str) -> Option<String> {
+    let text = stderr_or_stdout.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let lower = text.to_ascii_lowercase();
+
+    if text.contains("Could not resolve to a Repository")
+        || text.contains("Could not resolve to a PullRequest")
+    {
+        if let Some(repo) = extract_repo_name_from_resolve_error(text) {
+            return Some(format!(
+                "Repository '{repo}' was not found or you don't have access. \
+Check the remote URL and that your GitHub account can access this repo \
+(private repos need the correct token scopes)."
+            ));
+        }
+        return Some(
+            "Repository was not found or you don't have access. \
+Check the remote URL and that your GitHub account can access this repo \
+(private repos need the correct token scopes)."
+                .to_string(),
+        );
+    }
+
+    if lower.contains("bad credentials")
+        || lower.contains("http 401")
+        || lower.contains("401 unauthorized")
+        || text.contains("gh auth login")
+        || (lower.contains("authentication")
+            && (lower.contains("failed") || lower.contains("required") || lower.contains("error")))
+    {
+        return Some(
+            "GitHub authentication failed. Run `gh auth login` or refresh your token.".to_string(),
+        );
+    }
+
+    if lower.contains("http 403")
+        || lower.contains("resource not accessible")
+        || lower.contains("insufficient scope")
+        || lower.contains("insufficient_scope")
+        || lower.contains("must have push access")
+    {
+        return Some(
+            "GitHub denied access to this repository. Your token may lack required scopes (e.g. `repo`)."
+                .to_string(),
+        );
+    }
+
+    if lower.contains("could not resolve host")
+        || lower.contains("connection timed out")
+        || lower.contains("connection refused")
+        || lower.contains("network is unreachable")
+        || lower.contains("temporary failure in name resolution")
+        || lower.contains("error sending request")
+    {
+        return Some(
+            "Network error while contacting GitHub. Check your connection and try again."
+                .to_string(),
+        );
+    }
+
+    None
+}
+
+/// Map an executor failure from a `gh` invocation into a user-facing anyhow error.
+pub fn map_gh_exec_error(err: ExecError) -> anyhow::Error {
+    match err {
+        ExecError::CommandFailed {
+            code,
+            stdout,
+            stderr,
+        } => {
+            let stderr_text = String::from_utf8_lossy(&stderr);
+            let stdout_text = String::from_utf8_lossy(&stdout);
+            if let Some(msg) = classify_gh_error(&stderr_text) {
+                return anyhow::anyhow!(msg);
+            }
+            if let Some(msg) = classify_gh_error(&stdout_text) {
+                return anyhow::anyhow!(msg);
+            }
+            anyhow::anyhow!(crate::common::executor::format_command_failed_msg(
+                code, &stdout, &stderr
+            ))
+        }
+        other => anyhow::anyhow!("{other}"),
+    }
+}
 
 /// Parse GitHub owner/repo from a remote URL.
 /// Handles https, git@, and ssh:// formats.
@@ -69,7 +177,7 @@ impl GhCli {
         full_args.extend_from_slice(args);
         exec_on(&self.target, "gh", &full_args)
             .await
-            .map_err(|e| anyhow::anyhow!("{e}"))
+            .map_err(map_gh_exec_error)
     }
 
     pub async fn run_json<T: DeserializeOwned>(&self, args: &[&str]) -> Result<T> {
@@ -148,6 +256,59 @@ impl GhCli {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_classify_repository_not_found_with_name() {
+        let msg = classify_gh_error(
+            "GraphQL: Could not resolve to a Repository with the name 'liusy0101/codeant'. (repository)\n",
+        )
+        .expect("should classify");
+        assert!(msg.contains("liusy0101/codeant"));
+        assert!(msg.contains("not found") || msg.contains("don't have access"));
+        assert!(!msg.contains("stderr=["));
+    }
+
+    #[test]
+    fn should_classify_auth_failure() {
+        let msg = classify_gh_error("HTTP 401: Bad credentials").expect("should classify");
+        assert!(msg.to_ascii_lowercase().contains("authentication"));
+        assert!(msg.contains("gh auth login"));
+    }
+
+    #[test]
+    fn should_classify_permission_denied() {
+        let msg = classify_gh_error("HTTP 403: Resource not accessible by integration")
+            .expect("should classify");
+        assert!(msg.contains("denied access") || msg.contains("lack required scopes"));
+    }
+
+    #[test]
+    fn should_classify_network_error() {
+        let msg = classify_gh_error("error connecting to api.github.com: Could not resolve host")
+            .expect("should classify");
+        assert!(msg.to_ascii_lowercase().contains("network"));
+    }
+
+    #[test]
+    fn should_return_none_for_unknown_stderr() {
+        assert!(classify_gh_error("some unrelated gh message").is_none());
+        assert!(classify_gh_error("").is_none());
+    }
+
+    #[test]
+    fn should_map_command_failed_to_friendly_message() {
+        let err = ExecError::CommandFailed {
+            code: 1,
+            stdout: vec![],
+            stderr: b"GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)\n"
+                .to_vec(),
+        };
+        let mapped = map_gh_exec_error(err);
+        let s = mapped.to_string();
+        assert!(s.contains("o/r"));
+        assert!(!s.contains("Unknown error"));
+        assert!(!s.contains("stderr=["));
+    }
 
     #[test]
     fn test_parse_gh_owner_repo_https() {

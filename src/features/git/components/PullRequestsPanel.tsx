@@ -5,6 +5,7 @@ import type { PRDetailTabData } from '@/features/editor/types';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/lib/utils';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
+import { getInvokeErrorMessage, mapPrLoadError } from '../utils/prLoadError';
 
 interface PullRequestsPanelProps {
   projectId: string;
@@ -121,13 +122,18 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       }
       setPrList(prs);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load pull requests';
+      const message = getInvokeErrorMessage(err, 'Failed to load pull requests');
       setError(message);
       console.error('[PullRequestsPanel] Failed to load PRs:', err);
     } finally {
       setLoading(false);
     }
   }, [projectId, filter, ghInstalled, ghAuthenticated]);
+
+  const errorView = useMemo(
+    () => (error ? mapPrLoadError(error) : null),
+    [error],
+  );
 
   useEffect(() => {
     loadPRs();
@@ -618,16 +624,35 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   </div>
                 ))}
               </div>
-            ) : error ? (
-              <div className="p-4 text-center text-[var(--font-size)]">
-                <p className="text-accent-red mb-2">Failed to load pull requests</p>
-                <p className="text-text-muted text-[calc(var(--font-size)-2px)]">{error}</p>
-                <button
-                  className="mt-2 px-3 py-1 text-[calc(var(--font-size)-2px)] bg-bg-tertiary rounded hover:bg-bg-hover transition-colors duration-100"
-                  onClick={loadPRs}
-                >
-                  Retry
-                </button>
+            ) : errorView ? (
+              <div className="px-3 py-4 text-[var(--font-size)] text-center space-y-2">
+                <p className="text-accent-red font-medium">{errorView.title}</p>
+                <p className="text-text-muted text-[calc(var(--font-size)-1px)] leading-relaxed">
+                  {errorView.detail}
+                </p>
+                {errorView.hint ? (
+                  <p className="text-text-muted text-[calc(var(--font-size)-2px)] leading-relaxed">
+                    {errorView.hint}
+                  </p>
+                ) : null}
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {errorView.action === 'auth' ? (
+                    <button
+                      className="px-3 py-1.5 text-[calc(var(--font-size)-2px)] rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
+                      onClick={() => onOpenTerminal('gh auth login', 'gh auth login')}
+                    >
+                      Login
+                    </button>
+                  ) : null}
+                  {errorView.action !== 'none' ? (
+                    <button
+                      className="px-3 py-1.5 text-[calc(var(--font-size)-2px)] rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
+                      onClick={loadPRs}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ) : filteredPrList.length === 0 ? (
               <div className="p-4 text-center text-[var(--font-size)] text-text-muted">

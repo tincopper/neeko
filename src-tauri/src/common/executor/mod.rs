@@ -39,6 +39,24 @@ pub struct ExecOutput {
     pub exit_code: i32,
 }
 
+/// Format command failure using UTF-8 text (prefer stderr, then stdout).
+///
+/// Avoids dumping raw byte arrays via `Debug`, which is unreadable in UI/logs.
+pub fn format_command_failed_msg(code: i32, stdout: &[u8], stderr: &[u8]) -> String {
+    let stderr_text = String::from_utf8_lossy(stderr);
+    let stdout_text = String::from_utf8_lossy(stdout);
+    let stderr_trim = stderr_text.trim();
+    let stdout_trim = stdout_text.trim();
+    let detail = if !stderr_trim.is_empty() {
+        stderr_trim
+    } else if !stdout_trim.is_empty() {
+        stdout_trim
+    } else {
+        "(no output)"
+    };
+    format!("Command failed with code {code}: {detail}")
+}
+
 /// Errors that can occur during command execution.
 #[derive(Error, Debug)]
 pub enum ExecError {
@@ -52,7 +70,7 @@ pub enum ExecError {
     #[error("WSL error: {0}")]
     Wsl(String),
     /// Command completed with a non-zero status code.
-    #[error("Command failed with code {code}: stdout={stdout:?}, stderr={stderr:?}")]
+    #[error("{}", format_command_failed_msg(*.code, .stdout, .stderr))]
     CommandFailed {
         /// Numeric process exit code.
         code: i32,
