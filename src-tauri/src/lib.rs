@@ -55,6 +55,7 @@ macro_rules! neeko_invoke_handler {
             $crate::project::commands::rename_project,
             $crate::project::commands::change_project_path,
             $crate::project::commands::reorder_projects,
+            $crate::project::commands::set_project_primary_language,
             // project — IDE
             $crate::project::commands_ide::set_project_ide,
             $crate::project::commands_ide::open_ide,

@@ -53,14 +53,19 @@ const ROOT_MARKERS: &[(&str, &str, &str)] = &[
 
 /// Detect languages for a project by inspecting root marker files only.
 pub fn detect_project_profile(project_path: &str) -> ProjectLanguageProfile {
-    detect_project_profile_with_extras(project_path, &[])
+    detect_project_profile_with_extras(project_path, &[], None)
 }
 
 /// Like [`detect_project_profile`], but also checks custom root markers
 /// `(marker_filename, language_id, server_name)`.
+///
+/// `primary_override` (project-level preference) wins over marker order when it
+/// matches a candidate. If the override is not among detected markers, a synthetic
+/// primary is still selected when the language is known (server name resolvable).
 pub fn detect_project_profile_with_extras(
     project_path: &str,
     extra_markers: &[(String, String, String)],
+    primary_override: Option<&str>,
 ) -> ProjectLanguageProfile {
     let root = Path::new(project_path);
     let mut by_lang: Vec<DetectedLanguage> = Vec::new();
@@ -119,8 +124,8 @@ pub fn detect_project_profile_with_extras(
         }
     }
 
-    // Primary: first in ROOT_MARKERS order among detected languages
-    let primary = pick_primary(&by_lang);
+    // Priority: project override > root-marker order > first candidate
+    let primary = pick_primary(&by_lang, primary_override);
 
     ProjectLanguageProfile {
         project_path: project_path.to_string(),
@@ -129,14 +134,44 @@ pub fn detect_project_profile_with_extras(
     }
 }
 
-fn pick_primary(candidates: &[DetectedLanguage]) -> Option<DetectedLanguage> {
+/// Select primary language.
+///
+/// Order: `primary_override` (if matches a candidate or is a known language) >
+/// ROOT_MARKERS order among candidates > first candidate.
+pub fn pick_primary(
+    candidates: &[DetectedLanguage],
+    primary_override: Option<&str>,
+) -> Option<DetectedLanguage> {
+    if let Some(override_id) = primary_override.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(d) = candidates.iter().find(|c| c.language_id == override_id) {
+            return Some(d.clone());
+        }
+        // Override not detected via markers — still honor explicit project preference
+        // when we know a server for that language (monorepo / forced language).
+        if let Some(server) = server_name_for_language(override_id) {
+            return Some(DetectedLanguage {
+                language_id: override_id.to_string(),
+                server_name: server.to_string(),
+                markers: vec![],
+            });
+        }
+        // Unknown override with no candidates: synthesize with language id as server name
+        if candidates.is_empty() {
+            return Some(DetectedLanguage {
+                language_id: override_id.to_string(),
+                server_name: override_id.to_string(),
+                markers: vec![],
+            });
+        }
+        // Unknown override but other candidates exist: ignore invalid override
+    }
+
     if candidates.is_empty() {
         return None;
     }
     // Walk ROOT_MARKERS order for first matching language_id
     for &(_, lang, _) in ROOT_MARKERS {
         if let Some(d) = candidates.iter().find(|c| c.language_id == lang) {
-            // Prefer go from go.mod over go.sum-only already handled
             return Some(d.clone());
         }
     }
@@ -233,5 +268,88 @@ mod tests {
         let profile = detect_project_profile(tmp.path().to_str().unwrap());
         assert!(profile.candidates.is_empty());
         assert!(profile.primary.is_none());
+    }
+
+    #[test]
+    fn should_prefer_project_override_over_marker_priority() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "go.mod", "module x\n");
+        write(tmp.path(), "Cargo.toml", "[package]\nname=\"y\"\n");
+
+        // Without override: go wins (earlier in ROOT_MARKERS)
+        let auto = detect_project_profile(tmp.path().to_str().unwrap());
+        assert_eq!(auto.primary.as_ref().unwrap().language_id, "go");
+
+        // With override: rust wins even though go.mod is higher priority
+        let forced = detect_project_profile_with_extras(
+            tmp.path().to_str().unwrap(),
+            &[],
+            Some("rust"),
+        );
+        assert_eq!(forced.primary.as_ref().unwrap().language_id, "rust");
+        assert_eq!(forced.candidates.len(), 2);
+    }
+
+    #[test]
+    fn should_honor_override_when_language_not_in_root_markers() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "Cargo.toml", "[package]\nname=\"y\"\n");
+
+        let profile = detect_project_profile_with_extras(
+            tmp.path().to_str().unwrap(),
+            &[],
+            Some("python"),
+        );
+        assert_eq!(profile.primary.as_ref().unwrap().language_id, "python");
+        assert_eq!(
+            profile.primary.as_ref().unwrap().server_name,
+            "pyright-langserver"
+        );
+        // candidates still only reflect root markers
+        assert_eq!(profile.candidates.len(), 1);
+        assert_eq!(profile.candidates[0].language_id, "rust");
+    }
+
+    #[test]
+    fn should_pick_primary_from_candidates_matching_override() {
+        let candidates = vec![
+            DetectedLanguage {
+                language_id: "go".into(),
+                server_name: "gopls".into(),
+                markers: vec!["go.mod".into()],
+            },
+            DetectedLanguage {
+                language_id: "rust".into(),
+                server_name: "rust-analyzer".into(),
+                markers: vec!["Cargo.toml".into()],
+            },
+        ];
+        let p = pick_primary(&candidates, Some("rust")).unwrap();
+        assert_eq!(p.language_id, "rust");
+        assert!(p.markers.contains(&"Cargo.toml".into()));
+    }
+
+    #[test]
+    fn should_ignore_unknown_override_when_candidates_exist() {
+        let candidates = vec![DetectedLanguage {
+            language_id: "go".into(),
+            server_name: "gopls".into(),
+            markers: vec!["go.mod".into()],
+        }];
+        let p = pick_primary(&candidates, Some("not-a-real-lang")).unwrap();
+        assert_eq!(p.language_id, "go");
+    }
+
+    #[test]
+    fn should_use_override_alone_when_no_markers() {
+        let tmp = TempDir::new().unwrap();
+        let profile = detect_project_profile_with_extras(
+            tmp.path().to_str().unwrap(),
+            &[],
+            Some("go"),
+        );
+        assert!(profile.candidates.is_empty());
+        assert_eq!(profile.primary.as_ref().unwrap().language_id, "go");
+        assert_eq!(profile.primary.as_ref().unwrap().server_name, "gopls");
     }
 }

@@ -102,4 +102,8 @@ pub struct Project {
     pub collapsed: bool,
     #[serde(default)]
     pub avatar_color: Option<String>,
+    /// Project-level primary LSP language override (e.g. "go", "rust").
+    /// When set, soft-warm / onProjectSelect prefer this language over root-marker order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_language: Option<String>,
 }

@@ -252,12 +252,35 @@ fn add_project_from_session() {
         last_status: TerminalStatus::Idle,
         collapsed: false,
         avatar_color: None,
+        primary_language: Some("go".into()),
     };
     let project = pm.add_project_from_session(&ps).unwrap();
 
     assert_eq!(project.id, "custom-id");
     assert_eq!(project.selected_agent, Some("gemini".into()));
+    assert_eq!(project.primary_language, Some("go".into()));
     assert!(!project.collapsed);
+}
+
+#[test]
+fn set_primary_language_persists_on_project() {
+    let tmp = TempDir::new().unwrap();
+    let mut pm = ProjectManager::new(|_| {});
+    let project = pm.add_project(tmp.path().to_path_buf(), None, None, None).unwrap();
+    assert!(project.primary_language.is_none());
+
+    pm.set_primary_language(&project.id, Some("rust".into()));
+    assert_eq!(
+        pm.get_project(&project.id).unwrap().primary_language,
+        Some("rust".into())
+    );
+
+    pm.set_primary_language(&project.id, Some("  ".into()));
+    assert!(pm.get_project(&project.id).unwrap().primary_language.is_none());
+
+    pm.set_primary_language(&project.id, Some("go".into()));
+    pm.set_primary_language(&project.id, None);
+    assert!(pm.get_project(&project.id).unwrap().primary_language.is_none());
 }
 
 #[test]
@@ -274,6 +297,7 @@ fn add_project_from_session_nonexistent_path_fails() {
         last_status: TerminalStatus::Idle,
         collapsed: true,
         avatar_color: None,
+        primary_language: None,
     };
     let result = pm.add_project_from_session(&ps);
     assert!(result.is_err());

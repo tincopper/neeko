@@ -38,6 +38,7 @@ fn save_and_load_session_with_projects() {
             last_status: TerminalStatus::Idle,
             collapsed: true,
             avatar_color: None,
+            primary_language: None,
         }],
         active_project_id: Some("p1".into()),
         last_updated: String::new(),
@@ -110,6 +111,7 @@ fn create_session_from_projects() {
         collapsed: false,
         environment: ProjectEnvironment::Local,
         avatar_color: Some("#61afef".into()),
+        primary_language: Some("rust".into()),
     }];
 
     let store = manager.create_session_from_projects(&projects, Some(300));
@@ -118,6 +120,7 @@ fn create_session_from_projects() {
     assert!(!store.projects[0].collapsed);
     assert_eq!(store.sidebar_width, Some(300));
     assert_eq!(store.projects[0].avatar_color, Some("#61afef".into()));
+    assert_eq!(store.projects[0].primary_language, Some("rust".into()));
 }
 
 #[test]

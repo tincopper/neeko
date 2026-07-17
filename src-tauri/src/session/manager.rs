@@ -104,6 +104,7 @@ impl StorageManager {
                 last_status: p.terminal.status.clone(),
                 collapsed: p.collapsed,
                 avatar_color: p.avatar_color.clone(),
+                primary_language: p.primary_language.clone(),
             })
             .collect();
 

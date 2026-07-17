@@ -31,6 +31,9 @@ pub struct ProjectSession {
     pub collapsed: bool,
     #[serde(default)]
     pub avatar_color: Option<String>,
+    /// Project-level primary LSP language override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_language: Option<String>,
 }
 
 /// 会话存储
@@ -84,6 +87,7 @@ impl SessionStore {
                     last_status: TerminalStatus::Idle,
                     collapsed: true,
                     avatar_color: wp.avatar_color,
+                    primary_language: None,
                 });
             }
         }
@@ -117,6 +121,7 @@ impl SessionStore {
                     last_status: TerminalStatus::Idle,
                     collapsed: true,
                     avatar_color: rp.avatar_color,
+                    primary_language: None,
                 });
             }
         }

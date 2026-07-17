@@ -1166,14 +1166,25 @@ impl LspManager {
 
     /// Detect profile, cancel stop timer, emit profile event. Call when project becomes active.
     /// If autoStart is onProjectSelect, spawns the primary language server in the background.
-    pub fn activate_project(self: &Arc<Self>, project_path: &str) -> ProjectLanguageProfile {
+    ///
+    /// `primary_override` is the project-level primary language preference (from
+    /// `Project.primary_language`). When set, it wins over root-marker priority.
+    pub fn activate_project(
+        self: &Arc<Self>,
+        project_path: &str,
+        primary_override: Option<&str>,
+    ) -> ProjectLanguageProfile {
         self.cancel_deactivate(project_path);
         let extra_markers = self
             .plugin_registry
             .lock()
             .expect("infallible")
             .custom_root_markers();
-        let profile = detect_project_profile_with_extras(project_path, &extra_markers);
+        // Custom plugins may also resolve server names for overrides not in ROOT_MARKERS.
+        // Profile detection only knows built-in server names; for custom languages the
+        // override still works when the language appears via extra root markers.
+        let profile =
+            detect_project_profile_with_extras(project_path, &extra_markers, primary_override);
         if let Ok(mut map) = self.profiles.lock() {
             map.insert(project_path.to_string(), profile.clone());
         }

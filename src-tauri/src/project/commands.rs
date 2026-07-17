@@ -127,7 +127,7 @@ pub async fn set_active_project(
     .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
 
     // 更新 active_project_id
-    *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id);
+    *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id.clone());
 
     // LSP: schedule 30min stop for previous project; detect + soft-warm profile for new
     let new_path_str = new_path.to_string_lossy().to_string();
@@ -137,8 +137,56 @@ pub async fn set_active_project(
             state.lsp_manager.schedule_deactivate(old_str);
         }
     }
-    let _profile = state.lsp_manager.activate_project(&new_path_str);
+    let primary_override = state
+        .project_manager
+        .lock()
+        .ok()
+        .and_then(|pm| {
+            pm.get_project(&project_id)
+                .and_then(|p| p.primary_language.clone())
+        });
+    let _profile = state
+        .lsp_manager
+        .activate_project(&new_path_str, primary_override.as_deref());
 
+    Ok(())
+}
+
+/// Set project-level primary LSP language override (None = auto from root markers).
+#[tauri::command]
+pub fn set_project_primary_language(
+    project_id: String,
+    language: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    let path = {
+        let mut pm = state.project_manager.lock().map_err(AppError::from)?;
+        pm.set_primary_language(&project_id, language);
+        pm.get_project(&project_id)
+            .map(|p| p.path.to_string_lossy().to_string())
+    };
+    // Re-detect profile so soft-warm / StatusBar pick up the new primary immediately
+    // when this is the active project.
+    if let Some(path) = path {
+        let active = state
+            .active_project_id
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+        if active.as_deref() == Some(project_id.as_str()) {
+            let override_lang = state
+                .project_manager
+                .lock()
+                .ok()
+                .and_then(|pm| {
+                    pm.get_project(&project_id)
+                        .and_then(|p| p.primary_language.clone())
+                });
+            let _ = state
+                .lsp_manager
+                .activate_project(&path, override_lang.as_deref());
+        }
+    }
     Ok(())
 }
 

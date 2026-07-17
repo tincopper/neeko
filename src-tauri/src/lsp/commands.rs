@@ -231,12 +231,25 @@ pub fn lsp_stop_session(
 }
 
 /// Detect project languages from root markers (no server spawn).
+/// Uses the project's `primary_language` override when the path matches a known project.
 #[tauri::command]
 pub fn lsp_detect_project_profile(
     project_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<crate::lsp::ProjectLanguageProfile, AppError> {
-    Ok(state.lsp_manager.activate_project(&project_path))
+    let primary_override = state
+        .project_manager
+        .lock()
+        .ok()
+        .and_then(|pm| {
+            pm.list_projects()
+                .into_iter()
+                .find(|p| p.path.to_string_lossy() == project_path)
+                .and_then(|p| p.primary_language)
+        });
+    Ok(state
+        .lsp_manager
+        .activate_project(&project_path, primary_override.as_deref()))
 }
 
 /// Soft-warm check: whether the language server binary is on PATH.

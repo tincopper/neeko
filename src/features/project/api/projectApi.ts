@@ -71,6 +71,14 @@ export function setProjectIde(projectId: string, ide?: string | null): Promise<v
   return invoke<void>('set_project_ide', { projectId, ide });
 }
 
+/** Set project-level primary LSP language (null/empty = auto from root markers). */
+export function setProjectPrimaryLanguage(
+  projectId: string,
+  language?: string | null,
+): Promise<void> {
+  return invoke<void>('set_project_primary_language', { projectId, language });
+}
+
 export function openIde(
   ideCommand: string,
   projectPath: string,

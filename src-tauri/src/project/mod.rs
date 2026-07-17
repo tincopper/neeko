@@ -72,6 +72,7 @@ impl ProjectManager {
             active_view: ViewMode::Terminal,
             collapsed: true,
             avatar_color,
+            primary_language: None,
         };
 
         self.projects.push(project.clone());
@@ -110,6 +111,7 @@ impl ProjectManager {
             active_view: ViewMode::Terminal,
             collapsed: session.collapsed,
             avatar_color: session.avatar_color.clone(),
+            primary_language: session.primary_language.clone(),
         };
         self.projects.push(project.clone());
         Ok(project)
@@ -118,6 +120,20 @@ impl ProjectManager {
     pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_ide = ide;
+        }
+        self.notify_persist();
+    }
+
+    pub fn set_primary_language(&mut self, project_id: &str, language: Option<String>) {
+        if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
+            project.primary_language = language.and_then(|s| {
+                let t = s.trim().to_string();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t)
+                }
+            });
         }
         self.notify_persist();
     }

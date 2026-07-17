@@ -46,6 +46,8 @@ export interface Project {
   active_view: "Terminal" | { Diff: { file_path: string } };
   collapsed: boolean;
   avatar_color?: string | null;
+  /** Project-level primary LSP language override (e.g. "go", "rust"). null = auto. */
+  primary_language?: string | null;
 }
 
 export type TerminalEntry = {

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { renameProject, changeProjectPath, setProjectIde, setProjectColor, removeProject } from "../../project/api/projectApi";
+import { renameProject, changeProjectPath, setProjectIde, setProjectColor, removeProject, setProjectPrimaryLanguage } from "../../project/api/projectApi";
 import { setProjectAgent, listAgents } from "../../agent/api/agentApi";
+import { useLspStore } from "@/features/lsp/store/lspStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2, Plus } from "@/shared/components/icons"
 import { useProjectStore } from '@/features/project/store';
@@ -141,6 +142,51 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
     [projectId, patchProject],
   );
 
+  const handlePrimaryLanguageChange = useCallback(
+    (value: string) => {
+      const language = value === "__auto__" ? null : value;
+      setProjectPrimaryLanguage(projectId, language).catch((e) => {
+        console.error("[ProjectPanel] Failed to set primary language:", e);
+      });
+      patchProject({ primary_language: language });
+    },
+    [projectId, patchProject],
+  );
+
+  const projectProfile = useLspStore((s) =>
+    projectPath ? (s.profiles[projectPath] ?? null) : null,
+  );
+
+  /** Detected + common languages for the primary selector. */
+  const primaryLanguageOptions = useMemo(() => {
+    const fromProfile = (projectProfile?.candidates ?? []).map((c) => ({
+      id: c.languageId,
+      label: `${c.languageId} (${c.serverName})`,
+    }));
+    const seen = new Set(fromProfile.map((o) => o.id));
+    const builtins = [
+      { id: "go", label: "go (gopls)" },
+      { id: "rust", label: "rust (rust-analyzer)" },
+      { id: "typescript", label: "typescript (typescript-language-server)" },
+      { id: "javascript", label: "javascript (typescript-language-server)" },
+      { id: "python", label: "python (pyright)" },
+      { id: "java", label: "java (jdtls)" },
+      { id: "cpp", label: "cpp (clangd)" },
+    ];
+    for (const b of builtins) {
+      if (!seen.has(b.id)) {
+        fromProfile.push(b);
+        seen.add(b.id);
+      }
+    }
+    // Keep current override visible even if not in lists
+    const current = project?.primary_language;
+    if (current && !seen.has(current)) {
+      fromProfile.unshift({ id: current, label: current });
+    }
+    return fromProfile;
+  }, [projectProfile, project?.primary_language]);
+
   const handleAddTask = useCallback(() => {
     setEditingConfig(null);
     setDialogOpen(true);
@@ -247,7 +293,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           Project Overrides
         </div>
         <div className="text-[0.79em] text-text-muted mb-3">
-          Agent and IDE preferences specific to this project.
+          Agent, IDE, and primary language preferences specific to this project.
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -286,6 +332,33 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="col-span-2">
+            <div className="text-[0.79em] text-text-muted mb-1.5">Primary language (LSP)</div>
+            <Select
+              value={project.primary_language ?? "__auto__"}
+              onValueChange={handlePrimaryLanguageChange}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__auto__">
+                  Auto
+                  {projectProfile?.primary
+                    ? ` (detected: ${projectProfile.primary.languageId})`
+                    : " (from root markers)"}
+                </SelectItem>
+                {primaryLanguageOptions.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="text-[0.75em] text-text-muted mt-1.5">
+              Monorepos only soft-warm one primary language. Override when auto detection picks the wrong stack.
+            </div>
           </div>
         </div>
       </div>

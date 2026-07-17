@@ -11,18 +11,24 @@ import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { cn } from '@/shared/utils/cn';
 
-function serverName(languageId: string): string {
-  const names: Record<string, string> = {
-    rust: 'rust-analyzer',
-    python: 'pyright',
-    typescript: 'ts-server',
-    javascript: 'ts-server',
-    go: 'gopls',
-    java: 'jdtls',
-    cpp: 'clangd',
-    csharp: 'omnisharp',
-  };
-  return names[languageId] ?? languageId;
+const BUILTIN_SERVER_NAMES: Record<string, string> = {
+  rust: 'rust-analyzer',
+  python: 'pyright',
+  typescript: 'ts-server',
+  javascript: 'ts-server',
+  go: 'gopls',
+  java: 'jdtls',
+  cpp: 'clangd',
+  csharp: 'omnisharp',
+};
+
+/** Prefer live session/profile server name so custom LSPs display correctly. */
+function serverName(
+  languageId: string,
+  liveName?: string | null,
+): string {
+  if (liveName && liveName.trim()) return liveName;
+  return BUILTIN_SERVER_NAMES[languageId] ?? languageId;
 }
 
 interface LspInstallProgressEvent {
@@ -172,7 +178,8 @@ export function StatusBar() {
   const leftContent = () => {
     if (installProgress) {
       const { phase, language_id, message } = installProgress;
-      const label = serverName(language_id);
+      const fromProfile = projectProfile?.candidates?.find((c) => c.languageId === language_id);
+      const label = serverName(language_id, fromProfile?.serverName);
       if (phase === 'installing') {
         return (
           <span className="flex items-center gap-1.5 text-text-muted">
@@ -219,7 +226,7 @@ export function StatusBar() {
             <span className="truncate">
               {sessionEntries.length > 1
                 ? `${sessionEntries.length} LSPs`
-                : serverName(sessionEntries[0].languageId)}
+                : serverName(sessionEntries[0].languageId, sessionEntries[0].serverName)}
             </span>
           </button>
           {dropdownOpen &&
@@ -249,7 +256,7 @@ export function StatusBar() {
                                 : 'bg-status-running animate-pulse',
                         )}
                       />
-                      <span>{serverName(session.languageId)}</span>
+                      <span>{serverName(session.languageId, session.serverName)}</span>
                       {session.progressPct != null && (
                         <span className="text-text-muted">{session.progressPct}%</span>
                       )}
@@ -290,12 +297,12 @@ export function StatusBar() {
     // Profile detected but no server running yet (autoStart=onFirstFile)
     if (projectProfile?.primary) {
       const p = projectProfile.primary;
-      const label = serverName(p.languageId);
-      const markers = p.markers.join(', ');
+      const label = serverName(p.languageId, p.serverName);
+      const markers = p.markers.length > 0 ? p.markers.join(', ') : 'project override';
       return (
         <span
           className="flex items-center gap-1.5 text-text-muted"
-          title={`Detected ${p.languageId} (${markers}). Opens a .${p.languageId === 'typescript' ? 'ts' : p.languageId === 'rust' ? 'rs' : p.languageId} file to start ${label}.`}
+          title={`${p.languageId} (${markers}). Open a matching file to start ${label}.`}
         >
           <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-text-muted" />
           <span className="truncate">

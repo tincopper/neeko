@@ -11,6 +11,8 @@ export interface ProjectSessionData {
   last_status: string;
   collapsed: boolean;
   avatar_color?: string | null;
+  /** Project-level primary LSP language override. */
+  primary_language?: string | null;
 }
 
 export interface SessionStore {

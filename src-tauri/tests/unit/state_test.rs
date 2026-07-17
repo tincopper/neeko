@@ -115,6 +115,7 @@ fn session_store_serde_roundtrip() {
             last_status: TerminalStatus::Idle,
             collapsed: true,
             avatar_color: None,
+            primary_language: None,
         }],
         active_project_id: Some("p1".into()),
         last_updated: "2024-01-01T00:00:00+00:00".into(),
@@ -211,6 +212,7 @@ fn project_session_avatar_color_serde_roundtrip() {
         last_status: TerminalStatus::Idle,
         collapsed: true,
         avatar_color: Some("#61afef".into()),
+        primary_language: None,
     };
     let json = serde_json::to_string(&session).unwrap();
     let back: ProjectSession = serde_json::from_str(&json).unwrap();
