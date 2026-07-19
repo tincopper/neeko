@@ -357,7 +357,7 @@ impl DapSession {
             let launch_args = plugin::build_launch_args(&config, &project_path)
                 .map_err(AppError::Dap)?;
 
-            let stop_on_entry = config.stop_on_entry.unwrap_or(true);
+            let stop_on_entry = config.stop_on_entry.unwrap_or(false);
 
             // Delve DAP order (unlike generic DAP):
             //   initialize → launch → (initialized event) → breakpoints → configurationDone

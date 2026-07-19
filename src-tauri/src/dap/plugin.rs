@@ -99,7 +99,7 @@ pub fn build_launch_args(cfg: &LaunchConfig, workspace: &str) -> Result<Value, S
             let program = cfg.program.clone().ok_or_else(|| {
                 "Rust/lldb launch requires \"program\" (path to binary)".to_string()
             })?;
-            let stop_on_entry = cfg.stop_on_entry.unwrap_or(true);
+            let stop_on_entry = cfg.stop_on_entry.unwrap_or(false);
             Ok(json!({
                 "program": program,
                 "cwd": cwd,

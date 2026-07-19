@@ -8,7 +8,7 @@ export interface LaunchConfig {
   mode?: string | null;
   /** Shell command run before launch (e.g. cargo build). */
   preLaunchTask?: string | null;
-  /** Pause at program entry (default true). */
+  /** Pause at program entry (default false — only user breakpoints). */
   stopOnEntry?: boolean | null;
 }
 

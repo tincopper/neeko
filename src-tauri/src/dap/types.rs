@@ -25,7 +25,7 @@ pub struct LaunchConfig {
     /// Optional shell command run in project env before launch (e.g. `cargo build`).
     #[serde(default)]
     pub pre_launch_task: Option<String>,
-    /// Stop at program entry before running (default true — required for stable UI).
+    /// Stop at program entry before running (default false — only user breakpoints).
     #[serde(default)]
     pub stop_on_entry: Option<bool>,
 }

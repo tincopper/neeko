@@ -196,7 +196,7 @@ pub fn entry_to_launch_config(entry: &EntryPoint) -> super::types::LaunchConfig 
         args: vec![],
         mode: entry.mode.clone(),
         pre_launch_task: entry.pre_launch_task.clone(),
-        stop_on_entry: Some(true),
+        stop_on_entry: Some(false),
     }
 }
 
@@ -231,5 +231,23 @@ mod tests {
         let e = entries.iter().find(|e| e.id == "rust:main").unwrap();
         assert!(e.program_template.contains("target/debug/demo"));
         assert_eq!(e.pre_launch_task.as_deref(), Some("cargo build"));
+    }
+
+    #[test]
+    fn should_default_stop_on_entry_false_for_discovered_configs() {
+        let entry = EntryPoint {
+            id: "go:cmd/x".into(),
+            name: "x".into(),
+            language: "go".into(),
+            program: "cmd/x".into(),
+            program_template: "${workspaceFolder}/cmd/x".into(),
+            run_command: "go run ./cmd/x".into(),
+            config_name: "go:cmd/x".into(),
+            adapter_type: "go".into(),
+            mode: Some("debug".into()),
+            pre_launch_task: None,
+        };
+        let cfg = entry_to_launch_config(&entry);
+        assert_eq!(cfg.stop_on_entry, Some(false));
     }
 }

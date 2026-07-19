@@ -43,7 +43,7 @@ function LaunchConfigDialog({
   const [argsText, setArgsText] = useState((editConfig?.args ?? []).join(' '));
   const [mode, setMode] = useState(editConfig?.mode ?? 'debug');
   const [preLaunchTask, setPreLaunchTask] = useState(editConfig?.preLaunchTask ?? '');
-  const [stopOnEntry, setStopOnEntry] = useState(editConfig?.stopOnEntry ?? true);
+  const [stopOnEntry, setStopOnEntry] = useState(editConfig?.stopOnEntry ?? false);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -239,7 +239,7 @@ function LaunchConfigDialog({
             />
             Stop on entry
             <span className="text-[11px] text-text-muted">
-              (recommended — pause before main runs)
+              (optional — pause at main before user breakpoints)
             </span>
           </label>
         </div>

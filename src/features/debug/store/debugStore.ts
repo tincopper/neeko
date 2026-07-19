@@ -20,6 +20,7 @@ import {
   dapVariables,
 } from '../api/debugApi';
 import { openSourceAtLine } from '../navigate';
+import { pickNavigateFrame, shouldAutoContinueSystemStop } from '../stackFrames';
 import type {
   BreakpointSpec,
   ConsoleLine,
@@ -34,6 +35,14 @@ import type {
 
 /** Stable empty list — never return a fresh `[]` from selectors (avoids re-render loops). */
 export const EMPTY_BP_LINES: readonly number[] = Object.freeze([]);
+
+/** Cap auto-continue through runtime so we never loop forever. */
+const MAX_SYSTEM_AUTO_CONTINUE = 48;
+let systemAutoContinueCount = 0;
+
+function resetSystemAutoContinue() {
+  systemAutoContinueCount = 0;
+}
 
 interface DebugState {
   configs: LaunchConfig[];
@@ -74,7 +83,7 @@ interface DebugState {
   loadBreakpoints: (projectId: string) => Promise<void>;
   getFileBreakpoints: (projectId: string, filePath: string) => readonly number[];
   listAllBreakpoints: (projectId: string) => BreakpointSpec[];
-  refreshStackAndVars: () => Promise<void>;
+  refreshStackAndVars: (opts?: { reason?: string | null }) => Promise<void>;
   selectFrame: (frameId: number) => Promise<void>;
   evaluate: (expression: string) => Promise<void>;
   setPanelOpen: (open: boolean) => void;
@@ -268,6 +277,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
 
   start: async (projectId, currentFile) => {
     // Fresh session: clear previous console output (do not append across runs).
+    resetSystemAutoContinue();
     set({
       error: null,
       consoleLines: [],
@@ -359,7 +369,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
         args: [],
         mode: entry.mode ?? null,
         preLaunchTask: entry.preLaunchTask ?? null,
-        stopOnEntry: true,
+        stopOnEntry: false,
       };
       try {
         await get().addConfig(projectId, config);
@@ -381,6 +391,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
 
   stop: async () => {
     const sid = get().session?.sessionId;
+    resetSystemAutoContinue();
     if (sid) {
       try {
         await dapStopSession(sid);
@@ -505,66 +516,98 @@ export const useDebugStore = create<DebugState>((set, get) => ({
     return n;
   },
 
-  refreshStackAndVars: async () => {
+  refreshStackAndVars: async (opts) => {
     const sid = get().session?.sessionId;
     const session = get().session;
     if (!sid || !session || !isLiveSession(session)) return;
+    const stopReason = opts?.reason ?? null;
+
+    /** Drop stale work if session ended or was replaced mid-await. */
+    const stillLive = (): DapSessionInfo | null => {
+      const s = get().session;
+      if (!s || s.sessionId !== sid || !isLiveSession(s)) return null;
+      return s;
+    };
+
+    const applyFrames = async (frames: StackFrameDto[], live: DapSessionInfo) => {
+      if (!stillLive()) return;
+      set({ frames });
+
+      if (frames.length === 0) {
+        set({ variables: [], selectedFrameId: null, stoppedAt: null });
+        return;
+      }
+
+      const projectPath = live.projectPath || '';
+      const nav = pickNavigateFrame(frames, projectPath);
+
+      // Just My Code: step/stop landed only in runtime — keep going until user
+      // code, next breakpoint, or process exit. Do not open runtime/proc.go.
+      if (shouldAutoContinueSystemStop(frames, projectPath, stopReason)) {
+        set({ stoppedAt: null, selectedFrameId: frames[0]?.id ?? null, variables: [] });
+        if (systemAutoContinueCount < MAX_SYSTEM_AUTO_CONTINUE) {
+          systemAutoContinueCount += 1;
+          if (stillLive()) {
+            void get().control('continue');
+          }
+        }
+        return;
+      }
+
+      resetSystemAutoContinue();
+
+      // Keep Call Stack selection on navigable user frame when possible.
+      const selected = nav ?? frames[0];
+      set({ selectedFrameId: selected.id });
+
+      if (nav?.sourcePath) {
+        set({
+          stoppedAt: {
+            filePath: nav.sourcePath,
+            line: nav.line,
+            column: nav.column,
+          },
+        });
+        void openSourceAtLine(
+          live.projectId,
+          live.projectPath,
+          nav.sourcePath,
+          nav.line,
+          nav.column,
+        );
+      } else {
+        set({ stoppedAt: null });
+      }
+
+      if (!stillLive()) return;
+      try {
+        const variables = await dapVariables(sid, selected.id);
+        if (!stillLive()) return;
+        set({ variables });
+      } catch (e) {
+        if (!stillLive()) return;
+        logDebugStackError(String(e));
+      }
+    };
+
     try {
       const frames = await dapStackTrace(sid);
-      set({ frames });
-      const top = frames[0];
-      if (top) {
-        set({ selectedFrameId: top.id });
-        if (top.sourcePath) {
-          set({
-            stoppedAt: {
-              filePath: top.sourcePath,
-              line: top.line,
-              column: top.column,
-            },
-          });
-          void openSourceAtLine(
-            session.projectId,
-            session.projectPath,
-            top.sourcePath,
-            top.line,
-            top.column,
-          );
-        }
-        const variables = await dapVariables(sid, top.id);
-        set({ variables });
-      } else {
-        set({ variables: [], selectedFrameId: null });
-      }
+      const live = stillLive();
+      if (!live) return;
+      await applyFrames(frames, live);
     } catch (e) {
       // Transient Delve races (Dummy thread) — retry once, avoid noisy toast.
       const msg = String(e);
       logDebugStackError(msg);
       try {
         await new Promise((r) => setTimeout(r, 150));
+        if (!stillLive()) return;
         const frames = await dapStackTrace(sid);
-        set({ frames });
-        const top = frames[0];
-        if (top?.sourcePath) {
-          set({
-            selectedFrameId: top.id,
-            stoppedAt: {
-              filePath: top.sourcePath,
-              line: top.line,
-              column: top.column,
-            },
-          });
-          void openSourceAtLine(
-            session.projectId,
-            session.projectPath,
-            top.sourcePath,
-            top.line,
-            top.column,
-          );
-          const variables = await dapVariables(sid, top.id);
-          set({ variables });
-        }
+        const live = stillLive();
+        if (!live) return;
+        await applyFrames(frames, live);
       } catch (e2) {
+        if (!stillLive()) return;
         get().pushConsole('err', String(e2));
       }
     }
@@ -637,8 +680,9 @@ export const useDebugStore = create<DebugState>((set, get) => ({
             panelOpen: true,
             panelTab: 'session',
           });
-          get().pushConsole('sys', reason ? `Stopped (${reason})` : 'Stopped');
-          void get().refreshStackAndVars();
+          // No Debug Console spam for stop/step — toolbar + Call Stack already show state.
+          // System-only stops auto-continue inside refresh (Just My Code).
+          void get().refreshStackAndVars({ reason });
         } else if (kind === 'continued') {
           set({
             session: session ? { ...session, status: 'running' } : session,
@@ -646,6 +690,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
           });
         } else if (kind === 'terminated') {
           // Always clear stack/vars (status may already be terminated via dap-session-status).
+          resetSystemAutoContinue();
           const alreadyEnded = session?.status === 'terminated';
           set({
             ...endedSessionPatch(session),
@@ -684,6 +729,7 @@ export const useDebugStore = create<DebugState>((set, get) => ({
         const info = event.payload;
         const cur = get().session;
         if (info.status === 'terminated' || info.status === 'ended') {
+          resetSystemAutoContinue();
           set({
             ...endedSessionPatch(
               cur?.sessionId === info.sessionId ? { ...cur, ...info } : info,
