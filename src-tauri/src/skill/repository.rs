@@ -33,6 +33,7 @@ impl SkillRepository {
     }
 
     /// Get the inner database connection (for migration usage).
+    #[allow(dead_code)]
     pub fn get_conn_inner(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn
             .lock()

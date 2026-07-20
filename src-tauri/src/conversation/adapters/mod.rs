@@ -52,24 +52,6 @@ pub(crate) fn strip_ansi(s: &str) -> String {
     re.replace_all(s, "").to_string()
 }
 
-/// 从 Claude Code 风格的 content 数组中提取纯文本（合并所有 text 块）
-pub(crate) fn extract_content_text(content: &serde_json::Value) -> String {
-    match content.as_array() {
-        Some(arr) => arr
-            .iter()
-            .filter_map(|block| {
-                if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                    block.get("text").and_then(|v| v.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        None => content.as_str().unwrap_or("").to_string(),
-    }
-}
-
 /// 解析常见时间戳格式为 Unix 毫秒时间戳
 ///
 /// 支持：

@@ -1,21 +1,21 @@
 //! LSP session manager: lifecycle, plugin discovery, diagnostics, and auto-start policies.
 
 use std::collections::HashMap;
-use std::io::BufRead;
-
 use crate::common::runtime::AppRuntime;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::Value;
 
 use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::plugin::{
-    CustomLspServerConfig, LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
+    LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
 };
+#[cfg(test)]
+use super::plugin::CustomLspServerConfig;
 use super::profile::{detect_project_profile_with_markers, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport};
 use super::types::LspSessionInfo;

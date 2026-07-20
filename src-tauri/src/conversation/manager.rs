@@ -81,7 +81,7 @@ impl ConversationManager {
         if let Some(bulk) = adapter.parse_all_metas() {
             let metas = bulk?;
             let mut sessions_found: u32 = 0;
-            let mut errors: Vec<String> = Vec::new();
+            let errors: Vec<String> = Vec::new();
 
             for (meta, synthetic_path) in metas {
                 let native_session_id = meta.native_session_id;

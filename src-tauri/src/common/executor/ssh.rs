@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use futures::FutureExt;
 use russh::{Channel, ChannelMsg};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, UnboundedSender};
 
 use russh::client;
 use russh::client::Handle;

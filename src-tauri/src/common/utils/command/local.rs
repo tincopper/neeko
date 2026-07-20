@@ -12,6 +12,7 @@ pub mod flags {
 }
 
 /// Create a `Command` that runs without a visible console window on Windows.
+#[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
 pub fn exec(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
@@ -36,26 +37,6 @@ pub fn exec_detached(program: &str) -> Command {
         );
     }
     cmd
-}
-
-/// Create a Command with full PATH resolution and PATH injected into the child.
-///
-/// **Crate-private host helper.** Business code must use
-/// [`crate::core::exec`] with a project [`crate::common::executor::factory::ExecTarget`].
-pub(crate) fn cmd_from_path(program: &str) -> Command {
-    let path = resolve_full_path();
-    let resolved = resolve_command_path(program, &path);
-    let mut cmd = exec(&resolved);
-    cmd.env("PATH", path);
-    cmd
-}
-
-/// Check if a command exists on the (process + extras) PATH.
-///
-/// **Crate-private host helper.** Prefer
-/// [`crate::core::exec::command_exists`] with the project's ExecTarget.
-pub(crate) fn check_command_exists(command: &str) -> bool {
-    command_exists_on_path(command, &resolve_full_path())
 }
 
 /// Check whether a command exists under the given PATH string.
@@ -268,28 +249,6 @@ fn expand_env_vars_windows(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn should_return_true_for_existing_command() {
-        #[cfg(target_os = "windows")]
-        let cmd = "cmd";
-        #[cfg(not(target_os = "windows"))]
-        let cmd = "bash";
-        assert!(check_command_exists(cmd));
-    }
-
-    #[test]
-    fn should_return_true_for_windows_specific_command() {
-        #[cfg(target_os = "windows")]
-        assert!(check_command_exists("powershell"));
-        #[cfg(not(target_os = "windows"))]
-        assert!(check_command_exists("sh"));
-    }
-
-    #[test]
-    fn should_return_false_for_nonexistent_command() {
-        assert!(!check_command_exists("nonexistent_command_xyz_12345"));
-    }
 
     #[test]
     fn should_escape_single_quotes_in_path() {

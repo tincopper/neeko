@@ -6,7 +6,6 @@ pub mod services;
 
 pub use crate::common::terminal::types::*;
 
-use crate::common::terminal::types::TerminalSession;
 use anyhow::Result;
 use portable_pty::{Child, CommandBuilder, PtySize};
 use std::collections::HashMap;

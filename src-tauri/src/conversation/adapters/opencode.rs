@@ -334,9 +334,9 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
             time_created,
             time_updated,
             model_json,
-            tokens_input,
-            tokens_output,
-            tokens_reasoning,
+            _tokens_input,
+            _tokens_output,
+            _tokens_reasoning,
             msg_count,
         ) = row?;
 

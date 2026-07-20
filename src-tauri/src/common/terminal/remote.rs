@@ -4,7 +4,7 @@ use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
-use anyhow::{Context, Result};
+use anyhow::Result;
 #[allow(clippy::wildcard_imports)]
 use russh::*;
 use std::collections::HashMap;

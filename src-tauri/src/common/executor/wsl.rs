@@ -5,13 +5,18 @@
 //! login shell (`bash -lc`) inside the distro so profile-managed tools (nvm,
 //! fnm, cargo, …) match an interactive WSL terminal.
 
+#[cfg(target_os = "windows")]
 use std::sync::Arc;
 
 use async_trait::async_trait;
+#[cfg(target_os = "windows")]
 use futures::FutureExt;
+#[cfg(target_os = "windows")]
 use tokio::sync::Mutex;
 
-use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
+use super::{CommandExecutor, ExecChild, ExecError, SpawnOptions};
+#[cfg(target_os = "windows")]
+use super::{BoxAsyncRead, BoxAsyncWrite};
 
 /// Executor that runs commands inside a WSL distribution.
 ///

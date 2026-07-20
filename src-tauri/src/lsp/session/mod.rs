@@ -18,7 +18,6 @@ use serde_json::Value;
 use super::diag_bus::DiagnosticBus;
 use super::inflight::InflightRequestTracker;
 use super::plugin::LspPlugin;
-use super::server_request;
 use super::transport::LspTransport;
 use notify::{handle_diagnostics_notification, handle_progress_notification};
 use request::PendingSender;
@@ -30,6 +29,7 @@ pub(crate) use request::do_send_request;
 
 /// Lifecycle status of an LSP session, emitted to the frontend.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub(crate) enum LspSessionStatus {
     /// Server process is starting.
     Starting,
@@ -74,6 +74,7 @@ pub(crate) struct LspSession {
     /// Reader thread handle for processing server responses.
     pub(crate) reader: Option<thread::JoinHandle<Result<()>>>,
     /// Stderr logger thread handle.
+    #[allow(dead_code)]
     pub(crate) stderr_logger: Option<thread::JoinHandle<()>>,
     /// Number of times this session has been restarted.
     pub(crate) restart_count: u32,
@@ -411,6 +412,7 @@ impl LspSession {
     /// Takes a clone of the writer sender so it can be called without borrowing
     /// `self` across the await point — safe even if the session is removed
     /// from the session map while waiting.
+    #[allow(dead_code)]
     pub(crate) async fn send_request_async(&self, method: &str, params: Value) -> Result<Value> {
         do_send_request(
             Arc::clone(&self.pending),
@@ -438,6 +440,7 @@ impl LspSession {
     }
 
     /// Emit a session lifecycle event to the frontend via the transport.
+    #[allow(dead_code)]
     pub(crate) fn emit_session_event(
         &self,
         status: LspSessionStatus,
