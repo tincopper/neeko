@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AppLayout, TitleBar } from "@/layout";
 import { StatusBar } from "@/features/status-bar";
 import { DebugPanel } from "@/features/debug";
+import { TaskConsolePanel } from "@/features/task";
 import {
   QuickOpenPalette,
   startQuickOpenActivityTracking,
@@ -40,6 +41,7 @@ function App() {
           <div className="flex-1 min-h-0 flex flex-col">
             <AppLayout {...appLayoutProps} />
           </div>
+          <TaskConsolePanel />
           <DebugPanel />
         </div>
         <AppModals {...appModalsProps} />

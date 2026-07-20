@@ -17,6 +17,22 @@ export interface DiscoveredTask {
   priority: number;
 }
 
+/** One task run shown as a tab in the bottom Console panel. */
+export interface TaskConsoleSession {
+  id: string;
+  projectId: string;
+  projectPath: string;
+  configId: string;
+  /** Tab label — task name. */
+  name: string;
+  command: string;
+  status: "running" | "idle" | "failed";
+  ptySessionId: string | null;
+  /** Bump to force terminal remount / re-run. */
+  rebuildKey: number;
+}
+
+/** @deprecated Prefer TaskConsoleSession — kept for any residual imports. */
 export interface TaskState {
   status: "idle" | "running";
   activeConfigId: string | null;

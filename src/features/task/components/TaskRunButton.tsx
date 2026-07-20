@@ -17,7 +17,7 @@ function TaskRunButton() {
     configs,
     discovered,
     discovering,
-    taskStates,
+    consoleSessions,
     selectedConfigId,
     loadConfigs,
     loadDiscovered,
@@ -33,6 +33,7 @@ function TaskRunButton() {
 
   const activeProject = useProjectStore((s) => s.activeProject);
   const projectPath = activeProject?.path ?? null;
+  const currentProjectId = activeProject?.id ?? "";
 
   // Load saved + discover when project changes
   useEffect(() => {
@@ -55,8 +56,16 @@ function TaskRunButton() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  const currentProjectId = activeProject?.id ?? "";
-  const isRunning = taskStates[currentProjectId]?.status === "running";
+  // Running if the selected task (or any project task) has an active console session
+  const isRunning = useMemo(() => {
+    const sessions = consoleSessions.filter((s) => s.projectId === currentProjectId);
+    if (selectedConfigId) {
+      return sessions.some(
+        (s) => s.configId === selectedConfigId && s.status === "running",
+      );
+    }
+    return sessions.some((s) => s.status === "running");
+  }, [consoleSessions, currentProjectId, selectedConfigId]);
 
   const selectedLabel = useMemo(() => {
     const saved = configs.find((c) => c.id === selectedConfigId);

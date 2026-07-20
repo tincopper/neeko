@@ -3,7 +3,6 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 
-import { useEditorStore } from '@/shared/store';
 import type { AgentConfig } from '@/shared/types';
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 
@@ -113,10 +112,10 @@ export async function createTerminalForProject(
     log(`Session created: ${sid}, PID: ${session.pid}`);
     term.write(`\x1b[32m[Terminal] Connected (PID: ${session.pid})\x1b[0m\r\n\r\n`);
 
-    // If this is a task terminal, write back the PTY session ID to taskStore
+    // Task console: taskConfigId is the console session id (not editor tab).
     if (taskConfigId) {
       const { useTaskStore } = await import('../../task/store');
-      useTaskStore.getState().setPtySessionId(backendProjectId, sid);
+      useTaskStore.getState().setPtySessionId(taskConfigId, sid);
     }
 
     const unlistenOutput = await listen<number[]>(`terminal-output-${sid}`, (event) => {
@@ -136,45 +135,15 @@ export async function createTerminalForProject(
         unlistenClosed();
 
         if (taskConfigId) {
-          // Task terminal: process exited naturally.
-          // - Notify taskStore so the Play button returns to idle.
-          // - Update the tab status to Idle (success) or Failed (non-zero exit).
-          // - Keep the cache alive so the output stays visible on screen.
-          // - Do NOT destroy cache or trigger rebuild (prevents flicker/re-execute).
+          // Task console terminal: process exited — keep output, mark session idle/failed.
           const { useTaskStore } = await import('../../task/store');
-          const ts = useTaskStore.getState();
-          if (ts.taskStates[backendProjectId]?.ptySessionId === sid) {
-            ts.markIdle(backendProjectId);
-          }
+          useTaskStore.getState().markConsoleExit(taskConfigId, exitCode);
 
-          // Reflect success/failure in the tab so the UI can show the right indicator
-          // and so taskStore.runTask() can decide whether to reuse the tab.
-          // Use the project ID captured at terminal-creation time (backendProjectId)
-          // rather than appState.activeProject �� the user may have switched to a
-          // different project while the task was running, making activeProject null
-          // or pointing to the wrong project.
-          const appState = useEditorStore.getState();
-          const tabKey = backendProjectId;
-          const pt = appState.tabs[tabKey];
-          const tab = pt?.tabs.find(
-            (t) =>
-              t.data.kind === 'terminal' &&
-              t.data.taskConfigId === taskConfigId &&
-              t.data.status === 'Running',
-          );
-          if (tab) {
-            appState.updateTab(tabKey, tab.id, {
-              status: exitCode === 0 ? 'Idle' : 'Failed',
-            });
-          }
-
-          // Show a dim completion marker at the bottom of the terminal output
           const exitLabel =
             exitCode === 0
               ? '\r\n\x1b[90m[Process exited with code 0]\x1b[0m\r\n'
               : `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`;
           term.write(exitLabel);
-          // Clear sessionId so resize/input calls no-op gracefully
           cache.sessionId = null;
           return;
         }

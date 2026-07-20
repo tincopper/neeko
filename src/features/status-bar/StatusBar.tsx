@@ -9,8 +9,9 @@ import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
+import { useTaskStore } from '@/features/task/store';
 import { useEditorStore } from '@/shared/store';
-import { Bug } from '@/shared/components/icons';
+import { Bug, Terminal } from '@/shared/components/icons';
 import { cn } from '@/shared/utils/cn';
 
 const BUILTIN_SERVER_NAMES: Record<string, string> = {
@@ -46,6 +47,15 @@ export function StatusBar() {
   const debugSession = useDebugStore((s) => s.session);
   const debugPanelOpen = useDebugStore((s) => s.panelOpen);
   const toggleDebugPanel = useDebugStore((s) => s.togglePanel);
+  const consolePanelOpen = useTaskStore((s) => s.consolePanelOpen);
+  const toggleConsolePanel = useTaskStore((s) => s.toggleConsolePanel);
+  const consoleSessions = useTaskStore((s) => s.consoleSessions);
+  const activeConsoleId = useTaskStore((s) => s.activeConsoleId);
+  const runningConsoleCount = consoleSessions.filter((s) => s.status === 'running').length;
+  const activeConsole =
+    consoleSessions.find((s) => s.id === activeConsoleId) ??
+    consoleSessions.find((s) => s.status === 'running') ??
+    null;
   const [installProgress, setInstallProgress] = useState<LspInstallProgressEvent | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties | undefined>(undefined);
@@ -368,6 +378,40 @@ export function StatusBar() {
         ) : null}
       </div>
       <div className="flex h-full shrink-0 items-center gap-3">
+        {activeProjectId ? (
+          <button
+            type="button"
+            className={cn(
+              'flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
+              consolePanelOpen ? 'text-text-primary' : '',
+            )}
+            title={consolePanelOpen ? 'Hide task console' : 'Show task console'}
+            onClick={() => toggleConsolePanel()}
+          >
+            <Terminal size={12} className="shrink-0" />
+            {runningConsoleCount > 0 || activeConsole ? (
+              <>
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full shrink-0',
+                    runningConsoleCount > 0
+                      ? 'bg-accent-green animate-pulse'
+                      : activeConsole?.status === 'failed'
+                        ? 'bg-accent-red'
+                        : 'bg-text-muted',
+                  )}
+                />
+                <span className="truncate max-w-[140px]">
+                  {runningConsoleCount > 0
+                    ? `Console · ${activeConsole?.name ?? 'running'}`
+                    : `Console · ${activeConsole?.name ?? 'idle'}`}
+                </span>
+              </>
+            ) : (
+              <span>Console</span>
+            )}
+          </button>
+        ) : null}
         {activeProjectId ? (
           <button
             type="button"
