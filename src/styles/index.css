@@ -138,6 +138,13 @@
   /* Cmd+Hover pointer cursor — when cmd-held class is on the editor wrapper */
   .cmd-held .cm-content { cursor: pointer !important; }
 
+  /* Thicker caret so the insert point is easy to spot after jumps */
+  .cm-editor .cm-cursor,
+  .cm-editor .cm-dropCursor {
+    border-left-width: 2.5px !important;
+    border-left-color: var(--accent-blue) !important;
+  }
+
   /* Go-to-definition / nav history: flash destination line so the caret is obvious */
   @keyframes cm-nav-flash {
     0% { background-color: rgba(var(--accent-blue-rgb), 0.42); }
