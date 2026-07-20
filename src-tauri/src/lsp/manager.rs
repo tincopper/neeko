@@ -12,9 +12,9 @@ use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::plugin::{
-    LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
+    CustomLspServerConfig, LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
 };
-use super::profile::{detect_project_profile_with_extras, ProjectLanguageProfile};
+use super::profile::{detect_project_profile_with_markers, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport};
 use super::types::LspSessionInfo;
 
@@ -626,16 +626,14 @@ impl LspManager {
         primary_override: Option<&str>,
     ) -> ProjectLanguageProfile {
         self.cancel_deactivate(project_path);
-        let extra_markers = self
+        // All markers (built-in + custom) come from the live plugin registry.
+        let markers = self
             .plugin_registry
             .lock()
             .expect("infallible")
-            .custom_root_markers();
-        // Custom plugins may also resolve server names for overrides not in ROOT_MARKERS.
-        // Profile detection only knows built-in server names; for custom languages the
-        // override still works when the language appears via extra root markers.
+            .detection_markers();
         let profile =
-            detect_project_profile_with_extras(project_path, &extra_markers, primary_override);
+            detect_project_profile_with_markers(project_path, &markers, primary_override);
         if let Ok(mut map) = self.profiles.lock() {
             map.insert(project_path.to_string(), profile.clone());
         }
@@ -817,17 +815,16 @@ mod tests {
             manager.resolve_language_for_path("/repo/main.go"),
             Some("go".into())
         );
-        manager.register_plugin(LspPlugin {
+        manager.register_plugin(LspPlugin::from_custom(&CustomLspServerConfig {
+            id: "proto".into(),
             language_id: "protobuf".into(),
-            extensions: vec!["proto".into()],
-            server_binary: "buf".into(),
-            server_command: vec!["buf".into(), "lsp".into()],
-            install: None,
+            display_name: None,
+            command: vec!["buf".into(), "lsp".into()],
+            file_extensions: vec!["proto".into()],
             root_markers: vec![],
-            auto_start: LspAutoStart::OnFirstFile,
-            is_custom: true,
+            auto_start: None,
             initialization_options: None,
-        });
+        }));
         assert_eq!(
             manager.resolve_language_for_path("api/v1.proto"),
             Some("protobuf".into())
@@ -837,17 +834,16 @@ mod tests {
     #[test]
     fn test_custom_plugin_registration() {
         let manager = LspManager::new_default();
-        manager.register_plugin(LspPlugin {
+        manager.register_plugin(LspPlugin::from_custom(&CustomLspServerConfig {
+            id: "testlang".into(),
             language_id: "testlang".into(),
-            extensions: vec!["tl".into()],
-            server_binary: "test-lsp".into(),
-            server_command: vec!["test-lsp".into()],
-            install: None,
+            display_name: None,
+            command: vec!["test-lsp".into()],
+            file_extensions: vec!["tl".into()],
             root_markers: vec![],
-            auto_start: LspAutoStart::OnFirstFile,
-            is_custom: true,
+            auto_start: None,
             initialization_options: None,
-        });
+        }));
 
         let registry = manager.plugin_registry.lock().unwrap();
         assert!(registry.is_registered("testlang"));
