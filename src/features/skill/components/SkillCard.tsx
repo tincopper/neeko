@@ -35,13 +35,10 @@ interface SkillCardProps {
   onCheckUpdate?: () => void;
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
-  /** Agent keys highlighted on the card (synced). Empty = show defaults by enabled state. */
   installedAgents?: string[];
-  /** Preset / tag-group name shown in footer (orange in reference). */
   presetLabel?: string | null;
 }
 
-/** Agent strip — matches reference footer icon cluster order. */
 const AGENT_STRIP = [
   { key: 'claude-code', label: 'Claude Code', icon: 'claude-code.png' },
   { key: 'codex', label: 'Codex', icon: 'codex.png' },
@@ -75,8 +72,8 @@ function SourceLabel({ source }: { source: string }) {
 }
 
 /**
- * Skill library card — layout aligned with Skills Manager reference.
- * Colors use Neeko theme tokens (accent-green for enabled, not light SaaS pastels as base).
+ * Skills Manager–style library card (reference layout).
+ * Uses theme tokens: accent-green for enabled state.
  */
 const SkillCard: React.FC<SkillCardProps> = React.memo(
   ({
@@ -93,7 +90,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
   }) => {
     const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
     const hasUpdate = skill.update_status === 'update_available';
-    const enabled = skill.enabled;
+    const enabled = Boolean(skill.enabled);
     const chips = skill.tags.slice(0, 4);
 
     const showAgents =
@@ -102,7 +99,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
         : AGENT_STRIP;
 
     return (
-      <div
+      <article
         role="button"
         tabIndex={0}
         onClick={onSelect}
@@ -113,46 +110,42 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           }
         }}
         className={cn(
-          'group relative flex flex-col rounded-xl bg-bg-primary cursor-pointer',
-          'transition-[border-color,box-shadow,background-color] duration-150',
-          'min-h-[168px] border',
-          // Full border: green when enabled (reference), neutral when not
-          enabled
-            ? 'border-[var(--accent-green)]/55 shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent-green)_12%,transparent)]'
-            : 'border-border hover:border-border',
-          isSelected && 'ring-2 ring-accent/35',
-          'hover:bg-bg-hover/30',
+          'group flex flex-col h-full min-h-[172px] rounded-xl cursor-pointer',
+          'bg-bg-primary transition-colors duration-150',
+          // Full outline: green when enabled (reference), gray when not
+          'border-2',
+          enabled ? 'border-accent-green/70' : 'border-border',
+          isSelected && 'ring-2 ring-accent-blue/40',
+          'hover:bg-bg-hover/40',
         )}
       >
-        {/* ── Body ── */}
-        <div className="flex flex-col flex-1 gap-1.5 px-3.5 pt-3.5 pb-2.5 min-h-0">
-          {/* Title row: check + name + menu */}
-          <div className="flex items-start gap-2">
+        {/* Body */}
+        <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">
+          {/* Row 1: status circle + title + menu */}
+          <div className="flex items-center gap-2">
             <span
               className={cn(
-                'mt-0.5 w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0',
+                'w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0',
                 enabled
-                  ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
-                  : 'border-text-muted/50 bg-transparent',
+                  ? 'border-accent-green bg-accent-green/15 text-accent-green'
+                  : 'border-text-muted/45 bg-transparent',
               )}
               aria-hidden
             >
               {enabled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
             </span>
 
-            <div className="min-w-0 flex-1 pt-px">
-              <h3 className="text-[13px] font-semibold text-text-primary leading-snug truncate">
-                {skill.name}
-              </h3>
-            </div>
+            <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-text-primary truncate leading-none">
+              {skill.name}
+            </h3>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
                   className={cn(
-                    'p-1 -mr-1 -mt-0.5 rounded-md text-text-muted hover:text-text-primary hover:bg-white/[0.06]',
-                    'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity',
+                    'p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover',
+                    'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0',
                   )}
                   title="Actions"
                   onClick={e => e.stopPropagation()}
@@ -211,7 +204,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                 )}
                 {isGitSource && hasUpdate && onUpdateSkill && (
                   <DropdownMenuItem
-                    className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent-green)]"
+                    className="flex items-center gap-2 cursor-pointer text-xs text-accent-green"
                     onSelect={() => onUpdateSkill()}
                   >
                     <ArrowUpCircle className="h-3 w-3" />
@@ -220,7 +213,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent-red)]"
+                  className="flex items-center gap-2 cursor-pointer text-xs text-accent-red"
                   onSelect={() => onAction('delete')}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -230,16 +223,16 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </DropdownMenu>
           </div>
 
-          {/* Description — 2 lines, muted */}
-          <p className="text-[12px] text-text-muted leading-[1.45] line-clamp-2 pl-[26px]">
+          {/* Description (indented under title, past the circle) */}
+          <p className="text-[12px] text-text-muted leading-relaxed line-clamp-2 pl-[26px]">
             {skill.description?.trim() || 'No description'}
           </p>
 
-          {/* Update link — below description (reference placement) */}
+          {/* Update link — same position as reference (under description) */}
           {hasUpdate && (
             <button
               type="button"
-              className="self-start pl-[26px] text-[12px] font-medium text-[var(--accent-yellow)] hover:underline"
+              className="self-start pl-[26px] text-[12px] font-medium text-accent-yellow hover:underline"
               onClick={e => {
                 e.stopPropagation();
                 onUpdateSkill?.();
@@ -249,9 +242,9 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </button>
           )}
 
-          {/* Tag pills */}
+          {/* Soft tag pills */}
           {chips.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pl-[26px] pt-0.5">
+            <div className="flex flex-wrap gap-1.5 pl-[26px]">
               {chips.map(tag => (
                 <span
                   key={tag}
@@ -267,20 +260,14 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           )}
         </div>
 
-        {/* ── Footer ── reference: source · Preset | agents | Enabled */}
-        <div
-          className={cn(
-            'flex items-center gap-2 px-3.5 py-2.5 mt-auto',
-            'border-t border-border/70',
-            'text-[11px]',
-          )}
-        >
+        {/* Footer: source · Preset | agents | Enabled */}
+        <div className="flex items-center gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
           <div className="flex items-center gap-1 min-w-0 flex-1 text-text-muted">
             <SourceLabel source={skill.source_type} />
             {presetLabel ? (
               <>
-                <span className="text-text-muted/40 shrink-0">·</span>
-                <span className="truncate font-medium text-orange-400/95">{presetLabel}</span>
+                <span className="opacity-40 shrink-0">·</span>
+                <span className="truncate font-medium text-orange-400">{presetLabel}</span>
               </>
             ) : null}
           </div>
@@ -306,14 +293,14 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
 
           <span
             className={cn(
-              'shrink-0 font-semibold tabular-nums',
-              enabled ? 'text-[var(--accent-green)]' : 'text-text-muted',
+              'shrink-0 font-semibold',
+              enabled ? 'text-accent-green' : 'text-text-muted',
             )}
           >
             {enabled ? 'Enabled' : 'Enable'}
           </span>
         </div>
-      </div>
+      </article>
     );
   },
 );

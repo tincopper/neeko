@@ -44,7 +44,6 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
   }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
 
-  // Build skill → preset names for card footer (reference: "local · Basic")
   useEffect(() => {
     if (tagGroups.length === 0) {
       setSkillPresetMap({});
@@ -90,34 +89,35 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   }, [tagGroupSkills, skills, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <SkillHeader
-        onCreateClick={handleCreate}
-        onInstallDirectoryClick={handleInstall}
-        onInstallGitClick={handleInstallGit}
-        onScanClick={handleScan}
-        filterLabel={activeGroupName}
-        count={filteredSkills.length}
-      />
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
+      <div className="shrink-0">
+        <SkillHeader
+          onCreateClick={handleCreate}
+          onInstallDirectoryClick={handleInstall}
+          onInstallGitClick={handleInstallGit}
+          onScanClick={handleScan}
+          filterLabel={activeGroupName}
+          count={filteredSkills.length}
+        />
+        <SkillSearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={
+            activeGroupName
+              ? `Search skills in ${activeGroupName}…`
+              : 'Search skills in the library…'
+          }
+          clearable
+        />
+        <DiscoveredSkillsList
+          skills={discoveredSkills}
+          onImport={handleImport}
+          onClear={handleClearDiscovered}
+        />
+      </div>
 
-      <SkillSearchInput
-        value={searchQuery}
-        onChange={setSearchQuery}
-        placeholder={
-          activeGroupName
-            ? `Search skills in ${activeGroupName}…`
-            : 'Search skills in the library…'
-        }
-        clearable
-      />
-
-      <DiscoveredSkillsList
-        skills={discoveredSkills}
-        onImport={handleImport}
-        onClear={handleClearDiscovered}
-      />
-
-      <div className="flex-1 overflow-y-auto min-h-0">
+      {/* Scroll region — must be flex-1 + min-h-0 + overflow-y-auto */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
         <SkillListSection
           skills={filteredSkills}
           loading={loading && skills.length === 0}

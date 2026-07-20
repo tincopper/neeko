@@ -134,7 +134,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
   const isApplying = applyingProjectId === activeProjectId || saving;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 h-9 px-3 border-b border-border shrink-0">
         <div className="min-w-0 flex-1">
           <div className="text-[var(--font-size)] font-semibold text-text-primary truncate">
@@ -167,7 +167,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 py-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-2">
         <div className="px-3 py-1.5 text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
           Bound groups
         </div>

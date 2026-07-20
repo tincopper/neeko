@@ -139,7 +139,7 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
       <div className="flex-1 flex flex-col overflow-hidden">
         <div
           className={cn(
-            'flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
+            'flex flex-col flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
             skillsActive && 'hidden',
           )}
         >
@@ -147,7 +147,7 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
         </div>
         <div
           className={cn(
-            'flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
+            'flex flex-col flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
             !skillsActive && 'hidden',
           )}
         >

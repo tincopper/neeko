@@ -12,6 +12,7 @@ import AssignTagGroupDialog from './AssignTagGroupDialog';
 
 /**
  * Skill 内容区：路由子视图 + 统一管理对话框。
+ * 必须占满父级高度，否则内部 overflow-y-auto 无法滚动。
  */
 const SkillContent: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore(s => s.activeSkillView);
@@ -84,8 +85,8 @@ const SkillContent: React.FC = React.memo(() => {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      {renderView()}
+    <div className="h-full min-h-0 w-full flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderView()}</div>
 
       <CreateSkillDialog
         open={dialog?.type === 'create'}

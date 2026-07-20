@@ -2,12 +2,11 @@ import React from 'react';
 import type { SkillListSectionProps } from './skillItemTypes';
 import SkillCard from './SkillCard';
 import { Package } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const SKELETON_COUNT = 6;
 
 const SkillCardSkeleton: React.FC = () => (
-  <div className="rounded-xl border border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[168px]">
+  <div className="rounded-xl border-2 border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[172px]">
     <div className="flex gap-2 items-center">
       <div className="w-[18px] h-[18px] rounded-full bg-bg-hover shrink-0" />
       <div className="h-3.5 w-2/5 rounded bg-bg-hover" />
@@ -16,11 +15,11 @@ const SkillCardSkeleton: React.FC = () => (
       <div className="h-2.5 w-full rounded bg-bg-hover" />
       <div className="h-2.5 w-3/4 rounded bg-bg-hover" />
     </div>
-    <div className="pl-[26px] flex gap-1.5 mt-1">
+    <div className="pl-[26px] flex gap-1.5">
       <div className="h-5 w-14 rounded-md bg-bg-hover" />
       <div className="h-5 w-12 rounded-md bg-bg-hover" />
     </div>
-    <div className="mt-auto pt-2 border-t border-border/50 flex justify-between">
+    <div className="mt-auto pt-2 border-t border-border flex justify-between">
       <div className="h-2.5 w-20 rounded bg-bg-hover" />
       <div className="h-2.5 w-12 rounded bg-bg-hover" />
     </div>
@@ -29,12 +28,11 @@ const SkillCardSkeleton: React.FC = () => (
 
 export interface SkillListSectionExtraProps {
   presetLabel?: string | null;
-  /** skillId → preset/group names for footer */
   skillPresetMap?: Record<string, string[]>;
 }
 
 /**
- * Skill card grid — 3-column Skills Manager style.
+ * 3-column skill card grid (Skills Manager reference).
  */
 const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraProps> = React.memo(
   ({
@@ -58,7 +56,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
 
     if (loading) {
       return (
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
             <SkillCardSkeleton key={i} />
           ))}
@@ -68,13 +66,13 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
 
     if (skills.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
           <div className="w-11 h-11 rounded-xl bg-bg-hover flex items-center justify-center mb-3">
             <Package className="h-5 w-5 text-text-muted opacity-60" />
           </div>
           <p className="text-[var(--font-size)] text-text-secondary font-medium">No skills yet</p>
           <p className="text-[11px] text-text-muted mt-1 max-w-[260px] leading-relaxed">
-            Create one, install from a directory or Git, or browse Install Skills.
+            Create one, install from a directory or Git, or open Install Skills.
           </p>
         </div>
       );
@@ -82,9 +80,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
 
     return (
       <div
-        className={cn(
-          'p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start',
-        )}
+        className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start"
         role="list"
         aria-label={`Skills (${skills.length})`}
       >
@@ -93,7 +89,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
           const cardPreset =
             presetLabel ?? (groups && groups.length > 0 ? groups[0] : null);
           return (
-            <div key={s.id} role="listitem" className="min-w-0">
+            <div key={s.id} role="listitem" className="min-w-0 h-full">
               <SkillCard
                 skill={s}
                 isSelected={selectedSkillId === s.id}

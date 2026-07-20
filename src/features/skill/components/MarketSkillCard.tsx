@@ -34,9 +34,6 @@ function getSkillPageUrl(source: string, skillId: string): string {
   return `https://skills.sh/${source}/${skillId}`;
 }
 
-/**
- * Marketplace card — same visual language as library SkillCard.
- */
 const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
   ({ skill, isInstalled, isInstalling, installPhase, onInstall }) => {
     const handleInstall = useCallback(() => {
@@ -52,20 +49,18 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
     return (
       <div
         className={cn(
-          'group flex flex-col rounded-xl bg-bg-primary min-h-[140px] border',
-          'transition-[border-color,background-color] duration-150 hover:bg-bg-hover/30',
-          isInstalled
-            ? 'border-[var(--accent-green)]/55'
-            : 'border-border',
+          'group flex flex-col h-full min-h-[140px] rounded-xl bg-bg-primary border-2',
+          'transition-colors duration-150 hover:bg-bg-hover/40',
+          isInstalled ? 'border-accent-green/70' : 'border-border',
         )}
       >
         <div className="flex items-start gap-2.5 px-3.5 pt-3.5 pb-2 flex-1">
           <span
             className={cn(
-              'mt-0.5 w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0',
+              'mt-0.5 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0',
               isInstalled
-                ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
-                : 'border-text-muted/50',
+                ? 'border-accent-green bg-accent-green/15 text-accent-green'
+                : 'border-text-muted/45',
             )}
           >
             {isInstalled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
@@ -99,7 +94,7 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
           </a>
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-t border-border/70">
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-t border-border">
           {skill.installs > 0 ? (
             <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums">
               <Download className="h-3 w-3" />
@@ -110,9 +105,9 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
           )}
 
           {isInstalled && !isInstalling ? (
-            <span className="text-[11px] font-semibold text-[var(--accent-green)]">Installed</span>
+            <span className="text-[11px] font-semibold text-accent-green">Installed</span>
           ) : isInstalling ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-yellow)]">
+            <span className="inline-flex items-center gap-1 text-[11px] text-accent-yellow">
               <Loader2 className="h-3 w-3 animate-spin" />
               {installPhase ? phaseLabels[installPhase] : '…'}
             </span>
@@ -121,7 +116,7 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
               variant="ghost"
               size="sm"
               onClick={handleInstall}
-              className="h-6 px-2.5 text-[11px] font-semibold text-text-secondary hover:text-[var(--accent-green)]"
+              className="h-6 px-2.5 text-[11px] font-semibold text-text-secondary hover:text-accent-green"
             >
               Install
             </Button>
