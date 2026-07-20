@@ -47,9 +47,9 @@ const Pagination: React.FC<PaginationProps> = React.memo(
     const pageNumbers = getPageNumbers(page, totalPages);
 
     return (
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border">
-        <span className="text-[11px] text-text-muted">
-          {start}-{end} of {totalItems}
+      <div className="flex items-center justify-between px-3 h-9 border-t border-border shrink-0">
+        <span className="text-[10.5px] text-text-muted tabular-nums">
+          {start}–{end} / {totalItems}
         </span>
 
         <div className="flex items-center gap-1">
@@ -99,13 +99,13 @@ const Pagination: React.FC<PaginationProps> = React.memo(
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-text-muted">Per page:</span>
+        <div className="flex items-center gap-1">
           <select
             value={perPage}
             onChange={(e) => onPerPageChange(Number(e.target.value))}
             disabled={disabled}
-            className="h-6 px-1.5 text-[11px] rounded border border-border bg-bg-secondary text-text-primary outline-none focus:border-accent-blue"
+            title="Per page"
+            className="h-6 px-1 text-[10.5px] rounded-md bg-bg-hover/60 border border-transparent text-text-muted outline-none focus:border-border"
           >
             <option value={20}>20</option>
             <option value={40}>40</option>

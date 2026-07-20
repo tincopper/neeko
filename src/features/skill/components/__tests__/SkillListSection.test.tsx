@@ -32,7 +32,7 @@ describe('SkillListSection', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('loading=true 时 header 不显示计数', () => {
+  it('loading=true 时不显示 Library 计数头', () => {
     render(
       <SkillListSection
         skills={[]}
@@ -41,8 +41,7 @@ describe('SkillListSection', () => {
         actions={makeActions()}
       />,
     );
-    expect(screen.getByText('Skills')).toBeInTheDocument();
-    expect(screen.queryByText(/Skills \(\d+\)/)).toBeNull();
+    expect(screen.queryByText('Library')).toBeNull();
   });
 
   it('有 skills 时渲染 skill 名称', () => {
@@ -73,10 +72,11 @@ describe('SkillListSection', () => {
         actions={makeActions()}
       />,
     );
-    expect(screen.getByText('Skills (2)')).toBeInTheDocument();
+    expect(screen.getByText('Library')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
   });
 
-  it('skills 为空时显示 "No skills found"', () => {
+  it('skills 为空时显示 empty state', () => {
     render(
       <SkillListSection
         skills={[]}
@@ -85,7 +85,7 @@ describe('SkillListSection', () => {
         actions={makeActions()}
       />,
     );
-    expect(screen.getByText('No skills found')).toBeInTheDocument();
+    expect(screen.getByText('No skills yet')).toBeInTheDocument();
   });
 
   it('点击卡片调用 onSelectSkill', () => {

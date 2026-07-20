@@ -1,221 +1,231 @@
-import React from "react";
-import { Trash2, FileText, Edit3, MoreHorizontal } from "@/shared/components/icons"
-import { Tags } from "lucide-react"
-import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, Badge } from "@/ui";
+import React from 'react';
+import {
+  Trash2,
+  FileText,
+  Edit3,
+  MoreHorizontal,
+  Sparkles,
+  HardDrive,
+  GitBranch,
+  Store,
+  ArrowUpCircle,
+} from 'lucide-react';
+import { Tags } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuSeparator,
+} from '@/ui';
 import type { ManagedSkillDto } from '@/shared/types';
 import { cn } from '@/lib/utils';
-import { getAgentIconSrc } from '@/shared/utils/agents';
 
 interface SkillCardProps {
-   skill: ManagedSkillDto;
-   isSelected: boolean;
-   onSelect: () => void;
-   onAction: (action: "detail" | "delete" | "edit") => void;
-   onAddToTagGroup?: (tagGroupId: string) => void;
-   onCheckUpdate?: () => void;
-   onUpdateSkill?: () => void;
-   tagGroups?: Array<{ id: string; name: string }>;
-   installedAgents?: string[];
+  skill: ManagedSkillDto;
+  isSelected: boolean;
+  onSelect: () => void;
+  onAction: (action: 'detail' | 'delete' | 'edit') => void;
+  onAddToTagGroup?: (tagGroupId: string) => void;
+  onCheckUpdate?: () => void;
+  onUpdateSkill?: () => void;
+  tagGroups?: Array<{ id: string; name: string }>;
+  /** @deprecated unused — kept for call-site compat */
+  installedAgents?: string[];
 }
 
-const AGENT_LIST = [
-   { key: "opencode", label: "OpenCode", icon: "opencode.png" },
-   { key: "claude-code", label: "Claude Code", icon: "claude-code.png" },
-   { key: "gemini", label: "Gemini", icon: "gemini.png" },
-   { key: "codex", label: "Codex", icon: "codex.png" },
-   { key: "qoder", label: "Qoder", icon: "qoder.svg" },
-   { key: "codebuddy", label: "Codebuddy", icon: "codebuddy.svg" },
-];
+function SourceIcon({ source }: { source: string }) {
+  const cls = 'h-3 w-3 shrink-0';
+  if (source === 'skillssh') return <Store className={cls} />;
+  if (source === 'git') return <GitBranch className={cls} />;
+  return <HardDrive className={cls} />;
+}
 
-const SkillCard: React.FC<SkillCardProps> = React.memo(({
-   skill,
-   isSelected,
-   onSelect,
-   onAction,
-   onAddToTagGroup,
-   onCheckUpdate,
-   onUpdateSkill,
-   tagGroups = [],
-   installedAgents = [],
-}) => {
-   const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
-   const renderInstalledAgents = () => {
-      return AGENT_LIST.filter((agent) => installedAgents.includes(agent.key)).map((agent) => {
-         const iconSrc = getAgentIconSrc(agent.icon);
-         if (iconSrc) {
-            return (
-               <img
-                  key={agent.key}
-                  src={iconSrc}
-                  alt={agent.label}
-                  className="w-4 h-4"
-                  title={agent.label}
-               />
-            );
-         }
-         return (
-            <span
-               key={agent.key}
-               className="w-4 h-4 flex items-center justify-center text-[10px]"
-               title={agent.label}
-            >
-               {agent.label.charAt(0)}
-            </span>
-         );
-      });
-   };
+function sourceLabel(source: string): string {
+  if (source === 'skillssh') return 'Market';
+  if (source === 'git') return 'Git';
+  if (source === 'local') return 'Local';
+  return source;
+}
 
-   const handleAction = (action: "detail" | "delete" | "edit") => {
-      onAction(action);
-   };
+/**
+ * Dense skill row — matches SessionRow / ConversationItem density (IDE sidebar style).
+ */
+const SkillCard: React.FC<SkillCardProps> = React.memo(
+  ({
+    skill,
+    isSelected,
+    onSelect,
+    onAction,
+    onAddToTagGroup,
+    onCheckUpdate,
+    onUpdateSkill,
+    tagGroups = [],
+  }) => {
+    const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
+    const hasUpdate = skill.update_status === 'update_available';
 
-   const handleSelect = () => {
-      onSelect();
-   };
-
-
-   return (
-      <Card
-         variant={isSelected ? "interactive" : "hoverable"}
-         className={cn(
-            "cursor-pointer transition-all",
-            isSelected && "border-accent ring-1 ring-accent"
-         )}
-         onClick={handleSelect}
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+        className={cn(
+          'group flex items-center gap-2.5 pl-3 pr-2 py-2 mx-1.5 rounded-md cursor-pointer transition-colors duration-150',
+          isSelected
+            ? 'bg-accent/12 text-text-primary ring-1 ring-inset ring-accent/30'
+            : 'hover:bg-bg-hover text-text-primary',
+        )}
       >
-         {/* CardHeader: 名称 + 操作菜单 */}
-         <div className="flex items-start justify-between p-3 pb-2">
-            <div className="min-w-0 flex-1">
-               <span className="font-medium text-text-primary text-sm truncate block">
-                  {skill.name}
-               </span>
-            </div>
-            {/* 操作菜单 */}
-            <DropdownMenu>
-               <DropdownMenuTrigger asChild>
-                  <button
-                     className="p-1 text-text-muted hover:text-accent rounded"
-                     title="Actions"
-                  >
-                     <MoreHorizontal className="h-4 w-4" />
-                  </button>
-               </DropdownMenuTrigger>
-               <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem
-                     className="flex items-center gap-2 cursor-pointer"
-                     onSelect={() => handleAction("edit")}
-                  >
-                     <Edit3 className="h-3 w-3" />
-                      Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                     className="flex items-center gap-2 cursor-pointer"
-                     onSelect={() => handleAction("detail")}
-                  >
-                     <FileText className="h-3 w-3" />
-                      View
-                  </DropdownMenuItem>
-                  {tagGroups.length > 0 && onAddToTagGroup && (
-                     <DropdownMenuSub>
-                        <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer">
-                           <Tags className="h-3 w-3" />
-                           Add to group
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="w-36">
-                           {tagGroups.map(tg => (
-                              <DropdownMenuItem
-                                 key={tg.id}
-                                 className="cursor-pointer"
-                                 onSelect={() => onAddToTagGroup(tg.id)}
-                              >
-                                 {tg.name}
-                              </DropdownMenuItem>
-                           ))}
-                        </DropdownMenuSubContent>
-                     </DropdownMenuSub>
-                  )}
-                  {isGitSource && onCheckUpdate && (
-                     <DropdownMenuItem
-                        className="flex items-center gap-2 cursor-pointer"
-                        onSelect={() => onCheckUpdate()}
-                     >
-                        Check update
-                     </DropdownMenuItem>
-                  )}
-                  {isGitSource &&
-                     skill.update_status === 'update_available' &&
-                     onUpdateSkill && (
-                        <DropdownMenuItem
-                           className="flex items-center gap-2 cursor-pointer text-accent"
-                           onSelect={() => onUpdateSkill()}
-                        >
-                           Update skill
-                        </DropdownMenuItem>
-                     )}
-                  <DropdownMenuItem
-                     className="flex items-center gap-2 cursor-pointer text-red-400"
-                     onSelect={() => handleAction("delete")}
-                  >
-                     <Trash2 className="h-3 w-3" />
-                      Delete
-                  </DropdownMenuItem>
-               </DropdownMenuContent>
-            </DropdownMenu>
-         </div>
+        {/* Leading icon tile */}
+        <span
+          className={cn(
+            'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+            isSelected ? 'bg-accent/20 text-accent' : 'bg-bg-hover text-text-muted',
+          )}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+        </span>
 
-         {/* CardContent: 描述 + 标签 */}
-         <CardContent className="p-3 pt-0">
-            {skill.description && (
-               <p className="text-xs text-text-muted line-clamp-2 mb-2">
-                  {skill.description}
-               </p>
+        {/* Title + description */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[var(--font-size)] font-medium truncate">{skill.name}</span>
+            {hasUpdate && (
+              <span
+                className="inline-flex items-center gap-0.5 text-[10px] text-accent shrink-0"
+                title="Update available"
+              >
+                <ArrowUpCircle className="h-3 w-3" />
+              </span>
             )}
-            {skill.tags.length > 0 && (
-               <div className="flex gap-1 flex-wrap">
-                  {skill.tags.map((tag) => (
-                     <Badge key={tag} variant="default" className="text-[10px] px-1.5 py-0">
-                        {tag}
-                     </Badge>
-                  ))}
-               </div>
+            {!skill.enabled && (
+              <span className="text-[10px] text-text-muted shrink-0">off</span>
             )}
-         </CardContent>
+          </div>
+          {skill.description ? (
+            <p className="text-[0.85em] text-text-muted truncate leading-snug">
+              {skill.description}
+            </p>
+          ) : null}
+        </div>
 
-         {/* CardFooter: 来源 + agents 图标 + 启用状�?*/}
-         <CardFooter className="p-3 pt-0 items-center">
-            <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                {skill.source_type === "local"
-                  ? "📦 Local"
-                  : skill.source_type === "skillssh"
-                    ? "🏪 Market"
-                    : skill.source_type}
-            </Badge>
-            {skill.update_status === 'update_available' && (
-               <Badge variant="default" className="text-[10px] px-1.5 py-0 text-accent border-accent/40">
-                  Update
-               </Badge>
+        {/* Meta + actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span
+            className={cn(
+              'hidden sm:inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
+              'bg-bg-hover text-text-muted',
             )}
+            title={skill.source_ref ?? skill.source_type}
+          >
+            <SourceIcon source={skill.source_type} />
+            {sourceLabel(skill.source_type)}
+          </span>
 
-            <div className="flex items-center gap-0.5 mx-2">
-               {renderInstalledAgents()}
-            </div>
+          {skill.tags.slice(0, 2).map(tag => (
+            <span
+              key={tag}
+              className="hidden md:inline text-[10px] px-1.5 py-0.5 rounded bg-bg-hover text-text-muted max-w-[72px] truncate"
+            >
+              {tag}
+            </span>
+          ))}
 
-            <div className="ml-auto flex items-center gap-1">
-               <span
-                  className={cn(
-                     "w-2 h-2 rounded-full",
-                     skill.enabled ? "bg-green-500" : "bg-text-muted"
-                  )}
-               />
-               <span className="text-[10px] text-text-muted">
-                   {skill.enabled ? "Enabled" : "Disabled"}
-               </span>
-            </div>
-         </CardFooter>
-      </Card>
-   );
-});
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/[0.06] transition-colors',
+                  'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                  isSelected && 'opacity-100',
+                )}
+                title="Actions"
+                onClick={e => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40" onClick={e => e.stopPropagation()}>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer text-xs"
+                onSelect={() => onAction('edit')}
+              >
+                <Edit3 className="h-3 w-3" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer text-xs"
+                onSelect={() => onAction('detail')}
+              >
+                <FileText className="h-3 w-3" />
+                View
+              </DropdownMenuItem>
+              {tagGroups.length > 0 && onAddToTagGroup && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer text-xs">
+                    <Tags className="h-3 w-3" />
+                    Add to group
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-36">
+                    {tagGroups.map(tg => (
+                      <DropdownMenuItem
+                        key={tg.id}
+                        className="cursor-pointer text-xs"
+                        onSelect={() => onAddToTagGroup(tg.id)}
+                      >
+                        {tg.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              {isGitSource && onCheckUpdate && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="flex items-center gap-2 cursor-pointer text-xs"
+                    onSelect={() => onCheckUpdate()}
+                  >
+                    Check update
+                  </DropdownMenuItem>
+                </>
+              )}
+              {isGitSource && hasUpdate && onUpdateSkill && (
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-xs text-accent"
+                  onSelect={() => onUpdateSkill()}
+                >
+                  <ArrowUpCircle className="h-3 w-3" />
+                  Update skill
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer text-xs text-red-400"
+                onSelect={() => onAction('delete')}
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    );
+  },
+);
 
-SkillCard.displayName = "SkillCard";
+SkillCard.displayName = 'SkillCard';
 
 export default SkillCard;

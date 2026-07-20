@@ -7,23 +7,10 @@ import SkillSearchInput from './SkillSearchInput';
 import SkillListSection from './SkillListSection';
 import DiscoveredSkillsList from './DiscoveredSkillsList';
 
-// ─── Props ───────────────────────────────────────────────────────────────────
-
 interface LocalSkillContentProps {
-  /** �?SkillContent 根级注入，触发对话框（对�?ProjectItem �?onOpenDialog�?*/
   setDialog: (state: SkillDialogState) => void;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
-
-/**
- * Local Skills 视图的纯组合层（对标 ProjectItem 的组合职责）�?
- *
- * 职责�?
- * - 消费 useLocalSkillActions hook（scan/install/dialog 触发�?
- * - �?store 读取数据，经 useMemo 过滤后传�?SkillListSection
- * - 自身不持有任何业务逻辑或对话框状�?
- */
 const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDialog }) => {
   const skills = useSkillStore(s => s.skills);
   const loading = useSkillStore(s => s.loading);
@@ -45,9 +32,6 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     actions,
   } = useLocalSkillActions(setDialog);
 
-  // ── 过滤逻辑（tag group + search query）────────────────────────────────────
-  // tag group 过滤通过服务端命令完成（fetchSkillsForTagGroup），
-  // 此处�?useMemo 做客户端 searchQuery 二次过滤，两层过滤均在容器层完成�?
   const [tagGroupSkills, setTagGroupSkills] = React.useState<typeof skills | null>(null);
 
   React.useEffect(() => {
@@ -55,8 +39,13 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       setTagGroupSkills(null);
       return;
     }
-    fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
-  }, [activeTagGroupId, fetchSkillsForTagGroup]);
+    void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
+  }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
+
+  const activeGroupName = useMemo(
+    () => tagGroups.find(g => g.id === activeTagGroupId)?.name ?? null,
+    [tagGroups, activeTagGroupId],
+  );
 
   const filteredSkills = useMemo(() => {
     const base = tagGroupSkills ?? skills;
@@ -71,18 +60,22 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   }, [tagGroupSkills, skills, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full bg-bg-secondary">
+    <div className="flex flex-col h-full min-h-0">
       <SkillHeader
         onCreateClick={handleCreate}
         onInstallDirectoryClick={handleInstall}
         onInstallGitClick={handleInstallGit}
         onScanClick={handleScan}
+        filterLabel={activeGroupName}
+        count={filteredSkills.length}
       />
 
       <SkillSearchInput
         value={searchQuery}
         onChange={setSearchQuery}
-        placeholder="Search skills..."
+        placeholder={
+          activeGroupName ? `Filter in ${activeGroupName}…` : 'Filter skills…'
+        }
         clearable
       />
 
@@ -92,7 +85,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
         onClear={handleClearDiscovered}
       />
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <SkillListSection
           skills={filteredSkills}
           loading={loading && skills.length === 0}

@@ -13,9 +13,9 @@ beforeEach(() => {
 describe('SkillsPanel — 导航', () => {
   it('渲染三个视图切换按钮', () => {
     render(<SkillsPanel />);
-    expect(screen.getByText('Local Skills')).toBeInTheDocument();
+    expect(screen.getByText('Library')).toBeInTheDocument();
     expect(screen.getByText('Marketplace')).toBeInTheDocument();
-    expect(screen.getByText('Project Skills')).toBeInTheDocument();
+    expect(screen.getByText('Project')).toBeInTheDocument();
   });
 
   it('点击 Marketplace 切换 activeSkillView', () => {
@@ -25,26 +25,26 @@ describe('SkillsPanel — 导航', () => {
     expect(useSkillStore.getState().activeSkillView).toBe('marketplace');
   });
 
-  it('点击 Project Skills 切换 activeSkillView', () => {
+  it('点击 Project 切换 activeSkillView', () => {
     useSkillStore.setState({ activeSkillView: 'local' });
     render(<SkillsPanel />);
-    fireEvent.click(screen.getByText('Project Skills'));
+    fireEvent.click(screen.getByText('Project'));
     expect(useSkillStore.getState().activeSkillView).toBe('project');
   });
 
-  it('点击 Local Skills 切换 activeSkillView', () => {
+  it('点击 Library 切换 activeSkillView', () => {
     useSkillStore.setState({ activeSkillView: 'marketplace' });
     render(<SkillsPanel />);
-    fireEvent.click(screen.getByText('Local Skills'));
+    fireEvent.click(screen.getByText('Library'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
   });
 
-  it('skills 数量显示在 Local Skills 旁边', () => {
+  it('skills 数量显示在 Library 旁边', () => {
     useSkillStore.setState({
       skills: [createManagedSkill({ id: 's1' }), createManagedSkill({ id: 's2' })],
     });
     render(<SkillsPanel />);
-    expect(screen.getByText('(2)')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
   });
 });
 
@@ -90,7 +90,7 @@ describe('SkillsPanel — Tag Groups', () => {
   it('tag groups 为空时显示引导文案', () => {
     useSkillStore.setState({ tagGroups: [] });
     render(<SkillsPanel />);
-    expect(screen.getByText(/No tag groups/i)).toBeInTheDocument();
+    expect(screen.getByText(/No groups yet/i)).toBeInTheDocument();
   });
 
   it('可点击 + 打开创建标签组输入框', () => {

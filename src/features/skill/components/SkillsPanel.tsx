@@ -1,11 +1,19 @@
 import React, { useState, useCallback } from 'react';
-import { Package, Store, FolderOpen, ChevronDown, ChevronRight, Trash2, Plus, RefreshCw } from 'lucide-react';
+import {
+  Package,
+  Store,
+  FolderOpen,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  Plus,
+  RefreshCw,
+  Tags,
+} from 'lucide-react';
 import { useSkillStore } from '@/features/skill/store';
 import type { SkillView } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { useNotificationStore } from '@/features/notification/notificationStore';
-
-// ─── Nav items ───────────────────────────────────────────────────────────────
 
 interface NavItem {
   key: SkillView;
@@ -14,13 +22,8 @@ interface NavItem {
   count?: number;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
-
 /**
- * Skills 侧栏导航（纯导航层，对标 ProjectsPanel 左侧侧栏）
- *
- * - view tabs：Local / Marketplace / Project
- * - Tag Groups：创建 / 选中过滤 / 同步 / 删除
+ * Skills left rail — same density as ProjectsPanel.
  */
 const SkillsPanel: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore(s => s.activeSkillView);
@@ -47,15 +50,14 @@ const SkillsPanel: React.FC = React.memo(() => {
   }, []);
 
   const navItems: NavItem[] = [
-    { key: 'local', label: 'Local Skills', icon: Package, count: skills.length },
+    { key: 'local', label: 'Library', icon: Package, count: skills.length },
     { key: 'marketplace', label: 'Marketplace', icon: Store },
-    { key: 'project', label: 'Project Skills', icon: FolderOpen },
+    { key: 'project', label: 'Project', icon: FolderOpen },
   ];
 
   const handleTagGroupSelect = useCallback(
     (id: string) => {
       setActiveTagGroupId(id === activeTagGroupId ? null : id);
-      // Filtering applies in Local view
       setActiveSkillView('local');
     },
     [activeTagGroupId, setActiveTagGroupId, setActiveSkillView],
@@ -104,64 +106,88 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center px-3 py-2 border-b border-border">
+      <div className="flex items-center h-9 px-3 border-b border-border shrink-0">
         <span className="text-[var(--font-size)] font-semibold text-text-primary">Skills</span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <nav className="py-1">
+        <nav className="py-1.5" aria-label="Skill views">
           {navItems.map(item => {
             const Icon = item.icon;
             const isActive = activeSkillView === item.key;
             return (
               <button
                 key={item.key}
+                type="button"
                 className={cn(
-                  'flex items-center gap-2 w-full px-3 py-1.5 text-[var(--font-size)] transition-colors text-left',
-                  isActive ? 'bg-accent/15 text-accent' : 'text-text-secondary hover:bg-bg-hover',
+                  'flex items-center gap-2 w-full mx-0 px-3 py-1.5 text-left transition-colors duration-150',
+                  'text-[var(--font-size)]',
+                  isActive
+                    ? 'bg-accent/12 text-accent'
+                    : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                 )}
-                onClick={() => setActiveSkillView(item.key)}
+                onClick={() => {
+                  setActiveSkillView(item.key);
+                  if (item.key !== 'local') setActiveTagGroupId(null);
+                }}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />
                 <span className="truncate flex-1">{item.label}</span>
                 {item.count !== undefined && (
-                  <span className="text-text-muted">({item.count})</span>
+                  <span
+                    className={cn(
+                      'text-[10.5px] tabular-nums',
+                      isActive ? 'text-accent/80' : 'text-text-muted',
+                    )}
+                  >
+                    {item.count}
+                  </span>
                 )}
               </button>
             );
           })}
         </nav>
 
-        <div className="border-t border-border">
-          <div className="flex items-center gap-1 px-3 py-1.5">
+        <div className="border-t border-border mt-0.5">
+          <div className="group flex items-center gap-1 px-3 pt-3 pb-1 select-none">
             <button
-              className="flex items-center gap-1 flex-1 text-left text-[11px] font-medium text-text-muted uppercase tracking-wider hover:bg-bg-hover rounded"
+              type="button"
+              className="flex items-center gap-1 flex-1 min-w-0 text-left"
               onClick={() => setTagGroupsExpanded(v => !v)}
             >
               {tagGroupsExpanded ? (
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
               ) : (
-                <ChevronRight className="h-3 w-3" />
+                <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
               )}
-              Tag Groups
+              <Tags className="h-3 w-3 text-text-muted shrink-0 opacity-80" />
+              <span className="text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
+                Tag Groups
+              </span>
+              <span className="text-[10.5px] text-text-muted">({tagGroups.length})</span>
             </button>
             <button
-              className="p-0.5 text-text-muted hover:text-accent rounded"
+              type="button"
+              className="p-1 rounded-md text-text-muted hover:bg-white/[0.06] hover:text-text-primary transition-colors"
               title="New tag group"
               onClick={() => setCreating(true)}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3 w-3" />
             </button>
           </div>
 
           {tagGroupsExpanded && (
-            <div className="pb-1">
+            <div className="pb-2">
               {creating && (
-                <div className="px-3 py-1.5 flex gap-1">
+                <div className="px-3 py-1 flex gap-1 items-center">
                   <input
                     autoFocus
-                    className="flex-1 min-w-0 bg-bg-primary border border-border rounded px-2 py-1 text-[var(--font-size)] text-text-primary outline-none focus:border-accent"
-                    placeholder="Name (e.g. Backend)"
+                    className={cn(
+                      'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
+                      'bg-bg-hover/60 border border-border text-text-primary',
+                      'outline-none focus:border-accent/50 placeholder:text-text-muted',
+                    )}
+                    placeholder="e.g. Backend"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                     onKeyDown={e => {
@@ -173,7 +199,8 @@ const SkillsPanel: React.FC = React.memo(() => {
                     }}
                   />
                   <button
-                    className="text-[11px] text-accent px-1.5 hover:bg-accent/15 rounded"
+                    type="button"
+                    className="h-7 px-2 text-[11px] text-accent hover:bg-accent/15 rounded-md shrink-0"
                     onClick={() => void handleCreate()}
                   >
                     Add
@@ -181,46 +208,67 @@ const SkillsPanel: React.FC = React.memo(() => {
                 </div>
               )}
 
-              {tagGroups.map(tg => (
-                <div
-                  key={tg.id}
-                  className={cn(
-                    'flex items-center justify-between px-3 py-1.5 cursor-pointer text-[var(--font-size)] transition-colors group',
-                    activeTagGroupId === tg.id
-                      ? 'bg-accent/15 text-accent'
-                      : 'text-text-secondary hover:bg-bg-hover',
-                  )}
-                  onClick={() => handleTagGroupSelect(tg.id)}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-text-muted">{tg.icon ?? '📋'}</span>
-                    <span className="truncate">{tg.name}</span>
-                    <span className="text-text-muted">({tg.skill_count})</span>
+              {tagGroups.map(tg => {
+                const active = activeTagGroupId === tg.id;
+                return (
+                  <div
+                    key={tg.id}
+                    role="button"
+                    tabIndex={0}
+                    className={cn(
+                      'group/row flex items-center justify-between gap-1 pl-6 pr-2 py-1.5 mx-1.5 rounded-md cursor-pointer transition-colors duration-150',
+                      'text-[var(--font-size)]',
+                      active
+                        ? 'bg-accent/12 text-accent'
+                        : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                    )}
+                    onClick={() => handleTagGroupSelect(tg.id)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleTagGroupSelect(tg.id);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">{tg.name}</span>
+                      <span
+                        className={cn(
+                          'text-[10.5px] tabular-nums',
+                          active ? 'text-accent/70' : 'text-text-muted',
+                        )}
+                      >
+                        {tg.skill_count}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={e => void handleSync(e, tg.id, tg.name)}
+                        className="p-1 rounded-md text-text-muted hover:text-accent hover:bg-white/[0.06]"
+                        title="Sync group to agents"
+                        disabled={syncingId === tg.id}
+                      >
+                        <RefreshCw
+                          className={cn('h-3 w-3', syncingId === tg.id && 'animate-spin')}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={e => void handleDelete(e, tg.id)}
+                        className="p-1 rounded-md text-text-muted hover:text-red-400 hover:bg-white/[0.06]"
+                        title="Delete tag group"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                    <button
-                      onClick={e => void handleSync(e, tg.id, tg.name)}
-                      className="text-text-muted hover:text-accent p-0.5"
-                      title="Sync group to agents (install only)"
-                      disabled={syncingId === tg.id}
-                    >
-                      <RefreshCw
-                        className={cn('h-3 w-3', syncingId === tg.id && 'animate-spin')}
-                      />
-                    </button>
-                    <button
-                      onClick={e => void handleDelete(e, tg.id)}
-                      className="text-text-muted hover:text-red-400 p-0.5"
-                      title="Delete tag group"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+
               {tagGroups.length === 0 && !creating && (
-                <div className="px-3 py-2 text-[11px] text-text-muted">
-                  No tag groups — click + to create
+                <div className="px-6 py-2 text-[11px] text-text-muted leading-relaxed">
+                  No groups yet. Click + to create Backend, Frontend, …
                 </div>
               )}
             </div>

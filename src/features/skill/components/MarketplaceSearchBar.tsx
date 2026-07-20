@@ -1,6 +1,5 @@
-import React from "react";
-import { Search, X } from "@/shared/components/icons"
-import { Input } from "@/ui";
+import React from 'react';
+import { Search, X } from '@/shared/components/icons';
 
 interface MarketplaceSearchBarProps {
   value: string;
@@ -9,31 +8,34 @@ interface MarketplaceSearchBarProps {
 }
 
 const MarketplaceSearchBar: React.FC<MarketplaceSearchBarProps> = React.memo(
-  ({ value, onChange, placeholder = "Search marketplace..." }) => {
+  ({ value, onChange, placeholder = 'Search marketplace…' }) => {
     return (
-      <div className="px-4 py-2 border-b border-border">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
-          <Input
+      <div className="px-2 py-1.5 border-b border-border shrink-0">
+        <div className="relative flex items-center">
+          <Search className="absolute left-2 h-3 w-3 text-text-muted pointer-events-none" />
+          <input
+            type="search"
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={e => onChange(e.target.value)}
             placeholder={placeholder}
-            className="h-8 pl-8 pr-8 text-xs"
+            className="w-full h-7 pl-7 pr-7 text-[var(--font-size)] rounded-md bg-bg-hover/60 border border-transparent text-text-primary placeholder:text-text-muted outline-none focus:border-border focus:bg-bg-primary transition-colors"
           />
-          {value && (
+          {value ? (
             <button
-              onClick={() => onChange("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+              type="button"
+              onClick={() => onChange('')}
+              className="absolute right-1.5 p-0.5 text-text-muted hover:text-text-primary rounded"
+              aria-label="Clear search"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3 w-3" />
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     );
-  }
+  },
 );
 
-MarketplaceSearchBar.displayName = "MarketplaceSearchBar";
+MarketplaceSearchBar.displayName = 'MarketplaceSearchBar';
 
 export default MarketplaceSearchBar;
