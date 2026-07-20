@@ -137,6 +137,20 @@
   .wt-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent-yellow); border-radius: 50%; animation: wt-spin 0.6s linear infinite; flex-shrink: 0; }
   /* Cmd+Hover pointer cursor — when cmd-held class is on the editor wrapper */
   .cmd-held .cm-content { cursor: pointer !important; }
+
+  /* Go-to-definition / nav history: flash destination line so the caret is obvious */
+  @keyframes cm-nav-flash {
+    0% { background-color: rgba(var(--accent-blue-rgb), 0.42); }
+    70% { background-color: rgba(var(--accent-blue-rgb), 0.22); }
+    100% { background-color: transparent; }
+  }
+  .cm-nav-flash-line {
+    background-color: rgba(var(--accent-blue-rgb), 0.28) !important;
+    animation: cm-nav-flash 1.4s ease-out forwards;
+  }
+  .cm-activeLine.cm-nav-flash-line {
+    background-color: rgba(var(--accent-blue-rgb), 0.32) !important;
+  }
   /* LSP installing spinner (smaller, fits status bar) */
   @keyframes lsp-spin { to { transform: rotate(360deg); } }
   .lsp-spinner { display: inline-block; width: 8px; height: 8px; border: 1.5px solid var(--text-muted); border-top-color: var(--accent-blue); border-radius: 50%; animation: lsp-spin 0.7s linear infinite; flex-shrink: 0; }

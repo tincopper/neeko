@@ -49,6 +49,10 @@ import {
   recordNavigationJump,
 } from '@/features/editor/navigationHistoryStore';
 import type { NavLocation } from '@/features/editor/navigationHistory';
+import {
+  applyNavigateCaret,
+  navigateCaretExtension,
+} from '@/features/editor/navigateCaret';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
@@ -479,19 +483,12 @@ function FileEditor({
       recordNavigationJump(from, to);
 
       if (targetPath === currentFilePath) {
-        // Same file – navigate cursor and focus editor
+        // Same file – caret + flash + focus so the landing spot is obvious
         console.log('[perf] navigate: same-file');
         const v = editorViewRef.current;
         if (!v) return;
-        try {
-          const targetPos = v.state.doc.line(targetLine + 1).from + targetChar;
-          v.dispatch({
-            selection: { anchor: targetPos, head: targetPos },
-            scrollIntoView: true,
-          });
-          v.focus();
-        } catch (e) {
-          console.warn('[LSP] Navigation within file failed:', e);
+        if (!applyNavigateCaret(v, targetLine + 1, targetChar)) {
+          console.warn('[LSP] Navigation within file failed: invalid position');
         }
         return;
       }
@@ -877,16 +874,10 @@ function FileEditor({
         pending.tabId === tabId
       ) {
         console.log(`[perf] handleCreateEditor applying pending: L${pending.line}:${pending.col}`);
-        try {
-          const line = view.state.doc.line(pending.line);
-          const pos = line.from + pending.col;
-          view.dispatch({
-            selection: { anchor: pos, head: pos },
-            effects: EditorView.scrollIntoView(pos, { y: 'center' }),
-          });
-        } catch {
-          // line out of range, ignore
-        }
+        // Defer one frame so layout is measured before scroll/focus
+        requestAnimationFrame(() => {
+          applyNavigateCaret(view, pending.line, pending.col);
+        });
         // Delay clear to survive React StrictMode double-mount
         queueMicrotask(() => {
           useEditorStore.getState().setPendingNavigateTarget(null);
@@ -946,16 +937,9 @@ function FileEditor({
       ) {
         const view = editorViewRef.current;
         if (view) {
-          try {
-            const line = view.state.doc.line(pending.line);
-            const pos = line.from + pending.col;
-            view.dispatch({
-              selection: { anchor: pos, head: pos },
-              effects: EditorView.scrollIntoView(pos, { y: 'center' }),
-            });
-          } catch {
-            // Ignore out-of-range navigation
-          }
+          requestAnimationFrame(() => {
+            applyNavigateCaret(view, pending.line, pending.col);
+          });
           useEditorStore.getState().setPendingNavigateTarget(null);
         }
       }
@@ -1001,6 +985,7 @@ function FileEditor({
       closeBrackets(),
       autocompletion(),
       highlightActiveLine(),
+      navigateCaretExtension,
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
