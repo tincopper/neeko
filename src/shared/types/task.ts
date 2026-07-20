@@ -1,1 +1,1 @@
-export type { TaskConfig, TaskState } from "@/features/task/types";
+export type { TaskConfig, TaskState, DiscoveredTask } from "@/features/task/types";

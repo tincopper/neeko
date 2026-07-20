@@ -1,6 +1,7 @@
-use crate::task::TaskConfig;
+use crate::task::{DiscoveredTask, TaskConfig};
 use crate::AppError;
 use crate::AppStateWrapper;
+use std::path::Path;
 use tauri::{Emitter, State};
 
 #[tauri::command]
@@ -11,6 +12,32 @@ pub fn get_task_configs(
     let _ = &state; // state available for future use
     let configs = crate::task::get_all_task_configs(project_path.as_deref());
     Ok(configs)
+}
+
+/// Scan project for auto-discovered tasks (package.json scripts, …).
+/// Does not write to disk — import is a separate explicit step.
+#[tauri::command]
+pub fn discover_task_configs(
+    project_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<DiscoveredTask>, AppError> {
+    let _ = &state;
+    let path = Path::new(&project_path);
+    Ok(crate::task::discover_tasks(path))
+}
+
+/// Persist a discovered task as a project-scoped TaskConfig (idempotent by id).
+#[tauri::command]
+pub fn import_discovered_task(
+    task: DiscoveredTask,
+    project_path: String,
+    project_id: Option<String>,
+    state: State<AppStateWrapper>,
+) -> Result<TaskConfig, AppError> {
+    let _ = &state;
+    let config = crate::task::to_task_config(&task, project_id);
+    crate::task::save_task(&config, Some(&project_path)).map_err(AppError::from)?;
+    Ok(config)
 }
 
 #[tauri::command]

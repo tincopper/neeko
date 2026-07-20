@@ -1,19 +1,31 @@
 import { create } from "zustand";
-import { getTaskConfigs, saveTaskConfig as saveTaskConfigApi, deleteTaskConfig as deleteTaskConfigApi } from "./api/taskApi";
+import {
+  getTaskConfigs,
+  saveTaskConfig as saveTaskConfigApi,
+  deleteTaskConfig as deleteTaskConfigApi,
+  discoverTaskConfigs,
+  importDiscoveredTask as importDiscoveredTaskApi,
+} from "./api/taskApi";
 import { closeTerminalSession } from "../terminal/api/terminalApi";
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
 import { destroyTerminalCache, terminalCache } from "../terminal/components/terminalCache";
 import type { Tab } from '@/shared/types/tab';
-import type { TaskConfig, TaskState } from '@/shared/types/task';
+import type { DiscoveredTask, TaskConfig, TaskState } from '@/shared/types/task';
 
 interface TaskStoreState {
   configs: TaskConfig[];
+  /** Auto-discovered tasks not yet imported (filtered vs configs by id). */
+  discovered: DiscoveredTask[];
+  discovering: boolean;
   /** Task runtime state keyed by project ID */
   taskStates: Record<string, TaskState>;
   selectedConfigId: string | null;
 
   loadConfigs: (projectPath?: string) => Promise<void>;
+  loadDiscovered: (projectPath?: string | null) => Promise<void>;
+  importDiscovered: (task: DiscoveredTask, projectPath: string, projectId?: string) => Promise<void>;
+  importAllDiscovered: (projectPath: string, projectId?: string) => Promise<void>;
   addConfig: (config: TaskConfig, projectPath?: string) => Promise<void>;
   updateConfig: (config: TaskConfig, projectPath?: string) => Promise<void>;
   deleteConfig: (id: string, scope: string, projectPath?: string) => Promise<void>;
@@ -28,22 +40,85 @@ interface TaskStoreState {
   setSelectedConfig: (id: string | null) => void;
 }
 
+function filterDiscovered(
+  discovered: DiscoveredTask[],
+  configs: TaskConfig[],
+): DiscoveredTask[] {
+  const saved = new Set(configs.map((c) => c.id));
+  return discovered.filter((d) => !saved.has(d.id));
+}
+
 export const useTaskStore = create<TaskStoreState>((set, get) => ({
   configs: [],
+  discovered: [],
+  discovering: false,
   taskStates: {},
   selectedConfigId: null,
 
   loadConfigs: async (projectPath?: string) => {
     try {
       const configs = await getTaskConfigs(projectPath);
-      set({ configs });
+      set((state) => ({
+        configs,
+        discovered: filterDiscovered(state.discovered, configs),
+      }));
       const state = get();
-      if (!state.selectedConfigId && configs.length > 0) {
-        set({ selectedConfigId: configs[0].id });
+      if (!state.selectedConfigId) {
+        const first = configs[0] ?? state.discovered[0];
+        if (first) set({ selectedConfigId: first.id });
       }
     } catch (e) {
       console.error("Failed to load task configs:", e);
     }
+  },
+
+  loadDiscovered: async (projectPath?: string | null) => {
+    if (!projectPath) {
+      set({ discovered: [], discovering: false });
+      return;
+    }
+    set({ discovering: true });
+    try {
+      const raw = await discoverTaskConfigs(projectPath);
+      set({
+        discovered: filterDiscovered(raw, get().configs),
+        discovering: false,
+      });
+      const state = get();
+      if (!state.selectedConfigId) {
+        const first = state.configs[0] ?? state.discovered[0];
+        if (first) set({ selectedConfigId: first.id });
+      }
+    } catch (e) {
+      console.error("Failed to discover tasks:", e);
+      set({ discovered: [], discovering: false });
+    }
+  },
+
+  importDiscovered: async (task, projectPath, projectId) => {
+    try {
+      await importDiscoveredTaskApi(task, projectPath, projectId);
+      await get().loadConfigs(projectPath);
+      // Keep full discover list in sync (imported ids drop out)
+      await get().loadDiscovered(projectPath);
+      set({ selectedConfigId: task.id });
+    } catch (e) {
+      console.error("Failed to import discovered task:", e);
+    }
+  },
+
+  importAllDiscovered: async (projectPath, projectId) => {
+    const list = [...get().discovered];
+    for (const task of list) {
+      try {
+        await importDiscoveredTaskApi(task, projectPath, projectId);
+      } catch (e) {
+        console.error("Failed to import", task.id, e);
+      }
+    }
+    await get().loadConfigs(projectPath);
+    await get().loadDiscovered(projectPath);
+    if (list[0]) set({ selectedConfigId: list[0].id });
   },
 
   addConfig: async (config: TaskConfig, projectPath?: string) => {
@@ -69,10 +144,12 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     try {
       await deleteTaskConfigApi(id, scope, projectPath ?? null);
       await get().loadConfigs(projectPath);
+      // Re-scan so a deleted imported task can reappear as discovered
+      await get().loadDiscovered(projectPath ?? null);
       const state = get();
       if (state.selectedConfigId === id) {
-        const remaining = state.configs;
-        set({ selectedConfigId: remaining.length > 0 ? remaining[0].id : null });
+        const next = state.configs[0] ?? state.discovered[0];
+        set({ selectedConfigId: next?.id ?? null });
       }
     } catch (e) {
       console.error("Failed to delete task config:", e);
@@ -90,7 +167,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     const editorState = useEditorStore.getState();
     const existingTabs = editorState.tabs[tabKey];
 
-    // ── Guard 1: same task already Running �?just jump to its tab ────────
+    // ── Guard 1: same task already Running — just jump to its tab ────────
     if (existingTabs) {
       const runningTab = existingTabs.tabs.find(
         (t) =>
@@ -105,7 +182,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       }
     }
 
-    // ── Guard 2: same task finished (Failed / Idle) �?reuse tab ──────────
+    // ── Guard 2: same task finished (Failed / Idle) — reuse tab ──────────
     if (existingTabs) {
       const finishedTab = existingTabs.tabs.find(
         (t) =>
@@ -147,9 +224,11 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       }
     }
 
-    // ── Normal path: no existing tab �?create a new one ──────────────────
+    // ── Normal path: no existing tab — create a new one ──────────────────
     const taskName =
-      get().configs.find((c) => c.id === configId)?.name ?? command;
+      get().configs.find((c) => c.id === configId)?.name ??
+      get().discovered.find((d) => d.id === configId)?.name ??
+      command;
 
     const tabId = `task_${crypto.randomUUID()}`;
     const order = existingTabs?.tabs.length ?? 0;
