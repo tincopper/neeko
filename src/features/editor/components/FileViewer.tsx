@@ -41,6 +41,7 @@ import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { Eye, Save, FileCode, Globe } from '@/shared/components/icons';
 import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
@@ -366,24 +367,24 @@ function FileEditor({
     openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
   }, [tab.filePath, projectPath, canOpenInBrowser]);
 
-  // Ctrl+S handler
-  const saveKeymap = useMemo(
-    () =>
-      keymap.of([
-        {
-          key: 'Ctrl-s',
-          run: () => {
-            if (tab.isDirty) {
-              handleSave();
-              return true;
-            }
-            return false;
-          },
-          preventDefault: true,
+  // Save shortcut — from user-configurable shortcut registry (default Ctrl+S).
+  const saveCmKey = useCodeMirrorBinding('saveFile');
+  const saveKeymap = useMemo(() => {
+    if (!saveCmKey) return [];
+    return keymap.of([
+      {
+        key: saveCmKey,
+        run: () => {
+          if (tab.isDirty) {
+            handleSave();
+            return true;
+          }
+          return false;
         },
-      ]),
-    [tab.isDirty, handleSave],
-  );
+        preventDefault: true,
+      },
+    ]);
+  }, [saveCmKey, tab.isDirty, handleSave]);
 
   // Create theme object (new reference triggers CodeMirror reconfigure)
   const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
@@ -544,13 +545,17 @@ function FileEditor({
     [],
   );
 
-  // LSP keybinding extension: F12 = Go to Definition, Shift+F12 = Find References
+  // LSP keybindings — chords from shortcut registry (defaults F12 / Shift+F12).
+  const gotoDefCmKey = useCodeMirrorBinding('gotoDefinition');
+  const findRefsCmKey = useCodeMirrorBinding('findReferences');
   /* eslint-disable react-hooks/refs */
   const lspKeymap = useMemo(() => {
     if (!projectPath) return [];
-    return keymap.of([
-      {
-        key: 'F12',
+    const bindings: { key: string; run: (view: EditorView) => boolean }[] = [];
+
+    if (gotoDefCmKey) {
+      bindings.push({
+        key: gotoDefCmKey,
         run: (view) => {
           const lid = lspLanguageIdRef.current;
           if (!lid) return false;
@@ -564,7 +569,6 @@ function FileEditor({
           const t0 = performance.now();
           definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
             if (!result) return;
-            // Kick language preload ASAP (overlaps with navigate setup)
             preloadLanguageExtension(fromFileUri(result.location.uri));
             const tLsp = performance.now() - t0;
             navigateToLocation(
@@ -576,7 +580,7 @@ function FileEditor({
               result.fileContent,
             ).then(() => {
               console.log(
-                `[perf] total (F12→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
+                `[perf] total (gotoDef→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
                   `(lsp=${tLsp.toFixed(0)}ms)`,
               );
             });
@@ -584,9 +588,12 @@ function FileEditor({
 
           return true;
         },
-      },
-      {
-        key: 'Shift-F12',
+      });
+    }
+
+    if (findRefsCmKey) {
+      bindings.push({
+        key: findRefsCmKey,
         run: (view) => {
           const lid = lspLanguageIdRef.current;
           if (!lid) return false;
@@ -607,9 +614,20 @@ function FileEditor({
 
           return true;
         },
-      },
-    ]);
-  }, [projectPath, tab.filePath, tabKey, tab.projectId, definition, navigateToLocation]);
+      });
+    }
+
+    return bindings.length > 0 ? keymap.of(bindings) : [];
+  }, [
+    projectPath,
+    tab.filePath,
+    tabKey,
+    tab.projectId,
+    definition,
+    navigateToLocation,
+    gotoDefCmKey,
+    findRefsCmKey,
+  ]);
   /* eslint-enable react-hooks/refs */
 
   // Cmd/Ctrl held state — used for link highlight pointer cursor style

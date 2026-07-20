@@ -3,8 +3,14 @@ import { refreshTerminal, terminalCacheKey } from "@/features/terminal/component
 import { useProjectStore } from "@/features/project/store";
 import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
+import { useDockStore } from '@/shared/store/dockStore';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
-import { resolveBindings, matchesBinding, SHORTCUT_ACTIONS } from "@/shared/utils/shortcutRegistry";
+import {
+  resolveBindings,
+  matchesBinding,
+  SHORTCUT_ACTIONS,
+  getShortcutAction,
+} from "@/shared/utils/shortcutRegistry";
 import type { ProjectListItem } from "@/features/project/hooks/useProjectList";
 
 interface UseKeyboardShortcutsParams {
@@ -14,6 +20,22 @@ interface UseKeyboardShortcutsParams {
   shortcuts: Record<string, string>;
   unifiedItems: ProjectListItem[];
 }
+
+/** Global (non-editor-focused) actions handled here. Editor-scoped keys live in CodeMirror. */
+const GLOBAL_ACTION_IDS = new Set([
+  "cycleWorktree",
+  "openIde",
+  "refreshTerminal",
+  "closeTab",
+  "prevTab",
+  "nextTab",
+  "switchTabNext",
+  "switchTabPrev",
+  "cycleProject",
+  "switchProject",
+  "toggleDockProjects",
+  "toggleDockSkills",
+]);
 
 export function useKeyboardShortcuts({
   updateWtPath,
@@ -30,7 +52,6 @@ export function useKeyboardShortcuts({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Modal dialogs and full-page settings own the keyboard.
       if (
         document.querySelector("[data-modal]") ||
         document.querySelector("[data-settings-view]")
@@ -38,28 +59,22 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Never steal keys while the user is typing in a form field.
-      // Capture-phase listeners run before the input; without this check,
-      // shortcuts like Ctrl+W / Alt+Left fire while editing settings.
-      if (isEditableKeyboardTarget(e.target)) {
-        return;
-      }
-
-      if (e.ctrlKey && e.key === "Tab") {
-        e.preventDefault();
-        const direction = e.shiftKey ? -1 : 1;
-        cycleTab(direction);
-        return;
-      }
-
       const bindings = resolveBindings(shortcutsRef.current);
+      const inEditable = isEditableKeyboardTarget(e.target);
 
       for (const action of SHORTCUT_ACTIONS) {
+        if (!GLOBAL_ACTION_IDS.has(action.id)) continue;
+
         const binding = bindings[action.id];
         if (!binding) continue;
 
         const result = matchesBinding(e, binding);
         if (!result.matched) continue;
+
+        const def = getShortcutAction(action.id);
+        if (inEditable && !def?.allowInEditable) {
+          continue;
+        }
 
         switch (action.id) {
           case "cycleWorktree": {
@@ -87,7 +102,7 @@ export function useKeyboardShortcuts({
             const p = useProjectStore.getState().activeProject;
             if (p) {
               e.preventDefault();
-              const { selectProject: _s, ...store } = useProjectStore.getState();
+              const store = useProjectStore.getState();
               store.openIde({ id: p.id, selected_ide: p.selected_ide });
             }
             break;
@@ -111,10 +126,28 @@ export function useKeyboardShortcuts({
           }
 
           case "prevTab":
-          case "nextTab": {
+          case "switchTabPrev": {
             e.preventDefault();
-            const direction = action.id === "nextTab" ? 1 : -1;
-            cycleTab(direction);
+            cycleTab(-1);
+            break;
+          }
+
+          case "nextTab":
+          case "switchTabNext": {
+            e.preventDefault();
+            cycleTab(1);
+            break;
+          }
+
+          case "toggleDockProjects": {
+            e.preventDefault();
+            useDockStore.getState().togglePanel("projects");
+            break;
+          }
+
+          case "toggleDockSkills": {
+            e.preventDefault();
+            useDockStore.getState().togglePanel("skills");
             break;
           }
 
@@ -154,20 +187,19 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   const tag = target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
   if (target.isContentEditable) return true;
-  // Radix / design-system slots
   if (target.closest("input, textarea, select, [contenteditable=true], [role='textbox']")) {
     return true;
   }
+  // CodeMirror is an editor, but app-level tab/workspace shortcuts must still
+  // work while coding. Editor-scoped keys (save, F12) are handled by CM keymap.
   return false;
 }
 
-/** Find current position in the unified project list */
 function findCurrentIndex(items: ProjectListItem[]): number {
   const proj = useProjectStore.getState();
   return items.findIndex((item) => item.id === proj.activeProjectId);
 }
 
-/** Dispatch selection to the correct store callback */
 function switchToItem(item: ProjectListItem) {
   const store = useProjectStore.getState();
   store.selectProject?.(item.id);
@@ -181,9 +213,7 @@ function cycleTab(direction: 1 | -1) {
   const currentProjectId = proj.activeProjectId ?? null;
   if (!currentProjectId) return;
 
-  const worktreePath =
-    wt.activeWorktreePath ??
-    null;
+  const worktreePath = wt.activeWorktreePath ?? null;
 
   const tabKey = worktreePath
     ? buildWorktreeTabKey(currentProjectId, worktreePath)

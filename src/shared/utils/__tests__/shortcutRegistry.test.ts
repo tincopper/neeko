@@ -8,6 +8,8 @@ import {
   findConflicts,
   SHORTCUT_ACTIONS,
   isSwitchProjectBinding,
+  toCodeMirrorKey,
+  getResolvedBinding,
 } from "../../utils/shortcutRegistry";
 import { IS_MACOS } from "../../utils/platform";
 
@@ -264,6 +266,34 @@ describe("shortcutRegistry", () => {
         openIde: "Ctrl+N",
       });
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("toCodeMirrorKey", () => {
+    it("maps Ctrl+S to Mod-s", () => {
+      expect(toCodeMirrorKey("Ctrl+S")).toBe("Mod-s");
+    });
+
+    it("maps F12", () => {
+      expect(toCodeMirrorKey("F12")).toBe("F12");
+    });
+
+    it("maps Shift+F12", () => {
+      expect(toCodeMirrorKey("Shift+F12")).toBe("Shift-F12");
+    });
+  });
+
+  describe("getResolvedBinding", () => {
+    it("returns default when no override", () => {
+      expect(getResolvedBinding("saveFile")).toBe("Ctrl+S");
+    });
+
+    it("returns user override", () => {
+      expect(getResolvedBinding("saveFile", { saveFile: "Ctrl+Alt+S" })).toBe("Ctrl+Alt+S");
+    });
+
+    it("allows unbinding via empty string override", () => {
+      expect(getResolvedBinding("saveFile", { saveFile: "" })).toBe("");
     });
   });
 

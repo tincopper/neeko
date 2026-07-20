@@ -16,12 +16,6 @@ interface DockLayoutProps {
 }
 
 /**
- * Keyboard shortcut panel index. Ctrl+1..2 toggle left-side panels.
- * Extend this list as left panels are added.
- */
-const SHORTCUT_PANEL_IDS: string[] = ['projects', 'skills'];
-
-/**
  * Top-level dock layout container.
  *
  * Implements IDEA 2026 Islands design: bg-primary acts as the "sea",
@@ -31,7 +25,8 @@ const SHORTCUT_PANEL_IDS: string[] = ['projects', 'skills'];
  * Composes DockBar (left & right) + resizable panel group (left, center, right).
  * All dock state is managed internally via useDockStore -- zero state props needed.
  *
- * Supports keyboard shortcuts (Ctrl+1..2) for left panel toggling.
+ * Panel toggle shortcuts are registered in shortcutRegistry
+ * (`toggleDockProjects` / `toggleDockSkills`) and handled by useKeyboardShortcuts.
  *
  * IMPORTANT: Uses collapsible panels instead of key-based remount to avoid
  * react-resizable-panels global state corruption when nested Groups remount.
@@ -39,7 +34,6 @@ const SHORTCUT_PANEL_IDS: string[] = ['projects', 'skills'];
  * unresponsive drag handles.
  */
 const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) => {
-  const togglePanel = useDockStore((s) => s.togglePanel);
 
   const leftExpanded = useDockStore((s) => s.zones.left?.expanded ?? true);
 
@@ -185,27 +179,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
     return () => observer.disconnect();
   }, [leftExpanded, setLeftPanelWidth]);
 
-  // -- Keyboard shortcuts (Ctrl+1..2 -> toggle left panel) --
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.ctrlKey && !e.metaKey && !e.altKey) {
-        const digit = parseInt(e.key, 10);
-        if (digit >= 1 && digit <= SHORTCUT_PANEL_IDS.length) {
-          const panelId = SHORTCUT_PANEL_IDS[digit - 1];
-          if (panelId && dockPanelRegistry[panelId]) {
-            e.preventDefault();
-            togglePanel(panelId);
-          }
-        }
-      }
-    },
-    [togglePanel],
-  );
-
-  useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  // Dock panel toggle shortcuts: see shortcutRegistry + useKeyboardShortcuts.
 
   return (
     <div className="flex flex-1 min-h-0 bg-bg-primary">

@@ -2,11 +2,12 @@ import React, { useCallback, useRef, useState } from "react";
 import type { AppConfig } from '@/shared/types';
 import {
   SHORTCUT_ACTIONS,
+  SHORTCUT_CATEGORIES,
   resolveBindings,
   findConflicts,
   formatBinding,
   captureBinding,
-  isSwitchProjectBinding,
+  isRecordableAction,
   type ConflictEntry,
 } from '@/shared/utils/shortcutRegistry';
 
@@ -69,7 +70,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
 
   const handleStartRecording = useCallback((id: string) => {
     const action = SHORTCUT_ACTIONS.find((a) => a.id === id);
-    if (action && isSwitchProjectBinding(action.defaultBinding)) {
+    if (action && !isRecordableAction(action)) {
       return;
     }
     setSelectedId(null);
@@ -101,7 +102,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       e.stopPropagation();
 
       const existing = SHORTCUT_ACTIONS.find((a) => a.id === recordingId);
-      if (existing && isSwitchProjectBinding(existing.defaultBinding)) {
+      if (existing && !isRecordableAction(existing)) {
         setRecordingId(null);
         return;
       }
@@ -133,7 +134,8 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       </div>
 
       <div className="text-[0.82em] text-text-muted mb-4">
-        Click a shortcut to record a new key combination. Press Escape to cancel.
+        Double-click a row (or select and press Enter) to record a new combination.
+        Press Escape to cancel. Changes are saved to your app config and override defaults.
       </div>
 
       {conflicts.length > 0 && (
@@ -152,13 +154,23 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
         </div>
       )}
 
-      <div className="space-y-0.5" onKeyDown={handleKeyDown} tabIndex={-1} onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}>
-        {SHORTCUT_ACTIONS.map((action) => {
+      <div className="space-y-5" onKeyDown={handleKeyDown} tabIndex={-1} onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}>
+        {SHORTCUT_CATEGORIES.map((cat) => {
+          const actions = SHORTCUT_ACTIONS.filter((a) => a.category === cat.id);
+          if (actions.length === 0) return null;
+          return (
+            <div key={cat.id}>
+              <div className="text-[0.75em] font-semibold uppercase tracking-wide text-text-muted mb-1.5 px-2">
+                {cat.label}
+              </div>
+              <div className="space-y-0.5">
+        {actions.map((action) => {
           const binding = bindings[action.id];
-          if (!binding) return null;
+          if (binding === undefined) return null;
           const isRecording = recordingId === action.id;
           const conflicting = conflictForAction(conflicts, action.id);
           const overridden = isOverridden(action.id);
+          const recordable = isRecordableAction(action);
 
           return (
             <div
@@ -173,7 +185,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                       : "hover:bg-bg-hover"
               }`}
               onClick={() => handleSelectRow(action.id)}
-              onDoubleClick={() => handleStartRecording(action.id)}
+              onDoubleClick={() => recordable && handleStartRecording(action.id)}
               ref={isRecording ? recordingRef : undefined}
             >
               <div className="flex-1 min-w-0">
@@ -182,6 +194,9 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                   <div className="text-[0.78em] text-red-400 mt-0.5">
                     Also bound to: {conflicting.map((id) => SHORTCUT_ACTIONS.find((a) => a.id === id)?.label ?? id).join(", ")}
                   </div>
+                )}
+                {!recordable && (
+                  <div className="text-[0.75em] text-text-muted mt-0.5">Fixed pattern (not rebindable)</div>
                 )}
               </div>
 
@@ -222,6 +237,10 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                     Reset
                   </button>
                 )}
+              </div>
+            </div>
+          );
+        })}
               </div>
             </div>
           );
