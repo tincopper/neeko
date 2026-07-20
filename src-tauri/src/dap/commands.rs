@@ -1,7 +1,8 @@
-//! Tauri commands for DAP.
+//! Tauri commands for DAP — thin IPC only.
 
 use tauri::{AppHandle, State};
 
+use super::adapter;
 use super::discover::EntryPoint;
 use super::types::{
     BreakpointSpec, DapSessionInfo, LaunchConfig, StackFrameDto, VariableDto,
@@ -14,7 +15,6 @@ pub fn dap_list_configs(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<LaunchConfig>, AppError> {
-    // Auto-discover entry points when launch.json is empty.
     crate::dap::manager::DapManager::list_or_discover_configs(&state, &project_id)
 }
 
@@ -157,14 +157,14 @@ pub async fn dap_evaluate(
 }
 
 /// Check whether the adapter for a launch type (`go`, `lldb`, …) is available
-/// in the project environment. IPC arg is `adapterType` (not `type` / `type_`).
+/// in the **project** environment (Local / WSL / SSH).
 #[tauri::command]
-pub fn dap_check_adapter(
+pub async fn dap_check_adapter(
     project_id: String,
     adapter_type: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
     let env = state.project_environment(&project_id)?;
     let target = env.to_exec_target();
-    Ok(crate::dap::plugin::adapter_available(&adapter_type, &target))
+    Ok(adapter::adapter_available(&adapter_type, &target).await)
 }

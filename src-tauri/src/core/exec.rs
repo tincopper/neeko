@@ -108,12 +108,6 @@ pub fn command_exists_blocking(target: &ExecTarget, cmd: &str) -> bool {
     }
 }
 
-/// Host-local existence only. Prefer [`command_exists`] with the project's
-/// [`ExecTarget`] for business checks.
-pub fn local_command_exists(cmd: &str) -> bool {
-    exec_env::local_command_exists(cmd)
-}
-
 fn shell_quote(s: &str) -> String {
     crate::common::utils::command::local::quote_shell_arg(s)
 }

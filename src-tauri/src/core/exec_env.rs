@@ -59,7 +59,10 @@ pub fn host_user_path() -> String {
 }
 
 /// Whether `command` exists on the host PATH (same source as LocalExecutor).
-pub fn local_command_exists(command: &str) -> bool {
+///
+/// Crate-private: business code must use [`crate::core::exec::command_exists`]
+/// with an [`crate::common::executor::factory::ExecTarget`].
+pub(crate) fn local_command_exists(command: &str) -> bool {
     crate::common::utils::command::local::command_exists_on_path(command, &host_user_path())
 }
 

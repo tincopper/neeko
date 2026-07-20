@@ -118,43 +118,28 @@ pub async fn check_agents_installed(
     project_id: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<HashMap<String, bool>, AppError> {
-    let ids = agent_ids.unwrap_or_else(|| {
-        state
-            .agent_manager
-            .lock()
-            .map(|am| am.get_agents().iter().map(|a| a.id.clone()).collect())
-            .unwrap_or_default()
-    });
-    let agents = state
-        .agent_manager
-        .lock()
-        .map_err(AppError::from)?
-        .get_agents()
-        .to_vec();
-
     let env = match project_id.as_deref() {
         Some(pid) => state.project_environment(pid)?,
         None => state.active_project_environment(),
     };
+    let target = env.to_exec_target();
+
+    // Snapshot under lock — never hold the mutex across await / remote checks.
+    let commands = {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        let ids = agent_ids.unwrap_or_else(|| {
+            am.get_agents().iter().map(|a| a.id.clone()).collect()
+        });
+        am.resolve_commands(&ids)
+    };
+
     log::info!(
         "[agent] check_agents_installed env={:?} count={}",
         std::mem::discriminant(&env),
-        ids.len()
+        commands.len()
     );
 
-    let mut result = HashMap::new();
-    for id in &ids {
-        let command = agents
-            .iter()
-            .find(|a| a.id == *id)
-            .map(|a| a.command.clone());
-        let installed = match command {
-            Some(cmd) => crate::core::exec::command_exists_on_project(&env, &cmd).await,
-            None => false,
-        };
-        result.insert(id.clone(), installed);
-    }
-    Ok(result)
+    Ok(crate::agent::manager::AgentManager::check_installed(&commands, &target).await)
 }
 
 #[tauri::command]

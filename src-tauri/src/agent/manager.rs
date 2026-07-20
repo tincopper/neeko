@@ -1,4 +1,5 @@
 use crate::common::agent::types::AgentConfig;
+use crate::common::executor::factory::ExecTarget;
 use std::collections::HashMap;
 
 pub struct AgentManager {
@@ -34,24 +35,38 @@ impl AgentManager {
         self.agents.retain(|a| a.id != agent_id);
     }
 
-    /// Check if agents are installed on the **host** PATH (Local only).
+    /// Resolve agent id → CLI command name (unknown id → `None`).
     ///
-    /// Production UI must use `check_agents_installed` with a `project_id` so
-    /// WSL/SSH projects are checked in the correct environment. This method is
-    /// retained for unit tests and host-only tooling.
-    pub fn check_installed(&self, agent_ids: &[String]) -> HashMap<String, bool> {
+    /// Sync snapshot for use before async existence checks (do not hold
+    /// `agent_manager` mutex across await).
+    pub fn resolve_commands(&self, agent_ids: &[String]) -> Vec<(String, Option<String>)> {
         agent_ids
             .iter()
             .map(|id| {
-                let installed = self
-                    .agents
-                    .iter()
-                    .find(|a| a.id == *id)
-                    .map(|a| crate::core::exec::local_command_exists(&a.command))
-                    .unwrap_or(false);
-                (id.clone(), installed)
+                let cmd = self.get_agent(id).map(|a| a.command.clone());
+                (id.clone(), cmd)
             })
             .collect()
+    }
+
+    /// Whether each agent CLI exists in `target` (Local / WSL / SSH).
+    ///
+    /// Always pass the **project** execution environment — never assume host PATH.
+    /// `commands` is typically from [`Self::resolve_commands`]. Unknown / missing
+    /// commands are reported as not installed.
+    pub async fn check_installed(
+        commands: &[(String, Option<String>)],
+        target: &ExecTarget,
+    ) -> HashMap<String, bool> {
+        let mut result = HashMap::new();
+        for (id, cmd) in commands {
+            let installed = match cmd.as_deref() {
+                Some(c) => crate::core::exec::command_exists(target, c).await,
+                None => false,
+            };
+            result.insert(id.clone(), installed);
+        }
+        result
     }
 }
 
@@ -255,27 +270,39 @@ mod tests {
         assert!(manager.get_agents().iter().all(|a| a.enabled));
     }
 
-    #[test]
-    fn should_check_installed_returns_map() {
+    #[tokio::test]
+    async fn should_check_installed_returns_map_on_local_target() {
         let manager = AgentManager::new();
         let ids = vec!["opencode".to_string()];
-        let result = manager.check_installed(&ids);
+        let commands = manager.resolve_commands(&ids);
+        let result = AgentManager::check_installed(&commands, &ExecTarget::Local).await;
         assert!(result.contains_key("opencode"));
     }
 
-    #[test]
-    fn should_check_installed_returns_false_for_unknown() {
+    #[tokio::test]
+    async fn should_check_installed_returns_false_for_unknown() {
         let manager = AgentManager::new();
         let ids = vec!["nonexistent".to_string()];
-        let result = manager.check_installed(&ids);
+        let commands = manager.resolve_commands(&ids);
+        assert_eq!(commands[0].1, None);
+        let result = AgentManager::check_installed(&commands, &ExecTarget::Local).await;
         assert_eq!(result.get("nonexistent"), Some(&false));
     }
 
-    #[test]
-    fn should_check_installed_empty_input() {
-        let manager = AgentManager::new();
-        let result = manager.check_installed(&[]);
+    #[tokio::test]
+    async fn should_check_installed_empty_input() {
+        let result = AgentManager::check_installed(&[], &ExecTarget::Local).await;
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn should_resolve_commands_for_known_and_unknown() {
+        let manager = AgentManager::new();
+        let ids = vec!["opencode".into(), "nope".into()];
+        let commands = manager.resolve_commands(&ids);
+        assert_eq!(commands.len(), 2);
+        assert_eq!(commands[0].1.as_deref(), Some("opencode"));
+        assert_eq!(commands[1].1, None);
     }
 
     #[test]
