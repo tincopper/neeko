@@ -4,8 +4,11 @@ import { loadConfig } from "@/features/session/api/sessionApi";
 import { useProjectStore } from "@/features/project/store";
 import {
   getIdeCommand,
+  getIdeDisplayName,
   getIdeIconByCommand,
   getIdeIconSrc,
+  resolveIdeLaunchCommand,
+  resolveIdePreset,
   IDE_PRESETS,
 } from "@/shared/utils/idePresets";
 import type { AppConfig } from '@/shared/types';
@@ -46,9 +49,23 @@ function OpenIdeButton() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
-  // 当前活跃项目的 IDE 命令 与 ID（统一 store 包含所有项目类型）
-  const ideCommand = activeProject?.selected_ide ?? null;
+  // 当前活跃项目的 IDE 值（可能是预设 id `vscode` 或启动命令 `code`）
+  const ideStored = activeProject?.selected_ide ?? null;
   const projectId = activeProject?.id ?? null;
+  const ideOverrides = config?.ideCommandOverrides;
+
+  const ideIconSrc = React.useMemo(
+    () => getIdeIconByCommand(ideStored, ideOverrides),
+    [ideStored, ideOverrides],
+  );
+  const ideLabel = React.useMemo(
+    () => getIdeDisplayName(ideStored, ideOverrides),
+    [ideStored, ideOverrides],
+  );
+  const ideLaunchCommand = React.useMemo(
+    () => resolveIdeLaunchCommand(ideStored, ideOverrides),
+    [ideStored, ideOverrides],
+  );
 
   // 整合所有可用的 IDE 选项
   const allIdeOptions = React.useMemo(() => {
@@ -56,7 +73,7 @@ function OpenIdeButton() {
 
     // 预设 IDE
     for (const preset of IDE_PRESETS) {
-      const cmd = config?.ideCommandOverrides?.[preset.id] ?? getIdeCommand(preset);
+      const cmd = ideOverrides?.[preset.id] ?? getIdeCommand(preset);
       options.push({
         id: preset.id,
         name: preset.name,
@@ -79,13 +96,13 @@ function OpenIdeButton() {
     }
 
     return options;
-  }, [config]);
+  }, [config, ideOverrides]);
 
   // 点击左侧区域 → 直接打开当前默认 IDE
   const handleOpenDefault = useCallback(() => {
-    if (!projectId || !ideCommand) return;
-    openIde({ id: projectId, selected_ide: ideCommand });
-  }, [projectId, ideCommand, openIde]);
+    if (!projectId || !ideLaunchCommand) return;
+    openIde({ id: projectId, selected_ide: ideLaunchCommand });
+  }, [projectId, ideLaunchCommand, openIde]);
 
   // 点击下拉中的某一行 → 把该 IDE 设为当前项目默认（持久化），不打开
   const handleSelectIde = useCallback(
@@ -109,7 +126,7 @@ function OpenIdeButton() {
   );
 
   // 无 IDE 配置且无选项时隐藏
-  if (!ideCommand && allIdeOptions.length === 0) return null;
+  if (!ideStored && allIdeOptions.length === 0) return null;
 
   return (
     <div className="relative flex items-center" ref={dropdownRef}>
@@ -118,17 +135,21 @@ function OpenIdeButton() {
         <button
           className="flex items-center gap-1.5 pl-1.5 pr-1.5 h-full text-text-primary transition-colors cursor-pointer"
           onClick={handleOpenDefault}
-          title={ideCommand ? "Open in IDE (" + ideCommand + ")" : "No IDE configured"}
+          title={
+            ideLaunchCommand
+              ? `Open in IDE (${ideLabel})`
+              : "No IDE configured"
+          }
         >
-          {ideCommand ? (
+          {ideStored ? (
             <img
-              src={getIdeIconByCommand(ideCommand)}
+              src={ideIconSrc}
               className="w-3.5 h-3.5 object-contain shrink-0"
               alt=""
             />
           ) : null}
           <span className="text-[var(--font-size)] text-text-secondary max-w-[80px] truncate">
-            {ideCommand ?? "IDE"}
+            {ideLabel}
           </span>
         </button>
 
@@ -149,7 +170,12 @@ function OpenIdeButton() {
       {dropdownOpen && (
         <div className="absolute top-full right-0 mt-1.5 w-64 bg-bg-secondary border border-border rounded-lg shadow-xl z-50 overflow-hidden">
           {allIdeOptions.map((option) => {
-            const isCurrent = option.command === ideCommand;
+            const currentPreset = resolveIdePreset(ideStored, ideOverrides);
+            const isCurrent =
+              option.command === ideStored ||
+              option.command === ideLaunchCommand ||
+              option.id === ideStored ||
+              (!!currentPreset && currentPreset.id === option.id);
             return (
               <div
                 key={option.id}

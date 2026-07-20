@@ -116,14 +116,42 @@ describe("OpenIdeButton", () => {
       render(<OpenIdeButton />);
     });
 
-    // 主按钮 title 形如 "Open in IDE (goland)"
-    const mainButton = screen.getByTitle("Open in IDE (goland)");
+    // 主按钮 title 使用展示名（GoLand）
+    const mainButton = screen.getByTitle("Open in IDE (GoLand)");
     await act(async () => {
       fireEvent.click(mainButton);
     });
 
     expect(openIdeSpy).toHaveBeenCalledWith({ id: "p1", selected_ide: "goland" });
     expect(setProjectIdeSpy).not.toHaveBeenCalled();
+  });
+
+  it("selected_ide 为预设 id vscode 时主按钮显示 VS Code 图标而非 default", async () => {
+    const project = makeProject({ selected_ide: "vscode" });
+    useProjectStore.setState({
+      projects: [project],
+      activeProjectId: project.id,
+      activeProject: project,
+      openIde: openIdeSpy,
+      setProjectIde: setProjectIdeSpy,
+    });
+
+    await act(async () => {
+      render(<OpenIdeButton />);
+    });
+
+    const mainButton = screen.getByTitle("Open in IDE (VS Code)");
+    const img = mainButton.querySelector("img");
+    expect(img).toBeTruthy();
+    // default.svg is black monochrome; resolved vscode icon must not be that
+    expect(img?.getAttribute("src") ?? "").not.toMatch(/fill='%23000000'/);
+    expect(img?.getAttribute("src") ?? "").not.toMatch(/fill="#000000"/);
+
+    await act(async () => {
+      fireEvent.click(mainButton);
+    });
+    // Launch uses platform command, not the stored preset id
+    expect(openIdeSpy).toHaveBeenCalledWith({ id: "p1", selected_ide: "code" });
   });
 
   it("点行后下拉关闭", async () => {

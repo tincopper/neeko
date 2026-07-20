@@ -3,7 +3,10 @@ import {
   getIdeIconSrc,
   getIdeCommand,
   getIdeIconByCommand,
+  getIdeDisplayName,
   getMacAppNameByCommand,
+  resolveIdeLaunchCommand,
+  resolveIdePreset,
   IDE_PRESETS,
 } from '../../utils/idePresets';
 
@@ -64,6 +67,18 @@ describe('getIdeIconByCommand', () => {
     expect(iconWithOverride).toBe(iconByWindows);
   });
 
+  it('should_resolve_vscode_preset_id_to_same_icon_as_code_command', () => {
+    const byId = getIdeIconByCommand('vscode');
+    const byCmd = getIdeIconByCommand('code');
+    expect(byId).toBe(byCmd);
+    // Must not fall back to black default.svg used when unresolved
+    expect(byId).not.toBe(getIdeIconByCommand('totally-unknown-ide'));
+  });
+
+  it('should_resolve_path_style_code_command', () => {
+    expect(getIdeIconByCommand('/usr/local/bin/code')).toBe(getIdeIconByCommand('code'));
+  });
+
   it('未匹配的命令返回默认图标', () => {
     const result = getIdeIconByCommand('totally-unknown-ide');
     expect(result).toBeTruthy();
@@ -73,6 +88,20 @@ describe('getIdeIconByCommand', () => {
     // 使用 Cursor 的 macos 命令 + overrides
     const icon = getIdeIconByCommand('cursor', { cursor: 'cursor' });
     expect(icon).toBeTruthy();
+  });
+});
+
+describe('resolveIdePreset / launch / display', () => {
+  it('should_map_vscode_id_to_launch_code', () => {
+    expect(resolveIdePreset('vscode')?.id).toBe('vscode');
+    expect(resolveIdeLaunchCommand('vscode')).toBe('code');
+    expect(getIdeDisplayName('vscode')).toBe('VS Code');
+    expect(getIdeDisplayName('code')).toBe('VS Code');
+  });
+
+  it('should_keep_custom_command_when_unknown', () => {
+    expect(resolveIdeLaunchCommand('my-custom-ide')).toBe('my-custom-ide');
+    expect(getIdeDisplayName('my-custom-ide')).toBe('my-custom-ide');
   });
 });
 
@@ -121,9 +150,10 @@ describe('getMacAppNameByCommand', () => {
     expect(getMacAppNameByCommand('idea.sh')).toBe('IntelliJ IDEA');
   });
 
-  it('未知命令返回 null', () => {
+  it('未知命令返回 null；路径 basename 能命中预设', () => {
     expect(getMacAppNameByCommand('my-custom-ide')).toBeNull();
-    expect(getMacAppNameByCommand('/usr/local/bin/idea')).toBeNull();
+    // path-style commands resolve via basename → idea → IntelliJ IDEA
+    expect(getMacAppNameByCommand('/usr/local/bin/idea')).toBe('IntelliJ IDEA');
   });
 
   it('overrides 命中时返回对应预设的 macAppName', () => {

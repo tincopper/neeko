@@ -8,7 +8,10 @@ import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/te
 import { useEditorStore } from '@/shared/store';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
-import { getMacAppNameByCommand } from '@/shared/utils/idePresets';
+import {
+  getMacAppNameByCommand,
+  resolveIdeLaunchCommand,
+} from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 
 import { listAgents } from '../../agent/api/agentApi';
@@ -266,8 +269,11 @@ export function useLocalProjects() {
     async (project: { id: string; selected_ide: string | null }) => {
       if (!project.selected_ide) return;
       const projectPath = projects.find((item) => item.id === project.id)?.path ?? '';
+      // selected_ide may be preset id (`vscode`) or launch command (`code`)
+      const launchCmd =
+        resolveIdeLaunchCommand(project.selected_ide) ?? project.selected_ide;
       const macAppName = getMacAppNameByCommand(project.selected_ide);
-      await openIde(project.selected_ide, projectPath, macAppName);
+      await openIde(launchCmd, projectPath, macAppName);
     },
     [projects],
   );

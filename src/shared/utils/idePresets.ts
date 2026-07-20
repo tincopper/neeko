@@ -103,27 +103,109 @@ export function getIdeCommand(preset: IdePreset): string {
   return preset.command.linux;
 }
 
-/** 根据 IDE 命令字符串匹配预设图标，找不到返回 default */
+/** Normalize a stored IDE value (path / shim / id) for matching. */
+function normalizeIdeToken(value: string): string {
+  const trimmed = value.trim().replace(/^["']|["']$/g, "");
+  const base = trimmed.split(/[/\\]/).pop() ?? trimmed;
+  return base.replace(/\.(exe|cmd|bat|sh)$/i, "").toLowerCase();
+}
+
+/**
+ * Resolve a stored `selected_ide` value (preset id, platform command, path, or
+ * override) to an IDE_PRESETS entry. Returns null for unknown custom tools.
+ *
+ * Historical data may store either `"vscode"` (preset id) or `"code"` (command);
+ * both must resolve to the same preset so icons / launch stay consistent.
+ */
+export function resolveIdePreset(
+  commandOrId: string | null | undefined,
+  overrides?: Record<string, string>,
+): IdePreset | null {
+  if (!commandOrId) return null;
+  const raw = commandOrId.trim();
+  if (!raw) return null;
+
+  // 1. Exact preset id (`vscode`)
+  const byId = IDE_PRESETS.find((p) => p.id === raw);
+  if (byId) return byId;
+
+  // 2. Exact platform command (`code`, `idea64.exe`, …)
+  for (const preset of IDE_PRESETS) {
+    if (
+      preset.command.windows === raw ||
+      preset.command.macos === raw ||
+      preset.command.linux === raw
+    ) {
+      return preset;
+    }
+  }
+
+  // 3. User command overrides (presetId → custom command)
+  if (overrides) {
+    for (const [presetId, cmd] of Object.entries(overrides)) {
+      if (cmd === raw) {
+        return IDE_PRESETS.find((p) => p.id === presetId) ?? null;
+      }
+    }
+  }
+
+  // 4. Basename / stem fuzzy match (`/usr/local/bin/code` → vscode)
+  const token = normalizeIdeToken(raw);
+  for (const preset of IDE_PRESETS) {
+    if (preset.id.toLowerCase() === token) return preset;
+    for (const cmd of [
+      preset.command.windows,
+      preset.command.macos,
+      preset.command.linux,
+    ]) {
+      if (normalizeIdeToken(cmd) === token) return preset;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Resolve stored selected_ide to the actual shell command used to launch.
+ * Preset ids (e.g. `vscode`) become platform commands (e.g. `code`).
+ */
+export function resolveIdeLaunchCommand(
+  commandOrId: string | null | undefined,
+  overrides?: Record<string, string>,
+): string | null {
+  if (!commandOrId?.trim()) return null;
+  const raw = commandOrId.trim();
+  const preset = resolveIdePreset(raw, overrides);
+  if (!preset) return raw;
+  if (overrides?.[preset.id]) return overrides[preset.id];
+  // Keep explicit platform command as-is when it already matches the preset
+  if (
+    raw === preset.command.windows ||
+    raw === preset.command.macos ||
+    raw === preset.command.linux
+  ) {
+    return raw;
+  }
+  return getIdeCommand(preset);
+}
+
+/** Human-readable label for UI (e.g. "VS Code" instead of "vscode" / "code"). */
+export function getIdeDisplayName(
+  commandOrId: string | null | undefined,
+  overrides?: Record<string, string>,
+): string {
+  if (!commandOrId?.trim()) return "IDE";
+  const preset = resolveIdePreset(commandOrId, overrides);
+  return preset?.name ?? commandOrId.trim();
+}
+
+/** 根据 IDE 命令 / 预设 id 匹配图标，找不到返回 default */
 export function getIdeIconByCommand(
   command: string | null | undefined,
   overrides?: Record<string, string>,
 ): string {
-  if (!command) return defaultIdeIcon;
-  // 1. 先匹配预设的默认命令
-  for (const preset of IDE_PRESETS) {
-    if (preset.command.windows === command || preset.command.macos === command || preset.command.linux === command) {
-      return IDE_ICON_MAP[preset.icon] ?? defaultIdeIcon;
-    }
-  }
-  // 2. 再匹配用户自定义覆盖的命令 → 反向查找 presetId
-  if (overrides) {
-    for (const [presetId, cmd] of Object.entries(overrides)) {
-      if (cmd === command) {
-        const preset = IDE_PRESETS.find(p => p.id === presetId);
-        if (preset) return IDE_ICON_MAP[preset.icon] ?? defaultIdeIcon;
-      }
-    }
-  }
+  const preset = resolveIdePreset(command, overrides);
+  if (preset) return IDE_ICON_MAP[preset.icon] ?? defaultIdeIcon;
   return defaultIdeIcon;
 }
 
@@ -135,23 +217,6 @@ export function getMacAppNameByCommand(
   command: string | null | undefined,
   overrides?: Record<string, string>,
 ): string | null {
-  if (!command) return null;
-  for (const preset of IDE_PRESETS) {
-    if (
-      preset.command.windows === command ||
-      preset.command.macos === command ||
-      preset.command.linux === command
-    ) {
-      return preset.macAppName ?? null;
-    }
-  }
-  if (overrides) {
-    for (const [presetId, cmd] of Object.entries(overrides)) {
-      if (cmd === command) {
-        const preset = IDE_PRESETS.find((p) => p.id === presetId);
-        if (preset) return preset.macAppName ?? null;
-      }
-    }
-  }
-  return null;
+  const preset = resolveIdePreset(command, overrides);
+  return preset?.macAppName ?? null;
 }
