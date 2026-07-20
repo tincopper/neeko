@@ -732,16 +732,32 @@ impl LspManager {
         }
     }
 
-    /// Execution target for a project path (defaults to Local).
+    /// Execution target previously recorded for a project path.
+    ///
+    /// Returns `None` when never set — callers must resolve via project
+    /// environment and call [`Self::set_project_exec_target`] first.
+    /// Never invents `Local`.
     pub fn project_exec_target(
         &self,
         project_path: &str,
-    ) -> crate::common::executor::factory::ExecTarget {
+    ) -> Option<crate::common::executor::factory::ExecTarget> {
         self.project_exec_targets
             .lock()
             .ok()
             .and_then(|m| m.get(project_path).cloned())
-            .unwrap_or(crate::common::executor::factory::ExecTarget::Local)
+    }
+
+    /// Require a recorded execution target, or return a clear LSP error.
+    pub fn require_project_exec_target(
+        &self,
+        project_path: &str,
+    ) -> Result<crate::common::executor::factory::ExecTarget, AppError> {
+        self.project_exec_target(project_path).ok_or_else(|| {
+            AppError::Lsp(format!(
+                "No execution environment recorded for project path '{project_path}'. \
+                 Activate the project (or call detect/check with project context) before starting LSP."
+            ))
+        })
     }
 
     /// Convenience constructor for tests / simple call sites.
@@ -954,7 +970,7 @@ impl LspManager {
         let diag_bus = Arc::new(self.diag_bus.clone());
         let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
 
-        let exec_target = self.project_exec_target(project_path);
+        let exec_target = self.require_project_exec_target(project_path)?;
         let session = LspSession::new(
             &plugin,
             project_path,

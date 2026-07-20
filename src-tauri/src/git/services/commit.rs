@@ -1,3 +1,4 @@
+use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 use std::path::{Path, PathBuf};
 
@@ -199,14 +200,27 @@ pub fn build_agent_commit_cmd(
 }
 
 /// 执行 agent CLI（纯业务逻辑，无 State 依赖）。
+///
+/// Always runs via [`crate::core::exec`] with an explicit [`ExecTarget`].
+/// Local commit path uses `ExecTarget::Local`; WSL/SSH commit goes through
+/// `agent/commands_commit` which already targets those environments.
 pub fn execute_agent_cli(
     config: &AgentInvokeConfig,
     prompt_content: &str,
     project_path: &Path,
 ) -> Result<AgentOutput, AppError> {
-    let full_path = crate::common::utils::command::local::resolve_full_path();
-    let resolved_command =
-        crate::common::utils::command::local::resolve_command_path(&config.command, &full_path);
+    execute_agent_cli_on_target(config, prompt_content, project_path, &ExecTarget::Local)
+}
+
+/// Run agent CLI in the given execution environment (project cwd on that target).
+pub fn execute_agent_cli_on_target(
+    config: &AgentInvokeConfig,
+    prompt_content: &str,
+    project_path: &Path,
+    target: &ExecTarget,
+) -> Result<AgentOutput, AppError> {
+    use crate::common::runtime::AppRuntime;
+    use crate::core::exec;
 
     let uses_file_mode = config
         .prompt_args
@@ -226,50 +240,55 @@ pub fn execute_agent_cli(
         None
     };
 
-    log::info!(
-        "[AI commit] exec: {} {:?} <prompt({} chars)>",
-        resolved_command,
-        config.prompt_args,
-        prompt_message.len()
-    );
-    log::info!("[AI commit] PATH={}", full_path);
-
-    let mut cmd = build_platform_command(&resolved_command, &full_path);
-
+    let mut args: Vec<String> = Vec::new();
     if uses_file_mode {
-        for arg in config.prompt_args.iter().take(config.prompt_args.len() - 1) {
-            cmd.arg(arg);
+        for arg in config.prompt_args.iter().take(config.prompt_args.len().saturating_sub(1)) {
+            args.push(arg.clone());
         }
-        cmd.arg(&prompt_message);
-        cmd.arg("-f");
+        args.push(prompt_message.clone());
+        args.push("-f".into());
         if let Some(ref tmp) = prompt_file {
-            cmd.arg(tmp);
+            args.push(tmp.to_string_lossy().into_owned());
         }
     } else {
         for arg in &config.prompt_args {
-            cmd.arg(arg);
+            args.push(arg.clone());
         }
-        cmd.arg(&prompt_message);
+        args.push(prompt_message.clone());
     }
-
     for arg in &config.post_prompt_args {
-        cmd.arg(arg);
+        args.push(arg.clone());
     }
-    cmd.current_dir(project_path);
 
-    let output = cmd.output().map_err(|e| {
-        log::error!("[AI commit] spawn error: {}", e);
+    let cwd = project_path.to_string_lossy().into_owned();
+    log::info!(
+        "[AI commit] exec target={:?} cmd={} args_len={} cwd={}",
+        std::mem::discriminant(target),
+        config.command,
+        args.len(),
+        cwd
+    );
+
+    let cmd = config.command.clone();
+    let runtime = AppRuntime::try_current_or_tauri();
+    let collected = runtime.handle().block_on(async {
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        exec::collect_in_dir(target, &cmd, &arg_refs, Some(&cwd)).await
+    });
+
+    if let Some(ref tmp) = prompt_file {
+        let _ = std::fs::remove_file(tmp);
+    }
+
+    let output = collected.map_err(|e| {
+        log::error!("[AI commit] spawn/collect error: {}", e);
         AppError::InvalidInput(format!(
             "Failed to run agent '{}': {}. Check the agent path in Settings.",
             config.command, e
         ))
     })?;
 
-    if let Some(ref tmp) = prompt_file {
-        let _ = std::fs::remove_file(tmp);
-    }
-
-    let exit_code = output.status.code().unwrap_or(-1);
+    let exit_code = output.exit_code;
     let stdout_str = decode_output(&output.stdout);
     let stderr_str = decode_output(&output.stderr);
 
@@ -281,7 +300,7 @@ pub fn execute_agent_cli(
         log::warn!("[AI commit] stderr={}", stderr_str.trim());
     }
 
-    if !output.status.success() {
+    if exit_code != 0 {
         let detail = if stderr_str.trim().is_empty() {
             stdout_str.trim().to_string()
         } else {
@@ -310,26 +329,6 @@ fn write_prompt_file(project_path: &Path, content: &str) -> Result<PathBuf, AppE
         .map_err(|e| AppError::InvalidInput(format!("Failed to write prompt file: {}", e)))?;
     log::info!("[AI commit] prompt file written to: {}", tmp_path.display());
     Ok(tmp_path)
-}
-
-/// 构建平台相关的 Command 对象。
-fn build_platform_command(resolved_command: &str, path_env: &str) -> std::process::Command {
-    #[cfg(target_os = "windows")]
-    {
-        let mut c = crate::common::utils::command::local::exec("cmd.exe");
-        c.env("PATH", path_env);
-        c.env("NO_COLOR", "1");
-        c.arg("/C");
-        c.arg(resolved_command);
-        c
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let mut c = crate::common::utils::command::local::exec(resolved_command);
-        c.env("PATH", path_env);
-        c.env("NO_COLOR", "1");
-        c
-    }
 }
 
 /// 解码进程输出字节，优先 UTF-8；Windows 上若 UTF-8 失败则尝试 GBK（通过 lossy 回退）。

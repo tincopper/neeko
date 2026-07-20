@@ -120,7 +120,7 @@ pub async fn check_agents_installed(
 ) -> Result<HashMap<String, bool>, AppError> {
     let env = match project_id.as_deref() {
         Some(pid) => state.project_environment(pid)?,
-        None => state.active_project_environment(),
+        None => state.active_project_environment()?,
     };
     let target = env.to_exec_target();
 

@@ -35,10 +35,9 @@ pub fn exec_detached(program: &str) -> Command {
 
 /// Create a Command with full PATH resolution and PATH injected into the child.
 ///
-/// Prefer [`crate::common::executor`] / `core::exec` for new business code.
-/// This helper remains for sync local spawns (e.g. long-lived LSP stdio) that
-/// share the same PATH rules as [`crate::common::executor::local::LocalExecutor`].
-pub fn cmd_from_path(program: &str) -> Command {
+/// **Crate-private host helper.** Business code must use
+/// [`crate::core::exec`] with a project [`crate::common::executor::factory::ExecTarget`].
+pub(crate) fn cmd_from_path(program: &str) -> Command {
     let path = resolve_full_path();
     let resolved = resolve_command_path(program, &path);
     let mut cmd = exec(&resolved);
@@ -48,9 +47,9 @@ pub fn cmd_from_path(program: &str) -> Command {
 
 /// Check if a command exists on the (process + extras) PATH.
 ///
-/// Uses the same PATH source as [`cmd_from_path`] / LocalExecutor — not a
-/// separate interactive shell probe — so detection and spawn stay consistent.
-pub fn check_command_exists(command: &str) -> bool {
+/// **Crate-private host helper.** Prefer
+/// [`crate::core::exec::command_exists`] with the project's ExecTarget.
+pub(crate) fn check_command_exists(command: &str) -> bool {
     command_exists_on_path(command, &resolve_full_path())
 }
 

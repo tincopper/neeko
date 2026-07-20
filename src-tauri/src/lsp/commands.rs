@@ -8,13 +8,28 @@ use crate::lsp::types::LspSessionInfo;
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// Resolve project execution environment and record it on the LSP manager
+/// before any session spawn / binary check.
+fn bind_project_exec_target(
+    state: &AppStateWrapper,
+    project_path: &str,
+) -> Result<(), AppError> {
+    let env = state.environment_for_project_path(project_path)?;
+    state
+        .lsp_manager
+        .set_project_exec_target(project_path, env.to_exec_target());
+    Ok(())
+}
+
 /// Run blocking session-creation work on the business AppRuntime pool
 /// so it never occupies a tokio worker thread (and is safe without a current Handle).
 async fn ensure_session_async(
-    manager: Arc<crate::lsp::LspManager>,
+    state: &AppStateWrapper,
     project_path: &str,
     language_id: &str,
 ) -> Result<(), AppError> {
+    bind_project_exec_target(state, project_path)?;
+    let manager = Arc::clone(&state.lsp_manager);
     let pp = project_path.to_string();
     let lid = language_id.to_string();
     let runtime = manager.runtime();
@@ -37,7 +52,7 @@ pub async fn lsp_request(
     params: Value,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Value, AppError> {
-    ensure_session_async(Arc::clone(&state.lsp_manager), &project_path, &language_id).await?;
+    ensure_session_async(&state, &project_path, &language_id).await?;
 
     // Ensure the document is known by the server before sending a document request.
     if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
@@ -92,6 +107,7 @@ pub fn lsp_notification(
     params: Value,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
+    bind_project_exec_target(&state, &project_path)?;
     state
         .lsp_manager
         .get_or_create_session(&project_path, &language_id)?;
@@ -109,6 +125,7 @@ pub fn lsp_open_document(
     version: i64,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
+    bind_project_exec_target(&state, &project_path)?;
     state
         .lsp_manager
         .get_or_create_session(&project_path, &language_id)?;
@@ -208,6 +225,7 @@ pub async fn lsp_restart_session(
     // Close existing session (sends shutdown + kills child)
     let _ = state.lsp_manager.close_session(&project_path, &language_id);
 
+    bind_project_exec_target(&state, &project_path)?;
     // Re-create session (triggers lazy init + reopen docs on next request)
     let key = state
         .lsp_manager
@@ -239,23 +257,18 @@ pub fn lsp_detect_project_profile(
     project_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<crate::lsp::ProjectLanguageProfile, AppError> {
-    let (primary_override, exec_target) = state
+    let env = state.environment_for_project_path(&project_path)?;
+    let primary_override = state
         .project_manager
         .lock()
-        .ok()
-        .and_then(|pm| {
-            pm.list_projects()
-                .into_iter()
-                .find(|p| p.path.to_string_lossy() == project_path)
-                .map(|p| (p.primary_language, p.environment.to_exec_target()))
-        })
-        .unwrap_or((
-            None,
-            crate::common::executor::factory::ExecTarget::Local,
-        ));
+        .map_err(AppError::from)?
+        .list_projects()
+        .into_iter()
+        .find(|p| p.path.to_string_lossy() == project_path)
+        .and_then(|p| p.primary_language);
     state
         .lsp_manager
-        .set_project_exec_target(&project_path, exec_target);
+        .set_project_exec_target(&project_path, env.to_exec_target());
     Ok(state
         .lsp_manager
         .activate_project(&project_path, primary_override.as_deref()))
@@ -272,16 +285,15 @@ pub async fn lsp_check_server_installed(
     state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
     let env = match project_path.as_deref() {
-        Some(path) => {
-            let env = state.environment_for_project_path(path);
-            state
-                .lsp_manager
-                .set_project_exec_target(path, env.to_exec_target());
-            env
-        }
-        None => state.active_project_environment(),
+        Some(path) => state.environment_for_project_path(path)?,
+        None => state.active_project_environment()?,
     };
     let target = env.to_exec_target();
+    if let Some(path) = project_path.as_deref() {
+        state
+            .lsp_manager
+            .set_project_exec_target(path, target.clone());
+    }
     Ok(crate::lsp::installer::check_server_installed_in(
         &language_id,
         &target,
@@ -357,7 +369,7 @@ pub async fn lsp_transport(
     let id = parsed.get("id").cloned();
 
     // Ensure session exists (handles LSP process spawn + Rust-side init handshake)
-    ensure_session_async(Arc::clone(&state.lsp_manager), &project_path, &language_id).await?;
+    ensure_session_async(&state, &project_path, &language_id).await?;
 
     // ── initialize: return cached capabilities ─────────────────────────
     if method == "initialize" {
@@ -452,7 +464,7 @@ pub async fn lsp_go_to_definition(
 ) -> Result<serde_json::Value, AppError> {
     let t0 = std::time::Instant::now();
 
-    ensure_session_async(Arc::clone(&state.lsp_manager), &project_path, &language_id).await?;
+    ensure_session_async(&state, &project_path, &language_id).await?;
     let t1 = t0.elapsed();
     log::info!("[perf] lsp_go_to_definition: session ready in {:?}", t1);
 

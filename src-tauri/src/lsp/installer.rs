@@ -81,11 +81,6 @@ pub fn check_server_installed_in(language_id: &str, target: &ExecTarget) -> bool
     found
 }
 
-/// Host-local check (convenience). Prefer [`check_server_installed_in`].
-pub fn check_server_installed(language_id: &str) -> bool {
-    check_server_installed_in(language_id, &ExecTarget::Local)
-}
-
 /// Try to auto-install the LSP server **in the project's environment**.
 pub fn install_server(
     language_id: &str,

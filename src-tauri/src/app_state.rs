@@ -122,36 +122,44 @@ impl AppStateWrapper {
         Ok(project.environment.clone())
     }
 
-    /// Resolve environment for the active project, or Local if none is active.
-    pub fn active_project_environment(&self) -> crate::core::project::ProjectEnvironment {
+    /// Resolve environment for the active project.
+    ///
+    /// Errors if no project is active — never silently falls back to Local
+    /// (WSL/SSH tools would be checked on the host PATH incorrectly).
+    pub fn active_project_environment(
+        &self,
+    ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
         let id = self
             .active_project_id
             .lock()
-            .ok()
-            .and_then(|g| g.clone());
-        match id {
-            Some(pid) => self
-                .project_environment(&pid)
-                .unwrap_or_default(),
-            None => crate::core::project::ProjectEnvironment::Local,
-        }
+            .map_err(AppError::from)?
+            .clone()
+            .ok_or_else(|| {
+                AppError::NotFound(
+                    "No active project — cannot resolve execution environment".into(),
+                )
+            })?;
+        self.project_environment(&id)
     }
 
     /// Resolve environment by project filesystem path (for LSP soft-warm etc.).
+    ///
+    /// Errors if the path is not a registered project — never invents Local.
     pub fn environment_for_project_path(
         &self,
         project_path: &str,
-    ) -> crate::core::project::ProjectEnvironment {
-        let manager = match self.project_manager.lock() {
-            Ok(m) => m,
-            Err(_) => return crate::core::project::ProjectEnvironment::Local,
-        };
+    ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
+        let manager = self.project_manager.lock().map_err(AppError::from)?;
         manager
             .list_projects()
             .into_iter()
-            .find(|p| p.path.to_string_lossy() == project_path)
-            .map(|p| p.environment)
-            .unwrap_or_default()
+            .find(|p| paths_equal_for_env(&p.path.to_string_lossy(), project_path))
+            .map(|p| p.environment.clone())
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "No registered project for path '{project_path}' — cannot resolve execution environment"
+                ))
+            })
     }
 
     // ── Terminal dispatch ──────────────────────────────────────────────────
@@ -331,4 +339,14 @@ impl AppStateWrapper {
         );
         Self::new_with_skill_store(store)
     }
+}
+
+/// Loose path equality for project env lookup (slash normalization, no trailing slash).
+fn paths_equal_for_env(a: &str, b: &str) -> bool {
+    let norm = |s: &str| {
+        s.replace('\\', "/")
+            .trim_end_matches('/')
+            .to_string()
+    };
+    norm(a) == norm(b)
 }

@@ -61,6 +61,18 @@ pub async fn collect(
     collect_output(target, cmd, args).await
 }
 
+/// Like [`collect`], with an optional working directory in the target environment.
+pub async fn collect_in_dir(
+    target: &ExecTarget,
+    cmd: &str,
+    args: &[&str],
+    current_dir: Option<&str>,
+) -> Result<ExecOutput, ExecError> {
+    use crate::common::executor::sync::collect_child_output;
+    let child = spawn_with(target, cmd, args, current_dir).await?;
+    collect_child_output(child).await
+}
+
 /// Whether `cmd` exists in the target environment's user tool PATH.
 ///
 /// * Local: host process PATH (after [`exec_env::init_host_user_path`]).
