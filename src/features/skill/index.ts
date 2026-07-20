@@ -45,6 +45,8 @@ export { default as DiscoveredSkillsList } from "./components/DiscoveredSkillsLi
 export { default as CreateSkillDialog } from "./components/CreateSkillDialog";
 export { default as EditSkillDialog } from "./components/EditSkillDialog";
 export { default as ViewSkillDialog } from "./components/ViewSkillDialog";
+export { default as GitInstallDialog } from "./components/GitInstallDialog";
+export { default as AssignTagGroupDialog } from "./components/AssignTagGroupDialog";
 
 // Editors
 export { default as MarkdownEditor } from "./components/MarkdownEditor";

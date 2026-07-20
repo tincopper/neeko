@@ -382,31 +382,67 @@ pub fn get_preview(preview_id: &str) -> Option<GitPreview> {
     cache.get(preview_id).cloned()
 }
 
-/// Confirm git install - copy selected skill to central repo.
+/// Result of confirming a git skill install, including source metadata for updates.
+pub struct ConfirmGitInstallResult {
+    /// Files copied into the central repository.
+    pub install: InstallResult,
+    /// Original clone URL (for update checks).
+    pub clone_url: String,
+    /// Branch used for the clone, if any.
+    pub branch: Option<String>,
+    /// Relative subpath of the skill within the clone (best-effort).
+    pub source_subpath: Option<String>,
+    /// Commit hash of the preview clone HEAD (if available).
+    pub source_revision: Option<String>,
+}
+
+/// Confirm git install — copy selected skill to central repo.
+///
+/// Does **not** remove the preview from cache so the UI can install multiple
+/// skills from the same clone. Call [`cancel_git_preview`] when finished.
 pub fn confirm_git_install(
     preview_id: &str,
     selected_path: &str,
     name: Option<&str>,
-) -> Result<InstallResult> {
-    let _preview = {
-        let mut cache = GIT_PREVIEWS
+) -> Result<ConfirmGitInstallResult> {
+    let preview = {
+        let cache = GIT_PREVIEWS
             .lock()
             .map_err(|e| anyhow::anyhow!("Git previews lock poisoned: {}", e))?;
         cache
-            .remove(preview_id)
+            .get(preview_id)
+            .cloned()
             .ok_or_else(|| anyhow::anyhow!("Preview not found"))?
     };
 
-    // Find selected skill path
     let source_path = PathBuf::from(selected_path);
     if !source_path.exists() {
         anyhow::bail!("Selected skill path not found: {}", selected_path);
     }
 
-    // Install from the selected path
-    let result = install_from_local(&source_path, name)?;
+    let source_subpath = source_path
+        .strip_prefix(&preview.clone_path)
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
 
-    Ok(result)
+    let source_revision = {
+        use git2::Repository;
+        (|| -> Option<String> {
+            let repo = Repository::open(&preview.clone_path).ok()?;
+            let commit = repo.head().ok()?.peel_to_commit().ok()?;
+            Some(commit.id().to_string())
+        })()
+    };
+
+    let install = install_from_local(&source_path, name)?;
+
+    Ok(ConfirmGitInstallResult {
+        install,
+        clone_url: preview.clone_url,
+        branch: preview.branch,
+        source_subpath,
+        source_revision,
+    })
 }
 
 /// Cancel git preview - cleanup temp clone.
@@ -496,8 +532,8 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
         .as_deref()
         .ok_or_else(|| anyhow::anyhow!("No source reference"))?;
 
-    // Only supports git source for now
-    if source_type != "git" {
+    // Git clones and marketplace (skillssh → GitHub) support update checks
+    if source_type != "git" && source_type != "skillssh" {
         return Ok(super::types::UpdateStatus::Unsupported);
     }
 
@@ -546,15 +582,11 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
 
     let current_revision = skill.source_revision.as_deref();
 
-    if current_revision.is_none() {
-        // No previous revision, can't detect update
-        return Ok(super::types::UpdateStatus::Unknown);
-    }
-
-    let status = if current_revision == Some(&remote_revision) {
-        super::types::UpdateStatus::UpToDate
-    } else {
-        super::types::UpdateStatus::UpdateAvailable { remote_revision }
+    let status = match current_revision {
+        Some(rev) if rev == remote_revision => super::types::UpdateStatus::UpToDate,
+        Some(_) => super::types::UpdateStatus::UpdateAvailable { remote_revision },
+        // Never recorded a revision — treat as updatable so the user can pin one
+        None => super::types::UpdateStatus::UpdateAvailable { remote_revision },
     };
 
     Ok(status)

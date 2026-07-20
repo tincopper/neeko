@@ -38,6 +38,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     discoveredSkills,
     handleCreate,
     handleInstall,
+    handleInstallGit,
     handleScan,
     handleImport,
     handleClearDiscovered,
@@ -73,7 +74,8 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     <div className="flex flex-col h-full bg-bg-secondary">
       <SkillHeader
         onCreateClick={handleCreate}
-        onInstallClick={handleInstall}
+        onInstallDirectoryClick={handleInstall}
+        onInstallGitClick={handleInstallGit}
         onScanClick={handleScan}
       />
 

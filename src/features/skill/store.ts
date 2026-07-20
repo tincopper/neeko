@@ -18,6 +18,8 @@ import {
   getProjectTagGroups as getProjectTagGroupsApi,
   setProjectTagGroups as setProjectTagGroupsApi,
   applyProjectSkills as applyProjectSkillsApi,
+  checkSkillUpdate as checkSkillUpdateApi,
+  updateSkill as updateSkillApi,
 } from './api/skillApi';
 import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
 import type {
@@ -78,6 +80,8 @@ interface SkillStoreActions {
   scanSkills: () => Promise<DiscoveredSkillDto[]>;
   createSkill: (name: string, content: string) => Promise<void>;
   importDiscoveredSkill: (discoveredPath: string, name?: string) => Promise<void>;
+  checkSkillUpdate: (skillId: string) => Promise<{ status: string; remote_revision: string | null }>;
+  updateSkillFromSource: (skillId: string) => Promise<void>;
 
   // 文档编辑
   updateSkillDocument: (skillId: string, name: string, content: string) => Promise<void>;
@@ -249,6 +253,23 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   importDiscoveredSkill: async (discoveredPath: string, name?: string) => {
     await importDiscoveredSkillApi(discoveredPath, name);
     await get().refreshSkills();
+  },
+
+  checkSkillUpdate: async (skillId: string) => {
+    const result = await checkSkillUpdateApi(skillId);
+    set(state => ({
+      skills: state.skills.map(s =>
+        s.id === skillId ? { ...s, update_status: result.status } : s,
+      ),
+    }));
+    return result;
+  },
+
+  updateSkillFromSource: async (skillId: string) => {
+    const updated = await updateSkillApi(skillId);
+    set(state => ({
+      skills: state.skills.map(s => (s.id === skillId ? { ...s, ...updated } : s)),
+    }));
   },
 
   // ── 文档编辑 ──

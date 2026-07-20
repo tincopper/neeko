@@ -380,6 +380,27 @@ pub struct GitSkillPreviewDto {
     pub available_skills: Vec<super::installer::GitSkillInfo>,
 }
 
+/// Normalize user input to a cloneable git URL (`owner/repo` → GitHub HTTPS).
+fn normalize_git_clone_url(input: &str) -> String {
+    let t = input.trim();
+    if t.starts_with("http://")
+        || t.starts_with("https://")
+        || t.starts_with("git@")
+        || t.starts_with("ssh://")
+    {
+        return t.to_string();
+    }
+    // GitHub shorthand: owner/repo or owner/repo.git
+    let bare = t.trim_end_matches(".git");
+    if bare.chars().filter(|c| *c == '/').count() == 1
+        && !bare.contains(' ')
+        && !bare.contains(':')
+    {
+        return format!("https://github.com/{}.git", bare);
+    }
+    t.to_string()
+}
+
 /// Preview a git repository to see what skills are available for installation.
 #[tauri::command]
 pub async fn preview_git_install(
@@ -387,8 +408,9 @@ pub async fn preview_git_install(
     branch: Option<String>,
     subpath: Option<String>,
 ) -> Result<GitSkillPreviewDto, AppError> {
+    let normalized = normalize_git_clone_url(&clone_url);
     let preview_id =
-        super::installer::preview_git_install(&clone_url, branch.as_deref(), subpath.as_deref())
+        super::installer::preview_git_install(&normalized, branch.as_deref(), subpath.as_deref())
             .map_err(AppError::from)?;
     let preview = super::installer::get_preview(&preview_id)
         .ok_or_else(|| AppError::NotFound("Preview not found".to_string()))?;
@@ -411,7 +433,7 @@ pub struct ConfirmGitInstallInput {
     pub name: Option<String>,
 }
 
-/// Confirm and complete a git-based skill installation.
+/// Confirm and complete a git-based skill installation (preview stays open for multi-install).
 #[tauri::command]
 pub async fn confirm_git_install(
     input: ConfirmGitInstallInput,
@@ -419,12 +441,13 @@ pub async fn confirm_git_install(
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
-        let result = super::installer::confirm_git_install(
+        let confirmed = super::installer::confirm_git_install(
             &input.preview_id,
             &input.selected_path,
             input.name.as_deref(),
         )
         .map_err(AppError::from)?;
+        let result = confirmed.install;
         let now = chrono::Utc::now().timestamp_millis();
         let id = uuid::Uuid::new_v4().to_string();
         let skill = super::types::SkillRecord {
@@ -432,12 +455,12 @@ pub async fn confirm_git_install(
             name: result.name.clone(),
             description: result.description.clone(),
             source_type: "git".to_string(),
-            source_ref: Some(input.selected_path),
-            source_ref_resolved: None,
-            source_subpath: None,
-            source_branch: None,
-            source_revision: None,
-            remote_revision: None,
+            source_ref: Some(confirmed.clone_url.clone()),
+            source_ref_resolved: Some(confirmed.clone_url.clone()),
+            source_subpath: confirmed.source_subpath.clone(),
+            source_branch: confirmed.branch.clone(),
+            source_revision: confirmed.source_revision.clone(),
+            remote_revision: confirmed.source_revision.clone(),
             central_path: result.central_path.to_string_lossy().to_string(),
             content_hash: Some(result.content_hash),
             enabled: true,
@@ -454,7 +477,7 @@ pub async fn confirm_git_install(
             name: result.name,
             description: result.description,
             source_type: "git".to_string(),
-            source_ref: None,
+            source_ref: Some(confirmed.clone_url),
             central_path: result.central_path.to_string_lossy().to_string(),
             enabled: true,
             status: "ok".to_string(),
@@ -463,7 +486,8 @@ pub async fn confirm_git_install(
             created_at: now,
             updated_at: now,
         })
-    }).await
+    })
+    .await
 }
 
 /// Cancel a git installation preview and clean up the cloned repository.
@@ -1143,25 +1167,36 @@ pub async fn install_from_skillssh(
             }),
         );
 
-        // Find the skill directory
-        let skill_dir = repo_path.join(&skill_id);
-        if !skill_dir.exists() {
-            // Try looking in common subdirectories
-            let common_paths = ["skills", "packages"];
-            let mut found = false;
-            for prefix in common_paths {
-                let alt_path = repo_path.join(prefix).join(&skill_id);
-                if alt_path.exists() {
-                    found = true;
+        // Resolve skill directory (root or common monorepo layouts)
+        let skill_dir = {
+            let direct = repo_path.join(&skill_id);
+            if direct.exists() {
+                direct
+            } else {
+                let mut resolved = None;
+                for prefix in ["skills", "packages", ".agents/skills"] {
+                    let alt = repo_path.join(prefix).join(&skill_id);
+                    if alt.exists() {
+                        resolved = Some(alt);
+                        break;
+                    }
+                }
+                // Single-skill repo: root itself is the skill
+                if resolved.is_none()
+                    && super::skill_metadata::is_valid_skill_dir(&repo_path)
+                {
+                    resolved = Some(repo_path.clone());
+                }
+                match resolved {
+                    Some(p) => p,
+                    None => {
+                        super::git_fetcher::cleanup_temp(&repo_path);
+                        return Err(format!("Skill '{}' not found in repository", skill_id));
+                    }
                 }
             }
-            if !found {
-                super::git_fetcher::cleanup_temp(&repo_path);
-                return Err(format!("Skill '{}' not found in repository", skill_id));
-            }
-        }
+        };
 
-        // Install from direct path
         let result = super::installer::install_from_local(&skill_dir, Some(&skill_id))
             .map_err(|e| e.to_string())?;
 

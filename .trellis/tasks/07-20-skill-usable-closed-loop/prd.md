@@ -25,3 +25,10 @@
 
 - 同步策略：**只装不卸（增量）**
 - 标签唯一手段：TagGroup（不做 per-tool toggle 矩阵）
+
+## Phase 2 (install UX)
+
+1. Git/GitHub 安装对话框（preview 多选 confirm）
+2. 市场安装后引导加入标签组
+3. Git/market skill 检查更新 / 一键更新
+4. owner/repo 简写与 source_ref 元数据修复

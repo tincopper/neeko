@@ -24,6 +24,8 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   const importDiscoveredSkill = useSkillStore(s => s.importDiscoveredSkill);
   const deleteSkill = useSkillStore(s => s.deleteSkill);
   const addSkillToTagGroup = useSkillStore(s => s.addSkillToTagGroup);
+  const checkSkillUpdate = useSkillStore(s => s.checkSkillUpdate);
+  const updateSkillFromSource = useSkillStore(s => s.updateSkillFromSource);
   const setSelectedSkillId = useSkillStore(s => s.setSelectedSkillId);
 
   // ── Header callbacks ────────────────────────────────────────────────────────
@@ -39,6 +41,10 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       console.error('[useLocalSkillActions] install failed:', e);
     }
   }, [installLocal]);
+
+  const handleInstallGit = useCallback(() => {
+    setDialog({ type: 'git-install' });
+  }, [setDialog]);
 
   const handleScan = useCallback(async () => {
     try {
@@ -77,21 +83,31 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       onAddToTagGroup: (skillId: string, tagGroupId: string) => {
         void addSkillToTagGroup(tagGroupId, skillId).catch(console.error);
       },
+      onCheckUpdate: (skill: ManagedSkillDto) => {
+        void checkSkillUpdate(skill.id).catch(console.error);
+      },
+      onUpdateSkill: (skill: ManagedSkillDto) => {
+        void updateSkillFromSource(skill.id).catch(console.error);
+      },
     }),
-    [setDialog, setSelectedSkillId, deleteSkill, addSkillToTagGroup],
+    [
+      setDialog,
+      setSelectedSkillId,
+      deleteSkill,
+      addSkillToTagGroup,
+      checkSkillUpdate,
+      updateSkillFromSource,
+    ],
   );
 
   return {
-    // scan 状�?
     discoveredSkills,
-    // header 回调
     handleCreate,
     handleInstall,
+    handleInstallGit,
     handleScan,
-    // discovered 回调
     handleImport,
     handleClearDiscovered,
-    // SkillListSection �?actions 对象
     actions,
   };
 }

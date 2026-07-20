@@ -7,7 +7,8 @@ export type { LeaderboardType };
 
 interface UseMarketplaceOptions {
   installedSkills: string[];
-  onSkillInstalled?: () => void;
+  /** Called after a successful install with the new managed skill identity. */
+  onSkillInstalled?: (info: { id: string; name: string }) => void;
 }
 
 export const PAGE_SIZE_OPTIONS = [20, 40, 80] as const;
@@ -75,7 +76,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     }
   }, []);
 
-  // Install from marketplace
+  // Install from marketplace (await DTO so we can open assign-tag dialog)
   const installFromMarket = useCallback(async (source: string, skillId: string) => {
     const fullId = `${source}/${skillId}`;
 
@@ -85,7 +86,22 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     setInstallProgress(prev => new Map(prev).set(fullId, "cloning"));
 
     try {
-      await installFromSkillssh(source, skillId);
+      const dto = await installFromSkillssh(source, skillId);
+      setInstallingIds(prev => {
+        const next = new Set(prev);
+        next.delete(fullId);
+        return next;
+      });
+      setInstallProgress(prev => new Map(prev).set(fullId, "done"));
+      setTimeout(() => {
+        setInstallProgress(prev => {
+          const next = new Map(prev);
+          next.delete(fullId);
+          return next;
+        });
+      }, 2000);
+      onSkillInstalled?.({ id: dto.id, name: dto.name });
+      return dto;
     } catch (e) {
       console.error("Failed to install skill:", e);
       setInstallingIds(prev => {
@@ -100,30 +116,14 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
       });
       throw e;
     }
-  }, [installingIds]);
+  }, [installingIds, onSkillInstalled]);
 
-  // Listen for install progress events
+  // Listen for install progress events (phase UI only; completion handled above)
   useEffect(() => {
     const unlisten = listen<InstallProgress>("install-progress", (event) => {
       const { skill_id, phase } = event.payload;
-
       setInstallProgress(prev => new Map(prev).set(skill_id, phase));
-
-      if (phase === "done") {
-        setInstallingIds(prev => {
-          const next = new Set(prev);
-          next.delete(skill_id);
-          return next;
-        });
-        setTimeout(() => {
-          setInstallProgress(prev => {
-            const next = new Map(prev);
-            next.delete(skill_id);
-            return next;
-          });
-        }, 2000);
-        onSkillInstalled?.();
-      } else if (phase === "error") {
+      if (phase === "error") {
         setInstallingIds(prev => {
           const next = new Set(prev);
           next.delete(skill_id);
@@ -135,7 +135,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     return () => {
       unlisten.then(fn => fn());
     };
-  }, [onSkillInstalled]);
+  }, []);
 
   // Fetch leaderboard on mount and board change
   useEffect(() => {

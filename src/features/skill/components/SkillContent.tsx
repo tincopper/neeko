@@ -7,18 +7,11 @@ import ProjectSkillContent from './ProjectSkillContent';
 import CreateSkillDialog from './CreateSkillDialog';
 import EditSkillDialog from './EditSkillDialog';
 import ViewSkillDialog from './ViewSkillDialog';
-
-// ─── Component ───────────────────────────────────────────────────────────────
+import GitInstallDialog from './GitInstallDialog';
+import AssignTagGroupDialog from './AssignTagGroupDialog';
 
 /**
- * Skill 内容区（作为 MainContent 内部的一种视图模式，对标 RemoteProjectView）�?
- *
- * 不带 bg-bg-secondary �?复用 MainContent 的背景容器�?
- * MainContent 本身永远�?unmount，因此切换至此视图时不存�?paint gap（不闪）�?
- *
- * 职责�?
- * - 根据 activeSkillView 路由到对应子视图
- * - 统一管理 Create / Edit / View dialog 状�?
+ * Skill 内容区：路由子视图 + 统一管理对话框。
  */
 const SkillContent: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore(s => s.activeSkillView);
@@ -26,18 +19,17 @@ const SkillContent: React.FC = React.memo(() => {
   const updateSkillDocument = useSkillStore(s => s.updateSkillDocument);
   const refreshSkills = useSkillStore(s => s.refreshSkills);
   const refreshTagGroups = useSkillStore(s => s.refreshTagGroups);
+  const tagGroups = useSkillStore(s => s.tagGroups);
+  const addSkillToTagGroup = useSkillStore(s => s.addSkillToTagGroup);
 
-  // ── 初始数据加载（SkillContent mount �?Skills 面板已激活）──────────────────
   useEffect(() => {
-    refreshSkills();
-    refreshTagGroups();
+    void refreshSkills();
+    void refreshTagGroups();
   }, [refreshSkills, refreshTagGroups]);
 
-  // ── 统一对话框状�?───────────────────────────────────────────────────────────
   const [dialog, setDialog] = useState<SkillDialogState>(null);
   const closeDialog = useCallback(() => setDialog(null), []);
 
-  // ── Dialog confirm 处理 ─────────────────────────────────────────────────────
   const handleCreateConfirm = useCallback(
     async (name: string, content: string) => {
       try {
@@ -63,13 +55,27 @@ const SkillContent: React.FC = React.memo(() => {
     [dialog, updateSkillDocument],
   );
 
-  // ── 视图路由 ─────────────────────────────────────────────────────────────────
+  const handleGitInstalled = useCallback(async () => {
+    await refreshSkills();
+  }, [refreshSkills]);
+
+  const handleAssign = useCallback(
+    async (skillId: string, tagGroupId: string) => {
+      await addSkillToTagGroup(tagGroupId, skillId);
+    },
+    [addSkillToTagGroup],
+  );
+
+  const openAssignDialog = useCallback((skillId: string, skillName: string) => {
+    setDialog({ type: 'assign-tag', skillId, skillName });
+  }, []);
+
   const renderView = () => {
     switch (activeSkillView) {
       case 'local':
         return <LocalSkillContent setDialog={setDialog} />;
       case 'marketplace':
-        return <MarketplaceContent />;
+        return <MarketplaceContent onSkillInstalled={openAssignDialog} />;
       case 'project':
         return <ProjectSkillContent />;
       default:
@@ -81,7 +87,6 @@ const SkillContent: React.FC = React.memo(() => {
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {renderView()}
 
-      {/* 共享对话框：提升到根级，独立于视图切换的 mount/unmount 生命周期 */}
       <CreateSkillDialog
         open={dialog?.type === 'create'}
         onOpenChange={open => !open && closeDialog()}
@@ -99,6 +104,22 @@ const SkillContent: React.FC = React.memo(() => {
         open={dialog?.type === 'view'}
         skill={dialog?.type === 'view' ? dialog.skill : null}
         onClose={closeDialog}
+      />
+
+      <GitInstallDialog
+        open={dialog?.type === 'git-install'}
+        onOpenChange={open => !open && closeDialog()}
+        onInstalled={handleGitInstalled}
+      />
+
+      <AssignTagGroupDialog
+        open={dialog?.type === 'assign-tag'}
+        skillId={dialog?.type === 'assign-tag' ? dialog.skillId : ''}
+        skillName={dialog?.type === 'assign-tag' ? dialog.skillName : ''}
+        tagGroups={tagGroups}
+        onClose={closeDialog}
+        onAssign={handleAssign}
+        onSkip={closeDialog}
       />
     </div>
   );

@@ -32,7 +32,15 @@ const SkillCardSkeleton: React.FC = () => (
  */
 const SkillListSection: React.FC<SkillListSectionProps> = React.memo(
   ({ skills, loading, selectedSkillId, actions, tagGroups = [] }) => {
-    const { onSelectSkill, onEditSkill, onViewSkill, onDeleteSkill, onAddToTagGroup } = actions;
+    const {
+      onSelectSkill,
+      onEditSkill,
+      onViewSkill,
+      onDeleteSkill,
+      onAddToTagGroup,
+      onCheckUpdate,
+      onUpdateSkill,
+    } = actions;
 
     return (
       <section className="border-b border-border">
@@ -65,6 +73,8 @@ const SkillListSection: React.FC<SkillListSectionProps> = React.memo(
                       ? tagGroupId => onAddToTagGroup(s.id, tagGroupId)
                       : undefined
                   }
+                  onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
+                  onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}
                   onAction={action => {
                     if (action === 'delete') onDeleteSkill(s.id);
                     else if (action === 'edit') onEditSkill(s);

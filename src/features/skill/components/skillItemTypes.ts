@@ -10,6 +10,8 @@ export type SkillDialogState =
   | { type: 'create' }
   | { type: 'edit'; skill: ManagedSkillDto }
   | { type: 'view'; skill: ManagedSkillDto }
+  | { type: 'git-install' }
+  | { type: 'assign-tag'; skillId: string; skillName: string }
   | null;
 
 // ─── Actions Interface ───────────────────────────────────────────────────────
@@ -29,6 +31,10 @@ export interface SkillItemActions {
   onDeleteSkill: (skillId: string) => void;
   /** 将 skill 加入指定标签组 */
   onAddToTagGroup?: (skillId: string, tagGroupId: string) => void;
+  /** 检查 git skill 更新 */
+  onCheckUpdate?: (skill: ManagedSkillDto) => void;
+  /** 从源更新 skill */
+  onUpdateSkill?: (skill: ManagedSkillDto) => void;
 }
 
 // ─── Component Props ─────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { invoke } from '@tauri-apps/api/core';
 import { useSkillStore, initialSkillState } from '../../store';
 import { createDiscoveredSkill } from '../../../../testing/factories';
@@ -52,6 +53,15 @@ describe('LocalSkillContent', () => {
     const { setDialog } = renderComponent();
     fireEvent.click(screen.getByText('Create'));
     expect(setDialog).toHaveBeenCalledWith({ type: 'create' });
+  });
+
+  it('Install 菜单含 From Git / GitHub 并打开 git-install 对话框', async () => {
+    const user = userEvent.setup();
+    const { setDialog } = renderComponent();
+    await user.click(screen.getByText('Install'));
+    const gitItem = await screen.findByText(/From Git/i);
+    await user.click(gitItem);
+    expect(setDialog).toHaveBeenCalledWith({ type: 'git-install' });
   });
 
   it('discoveredSkills 非空时渲染 DiscoveredSkillsList', async () => {

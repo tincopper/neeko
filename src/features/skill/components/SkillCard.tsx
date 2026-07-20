@@ -12,6 +12,8 @@ interface SkillCardProps {
    onSelect: () => void;
    onAction: (action: "detail" | "delete" | "edit") => void;
    onAddToTagGroup?: (tagGroupId: string) => void;
+   onCheckUpdate?: () => void;
+   onUpdateSkill?: () => void;
    tagGroups?: Array<{ id: string; name: string }>;
    installedAgents?: string[];
 }
@@ -31,9 +33,12 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
    onSelect,
    onAction,
    onAddToTagGroup,
+   onCheckUpdate,
+   onUpdateSkill,
    tagGroups = [],
    installedAgents = [],
 }) => {
+   const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
    const renderInstalledAgents = () => {
       return AGENT_LIST.filter((agent) => installedAgents.includes(agent.key)).map((agent) => {
          const iconSrc = getAgentIconSrc(agent.icon);
@@ -129,6 +134,24 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                         </DropdownMenuSubContent>
                      </DropdownMenuSub>
                   )}
+                  {isGitSource && onCheckUpdate && (
+                     <DropdownMenuItem
+                        className="flex items-center gap-2 cursor-pointer"
+                        onSelect={() => onCheckUpdate()}
+                     >
+                        Check update
+                     </DropdownMenuItem>
+                  )}
+                  {isGitSource &&
+                     skill.update_status === 'update_available' &&
+                     onUpdateSkill && (
+                        <DropdownMenuItem
+                           className="flex items-center gap-2 cursor-pointer text-accent"
+                           onSelect={() => onUpdateSkill()}
+                        >
+                           Update skill
+                        </DropdownMenuItem>
+                     )}
                   <DropdownMenuItem
                      className="flex items-center gap-2 cursor-pointer text-red-400"
                      onSelect={() => handleAction("delete")}
@@ -161,8 +184,17 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
          {/* CardFooter: 来源 + agents 图标 + 启用状�?*/}
          <CardFooter className="p-3 pt-0 items-center">
             <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                {skill.source_type === "local" ? "📦 Local" : skill.source_type}
+                {skill.source_type === "local"
+                  ? "📦 Local"
+                  : skill.source_type === "skillssh"
+                    ? "🏪 Market"
+                    : skill.source_type}
             </Badge>
+            {skill.update_status === 'update_available' && (
+               <Badge variant="default" className="text-[10px] px-1.5 py-0 text-accent border-accent/40">
+                  Update
+               </Badge>
+            )}
 
             <div className="flex items-center gap-0.5 mx-2">
                {renderInstalledAgents()}
