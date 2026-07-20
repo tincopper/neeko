@@ -65,18 +65,28 @@ export function buildTerminalTheme(): ITheme {
       document.documentElement.getAttribute("data-theme") || "dark";
    const isDark = isDarkTheme(theme);
    const bg = cssVar("--bg-secondary") || (isDark ? "#000000" : "#ffffff");
+   // Soft default glyph color (ANSI “white”) — less harsh than pure UI primary white.
+   const softFg =
+      (isDark ? DARK_ANSI_COLORS.white : LIGHT_ANSI_COLORS.white) ||
+      cssVar("--text-secondary") ||
+      (isDark ? "#abb2bf" : "#4f5258");
+   const dimFg =
+      (isDark ? DARK_ANSI_COLORS.brightBlack : LIGHT_ANSI_COLORS.brightBlack) ||
+      cssVar("--text-muted") ||
+      (isDark ? "#5c6370" : "#696c77");
 
-   // Sync terminal background to a dedicated CSS variable so all terminal
-   // container layers (wrapper, xterm, scrollable-element, screen) stay in
-   // lock-step with the actual terminal theme background.
+   // Sync terminal colors so Debug Console / other panes can match xterm exactly.
    document.documentElement.style.setProperty("--terminal-bg", bg);
+   document.documentElement.style.setProperty("--terminal-fg", softFg);
+   document.documentElement.style.setProperty("--terminal-fg-dim", dimFg);
 
    return {
       background: bg,
-      foreground: cssVar("--text-primary") || (isDark ? "#ededed" : "#1e1e1e"),
+      // Use soft ANSI white so Task Console default text is grayish, not pure white.
+      foreground: softFg,
       cursor: cssVar("--accent-blue") || "#ffffff",
       selectionBackground: cssVar("--terminal-selection") || "#333333",
-      selectionForeground: cssVar("--text-primary") || (isDark ? "#ededed" : "#1e1e1e"),
+      selectionForeground: softFg,
       ...(isDark ? DARK_ANSI_COLORS : LIGHT_ANSI_COLORS),
    };
 }

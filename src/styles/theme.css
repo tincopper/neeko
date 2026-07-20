@@ -7,6 +7,10 @@
   --sidebar-width: 280px;
   --font-size: 12px;           /* UI 整体字体，由 appearanceFontSize 驱动 */
   --terminal-font-size: 14px;  /* 终端字体，由 terminalFontSize 驱动 */
+  /* Soft terminal glyphs (synced by buildTerminalTheme; fallbacks for pre-terminal UI) */
+  --terminal-bg: var(--bg-secondary);
+  --terminal-fg: #abb2bf;
+  --terminal-fg-dim: #5c6370;
 
   /* CodeMirror 专用变量 */
   --cm-keyword: #c678dd;

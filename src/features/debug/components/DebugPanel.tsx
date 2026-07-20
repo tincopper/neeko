@@ -465,9 +465,18 @@ function DebugPanel() {
       )}
 
       {panelTab === 'console' && (
-        <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-bg-secondary">
-          {/* Default stdout uses secondary (soft gray) to match Task Console xterm feel */}
-          <div className="flex-1 overflow-y-auto px-3 py-1.5 text-[var(--font-size)] font-mono space-y-0.5 text-text-secondary">
+        <div
+          className="flex-1 flex flex-col min-h-0 min-w-0"
+          style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
+        >
+          {/* Match Task Console: same bg / soft terminal fg / terminal font size */}
+          <div
+            className="flex-1 overflow-y-auto px-3 py-1.5 font-mono space-y-0.5"
+            style={{
+              fontSize: 'var(--terminal-font-size)',
+              color: 'var(--terminal-fg, var(--text-secondary))',
+            }}
+          >
             {consoleLines.length === 0 ? (
               <EmptyHint className="font-sans h-full flex items-center justify-center text-[var(--font-size)]">
                 Debug output and build messages appear here.
@@ -476,13 +485,16 @@ function DebugPanel() {
               consoleLines.map((line) => (
                 <div
                   key={line.id}
-                  className={cn(
-                    'whitespace-pre-wrap leading-relaxed',
-                    line.kind === 'in' && 'text-accent-blue',
-                    line.kind === 'err' && 'text-accent-red',
-                    line.kind === 'sys' && 'text-text-muted',
-                    line.kind === 'out' && 'text-text-secondary',
-                  )}
+                  className="whitespace-pre-wrap leading-relaxed"
+                  style={
+                    line.kind === 'in'
+                      ? { color: 'var(--accent-blue)' }
+                      : line.kind === 'err'
+                        ? { color: 'var(--accent-red)' }
+                        : line.kind === 'sys'
+                          ? { color: 'var(--terminal-fg-dim, var(--text-muted))' }
+                          : { color: 'var(--terminal-fg, var(--text-secondary))' }
+                  }
                 >
                   {line.kind === 'in' ? `› ${line.text}` : line.text}
                 </div>
