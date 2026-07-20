@@ -3,6 +3,10 @@ import { create } from 'zustand';
 
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useTaskStore } from '@/features/task/store';
+import {
+  exclusiveOpenDebugPanel,
+  registerDebugPanelCloser,
+} from '@/shared/utils/bottomPanelExclusive';
 
 import {
   dapCheckAdapter,
@@ -145,7 +149,21 @@ function endedSessionPatch(
   };
 }
 
-export const useDebugStore = create<DebugState>((set, get) => ({
+export const useDebugStore = create<DebugState>((rawSet, get) => {
+  /** Wrap set: opening the debug panel always closes Task Console. */
+  const set = ((partial: Parameters<typeof rawSet>[0], replace?: boolean) => {
+    const next = typeof partial === 'function' ? (partial as (s: DebugState) => Partial<DebugState>)(get()) : partial;
+    if (
+      next &&
+      typeof next === 'object' &&
+      (next as Partial<DebugState>).panelOpen === true
+    ) {
+      exclusiveOpenDebugPanel();
+    }
+    return (rawSet as (p: unknown, r?: boolean) => void)(partial, replace);
+  }) as typeof rawSet;
+
+  return {
   configs: [],
   entries: [],
   selectedConfigName: null,
@@ -168,10 +186,10 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       panelOpen: true,
       ...(tab ? { panelTab: tab } : {}),
     }),
-  togglePanel: () =>
-    set((s) => ({
-      panelOpen: !s.panelOpen,
-    })),
+  togglePanel: () => {
+    const next = !get().panelOpen;
+    set({ panelOpen: next });
+  },
 
   pushConsole: (kind, text) => {
     const lines = get().consoleLines;
@@ -742,7 +760,12 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       for (const u of unsubs) u();
     };
   },
-}));
+  };
+});
+
+registerDebugPanelCloser(() => {
+  useDebugStore.setState({ panelOpen: false });
+});
 
 export function breakpointsForFile(
   state: DebugState,

@@ -9,6 +9,10 @@ import {
 import { closeTerminalSession } from "../terminal/api/terminalApi";
 import { useProjectStore } from "@/features/project/store";
 import { destroyTerminalCache } from "../terminal/components/terminalCache";
+import {
+  exclusiveOpenTaskConsole,
+  registerTaskConsoleCloser,
+} from "@/shared/utils/bottomPanelExclusive";
 import type { DiscoveredTask, TaskConfig, TaskConsoleSession } from "@/shared/types/task";
 
 export function taskConsoleCacheKey(sessionId: string): string {
@@ -67,7 +71,24 @@ function resolveTaskName(get: () => TaskStoreState, configId: string, command: s
   );
 }
 
-export const useTaskStore = create<TaskStoreState>((set, get) => ({
+export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
+  /** Wrap set: opening Task Console always closes Debug panel. */
+  const set = ((partial: Parameters<typeof rawSet>[0], replace?: boolean) => {
+    const next =
+      typeof partial === "function"
+        ? (partial as (s: TaskStoreState) => Partial<TaskStoreState>)(get())
+        : partial;
+    if (
+      next &&
+      typeof next === "object" &&
+      (next as Partial<TaskStoreState>).consolePanelOpen === true
+    ) {
+      exclusiveOpenTaskConsole();
+    }
+    return (rawSet as (p: unknown, r?: boolean) => void)(partial, replace);
+  }) as typeof rawSet;
+
+  return {
   configs: [],
   discovered: [],
   discovering: false,
@@ -314,8 +335,10 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
 
   setConsolePanelOpen: (open) => set({ consolePanelOpen: open }),
 
-  toggleConsolePanel: () =>
-    set((s) => ({ consolePanelOpen: !s.consolePanelOpen })),
+  toggleConsolePanel: () => {
+    const next = !get().consolePanelOpen;
+    set({ consolePanelOpen: next });
+  },
 
   setActiveConsoleId: (id) => set({ activeConsoleId: id }),
 
@@ -338,4 +361,9 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       };
     });
   },
-}));
+  };
+});
+
+registerTaskConsoleCloser(() => {
+  useTaskStore.setState({ consolePanelOpen: false });
+});
