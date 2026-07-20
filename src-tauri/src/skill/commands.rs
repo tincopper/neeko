@@ -680,71 +680,155 @@ pub async fn set_skill_tool_toggle_cmd(
     }).await
 }
 
-/// Deploy all skills in a tag group to their respective tool directories.
+/// Collect skill deploy targets from AgentManager (preferred) with adapter fallback.
+fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<super::tool_adapters::SkillTargetDir> {
+    let agent_triples: Vec<(String, bool, Option<String>)> = state
+        .agent_manager
+        .lock()
+        .map(|am| {
+            am.get_agents()
+                .iter()
+                .map(|a| (a.id.clone(), a.enabled, a.default_skill_path.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut targets = super::tool_adapters::skill_targets_from_agents(&agent_triples);
+    if targets.is_empty() {
+        // Fallback when agents not yet loaded: Neeko agent adapters only
+        const FALLBACK_KEYS: &[&str] = &[
+            "opencode",
+            "claude-code",
+            "gemini",
+            "codex",
+            "qoder",
+            "codebuddy",
+            "pi",
+            "omp",
+            "reasonix",
+        ];
+        targets = super::tool_adapters::default_tool_adapters()
+            .into_iter()
+            .filter(|a| FALLBACK_KEYS.contains(&a.key.as_str()))
+            .map(|a| {
+                let dir = a.skills_dir();
+                super::tool_adapters::SkillTargetDir { key: a.key, dir }
+            })
+            .collect();
+    }
+    targets
+}
+
+/// Deploy a list of skills to all resolved agent skill directories (install-only, no remove).
+fn sync_skills_to_targets(
+    store: &SkillStore,
+    skills: &[SkillRecord],
+    targets: &[super::tool_adapters::SkillTargetDir],
+    configured_mode: Option<&str>,
+) {
+    for skill in skills {
+        if !skill.enabled {
+            continue;
+        }
+        let source = PathBuf::from(&skill.central_path);
+        if !source.exists() {
+            log::warn!(
+                "Skill central path missing, skip sync: {} ({})",
+                skill.name,
+                skill.central_path
+            );
+            continue;
+        }
+        for target in targets {
+            let dest = target.dir.join(&skill.name);
+            let mode =
+                super::sync_engine::sync_mode_for_tool(&target.key, configured_mode);
+            match super::sync_engine::sync_skill(&source, &dest, mode) {
+                Ok(actual_mode) => {
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let rec = SkillTargetRecord {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        skill_id: skill.id.clone(),
+                        tool: target.key.clone(),
+                        target_path: dest.to_string_lossy().to_string(),
+                        mode: actual_mode.as_str().to_string(),
+                        status: "ok".to_string(),
+                        synced_at: Some(now),
+                        last_error: None,
+                    };
+                    let _ = store.delete_target(&skill.id, &target.key);
+                    let _ = store.insert_target(&rec);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to sync skill {} to {}: {e}",
+                        skill.id,
+                        dest.display()
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Deploy all skills in a tag group to agent skill directories.
+///
+/// Sync strategy: **install only** (symlink/copy). Does not remove other skills.
+/// Targets come from enabled agents' `default_skill_path` (aligned with AgentManager).
 #[tauri::command]
 pub async fn sync_tag_group_cmd(
     tag_group_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let store = state.skill_store.clone();
+    let targets = resolve_sync_targets(state.inner());
     run_blocking_result(move || {
         let skills = store
             .get_skills_for_tag_group(&tag_group_id)
             .map_err(AppError::from)?;
         let configured_mode = store.get_setting("sync_mode").map_err(AppError::from)?;
-        for skill in &skills {
-            let source = std::path::PathBuf::from(&skill.central_path);
-            if !source.exists() {
-                continue;
-            }
-            let adapter_keys: Vec<String> = super::tool_adapters::default_tool_adapters()
-                .iter()
-                .map(|a| a.key.clone())
-                .collect();
-            for tool_key in &adapter_keys {
-                let toggle = store
-                    .get_enabled_tools_for_tag_group_skill(&tag_group_id, &skill.id)
-                    .map_err(AppError::from)?;
-                if !toggle.contains(tool_key) {
-                    continue;
-                }
-                let adapter = super::tool_adapters::default_tool_adapters()
-                    .into_iter()
-                    .find(|a| a.key == *tool_key);
-                if let Some(a) = adapter {
-                    let target = a.skills_dir().join(&skill.name);
-                    let mode = super::sync_engine::sync_mode_for_tool(
-                        tool_key,
-                        configured_mode.as_deref(),
-                    );
-                    match super::sync_engine::sync_skill(&source, &target, mode) {
-                        Ok(actual_mode) => {
-                            let now = chrono::Utc::now().timestamp_millis();
-                            let rec = super::types::SkillTargetRecord {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                skill_id: skill.id.clone(),
-                                tool: tool_key.clone(),
-                                target_path: target.to_string_lossy().to_string(),
-                                mode: actual_mode.as_str().to_string(),
-                                status: "ok".to_string(),
-                                synced_at: Some(now),
-                                last_error: None,
-                            };
-                            let _ = store.insert_target(&rec);
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "Failed to sync skill {} to {}: {e}",
-                                skill.id,
-                                target.display()
-                            );
-                        }
-                    }
+        sync_skills_to_targets(&store, &skills, &targets, configured_mode.as_deref());
+        Ok(())
+    })
+    .await
+}
+
+/// Apply all tag groups bound to a project: incremental sync (install only, no unsync).
+///
+/// When the user selects a project, call this to ensure bound skills are present in
+/// agent skill directories. Skills not in the binding are left untouched.
+#[tauri::command]
+pub async fn apply_project_skills_cmd(
+    project_id: String,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    let store = state.skill_store.clone();
+    let targets = resolve_sync_targets(state.inner());
+    run_blocking_result(move || {
+        let tg_ids = store
+            .get_project_tag_groups(&project_id)
+            .map_err(AppError::from)?;
+        if tg_ids.is_empty() {
+            return Ok(());
+        }
+        let configured_mode = store.get_setting("sync_mode").map_err(AppError::from)?;
+        // Deduplicate skills across multiple tag groups
+        let mut seen = std::collections::HashSet::new();
+        let mut skills = Vec::new();
+        for tg_id in &tg_ids {
+            for skill in store
+                .get_skills_for_tag_group(tg_id)
+                .map_err(AppError::from)?
+            {
+                if seen.insert(skill.id.clone()) {
+                    skills.push(skill);
                 }
             }
         }
+        sync_skills_to_targets(&store, &skills, &targets, configured_mode.as_deref());
         Ok(())
-    }).await
+    })
+    .await
 }
 
 /// Remove all deployed skill targets for a tag group.

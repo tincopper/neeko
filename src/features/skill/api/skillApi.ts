@@ -98,6 +98,11 @@ export function unsyncTagGroup(tagGroupId: string): Promise<void> {
   return invoke<void>('unsync_tag_group_cmd', { tagGroupId });
 }
 
+/** Incremental apply: install skills for project's tag groups; never removes others. */
+export function applyProjectSkills(projectId: string): Promise<void> {
+  return invoke<void>('apply_project_skills_cmd', { projectId });
+}
+
 // ─── Project ↔ Tag Group ────────────────────────────────────────────────────
 
 export function getProjectTagGroups(projectId: string): Promise<TagGroup[]> {

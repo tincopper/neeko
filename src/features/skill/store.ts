@@ -12,6 +12,12 @@ import {
   createSkill as createSkillApi,
   importDiscoveredSkill as importDiscoveredSkillApi,
   getSkillsForTagGroup as getSkillsForTagGroupApi,
+  addSkillToTagGroup as addSkillToTagGroupApi,
+  removeSkillFromTagGroup as removeSkillFromTagGroupApi,
+  syncTagGroup as syncTagGroupApi,
+  getProjectTagGroups as getProjectTagGroupsApi,
+  setProjectTagGroups as setProjectTagGroupsApi,
+  applyProjectSkills as applyProjectSkillsApi,
 } from './api/skillApi';
 import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
 import type {
@@ -36,6 +42,12 @@ interface SkillStoreState {
   searchQuery: string;
   selectedSkillId: string | null;
   activeTagGroupId: string | null;
+  /** Tag groups bound to the current project (Project Skills view). */
+  projectTagGroups: TagGroup[];
+  projectBindingsLoading: boolean;
+  /** Last project id we auto-applied skills for (dedupe). */
+  lastAppliedProjectId: string | null;
+  applyingProjectId: string | null;
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -50,6 +62,16 @@ interface SkillStoreActions {
   refreshTagGroups: () => Promise<void>;
   createTagGroup: (name: string, description?: string, icon?: string) => Promise<void>;
   deleteTagGroup: (id: string) => Promise<void>;
+  addSkillToTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
+  removeSkillFromTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
+  syncTagGroup: (tagGroupId: string) => Promise<void>;
+
+  // Project bindings
+  loadProjectTagGroups: (projectId: string) => Promise<void>;
+  setProjectTagGroups: (projectId: string, tagGroupIds: string[]) => Promise<void>;
+  applyProjectSkills: (projectId: string) => Promise<void>;
+  /** Auto apply on project switch — install only, no remove; deduped. */
+  applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
 
   // Install 动作
   installLocal: () => Promise<void>;
@@ -80,6 +102,10 @@ export const initialSkillState: SkillStoreState = {
   searchQuery: '',
   selectedSkillId: null,
   activeTagGroupId: null,
+  projectTagGroups: [],
+  projectBindingsLoading: false,
+  lastAppliedProjectId: null,
+  applyingProjectId: null,
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -96,16 +122,13 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     } catch (e) {
       console.error('[skillStore] refreshSkills failed:', e);
       set({ loading: false });
+      throw e;
     }
   },
 
   deleteSkill: async (id: string) => {
-    try {
-      await deleteManagedSkill(id);
-      set(state => ({ skills: state.skills.filter(s => s.id !== id) }));
-    } catch (e) {
-      console.error('[skillStore] deleteSkill failed:', e);
-    }
+    await deleteManagedSkill(id);
+    set(state => ({ skills: state.skills.filter(s => s.id !== id) }));
   },
 
   getSkillDocument: async (skillId: string): Promise<string> => {
@@ -121,67 +144,111 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       set({ tagGroups });
     } catch (e) {
       console.error('[skillStore] refreshTagGroups failed:', e);
+      throw e;
     }
   },
 
   createTagGroup: async (name: string, description?: string, icon?: string) => {
-    try {
-      const group = await createTagGroupApi(name, description, icon);
-      set(state => ({ tagGroups: [...state.tagGroups, group] }));
-    } catch (e) {
-      console.error('[skillStore] createTagGroup failed:', e);
-    }
+    const group = await createTagGroupApi(name, description, icon);
+    set(state => ({ tagGroups: [...state.tagGroups, group] }));
   },
 
   deleteTagGroup: async (id: string) => {
+    await deleteTagGroupApi(id);
+    set(state => ({
+      tagGroups: state.tagGroups.filter(g => g.id !== id),
+      activeTagGroupId: state.activeTagGroupId === id ? null : state.activeTagGroupId,
+      projectTagGroups: state.projectTagGroups.filter(g => g.id !== id),
+    }));
+  },
+
+  addSkillToTagGroup: async (tagGroupId: string, skillId: string) => {
+    await addSkillToTagGroupApi(tagGroupId, skillId);
+    await get().refreshTagGroups();
+  },
+
+  removeSkillFromTagGroup: async (tagGroupId: string, skillId: string) => {
+    await removeSkillFromTagGroupApi(tagGroupId, skillId);
+    await get().refreshTagGroups();
+  },
+
+  syncTagGroup: async (tagGroupId: string) => {
+    await syncTagGroupApi(tagGroupId);
+  },
+
+  // ── Project bindings ──
+
+  loadProjectTagGroups: async (projectId: string) => {
+    set({ projectBindingsLoading: true });
     try {
-      await deleteTagGroupApi(id);
-      set(state => ({ tagGroups: state.tagGroups.filter(g => g.id !== id) }));
+      const projectTagGroups = await getProjectTagGroupsApi(projectId);
+      set({ projectTagGroups, projectBindingsLoading: false });
     } catch (e) {
-      console.error('[skillStore] deleteTagGroup failed:', e);
+      console.error('[skillStore] loadProjectTagGroups failed:', e);
+      set({ projectTagGroups: [], projectBindingsLoading: false });
+      throw e;
+    }
+  },
+
+  setProjectTagGroups: async (projectId: string, tagGroupIds: string[]) => {
+    await setProjectTagGroupsApi(projectId, tagGroupIds);
+    const all = get().tagGroups;
+    set({
+      projectTagGroups: all.filter(g => tagGroupIds.includes(g.id)),
+    });
+  },
+
+  applyProjectSkills: async (projectId: string) => {
+    set({ applyingProjectId: projectId });
+    try {
+      await applyProjectSkillsApi(projectId);
+      set({ lastAppliedProjectId: projectId, applyingProjectId: null });
+    } catch (e) {
+      set({ applyingProjectId: null });
+      throw e;
+    }
+  },
+
+  applyProjectSkillsOnSelect: async (projectId: string | null) => {
+    if (!projectId) return;
+    const { lastAppliedProjectId, applyingProjectId } = get();
+    if (applyingProjectId === projectId || lastAppliedProjectId === projectId) {
+      return;
+    }
+    try {
+      await get().applyProjectSkills(projectId);
+    } catch (e) {
+      // Non-blocking for project switch — log only; UI can toast if needed
+      console.error('[skillStore] applyProjectSkillsOnSelect failed:', e);
     }
   },
 
   // ── Install 动作 ──
 
   installLocal: async () => {
-    const filePath = await open({
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    // Skill packages are directories (SKILL.md + assets). Backend also accepts .md / zip.
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Select skill directory',
     });
-    if (!filePath) return;
-    try {
-      await installLocalSkillApi(filePath);
-      await get().refreshSkills();
-    } catch (e) {
-      console.error('[skillStore] installLocal failed:', e);
-    }
+    if (!selected) return;
+    await installLocalSkillApi(selected as string);
+    await get().refreshSkills();
   },
 
   scanSkills: async (): Promise<DiscoveredSkillDto[]> => {
-    try {
-      return await scanLocalSkillsApi();
-    } catch (e) {
-      console.error('[skillStore] scanSkills failed:', e);
-      return [];
-    }
+    return await scanLocalSkillsApi();
   },
 
   createSkill: async (name: string, content: string) => {
-    try {
-      await createSkillApi(name, content);
-      await get().refreshSkills();
-    } catch (e) {
-      console.error('[skillStore] createSkill failed:', e);
-    }
+    await createSkillApi(name, content);
+    await get().refreshSkills();
   },
 
   importDiscoveredSkill: async (discoveredPath: string, name?: string) => {
-    try {
-      await importDiscoveredSkillApi(discoveredPath, name);
-      await get().refreshSkills();
-    } catch (e) {
-      console.error('[skillStore] importDiscoveredSkill failed:', e);
-    }
+    await importDiscoveredSkillApi(discoveredPath, name);
+    await get().refreshSkills();
   },
 
   // ── 文档编辑 ──
@@ -190,28 +257,16 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   updateSkillDocument: async (skillId: string, _name: string, content: string) => {
     const skill = get().skills.find(s => s.id === skillId);
     if (!skill) {
-      console.error('[skillStore] updateSkillDocument: skill not found', skillId);
-      return;
+      throw new Error(`Skill not found: ${skillId}`);
     }
-    // 复用 unified_write_file_content
-    await writeFileContentApi(
-      skill.central_path,
-      SKILL_DOC_FILENAME,
-      content,
-    );
-    // 刷新 skills 列表以同步 metadata（description 可能从 frontmatter 更新）
+    await writeFileContentApi(skill.central_path, SKILL_DOC_FILENAME, content);
     await get().refreshSkills();
   },
 
   // ── Tag Group 过滤 ──
 
   fetchSkillsForTagGroup: async (tagGroupId: string): Promise<ManagedSkillDto[]> => {
-    try {
-      return await getSkillsForTagGroupApi(tagGroupId);
-    } catch (e) {
-      console.error('[skillStore] fetchSkillsForTagGroup failed:', e);
-      return [];
-    }
+    return await getSkillsForTagGroupApi(tagGroupId);
   },
 
   // ── UI 动作 ──

@@ -106,23 +106,88 @@ impl ToolAdapter {
     }
 }
 
-/// Built-in tool adapters (aligned with skills-manager).
+/// Expand `~/…` paths to absolute paths under the user home directory.
+pub fn expand_skill_path(path: &str) -> PathBuf {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        return dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(rest);
+    }
+    if let Some(rest) = trimmed.strip_prefix("~\\") {
+        return dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(rest);
+    }
+    PathBuf::from(trimmed)
+}
+
+/// A sync/scan target: agent (or tool) key + absolute skills directory.
+#[derive(Debug, Clone)]
+pub struct SkillTargetDir {
+    /// Agent / tool key (e.g. "claude-code", "cursor").
+    pub key: String,
+    /// Absolute path to the skills directory.
+    pub dir: PathBuf,
+}
+
+/// Resolve skill directories from agent configs (`default_skill_path`).
+///
+/// Only enabled agents with a non-empty skill path are included.
+pub fn skill_targets_from_agents(
+    agents: &[(String, bool, Option<String>)],
+) -> Vec<SkillTargetDir> {
+    let mut out = Vec::new();
+    for (id, enabled, skill_path) in agents {
+        if !enabled {
+            continue;
+        }
+        let Some(path) = skill_path.as_ref() else {
+            continue;
+        };
+        if path.trim().is_empty() {
+            continue;
+        }
+        out.push(SkillTargetDir {
+            key: id.clone(),
+            dir: expand_skill_path(path),
+        });
+    }
+    out
+}
+
+/// Built-in tool adapters aligned with Neeko agents + common IDE tools.
+///
+/// Keys for Neeko agents match `AgentConfig.id` / `default_skill_path`.
 pub fn default_tool_adapters() -> Vec<ToolAdapter> {
     vec![
+        // ── Neeko built-in agents (paths match AgentManager) ──
         ToolAdapter {
-            key: "cursor".into(),
-            display_name: "Cursor".into(),
-            relative_skills_dir: ".cursor/skills".into(),
-            relative_detect_dir: ".cursor".into(),
+            key: "opencode".into(),
+            display_name: "OpenCode".into(),
+            relative_skills_dir: ".agents/skills".into(),
+            relative_detect_dir: ".agents".into(),
+            additional_scan_dirs: vec![".config/opencode/skills".into()],
+            override_skills_dir: None,
+            is_custom: false,
+        },
+        ToolAdapter {
+            key: "claude-code".into(),
+            display_name: "Claude Code".into(),
+            relative_skills_dir: ".claude/skills".into(),
+            relative_detect_dir: ".claude".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
         },
         ToolAdapter {
-            key: "claude_code".into(),
-            display_name: "Claude Code".into(),
-            relative_skills_dir: ".claude/skills".into(),
-            relative_detect_dir: ".claude".into(),
+            key: "gemini".into(),
+            display_name: "Gemini".into(),
+            relative_skills_dir: ".gemini/skills".into(),
+            relative_detect_dir: ".gemini".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
@@ -137,37 +202,56 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
             is_custom: false,
         },
         ToolAdapter {
-            key: "opencode".into(),
-            display_name: "OpenCode".into(),
-            relative_skills_dir: ".config/opencode/skills".into(),
-            relative_detect_dir: ".config/opencode".into(),
+            key: "qoder".into(),
+            display_name: "Qoder".into(),
+            relative_skills_dir: ".qoder/skills".into(),
+            relative_detect_dir: ".qoder".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
         },
         ToolAdapter {
-            key: "gemini_cli".into(),
-            display_name: "Gemini CLI".into(),
-            relative_skills_dir: ".gemini/skills".into(),
-            relative_detect_dir: ".gemini".into(),
+            key: "codebuddy".into(),
+            display_name: "Codebuddy".into(),
+            relative_skills_dir: ".codebuddy/skills".into(),
+            relative_detect_dir: ".codebuddy".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
         },
         ToolAdapter {
-            key: "kilo_code".into(),
-            display_name: "Kilo Code".into(),
-            relative_skills_dir: ".kilocode/skills".into(),
-            relative_detect_dir: ".kilocode".into(),
+            key: "pi".into(),
+            display_name: "Pi".into(),
+            relative_skills_dir: ".pi/skills".into(),
+            relative_detect_dir: ".pi".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
         },
         ToolAdapter {
-            key: "roo_code".into(),
-            display_name: "Roo Code".into(),
-            relative_skills_dir: ".roo/skills".into(),
-            relative_detect_dir: ".roo".into(),
+            key: "omp".into(),
+            display_name: "OMP".into(),
+            relative_skills_dir: ".omp/skills".into(),
+            relative_detect_dir: ".omp".into(),
+            additional_scan_dirs: vec![],
+            override_skills_dir: None,
+            is_custom: false,
+        },
+        ToolAdapter {
+            key: "reasonix".into(),
+            display_name: "Reasonix".into(),
+            relative_skills_dir: ".reasonix/skills".into(),
+            relative_detect_dir: ".reasonix".into(),
+            additional_scan_dirs: vec![],
+            override_skills_dir: None,
+            is_custom: false,
+        },
+        // ── Extra IDE / agent tools (scan + optional sync via adapters) ──
+        ToolAdapter {
+            key: "cursor".into(),
+            display_name: "Cursor".into(),
+            relative_skills_dir: ".cursor/skills".into(),
+            relative_detect_dir: ".cursor".into(),
             additional_scan_dirs: vec![],
             override_skills_dir: None,
             is_custom: false,
@@ -182,6 +266,57 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
             is_custom: false,
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_skill_path_tilde() {
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(expand_skill_path("~/foo/bar"), home.join("foo/bar"));
+        assert_eq!(expand_skill_path("~"), home);
+        assert_eq!(
+            expand_skill_path("/abs/path"),
+            PathBuf::from("/abs/path")
+        );
+    }
+
+    #[test]
+    fn skill_targets_from_agents_filters_disabled_and_empty() {
+        let agents = vec![
+            ("claude-code".into(), true, Some("~/.claude/skills".into())),
+            ("disabled".into(), false, Some("~/.x/skills".into())),
+            ("no-path".into(), true, None),
+            ("empty".into(), true, Some("  ".into())),
+        ];
+        let targets = skill_targets_from_agents(&agents);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].key, "claude-code");
+        assert!(targets[0].dir.ends_with("skills") || targets[0].dir.to_string_lossy().contains("claude"));
+    }
+
+    #[test]
+    fn default_adapters_include_neeko_agent_ids() {
+        let keys: Vec<_> = default_tool_adapters()
+            .into_iter()
+            .map(|a| a.key)
+            .collect();
+        for expected in [
+            "opencode",
+            "claude-code",
+            "gemini",
+            "codex",
+            "qoder",
+            "codebuddy",
+            "pi",
+        ] {
+            assert!(keys.contains(&expected.to_string()), "missing {expected}");
+        }
+        assert!(!keys.contains(&"claude_code".to_string()));
+        assert!(!keys.contains(&"gemini_cli".to_string()));
+    }
 }
 
 /// Deserialize custom tool path overrides from a JSON string.

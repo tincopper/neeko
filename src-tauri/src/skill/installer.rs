@@ -90,10 +90,17 @@ pub struct InstallResult {
     pub content_hash: String,
 }
 
-/// Install a skill from a local filesystem path (directory or archive).
+/// Install a skill from a local filesystem path (directory, SKILL.md, or archive).
 pub fn install_from_local(source: &Path, name: Option<&str>) -> Result<InstallResult> {
     let skill_dir = if source.is_dir() {
         source.to_path_buf()
+    } else if source
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("md"))
+    {
+        // Single markdown file → wrap as a temporary skill directory
+        wrap_markdown_as_skill_dir(source)?
     } else {
         extract_archive(source)?
     };
@@ -124,6 +131,19 @@ pub fn install_from_local(source: &Path, name: Option<&str>) -> Result<InstallRe
         central_path: dest,
         content_hash: hash,
     })
+}
+
+/// Wrap a standalone `.md` file into a temp directory containing `SKILL.md`.
+fn wrap_markdown_as_skill_dir(md_path: &Path) -> Result<PathBuf> {
+    let content = std::fs::read_to_string(md_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read skill markdown: {e}"))?;
+    let temp_dir = tempfile::tempdir()?;
+    let dest = temp_dir.path().join("SKILL.md");
+    std::fs::write(&dest, content)?;
+    let path = temp_dir.path().to_path_buf();
+    // Leak so returned PathBuf remains valid for the install copy step
+    std::mem::forget(temp_dir);
+    Ok(path)
 }
 
 fn extract_archive(source: &Path) -> Result<PathBuf> {

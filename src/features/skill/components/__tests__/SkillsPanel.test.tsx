@@ -87,9 +87,15 @@ describe('SkillsPanel — Tag Groups', () => {
     expect(useSkillStore.getState().activeTagGroupId).toBeNull();
   });
 
-  it('tag groups 为空时显示 "No tag groups"', () => {
+  it('tag groups 为空时显示引导文案', () => {
     useSkillStore.setState({ tagGroups: [] });
     render(<SkillsPanel />);
-    expect(screen.getByText('No tag groups')).toBeInTheDocument();
+    expect(screen.getByText(/No tag groups/i)).toBeInTheDocument();
+  });
+
+  it('可点击 + 打开创建标签组输入框', () => {
+    render(<SkillsPanel />);
+    fireEvent.click(screen.getByTitle('New tag group'));
+    expect(screen.getByPlaceholderText(/Backend/i)).toBeInTheDocument();
   });
 });

@@ -25,6 +25,7 @@ import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useNotificationStore } from '@/features/notification/notificationStore';
+import { useApplyProjectSkills } from '@/features/skill/hooks/useApplyProjectSkills';
 
 import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';
@@ -57,6 +58,8 @@ export function useAppShell(): UseAppShellResult {
   const session = useSessionPersistence();
   const wsl = useConnectionProjects({ environment: "wsl", saveSession: session.saveSession });
   const remote = useConnectionProjects({ environment: "remote", saveSession: session.saveSession, showToast });
+  // Skill auto-load: install bound tag-group skills on project select (no remove)
+  useApplyProjectSkills();
 
   const {
     activeProjectId,

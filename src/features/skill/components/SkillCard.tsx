@@ -1,6 +1,7 @@
 import React from "react";
 import { Trash2, FileText, Edit3, MoreHorizontal } from "@/shared/components/icons"
-import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Badge } from "@/ui";
+import { Tags } from "lucide-react"
+import { Card, CardContent, CardFooter, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, Badge } from "@/ui";
 import type { ManagedSkillDto } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
@@ -10,6 +11,8 @@ interface SkillCardProps {
    isSelected: boolean;
    onSelect: () => void;
    onAction: (action: "detail" | "delete" | "edit") => void;
+   onAddToTagGroup?: (tagGroupId: string) => void;
+   tagGroups?: Array<{ id: string; name: string }>;
    installedAgents?: string[];
 }
 
@@ -27,6 +30,8 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
    isSelected,
    onSelect,
    onAction,
+   onAddToTagGroup,
+   tagGroups = [],
    installedAgents = [],
 }) => {
    const renderInstalledAgents = () => {
@@ -90,7 +95,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                      <MoreHorizontal className="h-4 w-4" />
                   </button>
                </DropdownMenuTrigger>
-               <DropdownMenuContent align="end" className="w-28">
+               <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuItem
                      className="flex items-center gap-2 cursor-pointer"
                      onSelect={() => handleAction("edit")}
@@ -105,6 +110,25 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
                      <FileText className="h-3 w-3" />
                       View
                   </DropdownMenuItem>
+                  {tagGroups.length > 0 && onAddToTagGroup && (
+                     <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer">
+                           <Tags className="h-3 w-3" />
+                           Add to group
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-36">
+                           {tagGroups.map(tg => (
+                              <DropdownMenuItem
+                                 key={tg.id}
+                                 className="cursor-pointer"
+                                 onSelect={() => onAddToTagGroup(tg.id)}
+                              >
+                                 {tg.name}
+                              </DropdownMenuItem>
+                           ))}
+                        </DropdownMenuSubContent>
+                     </DropdownMenuSub>
+                  )}
                   <DropdownMenuItem
                      className="flex items-center gap-2 cursor-pointer text-red-400"
                      onSelect={() => handleAction("delete")}
@@ -134,7 +158,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(({
             )}
          </CardContent>
 
-         {/* CardFooter: 来源 + agents 图标 + 启用状�?*/}
+         {/* CardFooter: 来源 + agents 图标 + 启用状�?*/}
          <CardFooter className="p-3 pt-0 items-center">
             <Badge variant="default" className="text-[10px] px-1.5 py-0">
                 {skill.source_type === "local" ? "📦 Local" : skill.source_type}

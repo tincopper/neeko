@@ -18,6 +18,7 @@ export type {
 
 // Hooks
 export { useMarketplace, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE } from "./hooks/useMarketplace";
+export { useApplyProjectSkills } from "./hooks/useApplyProjectSkills";
 
 // Types & Hooks (public contract)
 export type { SkillDialogState, SkillItemActions, SkillListSectionProps } from "./components/skillItemTypes";

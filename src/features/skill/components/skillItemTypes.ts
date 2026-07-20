@@ -27,6 +27,8 @@ export interface SkillItemActions {
   onViewSkill: (skill: ManagedSkillDto) => void;
   /** 删除 skill */
   onDeleteSkill: (skillId: string) => void;
+  /** 将 skill 加入指定标签组 */
+  onAddToTagGroup?: (skillId: string, tagGroupId: string) => void;
 }
 
 // ─── Component Props ─────────────────────────────────────────────────────────
@@ -44,4 +46,6 @@ export interface SkillListSectionProps {
   selectedSkillId: string | null;
   /** 统一 actions 对象 */
   actions: SkillItemActions;
+  /** 可选标签组（用于「加入标签组」菜单） */
+  tagGroups?: Array<{ id: string; name: string }>;
 }
