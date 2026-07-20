@@ -466,9 +466,10 @@ function DebugPanel() {
 
       {panelTab === 'console' && (
         <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-bg-secondary">
-          <div className="flex-1 overflow-y-auto px-3 py-1.5 text-[var(--font-size)] font-mono space-y-0.5">
+          {/* Default stdout uses secondary (soft gray) to match Task Console xterm feel */}
+          <div className="flex-1 overflow-y-auto px-3 py-1.5 text-[var(--font-size)] font-mono space-y-0.5 text-text-secondary">
             {consoleLines.length === 0 ? (
-              <EmptyHint className="font-sans py-2">
+              <EmptyHint className="font-sans h-full flex items-center justify-center text-[var(--font-size)]">
                 Debug output and build messages appear here.
               </EmptyHint>
             ) : (
@@ -480,7 +481,7 @@ function DebugPanel() {
                     line.kind === 'in' && 'text-accent-blue',
                     line.kind === 'err' && 'text-accent-red',
                     line.kind === 'sys' && 'text-text-muted',
-                    line.kind === 'out' && 'text-text-primary',
+                    line.kind === 'out' && 'text-text-secondary',
                   )}
                 >
                   {line.kind === 'in' ? `› ${line.text}` : line.text}
