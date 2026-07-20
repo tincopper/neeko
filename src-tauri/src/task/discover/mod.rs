@@ -4,12 +4,14 @@
 //! merges results. New detectors (Cargo, Makefile, Just, …) only need a new
 //! module + a line in [`builtin_sources`] — no changes to orchestration or IPC.
 
+mod main_entry;
 mod package_json;
 
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+pub use main_entry::MainEntrySource;
 pub use package_json::PackageJsonSource;
 
 /// One auto-discovered runnable task (not yet persisted unless imported).
@@ -45,10 +47,11 @@ pub trait TaskSource: Send + Sync {
 
 /// Built-in sources. Append new detectors here only.
 fn builtin_sources() -> Vec<Box<dyn TaskSource>> {
-    vec![Box::new(PackageJsonSource)]
-    // Future:
-    // Box::new(CargoSource),
-    // Box::new(MakefileSource),
+    vec![
+        Box::new(PackageJsonSource),
+        Box::new(MainEntrySource),
+        // Future: MakefileSource, JustfileSource, …
+    ]
 }
 
 /// Run all registered sources and return a de-duplicated, priority-sorted list.
@@ -135,5 +138,26 @@ mod tests {
         assert_eq!(cfg.id, "pkg:build");
         assert_eq!(cfg.scope, "project");
         assert_eq!(cfg.project_id.as_deref(), Some("proj-1"));
+    }
+
+    #[test]
+    fn should_discover_main_entries_via_registry() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let tasks = discover_tasks(dir.path());
+        assert!(
+            tasks.iter().any(|t| t.id == "run:rust:main"),
+            "expected rust main in {tasks:?}"
+        );
+        let t = tasks.iter().find(|t| t.id == "run:rust:main").unwrap();
+        assert_eq!(t.command, "cargo run");
+        assert_eq!(t.source, "main_entry");
     }
 }
