@@ -11,14 +11,14 @@ const SKILL_DIR_MARKERS: &[&str] = &[
     "readme.md",
 ];
 
-/// Parse SKILL.md frontmatter from a directory.
+/// Parse SKILL.md (or fallback markers) for name/description metadata.
 pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
-    let candidates = ["SKILL.md", "skill.md", "CLAUDE.md"];
+    let candidates = ["SKILL.md", "skill.md", "CLAUDE.md", "README.md", "readme.md"];
     for candidate in &candidates {
         let path = dir.join(candidate);
         if path.exists() {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                return parse_frontmatter(&content);
+                return parse_skill_document(&content);
             }
         }
     }
@@ -28,34 +28,228 @@ pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
     }
 }
 
+/// Parse skill markdown: YAML frontmatter first, then body fallback for description.
+pub fn parse_skill_document(content: &str) -> SkillMetadata {
+    let mut meta = parse_frontmatter(content);
+    if meta.description.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        if let Some(body_desc) = extract_description_from_body(content) {
+            meta.description = Some(body_desc);
+        }
+    }
+    // Normalize whitespace in description
+    if let Some(ref mut d) = meta.description {
+        let collapsed: String = d.split_whitespace().collect::<Vec<_>>().join(" ");
+        *d = collapsed;
+        if d.is_empty() {
+            meta.description = None;
+        }
+    }
+    meta
+}
+
+/// Convert a YAML value to a display string (handles plain, folded, multi-line).
+fn yaml_value_to_string(v: &serde_yaml::Value) -> Option<String> {
+    match v {
+        serde_yaml::Value::String(s) => {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t.to_string())
+            }
+        }
+        serde_yaml::Value::Number(n) => Some(n.to_string()),
+        serde_yaml::Value::Bool(b) => Some(b.to_string()),
+        serde_yaml::Value::Sequence(seq) => {
+            let parts: Vec<String> = seq
+                .iter()
+                .filter_map(yaml_value_to_string)
+                .collect();
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join(" "))
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Parse YAML frontmatter from markdown content.
 fn parse_frontmatter(content: &str) -> SkillMetadata {
-    let trimmed = content.trim();
+    let trimmed = content.trim_start_matches('\u{feff}').trim();
     if !trimmed.starts_with("---") {
         return SkillMetadata {
             name: None,
             description: None,
         };
     }
-    let rest = &trimmed[3..];
-    if let Some(end) = rest.find("---") {
-        let yaml_str = &rest[..end];
-        if let Ok(yaml) = serde_yaml::from_str::<serde_yaml::Value>(yaml_str) {
-            let name = yaml
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let description = yaml
-                .get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            return SkillMetadata { name, description };
+    // Skip opening ---
+    let after_open = trimmed[3..].trim_start_matches(['\r', '\n']);
+    // Find closing --- on its own line (or at least after a newline)
+    let end = after_open
+        .find("\n---")
+        .or_else(|| after_open.find("\r\n---"))
+        .map(|i| {
+            // Include up to before \n---
+            if after_open.as_bytes().get(i) == Some(&b'\r') {
+                i
+            } else {
+                i
+            }
+        });
+    let Some(end_idx) = end else {
+        // Try simple find for --- after start
+        if let Some(e) = after_open.find("---") {
+            return parse_yaml_block(&after_open[..e]);
         }
+        return SkillMetadata {
+            name: None,
+            description: None,
+        };
+    };
+    let yaml_str = &after_open[..end_idx];
+    let mut meta = parse_yaml_block(yaml_str);
+    // Manual fallback for common `key: value` lines when YAML parse fails partially
+    if meta.name.is_none() || meta.description.is_none() {
+        let manual = parse_frontmatter_manual(yaml_str);
+        if meta.name.is_none() {
+            meta.name = manual.name;
+        }
+        if meta.description.is_none() {
+            meta.description = manual.description;
+        }
+    }
+    meta
+}
+
+fn parse_yaml_block(yaml_str: &str) -> SkillMetadata {
+    if let Ok(yaml) = serde_yaml::from_str::<serde_yaml::Value>(yaml_str) {
+        let name = yaml.get("name").and_then(yaml_value_to_string);
+        let description = yaml.get("description").and_then(yaml_value_to_string);
+        return SkillMetadata { name, description };
     }
     SkillMetadata {
         name: None,
         description: None,
     }
+}
+
+/// Line-oriented fallback: `name: ...` / `description: ...` (including multi-line `|` / `>`).
+fn parse_frontmatter_manual(yaml_str: &str) -> SkillMetadata {
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    let mut collecting_desc = false;
+    let mut desc_buf = String::new();
+
+    for line in yaml_str.lines() {
+        if collecting_desc {
+            // Indented continuation or empty line inside block scalar
+            if line.starts_with(' ') || line.starts_with('\t') || line.trim().is_empty() {
+                if !desc_buf.is_empty() {
+                    desc_buf.push(' ');
+                }
+                desc_buf.push_str(line.trim());
+                continue;
+            }
+            collecting_desc = false;
+            if !desc_buf.trim().is_empty() {
+                description = Some(desc_buf.trim().to_string());
+            }
+            desc_buf.clear();
+        }
+
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("name:") {
+            let v = rest.trim().trim_matches('"').trim_matches('\'').trim();
+            if !v.is_empty() {
+                name = Some(v.to_string());
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("description:") {
+            let v = rest.trim();
+            if v == "|" || v == ">" || v == "|-" || v == ">-" || v.is_empty() {
+                collecting_desc = true;
+                desc_buf.clear();
+            } else {
+                let cleaned = v.trim_matches('"').trim_matches('\'').trim();
+                if !cleaned.is_empty() {
+                    description = Some(cleaned.to_string());
+                }
+            }
+        }
+    }
+    if collecting_desc && !desc_buf.trim().is_empty() {
+        description = Some(desc_buf.trim().to_string());
+    }
+    SkillMetadata { name, description }
+}
+
+/// First meaningful paragraph from markdown body (after frontmatter).
+/// Prefers non-heading paragraphs; falls back to first heading text.
+fn extract_description_from_body(content: &str) -> Option<String> {
+    let body = strip_frontmatter(content);
+    let mut heading_fallback: Option<String> = None;
+    let mut para = String::new();
+
+    for line in body.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            if !para.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if t.starts_with("```") || t.starts_with("<!--") {
+            continue;
+        }
+        if t.starts_with('#') {
+            if heading_fallback.is_none() {
+                let h = t.trim_start_matches('#').trim();
+                if !h.is_empty() {
+                    heading_fallback = Some(h.to_string());
+                }
+            }
+            // Don't mix heading into paragraph
+            if !para.is_empty() {
+                break;
+            }
+            continue;
+        }
+        if !para.is_empty() {
+            para.push(' ');
+        }
+        para.push_str(t);
+        if para.len() > 280 {
+            break;
+        }
+    }
+
+    let raw = if !para.trim().is_empty() {
+        para
+    } else {
+        heading_fallback.unwrap_or_default()
+    };
+    let collapsed: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        None
+    } else if collapsed.len() > 280 {
+        Some(format!("{}…", &collapsed[..277]))
+    } else {
+        Some(collapsed)
+    }
+}
+
+fn strip_frontmatter(content: &str) -> &str {
+    let trimmed = content.trim_start_matches('\u{feff}').trim_start();
+    if !trimmed.starts_with("---") {
+        return content;
+    }
+    let after = trimmed[3..].trim_start_matches(['\r', '\n']);
+    if let Some(idx) = after.find("\n---") {
+        let rest = &after[idx + 4..];
+        return rest.trim_start_matches(['\r', '\n']);
+    }
+    content
 }
 
 /// Check whether a directory looks like a valid skill directory.
@@ -132,9 +326,36 @@ mod tests {
     #[test]
     fn parse_frontmatter_full() {
         let content = "---\nname: my-skill\ndescription: A great skill\n---\n# Content";
-        let meta = parse_frontmatter(content);
+        let meta = parse_skill_document(content);
         assert_eq!(meta.name.as_deref(), Some("my-skill"));
         assert_eq!(meta.description.as_deref(), Some("A great skill"));
+    }
+
+    #[test]
+    fn parse_multiline_yaml_description() {
+        let content = "---\nname: multi\ndescription: |\n  Line one of the skill.\n  Line two continues.\n---\n# Body\n";
+        let meta = parse_skill_document(content);
+        assert_eq!(meta.name.as_deref(), Some("multi"));
+        let desc = meta.description.unwrap();
+        assert!(desc.contains("Line one"));
+        assert!(desc.contains("Line two"));
+    }
+
+    #[test]
+    fn parse_body_fallback_when_no_frontmatter() {
+        let content = "# Code Review\n\nReviews pull requests for style and correctness.\n\n## Steps\n";
+        let meta = parse_skill_document(content);
+        assert_eq!(
+            meta.description.as_deref(),
+            Some("Reviews pull requests for style and correctness.")
+        );
+    }
+
+    #[test]
+    fn parse_body_fallback_heading_only() {
+        let content = "# Only Title\n\n## Section\n";
+        let meta = parse_skill_document(content);
+        assert_eq!(meta.description.as_deref(), Some("Only Title"));
     }
 
     #[test]

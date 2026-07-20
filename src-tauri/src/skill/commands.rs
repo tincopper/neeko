@@ -69,7 +69,51 @@ pub struct SkillDocumentDtoOut {
     pub content: String,
 }
 
+/// Re-parse SKILL.md when DB description is empty; persist if found.
+fn enrich_skill_description(store: &SkillStore, mut s: SkillRecord) -> SkillRecord {
+    let needs_desc = s
+        .description
+        .as_ref()
+        .map(|d| d.trim().is_empty())
+        .unwrap_or(true);
+    if !needs_desc {
+        return s;
+    }
+    let path = PathBuf::from(&s.central_path);
+    if !path.is_dir() {
+        return s;
+    }
+    let meta = super::skill_metadata::parse_skill_md(&path);
+    if let Some(desc) = meta.description {
+        if !desc.trim().is_empty() {
+            s.description = Some(desc);
+            let _ = store.update_skill(&s);
+        }
+    }
+    s
+}
+
+fn skill_to_dto(s: SkillRecord, tags: Vec<String>) -> ManagedSkillDtoOut {
+    ManagedSkillDtoOut {
+        tags,
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        source_type: s.source_type,
+        source_ref: s.source_ref,
+        central_path: s.central_path,
+        enabled: s.enabled,
+        status: s.status,
+        update_status: s.update_status,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+    }
+}
+
 /// Get all managed skills with their associated tags.
+///
+/// If a skill row has no description, re-parse SKILL.md from `central_path`
+/// and backfill the DB so the library card can show text.
 #[tauri::command]
 pub async fn get_managed_skills(
     store: State<'_, Arc<SkillStore>>,
@@ -80,22 +124,14 @@ pub async fn get_managed_skills(
         let tags_map = store.get_tags_map().map_err(AppError::from)?;
         Ok(skills
             .into_iter()
-            .map(|s| ManagedSkillDtoOut {
-                tags: tags_map.get(&s.id).cloned().unwrap_or_default(),
-                id: s.id,
-                name: s.name,
-                description: s.description,
-                source_type: s.source_type,
-                source_ref: s.source_ref,
-                central_path: s.central_path,
-                enabled: s.enabled,
-                status: s.status,
-                update_status: s.update_status,
-                created_at: s.created_at,
-                updated_at: s.updated_at,
+            .map(|s| {
+                let s = enrich_skill_description(&store, s);
+                let tags = tags_map.get(&s.id).cloned().unwrap_or_default();
+                skill_to_dto(s, tags)
             })
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Get the documentation content (SKILL.md) for a skill.
@@ -645,19 +681,10 @@ pub async fn get_skills_for_tag_group_cmd(
         let tags_map = store.get_tags_map().map_err(AppError::from)?;
         Ok(skills
             .into_iter()
-            .map(|s| ManagedSkillDtoOut {
-                tags: tags_map.get(&s.id).cloned().unwrap_or_default(),
-                id: s.id,
-                name: s.name,
-                description: s.description,
-                source_type: s.source_type,
-                source_ref: s.source_ref,
-                central_path: s.central_path,
-                enabled: s.enabled,
-                status: s.status,
-                update_status: s.update_status,
-                created_at: s.created_at,
-                updated_at: s.updated_at,
+            .map(|s| {
+                let s = enrich_skill_description(&store, s);
+                let tags = tags_map.get(&s.id).cloned().unwrap_or_default();
+                skill_to_dto(s, tags)
             })
             .collect())
     }).await
