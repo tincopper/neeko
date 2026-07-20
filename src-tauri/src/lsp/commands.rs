@@ -294,9 +294,17 @@ pub async fn lsp_check_server_installed(
             .lsp_manager
             .set_project_exec_target(path, target.clone());
     }
-    Ok(crate::lsp::installer::check_server_installed_in(
-        &language_id,
-        &target,
+    // Resolve binary name from the live plugin registry (not a hard-coded map).
+    let binary = state
+        .lsp_manager
+        .plugin_server_binary(&language_id)
+        .ok_or_else(|| {
+            AppError::Lsp(format!(
+                "No LSP plugin registered for language: {language_id}"
+            ))
+        })?;
+    Ok(crate::lsp::installer::check_binary_installed(
+        &binary, &target,
     ))
 }
 

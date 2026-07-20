@@ -1,40 +1,16 @@
+//! Auto-install language servers in a project [`ExecTarget`].
+//!
+//! Binary names and install recipes come from [`LspPlugin`] — this module does
+//! not maintain a second language → command map.
+
 use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::Emitter;
 
 use crate::common::executor::factory::ExecTarget;
+use crate::lsp::plugin::LspPlugin;
 use crate::lsp::process::run_command_blocking;
-
-/// Language server binary name for each language.
-fn server_binary(language_id: &str) -> Option<&'static str> {
-    match language_id {
-        "rust" => Some("rust-analyzer"),
-        "go" => Some("gopls"),
-        "typescript" | "javascript" | "typescriptreact" | "javascriptreact" => {
-            Some("typescript-language-server")
-        }
-        "python" => Some("pyright-langserver"),
-        "java" => Some("jdtls"),
-        _ => None,
-    }
-}
-
-/// Install command for each language.
-/// Returns (prerequisite_tool, install_command_and_args).
-fn install_command(language_id: &str) -> Option<(&'static str, &'static [&'static str])> {
-    match language_id {
-        "rust" => Some(("rustup", &["rustup", "component", "add", "rust-analyzer"])),
-        "go" => Some(("go", &["go", "install", "golang.org/x/tools/gopls@latest"])),
-        "typescript" | "javascript" | "typescriptreact" | "javascriptreact" => Some((
-            "npm",
-            &["npm", "install", "-g", "typescript-language-server"],
-        )),
-        "python" => Some(("npm", &["npm", "install", "-g", "pyright"])),
-        "java" => Some(("npm", &["npm", "install", "-g", "@eclipse-wtp/jdtls"])),
-        _ => None,
-    }
-}
 
 /// Track in-progress installs to avoid concurrent attempts.
 static INSTALL_IN_PROGRESS: Mutex<Option<String>> = Mutex::new(None);
@@ -58,22 +34,11 @@ fn emit_progress(app_handle: &tauri::AppHandle, language_id: &str, phase: &str, 
     }
 }
 
-/// Check whether the server binary exists in the given execution environment.
-pub fn check_server_installed_in(language_id: &str, target: &ExecTarget) -> bool {
-    let binary = match server_binary(language_id) {
-        Some(b) => b,
-        None => {
-            log::debug!(
-                "[LSP][installer] No binary mapping for language={}",
-                language_id
-            );
-            return false;
-        }
-    };
+/// Whether `binary` exists in the project execution environment.
+pub fn check_binary_installed(binary: &str, target: &ExecTarget) -> bool {
     let found = crate::core::exec::command_exists_blocking(target, binary);
     log::info!(
-        "[LSP][installer] check_server_installed: language={} binary={} target={:?} found={}",
-        language_id,
+        "[LSP][installer] check binary={} target={:?} found={}",
         binary,
         std::mem::discriminant(target),
         found,
@@ -81,12 +46,24 @@ pub fn check_server_installed_in(language_id: &str, target: &ExecTarget) -> bool
     found
 }
 
-/// Try to auto-install the LSP server **in the project's environment**.
-pub fn install_server(
-    language_id: &str,
+/// Check whether the plugin's language server binary exists on `target`.
+pub fn check_plugin_installed(plugin: &LspPlugin, target: &ExecTarget) -> bool {
+    if plugin.server_binary.is_empty() {
+        return false;
+    }
+    check_binary_installed(&plugin.server_binary, target)
+}
+
+/// Try to auto-install the plugin's server **in the project's environment**.
+///
+/// Returns `Ok(true)` if install ran successfully, `Ok(false)` if the plugin
+/// has no install recipe, `Err` on failure.
+pub fn install_plugin_server(
+    plugin: &LspPlugin,
     app_handle: &tauri::AppHandle,
     target: &ExecTarget,
 ) -> Result<bool, String> {
+    let language_id = plugin.language_id.as_str();
     {
         let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
         if let Some(ref current) = *in_progress {
@@ -98,7 +75,7 @@ pub fn install_server(
         *in_progress = Some(language_id.to_string());
     }
 
-    let result = install_server_impl(language_id, app_handle, target);
+    let result = install_plugin_server_impl(plugin, app_handle, target);
 
     {
         let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
@@ -108,19 +85,19 @@ pub fn install_server(
     result
 }
 
-fn install_server_impl(
-    language_id: &str,
+fn install_plugin_server_impl(
+    plugin: &LspPlugin,
     app_handle: &tauri::AppHandle,
     target: &ExecTarget,
 ) -> Result<bool, String> {
-    let bin = match server_binary(language_id) {
-        Some(b) => b,
-        None => return Ok(false),
-    };
+    let language_id = plugin.language_id.as_str();
+    let bin = plugin.server_binary.as_str();
+    if bin.is_empty() {
+        return Ok(false);
+    }
 
-    let (prerequisite, cmd_and_args) = match install_command(language_id) {
-        Some(c) => c,
-        None => return Ok(false),
+    let Some(install) = plugin.install.as_ref() else {
+        return Ok(false);
     };
 
     emit_progress(
@@ -130,14 +107,19 @@ fn install_server_impl(
         &format!("Installing {}...", bin),
     );
 
-    if !crate::core::exec::command_exists_blocking(target, prerequisite) {
+    if !crate::core::exec::command_exists_blocking(target, install.prerequisite) {
         let msg = format!(
             "Cannot install {}: '{}' not found on project PATH. Install it first.",
-            bin, prerequisite
+            bin, install.prerequisite
         );
         log::warn!("[LSP] {}", msg);
         emit_progress(app_handle, language_id, "error", &msg);
         return Err(msg);
+    }
+
+    let cmd_and_args = install.command;
+    if cmd_and_args.is_empty() {
+        return Ok(false);
     }
 
     log::info!(

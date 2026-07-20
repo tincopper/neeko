@@ -5,6 +5,7 @@ pub mod installer;
 pub mod manager;
 pub mod plugin;
 pub mod process;
+pub mod session;
 pub mod profile;
 pub mod server_request;
 pub mod symbol;
