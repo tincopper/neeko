@@ -176,9 +176,9 @@ function TaskConsolePanel() {
         </div>
 
         {/* Body: keep all session terminals mounted for output retention */}
-        <div className="relative flex-1 min-h-0 bg-bg-primary">
+        <div className="relative flex-1 min-h-0 bg-bg-secondary">
           {sessions.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-[var(--font-size)] text-text-muted px-4 text-center">
+            <div className="flex h-full items-center justify-center px-3 py-3 text-[var(--font-size)] text-text-muted leading-relaxed text-center">
               Run a task from the Run menu to stream output here.
             </div>
           ) : (
