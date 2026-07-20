@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleDot, X } from '@/shared/components/icons';
 import { cn } from '@/shared/utils/cn';
+import { buildFontFamily } from '@/shared/utils/terminal';
 
+import { useAppContext } from '@/shared/contexts/AppContext';
 import { useProjectStore } from '@/features/project/store';
 
 import { useDebugStore } from '../store/debugStore';
@@ -86,6 +88,16 @@ function DebugPanel() {
 
   const activeProject = useProjectStore((s) => s.activeProject);
   const projectId = activeProject?.id ?? null;
+  const { config } = useAppContext();
+
+  /** Same typeface + size as Task Console / xterm. */
+  const terminalType = useMemo(
+    () => ({
+      fontSize: config.terminalFontSize ?? 14,
+      fontFamily: buildFontFamily(config.fontFamily ?? ''),
+    }),
+    [config.terminalFontSize, config.fontFamily],
+  );
 
   const [expr, setExpr] = useState('');
   const consoleEndRef = useRef<HTMLDivElement>(null);
@@ -473,9 +485,10 @@ function DebugPanel() {
           <div
             className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5"
             style={{
-              fontSize: 'var(--terminal-font-size)',
-              fontFamily: 'var(--terminal-font-family, ui-monospace, monospace)',
+              fontSize: `${terminalType.fontSize}px`,
+              fontFamily: terminalType.fontFamily,
               color: 'var(--terminal-fg, var(--text-secondary))',
+              lineHeight: 1.35,
             }}
           >
             {consoleLines.length === 0 ? (
@@ -486,15 +499,31 @@ function DebugPanel() {
               consoleLines.map((line) => (
                 <div
                   key={line.id}
-                  className="whitespace-pre-wrap leading-relaxed"
+                  className="whitespace-pre-wrap"
                   style={
                     line.kind === 'in'
-                      ? { color: 'var(--accent-blue)' }
+                      ? {
+                          color: 'var(--accent-blue)',
+                          fontSize: `${terminalType.fontSize}px`,
+                          fontFamily: terminalType.fontFamily,
+                        }
                       : line.kind === 'err'
-                        ? { color: 'var(--accent-red)' }
+                        ? {
+                            color: 'var(--accent-red)',
+                            fontSize: `${terminalType.fontSize}px`,
+                            fontFamily: terminalType.fontFamily,
+                          }
                         : line.kind === 'sys'
-                          ? { color: 'var(--terminal-fg-dim, var(--text-muted))' }
-                          : { color: 'var(--terminal-fg, var(--text-secondary))' }
+                          ? {
+                              color: 'var(--terminal-fg-dim, var(--text-muted))',
+                              fontSize: `${terminalType.fontSize}px`,
+                              fontFamily: terminalType.fontFamily,
+                            }
+                          : {
+                              color: 'var(--terminal-fg, var(--text-secondary))',
+                              fontSize: `${terminalType.fontSize}px`,
+                              fontFamily: terminalType.fontFamily,
+                            }
                   }
                 >
                   {line.kind === 'in' ? `› ${line.text}` : line.text}
