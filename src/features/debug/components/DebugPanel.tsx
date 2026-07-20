@@ -469,11 +469,12 @@ function DebugPanel() {
           className="flex-1 flex flex-col min-h-0 min-w-0"
           style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
         >
-          {/* Match Task Console: same bg / soft terminal fg / terminal font size */}
+          {/* Match Task Console: same bg / fg / size / typeface as xterm */}
           <div
-            className="flex-1 overflow-y-auto px-3 py-1.5 font-mono space-y-0.5"
+            className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5"
             style={{
               fontSize: 'var(--terminal-font-size)',
+              fontFamily: 'var(--terminal-font-family, ui-monospace, monospace)',
               color: 'var(--terminal-fg, var(--text-secondary))',
             }}
           >

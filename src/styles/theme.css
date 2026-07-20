@@ -11,6 +11,8 @@
   --terminal-bg: var(--bg-secondary);
   --terminal-fg: #abb2bf;
   --terminal-fg-dim: #5c6370;
+  /* Terminal typeface stack (synced from settings fontFamily via useAppConfig) */
+  --terminal-font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace, 'NerdFontSymbols';
 
   /* CodeMirror 专用变量 */
   --cm-keyword: #c678dd;

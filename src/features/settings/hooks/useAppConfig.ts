@@ -18,6 +18,7 @@ import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
+import { buildFontFamily } from '@/shared/utils/terminal';
 
 const DEFAULT_CONFIG: AppConfig = {
    theme: "dark",
@@ -143,6 +144,14 @@ export function useAppConfig() {
          `${config.terminalFontSize}px`,
       );
    }, [config.terminalFontSize]);
+
+   useEffect(() => {
+      // Keep Debug Console / other terminal-styled panes on the same stack as xterm.
+      document.documentElement.style.setProperty(
+         "--terminal-font-family",
+         buildFontFamily(config.fontFamily ?? ""),
+      );
+   }, [config.fontFamily]);
 
    useEffect(() => {
       document.documentElement.setAttribute("data-theme", config.theme);
