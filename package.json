@@ -112,15 +112,8 @@
     "vitest": "^4.1.2"
   },
   "packageManager": "pnpm@10.33.4",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "unrs-resolver",
-      "esbuild",
-      "@parcel/watcher"
-    ],
-    "overrides": {
-      "d3-array": "^3.2.4",
-      "d3-shape": "^3.2.0"
-    }
+  "overrides": {
+    "d3-array": "^3.2.4",
+    "d3-shape": "^3.2.0"
   }
 }
