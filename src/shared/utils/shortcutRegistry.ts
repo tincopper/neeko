@@ -79,15 +79,17 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   },
   {
     id: "switchTabNext",
-    label: "Next Tab (Ctrl+Tab)",
+    label: "Switcher: Next Tab",
     defaultBinding: "Ctrl+Tab",
     category: "tabs",
+    allowInEditable: true,
   },
   {
     id: "switchTabPrev",
-    label: "Previous Tab (Ctrl+Shift+Tab)",
+    label: "Switcher: Previous Tab",
     defaultBinding: "Ctrl+Shift+Tab",
     category: "tabs",
+    allowInEditable: true,
   },
 
   // ── Editor ────────────────────────────────────────────────────────────
@@ -136,6 +138,18 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     id: "navigateForward",
     label: "Navigate Forward",
     defaultBinding: "Alt+Right",
+    category: "editor",
+  },
+  {
+    id: "gotoFile",
+    label: "Go to File",
+    defaultBinding: "Ctrl+Shift+N",
+    category: "editor",
+  },
+  {
+    id: "recentFiles",
+    label: "Recent Files",
+    defaultBinding: "Ctrl+E",
     category: "editor",
   },
 

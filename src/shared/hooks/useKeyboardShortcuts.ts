@@ -6,6 +6,7 @@ import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { useNavHistoryStore } from "@/features/editor/navigationHistoryStore";
+import { useQuickOpenStore } from "@/features/quick-open";
 import {
   resolveBindings,
   matchesBinding,
@@ -38,6 +39,8 @@ const GLOBAL_ACTION_IDS = new Set([
   "toggleDockSkills",
   "navigateBack",
   "navigateForward",
+  "gotoFile",
+  "recentFiles",
 ]);
 
 export function useKeyboardShortcuts({
@@ -64,9 +67,19 @@ export function useKeyboardShortcuts({
 
       const bindings = resolveBindings(shortcutsRef.current);
       const inEditable = isEditableKeyboardTarget(e.target);
+      // Quick Open is not data-modal so Ctrl+Tab can keep cycling the switcher.
+      const quickOpenOpen = !!document.querySelector("[data-quick-open]");
 
       for (const action of SHORTCUT_ACTIONS) {
         if (!GLOBAL_ACTION_IDS.has(action.id)) continue;
+
+        if (
+          quickOpenOpen &&
+          action.id !== "switchTabNext" &&
+          action.id !== "switchTabPrev"
+        ) {
+          continue;
+        }
 
         const binding = bindings[action.id];
         if (!binding) continue;
@@ -128,29 +141,41 @@ export function useKeyboardShortcuts({
             break;
           }
 
-          case "prevTab":
-          case "switchTabPrev": {
+          case "prevTab": {
             e.preventDefault();
             cycleTab(-1);
             break;
           }
 
-          case "nextTab":
-          case "switchTabNext": {
+          case "nextTab": {
             e.preventDefault();
             cycleTab(1);
             break;
           }
 
-          case "toggleDockProjects": {
+          case "switchTabNext": {
             e.preventDefault();
-            useDockStore.getState().togglePanel("projects");
+            e.stopPropagation();
+            useQuickOpenStore.getState().cycleTabSwitcher(1);
             break;
           }
 
-          case "toggleDockSkills": {
+          case "switchTabPrev": {
             e.preventDefault();
-            useDockStore.getState().togglePanel("skills");
+            e.stopPropagation();
+            useQuickOpenStore.getState().cycleTabSwitcher(-1);
+            break;
+          }
+
+          case "gotoFile": {
+            e.preventDefault();
+            useQuickOpenStore.getState().openPalette("gotoFile");
+            break;
+          }
+
+          case "recentFiles": {
+            e.preventDefault();
+            useQuickOpenStore.getState().openPalette("recentFiles");
             break;
           }
 
@@ -163,6 +188,18 @@ export function useKeyboardShortcuts({
           case "navigateForward": {
             e.preventDefault();
             void useNavHistoryStore.getState().goForward();
+            break;
+          }
+
+          case "toggleDockProjects": {
+            e.preventDefault();
+            useDockStore.getState().togglePanel("projects");
+            break;
+          }
+
+          case "toggleDockSkills": {
+            e.preventDefault();
+            useDockStore.getState().togglePanel("skills");
             break;
           }
 

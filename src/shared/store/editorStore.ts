@@ -4,6 +4,7 @@ import type { FileTabData, TerminalTabData, DiffTabData, HtmlPreviewTabData, PRD
 import type { FileContent } from '@/features/file/types';
 import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
+import { emitTabActivated } from '@/shared/utils/editorActivity';
 
 function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string, allTabIds: string[], activeTabId: string | null): EditorSplitLayout {
   if (layouts[tabKey]) return layouts[tabKey];
@@ -232,6 +233,10 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         },
       };
 
+      queueMicrotask(() => {
+        emitTabActivated(projectId, tab.id, tab);
+      });
+
       return {
         tabs: newTabs,
         activeTabId: tab.id,
@@ -359,6 +364,13 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           },
         };
       }
+
+      // Notify listeners after state is applied (MRU / recent files).
+      queueMicrotask(() => {
+        const tabs = useEditorStore.getState().tabs[projectId];
+        const tab = tabs?.tabs.find((t) => t.id === tabId);
+        emitTabActivated(projectId, tabId, tab);
+      });
 
       return {
         tabs: {

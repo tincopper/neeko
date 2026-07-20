@@ -1,6 +1,11 @@
+import { useEffect } from "react";
 import { AppLayout, TitleBar } from "@/layout";
 import { StatusBar } from "@/features/status-bar";
 import { DebugPanel } from "@/features/debug";
+import {
+  QuickOpenPalette,
+  startQuickOpenActivityTracking,
+} from "@/features/quick-open";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
@@ -13,6 +18,8 @@ function App() {
     appLayoutProps,
     appModalsProps,
   } = useAppShell();
+
+  useEffect(() => startQuickOpenActivityTracking(), []);
 
   if (initializing) {
     return <SplashScreen />;
@@ -35,6 +42,7 @@ function App() {
           <DebugPanel />
         </div>
         <AppModals {...appModalsProps} />
+        <QuickOpenPalette />
       </AppProviders>
 
       <StatusBar />
