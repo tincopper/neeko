@@ -10,6 +10,10 @@ import type { Tab } from '@/shared/types';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import {
+  captureCurrentNavLocation,
+  recordNavigationJump,
+} from '@/features/editor/navigationHistoryStore';
 
 /** Convert absolute path to project-relative if under workspace. */
 export function toProjectRelative(projectPath: string, absPath: string): string {
@@ -54,6 +58,16 @@ export async function openSourceAtLine(
 
   const line1 = Math.max(1, line);
   const col = Math.max(0, column);
+
+  const from = captureCurrentNavLocation();
+  const to = {
+    projectId,
+    tabKey,
+    filePath,
+    line: line1,
+    column: col,
+  };
+  recordNavigationJump(from, to);
 
   if (existing) {
     store.activateTab(tabKey, existing.id);

@@ -68,13 +68,13 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: "prevTab",
     label: "Previous Tab",
-    defaultBinding: "Alt+Left",
+    defaultBinding: "Ctrl+PageUp",
     category: "tabs",
   },
   {
     id: "nextTab",
     label: "Next Tab",
-    defaultBinding: "Alt+Right",
+    defaultBinding: "Ctrl+PageDown",
     category: "tabs",
   },
   {
@@ -106,11 +106,37 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     allowInEditable: true,
   },
   {
+    id: "gotoDefinitionAlt",
+    label: "Go to Definition (IDEA)",
+    defaultBinding: "Ctrl+B",
+    category: "editor",
+    allowInEditable: true,
+  },
+  {
     id: "findReferences",
     label: "Find References",
     defaultBinding: "Shift+F12",
     category: "editor",
     allowInEditable: true,
+  },
+  {
+    id: "findReferencesAlt",
+    label: "Find Usages (IDEA)",
+    defaultBinding: "Alt+F7",
+    category: "editor",
+    allowInEditable: true,
+  },
+  {
+    id: "navigateBack",
+    label: "Navigate Back",
+    defaultBinding: "Alt+Left",
+    category: "editor",
+  },
+  {
+    id: "navigateForward",
+    label: "Navigate Forward",
+    defaultBinding: "Alt+Right",
+    category: "editor",
   },
 
   // ── Workspace ─────────────────────────────────────────────────────────

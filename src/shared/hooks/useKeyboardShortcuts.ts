@@ -5,6 +5,7 @@ import { useWorktreeStore } from "@/features/project/worktreeStore";
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
+import { useNavHistoryStore } from "@/features/editor/navigationHistoryStore";
 import {
   resolveBindings,
   matchesBinding,
@@ -35,6 +36,8 @@ const GLOBAL_ACTION_IDS = new Set([
   "switchProject",
   "toggleDockProjects",
   "toggleDockSkills",
+  "navigateBack",
+  "navigateForward",
 ]);
 
 export function useKeyboardShortcuts({
@@ -148,6 +151,18 @@ export function useKeyboardShortcuts({
           case "toggleDockSkills": {
             e.preventDefault();
             useDockStore.getState().togglePanel("skills");
+            break;
+          }
+
+          case "navigateBack": {
+            e.preventDefault();
+            void useNavHistoryStore.getState().goBack();
+            break;
+          }
+
+          case "navigateForward": {
+            e.preventDefault();
+            void useNavHistoryStore.getState().goForward();
             break;
           }
 

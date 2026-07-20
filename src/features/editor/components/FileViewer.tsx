@@ -43,6 +43,11 @@ import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store';
+import {
+  captureCurrentNavLocation,
+  recordNavigationJump,
+} from '@/features/editor/navigationHistoryStore';
+import type { NavLocation } from '@/features/editor/navigationHistory';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
@@ -447,7 +452,7 @@ function FileEditor({
     projectPath ? toFileUri(projectPath, tab.filePath) : '',
   );
 
-  // Navigation helper for go-to-definition
+  // Navigation helper for go-to-definition (+ IDEA-style history)
   const navigateToLocation = useCallback(
     async (
       location: LspLocation,
@@ -461,6 +466,16 @@ function FileEditor({
       const targetPath = fromFileUri(location.uri);
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
+
+      const from = captureCurrentNavLocation();
+      const to: NavLocation = {
+        projectId: projId,
+        tabKey: tKey,
+        filePath: targetPath,
+        line: targetLine + 1,
+        column: targetChar,
+      };
+      recordNavigationJump(from, to);
 
       if (targetPath === currentFilePath) {
         // Same file – navigate cursor and focus editor
@@ -545,76 +560,75 @@ function FileEditor({
     [],
   );
 
-  // LSP keybindings — chords from shortcut registry (defaults F12 / Shift+F12).
+  // LSP keybindings — chords from shortcut registry (F12 / Ctrl+B / Shift+F12 / Alt+F7).
   const gotoDefCmKey = useCodeMirrorBinding('gotoDefinition');
+  const gotoDefAltCmKey = useCodeMirrorBinding('gotoDefinitionAlt');
   const findRefsCmKey = useCodeMirrorBinding('findReferences');
+  const findRefsAltCmKey = useCodeMirrorBinding('findReferencesAlt');
   /* eslint-disable react-hooks/refs */
   const lspKeymap = useMemo(() => {
     if (!projectPath) return [];
     const bindings: { key: string; run: (view: EditorView) => boolean }[] = [];
 
-    if (gotoDefCmKey) {
-      bindings.push({
-        key: gotoDefCmKey,
-        run: (view) => {
-          const lid = lspLanguageIdRef.current;
-          if (!lid) return false;
+    const runGotoDef = (view: EditorView): boolean => {
+      const lid = lspLanguageIdRef.current;
+      if (!lid) return false;
 
-          const pos = view.state.selection.main.head;
-          const lineObj = view.state.doc.lineAt(pos);
-          const line = lineObj.number - 1;
-          const character = pos - lineObj.from;
-          const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
+      const pos = view.state.selection.main.head;
+      const lineObj = view.state.doc.lineAt(pos);
+      const line = lineObj.number - 1;
+      const character = pos - lineObj.from;
+      const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
-          const t0 = performance.now();
-          definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
-            if (!result) return;
-            preloadLanguageExtension(fromFileUri(result.location.uri));
-            const tLsp = performance.now() - t0;
-            navigateToLocation(
-              result.location,
-              projectPath,
-              tabKey,
-              tab.projectId,
-              tab.filePath,
-              result.fileContent,
-            ).then(() => {
-              console.log(
-                `[perf] total (gotoDef→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
-                  `(lsp=${tLsp.toFixed(0)}ms)`,
-              );
-            });
-          });
-
-          return true;
-        },
+      const t0 = performance.now();
+      definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
+        if (!result) return;
+        preloadLanguageExtension(fromFileUri(result.location.uri));
+        const tLsp = performance.now() - t0;
+        navigateToLocation(
+          result.location,
+          projectPath,
+          tabKey,
+          tab.projectId,
+          tab.filePath,
+          result.fileContent,
+        ).then(() => {
+          console.log(
+            `[perf] total (gotoDef→tab): ${(performance.now() - t0).toFixed(0)}ms ` +
+              `(lsp=${tLsp.toFixed(0)}ms)`,
+          );
+        });
       });
+
+      return true;
+    };
+
+    const runFindRefs = (view: EditorView): boolean => {
+      const lid = lspLanguageIdRef.current;
+      if (!lid) return false;
+
+      const pos = view.state.selection.main.head;
+      const lineObj = view.state.doc.lineAt(pos);
+      const line = lineObj.number - 1;
+      const character = pos - lineObj.from;
+      const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
+
+      definition.findReferences(lid, uri, line, character).then((results) => {
+        if (results.length === 0) {
+          console.log('[LSP] No references found');
+        } else {
+          console.log(`[LSP] Found ${results.length} reference(s)`);
+        }
+      });
+
+      return true;
+    };
+
+    for (const key of [gotoDefCmKey, gotoDefAltCmKey]) {
+      if (key) bindings.push({ key, run: runGotoDef });
     }
-
-    if (findRefsCmKey) {
-      bindings.push({
-        key: findRefsCmKey,
-        run: (view) => {
-          const lid = lspLanguageIdRef.current;
-          if (!lid) return false;
-
-          const pos = view.state.selection.main.head;
-          const lineObj = view.state.doc.lineAt(pos);
-          const line = lineObj.number - 1;
-          const character = pos - lineObj.from;
-          const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
-
-          definition.findReferences(lid, uri, line, character).then((results) => {
-            if (results.length === 0) {
-              console.log('[LSP] No references found');
-            } else {
-              console.log(`[LSP] Found ${results.length} reference(s)`);
-            }
-          });
-
-          return true;
-        },
-      });
+    for (const key of [findRefsCmKey, findRefsAltCmKey]) {
+      if (key) bindings.push({ key, run: runFindRefs });
     }
 
     return bindings.length > 0 ? keymap.of(bindings) : [];
@@ -626,7 +640,9 @@ function FileEditor({
     definition,
     navigateToLocation,
     gotoDefCmKey,
+    gotoDefAltCmKey,
     findRefsCmKey,
+    findRefsAltCmKey,
   ]);
   /* eslint-enable react-hooks/refs */
 
