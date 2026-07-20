@@ -4,6 +4,7 @@
 //! merges results. New detectors (Cargo, Makefile, Just, …) only need a new
 //! module + a line in [`builtin_sources`] — no changes to orchestration or IPC.
 
+mod java;
 mod main_entry;
 mod package_json;
 

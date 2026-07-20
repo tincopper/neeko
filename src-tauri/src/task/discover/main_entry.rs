@@ -1,13 +1,15 @@
 //! Discover common application main entry points as runnable tasks.
 //!
 //! - Go / Rust: reuses [`crate::dap::discover`] (single source of truth for layout).
-//! - Python: lightweight local heuristics (`main.py`, `src/main.py`, …).
+//! - Java: [`super::java`] (Maven / Gradle / Spring Boot / main scan).
+//! - Python / Node: lightweight local heuristics.
 //!
 //! This module only maps “how to run”; debug launch configs stay in the DAP layer.
 
 use std::fs;
 use std::path::Path;
 
+use super::java::discover_java;
 use super::{DiscoveredTask, TaskSource};
 
 pub struct MainEntrySource;
@@ -20,6 +22,7 @@ impl TaskSource for MainEntrySource {
     fn discover(&self, project_path: &Path) -> Vec<DiscoveredTask> {
         let mut out = Vec::new();
         map_dap_entries(project_path, &mut out);
+        discover_java(project_path, &mut out);
         discover_python(project_path, &mut out);
         discover_node_entry(project_path, &mut out);
         out
@@ -51,6 +54,7 @@ fn entry_priority(lang: &str, id: &str) -> i32 {
     // Prefer root main over nested bins; still below package.json "dev" (100).
     let base = match lang {
         "go" | "rust" => 96,
+        "java" => 95,
         "python" => 94,
         "node" | "javascript" | "typescript" => 93,
         _ => 90,
@@ -211,5 +215,24 @@ mod tests {
         fs::write(dir.path().join("index.js"), "console.log(1)\n").unwrap();
         let tasks = MainEntrySource.discover(dir.path());
         assert!(tasks.iter().any(|t| t.command == "node index.js"));
+    }
+
+    #[test]
+    fn should_discover_java_maven_main_via_source() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("pom.xml"), "<project></project>\n").unwrap();
+        let pkg = dir.path().join("src/main/java/com/demo");
+        fs::create_dir_all(&pkg).unwrap();
+        fs::write(
+            pkg.join("Hello.java"),
+            "package com.demo;\npublic class Hello {\n  public static void main(String[] args) {}\n}\n",
+        )
+        .unwrap();
+        let tasks = MainEntrySource.discover(dir.path());
+        assert!(
+            tasks.iter().any(|t| t.id == "run:java:mvn:com.demo.Hello"),
+            "{tasks:?}"
+        );
+        assert!(tasks.iter().any(|t| t.group == "Java entry points"));
     }
 }
