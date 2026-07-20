@@ -10,6 +10,8 @@ import {
   isSwitchProjectBinding,
   toCodeMirrorKey,
   getResolvedBinding,
+  buildIdeaShortcutOverrides,
+  IDEA_SHORTCUT_PRESET,
 } from "../../utils/shortcutRegistry";
 import { IS_MACOS } from "../../utils/platform";
 
@@ -294,6 +296,43 @@ describe("shortcutRegistry", () => {
 
     it("allows unbinding via empty string override", () => {
       expect(getResolvedBinding("saveFile", { saveFile: "" })).toBe("");
+    });
+
+    it("returns empty for unknown action", () => {
+      expect(getResolvedBinding("notARealAction")).toBe("");
+    });
+  });
+
+  describe("P3 editor navigation bindings", () => {
+    it("should_parse_backslash_split_bindings", () => {
+      expect(parseBinding("Ctrl+\\")).toEqual({
+        code: "Backslash",
+        ctrl: true,
+        alt: false,
+        shift: false,
+        meta: false,
+      });
+      expect(parseBinding("Ctrl+Shift+\\")).toMatchObject({
+        code: "Backslash",
+        ctrl: true,
+        shift: true,
+      });
+    });
+
+    it("should_include_fileStructure_and_split_defaults", () => {
+      const resolved = resolveBindings({});
+      expect(resolved.fileStructure).toBe("Ctrl+F12");
+      expect(resolved.splitRight).toBe("Ctrl+\\");
+      expect(resolved.unsplitEditor).toBe("Ctrl+Shift+\\");
+    });
+
+    it("should_build_idea_preset_without_conflicts", () => {
+      const overrides = buildIdeaShortcutOverrides();
+      expect(overrides.navigateBack).toBe(IDEA_SHORTCUT_PRESET.navigateBack);
+      expect(overrides.closeTab).toBe("Ctrl+F4");
+      expect(overrides.fileStructure).toBe("Ctrl+F12");
+      const conflicts = findConflicts(resolveBindings(overrides));
+      expect(conflicts).toEqual([]);
     });
   });
 

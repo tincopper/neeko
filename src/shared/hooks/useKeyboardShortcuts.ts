@@ -41,6 +41,8 @@ const GLOBAL_ACTION_IDS = new Set([
   "navigateForward",
   "gotoFile",
   "recentFiles",
+  "splitRight",
+  "unsplitEditor",
 ]);
 
 export function useKeyboardShortcuts({
@@ -179,6 +181,18 @@ export function useKeyboardShortcuts({
             break;
           }
 
+          case "splitRight": {
+            e.preventDefault();
+            splitActiveTabRight();
+            break;
+          }
+
+          case "unsplitEditor": {
+            e.preventDefault();
+            unsplitActiveEditor();
+            break;
+          }
+
           case "navigateBack": {
             e.preventDefault();
             void useNavHistoryStore.getState().goBack();
@@ -257,19 +271,21 @@ function switchToItem(item: ProjectListItem) {
   store.selectProject?.(item.id);
 }
 
-function cycleTab(direction: 1 | -1) {
+function resolveActiveTabKey(): string | null {
   const proj = useProjectStore.getState();
   const wt = useWorktreeStore.getState();
-  const editor = useEditorStore.getState();
-
   const currentProjectId = proj.activeProjectId ?? null;
-  if (!currentProjectId) return;
-
+  if (!currentProjectId) return null;
   const worktreePath = wt.activeWorktreePath ?? null;
-
-  const tabKey = worktreePath
+  return worktreePath
     ? buildWorktreeTabKey(currentProjectId, worktreePath)
     : currentProjectId;
+}
+
+function cycleTab(direction: 1 | -1) {
+  const editor = useEditorStore.getState();
+  const tabKey = resolveActiveTabKey();
+  if (!tabKey) return;
 
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs || projectTabs.tabs.length === 0) return;
@@ -289,4 +305,20 @@ function cycleTab(direction: 1 | -1) {
 
   const targetIndex = (currentIndex + direction + orderedIds.length) % orderedIds.length;
   useEditorStore.getState().activateTab(tabKey, orderedIds[targetIndex]);
+}
+
+function splitActiveTabRight() {
+  const editor = useEditorStore.getState();
+  const tabKey = resolveActiveTabKey();
+  if (!tabKey) return;
+  const projectTabs = editor.tabs[tabKey];
+  const tabId = projectTabs?.activeTabId;
+  if (!tabId) return;
+  editor.splitRight(tabKey, tabId);
+}
+
+function unsplitActiveEditor() {
+  const tabKey = resolveActiveTabKey();
+  if (!tabKey) return;
+  useEditorStore.getState().unsplit(tabKey);
 }

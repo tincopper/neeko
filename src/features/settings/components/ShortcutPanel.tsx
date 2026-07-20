@@ -8,6 +8,7 @@ import {
   formatBinding,
   captureBinding,
   isRecordableAction,
+  buildIdeaShortcutOverrides,
   type ConflictEntry,
 } from '@/shared/utils/shortcutRegistry';
 
@@ -52,6 +53,13 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
 
   const handleResetAll = useCallback(() => {
     onConfigChange({ ...config, shortcuts: {} });
+  }, [config, onConfigChange]);
+
+  const handleApplyIdeaPreset = useCallback(() => {
+    onConfigChange({
+      ...config,
+      shortcuts: buildIdeaShortcutOverrides(),
+    });
   }, [config, onConfigChange]);
 
   const handleResetOne = useCallback(
@@ -122,20 +130,30 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <h3 className="text-base font-semibold text-text-primary">Keyboard Shortcuts</h3>
-        <button
-          className="px-3 py-1.5 text-[0.82em] rounded-md bg-bg-hover border border-border text-text-secondary cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors"
-          onClick={handleResetAll}
-          disabled={Object.keys(config.shortcuts).length === 0}
-        >
-          Reset All
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1.5 text-[0.82em] rounded-md bg-bg-hover border border-border text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+            onClick={handleApplyIdeaPreset}
+            title="Apply IntelliJ IDEA–style bindings for supported actions"
+          >
+            Apply IDEA Preset
+          </button>
+          <button
+            className="px-3 py-1.5 text-[0.82em] rounded-md bg-bg-hover border border-border text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+            onClick={handleResetAll}
+            disabled={Object.keys(config.shortcuts ?? {}).length === 0}
+          >
+            Reset All
+          </button>
+        </div>
       </div>
 
       <div className="text-[0.82em] text-text-muted mb-4">
         Double-click a row (or select and press Enter) to record a new combination.
         Press Escape to cancel. Changes are saved to your app config and override defaults.
+        Use <strong>Apply IDEA Preset</strong> for IntelliJ-style chords (Back/Forward as Ctrl+Alt+←/→, Close Tab as Ctrl+F4, etc.).
       </div>
 
       {conflicts.length > 0 && (

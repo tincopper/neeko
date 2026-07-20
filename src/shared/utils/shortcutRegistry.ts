@@ -152,6 +152,25 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: "Ctrl+E",
     category: "editor",
   },
+  {
+    id: "fileStructure",
+    label: "File Structure",
+    defaultBinding: "Ctrl+F12",
+    category: "editor",
+    allowInEditable: true,
+  },
+  {
+    id: "splitRight",
+    label: "Split Right",
+    defaultBinding: "Ctrl+\\",
+    category: "editor",
+  },
+  {
+    id: "unsplitEditor",
+    label: "Unsplit Editor",
+    defaultBinding: "Ctrl+Shift+\\",
+    category: "editor",
+  },
 
   // ── Workspace ─────────────────────────────────────────────────────────
   {
@@ -207,6 +226,49 @@ const ACTION_BY_ID = new Map(SHORTCUT_ACTIONS.map((a) => [a.id, a]));
 
 export function getShortcutAction(id: string): ShortcutAction | undefined {
   return ACTION_BY_ID.get(id);
+}
+
+/**
+ * IDEA-oriented chord map applied as user overrides (not a second registry).
+ * Only includes actions with clear IntelliJ-style defaults used by Neeko.
+ */
+export const IDEA_SHORTCUT_PRESET: Record<string, string> = {
+  closeTab: "Ctrl+F4",
+  prevTab: "Alt+Left",
+  nextTab: "Alt+Right",
+  switchTabNext: "Ctrl+Tab",
+  switchTabPrev: "Ctrl+Shift+Tab",
+  saveFile: "Ctrl+S",
+  gotoDefinition: "F12",
+  gotoDefinitionAlt: "Ctrl+B",
+  findReferences: "Shift+F12",
+  findReferencesAlt: "Alt+F7",
+  navigateBack: "Ctrl+Alt+Left",
+  navigateForward: "Ctrl+Alt+Right",
+  gotoFile: "Ctrl+Shift+N",
+  recentFiles: "Ctrl+E",
+  fileStructure: "Ctrl+F12",
+  splitRight: "Ctrl+\\",
+  unsplitEditor: "Ctrl+Shift+\\",
+  cycleWorktree: "Ctrl+N",
+  openIde: "Ctrl+O",
+  cycleProject: "Ctrl+Q",
+  refreshTerminal: "Ctrl+Alt+R",
+  toggleDockProjects: "Ctrl+Shift+1",
+  toggleDockSkills: "Ctrl+Shift+2",
+};
+
+/** Build a full override map from the IDEA preset (merges onto current defaults). */
+export function buildIdeaShortcutOverrides(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const action of SHORTCUT_ACTIONS) {
+    if (!isRecordableAction(action)) continue;
+    const idea = IDEA_SHORTCUT_PRESET[action.id];
+    if (idea) {
+      out[action.id] = idea;
+    }
+  }
+  return out;
 }
 
 const MODIFIER_MAP: Record<string, keyof Omit<ParsedBinding, "code">> = {

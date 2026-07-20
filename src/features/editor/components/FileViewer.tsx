@@ -34,6 +34,7 @@ import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
 import { resolveLspPositionFromOffset } from '@/features/lsp/position';
 import type { LspLocation } from '@/features/lsp/types';
+import { useSymbolNavStore } from '@/features/symbol-nav';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
@@ -560,11 +561,12 @@ function FileEditor({
     [],
   );
 
-  // LSP keybindings — chords from shortcut registry (F12 / Ctrl+B / Shift+F12 / Alt+F7).
+  // LSP keybindings — chords from shortcut registry (F12 / Ctrl+B / Shift+F12 / Alt+F7 / Ctrl+F12).
   const gotoDefCmKey = useCodeMirrorBinding('gotoDefinition');
   const gotoDefAltCmKey = useCodeMirrorBinding('gotoDefinitionAlt');
   const findRefsCmKey = useCodeMirrorBinding('findReferences');
   const findRefsAltCmKey = useCodeMirrorBinding('findReferencesAlt');
+  const fileStructureCmKey = useCodeMirrorBinding('fileStructure');
   /* eslint-disable react-hooks/refs */
   const lspKeymap = useMemo(() => {
     if (!projectPath) return [];
@@ -613,14 +615,40 @@ function FileEditor({
       const character = pos - lineObj.from;
       const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
+      // Best-effort symbol name for the palette title
+      const word = view.state.wordAt(pos);
+      const symbolHint = word ? view.state.sliceDoc(word.from, word.to) : undefined;
+
       definition.findReferences(lid, uri, line, character).then((results) => {
         if (results.length === 0) {
-          console.log('[LSP] No references found');
-        } else {
-          console.log(`[LSP] Found ${results.length} reference(s)`);
+          useSymbolNavStore.getState().openFindUsages({
+            projectId: tab.projectId,
+            locations: [],
+            symbolHint,
+          });
+          return;
         }
+        useSymbolNavStore.getState().openFindUsages({
+          projectId: tab.projectId,
+          locations: results,
+          symbolHint,
+        });
       });
 
+      return true;
+    };
+
+    const runFileStructure = (): boolean => {
+      const lid = lspLanguageIdRef.current;
+      if (!lid || !projectPath) return false;
+      const uri = toFileUri(projectPath, tab.filePath);
+      useSymbolNavStore.getState().openStructure({
+        projectId: tab.projectId,
+        projectPath,
+        languageId: lid,
+        uri,
+        filePath: tab.filePath,
+      });
       return true;
     };
 
@@ -629,6 +657,9 @@ function FileEditor({
     }
     for (const key of [findRefsCmKey, findRefsAltCmKey]) {
       if (key) bindings.push({ key, run: runFindRefs });
+    }
+    if (fileStructureCmKey) {
+      bindings.push({ key: fileStructureCmKey, run: runFileStructure });
     }
 
     return bindings.length > 0 ? keymap.of(bindings) : [];
@@ -643,6 +674,7 @@ function FileEditor({
     gotoDefAltCmKey,
     findRefsCmKey,
     findRefsAltCmKey,
+    fileStructureCmKey,
   ]);
   /* eslint-enable react-hooks/refs */
 

@@ -6,6 +6,7 @@ import {
   QuickOpenPalette,
   startQuickOpenActivityTracking,
 } from "@/features/quick-open";
+import { SymbolNavPalette } from "@/features/symbol-nav";
 import { SplashScreen } from "@/app/components/SplashScreen";
 import AppProviders from "./AppProviders";
 import AppModals from "./AppModals";
@@ -43,6 +44,7 @@ function App() {
         </div>
         <AppModals {...appModalsProps} />
         <QuickOpenPalette />
+        <SymbolNavPalette />
       </AppProviders>
 
       <StatusBar />
