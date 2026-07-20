@@ -68,12 +68,12 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
 
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center h-9 px-3 border-b border-border shrink-0">
-          <span className="text-[var(--font-size)] font-semibold text-text-primary">
-            Marketplace
-          </span>
+        <div className="flex items-center gap-2 h-11 px-4 border-b border-border shrink-0">
+          <h2 className="text-sm font-semibold text-text-primary">Install Skills</h2>
           {totalItems > 0 && (
-            <span className="ml-2 text-[10.5px] text-text-muted tabular-nums">{totalItems}</span>
+            <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
+              {totalItems}
+            </span>
           )}
         </div>
 
@@ -93,14 +93,14 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
         )}
 
         {searchQuery ? (
-          <div className="px-3 py-1 border-b border-border shrink-0">
+          <div className="px-4 py-1.5 border-b border-border shrink-0">
             <span className="text-[11px] text-text-muted">
               {loading ? 'Searching…' : `Results for “${searchQuery}”`}
             </span>
           </div>
         ) : null}
 
-        <div className="flex-1 overflow-y-auto min-h-0 py-1">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {loading && displayList.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted gap-2">
               <Loader2 className="h-5 w-5 animate-spin opacity-50" />
@@ -108,7 +108,7 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
             </div>
           ) : displayList.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted gap-2 px-6">
-              <div className="w-10 h-10 rounded-lg bg-bg-hover flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-bg-hover flex items-center justify-center">
                 <Store className="h-5 w-5 opacity-50" />
               </div>
               <span className="text-[var(--font-size)] text-text-secondary">
@@ -116,19 +116,21 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
               </span>
             </div>
           ) : (
-            displayList.map(skill => {
-              const fullId = getFullId(skill.source, skill.skill_id);
-              return (
-                <MarketSkillCard
-                  key={skill.id}
-                  skill={skill}
-                  isInstalled={isInstalled(skill.skill_id)}
-                  isInstalling={installingIds.has(fullId)}
-                  installPhase={installProgress.get(fullId)}
-                  onInstall={handleInstall}
-                />
-              );
-            })
+            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 content-start">
+              {displayList.map(skill => {
+                const fullId = getFullId(skill.source, skill.skill_id);
+                return (
+                  <MarketSkillCard
+                    key={skill.id}
+                    skill={skill}
+                    isInstalled={isInstalled(skill.skill_id)}
+                    isInstalling={installingIds.has(fullId)}
+                    installPhase={installProgress.get(fullId)}
+                    onInstall={handleInstall}
+                  />
+                );
+              })}
+            </div>
           )}
         </div>
 

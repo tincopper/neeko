@@ -13,11 +13,13 @@ interface SkillHeaderProps {
   onInstallDirectoryClick: () => void;
   onInstallGitClick: () => void;
   onScanClick: () => void;
-  /** Optional filter context, e.g. active tag group name */
   filterLabel?: string | null;
   count?: number;
 }
 
+/**
+ * Library toolbar: title + count badge + actions (Skills Manager style, Neeko theme).
+ */
 const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
   ({
     onCreateClick,
@@ -28,23 +30,25 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
     count,
   }) => {
     return (
-      <div className="flex items-center gap-2 px-3 h-9 shrink-0 border-b border-border">
-        <div className="min-w-0 flex-1 flex items-baseline gap-2">
-          <span className="text-[var(--font-size)] font-semibold text-text-primary truncate">
-            {filterLabel ? filterLabel : 'Local Skills'}
-          </span>
+      <div className="flex items-center gap-3 px-4 h-11 shrink-0 border-b border-border">
+        <div className="min-w-0 flex items-center gap-2 flex-1">
+          <h2 className="text-sm font-semibold text-text-primary truncate">
+            {filterLabel ?? 'Library'}
+          </h2>
           {typeof count === 'number' && (
-            <span className="text-[10.5px] text-text-muted tabular-nums">{count}</span>
+            <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
+              {count}
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={onCreateClick}
-            className="h-6 px-2 text-[11px] gap-1 text-text-secondary hover:text-text-primary"
+            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
           >
-            <Plus className="h-3 w-3" />
+            <Plus className="h-3.5 w-3.5" />
             Create
           </Button>
           <DropdownMenu>
@@ -52,9 +56,9 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-[11px] gap-1 text-text-secondary hover:text-text-primary"
+                className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
               >
-                <FolderDown className="h-3 w-3" />
+                <FolderDown className="h-3.5 w-3.5" />
                 Install
               </Button>
             </DropdownMenuTrigger>
@@ -79,10 +83,10 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             variant="ghost"
             size="sm"
             onClick={onScanClick}
-            className="h-6 px-2 text-[11px] gap-1 text-text-secondary hover:text-text-primary"
+            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
             title="Scan agent skill directories"
           >
-            <Radar className="h-3 w-3" />
+            <Radar className="h-3.5 w-3.5" />
             Scan
           </Button>
         </div>

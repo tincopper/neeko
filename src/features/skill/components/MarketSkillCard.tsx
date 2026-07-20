@@ -35,7 +35,7 @@ function getSkillPageUrl(source: string, skillId: string): string {
 }
 
 /**
- * Marketplace row — dense list item, not a marketing card.
+ * Marketplace card — same grid card language as Library.
  */
 const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
   ({ skill, isInstalled, isInstalling, installPhase, onInstall }) => {
@@ -52,51 +52,55 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
     return (
       <div
         className={cn(
-          'group flex items-center gap-2.5 pl-3 pr-2 py-2 mx-1.5 rounded-md',
-          'hover:bg-bg-hover transition-colors duration-150',
+          'group flex flex-col rounded-lg border border-border bg-bg-primary min-h-[120px]',
+          'hover:bg-bg-hover/40 transition-colors duration-150',
+          isInstalled && 'border-l-[3px] border-l-accent',
         )}
       >
-        <img
-          src={avatarUrl}
-          alt=""
-          className="w-7 h-7 rounded-md shrink-0 border border-border bg-bg-hover"
-          loading="lazy"
-        />
-
-        <div className="flex-1 min-w-0">
-          <div className="text-[var(--font-size)] font-medium text-text-primary truncate">
-            {skill.name || skill.skill_id}
+        <div className="flex items-start gap-2.5 px-3 pt-3 pb-1">
+          <img
+            src={avatarUrl}
+            alt=""
+            className="w-7 h-7 rounded-md shrink-0 border border-border bg-bg-hover"
+            loading="lazy"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-text-primary text-[13px] truncate">
+              {skill.name || skill.skill_id}
+            </div>
+            <div className="text-[11px] text-text-muted truncate font-mono mt-0.5">
+              {skill.source}
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-[0.85em] text-text-muted min-w-0">
-            <span className="truncate font-mono">{skill.source}</span>
-            {skill.installs > 0 && (
-              <span className="inline-flex items-center gap-0.5 shrink-0 tabular-nums">
-                <Download className="h-2.5 w-2.5" />
-                {formatInstalls(skill.installs)}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1 shrink-0">
           <a
             href={skillPageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
+            className="p-1 rounded-md text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity"
             title="Open on skills.sh"
             onClick={e => e.stopPropagation()}
           >
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
+        </div>
+
+        <div className="mt-auto flex items-center justify-between gap-2 px-3 py-2.5 border-t border-border/80">
+          {skill.installs > 0 ? (
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-muted tabular-nums">
+              <Download className="h-3 w-3" />
+              {formatInstalls(skill.installs)}
+            </span>
+          ) : (
+            <span />
+          )}
 
           {isInstalled && !isInstalling ? (
-            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] text-accent-green rounded-md bg-accent-green/10">
+            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium text-accent rounded-md bg-accent/10">
               <Check className="h-3 w-3" />
               Installed
             </span>
           ) : isInstalling ? (
-            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] text-accent-yellow rounded-md bg-accent-yellow/10">
+            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] text-amber-400 rounded-md bg-amber-400/10">
               <Loader2 className="h-3 w-3 animate-spin" />
               {installPhase ? phaseLabels[installPhase] : '…'}
             </span>

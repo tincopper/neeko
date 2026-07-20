@@ -8,20 +8,18 @@ beforeEach(() => {
   useSkillStore.setState(initialSkillState);
 });
 
-// ─── Nav 导航 ────────────────────────────────────────────────────────────────
-
 describe('SkillsPanel — 导航', () => {
   it('渲染三个视图切换按钮', () => {
     render(<SkillsPanel />);
     expect(screen.getByText('Library')).toBeInTheDocument();
-    expect(screen.getByText('Marketplace')).toBeInTheDocument();
+    expect(screen.getByText('Install Skills')).toBeInTheDocument();
     expect(screen.getByText('Project')).toBeInTheDocument();
   });
 
-  it('点击 Marketplace 切换 activeSkillView', () => {
+  it('点击 Install Skills 切换 activeSkillView', () => {
     useSkillStore.setState({ activeSkillView: 'local' });
     render(<SkillsPanel />);
-    fireEvent.click(screen.getByText('Marketplace'));
+    fireEvent.click(screen.getByText('Install Skills'));
     expect(useSkillStore.getState().activeSkillView).toBe('marketplace');
   });
 
@@ -32,11 +30,15 @@ describe('SkillsPanel — 导航', () => {
     expect(useSkillStore.getState().activeSkillView).toBe('project');
   });
 
-  it('点击 Library 切换 activeSkillView', () => {
-    useSkillStore.setState({ activeSkillView: 'marketplace' });
+  it('点击 Library 切换 activeSkillView 并清除 preset', () => {
+    useSkillStore.setState({
+      activeSkillView: 'marketplace',
+      activeTagGroupId: 'tg1',
+    });
     render(<SkillsPanel />);
     fireEvent.click(screen.getByText('Library'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
+    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
   });
 
   it('skills 数量显示在 Library 旁边', () => {
@@ -48,12 +50,10 @@ describe('SkillsPanel — 导航', () => {
   });
 });
 
-// ─── Tag Groups ───────────────────────────────────────────────────────────────
-
-describe('SkillsPanel — Tag Groups', () => {
-  it('渲染 Tag Groups 区域', () => {
+describe('SkillsPanel — Presets', () => {
+  it('渲染 Presets 区域', () => {
     render(<SkillsPanel />);
-    expect(screen.getByText('Tag Groups')).toBeInTheDocument();
+    expect(screen.getByText('Presets')).toBeInTheDocument();
   });
 
   it('tag groups 存在时渲染列表项', () => {
@@ -68,16 +68,17 @@ describe('SkillsPanel — Tag Groups', () => {
     expect(screen.getByText('Backend')).toBeInTheDocument();
   });
 
-  it('点击 tag group 设置 activeTagGroupId', () => {
+  it('点击 preset 设置 activeTagGroupId', () => {
     useSkillStore.setState({
       tagGroups: [createTagGroup({ id: 'tg1', name: 'Frontend' })],
     });
     render(<SkillsPanel />);
     fireEvent.click(screen.getByText('Frontend'));
     expect(useSkillStore.getState().activeTagGroupId).toBe('tg1');
+    expect(useSkillStore.getState().activeSkillView).toBe('local');
   });
 
-  it('再次点击已选中的 tag group 取消选中', () => {
+  it('再次点击已选中的 preset 取消选中', () => {
     useSkillStore.setState({
       activeTagGroupId: 'tg1',
       tagGroups: [createTagGroup({ id: 'tg1', name: 'Frontend' })],
@@ -87,15 +88,15 @@ describe('SkillsPanel — Tag Groups', () => {
     expect(useSkillStore.getState().activeTagGroupId).toBeNull();
   });
 
-  it('tag groups 为空时显示引导文案', () => {
-    useSkillStore.setState({ tagGroups: [] });
+  it('可点击 + 打开创建 preset 输入框', () => {
     render(<SkillsPanel />);
-    expect(screen.getByText(/No groups yet/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('New preset'));
+    expect(screen.getByPlaceholderText(/Backend/i)).toBeInTheDocument();
   });
 
-  it('可点击 + 打开创建标签组输入框', () => {
+  it('显示 New Preset 入口', () => {
+    useSkillStore.setState({ tagGroups: [] });
     render(<SkillsPanel />);
-    fireEvent.click(screen.getByTitle('New tag group'));
-    expect(screen.getByPlaceholderText(/Backend/i)).toBeInTheDocument();
+    expect(screen.getByText('New Preset')).toBeInTheDocument();
   });
 });

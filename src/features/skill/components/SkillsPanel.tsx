@@ -1,14 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import {
   Package,
-  Store,
+  Download,
   FolderOpen,
   ChevronDown,
   ChevronRight,
   Trash2,
   Plus,
   RefreshCw,
-  Tags,
+  LayoutGrid,
 } from 'lucide-react';
 import { useSkillStore } from '@/features/skill/store';
 import type { SkillView } from '@/shared/types';
@@ -23,7 +23,8 @@ interface NavItem {
 }
 
 /**
- * Skills left rail — same density as ProjectsPanel.
+ * Skills left rail — structure inspired by Skills Manager:
+ * primary nav + Presets (tag groups).
  */
 const SkillsPanel: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore(s => s.activeSkillView);
@@ -36,7 +37,7 @@ const SkillsPanel: React.FC = React.memo(() => {
   const createTagGroup = useSkillStore(s => s.createTagGroup);
   const syncTagGroup = useSkillStore(s => s.syncTagGroup);
 
-  const [tagGroupsExpanded, setTagGroupsExpanded] = useState(true);
+  const [presetsExpanded, setPresetsExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -51,7 +52,7 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   const navItems: NavItem[] = [
     { key: 'local', label: 'Library', icon: Package, count: skills.length },
-    { key: 'marketplace', label: 'Marketplace', icon: Store },
+    { key: 'marketplace', label: 'Install Skills', icon: Download },
     { key: 'project', label: 'Project', icon: FolderOpen },
   ];
 
@@ -70,7 +71,7 @@ const SkillsPanel: React.FC = React.memo(() => {
       await createTagGroup(name);
       setNewName('');
       setCreating(false);
-      toast(`Created tag group "${name}"`);
+      toast(`Created preset "${name}"`);
     } catch (e) {
       toast(String(e), 'error');
     }
@@ -106,40 +107,50 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center h-9 px-3 border-b border-border shrink-0">
+      {/* Header */}
+      <div className="flex items-center gap-2 h-10 px-3 border-b border-border shrink-0">
+        <LayoutGrid className="h-4 w-4 text-accent shrink-0" />
         <span className="text-[var(--font-size)] font-semibold text-text-primary">Skills</span>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <nav className="py-1.5" aria-label="Skill views">
+        {/* Primary nav */}
+        <nav className="py-2 px-1.5" aria-label="Skill views">
           {navItems.map(item => {
             const Icon = item.icon;
-            const isActive = activeSkillView === item.key;
+            const isActive =
+              activeSkillView === item.key &&
+              (item.key !== 'local' || activeTagGroupId === null);
+            // Library stays "active looking" when a preset is selected too
+            const librarySoft =
+              item.key === 'local' && activeSkillView === 'local' && activeTagGroupId !== null;
             return (
               <button
                 key={item.key}
                 type="button"
                 className={cn(
-                  'flex items-center gap-2 w-full mx-0 px-3 py-1.5 text-left transition-colors duration-150',
+                  'flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
                   'text-[var(--font-size)]',
                   isActive
-                    ? 'bg-accent/12 text-accent'
-                    : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                    ? 'bg-bg-selected text-text-primary'
+                    : librarySoft
+                      ? 'text-text-primary'
+                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                 )}
                 onClick={() => {
                   setActiveSkillView(item.key);
-                  if (item.key !== 'local') setActiveTagGroupId(null);
+                  if (item.key === 'local') {
+                    /* keep or clear preset? clear when clicking Library root */
+                    setActiveTagGroupId(null);
+                  } else {
+                    setActiveTagGroupId(null);
+                  }
                 }}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />
-                <span className="truncate flex-1">{item.label}</span>
+                <span className="truncate flex-1 font-medium">{item.label}</span>
                 {item.count !== undefined && (
-                  <span
-                    className={cn(
-                      'text-[10.5px] tabular-nums',
-                      isActive ? 'text-accent/80' : 'text-text-muted',
-                    )}
-                  >
+                  <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
                     {item.count}
                   </span>
                 )}
@@ -148,38 +159,37 @@ const SkillsPanel: React.FC = React.memo(() => {
           })}
         </nav>
 
-        <div className="border-t border-border mt-0.5">
-          <div className="group flex items-center gap-1 px-3 pt-3 pb-1 select-none">
+        {/* Presets = Tag Groups */}
+        <div className="border-t border-border mt-0.5 pt-1">
+          <div className="flex items-center gap-1 px-3 py-1.5 select-none">
             <button
               type="button"
               className="flex items-center gap-1 flex-1 min-w-0 text-left"
-              onClick={() => setTagGroupsExpanded(v => !v)}
+              onClick={() => setPresetsExpanded(v => !v)}
             >
-              {tagGroupsExpanded ? (
+              {presetsExpanded ? (
                 <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
               ) : (
                 <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
               )}
-              <Tags className="h-3 w-3 text-text-muted shrink-0 opacity-80" />
-              <span className="text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
-                Tag Groups
+              <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
+                Presets
               </span>
-              <span className="text-[10.5px] text-text-muted">({tagGroups.length})</span>
             </button>
             <button
               type="button"
               className="p-1 rounded-md text-text-muted hover:bg-white/[0.06] hover:text-text-primary transition-colors"
-              title="New tag group"
+              title="New preset"
               onClick={() => setCreating(true)}
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {tagGroupsExpanded && (
-            <div className="pb-2">
+          {presetsExpanded && (
+            <div className="pb-2 px-1.5">
               {creating && (
-                <div className="px-3 py-1 flex gap-1 items-center">
+                <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
                   <input
                     autoFocus
                     className={cn(
@@ -209,17 +219,17 @@ const SkillsPanel: React.FC = React.memo(() => {
               )}
 
               {tagGroups.map(tg => {
-                const active = activeTagGroupId === tg.id;
+                const active = activeTagGroupId === tg.id && activeSkillView === 'local';
                 return (
                   <div
                     key={tg.id}
                     role="button"
                     tabIndex={0}
                     className={cn(
-                      'group/row flex items-center justify-between gap-1 pl-6 pr-2 py-1.5 mx-1.5 rounded-md cursor-pointer transition-colors duration-150',
+                      'group/row flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors duration-150',
                       'text-[var(--font-size)]',
                       active
-                        ? 'bg-accent/12 text-accent'
+                        ? 'bg-bg-selected text-text-primary'
                         : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                     )}
                     onClick={() => handleTagGroupSelect(tg.id)}
@@ -230,23 +240,17 @@ const SkillsPanel: React.FC = React.memo(() => {
                       }
                     }}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="truncate">{tg.name}</span>
-                      <span
-                        className={cn(
-                          'text-[10.5px] tabular-nums',
-                          active ? 'text-accent/70' : 'text-text-muted',
-                        )}
-                      >
-                        {tg.skill_count}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <LayoutGrid className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                    <span className="truncate flex-1 font-medium">{tg.name}</span>
+                    <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
+                      {tg.skill_count}
+                    </span>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity w-0 group-hover/row:w-auto overflow-hidden group-hover/row:overflow-visible">
                       <button
                         type="button"
                         onClick={e => void handleSync(e, tg.id, tg.name)}
-                        className="p-1 rounded-md text-text-muted hover:text-accent hover:bg-white/[0.06]"
-                        title="Sync group to agents"
+                        className="p-0.5 rounded text-text-muted hover:text-accent"
+                        title="Sync to agents"
                         disabled={syncingId === tg.id}
                       >
                         <RefreshCw
@@ -256,8 +260,8 @@ const SkillsPanel: React.FC = React.memo(() => {
                       <button
                         type="button"
                         onClick={e => void handleDelete(e, tg.id)}
-                        className="p-1 rounded-md text-text-muted hover:text-red-400 hover:bg-white/[0.06]"
-                        title="Delete tag group"
+                        className="p-0.5 rounded text-text-muted hover:text-red-400"
+                        title="Delete preset"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -266,10 +270,21 @@ const SkillsPanel: React.FC = React.memo(() => {
                 );
               })}
 
+              {!creating && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-[var(--font-size)] text-text-muted hover:bg-bg-hover hover:text-text-secondary transition-colors"
+                  onClick={() => setCreating(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New Preset
+                </button>
+              )}
+
               {tagGroups.length === 0 && !creating && (
-                <div className="px-6 py-2 text-[11px] text-text-muted leading-relaxed">
-                  No groups yet. Click + to create Backend, Frontend, …
-                </div>
+                <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
+                  Group skills by role (Backend, Frontend…)
+                </p>
               )}
             </div>
           )}

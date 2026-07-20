@@ -92,6 +92,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           selectedSkillId={selectedSkillId}
           actions={actions}
           tagGroups={tagGroups.map(g => ({ id: g.id, name: g.name }))}
+          presetLabel={activeGroupName}
         />
       </div>
     </div>

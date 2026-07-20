@@ -4,8 +4,6 @@ import { createManagedSkill } from '../../../../testing/factories';
 import SkillListSection from '../SkillListSection';
 import type { SkillItemActions } from '../skillItemTypes';
 
-// ─── 工厂 ────────────────────────────────────────────────────────────────────
-
 function makeActions(overrides?: Partial<SkillItemActions>): SkillItemActions {
   return {
     onSelectSkill: vi.fn(),
@@ -15,8 +13,6 @@ function makeActions(overrides?: Partial<SkillItemActions>): SkillItemActions {
     ...overrides,
   };
 }
-
-// ─── 测试 ────────────────────────────────────────────────────────────────────
 
 describe('SkillListSection', () => {
   it('loading=true 时渲染 skeleton cards', () => {
@@ -30,18 +26,6 @@ describe('SkillListSection', () => {
     );
     const skeletons = document.querySelectorAll('.animate-pulse');
     expect(skeletons.length).toBeGreaterThan(0);
-  });
-
-  it('loading=true 时不显示 Library 计数头', () => {
-    render(
-      <SkillListSection
-        skills={[]}
-        loading={true}
-        selectedSkillId={null}
-        actions={makeActions()}
-      />,
-    );
-    expect(screen.queryByText('Library')).toBeNull();
   });
 
   it('有 skills 时渲染 skill 名称', () => {
@@ -60,20 +44,16 @@ describe('SkillListSection', () => {
     expect(screen.getByText('Beta Skill')).toBeInTheDocument();
   });
 
-  it('显示 skills 计数', () => {
-    render(
+  it('使用卡片网格布局', () => {
+    const { container } = render(
       <SkillListSection
-        skills={[
-          createManagedSkill({ id: 's1', name: 'Alpha' }),
-          createManagedSkill({ id: 's2', name: 'Beta' }),
-        ]}
+        skills={[createManagedSkill({ id: 's1', name: 'Alpha' })]}
         loading={false}
         selectedSkillId={null}
         actions={makeActions()}
       />,
     );
-    expect(screen.getByText('Library')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(container.querySelector('.grid')).toBeTruthy();
   });
 
   it('skills 为空时显示 empty state', () => {
@@ -99,7 +79,6 @@ describe('SkillListSection', () => {
         actions={actions}
       />,
     );
-    // 点击卡片本体触发 onSelect → onSelectSkill
     fireEvent.click(screen.getByText('My Skill'));
     expect(actions.onSelectSkill).toHaveBeenCalledWith('s1');
   });
