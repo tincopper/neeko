@@ -7,29 +7,45 @@ import { cn } from '@/lib/utils';
 const SKELETON_COUNT = 6;
 
 const SkillCardSkeleton: React.FC = () => (
-  <div className="rounded-lg border border-border bg-bg-primary p-3 flex flex-col gap-2 animate-pulse min-h-[148px]">
-    <div className="flex gap-2">
-      <div className="w-4 h-4 rounded-full bg-bg-hover" />
-      <div className="h-3.5 w-1/2 rounded bg-bg-hover" />
+  <div className="rounded-xl border border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[168px]">
+    <div className="flex gap-2 items-center">
+      <div className="w-[18px] h-[18px] rounded-full bg-bg-hover shrink-0" />
+      <div className="h-3.5 w-2/5 rounded bg-bg-hover" />
     </div>
-    <div className="h-2.5 w-full rounded bg-bg-hover" />
-    <div className="h-2.5 w-2/3 rounded bg-bg-hover" />
-    <div className="flex gap-1 mt-auto pt-2">
-      <div className="h-4 w-12 rounded-full bg-bg-hover" />
-      <div className="h-4 w-10 rounded-full bg-bg-hover" />
+    <div className="pl-[26px] space-y-1.5">
+      <div className="h-2.5 w-full rounded bg-bg-hover" />
+      <div className="h-2.5 w-3/4 rounded bg-bg-hover" />
+    </div>
+    <div className="pl-[26px] flex gap-1.5 mt-1">
+      <div className="h-5 w-14 rounded-md bg-bg-hover" />
+      <div className="h-5 w-12 rounded-md bg-bg-hover" />
+    </div>
+    <div className="mt-auto pt-2 border-t border-border/50 flex justify-between">
+      <div className="h-2.5 w-20 rounded bg-bg-hover" />
+      <div className="h-2.5 w-12 rounded bg-bg-hover" />
     </div>
   </div>
 );
 
 export interface SkillListSectionExtraProps {
   presetLabel?: string | null;
+  /** skillId → preset/group names for footer */
+  skillPresetMap?: Record<string, string[]>;
 }
 
 /**
- * Skill card grid — 2–3 columns, Skills Manager style layout.
+ * Skill card grid — 3-column Skills Manager style.
  */
 const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraProps> = React.memo(
-  ({ skills, loading, selectedSkillId, actions, tagGroups = [], presetLabel }) => {
+  ({
+    skills,
+    loading,
+    selectedSkillId,
+    actions,
+    tagGroups = [],
+    presetLabel,
+    skillPresetMap = {},
+  }) => {
     const {
       onSelectSkill,
       onEditSkill,
@@ -42,7 +58,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
 
     if (loading) {
       return (
-        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
             <SkillCardSkeleton key={i} />
           ))}
@@ -66,31 +82,38 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
 
     return (
       <div
-        className={cn('p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 content-start')}
+        className={cn(
+          'p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 content-start',
+        )}
         role="list"
         aria-label={`Skills (${skills.length})`}
       >
-        {skills.map(s => (
-          <div key={s.id} role="listitem">
-            <SkillCard
-              skill={s}
-              isSelected={selectedSkillId === s.id}
-              tagGroups={tagGroups}
-              presetLabel={presetLabel}
-              onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
-              onAddToTagGroup={
-                onAddToTagGroup ? tagGroupId => onAddToTagGroup(s.id, tagGroupId) : undefined
-              }
-              onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
-              onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}
-              onAction={action => {
-                if (action === 'delete') onDeleteSkill(s.id);
-                else if (action === 'edit') onEditSkill(s);
-                else if (action === 'detail') onViewSkill(s);
-              }}
-            />
-          </div>
-        ))}
+        {skills.map(s => {
+          const groups = skillPresetMap[s.id];
+          const cardPreset =
+            presetLabel ?? (groups && groups.length > 0 ? groups[0] : null);
+          return (
+            <div key={s.id} role="listitem" className="min-w-0">
+              <SkillCard
+                skill={s}
+                isSelected={selectedSkillId === s.id}
+                tagGroups={tagGroups}
+                presetLabel={cardPreset}
+                onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
+                onAddToTagGroup={
+                  onAddToTagGroup ? tagGroupId => onAddToTagGroup(s.id, tagGroupId) : undefined
+                }
+                onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
+                onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}
+                onAction={action => {
+                  if (action === 'delete') onDeleteSkill(s.id);
+                  else if (action === 'edit') onEditSkill(s);
+                  else if (action === 'detail') onViewSkill(s);
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
     );
   },

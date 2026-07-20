@@ -35,7 +35,7 @@ function getSkillPageUrl(source: string, skillId: string): string {
 }
 
 /**
- * Marketplace card — same grid card language as Library.
+ * Marketplace card — same visual language as library SkillCard.
  */
 const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
   ({ skill, isInstalled, isInstalling, installPhase, onInstall }) => {
@@ -52,26 +52,41 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
     return (
       <div
         className={cn(
-          'group flex flex-col rounded-lg border border-border bg-bg-primary min-h-[120px]',
-          'hover:bg-bg-hover/40 transition-colors duration-150',
-          isInstalled && 'border-l-[3px] border-l-accent',
+          'group flex flex-col rounded-xl bg-bg-primary min-h-[140px] border',
+          'transition-[border-color,background-color] duration-150 hover:bg-bg-hover/30',
+          isInstalled
+            ? 'border-[var(--accent-green)]/55'
+            : 'border-border',
         )}
       >
-        <div className="flex items-start gap-2.5 px-3 pt-3 pb-1">
+        <div className="flex items-start gap-2.5 px-3.5 pt-3.5 pb-2 flex-1">
+          <span
+            className={cn(
+              'mt-0.5 w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0',
+              isInstalled
+                ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
+                : 'border-text-muted/50',
+            )}
+          >
+            {isInstalled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+          </span>
+
           <img
             src={avatarUrl}
             alt=""
             className="w-7 h-7 rounded-md shrink-0 border border-border bg-bg-hover"
             loading="lazy"
           />
+
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-text-primary text-[13px] truncate">
+            <div className="text-[13px] font-semibold text-text-primary truncate leading-snug">
               {skill.name || skill.skill_id}
             </div>
-            <div className="text-[11px] text-text-muted truncate font-mono mt-0.5">
+            <div className="text-[12px] text-text-muted truncate font-mono mt-0.5">
               {skill.source}
             </div>
           </div>
+
           <a
             href={skillPageUrl}
             target="_blank"
@@ -84,9 +99,9 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
           </a>
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-2 px-3 py-2.5 border-t border-border/80">
+        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-t border-border/70">
           {skill.installs > 0 ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-text-muted tabular-nums">
+            <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums">
               <Download className="h-3 w-3" />
               {formatInstalls(skill.installs)}
             </span>
@@ -95,12 +110,9 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
           )}
 
           {isInstalled && !isInstalling ? (
-            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium text-accent rounded-md bg-accent/10">
-              <Check className="h-3 w-3" />
-              Installed
-            </span>
+            <span className="text-[11px] font-semibold text-[var(--accent-green)]">Installed</span>
           ) : isInstalling ? (
-            <span className="inline-flex items-center gap-1 h-6 px-2 text-[10px] text-amber-400 rounded-md bg-amber-400/10">
+            <span className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-yellow)]">
               <Loader2 className="h-3 w-3 animate-spin" />
               {installPhase ? phaseLabels[installPhase] : '…'}
             </span>
@@ -109,7 +121,7 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
               variant="ghost"
               size="sm"
               onClick={handleInstall}
-              className="h-6 px-2.5 text-[11px] text-text-secondary hover:text-accent"
+              className="h-6 px-2.5 text-[11px] font-semibold text-text-secondary hover:text-[var(--accent-green)]"
             >
               Install
             </Button>

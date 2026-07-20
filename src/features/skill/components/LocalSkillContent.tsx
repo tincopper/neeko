@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useSkillStore } from '@/features/skill/store';
 import type { SkillDialogState } from './skillItemTypes';
 import { useLocalSkillActions } from './useLocalSkillActions';
@@ -6,6 +6,7 @@ import SkillHeader from './SkillHeader';
 import SkillSearchInput from './SkillSearchInput';
 import SkillListSection from './SkillListSection';
 import DiscoveredSkillsList from './DiscoveredSkillsList';
+import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
 
 interface LocalSkillContentProps {
   setDialog: (state: SkillDialogState) => void;
@@ -32,15 +33,44 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     actions,
   } = useLocalSkillActions(setDialog);
 
-  const [tagGroupSkills, setTagGroupSkills] = React.useState<typeof skills | null>(null);
+  const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
+  const [skillPresetMap, setSkillPresetMap] = useState<Record<string, string[]>>({});
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!activeTagGroupId) {
       setTagGroupSkills(null);
       return;
     }
     void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
   }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
+
+  // Build skill → preset names for card footer (reference: "local · Basic")
+  useEffect(() => {
+    if (tagGroups.length === 0) {
+      setSkillPresetMap({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const map: Record<string, string[]> = {};
+      await Promise.all(
+        tagGroups.map(async tg => {
+          try {
+            const list = await getSkillsForTagGroup(tg.id);
+            for (const s of list) {
+              (map[s.id] ??= []).push(tg.name);
+            }
+          } catch {
+            /* ignore */
+          }
+        }),
+      );
+      if (!cancelled) setSkillPresetMap(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tagGroups, skills]);
 
   const activeGroupName = useMemo(
     () => tagGroups.find(g => g.id === activeTagGroupId)?.name ?? null,
@@ -74,7 +104,9 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
         value={searchQuery}
         onChange={setSearchQuery}
         placeholder={
-          activeGroupName ? `Filter in ${activeGroupName}…` : 'Filter skills…'
+          activeGroupName
+            ? `Search skills in ${activeGroupName}…`
+            : 'Search skills in the library…'
         }
         clearable
       />
@@ -93,6 +125,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           actions={actions}
           tagGroups={tagGroups.map(g => ({ id: g.id, name: g.name }))}
           presetLabel={activeGroupName}
+          skillPresetMap={skillPresetMap}
         />
       </div>
     </div>

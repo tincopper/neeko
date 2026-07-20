@@ -35,49 +35,48 @@ interface SkillCardProps {
   onCheckUpdate?: () => void;
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
-  /** Optional agent keys currently synced / highlighted on the card. */
+  /** Agent keys highlighted on the card (synced). Empty = show defaults by enabled state. */
   installedAgents?: string[];
-  /** Preset / tag-group name when filtering. */
+  /** Preset / tag-group name shown in footer (orange in reference). */
   presetLabel?: string | null;
 }
 
-const AGENT_LIST = [
+/** Agent strip — matches reference footer icon cluster order. */
+const AGENT_STRIP = [
   { key: 'claude-code', label: 'Claude Code', icon: 'claude-code.png' },
   { key: 'codex', label: 'Codex', icon: 'codex.png' },
   { key: 'opencode', label: 'OpenCode', icon: 'opencode.png' },
   { key: 'gemini', label: 'Gemini', icon: 'gemini.png' },
-  { key: 'qoder', label: 'Qoder', icon: 'qoder.svg' },
-  { key: 'codebuddy', label: 'Codebuddy', icon: 'codebuddy.svg' },
 ];
 
-function SourceMeta({ source }: { source: string }) {
+function SourceLabel({ source }: { source: string }) {
   if (source === 'skillssh') {
     return (
-      <>
+      <span className="inline-flex items-center gap-1 min-w-0">
         <Store className="h-3 w-3 shrink-0 opacity-70" />
-        <span>skills.sh</span>
-      </>
+        <span className="truncate">skills.sh</span>
+      </span>
     );
   }
   if (source === 'git') {
     return (
-      <>
+      <span className="inline-flex items-center gap-1 min-w-0">
         <GitBranch className="h-3 w-3 shrink-0 opacity-70" />
-        <span>git</span>
-      </>
+        <span className="truncate">git</span>
+      </span>
     );
   }
   return (
-    <>
+    <span className="inline-flex items-center gap-1 min-w-0">
       <HardDrive className="h-3 w-3 shrink-0 opacity-70" />
-      <span>local</span>
-    </>
+      <span className="truncate">local</span>
+    </span>
   );
 }
 
 /**
- * Library skill card — layout inspired by Skills Manager reference,
- * colors use Neeko theme tokens only.
+ * Skill library card — layout aligned with Skills Manager reference.
+ * Colors use Neeko theme tokens (accent-green for enabled, not light SaaS pastels as base).
  */
 const SkillCard: React.FC<SkillCardProps> = React.memo(
   ({
@@ -94,14 +93,13 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
   }) => {
     const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
     const hasUpdate = skill.update_status === 'update_available';
+    const enabled = skill.enabled;
     const chips = skill.tags.slice(0, 4);
 
-    const agentKeys =
+    const showAgents =
       installedAgents.length > 0
-        ? installedAgents
-        : skill.enabled
-          ? AGENT_LIST.map(a => a.key)
-          : [];
+        ? AGENT_STRIP.filter(a => installedAgents.includes(a.key))
+        : AGENT_STRIP;
 
     return (
       <div
@@ -115,130 +113,150 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           }
         }}
         className={cn(
-          'group flex flex-col rounded-lg border bg-bg-primary cursor-pointer',
-          'transition-colors duration-150 hover:bg-bg-hover/40',
-          'min-h-[148px]',
-          skill.enabled
-            ? 'border-l-[3px] border-l-accent border-border'
-            : 'border-border',
-          isSelected && 'ring-1 ring-accent/50 border-accent/40',
+          'group relative flex flex-col rounded-xl bg-bg-primary cursor-pointer',
+          'transition-[border-color,box-shadow,background-color] duration-150',
+          'min-h-[168px] border',
+          // Full border: green when enabled (reference), neutral when not
+          enabled
+            ? 'border-[var(--accent-green)]/55 shadow-[0_0_0_1px_color-mix(in_srgb,var(--accent-green)_12%,transparent)]'
+            : 'border-border hover:border-border',
+          isSelected && 'ring-2 ring-accent/35',
+          'hover:bg-bg-hover/30',
         )}
       >
-        {/* Header: check + name + menu */}
-        <div className="flex items-start gap-2 px-3 pt-3 pb-1">
-          <span
-            className={cn(
-              'mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0',
-              skill.enabled
-                ? 'border-accent bg-accent/20 text-accent'
-                : 'border-border text-transparent',
-            )}
-            aria-hidden
-          >
-            {skill.enabled && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-medium text-text-primary text-[13px] truncate">
-                {skill.name}
-              </span>
-              {hasUpdate && (
-                <span className="text-[10px] font-medium text-amber-400 shrink-0">Update</span>
+        {/* ── Body ── */}
+        <div className="flex flex-col flex-1 gap-1.5 px-3.5 pt-3.5 pb-2.5 min-h-0">
+          {/* Title row: check + name + menu */}
+          <div className="flex items-start gap-2">
+            <span
+              className={cn(
+                'mt-0.5 w-[18px] h-[18px] rounded-full border-[1.5px] flex items-center justify-center shrink-0',
+                enabled
+                  ? 'border-[var(--accent-green)] bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
+                  : 'border-text-muted/50 bg-transparent',
               )}
+              aria-hidden
+            >
+              {enabled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+            </span>
+
+            <div className="min-w-0 flex-1 pt-px">
+              <h3 className="text-[13px] font-semibold text-text-primary leading-snug truncate">
+                {skill.name}
+              </h3>
             </div>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-white/[0.06]',
-                  'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity',
-                )}
-                title="Actions"
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'p-1 -mr-1 -mt-0.5 rounded-md text-text-muted hover:text-text-primary hover:bg-white/[0.06]',
+                    'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity',
+                  )}
+                  title="Actions"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-40"
                 onClick={e => e.stopPropagation()}
               >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40" onClick={e => e.stopPropagation()}>
-              <DropdownMenuItem
-                className="flex items-center gap-2 cursor-pointer text-xs"
-                onSelect={() => onAction('edit')}
-              >
-                <Edit3 className="h-3 w-3" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="flex items-center gap-2 cursor-pointer text-xs"
-                onSelect={() => onAction('detail')}
-              >
-                <FileText className="h-3 w-3" />
-                View
-              </DropdownMenuItem>
-              {tagGroups.length > 0 && onAddToTagGroup && (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer text-xs">
-                    <Tags className="h-3 w-3" />
-                    Add to group
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-36">
-                    {tagGroups.map(tg => (
-                      <DropdownMenuItem
-                        key={tg.id}
-                        className="cursor-pointer text-xs"
-                        onSelect={() => onAddToTagGroup(tg.id)}
-                      >
-                        {tg.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              )}
-              {isGitSource && onCheckUpdate && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="flex items-center gap-2 cursor-pointer text-xs"
-                    onSelect={() => onCheckUpdate()}
-                  >
-                    Check update
-                  </DropdownMenuItem>
-                </>
-              )}
-              {isGitSource && hasUpdate && onUpdateSkill && (
                 <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-xs text-accent"
-                  onSelect={() => onUpdateSkill()}
+                  className="flex items-center gap-2 cursor-pointer text-xs"
+                  onSelect={() => onAction('edit')}
                 >
-                  <ArrowUpCircle className="h-3 w-3" />
-                  Update skill
+                  <Edit3 className="h-3 w-3" />
+                  Edit
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="flex items-center gap-2 cursor-pointer text-xs text-red-400"
-                onSelect={() => onAction('delete')}
-              >
-                <Trash2 className="h-3 w-3" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-xs"
+                  onSelect={() => onAction('detail')}
+                >
+                  <FileText className="h-3 w-3" />
+                  View
+                </DropdownMenuItem>
+                {tagGroups.length > 0 && onAddToTagGroup && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer text-xs">
+                      <Tags className="h-3 w-3" />
+                      Add to group
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-36">
+                      {tagGroups.map(tg => (
+                        <DropdownMenuItem
+                          key={tg.id}
+                          className="cursor-pointer text-xs"
+                          onSelect={() => onAddToTagGroup(tg.id)}
+                        >
+                          {tg.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+                {isGitSource && onCheckUpdate && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="flex items-center gap-2 cursor-pointer text-xs"
+                      onSelect={() => onCheckUpdate()}
+                    >
+                      Check update
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {isGitSource && hasUpdate && onUpdateSkill && (
+                  <DropdownMenuItem
+                    className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent-green)]"
+                    onSelect={() => onUpdateSkill()}
+                  >
+                    <ArrowUpCircle className="h-3 w-3" />
+                    Update skill
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="flex items-center gap-2 cursor-pointer text-xs text-[var(--accent-red)]"
+                  onSelect={() => onAction('delete')}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-        {/* Description + tags */}
-        <div className="px-3 pb-2 flex-1 flex flex-col gap-2 min-h-0">
-          <p className="text-[11px] text-text-muted line-clamp-2 leading-relaxed min-h-[2.5em]">
-            {skill.description || 'No description'}
+          {/* Description — 2 lines, muted */}
+          <p className="text-[12px] text-text-muted leading-[1.45] line-clamp-2 pl-[26px]">
+            {skill.description?.trim() || 'No description'}
           </p>
-          {(chips.length > 0 || hasUpdate) && (
-            <div className="flex flex-wrap gap-1">
+
+          {/* Update link — below description (reference placement) */}
+          {hasUpdate && (
+            <button
+              type="button"
+              className="self-start pl-[26px] text-[12px] font-medium text-[var(--accent-yellow)] hover:underline"
+              onClick={e => {
+                e.stopPropagation();
+                onUpdateSkill?.();
+              }}
+            >
+              Update
+            </button>
+          )}
+
+          {/* Tag pills */}
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pl-[26px] pt-0.5">
               {chips.map(tag => (
                 <span
                   key={tag}
                   className={cn(
-                    'text-[10px] px-1.5 py-0.5 rounded-full border',
+                    'inline-flex items-center text-[11px] leading-none px-2 py-1 rounded-md font-medium',
                     tagChipClass(tag),
                   )}
                 >
@@ -249,45 +267,50 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           )}
         </div>
 
-        {/* Footer */}
-        <div className="mt-auto flex items-center gap-2 px-3 py-2 border-t border-border/80 text-[10px] text-text-muted">
-          <span className="inline-flex items-center gap-1 min-w-0 truncate">
-            <SourceMeta source={skill.source_type} />
-            {presetLabel && (
+        {/* ── Footer ── reference: source · Preset | agents | Enabled */}
+        <div
+          className={cn(
+            'flex items-center gap-2 px-3.5 py-2.5 mt-auto',
+            'border-t border-border/70',
+            'text-[11px]',
+          )}
+        >
+          <div className="flex items-center gap-1 min-w-0 flex-1 text-text-muted">
+            <SourceLabel source={skill.source_type} />
+            {presetLabel ? (
               <>
-                <span className="opacity-40">·</span>
-                <span className="text-accent truncate">{presetLabel}</span>
+                <span className="text-text-muted/40 shrink-0">·</span>
+                <span className="truncate font-medium text-orange-400/95">{presetLabel}</span>
               </>
-            )}
-          </span>
+            ) : null}
+          </div>
 
-          <div className="flex items-center gap-0.5 ml-auto shrink-0">
-            {agentKeys.slice(0, 5).map(key => {
-              const agent = AGENT_LIST.find(a => a.key === key);
-              if (!agent) return null;
+          <div className="flex items-center gap-1 shrink-0">
+            {showAgents.map(agent => {
               const src = getAgentIconSrc(agent.icon);
-              return src ? (
+              if (!src) return null;
+              return (
                 <img
-                  key={key}
+                  key={agent.key}
                   src={src}
                   alt={agent.label}
                   title={agent.label}
                   className={cn(
-                    'w-3.5 h-3.5 rounded-sm',
-                    skill.enabled ? 'opacity-90' : 'opacity-35',
+                    'w-4 h-4 rounded-[3px]',
+                    enabled ? 'opacity-100' : 'opacity-30 grayscale',
                   )}
                 />
-              ) : null;
+              );
             })}
           </div>
 
           <span
             className={cn(
-              'shrink-0 font-medium',
-              skill.enabled ? 'text-accent' : 'text-text-muted',
+              'shrink-0 font-semibold tabular-nums',
+              enabled ? 'text-[var(--accent-green)]' : 'text-text-muted',
             )}
           >
-            {skill.enabled ? 'Enabled' : 'Disabled'}
+            {enabled ? 'Enabled' : 'Enable'}
           </span>
         </div>
       </div>

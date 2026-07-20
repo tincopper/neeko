@@ -1,13 +1,18 @@
-/** Soft tag chips using theme-friendly accent tokens (no fixed light-mode pastels). */
+/**
+ * Soft pastel-like chips using theme-aware translucent colors
+ * (works on dark Neeko themes; mirrors Skills Manager chip variety).
+ */
 const TAG_PALETTE = [
-  'bg-accent/15 text-accent border-accent/25',
-  'bg-sky-500/15 text-sky-400 border-sky-500/25',
-  'bg-violet-500/15 text-violet-400 border-violet-500/25',
-  'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-  'bg-amber-500/15 text-amber-400 border-amber-500/25',
-  'bg-rose-500/15 text-rose-400 border-rose-500/25',
-  'bg-cyan-500/15 text-cyan-400 border-cyan-500/25',
-  'bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/25',
+  'bg-sky-500/20 text-sky-300',
+  'bg-violet-500/20 text-violet-300',
+  'bg-emerald-500/20 text-emerald-300',
+  'bg-amber-500/20 text-amber-300',
+  'bg-rose-500/20 text-rose-300',
+  'bg-cyan-500/20 text-cyan-300',
+  'bg-fuchsia-500/20 text-fuchsia-300',
+  'bg-orange-500/20 text-orange-300',
+  'bg-lime-500/20 text-lime-300',
+  'bg-indigo-500/20 text-indigo-300',
 ] as const;
 
 function hashTag(tag: string): number {
