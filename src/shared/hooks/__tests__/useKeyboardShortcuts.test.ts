@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
+import {
+  useKeyboardShortcuts,
+  isEditableKeyboardTarget,
+} from '@/shared/hooks/useKeyboardShortcuts';
 import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useEditorStore } from '@/shared/store';
 import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions
@@ -278,6 +282,112 @@ describe('useKeyboardShortcuts', () => {
 
     expect(params.onCloseTab).not.toHaveBeenCalled();
     input.remove();
+  });
+
+  it('CodeMirror 聚焦时仍触发 Ctrl+W 关闭 tab', () => {
+    params.activeTabId = 't1';
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const cm = document.createElement('div');
+    cm.className = 'cm-editor';
+    const content = document.createElement('div');
+    content.className = 'cm-content';
+    content.contentEditable = 'true';
+    content.setAttribute('role', 'textbox');
+    cm.appendChild(content);
+    document.body.appendChild(cm);
+
+    const event = new KeyboardEvent('keydown', {
+      code: 'KeyW',
+      key: 'w',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'target', { value: content });
+    window.dispatchEvent(event);
+
+    expect(params.onCloseTab).toHaveBeenCalledWith('t1');
+    cm.remove();
+  });
+
+  it('CodeMirror 聚焦时 Alt+Left 切换到上一个 tab', () => {
+    params.activeTabId = 't1';
+    useEditorStore.setState({
+      tabs: {
+        p1: {
+          tabs: [
+            {
+              id: 't0',
+              projectId: 'p1',
+              title: 'a',
+              order: 0,
+              data: {
+                kind: 'file',
+                filePath: 'a.ts',
+                fileName: 'a.ts',
+                content: { path: 'a.ts', content: '', size: 0, is_binary: false },
+                isDirty: false,
+              },
+            },
+            {
+              id: 't1',
+              projectId: 'p1',
+              title: 'b',
+              order: 1,
+              data: {
+                kind: 'file',
+                filePath: 'b.ts',
+                fileName: 'b.ts',
+                content: { path: 'b.ts', content: '', size: 0, is_binary: false },
+                isDirty: false,
+              },
+            },
+          ],
+          activeTabId: 't1',
+        },
+      },
+      editorLayout: {
+        p1: {
+          isSplit: false,
+          ratio: 0.5,
+          activeGroupId: 'left',
+          pinnedTabId: null,
+          pinnedPanelRatio: 0.35,
+          groups: {
+            left: { tabIds: ['t0', 't1'], activeTabId: 't1' },
+            right: { tabIds: [], activeTabId: null },
+          },
+        },
+      },
+    });
+    seedStore({
+      activeProjectId: 'p1',
+      activeProject: createProject({ id: 'p1' }),
+    });
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const cm = document.createElement('div');
+    cm.className = 'cm-editor';
+    const content = document.createElement('div');
+    content.className = 'cm-content';
+    content.contentEditable = 'true';
+    content.setAttribute('role', 'textbox');
+    cm.appendChild(content);
+    document.body.appendChild(cm);
+
+    const event = new KeyboardEvent('keydown', {
+      code: 'ArrowLeft',
+      key: 'ArrowLeft',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'target', { value: content });
+    window.dispatchEvent(event);
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    cm.remove();
   });
 
   it('设置页打开时不触发快捷键', () => {

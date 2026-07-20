@@ -248,17 +248,27 @@ export function useKeyboardShortcuts({
   }, [updateWtPath, onCloseTab, unifiedItems]);
 }
 
-/** True when focus is in an element that should receive normal typing / caret keys. */
+/**
+ * True when focus is in a form field that should keep normal typing keys.
+ *
+ * CodeMirror uses contenteditable + role=textbox; it must NOT count as
+ * "editable" here — app shortcuts (tab cycle, nav history, goto file, …)
+ * must still fire while coding. CM-scoped keys (save, F12) use its keymap.
+ */
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+
+  // CodeMirror / similar code surfaces — allow global app chords.
+  if (target.closest(".cm-editor, .cm-content, [data-code-editor]")) {
+    return false;
+  }
+
   const tag = target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
   if (target.isContentEditable) return true;
   if (target.closest("input, textarea, select, [contenteditable=true], [role='textbox']")) {
     return true;
   }
-  // CodeMirror is an editor, but app-level tab/workspace shortcuts must still
-  // work while coding. Editor-scoped keys (save, F12) are handled by CM keymap.
   return false;
 }
 
