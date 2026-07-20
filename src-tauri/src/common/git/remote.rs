@@ -1,3 +1,5 @@
+//! Remote git operations over SSH transport.
+
 use anyhow::Result;
 
 use crate::common::connection::types::AuthMethod;

@@ -1,10 +1,12 @@
+//! Background worker for periodically polling git status changes.
+
 use crate::common::utils::command::local;
 use std::collections::HashMap;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::{path::PathBuf, sync::mpsc, thread};
 
-/// 提取 git 进程退出码与信号，便于诊断 exit status: 129 (SIGHUP) 等异常
+/// Extract the git process exit code and signal for diagnostics (e.g. exit status 129 / SIGHUP).
 fn exit_diagnostics(status: &std::process::ExitStatus) -> (Option<i32>, Option<i32>) {
     let code = status.code();
     #[cfg(unix)]
@@ -14,25 +16,29 @@ fn exit_diagnostics(status: &std::process::ExitStatus) -> (Option<i32>, Option<i
     (code, signal)
 }
 
-/// 增量状态差异：与上次 git status 对比后的变化
+/// Incremental status diff: what changed since the last `git status` poll.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct GitStatusDiff {
-    /// 项目 ID
+    /// Project ID that this diff belongs to.
     pub project_id: String,
-    /// 新增文件
+    /// Newly added files.
     pub added: Vec<GitStatusFile>,
-    /// 被删除的文件路径
+    /// Paths of removed files.
     pub removed: Vec<String>,
-    /// 状态变化的文件（如 Untracked → Added）
+    /// Files whose status changed (e.g. Untracked → Added).
     pub modified: Vec<GitStatusFile>,
 }
 
-/// 单个文件的 git status 信息
+/// Status information for a single file from `git status --porcelain`.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitStatusFile {
+    /// File path relative to repository root.
     pub path: String,
+    /// Status string (Modified, Added, Deleted, Untracked, Renamed).
     pub status: String,
+    /// Number of added lines.
     pub additions: i32,
+    /// Number of deleted lines.
     pub deletions: i32,
 }
 
@@ -47,20 +53,23 @@ impl GitStatusFile {
     }
 }
 
-/// 常驻 git status worker。
-/// 启动一个专用线程，接收 "请检查" 信号，
-/// 执行 `git status --porcelain --no-optional-locks`，
-/// 对比上次结果，有变化时通过回调通知。
+/// Persistent git status worker that runs `git status --porcelain` on demand.
 ///
-/// 内部持有 mpsc::Sender，支持 Clone（多个 clone 共享同一个 worker 线程）。
+/// Spawns a dedicated thread that receives "check" signals, runs the status
+/// command, compares with the previous result, and calls the callback with
+/// the incremental diff when changes are detected.
+///
+/// Internally holds an `mpsc::Sender` and supports `Clone` so multiple
+/// consumers can share the same worker thread.
 #[derive(Clone)]
 pub struct GitStatusWorker {
+    /// Channel to signal a status check request.
     signal_tx: mpsc::Sender<()>,
 }
 
 impl GitStatusWorker {
-    /// 启动 worker。repo_path 是项目路径。
-    /// on_change 在 status 结果发生变化时被调用，参数为增量 diff。
+    /// Start the worker for the given `repo_path`.
+    /// `on_change` is called with the incremental diff whenever the status changes.
     pub fn start(repo_path: PathBuf, on_change: impl Fn(GitStatusDiff) + Send + 'static) -> Self {
         let (signal_tx, signal_rx) = mpsc::channel::<()>();
 
@@ -80,13 +89,13 @@ impl GitStatusWorker {
         Self { signal_tx }
     }
 
-    /// 请求一次 status 检查（非阻塞）
+    /// Request a status check (non-blocking).
     pub fn check(&self) {
         let _ = self.signal_tx.send(());
     }
 }
 
-/// worker 主循环：阻塞等待信号 → 执行 git status → 对比 → 通知
+/// Main worker loop: wait for signal → run git status → compare → notify.
 fn worker_loop(
     repo_path: PathBuf,
     signal_rx: mpsc::Receiver<()>,

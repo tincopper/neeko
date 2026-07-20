@@ -1,3 +1,5 @@
+//! SQLite-backed repository for skill records, targets, tag groups, and caching.
+
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::collections::HashMap;
@@ -6,11 +8,13 @@ use std::sync::Mutex;
 
 use super::types::{SkillRecord, SkillTargetRecord, TagGroupRecord, ToolToggleRecord};
 
+/// SQLite data access layer for all skill-related persistence.
 pub struct SkillRepository {
     conn: Mutex<Connection>,
 }
 
 impl SkillRepository {
+    /// Open or create a skill database at the given path.
     pub fn open(db_path: &Path) -> Result<Self> {
         let conn = crate::common::db::open(db_path)?;
         super::migrations::run_migrations(&conn)?;
@@ -19,6 +23,7 @@ impl SkillRepository {
         })
     }
 
+    /// Open an in-memory SQLite database (for testing).
     pub fn open_in_memory() -> Result<Self> {
         let conn = crate::common::db::open_in_memory()?;
         super::migrations::run_migrations(&conn)?;
@@ -27,6 +32,7 @@ impl SkillRepository {
         })
     }
 
+    /// Get the inner database connection (for migration usage).
     pub fn get_conn_inner(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn
             .lock()
@@ -35,6 +41,7 @@ impl SkillRepository {
 
     // Skills CRUD
 
+    /// Insert a new skill record.
     pub fn insert_skill(&self, skill: &SkillRecord) -> Result<()> {
         let conn = self
             .conn
@@ -47,6 +54,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get all skill records ordered by name.
     pub fn get_all_skills(&self) -> Result<Vec<SkillRecord>> {
         let conn = self
             .conn
@@ -57,6 +65,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Get a skill by its ID.
     pub fn get_skill_by_id(&self, id: &str) -> Result<Option<SkillRecord>> {
         let conn = self
             .conn
@@ -67,6 +76,7 @@ impl SkillRepository {
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
+    /// Get a skill by its central repository path.
     pub fn get_skill_by_central_path(&self, central_path: &str) -> Result<Option<SkillRecord>> {
         let conn = self
             .conn
@@ -77,6 +87,7 @@ impl SkillRepository {
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
+    /// Update all fields of a skill record.
     pub fn update_skill(&self, skill: &SkillRecord) -> Result<()> {
         let conn = self
             .conn
@@ -90,6 +101,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Update a skill's name, description, revisions, and hash after re-install.
     pub fn update_skill_after_install(
         &self,
         id: &str,
@@ -109,6 +121,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Update a skill's remote revision and check status.
     pub fn update_skill_check_state(
         &self,
         id: &str,
@@ -125,6 +138,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Delete a skill by ID.
     pub fn delete_skill(&self, id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -136,6 +150,7 @@ impl SkillRepository {
 
     // Targets
 
+    /// Insert a skill target (deployment) record.
     pub fn insert_target(&self, target: &SkillTargetRecord) -> Result<()> {
         let conn = self
             .conn
@@ -145,6 +160,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get all target records for a skill.
     pub fn get_targets_for_skill(&self, skill_id: &str) -> Result<Vec<SkillTargetRecord>> {
         let conn = self
             .conn
@@ -155,6 +171,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Get all target records across all skills.
     pub fn get_all_targets(&self) -> Result<Vec<SkillTargetRecord>> {
         let conn = self
             .conn
@@ -165,6 +182,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Delete a target record by skill ID and tool key.
     pub fn delete_target(&self, skill_id: &str, tool: &str) -> Result<()> {
         let conn = self
             .conn
@@ -179,6 +197,7 @@ impl SkillRepository {
 
     // Skill Tags
 
+    /// Get all unique tag names across all skills.
     pub fn get_all_tags(&self) -> Result<Vec<String>> {
         let conn = self
             .conn
@@ -189,6 +208,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Set tags for a skill (replaces existing tags).
     pub fn set_tags_for_skill(&self, skill_id: &str, tags: &[String]) -> Result<()> {
         let conn = self
             .conn
@@ -210,6 +230,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get a map of skill ID to its list of tag names.
     pub fn get_tags_map(&self) -> Result<HashMap<String, Vec<String>>> {
         let conn = self
             .conn
@@ -228,6 +249,7 @@ impl SkillRepository {
 
     // Tag Groups
 
+    /// Insert a new tag group.
     pub fn insert_tag_group(&self, tg: &TagGroupRecord) -> Result<()> {
         let conn = self
             .conn
@@ -237,6 +259,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get all tag groups ordered by sort_order and creation time.
     pub fn get_all_tag_groups(&self) -> Result<Vec<TagGroupRecord>> {
         let conn = self
             .conn
@@ -247,6 +270,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Update a tag group's name, description, and icon.
     pub fn update_tag_group(
         &self,
         id: &str,
@@ -263,6 +287,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Delete a tag group by ID.
     pub fn delete_tag_group(&self, id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -273,6 +298,7 @@ impl SkillRepository {
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    /// Reorder tag groups by setting sort_order from the provided ID list.
     pub fn reorder_tag_groups(&self, ids: &[String]) -> Result<()> {
         let conn = self
             .conn
@@ -291,6 +317,7 @@ impl SkillRepository {
 
     // TagGroup-Skill mapping
 
+    /// Add a skill to a tag group.
     pub fn add_skill_to_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -301,6 +328,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Remove a skill from a tag group.
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -313,6 +341,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get all skills belonging to a tag group.
     pub fn get_skills_for_tag_group(&self, tag_group_id: &str) -> Result<Vec<SkillRecord>> {
         let conn = self
             .conn
@@ -323,6 +352,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Count the number of skills in a tag group.
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
         let conn = self
             .conn
@@ -336,6 +366,7 @@ impl SkillRepository {
         Ok(count)
     }
 
+    /// Reorder skills within a tag group.
     pub fn reorder_tag_group_skills(&self, tag_group_id: &str, skill_ids: &[String]) -> Result<()> {
         let conn = self
             .conn
@@ -353,6 +384,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Enable or disable a tool for a skill in a tag group.
     pub fn set_tag_group_skill_tool_enabled(
         &self,
         tag_group_id: &str,
@@ -375,6 +407,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get all tool toggle records for a skill in a tag group.
     pub fn get_tag_group_skill_tool_toggles(
         &self,
         tag_group_id: &str,
@@ -401,6 +434,7 @@ impl SkillRepository {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Get enabled tool keys for a skill in a tag group.
     pub fn get_enabled_tools_for_tag_group_skill(
         &self,
         tag_group_id: &str,
@@ -420,6 +454,7 @@ impl SkillRepository {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Get tag group IDs that a skill belongs to.
     pub fn get_tag_groups_for_skill(&self, skill_id: &str) -> Result<Vec<String>> {
         let conn = self
             .conn
@@ -433,6 +468,7 @@ impl SkillRepository {
 
     // Project-TagGroup binding
 
+    /// Set the tag groups bound to a project (replaces existing).
     pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
         let conn = self
             .conn
@@ -454,6 +490,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get tag group IDs bound to a project.
     pub fn get_project_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
         let conn = self
             .conn
@@ -466,6 +503,7 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Add a tag group binding to a project.
     pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -479,6 +517,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Remove a tag group binding from a project.
     pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
         let conn = self
             .conn
@@ -493,6 +532,7 @@ impl SkillRepository {
 
     // Settings
 
+    /// Get a setting value by key.
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
         let conn = self
             .conn
@@ -503,6 +543,7 @@ impl SkillRepository {
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
+    /// Set a setting value.
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         let conn = self
             .conn
@@ -517,6 +558,7 @@ impl SkillRepository {
 
     // Cache methods
 
+    /// Get cached data by key if within TTL.
     pub fn get_cache(&self, key: &str, ttl_secs: i64) -> Result<Option<String>> {
         let conn = self
             .conn
@@ -533,6 +575,7 @@ impl SkillRepository {
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
+    /// Cache data with a key.
     pub fn set_cache(&self, key: &str, data: &str) -> Result<()> {
         let conn = self
             .conn
@@ -546,6 +589,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Clear a specific cache entry.
     pub fn clear_cache(&self, key: &str) -> Result<()> {
         let conn = self
             .conn
@@ -558,6 +602,7 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Clear all cache entries.
     pub fn clear_all_cache(&self) -> Result<()> {
         let conn = self
             .conn

@@ -1,3 +1,5 @@
+//! LSP session manager: lifecycle, plugin discovery, diagnostics, and auto-start policies.
+
 use std::collections::HashMap;
 use std::io::BufRead;
 
@@ -58,10 +60,15 @@ use super::session::{do_send_request, LspSession, LspSessionStatus};
 pub struct LspManager {
     /// Business async executor (never bare `tokio::spawn`).
     runtime: Arc<AppRuntime>,
+    /// Active LSP sessions keyed by project:language.
     sessions: Arc<Mutex<HashMap<SessionKey, LspSession>>>,
+    /// Open documents tracked per session for restart recovery.
     open_docs: Arc<Mutex<HashMap<SessionKey, Vec<OpenDocument>>>>,
+    /// Registry of available LSP language plugins.
     plugin_registry: Mutex<LspPluginRegistry>,
+    /// Diagnostic event bus for pub/sub.
     diag_bus: DiagnosticBus,
+    /// Tauri AppHandle for event emission.
     app_handle: Mutex<Option<tauri::AppHandle>>,
     /// Cached language profiles per project path (from root-marker detection).
     profiles: Mutex<HashMap<String, ProjectLanguageProfile>>,
@@ -182,6 +189,7 @@ impl LspManager {
         }
     }
 
+    /// Apply LSP settings from a full app config JSON value.
     pub fn apply_settings_from_json(&self, config: &serde_json::Value) {
         let settings = config
             .get("lsp")
@@ -191,6 +199,7 @@ impl LspManager {
         self.apply_settings(&settings);
     }
 
+    /// Get the extension-to-language map from the plugin registry.
     pub fn extension_map(&self) -> Vec<super::plugin::LspExtensionMapEntry> {
         self.plugin_registry
             .lock()
@@ -206,6 +215,7 @@ impl LspManager {
             .extension_conflicts()
     }
 
+    /// Get a snapshot of current LSP settings.
     pub fn get_settings_snapshot(&self) -> LspSettings {
         // Reconstruct from runtime state is incomplete for custom list —
         // prefer reading config; this returns defaults + empty customs for API convenience.
@@ -297,6 +307,7 @@ impl LspManager {
         }
     }
 
+    /// Set the Tauri AppHandle and connect the diagnostic bus to event emission.
     pub fn set_app_handle(&self, app_handle: tauri::AppHandle) {
         // Connect the diagnostic bus to Tauri event emission
         let ah = app_handle.clone();
@@ -312,6 +323,7 @@ impl LspManager {
         }
     }
 
+    /// Get an existing session or create a new one for the given project and language.
     pub fn get_or_create_session(
         &self,
         project_path: &str,
@@ -410,6 +422,7 @@ impl LspManager {
         count
     }
 
+    /// Send an LSP request asynchronously, restarting the session if needed.
     pub async fn send_request_async(
         self: &Arc<Self>,
         project_path: &str,
@@ -504,6 +517,7 @@ impl LspManager {
         }
     }
 
+    /// Send an LSP notification to a session.
     pub fn send_notification(
         &self,
         project_path: &str,
@@ -523,6 +537,7 @@ impl LspManager {
             .map_err(|e| AppError::Lsp(e.to_string()))
     }
 
+    /// Close an LSP session for a project and language.
     pub fn close_session(&self, project_path: &str, language_id: &str) -> Result<(), AppError> {
         let key = session_key(project_path, language_id);
         let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
@@ -694,6 +709,7 @@ impl LspManager {
             .and_then(|m| m.get(project_path).cloned())
     }
 
+    /// Close all active LSP sessions.
     pub fn close_all_sessions(&self) {
         let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
         for (key, mut s) in sessions.drain() {
@@ -709,6 +725,7 @@ impl LspManager {
         log::info!("[LSP] Closed all sessions");
     }
 
+    /// List all active LSP sessions.
     pub fn list_sessions(&self) -> Vec<LspSessionInfo> {
         let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
 

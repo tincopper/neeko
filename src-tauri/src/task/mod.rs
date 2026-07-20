@@ -1,3 +1,5 @@
+//! Task configuration management: discovery, persistence, and execution of project/app-level tasks.
+
 pub mod commands;
 pub mod discover;
 mod services;

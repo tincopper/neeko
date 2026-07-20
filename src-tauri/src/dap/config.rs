@@ -21,8 +21,10 @@ pub fn breakpoints_json_path(project_path: &Path) -> PathBuf {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BreakpointsFile {
+    /// Breakpoints file format version.
     #[serde(default = "default_bp_version")]
     pub version: String,
+    /// Persisted breakpoint list.
     #[serde(default)]
     pub breakpoints: Vec<BreakpointSpec>,
 }

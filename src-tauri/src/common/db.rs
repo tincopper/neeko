@@ -1,3 +1,5 @@
+//! Database connection and migration utilities.
+
 use rusqlite::Connection;
 use std::path::Path;
 

@@ -12,6 +12,7 @@ use std::path::Path;
 use super::java::discover_java;
 use super::{DiscoveredTask, TaskSource};
 
+/// Discoverer for application main entry points (Go, Rust, Python, Java, Node).
 pub struct MainEntrySource;
 
 impl TaskSource for MainEntrySource {

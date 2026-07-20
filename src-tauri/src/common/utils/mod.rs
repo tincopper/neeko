@@ -1,3 +1,5 @@
+//! Shared utility modules for command execution, fonts, and path resolution.
+
 pub mod command;
 pub mod fonts;
 #[cfg(windows)]

@@ -1,13 +1,19 @@
+//! Sync engine for deploying skills to agent tool directories via symlink or copy.
+
 use anyhow::{Context, Result};
 use std::path::Path;
 
+/// How a skill directory is deployed to a tool's skills directory.
 #[derive(Debug, Clone, Copy)]
 pub enum SyncMode {
+    /// Create a symbolic link to the skill directory.
     Symlink,
+    /// Copy the skill directory to the target.
     Copy,
 }
 
 impl SyncMode {
+    /// Return the string representation of this sync mode.
     pub fn as_str(&self) -> &'static str {
         match self {
             SyncMode::Symlink => "symlink",
@@ -16,6 +22,7 @@ impl SyncMode {
     }
 }
 
+/// Determine the sync mode for a tool based on configuration and defaults.
 pub fn sync_mode_for_tool(tool_key: &str, configured_mode: Option<&str>) -> SyncMode {
     match configured_mode {
         Some("copy") => SyncMode::Copy,
@@ -27,6 +34,7 @@ pub fn sync_mode_for_tool(tool_key: &str, configured_mode: Option<&str>) -> Sync
     }
 }
 
+/// Deploy a skill to a target directory using the specified sync mode.
 pub fn sync_skill(source: &Path, target: &Path, mode: SyncMode) -> Result<SyncMode> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
@@ -57,6 +65,7 @@ pub fn sync_skill(source: &Path, target: &Path, mode: SyncMode) -> Result<SyncMo
     }
 }
 
+/// Remove a deployed skill target (symlink or directory).
 pub fn remove_target(target: &Path) -> Result<()> {
     if target.is_symlink() {
         std::fs::remove_file(target)?;

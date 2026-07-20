@@ -1,15 +1,24 @@
+//! Agent configuration model.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Agent 配置
+/// Agent configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentConfig {
+    /// Unique identifier for this agent.
     pub id: String,
+    /// Human-readable display name.
     pub name: String,
+    /// Executable command path.
     pub command: String,
+    /// Arguments to pass to the command.
     pub args: Vec<String>,
+    /// Environment variables for the agent process.
     pub env: HashMap<String, String>,
+    /// Optional icon identifier.
     pub icon: Option<String>,
+    /// Whether this agent is enabled.
     pub enabled: bool,
     /// prompt 前置参数，如 ["--bare", "-p"] 表示 `command --bare -p "<prompt>" [post_prompt_args]`。
     /// None 表示该 agent 不支持 prompt 直接模式。

@@ -1,25 +1,38 @@
+//! skills.sh marketplace HTTP client: leaderboard, search, and HTML/RSC parsing.
+
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+/// A skill listing from the skills.sh marketplace.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillsShSkill {
+    /// Composite identifier (source/skill_id).
     pub id: String,
+    /// Skill identifier on skills.sh.
     pub skill_id: String,
+    /// Display name.
     pub name: String,
+    /// GitHub source (owner/repo).
     pub source: String,
+    /// Number of installations.
     pub installs: u64,
 }
 
+/// Leaderboard category on skills.sh.
 #[derive(Debug, Clone, Copy)]
 pub enum LeaderboardType {
+    /// All-time most installed skills.
     AllTime,
+    /// Trending skills.
     Trending,
+    /// Hot skills (recent surge).
     Hot,
 }
 
 impl LeaderboardType {
+    /// Return the URL path segment for this leaderboard type.
     pub fn as_str(&self) -> &'static str {
         match self {
             LeaderboardType::AllTime => "alltime",
@@ -28,6 +41,7 @@ impl LeaderboardType {
         }
     }
 
+    /// Parse a leaderboard type from a string.
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "trending" => LeaderboardType::Trending,
@@ -37,6 +51,7 @@ impl LeaderboardType {
     }
 }
 
+/// Build a reqwest blocking HTTP client with optional proxy and timeout.
 pub fn build_http_client(
     proxy_url: Option<&str>,
     timeout_secs: u64,
@@ -52,6 +67,7 @@ pub fn build_http_client(
     Ok(builder.build()?)
 }
 
+/// Fetch leaderboard skills from skills.sh (all-time, trending, or hot).
 pub fn fetch_leaderboard(
     board: LeaderboardType,
     proxy_url: Option<&str>,
@@ -73,6 +89,7 @@ pub fn fetch_leaderboard(
     parse_skills_from_html(&html)
 }
 
+/// Search skills.sh marketplace for skills matching a query.
 pub fn search_skills(
     query: &str,
     _limit: usize,

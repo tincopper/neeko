@@ -11,6 +11,7 @@ use crate::dap::types::{
 };
 use crate::AppError;
 
+/// Delve (`dlv dap`) adapter plugin for Go debugging.
 pub struct GoAdapter;
 
 #[async_trait]

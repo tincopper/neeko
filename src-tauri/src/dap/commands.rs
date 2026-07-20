@@ -10,6 +10,7 @@ use super::types::{
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// List launch configs for a project.
 #[tauri::command]
 pub fn dap_list_configs(
     project_id: String,
@@ -18,6 +19,7 @@ pub fn dap_list_configs(
     crate::dap::manager::DapManager::list_or_discover_configs(&state, &project_id)
 }
 
+/// Save launch configs for a project.
 #[tauri::command]
 pub fn dap_save_configs(
     project_id: String,
@@ -27,6 +29,7 @@ pub fn dap_save_configs(
     crate::dap::manager::DapManager::save_configs(&state, &project_id, configurations)
 }
 
+/// Discover entry points for a project.
 #[tauri::command]
 pub fn dap_discover_entries(
     project_id: String,
@@ -35,6 +38,7 @@ pub fn dap_discover_entries(
     crate::dap::manager::DapManager::discover_entries(&state, &project_id)
 }
 
+/// Start a DAP debug session.
 #[tauri::command]
 pub async fn dap_start_session(
     project_id: String,
@@ -49,6 +53,7 @@ pub async fn dap_start_session(
         .await
 }
 
+/// Stop a DAP debug session.
 #[tauri::command]
 pub async fn dap_stop_session(
     session_id: String,
@@ -57,6 +62,7 @@ pub async fn dap_stop_session(
     state.dap_manager.stop_session(&session_id).await
 }
 
+/// Get the active DAP session for a project.
 #[tauri::command]
 pub async fn dap_get_session(
     project_id: String,
@@ -65,6 +71,7 @@ pub async fn dap_get_session(
     Ok(state.dap_manager.active_for_project(&project_id).await)
 }
 
+/// List all active DAP sessions.
 #[tauri::command]
 pub async fn dap_list_sessions(
     state: State<'_, AppStateWrapper>,
@@ -72,6 +79,7 @@ pub async fn dap_list_sessions(
     Ok(state.dap_manager.list_sessions().await)
 }
 
+/// Set breakpoints for a file.
 #[tauri::command]
 pub async fn dap_set_breakpoints(
     project_id: String,
@@ -92,6 +100,7 @@ pub async fn dap_set_breakpoints(
         .await
 }
 
+/// Get breakpoints for a project.
 #[tauri::command]
 pub async fn dap_get_breakpoints(
     project_id: String,
@@ -100,6 +109,7 @@ pub async fn dap_get_breakpoints(
     state.dap_manager.get_breakpoints(&state, &project_id).await
 }
 
+/// Send a control action (continue, next, etc.) to a DAP session.
 #[tauri::command]
 pub async fn dap_control(
     session_id: String,
@@ -114,6 +124,7 @@ pub async fn dap_control(
     session.control(&action).await
 }
 
+/// Get the stack trace for a DAP session.
 #[tauri::command]
 pub async fn dap_stack_trace(
     session_id: String,
@@ -127,6 +138,7 @@ pub async fn dap_stack_trace(
     session.stack_trace().await
 }
 
+/// Get variables for a stack frame.
 #[tauri::command]
 pub async fn dap_variables(
     session_id: String,
@@ -141,6 +153,7 @@ pub async fn dap_variables(
     session.scopes_variables(frame_id).await
 }
 
+/// Evaluate an expression in a debug session.
 #[tauri::command]
 pub async fn dap_evaluate(
     session_id: String,

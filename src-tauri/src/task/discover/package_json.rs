@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use super::{DiscoveredTask, TaskSource};
 
+/// Discoverer for npm/pnpm/yarn/bun scripts from package.json.
 pub struct PackageJsonSource;
 
 impl TaskSource for PackageJsonSource {

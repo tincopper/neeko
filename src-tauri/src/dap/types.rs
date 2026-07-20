@@ -11,16 +11,20 @@ use crate::AppError;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchConfig {
+    /// Display name for this launch configuration.
     pub name: String,
     /// Adapter type: `lldb` (Rust) or `go` (Delve).
     #[serde(rename = "type")]
     pub type_: String,
     /// `launch` or `attach` (MVP: launch).
     pub request: String,
+    /// Path to the program/debug target.
     #[serde(default)]
     pub program: Option<String>,
+    /// Working directory for the debug session.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// Command-line arguments passed to the program.
     #[serde(default)]
     pub args: Vec<String>,
     /// Go: `debug` | `test` | …
@@ -38,8 +42,10 @@ pub struct LaunchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchFile {
+    /// Launch file format version.
     #[serde(default = "default_version")]
     pub version: String,
+    /// List of named launch configurations.
     #[serde(default)]
     pub configurations: Vec<LaunchConfig>,
 }
@@ -61,8 +67,11 @@ impl Default for LaunchFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BreakpointSpec {
+    /// Absolute file path for the breakpoint.
     pub file_path: String,
+    /// 1-based line number.
     pub line: u32,
+    /// Whether the adapter confirmed the breakpoint.
     #[serde(default)]
     pub verified: bool,
 }
@@ -71,12 +80,17 @@ pub struct BreakpointSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DapSessionInfo {
+    /// Unique debug session identifier.
     pub session_id: String,
+    /// Project the session belongs to.
     pub project_id: String,
+    /// Filesystem path of the project.
     pub project_path: String,
+    /// Name of the launch configuration used.
     pub config_name: String,
     /// Wire string: starting | running | stopped | terminated
     pub status: String,
+    /// Optional human-readable status detail.
     pub status_message: Option<String>,
 }
 
@@ -84,10 +98,13 @@ pub struct DapSessionInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DapEventPayload {
+    /// Session that produced the event.
     pub session_id: String,
+    /// Project associated with the session.
     pub project_id: String,
     /// stopped | continued | terminated | output | session
     pub kind: String,
+    /// Event payload body, format depends on kind.
     #[serde(default)]
     pub body: Value,
 }
@@ -96,10 +113,15 @@ pub struct DapEventPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StackFrameDto {
+    /// Adapter-assigned stack frame identifier.
     pub id: i64,
+    /// Function name for this frame.
     pub name: String,
+    /// Source file path, if available.
     pub source_path: Option<String>,
+    /// 1-based line number in the source file.
     pub line: u32,
+    /// 1-based column number in the source file.
     pub column: u32,
 }
 
@@ -107,10 +129,14 @@ pub struct StackFrameDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VariableDto {
+    /// Variable name.
     pub name: String,
+    /// String representation of the variable value.
     pub value: String,
+    /// Type name reported by the debugger.
     #[serde(default, rename = "type")]
     pub var_type: Option<String>,
+    /// Reference for expanding child variables (0 = no children).
     pub variables_reference: i64,
 }
 
@@ -119,13 +145,18 @@ pub struct VariableDto {
 /// Session lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionStatus {
+    /// Adapter is initializing.
     Starting,
+    /// Program is executing.
     Running,
+    /// Program stopped at a breakpoint or exception.
     Stopped,
+    /// Session ended (normally or by disconnect).
     Terminated,
 }
 
 impl SessionStatus {
+    /// Return the wire-format string for this status.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Starting => "starting",
@@ -139,14 +170,20 @@ impl SessionStatus {
 /// Debugger control actions from the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlAction {
+    /// Resume execution.
     Continue,
+    /// Step over (next line).
     Next,
+    /// Step into function call.
     StepIn,
+    /// Step out of current function.
     StepOut,
+    /// Pause execution.
     Pause,
 }
 
 impl ControlAction {
+    /// Parse a control action from a UI-provided string.
     pub fn parse(action: &str) -> Result<Self, AppError> {
         match action {
             "continue" => Ok(Self::Continue),
@@ -158,6 +195,7 @@ impl ControlAction {
         }
     }
 
+    /// Return the DAP protocol command string for this action.
     pub fn dap_command(self) -> &'static str {
         match self {
             Self::Continue => "continue",
@@ -206,7 +244,9 @@ mod tests {
 /// Supported debug adapter families.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdapterKind {
+    /// Go / Delve debugger.
     Go,
+    /// LLDB-based debugger for Rust and native binaries.
     Lldb,
 }
 
@@ -233,8 +273,11 @@ pub enum AdapterTransport {
 /// How to spawn a debug adapter process (resolved against ExecTarget).
 #[derive(Debug, Clone)]
 pub struct AdapterSpawn {
+    /// Adapter binary name or path.
     pub program: String,
+    /// Command-line arguments for the adapter.
     pub args: Vec<String>,
+    /// Stdio or TCP transport mode.
     pub transport: AdapterTransport,
 }
 

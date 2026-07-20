@@ -14,6 +14,7 @@ use crate::AppError;
 
 /// Running adapter: DAP I/O plus a kill callback.
 pub struct AdapterProcess {
+    /// DAP read/write I/O channels.
     pub io: DapIo,
     /// Best-effort terminate adapter process.
     pub kill: Box<dyn FnOnce() + Send>,

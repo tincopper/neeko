@@ -1,14 +1,17 @@
 use std::process::Command;
 
-/// Windows 进程创建标志常量
+/// Windows process creation flag constants.
 #[cfg(target_os = "windows")]
 pub mod flags {
+    /// Prevents the process from creating a console window.
     pub const CREATE_NO_WINDOW: u32 = 0x08000000;
+    /// Creates a process that is not attached to the parent's console.
     pub const DETACHED_PROCESS: u32 = 0x00000008;
+    /// Creates a new process group for the process.
     pub const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 }
 
-/// 创建无窗口进程命令（Windows 下隐藏控制台窗口）
+/// Create a `Command` that runs without a visible console window on Windows.
 pub fn exec(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
@@ -19,8 +22,10 @@ pub fn exec(program: &str) -> Command {
     cmd
 }
 
-/// 创建无窗口且与当前进程完全分离的进程命令
-/// 适用于启动 GUI 应用（如 IDE）：不继承控制台、不随父进程退出
+/// Create a detached process with no window (Windows only).
+///
+/// Suitable for launching GUI applications (e.g. IDE): no console inheritance,
+/// not tied to parent process lifetime.
 #[cfg(target_os = "windows")]
 pub fn exec_detached(program: &str) -> Command {
     let mut cmd = Command::new(program);
@@ -53,18 +58,18 @@ pub(crate) fn check_command_exists(command: &str) -> bool {
     command_exists_on_path(command, &resolve_full_path())
 }
 
-/// Whether `command` is found under the given PATH string.
+/// Check whether a command exists under the given PATH string.
 pub fn command_exists_on_path(command: &str, path_env: &str) -> bool {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
     which::which_in(command, Some(path_env), cwd.as_path()).is_ok()
 }
 
-/// Escape single quotes in a path for safe shell interpolation.
+/// Escape single quotes in a path for safe POSIX shell interpolation.
 pub fn safe_path(path: &str) -> String {
     path.replace('\'', "'\\''")
 }
 
-/// Single-quote a string for POSIX shells (`'foo'\''bar'` style via embedding).
+/// Single-quote a string for POSIX shell interpolation (`'foo'\''bar'` style).
 pub fn quote_shell_arg(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
@@ -78,7 +83,7 @@ pub fn join_quoted_command(cmd: &str, args: &[&str]) -> String {
         .join(" ")
 }
 
-/// Resolve a command to its full executable path using where.exe (Windows) or which (Unix).
+/// Resolve a command to its full executable path using `where.exe` (Windows) or `which` (Unix).
 /// Falls back to the original command name if not found.
 pub fn resolve_command_path(command: &str, path_env: &str) -> String {
     if std::path::Path::new(command).is_absolute() {
@@ -125,8 +130,10 @@ pub fn resolve_command_path(command: &str, path_env: &str) -> String {
     }
 }
 
-/// Get the full PATH: merges current process PATH + user/system PATH.
-/// Solves Tauri GUI process not inheriting user shell PATH (npm global bin, nvm, etc.).
+/// Get the full PATH merging current process PATH with user/system PATH.
+///
+/// Solves the issue of Tauri GUI processes not inheriting the user shell PATH
+/// (npm global bin, nvm, cargo, homebrew, etc.).
 pub fn resolve_full_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
 

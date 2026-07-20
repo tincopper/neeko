@@ -1,3 +1,5 @@
+//! Tauri application setup, menu, and window event handling.
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -7,6 +9,7 @@ use tauri::{Emitter, Manager};
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
 
+/// Run the Tauri application.
 pub fn run() {
     crate::common::logger::init_logger();
     log::info!("Neeko starting");

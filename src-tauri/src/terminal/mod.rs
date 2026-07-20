@@ -1,4 +1,7 @@
+//! Terminal session and PTY management.
+
 pub mod commands;
+/// PTY creation, pipeline spawning, and terminal utilities.
 pub mod services;
 
 pub use crate::common::terminal::types::*;
@@ -41,6 +44,7 @@ pub(super) const WSL_CONFIG: PipelineConfig = PipelineConfig {
     thread_prefix: "wsl",
 };
 
+/// Manages terminal sessions and PTY handles.
 #[derive(Clone)]
 pub struct TerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
@@ -48,6 +52,7 @@ pub struct TerminalManager {
 }
 
 impl TerminalManager {
+    /// Creates a new TerminalManager with empty session and PTY maps.
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -55,6 +60,7 @@ impl TerminalManager {
         }
     }
 
+    /// Creates a new PTY terminal session for a local project.
     pub fn create_session(
         &self,
         project_path: &str,
@@ -121,6 +127,7 @@ impl TerminalManager {
         )
     }
 
+    /// Creates a new WSL terminal session for a project.
     pub fn create_wsl_session(
         &self,
         distro: &str,
@@ -162,6 +169,7 @@ impl TerminalManager {
         )
     }
 
+    /// Resizes a terminal session to the given column/row dimensions.
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
         let mut handles = self
             .pty_handles
@@ -184,6 +192,7 @@ impl TerminalManager {
         Ok(())
     }
 
+    /// Closes a terminal session and releases its PTY handle.
     pub fn close_session(&self, session_id: &str) {
         crate::terminal::services::log_info(&format!(
             "[PTY] Closing session {}",
@@ -194,6 +203,7 @@ impl TerminalManager {
         }
     }
 
+    /// Closes a terminal session asynchronously in a background thread.
     pub fn close_session_in_background(&self, session_id: &str) {
         crate::terminal::services::log_info(&format!(
             "[PTY] Closing session {} in background",
@@ -224,6 +234,7 @@ impl TerminalManager {
             .and_then(|mut handles| handles.remove(session_id))
     }
 
+    /// Closes all terminal sessions and releases all PTY handles.
     pub fn close_all_sessions(&self) {
         crate::terminal::services::log_info("[PTY] Closing all sessions...");
         let ids: Vec<String> = self

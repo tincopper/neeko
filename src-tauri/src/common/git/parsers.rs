@@ -1,3 +1,5 @@
+//! Parsers for git command output (diff, log, numstat, file tree, etc.).
+
 use anyhow::Result;
 use std::path::PathBuf;
 

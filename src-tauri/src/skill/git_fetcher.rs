@@ -1,15 +1,23 @@
+//! Git repository cloning, parsing, and cleanup helpers for skill installation.
+
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Decomposed git source URL with branch and subpath components.
 #[derive(Debug, Clone)]
 pub struct ParsedGitSource {
+    /// The original URL as provided.
     pub original_url: String,
+    /// Normalized clone URL (with .git suffix).
     pub clone_url: String,
+    /// Optional branch extracted from URL#branch.
     pub branch: Option<String>,
+    /// Optional subpath extracted from URL#branch:path.
     pub subpath: Option<String>,
 }
 
+/// Parse a git source URL into its components (clone_url, branch, subpath).
 pub fn parse_git_source(url: &str) -> ParsedGitSource {
     let original_url = url.to_string();
     let mut clone_url = url.to_string();
@@ -42,6 +50,7 @@ pub fn parse_git_source(url: &str) -> ParsedGitSource {
     }
 }
 
+/// Validate that a git URL has a supported scheme.
 pub fn validate_git_url(url: &str) -> Result<()> {
     if url.is_empty() {
         anyhow::bail!("Git URL cannot be empty");
@@ -54,6 +63,7 @@ pub fn validate_git_url(url: &str) -> Result<()> {
     Ok(())
 }
 
+/// Clone a git repository to a temp directory with optional branch, cancellation, and proxy.
 pub fn clone_repo_ref(
     url: &str,
     branch: Option<&str>,
@@ -108,6 +118,7 @@ pub fn clone_repo_ref(
     Ok(temp_path)
 }
 
+/// Get the HEAD commit revision of a git repository.
 pub fn get_head_revision(repo_path: &Path) -> Result<String> {
     let output = crate::common::utils::command::local::exec("git")
         .args(["rev-parse", "HEAD"])
@@ -123,12 +134,14 @@ pub fn get_head_revision(repo_path: &Path) -> Result<String> {
     Ok(revision)
 }
 
+/// Remove a temporary clone directory if it exists.
 pub fn cleanup_temp(path: &Path) {
     if path.exists() {
         let _ = std::fs::remove_dir_all(path);
     }
 }
 
+/// Convert a GitHub shorthand (owner/repo) to a full HTTPS URL.
 pub fn construct_github_url(source: &str) -> String {
     if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@")
     {

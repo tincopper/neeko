@@ -1,3 +1,5 @@
+//! In-memory caches for git operations and PR data.
+
 use crate::common::git::types::DiffResult;
 use crate::project::types::{AheadBehind, FileDiffStats, PRInfo, PRListItem, PrLabel};
 use std::collections::{HashMap, VecDeque};

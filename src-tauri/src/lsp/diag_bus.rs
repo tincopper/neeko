@@ -10,9 +10,13 @@ use serde::Serialize;
 /// round-trip.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticEvent {
+    /// Project filesystem path.
     pub project_path: String,
+    /// Document URI (file:// scheme).
     pub uri: String,
+    /// Language identifier (e.g. "rust").
     pub language_id: String,
+    /// Raw diagnostics JSON array from the LSP notification.
     pub diagnostics: serde_json::Value,
 }
 
@@ -47,6 +51,7 @@ pub struct DiagnosticBus {
 }
 
 impl DiagnosticBus {
+    /// Create a new empty diagnostic bus.
     pub fn new() -> Self {
         Self {
             listeners: Arc::new(RwLock::new(Vec::new())),

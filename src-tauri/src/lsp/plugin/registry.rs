@@ -86,19 +86,23 @@ impl LspPluginRegistry {
         *self = Self::with_defaults();
     }
 
+    /// Look up a plugin by file extension.
     pub fn resolve_by_extension(&self, ext: &str) -> Option<&LspPlugin> {
         let language_id = self.ext_index.get(&ext.to_lowercase())?;
         self.plugins.get(language_id)
     }
 
+    /// Look up a plugin by language identifier.
     pub fn resolve_by_language(&self, language_id: &str) -> Option<&LspPlugin> {
         self.plugins.get(language_id)
     }
 
+    /// List all registered plugins.
     pub fn list_all(&self) -> Vec<&LspPlugin> {
         self.plugins.values().collect()
     }
 
+    /// Check if a language is registered.
     pub fn is_registered(&self, language_id: &str) -> bool {
         self.plugins.contains_key(language_id)
     }

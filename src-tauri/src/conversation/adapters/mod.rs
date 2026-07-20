@@ -1,3 +1,5 @@
+//! Shared helpers for agent session adapters.
+
 use std::collections::{HashMap, VecDeque};
 
 use anyhow::Result;
@@ -5,12 +7,19 @@ use regex::Regex;
 
 use crate::conversation::adapter::AgentSessionAdapter;
 
+/// Adapter for Claude Code session files.
 pub mod claude_code;
+/// Adapter for CodeBuddy session files.
 pub mod codebuddy;
+/// Adapter for Codex session files.
 pub mod codex;
+/// Adapter for Gemini session files.
 pub mod gemini;
+/// Adapter for OpenCode session files.
 pub mod opencode;
+/// Adapter for Pi session files.
 pub mod pi;
+/// Adapter for Qoder session files.
 pub mod qoder;
 
 pub use claude_code::ClaudeCodeAdapter;

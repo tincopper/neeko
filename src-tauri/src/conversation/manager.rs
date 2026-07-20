@@ -434,13 +434,13 @@ impl ConversationManager {
     }
 }
 
-/// 解析会话 ID 为 (agent_id, native_session_id)
+/// Parse a conversation ID like `agent:session` into its components.
 fn parse_conversation_id(id: &str) -> Option<(&str, &str)> {
     let colon_pos = id.find(':')?;
     Some((&id[..colon_pos], &id[colon_pos + 1..]))
 }
 
-/// 将简单的 glob 模式（如 `*.jsonl`、`**/*.json`）转换为正则表达式
+/// Convert a simple glob pattern into a regular expression.
 fn pattern_to_regex(pattern: &str) -> Regex {
     let mut regex_str = String::new();
     let chars: Vec<char> = pattern.chars().collect();
@@ -473,9 +473,7 @@ fn pattern_to_regex(pattern: &str) -> Regex {
         .unwrap_or_else(|_| Regex::new(".*").expect("infallible: .* is always a valid regex"))
 }
 
-/// 格式化 Unix 时间戳为可读字符串
-///
-/// 自动检测毫秒/秒精度。
+/// Format a Unix timestamp (ms or seconds) into a human-readable string.
 fn format_timestamp(ts: i64) -> String {
     let secs = if ts > 1_000_000_000_000 {
         ts / 1000

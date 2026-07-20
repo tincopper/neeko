@@ -13,6 +13,7 @@ use tauri::State;
 
 // ─── Staging ─────────────────────────────────────────────────────────────────
 
+/// Stage specific files in the repository.
 #[tauri::command]
 pub async fn stage_files(
     project_id: String,
@@ -25,6 +26,7 @@ pub async fn stage_files(
         .map_err(AppError::from)
 }
 
+/// Unstage specific files in the repository.
 #[tauri::command]
 pub async fn unstage_files(
     project_id: String,
@@ -37,6 +39,7 @@ pub async fn unstage_files(
         .map_err(AppError::from)
 }
 
+/// Stage all changes in the repository.
 #[tauri::command]
 pub async fn stage_all(
     project_id: String,
@@ -48,6 +51,7 @@ pub async fn stage_all(
         .map_err(AppError::from)
 }
 
+/// Unstage all changes in the repository.
 #[tauri::command]
 pub async fn unstage_all(
     project_id: String,
@@ -59,6 +63,7 @@ pub async fn unstage_all(
         .map_err(AppError::from)
 }
 
+/// Discard changes in a specific file.
 #[tauri::command]
 pub async fn discard_file(
     project_id: String,
@@ -71,6 +76,7 @@ pub async fn discard_file(
         .map_err(AppError::from)
 }
 
+/// Discard all local changes.
 #[tauri::command]
 pub async fn discard_all(
     project_id: String,
@@ -84,6 +90,7 @@ pub async fn discard_all(
 
 // ─── Remote operations ───────────────────────────────────────────────────────
 
+/// Fetch from remote.
 #[tauri::command]
 pub async fn fetch(
     project_id: String,
@@ -93,6 +100,7 @@ pub async fn fetch(
     operations::fetch(&*t, &wd).await.map_err(AppError::from)
 }
 
+/// Pull from remote.
 #[tauri::command]
 pub async fn pull(
     project_id: String,
@@ -102,6 +110,7 @@ pub async fn pull(
     operations::pull(&*t, &wd).await.map_err(AppError::from)
 }
 
+/// Push to remote.
 #[tauri::command]
 pub async fn push(
     project_id: String,
@@ -114,6 +123,7 @@ pub async fn push(
         .map_err(AppError::from)
 }
 
+/// Fetch from remote with authentication.
 #[tauri::command]
 pub async fn fetch_with_credentials(
     project_id: String,
@@ -127,6 +137,7 @@ pub async fn fetch_with_credentials(
         .map_err(AppError::from)
 }
 
+/// Pull from remote with authentication.
 #[tauri::command]
 pub async fn pull_with_credentials(
     project_id: String,
@@ -140,6 +151,7 @@ pub async fn pull_with_credentials(
         .map_err(AppError::from)
 }
 
+/// Push to remote with authentication.
 #[tauri::command]
 pub async fn push_with_credentials(
     project_id: String,
@@ -160,6 +172,7 @@ pub async fn push_with_credentials(
     .map_err(AppError::from)
 }
 
+/// Commit specific files with a message.
 #[tauri::command]
 pub async fn commit_files(
     project_id: String,
@@ -175,6 +188,7 @@ pub async fn commit_files(
 
 // ─── Cherry-pick / Revert / Tag ──────────────────────────────────────────────
 
+/// Cherry-pick a commit.
 #[tauri::command]
 pub async fn cherry_pick(
     project_id: String,
@@ -187,6 +201,7 @@ pub async fn cherry_pick(
         .map_err(AppError::from)
 }
 
+/// Revert a commit.
 #[tauri::command]
 pub async fn revert(
     project_id: String,
@@ -199,6 +214,7 @@ pub async fn revert(
         .map_err(AppError::from)
 }
 
+/// Create a Git tag.
 #[tauri::command]
 pub async fn create_tag(
     project_id: String,
@@ -214,6 +230,7 @@ pub async fn create_tag(
 
 // ─── Branching ───────────────────────────────────────────────────────────────
 
+/// Checkout a branch.
 #[tauri::command]
 pub async fn checkout_branch(
     project_id: String,
@@ -226,6 +243,7 @@ pub async fn checkout_branch(
         .map_err(AppError::from)
 }
 
+/// Create a new branch.
 #[tauri::command]
 pub async fn create_branch(
     project_id: String,
@@ -239,6 +257,7 @@ pub async fn create_branch(
         .map_err(AppError::from)
 }
 
+/// Delete a branch.
 #[tauri::command]
 pub async fn delete_branch(
     project_id: String,
@@ -252,6 +271,7 @@ pub async fn delete_branch(
         .map_err(AppError::from)
 }
 
+/// Rename a branch.
 #[tauri::command]
 pub async fn rename_branch(
     project_id: String,
@@ -265,6 +285,7 @@ pub async fn rename_branch(
         .map_err(AppError::from)
 }
 
+/// Create and switch to a new branch.
 #[tauri::command]
 pub async fn create_and_switch_branch(
     project_id: String,
@@ -277,6 +298,7 @@ pub async fn create_and_switch_branch(
         .map_err(AppError::from)
 }
 
+/// Checkout a commit in detached HEAD state.
 #[tauri::command]
 pub async fn checkout_detached(
     project_id: String,
@@ -291,6 +313,7 @@ pub async fn checkout_detached(
 
 // ─── Worktree ────────────────────────────────────────────────────────────────
 
+/// Create a Git worktree.
 #[tauri::command]
 pub async fn create_worktree(
     project_id: String,
@@ -309,6 +332,7 @@ pub async fn create_worktree(
         .map_err(AppError::from)
 }
 
+/// Remove a Git worktree.
 #[tauri::command]
 pub async fn remove_worktree(
     project_id: String,
@@ -321,6 +345,7 @@ pub async fn remove_worktree(
         .map_err(AppError::from)
 }
 
+/// Rename a Git worktree.
 #[tauri::command]
 pub async fn rename_worktree(
     project_id: String,
@@ -334,6 +359,7 @@ pub async fn rename_worktree(
         .map_err(AppError::from)
 }
 
+/// Check if a worktree has uncommitted changes.
 #[tauri::command]
 pub async fn is_worktree_dirty(
     project_id: String,
@@ -348,6 +374,7 @@ pub async fn is_worktree_dirty(
 
 // ─── Info / Read operations ──────────────────────────────────────────────────
 
+/// Get repository information.
 #[tauri::command]
 pub async fn get_git_info(
     project_id: String,
@@ -359,6 +386,7 @@ pub async fn get_git_info(
         .map_err(AppError::from)
 }
 
+/// Get branch information.
 #[tauri::command]
 pub async fn get_git_branch_info(
     project_id: String,
@@ -370,6 +398,7 @@ pub async fn get_git_branch_info(
         .map_err(AppError::from)
 }
 
+/// Get changed files in a worktree.
 #[tauri::command]
 pub async fn get_worktree_changed_files(
     project_id: String,
@@ -388,6 +417,7 @@ pub async fn get_worktree_changed_files(
         .map_err(AppError::from)
 }
 
+/// Get diff statistics for changed files.
 #[tauri::command]
 pub async fn get_changed_files_diff_stats(
     project_id: String,
@@ -399,6 +429,7 @@ pub async fn get_changed_files_diff_stats(
         .map_err(AppError::from)
 }
 
+/// Get the diff for a specific file.
 #[tauri::command]
 pub async fn get_file_diff(
     project_id: String,
@@ -415,6 +446,7 @@ pub async fn get_file_diff(
     result
 }
 
+/// Check if the project is a Git repository.
 #[tauri::command]
 pub async fn is_git_repo(
     project_id: String,
@@ -426,6 +458,7 @@ pub async fn is_git_repo(
 
 // ─── Commit log / history ────────────────────────────────────────────────────
 
+/// Get the commit log.
 #[tauri::command]
 pub async fn get_commit_log(
     project_id: String,
@@ -439,6 +472,7 @@ pub async fn get_commit_log(
         .map_err(AppError::from)
 }
 
+/// Get details for a specific commit.
 #[tauri::command]
 pub async fn get_commit_detail(
     project_id: String,
@@ -451,6 +485,7 @@ pub async fn get_commit_detail(
         .map_err(AppError::from)
 }
 
+/// Get files changed in a commit.
 #[tauri::command]
 pub async fn get_commit_files(
     project_id: String,
@@ -463,6 +498,7 @@ pub async fn get_commit_files(
         .map_err(AppError::from)
 }
 
+/// Get the diff for a file in a commit.
 #[tauri::command]
 pub async fn get_commit_file_diff(
     project_id: String,
@@ -476,6 +512,7 @@ pub async fn get_commit_file_diff(
         .map_err(AppError::from)
 }
 
+/// Get ahead/behind counts for the current branch.
 #[tauri::command]
 pub async fn get_ahead_behind(
     project_id: String,
@@ -489,6 +526,7 @@ pub async fn get_ahead_behind(
 
 // ─── Default branch ──────────────────────────────────────────────────────────
 
+/// Get the default branch name.
 #[tauri::command]
 pub async fn default_branch(
     project_id: String,
@@ -503,8 +541,10 @@ pub async fn default_branch(
 // ─── File operations (unified via file service) ────────────────────────────
 
 /// 文件树默认递归深度
+/// Default maximum depth for directory tree traversal.
 const DEFAULT_TREE_DEPTH: u32 = 4;
 
+/// Read the directory tree.
 #[tauri::command]
 pub async fn read_dir_tree(
     project_id: String,
@@ -535,6 +575,7 @@ pub async fn read_file_content(
     crate::common::file::services::read_file_content(&target, &base, &file_path).await
 }
 
+/// Write file content.
 #[tauri::command]
 pub async fn write_file_content(
     project_id: String,
@@ -654,6 +695,7 @@ fn resolve_agent_for_remote(
 
 // ─── Remote/SSH utilities ───────────────────────────────────────────────────
 
+/// Get the home directory on a remote host.
 #[tauri::command]
 pub async fn get_remote_home_dir(
     host: String,
@@ -675,16 +717,19 @@ pub async fn get_remote_home_dir(
 
 // ─── PR Commands ────────────────────────────────────────────────────────────
 
+/// Check if GitHub CLI is installed.
 #[tauri::command]
 pub async fn is_gh_installed_command() -> bool {
     crate::git::is_gh_installed().await
 }
 
+/// Check if GitHub CLI is authenticated.
 #[tauri::command]
 pub async fn is_gh_authenticated_command() -> bool {
     crate::git::is_gh_authenticated().await
 }
 
+/// List pull requests.
 #[tauri::command]
 pub async fn list_prs_command(
     project_id: String,
@@ -700,6 +745,7 @@ pub async fn list_prs_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// List repository labels.
 #[tauri::command]
 pub async fn list_repo_labels_command(
     project_id: String,
@@ -713,6 +759,7 @@ pub async fn list_repo_labels_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// List repository authors.
 #[tauri::command]
 pub async fn list_repo_authors_command(
     project_id: String,
@@ -726,6 +773,7 @@ pub async fn list_repo_authors_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// View pull request details.
 #[tauri::command]
 pub async fn view_pr_command(
     project_id: String,
@@ -740,6 +788,7 @@ pub async fn view_pr_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Create a pull request.
 #[tauri::command]
 pub async fn create_pr_command(
     project_id: String,
@@ -757,6 +806,7 @@ pub async fn create_pr_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Merge a pull request.
 #[tauri::command]
 pub async fn merge_pr_command(
     project_id: String,
@@ -772,6 +822,7 @@ pub async fn merge_pr_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Close a pull request.
 #[tauri::command]
 pub async fn close_pr_command(
     project_id: String,
@@ -786,6 +837,7 @@ pub async fn close_pr_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// List files changed in a pull request.
 #[tauri::command]
 pub async fn list_pr_files_command(
     project_id: String,
@@ -800,6 +852,7 @@ pub async fn list_pr_files_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// List commits in a pull request.
 #[tauri::command]
 pub async fn list_pr_commits_command(
     project_id: String,
@@ -814,6 +867,7 @@ pub async fn list_pr_commits_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Add a review comment on a pull request.
 #[tauri::command]
 pub async fn add_pr_review_comment_command(
     project_id: String,
@@ -832,6 +886,7 @@ pub async fn add_pr_review_comment_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// List review comments on a pull request.
 #[tauri::command]
 pub async fn list_pr_review_comments_command(
     project_id: String,
@@ -855,6 +910,7 @@ pub async fn list_pr_review_comments_command(
 
 // ─── PR Comment Commands ────────────────────────────────────────────────────
 
+/// List comments on a pull request.
 #[tauri::command]
 pub async fn list_pr_comments_command(
     project_id: String,
@@ -869,6 +925,7 @@ pub async fn list_pr_comments_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Add a comment to a pull request.
 #[tauri::command]
 pub async fn add_pr_comment_command(
     project_id: String,
@@ -884,6 +941,7 @@ pub async fn add_pr_comment_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Edit a comment on a pull request.
 #[tauri::command]
 pub async fn edit_pr_comment_command(
     project_id: String,
@@ -900,6 +958,7 @@ pub async fn edit_pr_comment_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Delete a comment on a pull request.
 #[tauri::command]
 pub async fn delete_pr_comment_command(
     project_id: String,
@@ -915,6 +974,7 @@ pub async fn delete_pr_comment_command(
         .map_err(|e| AppError::Git(e.to_string()))
 }
 
+/// Add a reaction to a comment.
 #[tauri::command]
 pub async fn add_comment_reaction_command(
     project_id: String,

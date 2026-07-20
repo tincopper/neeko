@@ -1,3 +1,5 @@
+//! Tauri command for AI-generated commit messages.
+
 use crate::common::agent::services::commit as ai_svc;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::exec_on;
@@ -5,6 +7,7 @@ use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+/// Generate a commit message using an AI agent.
 #[tauri::command]
 pub async fn generate_commit_message(
     project_id: String,
@@ -38,6 +41,7 @@ pub async fn generate_commit_message(
     Ok(message)
 }
 
+/// Run the agent locally to generate a commit message.
 async fn run_agent_local(
     state: &AppStateWrapper,
     wd: &str,
@@ -50,6 +54,7 @@ async fn run_agent_local(
     ai_svc::generate_commit_message(&sp, &config, file_paths).map_err(AppError::from)
 }
 
+/// Run the agent on a remote host to generate a commit message.
 async fn run_agent_remote(
     wd: &str,
     agent_cmd: &str,
@@ -85,6 +90,7 @@ async fn run_agent_remote(
     }
 }
 
+/// Run the agent inside a WSL distro to generate a commit message.
 async fn run_agent_wsl(
     wd: &str,
     agent_cmd: &str,
@@ -115,6 +121,7 @@ async fn run_agent_wsl(
     }
 }
 
+/// Resolve agent configuration including command and prompt arguments.
 fn resolve_agent_config(
     state: &AppStateWrapper,
     agent_id: &str,
@@ -138,6 +145,7 @@ fn resolve_agent_config(
     Ok(ai_svc::AgentInvokeConfig { command, prompt_args, post_prompt_args })
 }
 
+/// Resolve agent command and args for remote/WSL execution.
 fn resolve_agent_for_remote(
     state: &AppStateWrapper,
     selected_agent: &str,

@@ -24,10 +24,15 @@ use crate::AppError;
 
 static NEXT_SESSION: AtomicI64 = AtomicI64::new(1);
 
+/// A DAP debug session bound to a single adapter process.
 pub struct DapSession {
+    /// Unique session identifier.
     pub session_id: String,
+    /// Project this session belongs to.
     pub project_id: String,
+    /// Filesystem path of the project.
     pub project_path: String,
+    /// Name of the launch configuration used.
     pub config_name: String,
     status: Mutex<SessionStatus>,
     status_message: Mutex<Option<String>>,
@@ -43,6 +48,7 @@ pub struct DapSession {
 struct SessionHandler(Weak<DapSession>);
 
 impl SessionHandler {
+    /// Try to upgrade the weak reference to the parent session.
     fn upgrade(&self) -> Option<Arc<DapSession>> {
         self.0.upgrade()
     }
@@ -83,6 +89,7 @@ impl DapEventHandler for SessionHandler {
 }
 
 impl DapSession {
+    /// Launch a debug session: spawn adapter, run handshake, apply breakpoints.
     pub async fn start(
         app: AppHandle,
         project_id: String,
@@ -436,6 +443,7 @@ impl DapSession {
         self.emit_event("terminated", body).await;
     }
 
+    /// Send updated breakpoints for a file to the adapter.
     pub async fn set_breakpoints_for_file(
         &self,
         file_path: &str,
@@ -467,6 +475,7 @@ impl DapSession {
         Ok(out)
     }
 
+    /// Send a debug control action (continue, next, stepIn, etc.) to the adapter.
     pub async fn control(&self, action: &str) -> Result<(), AppError> {
         let action = ControlAction::parse(action)?;
         let thread_id = self.resolve_thread_id().await;
@@ -479,6 +488,7 @@ impl DapSession {
         Ok(())
     }
 
+    /// Fetch the current thread's stack trace from the adapter.
     pub async fn stack_trace(&self) -> Result<Vec<StackFrameDto>, AppError> {
         let thread_id = self.resolve_thread_id().await;
         let body = self
@@ -512,6 +522,7 @@ impl DapSession {
         Ok(frames)
     }
 
+    /// Fetch scopes and variables for a given stack frame.
     pub async fn scopes_variables(&self, frame_id: i64) -> Result<Vec<VariableDto>, AppError> {
         let scopes_body = self
             .client
@@ -560,6 +571,7 @@ impl DapSession {
         Ok(vars)
     }
 
+    /// Evaluate an expression in the current debug context.
     pub async fn evaluate(
         &self,
         expression: &str,
@@ -582,6 +594,7 @@ impl DapSession {
             .to_string())
     }
 
+    /// Stop the debug session and disconnect from the adapter.
     pub async fn stop(&self) {
         let _ = self
             .client
@@ -594,6 +607,7 @@ impl DapSession {
             .await;
     }
 
+    /// Get a snapshot of the current session state for the frontend.
     pub async fn info(&self) -> DapSessionInfo {
         DapSessionInfo {
             session_id: self.session_id.clone(),

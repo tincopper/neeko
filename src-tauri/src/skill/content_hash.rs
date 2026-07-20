@@ -1,3 +1,5 @@
+//! Content-addressed hashing for skill directories.
+
 use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -5,6 +7,7 @@ use walkdir::WalkDir;
 
 const IGNORED: &[&str] = &[".git", ".DS_Store", "Thumbs.db", ".gitignore"];
 
+/// Compute a deterministic SHA-256 hash of a directory's file contents and structure.
 pub fn hash_directory(dir: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
     let mut entries: Vec<_> = WalkDir::new(dir)

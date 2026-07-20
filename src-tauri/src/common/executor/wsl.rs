@@ -17,13 +17,26 @@ use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, 
 ///
 /// On Windows spawns `wsl.exe` with Windows `PATH` stripped so host PATH does
 /// not leak into Linux, then runs `bash -lc '…'` for the user command.
+#[cfg(not(target_os = "windows"))]
+pub struct WslExecutor;
+
+#[cfg(not(target_os = "windows"))]
+impl WslExecutor {
+    /// Create a new `WslExecutor` (stub — returns an error on non-Windows platforms).
+    pub fn new(_distro: String) -> Self {
+        Self
+    }
+}
+
 #[cfg(target_os = "windows")]
 pub struct WslExecutor {
+    /// WSL distribution name (e.g. "Ubuntu-22.04"). `None` uses the default distro.
     distro: Option<String>,
 }
 
 #[cfg(target_os = "windows")]
 impl WslExecutor {
+    /// Create a new `WslExecutor` for the given distribution.
     pub fn new(distro: String) -> Self {
         Self {
             distro: Some(distro),
@@ -31,6 +44,8 @@ impl WslExecutor {
     }
 }
 
+/// Build a login-shell command script that changes to the working directory
+/// and executes the requested command.
 #[cfg(target_os = "windows")]
 fn build_login_script(opts: &SpawnOptions<'_>) -> String {
     use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
@@ -97,16 +112,6 @@ impl CommandExecutor for WslExecutor {
         };
 
         Ok(ExecChild::new(stdin, stdout, stderr, wait, kill_fn))
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-pub struct WslExecutor;
-
-#[cfg(not(target_os = "windows"))]
-impl WslExecutor {
-    pub fn new(_distro: String) -> Self {
-        Self
     }
 }
 

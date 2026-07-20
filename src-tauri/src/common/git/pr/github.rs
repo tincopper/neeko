@@ -1,3 +1,5 @@
+//! GitHub PR provider implementation using the `gh` CLI.
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -192,12 +194,16 @@ fn parse_review_comments_response(stdout: &str) -> Vec<PRReviewComment> {
 
 // ─── Trait Implementation ────────────────────────────────────────────────
 
+/// GitHub pull request provider backed by the `gh` CLI.
 pub struct GitHubPrProvider {
+    /// Path to the local git repository.
     repo_path: PathBuf,
+    /// Execution target (local, WSL, or SSH remote).
     target: ExecTarget,
 }
 
 impl GitHubPrProvider {
+    /// Create a new `GitHubPrProvider` for the given repository and execution target.
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             repo_path: repo_path.to_path_buf(),

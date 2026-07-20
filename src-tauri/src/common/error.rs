@@ -1,42 +1,61 @@
 use serde::Serialize;
 use thiserror::Error;
 
+/// Application-level error type covering all domain error categories.
 #[derive(Error, Debug, Clone)]
 pub enum AppError {
+    /// An I/O operation failed.
     #[error("IO error: {0}")]
     Io(String),
+    /// A git operation failed.
     #[error("Git error: {0}")]
     Git(String),
+    /// A storage/database operation failed.
     #[error("Storage error: {0}")]
     Storage(String),
+    /// A skill operation failed.
     #[error("Skill error: {0}")]
     Skill(String),
+    /// A project-level operation failed.
     #[error("Project error: {0}")]
     Project(String),
+    /// The requested resource was not found.
     #[error("Not found: {0}")]
     NotFound(String),
+    /// The provided input was invalid.
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+    /// A remote connection/host operation failed.
     #[error("Remote error: {0}")]
     Remote(String),
+    /// A WSL-specific operation failed.
     #[error("WSL error: {0}")]
     Wsl(String),
+    /// A terminal operation failed.
     #[error("Terminal error: {0}")]
     Terminal(String),
+    /// An agent operation failed.
     #[error("Agent error: {0}")]
     Agent(String),
+    /// An IDE launch/interaction failed.
     #[error("IDE error: {0}")]
     Ide(String),
+    /// The requested operation is unsupported.
     #[error("Unsupported: {0}")]
     Unsupported(String),
+    /// A file operation failed.
     #[error("File error: {0}")]
     File(String),
+    /// A mutex lock was poisoned.
     #[error("Lock poisoned: {0}")]
     LockPoisoned(String),
+    /// An LSP operation failed.
     #[error("LSP error: {0}")]
     Lsp(String),
+    /// A DAP operation failed.
     #[error("DAP error: {0}")]
     Dap(String),
+    /// An unknown or unclassified error occurred.
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

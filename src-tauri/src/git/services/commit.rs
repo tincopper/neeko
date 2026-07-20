@@ -2,21 +2,27 @@ use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 use std::path::{Path, PathBuf};
 
-/// Agent CLI 调用配置
+/// Agent CLI invocation configuration.
 pub struct AgentInvokeConfig {
+    /// Agent binary or path.
     pub command: String,
+    /// Arguments prepended to the prompt.
     pub prompt_args: Vec<String>,
+    /// Arguments appended after the prompt.
     pub post_prompt_args: Vec<String>,
 }
 
-/// Agent CLI 执行结果
+/// Result of an agent CLI execution.
 pub struct AgentOutput {
+    /// Standard output from the agent.
     pub stdout: String,
+    /// Standard error from the agent.
     pub stderr: String,
+    /// Process exit code.
     pub exit_code: i32,
 }
 
-/// 生成 commit message（纯业务逻辑，无 State 依赖）。
+/// Generate a commit message using an AI agent (pure business logic, no State dependency).
 pub fn generate_commit_message(
     project_path: &Path,
     config: &AgentInvokeConfig,
@@ -44,7 +50,7 @@ pub fn generate_commit_message(
     Ok(message)
 }
 
-/// 获取选中文件的 diff。
+/// Get the diff for selected files.
 pub fn get_selected_diff(project_path: &Path, file_paths: &[String]) -> Result<String, AppError> {
     if file_paths.is_empty() {
         return Err(AppError::InvalidInput(
@@ -65,7 +71,7 @@ pub fn get_selected_diff(project_path: &Path, file_paths: &[String]) -> Result<S
     Ok(diff)
 }
 
-/// 构建 commit prompt（含 diff + 近期 commit 风格参考）。
+/// Build a commit prompt containing the diff and recent commit style reference.
 pub fn build_commit_prompt(diff: &str, recent_messages: &[String]) -> String {
     let recent_section = if recent_messages.is_empty() {
         "(no previous commits found)".to_string()
@@ -123,7 +129,7 @@ Changes to commit:
     )
 }
 
-/// 构建 WSL/SSH 场景的简短 prompt（不含 diff 内容，agent 自行分析变更）。
+/// Build a short commit prompt for WSL/SSH environments (no diff content, agent analyzes changes).
 pub fn build_simple_commit_prompt(file_paths: &[String]) -> String {
     let files_section = file_paths
         .iter()
@@ -174,7 +180,7 @@ Output ONLY the raw commit message. No explanation, no quotes, no code blocks."#
     )
 }
 
-/// 构建 WSL/SSH 场景的 agent 命令字符串。
+/// Build a shell command string to invoke an agent for commit message generation in WSL/SSH.
 pub fn build_agent_commit_cmd(
     project_path: &str,
     agent_cmd: &str,
@@ -199,7 +205,7 @@ pub fn build_agent_commit_cmd(
     }
 }
 
-/// 执行 agent CLI（纯业务逻辑，无 State 依赖）。
+/// Execute the agent CLI locally to generate a commit message.
 ///
 /// Always runs via [`crate::core::exec`] with an explicit [`ExecTarget`].
 /// Local commit path uses `ExecTarget::Local`; WSL/SSH commit goes through
@@ -319,7 +325,7 @@ pub fn execute_agent_cli_on_target(
     })
 }
 
-/// 写入 prompt 到临时文件 .neeko/commit.prompt。
+/// Write the prompt content to a temporary file under `.neeko/commit.prompt`.
 fn write_prompt_file(project_path: &Path, content: &str) -> Result<PathBuf, AppError> {
     let neeko_dir = project_path.join(".neeko");
     std::fs::create_dir_all(&neeko_dir)
@@ -331,7 +337,7 @@ fn write_prompt_file(project_path: &Path, content: &str) -> Result<PathBuf, AppE
     Ok(tmp_path)
 }
 
-/// 解码进程输出字节，优先 UTF-8；Windows 上若 UTF-8 失败则尝试 GBK（通过 lossy 回退）。
+/// Decode process output bytes, preferring UTF-8 with lossy fallback.
 fn decode_output(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
@@ -341,7 +347,7 @@ fn decode_output(bytes: &[u8]) -> String {
 
 // ─── AI Output Cleaning ─────────────────────────────────────────────────────
 
-/// 清理 AI 输出：去除 markdown 包裹、ANSI 颜色码、常见废话前缀，只保留 commit message 本体。
+/// Clean AI output by removing markdown wrapping, ANSI codes, and common waste prefixes to extract the commit message.
 pub fn clean_ai_output(raw: &str) -> String {
     let ansi_stripped = strip_ansi(raw);
     let trimmed = ansi_stripped.trim();
@@ -407,7 +413,7 @@ pub fn clean_ai_output(raw: &str) -> String {
     result_lines.join("\n").trim().to_string()
 }
 
-/// 去除字符串中的 ANSI 转义序列（颜色码等）。
+/// Remove ANSI escape sequences (color codes) from a string.
 fn strip_ansi(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

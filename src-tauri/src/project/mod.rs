@@ -1,5 +1,8 @@
+//! Project management: lifecycle, metadata, and session restoration.
+
 pub mod commands;
 pub mod commands_ide;
+/// Project types: Project, ProjectEnvironment, ViewMode, GitInfo.
 pub mod types;
 
 pub use commands_ide::*;
@@ -12,12 +15,14 @@ use anyhow::Result;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+/// Manages the project list, lifecycle, and persistence callbacks.
 pub struct ProjectManager {
     projects: Vec<Project>,
     persist: Box<dyn Fn(&[Project]) + Send>,
 }
 
 impl ProjectManager {
+    /// Creates a new ProjectManager with a persistence callback.
     pub fn new(persist: impl Fn(&[Project]) + Send + 'static) -> Self {
         Self {
             projects: Vec::new(),
@@ -29,6 +34,7 @@ impl ProjectManager {
         (self.persist)(&self.projects);
     }
 
+    /// Adds a local project, detecting Git info automatically.
     pub fn add_project(
         &mut self,
         path: PathBuf,
@@ -80,6 +86,7 @@ impl ProjectManager {
         Ok(project)
     }
 
+    /// Restores a project from a saved session entry.
     pub fn add_project_from_session(&mut self, session: &ProjectSession) -> Result<Project> {
         let name = session
             .path
@@ -117,6 +124,7 @@ impl ProjectManager {
         Ok(project)
     }
 
+    /// Sets the selected IDE for a project.
     pub fn set_selected_ide(&mut self, project_id: &str, ide: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_ide = ide;
@@ -124,6 +132,7 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Sets the primary LSP language override for a project.
     pub fn set_primary_language(&mut self, project_id: &str, language: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.primary_language = language.and_then(|s| {
@@ -138,6 +147,7 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Renames a project.
     pub fn rename_project(&mut self, project_id: &str, new_name: &str) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.name = new_name.to_string();
@@ -145,6 +155,7 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Changes the filesystem path of a project.
     pub fn change_path(&mut self, project_id: &str, new_path: &str) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.path = PathBuf::from(new_path);
@@ -153,15 +164,18 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Removes a project by ID.
     pub fn remove_project(&mut self, project_id: &str) {
         self.projects.retain(|p| p.id != project_id);
         self.notify_persist();
     }
 
+    /// Returns a reference to a project by ID.
     pub fn get_project(&self, project_id: &str) -> Option<&Project> {
         self.projects.iter().find(|p| p.id == project_id)
     }
 
+    /// Returns a copy of all projects (with cleared changed_files in Git info).
     pub fn list_projects(&self) -> Vec<Project> {
         self.projects
             .iter()
@@ -175,6 +189,7 @@ impl ProjectManager {
             .collect()
     }
 
+    /// Refreshes Git repository information for a project.
     pub fn refresh_git_info(&mut self, project_id: &str) -> Result<()> {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             if git::is_git_repo(&project.path) {
@@ -184,6 +199,7 @@ impl ProjectManager {
         Ok(())
     }
 
+    /// Sets the selected AI agent for a project.
     pub fn set_selected_agent(&mut self, project_id: &str, agent_id: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.selected_agent = agent_id;
@@ -191,14 +207,17 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Switches the project to terminal view mode.
     pub fn set_view_terminal(&mut self, project_id: &str) {
         self.set_active_view(project_id, ViewMode::Terminal);
     }
 
+    /// Switches the project to diff view mode for a specific file.
     pub fn set_view_diff(&mut self, project_id: &str, file_path: PathBuf) {
         self.set_active_view(project_id, ViewMode::Diff { file_path });
     }
 
+    /// Sets the collapsed state of a project in the sidebar.
     pub fn set_collapsed(&mut self, project_id: &str, collapsed: bool) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.collapsed = collapsed;
@@ -206,6 +225,7 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Sets the avatar color for a project.
     pub fn set_avatar_color(&mut self, project_id: &str, color: Option<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
             project.avatar_color = color;
@@ -213,6 +233,7 @@ impl ProjectManager {
         self.notify_persist();
     }
 
+    /// Reorders projects to match the given ID sequence.
     pub fn reorder_projects(&mut self, ordered_ids: &[String]) {
         let mut ordered: Vec<Project> = Vec::with_capacity(self.projects.len());
         for id in ordered_ids {

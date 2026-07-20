@@ -22,6 +22,7 @@ pub use lldb::LldbAdapter;
 /// Strategy for a language-specific debug adapter.
 #[async_trait]
 pub trait DebugAdapterPlugin: Send + Sync {
+    /// Return the adapter family identifier for this plugin.
     fn kind(&self) -> AdapterKind;
 
     /// Whether this plugin handles the launch.json `type` string.
@@ -30,6 +31,7 @@ pub trait DebugAdapterPlugin: Send + Sync {
     /// DAP `initialize.adapterID`.
     fn adapter_id(&self) -> &'static str;
 
+    /// Whether to send breakpoints before or after the launch request.
     fn handshake_order(&self) -> HandshakeOrder;
 
     /// Resolve binary + args in the **project** execution environment.
@@ -38,16 +40,20 @@ pub trait DebugAdapterPlugin: Send + Sync {
     /// Whether any suitable adapter binary exists on `target`.
     async fn is_available(&self, target: &ExecTarget) -> bool;
 
+    /// Build the `launch` request arguments for this adapter type.
     fn build_launch_args(&self, cfg: &LaunchConfig, workspace: &str) -> Result<Value, AppError>;
 
     /// Optional function breakpoint name used when `stopOnEntry` is true
     /// (Go/Delve workaround for Dummy thread).
     fn entry_function_for_stop_on_entry(&self, stop_on_entry: bool) -> Option<&'static str>;
 
+    /// Hint shown to the user when the adapter binary is not found.
     fn install_hint(&self) -> &'static str;
 }
 
+/// Singleton Go adapter plugin.
 static GO: GoAdapter = GoAdapter;
+/// Singleton LLDB adapter plugin.
 static LLDB: LldbAdapter = LldbAdapter;
 
 /// Resolve the plugin for a launch configuration type.

@@ -1,3 +1,5 @@
+//! SSH authentication helpers for establishing authenticated connections.
+
 use crate::common::connection::types::AuthMethod;
 use anyhow::Result;
 use russh::client;

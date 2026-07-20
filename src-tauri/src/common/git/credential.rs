@@ -1,18 +1,25 @@
+//! Git credential helpers for filling, approving, and rejecting credentials.
+
 use super::transport::{GitExecOptions, GitTransport};
 use anyhow::Result;
 
-/// git credential 协议数据结构。
+/// Git credential protocol data structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Credential {
+    /// Protocol (e.g. "https", "ssh").
     pub protocol: String,
+    /// Host name (e.g. "github.com").
     pub host: String,
+    /// Path component of the URL.
     pub path: String,
+    /// Optional username.
     pub username: Option<String>,
+    /// Optional password (populated from credential helper cache).
     pub password: Option<String>,
 }
 
 impl Credential {
-    /// 从 URL 解析 protocol + host。username 需单独提供（可能从 URL 预填，也可能为空）。
+    /// Parse protocol + host from a URL. Username is provided separately via `username_hint`.
     pub fn from_url(url: &str, username_hint: Option<&str>) -> Result<Self> {
         // 解析 URL（https://user@host/path 或 https://host/path）
         let url = url.trim();
@@ -46,7 +53,7 @@ impl Credential {
         })
     }
 
-    /// 构建用于 `git credential fill` 的 stdin 输入（不含 password，仅查询缓存）。
+    /// Build stdin input for `git credential fill` (query cache, no password).
     pub fn build_fill_input(&self) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\n\n",
@@ -55,7 +62,7 @@ impl Credential {
         .into_bytes()
     }
 
-    /// 构建用于 `git credential approve` 的 stdin 输入（含 username+password 存入）。
+    /// Build stdin input for `git credential approve` (store username + password).
     pub fn build_approve_input(&self, username: &str, password: &str) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\nusername={}\npassword={}\n\n",
@@ -64,7 +71,7 @@ impl Credential {
         .into_bytes()
     }
 
-    /// 构建用于 `git credential reject` 的 stdin 输入（同 approve 但用于删除缓存）。
+    /// Build stdin input for `git credential reject` (delete cached credentials).
     pub fn build_reject_input(&self, username: &str) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\nusername={}\n\n",
@@ -73,8 +80,8 @@ impl Credential {
         .into_bytes()
     }
 
-    /// 解析 `git credential fill` 的 stdout 输出。返回的 Credential 将包含从缓存读取的 username/password。
-    /// password=None 表示缓存中没有凭据。
+    /// Parse `git credential fill` stdout output. Returns a Credential with cached username/password.
+    /// `password=None` means no cached credentials.
     pub fn parse_fill_output(output: &str) -> Result<Credential> {
         let mut protocol = String::new();
         let mut host = String::new();
@@ -103,9 +110,8 @@ impl Credential {
     }
 }
 
-/// 检测 git credential helper（优先用户配置，回退平台默认）。
-/// 结果不含 leading `-c`，调用方自行拼入 GitExecOptions。
-/// 纯 async，直接 await transport.run_git 避免嵌套 tokio Runtime。
+/// Resolve the git credential helper (user config first, then platform default).
+/// Returns the helper value without a leading `-c` — callers prepend it into GitExecOptions.
 pub async fn resolve_credential_helper(
     transport: &dyn GitTransport,
     work_dir: &str,
@@ -133,8 +139,9 @@ pub async fn resolve_credential_helper(
     Ok(platform_default.to_string())
 }
 
-/// 通过 git credential fill 查询缓存凭据。返回 Some(Credential) 表示命中（含 password）。
-/// 注：需通过 GitExecOptions 注入 `-c credential.helper=<resolved>` 才能持久化。
+/// Query cached credentials via `git credential fill`.
+/// Returns `Some(Credential)` if a cached entry with password was found.
+/// Requires `-c credential.helper=<resolved>` injected via GitExecOptions.
 pub async fn credential_fill(
     transport: &dyn GitTransport,
     work_dir: &str,
@@ -157,7 +164,7 @@ pub async fn credential_fill(
     }
 }
 
-/// 通过 git credential approve 缓存凭据（持久化）。
+/// Store credentials via `git credential approve` (persists to credential helper).
 pub async fn credential_approve(
     transport: &dyn GitTransport,
     work_dir: &str,
@@ -177,7 +184,7 @@ pub async fn credential_approve(
     Ok(())
 }
 
-/// 通过 git credential reject 删除缓存的错误凭据。
+/// Delete cached credentials via `git credential reject`.
 pub async fn credential_reject(
     transport: &dyn GitTransport,
     work_dir: &str,

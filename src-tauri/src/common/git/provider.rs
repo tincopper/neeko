@@ -1,3 +1,5 @@
+//! Git provider detection (GitHub, GitLab, Gitee) from remote URLs.
+
 use anyhow::Result;
 use std::path::Path;
 

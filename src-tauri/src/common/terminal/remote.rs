@@ -1,3 +1,5 @@
+//! SSH remote terminal session management.
+
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
@@ -13,23 +15,30 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+/// Internal handle for an active SSH terminal session.
 struct SSHHandle {
-    /// 用于向 IO 任务发送输入数据的 sender（通过 Drop 关闭 channel 通知 IO 任务退出）
+    /// Sender for forwarding user input to the IO task (dropped to signal exit).
     #[allow(dead_code)]
     input_tx: mpsc::UnboundedSender<Vec<u8>>,
-    /// 用于向 IO 任务发送 PTY resize 请求 (cols, rows)
+    /// Sender for PTY resize requests (cols, rows).
     resize_tx: mpsc::UnboundedSender<(u32, u32)>,
+    /// Event listener ID for terminal input events.
     input_listener_id: EventId,
+    /// Tauri app handle used for event emission.
     app_handle: tauri::AppHandle,
 }
 
+/// Manages SSH terminal sessions, including creation, I/O, and lifecycle.
 #[derive(Clone)]
 pub struct RemoteTerminalManager {
+    /// All active terminal sessions indexed by session ID.
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
+    /// Internal SSH handles indexed by session ID.
     ssh_handles: Arc<Mutex<HashMap<String, SSHHandle>>>,
 }
 
 impl RemoteTerminalManager {
+    /// Create a new empty `RemoteTerminalManager`.
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -37,7 +46,7 @@ impl RemoteTerminalManager {
         }
     }
 
-    /// 创建 SSH 终端会话
+    /// Create a new SSH terminal session connected to the given host.
     pub async fn create_session(
         &self,
         host: &str,
@@ -208,6 +217,7 @@ impl RemoteTerminalManager {
         Ok(terminal_session)
     }
 
+    /// Resize the PTY of an active SSH terminal session.
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
         if let Ok(handles) = self.ssh_handles.lock() {
             if let Some(handle) = handles.get(session_id) {
@@ -223,6 +233,7 @@ impl RemoteTerminalManager {
         Ok(())
     }
 
+    /// Close all active SSH terminal sessions.
     pub fn close_all_sessions(&self) {
         log_info("[SSH] Closing all sessions...");
         let ids: Vec<String> = self
@@ -236,6 +247,7 @@ impl RemoteTerminalManager {
         log_info("[SSH] All sessions closed");
     }
 
+    /// Close a single SSH terminal session by ID.
     pub fn close_session(&self, session_id: &str) {
         log_info(&format!(
             "[SSH] Closing session {}",
@@ -254,7 +266,7 @@ impl RemoteTerminalManager {
         }
     }
 
-    /// 测试 SSH 连接是否可用（验证 host/port/username/auth）
+    /// Test whether an SSH connection can be established with the given parameters.
     pub async fn test_connection(
         &self,
         host: &str,
@@ -280,8 +292,8 @@ impl RemoteTerminalManager {
         Ok(())
     }
 
-    /// 列出远程服务器上指定路径下的子目录（用于路径自动补全）
-    /// 建立一次性 SSH 连接，执行 ls 并返回目录名列表
+    /// List subdirectories at the given path on the remote server (for path auto-completion).
+    /// Establishes a one-shot SSH connection, runs `ls`, and returns directory names.
     pub async fn list_directories(
         &self,
         host: &str,

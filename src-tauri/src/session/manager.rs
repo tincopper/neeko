@@ -1,3 +1,5 @@
+//! Persistent storage for sessions, configs, and VCS settings.
+
 use crate::project::types::Project;
 use crate::session::types::{ProjectSession, SessionStore};
 use anyhow::Result;
@@ -5,12 +7,14 @@ use chrono::Local;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Manages persistent storage for sessions, configs, and VCS settings.
 #[derive(Clone)]
 pub struct StorageManager {
     config_dir: PathBuf,
 }
 
 impl StorageManager {
+    /// Creates a StorageManager with the default `~/.neeko` config directory.
     pub fn new() -> Result<Self> {
         let home_dir =
             dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
@@ -24,6 +28,7 @@ impl StorageManager {
         Ok(Self { config_dir })
     }
 
+    /// Creates a StorageManager with a custom config directory.
     pub fn with_dir(config_dir: PathBuf) -> Result<Self> {
         if !config_dir.exists() {
             fs::create_dir_all(&config_dir)?;
@@ -31,10 +36,12 @@ impl StorageManager {
         Ok(Self { config_dir })
     }
 
+    /// Returns the path to the config directory.
     pub fn get_config_dir(&self) -> &Path {
         &self.config_dir
     }
 
+    /// Persists VCS settings for a project.
     pub fn save_vcs_settings(&self, project_id: &str, settings: &serde_json::Value) -> Result<()> {
         let file = self.config_dir.join(format!("vcs_{}.json", project_id));
         let json = serde_json::to_string_pretty(settings)?;
@@ -42,6 +49,7 @@ impl StorageManager {
         Ok(())
     }
 
+    /// Loads previously saved VCS settings for a project.
     pub fn load_vcs_settings(&self, project_id: &str) -> Result<serde_json::Value> {
         let file = self.config_dir.join(format!("vcs_{}.json", project_id));
         if file.exists() {
@@ -52,6 +60,7 @@ impl StorageManager {
         }
     }
 
+    /// Persists the full session store to disk.
     pub fn save_session(&self, session: &SessionStore) -> Result<()> {
         let session_file = self.config_dir.join("sessions.json");
         let mut session = session.clone();
@@ -62,6 +71,7 @@ impl StorageManager {
         Ok(())
     }
 
+    /// Loads the session store from disk, migrating old formats.
     pub fn load_session(&self) -> Result<SessionStore> {
         let session_file = self.config_dir.join("sessions.json");
 
@@ -86,6 +96,7 @@ impl StorageManager {
         Ok(session)
     }
 
+    /// Builds a SessionStore from the current project list.
     pub fn create_session_from_projects(
         &self,
         projects: &[Project],
@@ -119,7 +130,7 @@ impl StorageManager {
         }
     }
 
-    // 保存用户配置
+    /// Persists user configuration to disk.
     pub fn save_config(&self, config: &serde_json::Value) -> Result<()> {
         let config_file = self.config_dir.join("config.json");
         let json = serde_json::to_string_pretty(config)?;
@@ -127,6 +138,7 @@ impl StorageManager {
         Ok(())
     }
 
+    /// Loads previously saved user configuration.
     pub fn load_config(&self) -> Result<serde_json::Value> {
         let config_file = self.config_dir.join("config.json");
 

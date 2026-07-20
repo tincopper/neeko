@@ -1,44 +1,61 @@
+//! Git diff and push types.
+
 use serde::{Deserialize, Serialize};
 
-/// Diff 行类型
+/// A single line in a diff hunk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DiffLine {
+    /// Unchanged context line.
     Context(String),
+    /// Added line.
     Added(String),
+    /// Removed line.
     Removed(String),
-    /// 折叠的连续未修改上下文（"12 unmodified lines"）
+    /// Collapsed consecutive unmodified lines ("12 unmodified lines").
     Collapsed(String),
 }
 
-/// Diff Hunk
+/// A single diff hunk (a contiguous block of changed lines).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffHunk {
+    /// Starting line number in the old file.
     pub old_start: u32,
+    /// Number of lines in the old file covered by this hunk.
     pub old_lines: u32,
+    /// Starting line number in the new file.
     pub new_start: u32,
+    /// Number of lines in the new file covered by this hunk.
     pub new_lines: u32,
+    /// Lines in this hunk.
     pub lines: Vec<DiffLine>,
 }
 
-/// Diff 结果
+/// The complete diff result for a file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiffResult {
+    /// All hunks in the diff.
     pub hunks: Vec<DiffHunk>,
-    /// 是否因为 line_limit 被截断
+    /// Whether the result was truncated due to a line limit.
     #[serde(default)]
     pub truncated: bool,
 }
 
-/// Git push/pull/fetch 操作结果。
-/// 成功返回 `Success`，鉴权失败返回 `AuthRequired`（前端弹登录框或 ssh-agent 引导）。
+/// Outcome of a git push/pull/fetch operation.
+///
+/// Returns `Success` on success or `AuthRequired` when authentication fails
+/// (triggers the frontend login dialog or ssh-agent guidance).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PushOutcome {
-    /// 操作成功。
+    /// Operation completed successfully.
     Success {},
-    /// 需要鉴权。`ssh=true` 时前端不弹密码框，引导 ssh-agent。
+    /// Authentication is required. When `ssh=true` the frontend should
+    /// guide the user to configure ssh-agent rather than showing a password prompt.
     AuthRequired {
+        /// Remote URL that requires authentication.
         remote_url: String,
+        /// Optional username hint.
         username_hint: Option<String>,
+        /// Whether the remote uses SSH (vs HTTPS).
         ssh: bool,
     },
 }

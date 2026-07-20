@@ -17,11 +17,17 @@ use crate::AppError;
 
 /// Callbacks for DAP events (implemented by session).
 pub trait DapEventHandler: Send + Sync + 'static {
+    /// Adapter sent the `initialized` event.
     fn on_initialized(&self);
+    /// Adapter sent the `stopped` event (breakpoint, exception, etc.).
     fn on_stopped(&self, body: Value);
+    /// Adapter sent the `continued` event (execution resumed).
     fn on_continued(&self, body: Value);
+    /// Adapter sent `terminated` or `exited`.
     fn on_terminated(&self, body: Value);
+    /// Adapter sent an `output` event (stdout/stderr/console).
     fn on_output(&self, body: Value);
+    /// Catch-all for unrecognised events.
     fn on_other_event(&self, event: &str, body: Value);
 }
 
@@ -151,11 +157,13 @@ impl DapClient {
         }
     }
 
+    /// Send a DAP request and await the response (30s timeout).
     pub async fn request(&self, command: &str, arguments: Value) -> Result<Value, AppError> {
         self.request_timeout(command, arguments, Duration::from_secs(30))
             .await
     }
 
+    /// Send a DAP request with a custom timeout.
     pub async fn request_timeout(
         &self,
         command: &str,
@@ -219,6 +227,7 @@ impl DapClient {
         Ok(resp.get("body").cloned().unwrap_or(json!({})))
     }
 
+    /// Wait until the debug adapter sends the `initialized` event, or until the timeout elapses.
     pub async fn wait_for_initialized(&self, timeout: Duration) -> Result<(), AppError> {
         if self.got_initialized.load(Ordering::SeqCst) {
             return Ok(());

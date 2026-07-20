@@ -1,3 +1,5 @@
+//! Types for session persistence and migration (alternate module path).
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -16,20 +18,30 @@ fn default_environment() -> ProjectEnvironment {
 /// 项目会话（持久化用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSession {
+    /// Unique session identifier.
     pub id: String,
+    /// Display name of the project.
     pub name: String,
+    /// Filesystem path to the project root.
     pub path: PathBuf,
     #[serde(default = "default_environment")]
+    /// Execution environment (local, WSL, or remote).
     pub environment: ProjectEnvironment,
+    /// Selected AI agent identifier.
     pub selected_agent: Option<String>,
+    /// Selected IDE identifier.
     pub selected_ide: Option<String>,
     #[serde(default)]
+    /// Historical terminal output lines.
     pub terminal_history: Vec<String>,
     #[serde(default)]
+    /// Last known terminal status.
     pub last_status: TerminalStatus,
     #[serde(default = "default_collapsed")]
+    /// Whether the project panel is collapsed in the sidebar.
     pub collapsed: bool,
     #[serde(default)]
+    /// Avatar color override for the project card.
     pub avatar_color: Option<String>,
     /// Project-level primary LSP language override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,8 +51,11 @@ pub struct ProjectSession {
 /// 会话存储
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStore {
+    /// All project sessions.
     pub projects: Vec<ProjectSession>,
+    /// Currently active project identifier.
     pub active_project_id: Option<String>,
+    /// RFC 3339 timestamp of last update.
     pub last_updated: String,
     /// 旧格式遗留字段，仅用于反序列化迁移
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -49,12 +64,15 @@ pub struct SessionStore {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remote_entries: Vec<RemoteEntrySession>,
     #[serde(default)]
+    /// Sidebar width in pixels.
     pub sidebar_width: Option<u32>,
     #[serde(default)]
+    /// Per-project worktree state map.
     pub worktree_state: HashMap<String, String>,
 }
 
 impl SessionStore {
+    /// Creates an empty session store.
     pub fn new() -> Self {
         Self {
             projects: Vec::new(),
@@ -137,49 +155,72 @@ impl Default for SessionStore {
 /// WSL 项目会话（持久化用）— 旧格式，仅用于反序列化迁移
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSLProjectSession {
+    /// Unique project identifier.
     pub id: String,
+    /// Display name of the project.
     pub name: String,
+    /// Project path inside the WSL distribution.
     pub path: String,
+    /// WSL distribution name.
     pub distro: String,
+    /// Parent entry session identifier.
     pub entry_id: String,
     #[serde(default)]
+    /// Selected AI agent identifier.
     pub selected_agent: Option<String>,
     #[serde(default)]
+    /// Selected IDE identifier.
     pub selected_ide: Option<String>,
     #[serde(default)]
+    /// Avatar color override.
     pub avatar_color: Option<String>,
 }
 
 /// WSL 发行版会话（持久化用）— 旧格式，仅用于反序列化迁移
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WSLEntrySession {
+    /// Unique entry identifier.
     pub id: String,
+    /// WSL distribution name.
     pub distro: String,
+    /// Projects associated with this WSL distribution.
     pub projects: Vec<WSLProjectSession>,
 }
 
 /// SSH 项目会话（持久化用）— 旧格式，仅用于反序列化迁移
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteProjectSession {
+    /// Unique project identifier.
     pub id: String,
+    /// Display name of the project.
     pub name: String,
+    /// Project path on the remote server.
     pub path: String,
+    /// Parent entry session identifier.
     pub entry_id: String,
     #[serde(default)]
+    /// Selected AI agent identifier.
     pub selected_agent: Option<String>,
     #[serde(default)]
+    /// Selected IDE identifier.
     pub selected_ide: Option<String>,
     #[serde(default)]
+    /// Avatar color override.
     pub avatar_color: Option<String>,
 }
 
 /// SSH 服务器会话（持久化用）— 旧格式，仅用于反序列化迁移
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteEntrySession {
+    /// Unique entry identifier.
     pub id: String,
+    /// Remote server hostname or IP.
     pub host: String,
+    /// SSH port number.
     pub port: u16,
+    /// SSH username.
     pub username: String,
+    /// Projects associated with this remote server.
     pub projects: Vec<RemoteProjectSession>,
     /// Base64 编码的 AuthMethod JSON
     #[serde(default, skip_serializing_if = "Option::is_none")]

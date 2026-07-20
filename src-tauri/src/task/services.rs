@@ -1,13 +1,20 @@
+//! Task persistence: load, save, and delete task configs from JSON files.
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// A single task configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskConfig {
+    /// Unique task identifier.
     pub id: String,
+    /// Display name.
     pub name: String,
+    /// Shell command to execute.
     pub command: String,
-    pub scope: String, // "project" | "app"
+    /// Scope: "project" or "app".
+    pub scope: String,
+    /// Optional project ID for project-scoped tasks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
 }

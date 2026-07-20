@@ -7,6 +7,7 @@ use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMet
 use crate::conversation::adapters::recent_messages_from;
 use crate::conversation::types::MessageBlock;
 
+/// Maximum number of preview messages to load from the database.
 const PREVIEW_LIMIT: u32 = 5;
 /// Separator between DB path and session ID in synthetic file paths
 const SYNTHETIC_SEP: char = '#';

@@ -1,3 +1,5 @@
+//! Gitee PR provider (stub — not yet implemented).
+
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -9,12 +11,16 @@ use crate::project::types::{
     PRComment, PRCommit, PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
 
+/// Gitee pull request provider (stub — not yet implemented).
 pub struct GiteePrProvider {
+    /// Path to the local git repository.
     _repo_path: PathBuf,
+    /// Execution target.
     _target: ExecTarget,
 }
 
 impl GiteePrProvider {
+    /// Create a new `GiteePrProvider`.
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             _repo_path: repo_path.to_path_buf(),

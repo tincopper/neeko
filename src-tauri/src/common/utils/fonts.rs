@@ -1,4 +1,6 @@
-/// 获取系统等宽字体列表（跨平台实现）
+//! System monospace font enumeration.
+
+/// Get the list of monospace fonts available on the system (cross-platform).
 pub fn get_monospace_fonts() -> Vec<String> {
     let mut fonts = get_system_fonts();
     fonts.sort_by_key(|a| a.to_lowercase());

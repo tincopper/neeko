@@ -11,6 +11,7 @@ use crate::dap::types::{
 };
 use crate::AppError;
 
+/// LLDB / CodeLLDB adapter plugin for Rust and native binaries.
 pub struct LldbAdapter;
 
 #[async_trait]

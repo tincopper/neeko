@@ -1,9 +1,12 @@
+//! Tauri commands for task configuration CRUD and execution.
+
 use crate::task::{DiscoveredTask, TaskConfig};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::Path;
 use tauri::{Emitter, State};
 
+/// Get all task configs (app-level and project-level).
 #[tauri::command]
 pub fn get_task_configs(
     project_path: Option<String>,
@@ -14,8 +17,7 @@ pub fn get_task_configs(
     Ok(configs)
 }
 
-/// Scan project for auto-discovered tasks (package.json scripts, …).
-/// Does not write to disk — import is a separate explicit step.
+/// Scan project for auto-discovered tasks. Does not write to disk.
 #[tauri::command]
 pub fn discover_task_configs(
     project_path: String,
@@ -26,7 +28,7 @@ pub fn discover_task_configs(
     Ok(crate::task::discover_tasks(path))
 }
 
-/// Persist a discovered task as a project-scoped TaskConfig (idempotent by id).
+/// Persist a discovered task as a project-scoped TaskConfig.
 #[tauri::command]
 pub fn import_discovered_task(
     task: DiscoveredTask,
@@ -40,6 +42,7 @@ pub fn import_discovered_task(
     Ok(config)
 }
 
+/// Save (create or update) a task config.
 #[tauri::command]
 pub fn save_task_config(
     config: TaskConfig,
@@ -50,6 +53,7 @@ pub fn save_task_config(
     crate::task::save_task(&config, project_path.as_deref()).map_err(AppError::from)
 }
 
+/// Delete a task config by ID and scope.
 #[tauri::command]
 pub fn delete_task_config(
     id: String,
@@ -61,6 +65,7 @@ pub fn delete_task_config(
     crate::task::delete_task(&id, &scope, project_path.as_deref()).map_err(AppError::from)
 }
 
+/// Run a task command in a new PTY session in the given project directory.
 #[tauri::command]
 pub fn run_task(
     command: String,
@@ -85,6 +90,7 @@ pub fn run_task(
     Ok(session_id)
 }
 
+/// Stop a running task by closing its PTY session.
 #[tauri::command]
 pub fn stop_task(session_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state

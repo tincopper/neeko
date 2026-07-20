@@ -1,3 +1,5 @@
+//! High-level git operations (push, pull, clone, etc.) using the transport abstraction.
+
 use anyhow::{bail, Result};
 
 use super::credential::{

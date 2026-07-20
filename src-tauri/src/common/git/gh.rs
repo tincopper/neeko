@@ -1,3 +1,5 @@
+//! GitHub CLI integration for PR and repository operations.
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -153,13 +155,18 @@ fn parse_gh_owner_repo(url: &str) -> Result<(String, String)> {
     anyhow::bail!("Could not parse GitHub owner/repo from remote URL: {url}")
 }
 
+/// GitHub CLI (`gh`) wrapper for executing commands in the context of a repository.
 pub struct GhCli {
+    /// Path to the local git repository.
     repo_path: PathBuf,
+    /// Execution target (local, WSL, or SSH remote).
     target: ExecTarget,
+    /// Cached (owner, repo) pair, lazily resolved from the remote URL.
     owner: Mutex<Option<(String, String)>>,
 }
 
 impl GhCli {
+    /// Create a new `GhCli` for the given repository and execution target.
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             repo_path: repo_path.to_path_buf(),
@@ -180,6 +187,7 @@ impl GhCli {
             .map_err(map_gh_exec_error)
     }
 
+    /// Run a gh command and parse the output as JSON.
     pub async fn run_json<T: DeserializeOwned>(&self, args: &[&str]) -> Result<T> {
         let stdout = self.run(args).await?;
         serde_json::from_str(&stdout).with_context(|| {
@@ -190,6 +198,7 @@ impl GhCli {
         })
     }
 
+    /// Run a `gh api` subcommand with the `repos/{owner}/{repo}/{path}` prefix.
     pub async fn api_run(&self, path: &str, extra_args: &[&str]) -> Result<String> {
         let (owner, repo) = self.repo_owner_name().await?;
         let api_path = format!("repos/{owner}/{repo}/{path}");
@@ -198,6 +207,7 @@ impl GhCli {
         self.run(&args).await
     }
 
+    /// Run a `gh api` subcommand and parse the output as JSON.
     pub async fn api_json<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -236,16 +246,19 @@ impl GhCli {
         Ok((owner, repo))
     }
 
+    /// Invalidate the cached owner/repo pair (e.g. after remote URL change).
     pub fn invalidate_owner(&self) {
         if let Ok(mut guard) = self.owner.lock() {
             *guard = None;
         }
     }
 
+    /// Check whether the `gh` CLI is installed and available.
     pub async fn is_installed(&self) -> bool {
         exec_on(&self.target, "gh", &["--version"]).await.is_ok()
     }
 
+    /// Check whether the user is authenticated with `gh`.
     pub async fn is_authenticated(&self) -> bool {
         exec_on(&self.target, "gh", &["auth", "status"])
             .await

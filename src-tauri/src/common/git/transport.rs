@@ -1,3 +1,5 @@
+//! Git execution transport abstraction (local and network execution with error classification).
+
 use std::time::Duration;
 
 use anyhow::Result;
@@ -9,15 +11,17 @@ use crate::common::executor::factory::{create_executor, ExecTarget};
 use crate::common::executor::sync::{collect_child_output, exec_on};
 use crate::common::utils::command::local::safe_path;
 
+/// Timeout for local (non-network) git commands.
 const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for network git commands (push, fetch, pull, clone).
 const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// 终端提示默认关闭——所有 git 子进程不挂死等待交互输入（AC5）。
+/// Terminal prompt disabled — all git subprocesses avoid hanging on interactive input.
 const GIT_TERMINAL_PROMPT: &str = "0";
 
 // ── 错误分类（AC8）─────────────────────────────────────────────────────────
 
-/// 真正的鉴权失败（HTTPS 凭据错误/缺失）。命中即触发 in-app 登录弹窗。
+/// Patterns matching true HTTPS authentication failures — triggers the in-app login dialog.
 const AUTH_PATTERNS: &[&str] = &[
     "Authentication failed",
     "could not read Username",
@@ -29,13 +33,13 @@ const AUTH_PATTERNS: &[&str] = &[
     "Bad credentials",
 ];
 
-/// SSH 专属鉴权失败——不弹密码框，引导配置 ssh-agent。
+/// Patterns matching SSH authentication failures — guides the user to configure ssh-agent.
 const AUTH_SSH_PATTERNS: &[&str] = &[
     "Permission denied (publickey)",
     "Host key verification failed",
 ];
 
-/// 纯网络错误——不弹登录框，提示网络/远端不可达。
+/// Patterns matching pure network errors — shows network/remote-unreachable messages.
 const NETWORK_PATTERNS: &[&str] = &[
     "fatal: unable to access",
     "Could not resolve host",
@@ -45,31 +49,32 @@ const NETWORK_PATTERNS: &[&str] = &[
     "RPC failed",
 ];
 
-/// 模糊模式——既可能是私有仓库鉴权（GitHub 对无权访问返回 404）也可能是网络/路径。
-/// 结合上下文（HTTP 401 vs 404）由调用方二次判定。
+/// Patterns matching ambiguous errors — could be auth (404 for private repos) or network/path.
+/// The caller should disambiguate based on context (HTTP 401 vs 404).
 const AMBIGUOUS_PATTERNS: &[&str] = &[
     "Could not read from remote repository",
     "Repository not found",
     "The requested URL returned error",
 ];
 
+/// Classified error kind from git command stderr analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
-    /// HTTPS 鉴权失败/缺凭据 → 弹登录框
+    /// HTTPS authentication failure or missing credentials — show login dialog.
     Auth,
-    /// SSH 鉴权失败 → 引导 ssh-agent
+    /// SSH authentication failure — guide ssh-agent setup.
     AuthSsh,
-    /// 网络错误 → 提示网络
+    /// Network error — show network unreachable message.
     Network,
-    /// 模糊（可能鉴权也可能网络）→ 调用方结合上下文判定
+    /// Ambiguous (could be auth or network) — caller decides based on context.
     Ambiguous,
-    /// 当前分支没有 upstream 分支（git push 不带 --set-upstream）
+    /// Current branch has no upstream configured.
     NoUpstream,
-    /// 其他错误
+    /// Other or unrecognized error.
     Other,
 }
 
-/// 对 git stderr 文本分类。纯函数，便于单测。
+/// Classify git stderr text into an [`ErrorKind`]. Pure function, easy to unit-test.
 pub fn classify_stderr(stderr: &str) -> ErrorKind {
     if AUTH_SSH_PATTERNS.iter().any(|p| stderr.contains(*p)) {
         return ErrorKind::AuthSsh;
@@ -89,13 +94,19 @@ pub fn classify_stderr(stderr: &str) -> ErrorKind {
     ErrorKind::Other
 }
 
-/// 带分类信息的 git 执行错误。`run_git_opts` 在非零退出时返回此类型（包在 anyhow 里），
-/// 调用方可 downcast 取出 `kind` 与原始 stderr。
+/// Git execution error with classified kind and raw output.
+///
+/// `run_git_opts` returns this wrapped in `anyhow::Error` on non-zero exit.
+/// Callers can downcast to inspect `kind` and the original stderr.
 #[derive(Debug)]
 pub struct GitExecError {
+    /// Classified error kind.
     pub kind: ErrorKind,
+    /// Raw stderr from the git command.
     pub stderr: String,
+    /// Raw stdout from the git command.
     pub stdout: String,
+    /// The git command that was executed (for display).
     pub command: String,
 }
 
@@ -115,10 +126,13 @@ impl std::error::Error for GitExecError {}
 
 // ── 执行选项 ───────────────────────────────────────────────────────────────
 
-/// git 子进程执行选项：注入环境变量 + 前置 `-c key=val` 配置。
-/// 现有调用方用 `Default::default()` 保持原行为零改动。
+/// Execution options for git subprocess: environment variables and `-c key=val` config.
+///
+/// Use `Default::default()` for the default behaviour (no env, no extra config).
 pub struct GitExecOptions<'a> {
+    /// Environment variables to inject into the git process.
     pub env: &'a [(&'a str, &'a str)],
+    /// Extra `-c key=val` config entries prepended to the git command.
     pub extra_config: &'a [(&'a str, &'a str)],
 }
 
@@ -132,7 +146,7 @@ impl Default for GitExecOptions<'_> {
 }
 
 impl<'a> GitExecOptions<'a> {
-    /// 渲染 `extra_config` 为 `["-c", "key=val", "-c", "key=val", ...]` 片段。
+    /// Render `extra_config` as `["-c", "key=val", "-c", "key=val", ...]` args.
     fn config_args(&self) -> Vec<String> {
         let mut out = Vec::new();
         for (k, v) in self.extra_config {
@@ -146,6 +160,7 @@ impl<'a> GitExecOptions<'a> {
 // ── Trait ──────────────────────────────────────────────────────────────────
 
 /// Transport-agnostic git operations trait.
+///
 /// Each variant knows how to run git commands in its environment
 /// (local subprocess, WSL, or SSH remote).
 #[async_trait]
@@ -185,15 +200,23 @@ pub trait GitTransport: Send + Sync {
 
 /// Concrete transport kinds. Implements [`GitTransport`].
 pub enum GitTransportKind {
+    /// Execute git commands on the local host.
     Local,
+    /// Execute git commands inside a WSL distribution (Windows only).
     #[cfg(target_os = "windows")]
     Wsl {
+        /// WSL distribution name.
         distro: String,
     },
+    /// Execute git commands on a remote host via SSH.
     Remote {
+        /// Remote host address.
         host: String,
+        /// SSH port.
         port: u16,
+        /// Remote username.
         username: String,
+        /// Authentication method.
         auth: AuthMethod,
     },
 }

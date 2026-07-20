@@ -1,3 +1,5 @@
+//! Tauri commands for agent CRUD and installation checks.
+
 use crate::common::agent::types::AgentConfig;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -5,6 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use tauri::State;
 
+/// List all registered agents.
 #[tauri::command]
 pub fn list_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, AppError> {
     state
@@ -14,6 +17,7 @@ pub fn list_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, Ap
         .map(|am| am.get_agents().to_vec())
 }
 
+/// Get a single agent by ID.
 #[tauri::command]
 pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<AgentConfig, AppError> {
     state
@@ -25,6 +29,7 @@ pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<Agen
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))
 }
 
+/// Add a custom agent and persist to config.
 #[tauri::command]
 pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
     // 防御：用户自定义 agent 永远不能伪造 is_builtin / default_skill_path
@@ -59,6 +64,7 @@ pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Resul
         .map_err(AppError::from)
 }
 
+/// Remove a custom agent and persist the change.
 #[tauri::command]
 pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     {
@@ -94,6 +100,7 @@ pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(
         .map_err(AppError::from)
 }
 
+/// Set the selected agent for a project.
 #[tauri::command]
 pub fn set_project_agent(
     project_id: String,
@@ -108,10 +115,7 @@ pub fn set_project_agent(
     Ok(())
 }
 
-/// Check whether agent CLIs exist in a project's environment (Local/WSL/SSH).
-///
-/// `project_id`: when set, use that project; when omitted, use the active
-/// project; fall back to Local if none.
+/// Check whether agent CLIs exist in a project's execution environment.
 #[tauri::command]
 pub async fn check_agents_installed(
     agent_ids: Option<Vec<String>>,
@@ -142,6 +146,7 @@ pub async fn check_agents_installed(
     Ok(crate::agent::manager::AgentManager::check_installed(&commands, &target).await)
 }
 
+/// Import an agent icon image file into the app data directory.
 #[tauri::command]
 pub async fn import_agent_icon(
     source_path: String,

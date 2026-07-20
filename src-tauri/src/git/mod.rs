@@ -1,4 +1,8 @@
+//! Git operations module: Tauri command handlers and commit agent services.
+
+/// Tauri command handlers for Git operations.
 pub mod commands;
+/// Commit agent integration services.
 pub mod services;
 
 // Re-export from common::git for backward compatibility

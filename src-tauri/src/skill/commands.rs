@@ -1,3 +1,5 @@
+//! Tauri commands for skill CRUD, installation, tag groups, marketplace, and syncing.
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,39 +12,64 @@ use super::types::*;
 use crate::common::runtime::{run_blocking, run_blocking_result};
 use crate::AppError;
 
+/// Managed skill DTO returned to the frontend.
 #[derive(Debug, Serialize)]
 pub struct ManagedSkillDtoOut {
+    /// Unique skill identifier.
     pub id: String,
+    /// Display name.
     pub name: String,
+    /// Optional description.
     pub description: Option<String>,
+    /// Source type ("local", "git", "skillssh").
     pub source_type: String,
+    /// Original source reference.
     pub source_ref: Option<String>,
+    /// Absolute path in the central repository.
     pub central_path: String,
+    /// Whether the skill is enabled.
     pub enabled: bool,
+    /// Current status.
     pub status: String,
+    /// Update status.
     pub update_status: String,
+    /// Associated tags.
     pub tags: Vec<String>,
+    /// Creation timestamp.
     pub created_at: i64,
+    /// Last update timestamp.
     pub updated_at: i64,
 }
 
+/// Tag group DTO returned to the frontend.
 #[derive(Debug, Serialize)]
 pub struct TagGroupDtoOut {
+    /// Unique identifier.
     pub id: String,
+    /// Display name.
     pub name: String,
+    /// Optional description.
     pub description: Option<String>,
+    /// Optional icon identifier.
     pub icon: Option<String>,
+    /// UI sort order.
     pub sort_order: i32,
+    /// Number of skills in the group.
     pub skill_count: i64,
+    /// Creation timestamp.
     pub created_at: i64,
+    /// Last update timestamp.
     pub updated_at: i64,
 }
 
+/// Skill document content DTO returned to the frontend.
 #[derive(Debug, Serialize)]
 pub struct SkillDocumentDtoOut {
+    /// Raw markdown content of the skill document.
     pub content: String,
 }
 
+/// Get all managed skills with their associated tags.
 #[tauri::command]
 pub async fn get_managed_skills(
     store: State<'_, Arc<SkillStore>>,
@@ -71,6 +98,7 @@ pub async fn get_managed_skills(
     }).await
 }
 
+/// Get the documentation content (SKILL.md) for a skill.
 #[tauri::command]
 pub async fn get_skill_document(
     skill_id: String,
@@ -103,6 +131,7 @@ pub async fn get_skill_document(
     }).await
 }
 
+/// Delete a managed skill and its central directory.
 #[tauri::command]
 pub async fn delete_managed_skill(
     skill_id: String,
@@ -122,6 +151,7 @@ pub async fn delete_managed_skill(
     }).await
 }
 
+/// Get all tag groups with skill counts.
 #[tauri::command]
 pub async fn get_tag_groups(
     store: State<'_, Arc<SkillStore>>,
@@ -148,6 +178,7 @@ pub async fn get_tag_groups(
     }).await
 }
 
+/// Create a new tag group.
 #[tauri::command]
 pub async fn create_tag_group(
     name: String,
@@ -182,6 +213,7 @@ pub async fn create_tag_group(
     }).await
 }
 
+/// Delete a tag group by ID.
 #[tauri::command]
 pub async fn delete_tag_group_cmd(
     id: String,
@@ -193,6 +225,7 @@ pub async fn delete_tag_group_cmd(
     }).await
 }
 
+/// Install a skill from a local filesystem path.
 #[tauri::command]
 pub async fn install_local_skill(
     source_path: String,
@@ -245,14 +278,20 @@ pub async fn install_local_skill(
     }).await
 }
 
+/// A discovered unmanaged skill from tool directory scanning.
 #[derive(Debug, serde::Serialize)]
 pub struct DiscoveredSkillDto {
+    /// Unique identifier for the discovered skill.
     pub id: String,
+    /// Source tool key.
     pub tool: String,
+    /// Absolute path where the skill was found.
     pub found_path: String,
+    /// Inferred name from the directory.
     pub name_guess: Option<String>,
 }
 
+/// Scan all tool directories for unmanaged skills.
 #[tauri::command]
 pub async fn scan_local_skills(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
@@ -275,6 +314,7 @@ pub async fn scan_local_skills(
     }).await
 }
 
+/// Import a discovered skill into the central repository.
 #[tauri::command]
 pub async fn import_discovered_skill(
     discovered_path: String,
@@ -327,14 +367,20 @@ pub async fn import_discovered_skill(
     }).await
 }
 
+/// Git installation preview: cloned repo info and available skill directories.
 #[derive(Debug, serde::Serialize)]
 pub struct GitSkillPreviewDto {
+    /// Preview identifier.
     pub id: String,
+    /// Cloned git URL.
     pub clone_url: String,
+    /// Branch used for cloning.
     pub branch: Option<String>,
+    /// Skill directories found in the repository.
     pub available_skills: Vec<super::installer::GitSkillInfo>,
 }
 
+/// Preview a git repository to see what skills are available for installation.
 #[tauri::command]
 pub async fn preview_git_install(
     clone_url: String,
@@ -354,13 +400,18 @@ pub async fn preview_git_install(
     })
 }
 
+/// Input for confirming a git-based skill installation.
 #[derive(Debug, serde::Deserialize)]
 pub struct ConfirmGitInstallInput {
+    /// Preview ID from preview_git_install.
     pub preview_id: String,
+    /// Selected skill path within the cloned repo.
     pub selected_path: String,
+    /// Optional custom name for the skill.
     pub name: Option<String>,
 }
 
+/// Confirm and complete a git-based skill installation.
 #[tauri::command]
 pub async fn confirm_git_install(
     input: ConfirmGitInstallInput,
@@ -415,17 +466,22 @@ pub async fn confirm_git_install(
     }).await
 }
 
+/// Cancel a git installation preview and clean up the cloned repository.
 #[tauri::command]
 pub async fn cancel_git_preview(preview_id: String) -> Result<(), AppError> {
     super::installer::cancel_git_preview(&preview_id).map_err(AppError::from)
 }
 
+/// Result of a skill update check.
 #[derive(Debug, serde::Serialize)]
 pub struct CheckUpdateResult {
+    /// Update status string.
     pub status: String,
+    /// Remote revision if an update is available.
     pub remote_revision: Option<String>,
 }
 
+/// Check if a skill has updates available from its source.
 #[tauri::command]
 pub async fn check_skill_update(
     skill_id: String,
@@ -461,6 +517,7 @@ pub async fn check_skill_update(
     }).await
 }
 
+/// Update a skill by re-installing from its source.
 #[tauri::command]
 pub async fn update_skill(
     skill_id: String,
@@ -491,6 +548,7 @@ pub async fn update_skill(
     }).await
 }
 
+/// Update a tag group's name, description, and icon.
 #[tauri::command]
 pub async fn update_tag_group_cmd(
     id: String,
@@ -507,6 +565,7 @@ pub async fn update_tag_group_cmd(
     }).await
 }
 
+/// Reorder tag groups by providing a sorted list of IDs.
 #[tauri::command]
 pub async fn reorder_tag_groups_cmd(
     ids: Vec<String>,
@@ -518,6 +577,7 @@ pub async fn reorder_tag_groups_cmd(
     }).await
 }
 
+/// Add a skill to a tag group.
 #[tauri::command]
 pub async fn add_skill_to_tag_group_cmd(
     tag_group_id: String,
@@ -532,6 +592,7 @@ pub async fn add_skill_to_tag_group_cmd(
     }).await
 }
 
+/// Remove a skill from a tag group.
 #[tauri::command]
 pub async fn remove_skill_from_tag_group_cmd(
     tag_group_id: String,
@@ -546,6 +607,7 @@ pub async fn remove_skill_from_tag_group_cmd(
     }).await
 }
 
+/// Get all skills belonging to a tag group.
 #[tauri::command]
 pub async fn get_skills_for_tag_group_cmd(
     tag_group_id: String,
@@ -577,6 +639,7 @@ pub async fn get_skills_for_tag_group_cmd(
     }).await
 }
 
+/// Get all unique tag names across all skills.
 #[tauri::command]
 pub async fn get_all_tags_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
@@ -585,6 +648,7 @@ pub async fn get_all_tags_cmd(
     run_blocking_result(move || store.get_all_tags().map_err(AppError::from)).await
 }
 
+/// Set tags for a specific skill.
 #[tauri::command]
 pub async fn set_skill_tags_cmd(
     skill_id: String,
@@ -599,6 +663,7 @@ pub async fn set_skill_tags_cmd(
     }).await
 }
 
+/// Enable or disable a tool for a skill within a tag group.
 #[tauri::command]
 pub async fn set_skill_tool_toggle_cmd(
     tag_group_id: String,
@@ -615,6 +680,7 @@ pub async fn set_skill_tool_toggle_cmd(
     }).await
 }
 
+/// Deploy all skills in a tag group to their respective tool directories.
 #[tauri::command]
 pub async fn sync_tag_group_cmd(
     tag_group_id: String,
@@ -681,6 +747,7 @@ pub async fn sync_tag_group_cmd(
     }).await
 }
 
+/// Remove all deployed skill targets for a tag group.
 #[tauri::command]
 pub async fn unsync_tag_group_cmd(
     tag_group_id: String,
@@ -703,6 +770,7 @@ pub async fn unsync_tag_group_cmd(
     }).await
 }
 
+/// Get tag groups bound to a specific project.
 #[tauri::command]
 pub async fn get_project_tag_groups_cmd(
     project_id: String,
@@ -734,6 +802,7 @@ pub async fn get_project_tag_groups_cmd(
     }).await
 }
 
+/// Set which tag groups are bound to a project.
 #[tauri::command]
 pub async fn set_project_tag_groups_cmd(
     project_id: String,
@@ -748,6 +817,7 @@ pub async fn set_project_tag_groups_cmd(
     }).await
 }
 
+/// Bind a tag group to a project.
 #[tauri::command]
 pub async fn add_project_tag_group_cmd(
     project_id: String,
@@ -762,6 +832,7 @@ pub async fn add_project_tag_group_cmd(
     }).await
 }
 
+/// Remove a tag group binding from a project.
 #[tauri::command]
 pub async fn remove_project_tag_group_cmd(
     project_id: String,
@@ -776,6 +847,7 @@ pub async fn remove_project_tag_group_cmd(
     }).await
 }
 
+/// Create a new skill by writing a SKILL.md file in the central repository.
 #[tauri::command]
 pub async fn create_skill(
     name: String,
@@ -848,15 +920,22 @@ pub async fn create_skill(
 
 // --- Marketplace Commands ---
 
+/// Skills.sh marketplace skill DTO.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SkillsShSkillDto {
+    /// Composite identifier (source/skill_id).
     pub id: String,
+    /// Skill identifier on skills.sh.
     pub skill_id: String,
+    /// Display name.
     pub name: String,
+    /// GitHub source (owner/repo).
     pub source: String,
+    /// Number of installations.
     pub installs: u64,
 }
 
+/// Fetch the skills.sh leaderboard (all-time, trending, or hot).
 #[tauri::command]
 pub async fn fetch_leaderboard(
     board: String,
@@ -898,6 +977,7 @@ pub async fn fetch_leaderboard(
     }).await.map_err(|e| e.to_string())?
 }
 
+/// Search skills.sh marketplace for skills matching a query.
 #[tauri::command]
 pub async fn search_skillssh(
     query: String,
@@ -940,6 +1020,7 @@ pub async fn search_skillssh(
     }).await.map_err(|e| e.to_string())?
 }
 
+/// Install a skill from skills.sh by cloning its GitHub repository.
 #[tauri::command]
 pub async fn install_from_skillssh(
     source: String,

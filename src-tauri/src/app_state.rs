@@ -1,3 +1,5 @@
+//! Central application state container and terminal dispatch routing.
+
 use crate::agent::AgentManager;
 use crate::common::file::watcher::WatcherManager;
 use crate::common::git::transport::{GitTransport, GitTransportKind};
@@ -17,28 +19,44 @@ use std::time::Instant;
 /// Routing tag for terminal sessions — tracks which backend owns each session.
 #[derive(Clone, PartialEq)]
 enum SessionOwner {
+    /// Local / WSL PTY-backed session.
     Pty,
+    /// SSH remote session.
     Ssh,
 }
 
+/// Central application state holding all managers and shared resources.
 pub struct AppStateWrapper {
     /// Business async executor (Scheme C: logical own runtime, one Handle).
     pub runtime: Arc<AppRuntime>,
+    /// Project CRUD and persistence.
     pub project_manager: Mutex<ProjectManager>,
+    /// Local / WSL PTY terminal sessions.
     pub terminal_manager: TerminalManager,
+    /// SSH remote terminal sessions.
     pub remote_terminal_manager: RemoteTerminalManager,
+    /// AI agent registration and configuration.
     pub agent_manager: Mutex<AgentManager>,
+    /// Session and config file persistence.
     pub storage_manager: StorageManager,
+    /// Currently active project ID, if any.
     pub active_project_id: Mutex<Option<String>>,
+    /// File-system watcher for project changes.
     pub watcher_manager: WatcherManager,
+    /// Shared skill store (tag groups, installed skills).
     pub skill_store: Arc<skill::skill_store::SkillStore>,
+    /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
+    /// Debug Adapter Protocol session manager.
     pub dap_manager: crate::dap::DapManager,
+    /// Conversation scanning and management.
     pub conversation_manager: ConversationManager,
+    /// Tracks which backend (PTY / SSH) owns each terminal session.
     session_owner: Mutex<HashMap<String, SessionOwner>>,
 }
 
 impl AppStateWrapper {
+    /// Shut down all background services (terminal, watcher, LSP) and exit.
     pub fn shutdown_background_and_exit(&self) {
         let terminal_manager = self.terminal_manager.clone();
         let remote_terminal_manager = self.remote_terminal_manager.clone();
@@ -94,8 +112,7 @@ impl AppStateWrapper {
         });
     }
 
-    /// 通过 project_id 一站式解析项目路径与 GitTransport。
-    /// 供 git 等命令使用，无需调用方关心项目类型。
+    /// Resolve project path and a matching GitTransport by project ID.
     pub fn resolve_project(
         &self,
         project_id: &str,
@@ -110,7 +127,7 @@ impl AppStateWrapper {
         Ok((Arc::new(kind), path))
     }
 
-    /// Resolve a project's execution environment (Local / WSL / SSH).
+    /// Resolve a project's execution environment.
     pub fn project_environment(
         &self,
         project_id: &str,
@@ -122,10 +139,7 @@ impl AppStateWrapper {
         Ok(project.environment.clone())
     }
 
-    /// Resolve environment for the active project.
-    ///
-    /// Errors if no project is active — never silently falls back to Local
-    /// (WSL/SSH tools would be checked on the host PATH incorrectly).
+    /// Resolve the execution environment for the active project.
     pub fn active_project_environment(
         &self,
     ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
@@ -142,9 +156,7 @@ impl AppStateWrapper {
         self.project_environment(&id)
     }
 
-    /// Resolve environment by project filesystem path (for LSP soft-warm etc.).
-    ///
-    /// Errors if the path is not a registered project — never invents Local.
+    /// Resolve execution environment by project filesystem path.
     pub fn environment_for_project_path(
         &self,
         project_path: &str,
@@ -164,7 +176,7 @@ impl AppStateWrapper {
 
     // ── Terminal dispatch ──────────────────────────────────────────────────
 
-    /// Create a terminal session, routing to the correct backend based on project environment.
+    /// Create a terminal session, routing to the correct backend.
     pub async fn create_terminal_session(
         &self,
         project_id: &str,
@@ -260,7 +272,7 @@ impl AppStateWrapper {
         }
     }
 
-    /// Resize a terminal session, routing to the correct backend.
+    /// Resize a terminal session, dispatching to the correct backend.
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
         let owner = self
             .session_owner
@@ -282,7 +294,7 @@ impl AppStateWrapper {
         }
     }
 
-    /// Close a terminal session, routing to the correct backend.
+    /// Close a terminal session, dispatching to the correct backend.
     pub fn close_session(&self, session_id: &str) {
         let owner = self.session_owner.lock().ok().and_then(|mut m| m.remove(session_id));
         match owner {
@@ -292,7 +304,7 @@ impl AppStateWrapper {
         }
     }
 
-    /// Create with an external shared Arc<SkillStore> (used for Tauri state injection)
+    /// Create `AppStateWrapper` with an external shared `SkillStore`.
     pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
         let storage_manager = StorageManager::new().expect("Failed to create storage manager");
 
@@ -330,7 +342,7 @@ impl AppStateWrapper {
         }
     }
 
-    /// Standalone creation with auto-initialized SkillStore
+    /// Create `AppStateWrapper` with an auto-initialized `SkillStore`.
     pub fn new() -> Self {
         skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
         let store = Arc::new(
@@ -341,7 +353,7 @@ impl AppStateWrapper {
     }
 }
 
-/// Loose path equality for project env lookup (slash normalization, no trailing slash).
+/// Loose path equality for project environment lookup.
 fn paths_equal_for_env(a: &str, b: &str) -> bool {
     let norm = |s: &str| {
         s.replace('\\', "/")

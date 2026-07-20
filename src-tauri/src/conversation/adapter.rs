@@ -6,6 +6,7 @@ use crate::conversation::types::MessageBlock;
 /// 解析后的元数据（parse_meta 返回值）
 #[derive(Debug, Clone)]
 pub struct ParsedMeta {
+    /// Native session identifier from the agent's storage.
     pub native_session_id: String,
     /// P2 候选：适配器提供的 AI 生成标题（无则 None）
     pub title: Option<String>,
@@ -15,22 +16,30 @@ pub struct ParsedMeta {
     pub recent_messages: Vec<(String, String)>,
     /// 模型名称（如 "claude-sonnet-4-20250514"）
     pub model: Option<String>,
+    /// Unix timestamp (ms) when the conversation started.
     pub started_at: i64,
+    /// Unix timestamp (ms) when the conversation was last updated.
     pub updated_at: i64,
+    /// Number of messages in the conversation.
     pub message_count: u32,
+    /// Optional project path for this session.
     pub project_path: Option<String>,
 }
 
 /// 解析后的单条消息（parse_messages 返回值）
 #[derive(Debug, Clone)]
 pub struct ParsedMessage {
+    /// Message author role (e.g. "user", "assistant").
     pub role: String,
+    /// Raw text content of the message.
     pub content: String,
     /// 结构化内容块
     pub blocks: Vec<MessageBlock>,
     /// 消息级别的模型名称（可能中途切换）
     pub model: Option<String>,
+    /// Unix timestamp (ms) when the message was created.
     pub timestamp: i64,
+    /// Sequential message index within the conversation.
     pub seq: u32,
 }
 
@@ -38,8 +47,11 @@ pub struct ParsedMessage {
 ///
 /// 每个 Agent 实现此 trait 以支持从 Agent 原生存储格式中解析会话元数据和消息。
 pub trait AgentSessionAdapter: Send + Sync {
+    /// Agent identifier string.
     fn agent_id(&self) -> &str;
+    /// Root directory for scanning session files.
     fn session_root(&self) -> PathBuf;
+    /// Glob pattern to match session files.
     fn file_pattern(&self) -> &str;
 
     /// 快速解析元数据（只读文件头部，列表展示用）
@@ -48,6 +60,7 @@ pub trait AgentSessionAdapter: Send + Sync {
     /// 完整解析消息（查看详情时按需调用）
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>>;
 
+    /// Extract a native session ID from a file path.
     fn extract_session_id(&self, file_path: &Path) -> Option<String>;
 
     /// 构建恢复命令。None = 不支持原生恢复。

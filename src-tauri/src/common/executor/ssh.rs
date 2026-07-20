@@ -31,6 +31,7 @@ use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
 use crate::common::executor::ssh_auth::Client;
 
+/// Receiver type for collecting stdout/stderr data from an SSH channel.
 type StdioReceiver = mpsc::Receiver<Vec<u8>>;
 
 // ── RusshReadAdapter ────────────────────────────────────────────────
@@ -101,14 +102,20 @@ impl AsyncWrite for RusshWriteAdapter {
 
 // ── SshExecutor ─────────────────────────────────────────────────────
 
+/// SSH remote command executor using the `russh` library.
 pub struct SshExecutor {
+    /// Remote host address.
     pub host: String,
+    /// SSH port (default 22).
     pub port: u16,
+    /// Remote username.
     pub username: String,
+    /// Authentication method (password, key file, or key with passphrase).
     pub auth: AuthMethod,
 }
 
 impl SshExecutor {
+    /// Create a new `SshExecutor` for the given remote host and authentication.
     pub fn new(host: &str, port: u16, username: &str, auth: AuthMethod) -> Self {
         Self {
             host: host.to_string(),

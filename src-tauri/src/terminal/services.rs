@@ -544,10 +544,12 @@ fn graceful_kill(child: &mut dyn Child) {
 
 // ─── Logging Helpers ──────────────────────────────────────────────────────
 
+/// Log an info message via the `log` crate.
 pub fn log_info(msg: &str) {
     log::info!("{}", msg);
 }
 
+/// Log an error message via the `log` crate.
 pub fn log_error(msg: &str) {
     log::error!("{}", msg);
 }

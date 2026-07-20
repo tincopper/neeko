@@ -1,3 +1,8 @@
+//! Pull-request provider abstraction and dispatch functions.
+//!
+//! Defines the [`PrProvider`] trait and dispatches calls to platform-specific
+//! implementations (GitHub, GitLab, Gitee).
+
 pub mod gitee;
 pub mod github;
 pub mod gitlab;
@@ -21,15 +26,24 @@ use crate::project::types::{
 
 // ─── PrProvider Trait ────────────────────────────────────────────────────────
 
+/// Trait for pull request operations backed by a specific provider (GitHub, GitLab, Gitee).
 #[async_trait]
 pub trait PrProvider: Send + Sync {
+    /// Provider display name (e.g. "GitHub").
     fn name(&self) -> &'static str;
+    /// Check whether the provider CLI tool is installed.
     async fn is_installed(&self) -> bool;
+    /// Check whether the user is authenticated with the provider.
     async fn is_authenticated(&self) -> bool;
+    /// List pull requests matching the given state and limit.
     async fn list_prs(&self, state: &str, limit: usize) -> Result<Vec<PRListItem>>;
+    /// List all labels in the repository.
     async fn list_repo_labels(&self) -> Result<Vec<PrLabel>>;
+    /// List all PR authors in the repository.
     async fn list_repo_authors(&self) -> Result<Vec<String>>;
+    /// View detailed information about a pull request.
     async fn view_pr(&self, pr_number: u64) -> Result<PRInfo>;
+    /// Create a new pull request.
     async fn create_pr(
         &self,
         title: &str,
@@ -37,25 +51,35 @@ pub trait PrProvider: Send + Sync {
         base: Option<&str>,
         draft: bool,
     ) -> Result<u64>;
+    /// Merge a pull request using the given method.
     async fn merge_pr(&self, pr_number: u64, method: &str) -> Result<PRMergeResult>;
+    /// Close a pull request without merging.
     async fn close_pr(&self, pr_number: u64) -> Result<()>;
+    /// List files changed in a pull request.
     async fn list_pr_files(&self, pr_number: u64) -> Result<Vec<PRFileChange>>;
+    /// List commits in a pull request.
     async fn list_pr_commits(&self, pr_number: u64) -> Result<Vec<PRCommit>>;
+    /// List comments on a pull request.
     async fn list_pr_comments(&self, pr_number: u64) -> Result<Vec<PRComment>>;
+    /// Add a comment to a pull request.
     async fn add_pr_comment(&self, pr_number: u64, body: &str) -> Result<PRComment>;
+    /// Edit an existing pull request comment.
     async fn edit_pr_comment(
         &self,
         pr_number: u64,
         comment_id: &str,
         body: &str,
     ) -> Result<PRComment>;
+    /// Delete a pull request comment.
     async fn delete_pr_comment(&self, pr_number: u64, comment_id: &str) -> Result<()>;
+    /// Add an emoji reaction to a comment.
     async fn add_comment_reaction(
         &self,
         pr_number: u64,
         comment_id: &str,
         emoji: &str,
     ) -> Result<()>;
+    /// Add a review comment on a specific file/line.
     async fn add_pr_review_comment(
         &self,
         pr_number: u64,
@@ -64,6 +88,7 @@ pub trait PrProvider: Send + Sync {
         line: u64,
         side: &str,
     ) -> Result<PRReviewComment>;
+    /// List review comments on a pull request.
     async fn list_pr_review_comments(&self, pr_number: u64) -> Result<Vec<PRReviewComment>>;
 }
 
@@ -130,6 +155,7 @@ fn invalidate_after_write(repo_path: &Path) {
 
 // ─── Dispatch Functions ──────────────────────────────────────────────────────
 
+/// Check whether the `gh` CLI is installed (cached).
 pub async fn is_gh_installed() -> bool {
     if let Some(cached) = cache::get_gh_installed_cached() {
         return cached;
@@ -141,6 +167,7 @@ pub async fn is_gh_installed() -> bool {
     result
 }
 
+/// Check whether the user is authenticated with `gh` (cached).
 pub async fn is_gh_authenticated() -> bool {
     if let Some(cached) = cache::get_gh_authenticated_cached() {
         return cached;
@@ -152,6 +179,7 @@ pub async fn is_gh_authenticated() -> bool {
     result
 }
 
+/// List pull requests for the given repository (cached).
 pub async fn list_prs(
     repo_path: &Path,
     target: &ExecTarget,
@@ -169,6 +197,7 @@ pub async fn list_prs(
     Ok(result)
 }
 
+/// List labels for the given repository (cached).
 pub async fn list_repo_labels(repo_path: &Path, target: &ExecTarget) -> Result<Vec<PrLabel>> {
     if let Some(cached) = cache::get_repo_labels_cached(repo_path) {
         return Ok(cached);
@@ -179,6 +208,7 @@ pub async fn list_repo_labels(repo_path: &Path, target: &ExecTarget) -> Result<V
     Ok(result)
 }
 
+/// List PR authors for the given repository (cached).
 pub async fn list_repo_authors(repo_path: &Path, target: &ExecTarget) -> Result<Vec<String>> {
     if let Some(cached) = cache::get_repo_authors_cached(repo_path) {
         return Ok(cached);
@@ -189,6 +219,7 @@ pub async fn list_repo_authors(repo_path: &Path, target: &ExecTarget) -> Result<
     Ok(result)
 }
 
+/// View detailed information about a pull request (cached).
 pub async fn view_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> Result<PRInfo> {
     if let Some(cached) = cache::get_pr_info_cached(repo_path, pr_number) {
         return Ok(cached);
@@ -199,6 +230,7 @@ pub async fn view_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> R
     Ok(result)
 }
 
+/// Create a new pull request.
 pub async fn create_pr(
     repo_path: &Path,
     target: &ExecTarget,
@@ -213,6 +245,7 @@ pub async fn create_pr(
     Ok(result)
 }
 
+/// Merge a pull request.
 pub async fn merge_pr(
     repo_path: &Path,
     target: &ExecTarget,
@@ -225,6 +258,7 @@ pub async fn merge_pr(
     Ok(result)
 }
 
+/// Close a pull request without merging.
 pub async fn close_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> Result<()> {
     let client = provider_from_repo(repo_path, target)?;
     client.close_pr(pr_number).await?;
@@ -232,6 +266,7 @@ pub async fn close_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> 
     Ok(())
 }
 
+/// Check out a pull request locally as a branch.
 pub async fn checkout_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> Result<()> {
     let repo_str = repo_path.to_string_lossy().to_string();
     exec_on(
@@ -258,6 +293,7 @@ pub async fn checkout_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) 
     Ok(())
 }
 
+/// List files changed in a pull request.
 pub async fn list_pr_files(
     repo_path: &Path,
     target: &ExecTarget,
@@ -267,6 +303,7 @@ pub async fn list_pr_files(
     client.list_pr_files(pr_number).await
 }
 
+/// List commits in a pull request.
 pub async fn list_pr_commits(
     repo_path: &Path,
     target: &ExecTarget,
@@ -276,6 +313,7 @@ pub async fn list_pr_commits(
     client.list_pr_commits(pr_number).await
 }
 
+/// List comments on a pull request.
 pub async fn list_pr_comments(
     repo_path: &Path,
     target: &ExecTarget,
@@ -285,6 +323,7 @@ pub async fn list_pr_comments(
     client.list_pr_comments(pr_number).await
 }
 
+/// Add a comment to a pull request.
 pub async fn add_pr_comment(
     repo_path: &Path,
     target: &ExecTarget,
@@ -295,6 +334,7 @@ pub async fn add_pr_comment(
     client.add_pr_comment(pr_number, body).await
 }
 
+/// Edit an existing pull request comment.
 pub async fn edit_pr_comment(
     repo_path: &Path,
     target: &ExecTarget,
@@ -306,6 +346,7 @@ pub async fn edit_pr_comment(
     client.edit_pr_comment(pr_number, comment_id, body).await
 }
 
+/// Delete a pull request comment.
 pub async fn delete_pr_comment(
     repo_path: &Path,
     target: &ExecTarget,
@@ -316,6 +357,7 @@ pub async fn delete_pr_comment(
     client.delete_pr_comment(pr_number, comment_id).await
 }
 
+/// Add an emoji reaction to a pull request comment.
 pub async fn add_comment_reaction(
     repo_path: &Path,
     target: &ExecTarget,
@@ -329,6 +371,7 @@ pub async fn add_comment_reaction(
         .await
 }
 
+/// Add a review comment on a specific file and line in a pull request.
 pub async fn add_pr_review_comment(
     repo_path: &Path,
     target: &ExecTarget,
@@ -344,6 +387,7 @@ pub async fn add_pr_review_comment(
         .await
 }
 
+/// List review comments on a pull request.
 pub async fn list_pr_review_comments(
     repo_path: &Path,
     target: &ExecTarget,

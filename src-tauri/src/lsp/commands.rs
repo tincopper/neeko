@@ -45,6 +45,7 @@ async fn ensure_session_async(
 // ═══════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
+/// Send an LSP request asynchronously, auto-opening the document if needed.
 pub async fn lsp_request(
     project_path: String,
     language_id: String,
@@ -100,6 +101,7 @@ pub async fn lsp_request(
 }
 
 #[tauri::command]
+/// Send an LSP notification, creating the session if needed.
 pub fn lsp_notification(
     project_path: String,
     language_id: String,
@@ -117,6 +119,7 @@ pub fn lsp_notification(
 }
 
 #[tauri::command]
+/// Open a document in an LSP session.
 pub fn lsp_open_document(
     project_path: String,
     language_id: String,
@@ -149,6 +152,7 @@ pub fn lsp_open_document(
 }
 
 #[tauri::command]
+/// Send a didChange notification for an open document.
 pub fn lsp_change_document(
     project_path: String,
     language_id: String,
@@ -174,6 +178,7 @@ pub fn lsp_change_document(
 }
 
 #[tauri::command]
+/// Close a document in an LSP session.
 pub fn lsp_close_document(
     project_path: String,
     language_id: String,
@@ -199,6 +204,7 @@ pub fn lsp_close_document(
 }
 
 #[tauri::command]
+/// Close an LSP session.
 pub fn lsp_close_session(
     project_path: String,
     language_id: String,
@@ -208,6 +214,7 @@ pub fn lsp_close_session(
 }
 
 #[tauri::command]
+/// List all active LSP sessions.
 pub fn lsp_list_sessions(state: State<AppStateWrapper>) -> Result<Vec<LspSessionInfo>, AppError> {
     Ok(state.lsp_manager.list_sessions())
 }
@@ -217,6 +224,7 @@ pub fn lsp_list_sessions(state: State<AppStateWrapper>) -> Result<Vec<LspSession
 // ═══════════════════════════════════════════════════════════════════════
 
 #[tauri::command]
+/// Restart an LSP session for a project and language.
 pub async fn lsp_restart_session(
     project_path: String,
     language_id: String,
@@ -242,6 +250,7 @@ pub async fn lsp_restart_session(
 }
 
 #[tauri::command]
+/// Stop an LSP session.
 pub fn lsp_stop_session(
     project_path: String,
     language_id: String,

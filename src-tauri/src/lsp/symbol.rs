@@ -1,3 +1,4 @@
+//! Normalized LSP response parsing: unifies Location and LocationLink formats.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -7,7 +8,9 @@ use super::types::{LspPosition, LspRange};
 /// differences (Location vs LocationLink vs arrays of either).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnifiedLocation {
+    /// Target document URI.
     pub uri: String,
+    /// Range in the target document.
     pub range: LspRange,
     /// Present for LocationLink responses; None for plain Location.
     #[serde(skip_serializing_if = "Option::is_none")]

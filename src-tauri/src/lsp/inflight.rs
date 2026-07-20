@@ -32,6 +32,7 @@ pub struct InflightRequestTracker {
 }
 
 impl InflightRequestTracker {
+    /// Create a new empty inflight request tracker.
     pub fn new() -> Self {
         Self {
             by_method: HashMap::new(),

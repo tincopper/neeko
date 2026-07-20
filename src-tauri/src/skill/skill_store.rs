@@ -1,3 +1,5 @@
+//! High-level skill store wrapping the repository with CRUD, tags, cache, and settings.
+
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -7,17 +9,20 @@ use super::repository::SkillRepository;
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
 
+/// Thread-safe facade over [`SkillRepository`] for all skill data operations.
 pub struct SkillStore {
     repo: Arc<SkillRepository>,
 }
 
 impl SkillStore {
+    /// Open or create a skill store backed by a SQLite file at `db_path`.
     pub fn new(db_path: &PathBuf) -> Result<Self> {
         Ok(Self {
             repo: Arc::new(SkillRepository::open(db_path)?),
         })
     }
 
+    /// Create an in-memory skill store (for testing).
     pub fn new_in_memory() -> Result<Self> {
         Ok(Self {
             repo: Arc::new(SkillRepository::open_in_memory()?),
@@ -26,26 +31,32 @@ impl SkillStore {
 
     // Skills CRUD
 
+    /// Insert a new skill record.
     pub fn insert_skill(&self, skill: &SkillRecord) -> Result<()> {
         self.repo.insert_skill(skill)
     }
 
+    /// Get all skill records ordered by name.
     pub fn get_all_skills(&self) -> Result<Vec<SkillRecord>> {
         self.repo.get_all_skills()
     }
 
+    /// Get a skill by its ID.
     pub fn get_skill_by_id(&self, id: &str) -> Result<Option<SkillRecord>> {
         self.repo.get_skill_by_id(id)
     }
 
+    /// Get a skill by its central repository path.
     pub fn get_skill_by_central_path(&self, central_path: &str) -> Result<Option<SkillRecord>> {
         self.repo.get_skill_by_central_path(central_path)
     }
 
+    /// Update a skill record.
     pub fn update_skill(&self, skill: &SkillRecord) -> Result<()> {
         self.repo.update_skill(skill)
     }
 
+    /// Update a skill's metadata after re-installation.
     pub fn update_skill_after_install(
         &self,
         id: &str,
@@ -67,6 +78,7 @@ impl SkillStore {
         )
     }
 
+    /// Update a skill's update-check state (revision, status, error).
     pub fn update_skill_check_state(
         &self,
         id: &str,
@@ -78,52 +90,63 @@ impl SkillStore {
             .update_skill_check_state(id, remote_revision, update_status, last_check_error)
     }
 
+    /// Delete a skill and its associated targets and tags.
     pub fn delete_skill(&self, id: &str) -> Result<()> {
         self.repo.delete_skill(id)
     }
 
     // Targets
 
+    /// Insert a skill target (deployment) record.
     pub fn insert_target(&self, target: &SkillTargetRecord) -> Result<()> {
         self.repo.insert_target(target)
     }
 
+    /// Get all targets for a skill.
     pub fn get_targets_for_skill(&self, skill_id: &str) -> Result<Vec<SkillTargetRecord>> {
         self.repo.get_targets_for_skill(skill_id)
     }
 
+    /// Get all target records across all skills.
     pub fn get_all_targets(&self) -> Result<Vec<SkillTargetRecord>> {
         self.repo.get_all_targets()
     }
 
+    /// Delete a target record for a specific skill and tool.
     pub fn delete_target(&self, skill_id: &str, tool: &str) -> Result<()> {
         self.repo.delete_target(skill_id, tool)
     }
 
     // Skill Tags
 
+    /// Get all unique tag names across all skills.
     pub fn get_all_tags(&self) -> Result<Vec<String>> {
         self.repo.get_all_tags()
     }
 
+    /// Set tags for a skill (replaces existing).
     pub fn set_tags_for_skill(&self, skill_id: &str, tags: &[String]) -> Result<()> {
         self.repo.set_tags_for_skill(skill_id, tags)
     }
 
+    /// Get a map of skill ID to its list of tags.
     pub fn get_tags_map(&self) -> Result<HashMap<String, Vec<String>>> {
         self.repo.get_tags_map()
     }
 
     // Tag Groups
 
+    /// Insert a new tag group.
     pub fn insert_tag_group(&self, tg: &TagGroupRecord) -> Result<()> {
         self.repo.insert_tag_group(tg)
     }
 
+    /// Get all tag groups ordered by sort_order.
     pub fn get_all_tag_groups(&self) -> Result<Vec<TagGroupRecord>> {
         self.repo.get_all_tag_groups()
     }
 
+    /// Update a tag group's name, description, and icon.
     pub fn update_tag_group(
         &self,
         id: &str,
@@ -134,37 +157,45 @@ impl SkillStore {
         self.repo.update_tag_group(id, name, description, icon)
     }
 
+    /// Delete a tag group.
     pub fn delete_tag_group(&self, id: &str) -> Result<()> {
         self.repo.delete_tag_group(id)
     }
 
+    /// Reorder tag groups by providing a sorted list of IDs.
     pub fn reorder_tag_groups(&self, ids: &[String]) -> Result<()> {
         self.repo.reorder_tag_groups(ids)
     }
 
     // TagGroup-Skill mapping
 
+    /// Add a skill to a tag group.
     pub fn add_skill_to_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
         self.repo.add_skill_to_tag_group(tag_group_id, skill_id)
     }
 
+    /// Remove a skill from a tag group.
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
         self.repo
             .remove_skill_from_tag_group(tag_group_id, skill_id)
     }
 
+    /// Get all skills belonging to a tag group.
     pub fn get_skills_for_tag_group(&self, tag_group_id: &str) -> Result<Vec<SkillRecord>> {
         self.repo.get_skills_for_tag_group(tag_group_id)
     }
 
+    /// Count the number of skills in a tag group.
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
         self.repo.count_skills_for_tag_group(tag_group_id)
     }
 
+    /// Reorder skills within a tag group.
     pub fn reorder_tag_group_skills(&self, tag_group_id: &str, skill_ids: &[String]) -> Result<()> {
         self.repo.reorder_tag_group_skills(tag_group_id, skill_ids)
     }
 
+    /// Enable or disable a tool for a skill in a tag group.
     pub fn set_tag_group_skill_tool_enabled(
         &self,
         tag_group_id: &str,
@@ -176,6 +207,7 @@ impl SkillStore {
             .set_tag_group_skill_tool_enabled(tag_group_id, skill_id, tool, enabled)
     }
 
+    /// Get all tool toggle records for a skill in a tag group.
     pub fn get_tag_group_skill_tool_toggles(
         &self,
         tag_group_id: &str,
@@ -185,6 +217,7 @@ impl SkillStore {
             .get_tag_group_skill_tool_toggles(tag_group_id, skill_id)
     }
 
+    /// Get enabled tool keys for a skill in a tag group.
     pub fn get_enabled_tools_for_tag_group_skill(
         &self,
         tag_group_id: &str,
@@ -194,52 +227,63 @@ impl SkillStore {
             .get_enabled_tools_for_tag_group_skill(tag_group_id, skill_id)
     }
 
+    /// Get tag group IDs for a skill.
     pub fn get_tag_groups_for_skill(&self, skill_id: &str) -> Result<Vec<String>> {
         self.repo.get_tag_groups_for_skill(skill_id)
     }
 
     // Project-TagGroup binding
 
+    /// Set the tag groups bound to a project (replaces existing).
     pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
         self.repo.set_project_tag_groups(project_id, tag_group_ids)
     }
 
+    /// Get tag group IDs bound to a project.
     pub fn get_project_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
         self.repo.get_project_tag_groups(project_id)
     }
 
+    /// Add a tag group binding to a project.
     pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
         self.repo.add_project_tag_group(project_id, tag_group_id)
     }
 
+    /// Remove a tag group binding from a project.
     pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
         self.repo.remove_project_tag_group(project_id, tag_group_id)
     }
 
     // Settings
 
+    /// Get a setting value by key.
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
         self.repo.get_setting(key)
     }
 
+    /// Set a setting value.
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
         self.repo.set_setting(key, value)
     }
 
     // Cache methods
 
+    /// Get cached data by key if within TTL.
     pub fn get_cache(&self, key: &str, ttl_secs: i64) -> Result<Option<String>> {
         self.repo.get_cache(key, ttl_secs)
     }
 
+    /// Cache data with a key.
     pub fn set_cache(&self, key: &str, data: &str) -> Result<()> {
         self.repo.set_cache(key, data)
     }
 
+    /// Clear a specific cache entry.
     pub fn clear_cache(&self, key: &str) -> Result<()> {
         self.repo.clear_cache(key)
     }
 
+    /// Clear all cache entries.
     pub fn clear_all_cache(&self) -> Result<()> {
         self.repo.clear_all_cache()
     }

@@ -1,9 +1,12 @@
+//! Tauri commands for project lifecycle management.
+
 use crate::project::types::{GitInfo, Project};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;
 use tauri::State;
 
+/// Adds a new local project to the project list.
 #[tauri::command]
 pub fn add_project(
     path: String,
@@ -23,6 +26,7 @@ pub fn add_project(
     Ok(project)
 }
 
+/// Removes a project and its associated terminal/watcher resources.
 #[tauri::command]
 pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
@@ -44,6 +48,7 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Resu
     Ok(())
 }
 
+/// Returns all managed projects.
 #[tauri::command]
 pub fn list_projects(state: State<AppStateWrapper>) -> Result<Vec<Project>, AppError> {
     state
@@ -53,6 +58,7 @@ pub fn list_projects(state: State<AppStateWrapper>) -> Result<Vec<Project>, AppE
         .map(|pm| pm.list_projects())
 }
 
+/// Returns a single project by ID.
 #[tauri::command]
 pub fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<Project, AppError> {
     state
@@ -64,6 +70,7 @@ pub fn get_project(project_id: String, state: State<AppStateWrapper>) -> Result<
         .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))
 }
 
+/// Refreshes Git info for a project and returns the updated data.
 #[tauri::command]
 pub fn refresh_git_info(
     project_id: String,
@@ -79,6 +86,7 @@ pub fn refresh_git_info(
         .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))
 }
 
+/// Sets the active project, managing watchers and LSP profiles.
 #[tauri::command]
 pub async fn set_active_project(
     project_id: String,
@@ -159,7 +167,7 @@ pub async fn set_active_project(
     Ok(())
 }
 
-/// Set project-level primary LSP language override (None = auto from root markers).
+/// Sets project-level primary LSP language override (None = auto from root markers).
 #[tauri::command]
 pub fn set_project_primary_language(
     project_id: String,
@@ -197,11 +205,13 @@ pub fn set_project_primary_language(
     Ok(())
 }
 
+/// Returns the currently active project ID, if any.
 #[tauri::command]
 pub fn get_active_project(state: State<AppStateWrapper>) -> Option<String> {
     state.active_project_id.lock().ok().and_then(|g| g.clone())
 }
 
+/// Switches the project view to terminal mode.
 #[tauri::command]
 pub fn set_view_terminal(
     project_id: String,
@@ -215,6 +225,7 @@ pub fn set_view_terminal(
     Ok(())
 }
 
+/// Switches the project view to diff mode for a specific file.
 #[tauri::command]
 pub fn set_view_diff(
     project_id: String,
@@ -229,6 +240,7 @@ pub fn set_view_diff(
     Ok(())
 }
 
+/// Sets the collapsed state of a project in the sidebar.
 #[tauri::command]
 pub fn set_project_collapsed(
     project_id: String,
@@ -243,6 +255,7 @@ pub fn set_project_collapsed(
     Ok(())
 }
 
+/// Sets the avatar color for a project.
 #[tauri::command]
 pub fn set_project_color(
     project_id: String,
@@ -257,6 +270,7 @@ pub fn set_project_color(
     Ok(())
 }
 
+/// Renames a project.
 #[tauri::command]
 pub fn rename_project(
     project_id: String,
@@ -271,6 +285,7 @@ pub fn rename_project(
     Ok(())
 }
 
+/// Changes the filesystem path of a project and updates the watcher.
 #[tauri::command]
 pub fn change_project_path(
     project_id: String,
@@ -301,6 +316,7 @@ pub fn change_project_path(
     Ok(())
 }
 
+/// Reorders projects in the sidebar to match the given ID sequence.
 #[tauri::command]
 pub fn reorder_projects(
     ordered_ids: Vec<String>,

@@ -1,3 +1,6 @@
+//! LSP transport layer: Tauri IPC events and WebSocket placeholder.
+//!
+//! Defines the [`LspTransport`] trait and the default [`IpcTransport`] implementation.
 use tauri::Emitter;
 
 /// Trait for delivering LSP-originated data to the frontend.
@@ -38,8 +41,11 @@ pub trait LspTransport: Send + Sync {
 /// Kind of LSP progress update.
 #[derive(Debug, Clone)]
 pub enum ProgressKind {
+    /// Progress has started.
     Begin,
+    /// Progress update report.
     Report,
+    /// Progress has ended.
     End,
 }
 
@@ -53,6 +59,7 @@ pub struct IpcTransport {
 }
 
 impl IpcTransport {
+    /// Create a new IPC transport backed by the given Tauri AppHandle.
     pub fn new(app_handle: tauri::AppHandle) -> Self {
         Self { app_handle }
     }

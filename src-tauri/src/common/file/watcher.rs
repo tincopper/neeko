@@ -1,3 +1,5 @@
+//! File-system watcher service for detecting changes and emitting events.
+
 use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
@@ -221,8 +223,13 @@ struct WatcherHandle {
     _heartbeat: std::thread::JoinHandle<()>,
 }
 
+/// Manages file-system watchers for multiple projects.
+///
+/// Each project gets a dedicated watcher thread that monitors file changes,
+/// computes git status diffs, and emits events to the frontend.
 #[derive(Clone)]
 pub struct WatcherManager {
+    /// Map of project IDs to active watcher handles.
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
 }
 
@@ -250,12 +257,14 @@ fn should_ignore_path(path: &Path) -> bool {
 }
 
 impl WatcherManager {
+    /// Create a new empty `WatcherManager`.
     pub fn new() -> Self {
         Self {
             watchers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
+    /// Start watching the given project directory for file changes.
     pub fn watch(&self, project_id: String, path: PathBuf, app_handle: AppHandle) {
         let pid_for_legacy = project_id.clone();
         let app_for_diff = app_handle.clone();
@@ -396,6 +405,7 @@ impl WatcherManager {
         }
     }
 
+    /// Stop watching the given project and clean up resources.
     pub fn unwatch(&self, project_id: &str) {
         if let Ok(mut watchers) = self.watchers.lock() {
             if let Some(handle) = watchers.remove(project_id) {
@@ -404,6 +414,7 @@ impl WatcherManager {
         }
     }
 
+    /// Stop all active file watchers.
     pub fn stop_all(&self) {
         log::info!("[Watcher] Stopping all watchers...");
         if let Ok(mut watchers) = self.watchers.lock() {

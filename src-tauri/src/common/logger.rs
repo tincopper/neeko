@@ -1,3 +1,5 @@
+//! Simple file-based logger that writes structured log lines to `~/.neeko/neeko.log`.
+
 use chrono::Local;
 use log::{Level, Metadata, Record};
 use std::fs::{self, OpenOptions};
@@ -5,8 +7,10 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// Global file handle guarded by a mutex for thread-safe log writes.
 static FILE_LOGGER: Mutex<Option<std::fs::File>> = Mutex::new(None);
 
+/// A [`log::Log`] implementation that writes timestamped log lines to a file.
 struct FileLogger;
 
 impl log::Log for FileLogger {
@@ -50,8 +54,10 @@ impl log::Log for FileLogger {
     fn flush(&self) {}
 }
 
+/// Singleton logger instance.
 static LOGGER: FileLogger = FileLogger;
 
+/// Initialize the file logger, creating the log directory and opening the log file.
 pub fn init_logger() {
     let log_path = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))

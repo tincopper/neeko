@@ -1,3 +1,5 @@
+//! Neeko — Multi-project AI Agent session manager for Tauri 2.
+
 #![deny(
     clippy::dbg_macro,
     clippy::todo,
@@ -12,24 +14,41 @@
 //   the elided_lifetimes_in_paths sub-lint fires ~46 times across the codebase,
 //   requiring a separate cleanup pass before promoting to deny.
 
+/// Agent lifecycle management, commands, and configuration.
 pub mod agent;
 mod app;
 mod app_state;
+/// Browser webview management for UI-embedded browsing.
 pub mod browser;
+/// Shared types, utilities, and helpers.
 pub mod common;
+/// Remote connection management (SSH, WSL).
 pub mod connection;
+/// Conversation scanning, search, and export.
 pub mod conversation;
+/// Core runtime, executor, and process utilities.
 pub mod core;
+/// Debug Adapter Protocol client management.
 pub mod dap;
+/// File system operations.
 pub mod file;
+/// Git integration (status, diff, branch, commit, PR).
 pub mod git;
+/// Language Server Protocol client management.
 pub mod lsp;
+/// Project management (add, remove, list, config).
 pub mod project;
+/// Session persistence (save / load workspace state).
 pub mod session;
+/// Application settings management.
 pub mod settings;
+/// Skill management (install, configure, tag, sync).
 pub mod skill;
+/// Task configuration and execution.
 pub mod task;
+/// Terminal emulation (local, WSL, remote).
 pub mod terminal;
+/// Theme synchronization for agents and terminals.
 pub mod theme;
 
 pub use app::run;

@@ -1,9 +1,12 @@
+//! Tauri commands for opening IDEs (local, remote SSH, and WSL).
+
 use crate::common::utils::command::local;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
 use tauri::State;
 
+/// Sets the IDE selection for a project.
 #[tauri::command]
 pub fn set_project_ide(
     project_id: String,
@@ -18,6 +21,7 @@ pub fn set_project_ide(
     Ok(())
 }
 
+/// Opens a local IDE for the given project path.
 #[tauri::command]
 pub fn open_ide(
     ide_command: String,
@@ -227,6 +231,7 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Opens an IDE inside a WSL distribution.
 #[tauri::command]
 pub fn open_wsl_ide(distro: String, project_path: String, ide: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]

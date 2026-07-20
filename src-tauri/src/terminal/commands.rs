@@ -1,9 +1,12 @@
+//! Tauri commands for terminal session lifecycle.
+
 #[allow(clippy::wildcard_imports)]
 use crate::common::terminal::types::*;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+/// Creates a new PTY terminal session for a project.
 #[tauri::command]
 pub async fn create_terminal_session(
     project_id: String,
@@ -28,11 +31,13 @@ pub async fn create_terminal_session(
         .await
 }
 
+/// Closes a terminal session by ID.
 #[tauri::command]
 pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
     state.close_session(&session_id);
 }
 
+/// Resizes a terminal session to the specified column/row dimensions.
 #[tauri::command]
 pub fn resize_terminal(
     session_id: String,

@@ -1,3 +1,6 @@
+//! Git operations, models, caching, credential management, transport abstraction,
+//! PR provider integration, and status-watching utilities.
+
 pub mod cache;
 pub mod credential;
 pub mod gh;

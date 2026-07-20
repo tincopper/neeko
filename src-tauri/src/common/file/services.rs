@@ -1,3 +1,5 @@
+//! File-system service functions for listing, reading, and searching files.
+
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::exec_on;
 use crate::common::git::parsers::build_file_tree_from_find;

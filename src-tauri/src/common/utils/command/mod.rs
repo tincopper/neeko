@@ -1,3 +1,6 @@
+//! Platform-specific command execution utilities for local, WSL, and SSH environments.
+
+/// Local command execution via `std::process::Command`.
 pub mod local;
 
 /// Thin re-export: fire-and-forget IDE launch in WSL.

@@ -1,3 +1,5 @@
+//! Theme synchronization service for local, WSL, and remote agents.
+
 use anyhow::Result;
 
 use super::{common, opencode, pi};
@@ -5,21 +7,27 @@ use super::{common, opencode, pi};
 /// 区分不同项目类型，用于路由主题安装/配置操作
 #[derive(Clone)]
 pub enum ThemeContext {
+    /// Local machine context.
     Local,
-    Wsl(String), // distro name
+    /// WSL distribution context with distro name.
+    Wsl(String),
 }
 
 /// Theme 同步策略枚举 — 新增 Agent 只需加一个 variant + match arm
 pub enum ThemeStrategy {
+    /// OpenCode agent theme sync.
     OpenCode,
+    /// Pi agent theme sync.
     Pi,
 }
 
 impl ThemeStrategy {
+    /// Returns all registered theme strategies.
     pub fn all() -> Vec<Self> {
         vec![Self::OpenCode, Self::Pi]
     }
 
+    /// Returns the display name of this strategy.
     pub fn name(&self) -> &'static str {
         match self {
             Self::OpenCode => "OpenCode",
@@ -27,6 +35,7 @@ impl ThemeStrategy {
         }
     }
 
+    /// Whether this theme strategy is enabled in user config.
     pub fn is_enabled(&self) -> bool {
         match self {
             Self::OpenCode => opencode::read_enable_opencode_theme_sync(),
@@ -34,6 +43,7 @@ impl ThemeStrategy {
         }
     }
 
+    /// Writes the theme config to a local project directory.
     pub fn sync_local(&self, project_path: &str, theme: &str) -> Result<()> {
         match self {
             Self::OpenCode => opencode::write_project_tui_config(project_path, theme),
@@ -41,6 +51,7 @@ impl ThemeStrategy {
         }
     }
 
+    /// Writes the theme config to a WSL project directory.
     pub async fn sync_wsl(&self, distro: &str, project_path: &str, theme: &str) -> Result<()> {
         match self {
             Self::OpenCode => opencode::write_wsl_tui_config(distro, project_path, theme).await,
@@ -48,6 +59,7 @@ impl ThemeStrategy {
         }
     }
 
+    /// Installs theme files on a remote server via SSH channel.
     pub async fn install_remote_files(
         &self,
         channel: &mut russh::Channel<russh::client::Msg>,
@@ -58,6 +70,7 @@ impl ThemeStrategy {
         }
     }
 
+    /// Writes the theme config to a remote project directory via SSH channel.
     pub async fn write_remote_config(
         &self,
         channel: &mut russh::Channel<russh::client::Msg>,

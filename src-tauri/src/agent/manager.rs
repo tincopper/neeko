@@ -1,44 +1,50 @@
+//! Agent registry and installation-check logic.
+
 use crate::common::agent::types::AgentConfig;
 use crate::common::executor::factory::ExecTarget;
 use std::collections::HashMap;
 
+/// Registry of AI agent configurations.
 pub struct AgentManager {
     agents: Vec<AgentConfig>,
 }
 
 impl Default for AgentManager {
+    /// Create a default `AgentManager` with built-in agents.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl AgentManager {
+    /// Create a new `AgentManager` with the default built-in agents.
     pub fn new() -> Self {
         let mut manager = Self { agents: Vec::new() };
         manager.agents = default_agents();
         manager
     }
 
+    /// Return all registered agents.
     pub fn get_agents(&self) -> &[AgentConfig] {
         &self.agents
     }
 
+    /// Get an agent by ID.
     pub fn get_agent(&self, agent_id: &str) -> Option<&AgentConfig> {
         self.agents.iter().find(|a| a.id == agent_id)
     }
 
+    /// Register a new agent.
     pub fn add_agent(&mut self, agent: AgentConfig) {
         self.agents.push(agent);
     }
 
+    /// Unregister an agent by ID.
     pub fn remove_agent(&mut self, agent_id: &str) {
         self.agents.retain(|a| a.id != agent_id);
     }
 
-    /// Resolve agent id → CLI command name (unknown id → `None`).
-    ///
-    /// Sync snapshot for use before async existence checks (do not hold
-    /// `agent_manager` mutex across await).
+    /// Resolve agent IDs to their CLI command names.
     pub fn resolve_commands(&self, agent_ids: &[String]) -> Vec<(String, Option<String>)> {
         agent_ids
             .iter()
@@ -49,11 +55,7 @@ impl AgentManager {
             .collect()
     }
 
-    /// Whether each agent CLI exists in `target` (Local / WSL / SSH).
-    ///
-    /// Always pass the **project** execution environment — never assume host PATH.
-    /// `commands` is typically from [`Self::resolve_commands`]. Unknown / missing
-    /// commands are reported as not installed.
+    /// Check whether each agent CLI exists in the given execution target.
     pub async fn check_installed(
         commands: &[(String, Option<String>)],
         target: &ExecTarget,
@@ -70,6 +72,7 @@ impl AgentManager {
     }
 }
 
+/// Return the list of built-in default agents.
 fn default_agents() -> Vec<AgentConfig> {
     vec![
         AgentConfig {

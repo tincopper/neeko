@@ -31,11 +31,17 @@ pub(crate) use request::do_send_request;
 /// Lifecycle status of an LSP session, emitted to the frontend.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum LspSessionStatus {
+    /// Server process is starting.
     Starting,
+    /// Initialize handshake in progress.
     Initializing,
+    /// Server is indexing the workspace.
     Indexing,
+    /// Server is ready to accept requests.
     Ready,
+    /// An error occurred (carries message).
     Error(String),
+    /// Session has been stopped.
     Stopped,
 }
 
@@ -53,15 +59,23 @@ impl LspSessionStatus {
 }
 
 pub(crate) struct LspSession {
+    /// Language identifier (e.g. "rust").
     pub(crate) language_id: String,
+    /// Project filesystem path.
     pub(crate) project_path: String,
+    /// Server binary name (e.g. "rust-analyzer").
     pub(crate) server_name: String,
+    /// Channel sender for writing LSP messages to the server.
     pub(crate) writer: crossbeam_channel::Sender<Message>,
+    /// Pending request ID to response sender map.
     pub(crate) pending: Arc<Mutex<HashMap<RequestId, PendingSender>>>,
     /// Latest in-flight request per single-flight method (hover/definition/…).
     pub(crate) inflight: Arc<Mutex<InflightRequestTracker>>,
+    /// Reader thread handle for processing server responses.
     pub(crate) reader: Option<thread::JoinHandle<Result<()>>>,
+    /// Stderr logger thread handle.
     pub(crate) stderr_logger: Option<thread::JoinHandle<()>>,
+    /// Number of times this session has been restarted.
     pub(crate) restart_count: u32,
     /// Cached server capabilities from the initialize handshake.
     pub(crate) server_capabilities: Value,
@@ -75,6 +89,7 @@ pub(crate) struct LspSession {
 }
 
 impl LspSession {
+    /// Create a new LSP session: spawn server process, perform initialize handshake.
     pub(crate) fn new(
         plugin: &LspPlugin,
         project_path: &str,
@@ -384,6 +399,7 @@ impl LspSession {
         })
     }
 
+    /// Check whether the reader thread is still running.
     pub(crate) fn is_alive(&self) -> bool {
         self.reader
             .as_ref()
@@ -406,6 +422,7 @@ impl LspSession {
         .await
     }
 
+    /// Send a raw LSP notification to the server.
     pub(crate) fn send_notification_raw(&self, method: &str, params: Value) -> Result<()> {
         let notif = Notification::new(method.to_string(), params);
         self.writer

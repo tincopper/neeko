@@ -15,6 +15,7 @@ use super::types::{BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile};
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// Manages DAP debug sessions, breakpoints, and launch configurations.
 pub struct DapManager {
     /// Active sessions by session_id.
     sessions: Mutex<HashMap<String, Arc<DapSession>>>,
@@ -31,6 +32,7 @@ impl Default for DapManager {
 }
 
 impl DapManager {
+    /// Create an empty DAP manager with no sessions or breakpoints.
     pub fn new() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
@@ -39,6 +41,7 @@ impl DapManager {
         }
     }
 
+    /// List launch configs for a project from disk.
     pub fn list_configs(
         state: &AppStateWrapper,
         project_id: &str,
@@ -72,6 +75,7 @@ impl DapManager {
         Ok(configurations)
     }
 
+    /// Persist launch configs to disk for a project.
     pub fn save_configs(
         state: &AppStateWrapper,
         project_id: &str,
@@ -85,6 +89,7 @@ impl DapManager {
         save_launch_file(&path, &file)
     }
 
+    /// Discover entry points (main packages) for a project.
     pub fn discover_entries(
         state: &AppStateWrapper,
         project_id: &str,
@@ -158,6 +163,7 @@ impl DapManager {
         out
     }
 
+    /// Set breakpoints for a file in a project, persisting to disk and forwarding to the active session.
     pub async fn set_breakpoints(
         &self,
         state: &AppStateWrapper,
@@ -201,6 +207,7 @@ impl DapManager {
             .collect())
     }
 
+    /// Get all breakpoints for a project from memory.
     pub async fn get_breakpoints(
         &self,
         state: &AppStateWrapper,
@@ -210,6 +217,7 @@ impl DapManager {
         Ok(self.get_breakpoints_memory(project_id).await)
     }
 
+    /// Start a new DAP debug session for a project with the given config.
     pub async fn start_session(
         &self,
         state: &AppStateWrapper,
@@ -275,6 +283,7 @@ impl DapManager {
         Ok(info)
     }
 
+    /// Stop a DAP session by session_id.
     pub async fn stop_session(&self, session_id: &str) -> Result<(), AppError> {
         let session = {
             let mut sessions = self.sessions.lock().await;
@@ -288,6 +297,7 @@ impl DapManager {
         }
     }
 
+    /// Stop all DAP sessions for a project.
     pub async fn stop_project_sessions(&self, project_id: &str) {
         let to_stop: Vec<Arc<DapSession>> = {
             let mut sessions = self.sessions.lock().await;
@@ -305,10 +315,12 @@ impl DapManager {
         }
     }
 
+    /// Get a session by session_id, if it exists.
     pub async fn get_session(&self, session_id: &str) -> Option<Arc<DapSession>> {
         self.sessions.lock().await.get(session_id).cloned()
     }
 
+    /// Get the active session info for a project, if any.
     pub async fn active_for_project(&self, project_id: &str) -> Option<DapSessionInfo> {
         let sessions = self.sessions.lock().await;
         for s in sessions.values() {
@@ -319,6 +331,7 @@ impl DapManager {
         None
     }
 
+    /// List all active DAP sessions.
     pub async fn list_sessions(&self) -> Vec<DapSessionInfo> {
         let sessions = self.sessions.lock().await;
         let mut out = Vec::new();

@@ -1,3 +1,5 @@
+//! Skill installation from local paths, git repositories, and archives.
+
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -5,22 +7,25 @@ use super::central_repo;
 use super::content_hash;
 use super::skill_metadata;
 
-/// Preview cache for git installations
 use std::sync::LazyLock;
+/// Global cache for git installation previews.
 pub static GIT_PREVIEWS: LazyLock<std::sync::Mutex<GitPreviewCache>> =
     LazyLock::new(|| std::sync::Mutex::new(GitPreviewCache::new()));
 
+/// In-memory cache for git installation previews.
 pub struct GitPreviewCache {
     previews: Vec<GitPreview>,
 }
 
 impl GitPreviewCache {
+    /// Create an empty preview cache.
     pub fn new() -> Self {
         Self {
             previews: Vec::new(),
         }
     }
 
+    /// Insert a preview and return its generated ID.
     pub fn insert(&mut self, preview: GitPreview) -> String {
         let id = uuid::Uuid::new_v4().to_string();
         let preview = GitPreview {
@@ -31,10 +36,12 @@ impl GitPreviewCache {
         id
     }
 
+    /// Get a preview by ID.
     pub fn get(&self, id: &str) -> Option<&GitPreview> {
         self.previews.iter().find(|p| p.id == id)
     }
 
+    /// Remove and return a preview by ID.
     pub fn remove(&mut self, id: &str) -> Option<GitPreview> {
         self.previews
             .iter()
@@ -43,30 +50,47 @@ impl GitPreviewCache {
     }
 }
 
+/// A snapshot of a cloned git repository for skill preview.
 #[derive(Debug, Clone)]
 pub struct GitPreview {
+    /// Preview identifier.
     pub id: String,
+    /// Cloned git URL.
     pub clone_url: String,
+    /// Branch used for cloning.
     pub branch: Option<String>,
+    /// Temporary clone path on disk.
     pub clone_path: PathBuf,
+    /// Skill directories found in the repository.
     pub available_skills: Vec<GitSkillInfo>,
+    /// Creation timestamp.
     pub created_at: i64,
 }
 
+/// Information about a skill directory within a git repository.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitSkillInfo {
+    /// Relative path within the repository.
     pub path: String,
+    /// Inferred or explicit skill name.
     pub name: String,
+    /// Optional description from SKILL.md.
     pub description: Option<String>,
 }
 
+/// Result of installing a skill from a source.
 pub struct InstallResult {
+    /// Final skill name (may be sanitized).
     pub name: String,
+    /// Optional description extracted from SKILL.md.
     pub description: Option<String>,
+    /// Destination path in the central repository.
     pub central_path: PathBuf,
+    /// SHA-256 content hash of the installed directory.
     pub content_hash: String,
 }
 
+/// Install a skill from a local filesystem path (directory or archive).
 pub fn install_from_local(source: &Path, name: Option<&str>) -> Result<InstallResult> {
     let skill_dir = if source.is_dir() {
         source.to_path_buf()
@@ -221,7 +245,7 @@ mod tests {
     }
 }
 
-/// Clone a git repository to a temp directory and list available skills
+/// Clone a git repository to a temp directory and list available skills.
 pub fn preview_git_install(
     clone_url: &str,
     branch: Option<&str>,
@@ -332,13 +356,13 @@ pub fn preview_git_install(
     Ok(preview_id)
 }
 
-/// Get preview info by ID
+/// Get preview info by ID.
 pub fn get_preview(preview_id: &str) -> Option<GitPreview> {
     let cache = GIT_PREVIEWS.lock().ok()?;
     cache.get(preview_id).cloned()
 }
 
-/// Confirm git install - copy selected skill to central repo
+/// Confirm git install - copy selected skill to central repo.
 pub fn confirm_git_install(
     preview_id: &str,
     selected_path: &str,
@@ -365,7 +389,7 @@ pub fn confirm_git_install(
     Ok(result)
 }
 
-/// Cancel git preview - cleanup temp clone
+/// Cancel git preview - cleanup temp clone.
 pub fn cancel_git_preview(preview_id: &str) -> Result<()> {
     let preview = {
         let mut cache = GIT_PREVIEWS
@@ -384,7 +408,7 @@ pub fn cancel_git_preview(preview_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Install directly from git URL (for atomic operations)
+/// Install directly from git URL (for atomic operations).
 pub fn install_from_git(
     clone_url: &str,
     branch: Option<&str>,
@@ -444,7 +468,7 @@ pub fn install_from_git(
     Ok(result)
 }
 
-/// Check if a skill has updates available
+/// Check if a skill has updates available from its source.
 pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::types::UpdateStatus> {
     let source_type = &skill.source_type;
     let source_ref = skill
@@ -516,7 +540,7 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     Ok(status)
 }
 
-/// Apply update to a skill
+/// Apply update to a skill by re-installing from its source.
 pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::SkillRecord> {
     // Re-install from source
     let source_ref = skill

@@ -1,26 +1,40 @@
+//! Tool adapter definitions for agent platforms (Cursor, Claude Code, etc.).
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// Describes an agent tool's skills directory layout and detection paths.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolAdapter {
+    /// Unique tool key (e.g. "cursor", "claude_code").
     pub key: String,
+    /// Human-readable display name.
     pub display_name: String,
+    /// Relative path to the skills directory within the home dir.
     pub relative_skills_dir: String,
+    /// Relative path used to detect if the tool is installed.
     pub relative_detect_dir: String,
+    /// Additional directories to scan for unmanaged skills.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub additional_scan_dirs: Vec<String>,
+    /// Override path for the skills directory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub override_skills_dir: Option<String>,
+    /// Whether this is a user-defined custom tool.
     #[serde(default)]
     pub is_custom: bool,
 }
 
 /// Serializable custom tool definition stored in settings.
+/// Serializable custom tool definition stored in settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomToolDef {
+    /// Unique tool key.
     pub key: String,
+    /// Human-readable display name.
     pub display_name: String,
+    /// Absolute path to the custom skills directory.
     pub skills_dir: String,
 }
 
@@ -86,6 +100,7 @@ impl ToolAdapter {
             .any(|path| path.exists())
     }
 
+    /// Check if this adapter has a path override set.
     pub fn has_path_override(&self) -> bool {
         self.override_skills_dir.is_some()
     }
@@ -169,12 +184,12 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
     ]
 }
 
-/// Read custom tool path overrides from settings store.
+/// Deserialize custom tool path overrides from a JSON string.
 pub fn custom_tool_paths(custom_tool_paths_json: &str) -> HashMap<String, String> {
     serde_json::from_str(custom_tool_paths_json).unwrap_or_default()
 }
 
-/// Build all adapters: built-in + custom.
+/// Build all adapters: built-in + custom, with path overrides applied.
 pub fn all_tool_adapters(
     custom_tool_paths_json: &str,
     custom_tools_json: &str,

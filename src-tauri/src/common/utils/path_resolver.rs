@@ -1,3 +1,5 @@
+//! Path resolution utilities for projects and sessions.
+
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;

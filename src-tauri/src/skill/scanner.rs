@@ -1,18 +1,27 @@
+//! Scan agent tool directories for unmanaged skill directories.
+
 use anyhow::Result;
 
 use super::content_hash;
 use super::skill_metadata;
 use super::tool_adapters;
 
+/// An unmanaged skill directory found outside the central repository.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DiscoveredSkill {
+    /// Unique identifier for this discovery.
     pub id: String,
+    /// Source tool key.
     pub tool: String,
+    /// Absolute path where the skill was found.
     pub found_path: String,
+    /// Inferred name from the directory.
     pub name_guess: Option<String>,
+    /// Optional content hash fingerprint.
     pub fingerprint: Option<String>,
 }
 
+/// Scan all tool directories for unmanaged skill directories.
 pub fn scan_local_skills(managed_paths: &[String]) -> Result<Vec<DiscoveredSkill>> {
     let adapters = tool_adapters::default_tool_adapters();
     let mut discovered = Vec::new();

@@ -1,3 +1,5 @@
+//! Core project management types and execution environment.
+
 pub mod exec;
 pub mod exec_env;
 pub mod project;

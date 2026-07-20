@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectedLanguage {
+    /// Language identifier (e.g. "rust", "go").
     pub language_id: String,
+    /// LSP server binary name for this language.
     pub server_name: String,
     /// Root marker files that caused this detection (e.g. "go.mod").
     pub markers: Vec<String>,
@@ -22,6 +24,7 @@ pub struct DetectedLanguage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectLanguageProfile {
+    /// Filesystem path of the scanned project.
     pub project_path: String,
     /// Single primary language to soft-warm (monorepo: only one).
     pub primary: Option<DetectedLanguage>,

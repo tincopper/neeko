@@ -1,3 +1,5 @@
+//! Local git operations (status, log, diff, branch, worktree, etc.).
+
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::common::utils::command::local::exec;
 use crate::project::types::{
@@ -14,6 +16,7 @@ use super::parsers::{
     parse_numstat_line, parse_unified_diff,
 };
 
+/// Get full git information for the repository at `repo_path`.
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
@@ -333,6 +336,7 @@ fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
     Ok(worktrees)
 }
 
+/// Check out a local branch by name.
 pub fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
@@ -352,6 +356,7 @@ pub fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Create a new local branch, optionally from a specific starting point.
 pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&str>) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
@@ -367,6 +372,7 @@ pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&s
     Ok(())
 }
 
+/// Get the diff for a single file (working tree vs HEAD).
 pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
     super::cache::get_cached_diff(repo_path, file_path, || {
         let t_open = std::time::Instant::now();
@@ -475,6 +481,7 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
     })
 }
 
+/// Create a new git worktree, optionally with a new branch.
 pub fn create_worktree(
     repo_path: &Path,
     worktree_path: &Path,
@@ -507,6 +514,7 @@ pub fn create_worktree(
     Ok(())
 }
 
+/// Remove a git worktree by path.
 pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     let wt_path_str = worktree_path
         .to_str()
@@ -635,6 +643,7 @@ pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result
     Ok(())
 }
 
+/// Check whether the given path is a valid git repository.
 pub fn is_git_repo(path: &Path) -> bool {
     Repository::open(path).is_ok()
 }

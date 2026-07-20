@@ -1,22 +1,32 @@
+//! Terminal session types.
+
 use serde::{Deserialize, Serialize};
 
 use crate::common::agent::types::AgentConfig;
 
-/// 终端状态
+/// Terminal session status.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum TerminalStatus {
+    /// Terminal is idle (no process running).
     #[default]
-    Idle, // 空闲
-    Running, // 运行中
-    Failed,  // 失败
+    Idle,
+    /// A process is currently running in the terminal.
+    Running,
+    /// The terminal process has failed.
+    Failed,
 }
 
-/// 终端会话
+/// A terminal session with process info and history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalSession {
+    /// Unique session identifier.
     pub id: String,
+    /// Process ID of the terminal shell, if available.
     pub pid: Option<u32>,
+    /// Current session status.
     pub status: TerminalStatus,
+    /// Command history for this session.
     pub history: Vec<String>,
+    /// Optional agent configuration bound to this session.
     pub agent: Option<AgentConfig>,
 }

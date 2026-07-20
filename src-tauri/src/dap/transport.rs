@@ -33,10 +33,13 @@ pub fn parse_listen_addr_line(line: &str) -> Option<String> {
 
 /// Connected DAP read/write pair plus optional process-output fan-in.
 pub struct DapIo {
+    /// Read half of the DAP transport (stdout or TCP).
     pub reader: BoxAsyncRead,
+    /// Write half of the DAP transport (stdin or TCP).
     pub writer: BoxAsyncWrite,
     /// Process pipe lines as (category, line) for the debug console.
     pub proc_out_rx: mpsc::UnboundedReceiver<(String, String)>,
+    /// Accumulated stderr output for error reporting.
     pub stderr_buf: Arc<Mutex<String>>,
 }
 

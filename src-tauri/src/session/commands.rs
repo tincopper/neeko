@@ -1,8 +1,11 @@
+//! Tauri commands for session and config persistence.
+
 use crate::session::types::SessionStore;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
+/// Persists user configuration and syncs LSP settings.
 #[tauri::command]
 pub fn save_config(
     config: serde_json::Value,
@@ -17,11 +20,13 @@ pub fn save_config(
     Ok(())
 }
 
+/// Loads user configuration from disk.
 #[tauri::command]
 pub fn load_config(state: State<AppStateWrapper>) -> Result<serde_json::Value, AppError> {
     state.storage_manager.load_config().map_err(AppError::from)
 }
 
+/// Persists the current project list and sidebar state as a session.
 #[tauri::command]
 pub fn save_session(
     sidebar_width: Option<u32>,
@@ -53,11 +58,13 @@ pub fn save_session(
         .map_err(AppError::from)
 }
 
+/// Loads the saved session from disk.
 #[tauri::command]
 pub fn load_session(state: State<AppStateWrapper>) -> Result<SessionStore, AppError> {
     state.storage_manager.load_session().map_err(AppError::from)
 }
 
+/// Returns the config directory path as a string.
 #[tauri::command]
 pub fn get_config_dir(state: State<AppStateWrapper>) -> String {
     state
@@ -67,11 +74,13 @@ pub fn get_config_dir(state: State<AppStateWrapper>) -> String {
         .to_string()
 }
 
+/// Returns a greeting message for the given name.
 #[tauri::command]
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Neeko!", name)
 }
 
+/// Persists VCS settings for a specific project.
 #[tauri::command]
 pub fn save_vcs_settings_command(
     project_id: String,
@@ -84,6 +93,7 @@ pub fn save_vcs_settings_command(
         .map_err(AppError::from)
 }
 
+/// Loads VCS settings for a specific project.
 #[tauri::command]
 pub fn load_vcs_settings_command(
     project_id: String,

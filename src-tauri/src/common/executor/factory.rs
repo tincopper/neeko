@@ -25,9 +25,13 @@ pub enum ExecTarget {
     },
     /// Run on a remote host via SSH.
     Remote {
+        /// Remote host address.
         host: String,
+        /// SSH port.
         port: u16,
+        /// Remote username.
         username: String,
+        /// Authentication method.
         auth: AuthMethod,
     },
 }
