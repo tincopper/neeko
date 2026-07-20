@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleDot, X } from '@/shared/components/icons';
+import { Bug, CircleDot, X } from '@/shared/components/icons';
 import { cn } from '@/shared/utils/cn';
 import { buildFontFamily } from '@/shared/utils/terminal';
 
@@ -267,6 +267,7 @@ function DebugPanel() {
       {/* Header — island tab bar density */}
       <div className="flex items-center border-b border-border shrink-0 bg-bg-secondary h-8 rounded-t-lg">
         <div className="inline-flex items-center gap-1.5 shrink-0 px-2.5 max-w-[220px]">
+          <Bug size={13} className="text-text-secondary shrink-0" />
           <span className="text-[var(--font-size)] font-medium text-text-primary">
             Debug
           </span>
