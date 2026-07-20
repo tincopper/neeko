@@ -492,39 +492,33 @@ function DebugPanel() {
             }}
           >
             {consoleLines.length === 0 ? (
-              <EmptyHint className="font-sans h-full flex items-center justify-center text-[var(--font-size)]">
+              <div
+                className="h-full flex items-center justify-center px-3 text-center leading-relaxed"
+                style={{
+                  fontSize: `${terminalType.fontSize}px`,
+                  fontFamily: terminalType.fontFamily,
+                  color: 'var(--terminal-fg-dim, var(--text-muted))',
+                }}
+              >
                 Debug output and build messages appear here.
-              </EmptyHint>
+              </div>
             ) : (
               consoleLines.map((line) => (
                 <div
                   key={line.id}
                   className="whitespace-pre-wrap"
-                  style={
-                    line.kind === 'in'
-                      ? {
-                          color: 'var(--accent-blue)',
-                          fontSize: `${terminalType.fontSize}px`,
-                          fontFamily: terminalType.fontFamily,
-                        }
-                      : line.kind === 'err'
-                        ? {
-                            color: 'var(--accent-red)',
-                            fontSize: `${terminalType.fontSize}px`,
-                            fontFamily: terminalType.fontFamily,
-                          }
-                        : line.kind === 'sys'
-                          ? {
-                              color: 'var(--terminal-fg-dim, var(--text-muted))',
-                              fontSize: `${terminalType.fontSize}px`,
-                              fontFamily: terminalType.fontFamily,
-                            }
-                          : {
-                              color: 'var(--terminal-fg, var(--text-secondary))',
-                              fontSize: `${terminalType.fontSize}px`,
-                              fontFamily: terminalType.fontFamily,
-                            }
-                  }
+                  style={{
+                    fontSize: `${terminalType.fontSize}px`,
+                    fontFamily: terminalType.fontFamily,
+                    color:
+                      line.kind === 'in'
+                        ? 'var(--accent-blue)'
+                        : line.kind === 'err'
+                          ? 'var(--accent-red)'
+                          : line.kind === 'sys'
+                            ? 'var(--terminal-fg-dim, var(--text-muted))'
+                            : 'var(--terminal-fg, var(--text-secondary))',
+                  }}
                 >
                   {line.kind === 'in' ? `› ${line.text}` : line.text}
                 </div>

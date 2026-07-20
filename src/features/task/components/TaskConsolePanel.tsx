@@ -2,9 +2,11 @@
  * Bottom Console panel for task run output (not editor tabs).
  * Layout chrome aligned with DebugPanel.
  */
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Square, Terminal, X } from "@/shared/components/icons";
 import { cn } from "@/shared/utils/cn";
+import { buildFontFamily } from "@/shared/utils/terminal";
+import { useAppContext } from "@/shared/contexts/AppContext";
 
 import { useTaskStore } from "../store";
 import TaskConsoleTerminal from "./TaskConsoleTerminal";
@@ -41,6 +43,14 @@ function TaskConsolePanel() {
   const setActiveConsoleId = useTaskStore((s) => s.setActiveConsoleId);
   const closeConsoleSession = useTaskStore((s) => s.closeConsoleSession);
   const stopTask = useTaskStore((s) => s.stopTask);
+  const { config } = useAppContext();
+  const terminalType = useMemo(
+    () => ({
+      fontSize: config.terminalFontSize ?? 14,
+      fontFamily: buildFontFamily(config.fontFamily ?? ""),
+    }),
+    [config.terminalFontSize, config.fontFamily],
+  );
 
   const latestH = useRef(PANEL_H_DEFAULT);
   const [panelHeight, setPanelHeight] = useState(() =>
@@ -176,20 +186,32 @@ function TaskConsolePanel() {
         </div>
 
         {/* Body: keep all session terminals mounted for output retention */}
-        <div className="relative flex-1 min-h-0 bg-bg-secondary">
-          {sessions.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-3 py-3 text-[var(--font-size)] text-text-muted leading-relaxed text-center">
-              Run a task from the Run menu to stream output here.
-            </div>
-          ) : (
-            sessions.map((s) => (
-              <TaskConsoleTerminal
-                key={`${s.id}:${s.rebuildKey}`}
-                session={s}
-                active={s.id === (active?.id ?? "")}
-              />
-            ))
-          )}
+        <div
+          className="flex-1 flex flex-col min-h-0"
+          style={{ backgroundColor: "var(--terminal-bg, var(--bg-secondary))" }}
+        >
+          <div className="relative flex-1 min-h-0">
+            {sessions.length === 0 ? (
+              <div
+                className="flex h-full items-center justify-center px-3 text-center leading-relaxed"
+                style={{
+                  fontSize: `${terminalType.fontSize}px`,
+                  fontFamily: terminalType.fontFamily,
+                  color: "var(--terminal-fg-dim, var(--text-muted))",
+                }}
+              >
+                Run a task from the Run menu to stream output here.
+              </div>
+            ) : (
+              sessions.map((s) => (
+                <TaskConsoleTerminal
+                  key={`${s.id}:${s.rebuildKey}`}
+                  session={s}
+                  active={s.id === (active?.id ?? "")}
+                />
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
