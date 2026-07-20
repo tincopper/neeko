@@ -68,13 +68,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: "prevTab",
     label: "Previous Tab",
-    defaultBinding: "Ctrl+PageUp",
+    // IDEA: Alt+Left / Option+Left — cycle editor tabs
+    defaultBinding: "Alt+Left",
     category: "tabs",
   },
   {
     id: "nextTab",
     label: "Next Tab",
-    defaultBinding: "Ctrl+PageDown",
+    // IDEA: Alt+Right / Option+Right
+    defaultBinding: "Alt+Right",
     category: "tabs",
   },
   {
@@ -131,13 +133,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: "navigateBack",
     label: "Navigate Back",
-    defaultBinding: "Alt+Left",
+    // IDEA: Ctrl+Alt+Left → Cmd+Option+Left on macOS (see matchesBinding)
+    defaultBinding: "Ctrl+Alt+Left",
     category: "editor",
   },
   {
     id: "navigateForward",
     label: "Navigate Forward",
-    defaultBinding: "Alt+Right",
+    // IDEA: Ctrl+Alt+Right → Cmd+Option+Right on macOS
+    defaultBinding: "Ctrl+Alt+Right",
     category: "editor",
   },
   {
@@ -392,6 +396,46 @@ export function captureBinding(e: KeyboardEvent): ParsedBinding {
   return parsed;
 }
 
+/**
+ * Compare event modifiers to a parsed chord.
+ *
+ * Chord language uses "Ctrl" as the *primary* accelerator:
+ * - Windows/Linux: physical Control
+ * - macOS: ⌘ (metaKey) **or** physical Control — so IDEA-style
+ *   Ctrl+Alt+Left works with both ⌘⌥← and ⌃⌥←
+ *
+ * Explicit "Meta"/"Cmd" in a chord maps to the other modifier on that platform.
+ */
+export function modifiersMatch(
+  e: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
+  want: Pick<ParsedBinding, "ctrl" | "alt" | "shift" | "meta">,
+  isMac: boolean = IS_MACOS,
+): boolean {
+  if (e.altKey !== want.alt || e.shiftKey !== want.shift) {
+    return false;
+  }
+
+  if (!isMac) {
+    return e.ctrlKey === want.ctrl && e.metaKey === want.meta;
+  }
+
+  // macOS
+  if (want.ctrl && want.meta) {
+    // Need both ⌘ and physical Control
+    return e.metaKey && e.ctrlKey;
+  }
+  if (want.ctrl) {
+    // Primary: ⌘ or Control (IDEA users press either)
+    return e.metaKey || e.ctrlKey;
+  }
+  if (want.meta) {
+    // Explicit secondary only: physical Control, no ⌘
+    return e.ctrlKey && !e.metaKey;
+  }
+  // No primary in chord (e.g. Alt+Left) — reject if ⌘ or Control held
+  return !e.metaKey && !e.ctrlKey;
+}
+
 export function matchesBinding(e: KeyboardEvent, binding: string): MatchResult {
   if (!binding || binding.trim() === "") return { matched: false };
 
@@ -408,15 +452,11 @@ export function matchesBinding(e: KeyboardEvent, binding: string): MatchResult {
     const hasShift = modifierParts.includes("Shift");
     const hasMeta = modifierParts.includes("Meta") || modifierParts.includes("Cmd");
 
-    // Ctrl in binding = primary modifier (Cmd on macOS)
-    const primaryDown = IS_MACOS ? e.metaKey : e.ctrlKey;
-    const secondaryCtrl = IS_MACOS ? e.ctrlKey : e.metaKey;
-
     if (
-      primaryDown !== hasCtrl ||
-      e.altKey !== hasAlt ||
-      e.shiftKey !== hasShift ||
-      secondaryCtrl !== hasMeta
+      !modifiersMatch(
+        e,
+        { ctrl: hasCtrl, alt: hasAlt, shift: hasShift, meta: hasMeta },
+      )
     ) {
       return { matched: false };
     }
@@ -429,14 +469,10 @@ export function matchesBinding(e: KeyboardEvent, binding: string): MatchResult {
   if (!parsed) return { matched: false };
 
   const codeMatch = e.code === parsed.code;
-  // Ctrl in stored binding → primary (⌘ on Mac, Ctrl on Win)
-  const ctrlMatch = IS_MACOS ? e.metaKey === parsed.ctrl : e.ctrlKey === parsed.ctrl;
-  const altMatch = e.altKey === parsed.alt;
-  const shiftMatch = e.shiftKey === parsed.shift;
-  const metaMatch = IS_MACOS ? e.ctrlKey === parsed.meta : e.metaKey === parsed.meta;
+  const modsOk = modifiersMatch(e, parsed);
 
   return {
-    matched: codeMatch && ctrlMatch && altMatch && shiftMatch && metaMatch,
+    matched: codeMatch && modsOk,
   };
 }
 

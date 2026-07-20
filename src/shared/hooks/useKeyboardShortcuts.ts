@@ -13,6 +13,7 @@ import {
   SHORTCUT_ACTIONS,
   getShortcutAction,
 } from "@/shared/utils/shortcutRegistry";
+import { resolveNextTabId } from "@/shared/utils/cycleEditorTab";
 import type { ProjectListItem } from "@/features/project/hooks/useProjectList";
 
 interface UseKeyboardShortcutsParams {
@@ -282,6 +283,7 @@ function resolveActiveTabKey(): string | null {
     : currentProjectId;
 }
 
+/** Cycle tabs in the focused editor group (IDEA Alt+Left/Right). */
 function cycleTab(direction: 1 | -1) {
   const editor = useEditorStore.getState();
   const tabKey = resolveActiveTabKey();
@@ -290,21 +292,13 @@ function cycleTab(direction: 1 | -1) {
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs || projectTabs.tabs.length === 0) return;
 
-  const layout = editor.editorLayout[tabKey];
-  const activeGroupId = layout?.activeGroupId ?? "left";
-  const groupTabIds = layout?.groups[activeGroupId]?.tabIds;
-  const orderedIds =
-    groupTabIds && groupTabIds.length > 0
-      ? groupTabIds
-      : projectTabs.tabs.map((t) => t.id);
-
-  const currentActive = projectTabs.activeTabId;
-  if (!currentActive) return;
-  const currentIndex = orderedIds.indexOf(currentActive);
-  if (currentIndex < 0) return;
-
-  const targetIndex = (currentIndex + direction + orderedIds.length) % orderedIds.length;
-  useEditorStore.getState().activateTab(tabKey, orderedIds[targetIndex]);
+  const nextId = resolveNextTabId({
+    tabIds: projectTabs.tabs.map((t) => t.id),
+    activeTabId: projectTabs.activeTabId,
+    layout: editor.editorLayout[tabKey] ?? null,
+    direction,
+  });
+  if (nextId) editor.activateTab(tabKey, nextId);
 }
 
 function splitActiveTabRight() {

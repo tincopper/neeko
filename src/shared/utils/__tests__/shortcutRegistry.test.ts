@@ -4,6 +4,7 @@ import {
   formatBinding,
   captureBinding,
   matchesBinding,
+  modifiersMatch,
   resolveBindings,
   findConflicts,
   SHORTCUT_ACTIONS,
@@ -326,6 +327,15 @@ describe("shortcutRegistry", () => {
       expect(resolved.unsplitEditor).toBe("Ctrl+Shift+\\");
     });
 
+    it("should_use_idea_defaults_for_tabs_and_nav_history", () => {
+      const resolved = resolveBindings({});
+      expect(resolved.prevTab).toBe("Alt+Left");
+      expect(resolved.nextTab).toBe("Alt+Right");
+      expect(resolved.navigateBack).toBe("Ctrl+Alt+Left");
+      expect(resolved.navigateForward).toBe("Ctrl+Alt+Right");
+      expect(findConflicts(resolved)).toEqual([]);
+    });
+
     it("should_build_idea_preset_without_conflicts", () => {
       const overrides = buildIdeaShortcutOverrides();
       expect(overrides.navigateBack).toBe(IDEA_SHORTCUT_PRESET.navigateBack);
@@ -333,6 +343,73 @@ describe("shortcutRegistry", () => {
       expect(overrides.fileStructure).toBe("Ctrl+F12");
       const conflicts = findConflicts(resolveBindings(overrides));
       expect(conflicts).toEqual([]);
+    });
+  });
+
+  describe("modifiersMatch macOS IDEA navigation", () => {
+    it("should_match_Cmd_Option_Left_for_Ctrl_Alt_Left", () => {
+      expect(
+        modifiersMatch(
+          { ctrlKey: false, altKey: true, shiftKey: false, metaKey: true },
+          { ctrl: true, alt: true, shift: false, meta: false },
+          true,
+        ),
+      ).toBe(true);
+    });
+
+    it("should_match_physical_Control_Option_Left_for_Ctrl_Alt_Left", () => {
+      expect(
+        modifiersMatch(
+          { ctrlKey: true, altKey: true, shiftKey: false, metaKey: false },
+          { ctrl: true, alt: true, shift: false, meta: false },
+          true,
+        ),
+      ).toBe(true);
+    });
+
+    it("should_not_match_Option_Left_alone_for_Ctrl_Alt_Left", () => {
+      expect(
+        modifiersMatch(
+          { ctrlKey: false, altKey: true, shiftKey: false, metaKey: false },
+          { ctrl: true, alt: true, shift: false, meta: false },
+          true,
+        ),
+      ).toBe(false);
+    });
+
+    it("should_match_Option_Left_only_when_no_cmd_or_control", () => {
+      expect(
+        modifiersMatch(
+          { ctrlKey: false, altKey: true, shiftKey: false, metaKey: false },
+          { ctrl: false, alt: true, shift: false, meta: false },
+          true,
+        ),
+      ).toBe(true);
+      // Holding ⌘ must not fire Alt+Left (tab switch)
+      expect(
+        modifiersMatch(
+          { ctrlKey: false, altKey: true, shiftKey: false, metaKey: true },
+          { ctrl: false, alt: true, shift: false, meta: false },
+          true,
+        ),
+      ).toBe(false);
+    });
+
+    it("should_match_Ctrl_Alt_Left_on_windows_with_physical_ctrl", () => {
+      expect(
+        modifiersMatch(
+          { ctrlKey: true, altKey: true, shiftKey: false, metaKey: false },
+          { ctrl: true, alt: true, shift: false, meta: false },
+          false,
+        ),
+      ).toBe(true);
+      expect(
+        modifiersMatch(
+          { ctrlKey: false, altKey: true, shiftKey: false, metaKey: true },
+          { ctrl: true, alt: true, shift: false, meta: false },
+          false,
+        ),
+      ).toBe(false);
     });
   });
 
