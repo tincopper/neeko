@@ -15,6 +15,7 @@
 //! with the project [`ExecTarget`] — never host-only shortcuts.
 
 pub mod adapter;
+pub mod cleanup;
 pub mod client;
 pub mod commands;
 pub mod config;

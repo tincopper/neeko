@@ -423,6 +423,15 @@ impl DapSession {
         {
             return;
         }
+        // Drop Delve / test leftovers (__debug_bin*, debug.test) under the project tree.
+        let root = std::path::PathBuf::from(&self.project_path);
+        let removed = super::cleanup::cleanup_debug_artifacts(&root);
+        if removed > 0 {
+            log::info!(
+                "[dap] removed {removed} debug artifact(s) under {}",
+                self.project_path
+            );
+        }
         self.set_status(SessionStatus::Terminated, message).await;
         self.emit_event("terminated", body).await;
     }

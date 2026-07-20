@@ -105,13 +105,6 @@ function notifyError(message: string) {
   });
 }
 
-function notifyInfo(title: string, message: string) {
-  useNotificationStore.getState().addNotification({
-    type: 'info',
-    title,
-    message,
-  });
-}
 
 function logDebugStackError(msg: string) {
   // Keep UI clean — stack races are common with Delve; only log.
@@ -319,14 +312,13 @@ export const useDebugStore = create<DebugState>((set, get) => ({
       }
       if (config.preLaunchTask?.trim()) {
         get().pushConsole('sys', `preLaunchTask: ${config.preLaunchTask}`);
-        notifyInfo('Debug', `Running preLaunchTask…`);
       }
       get().pushConsole('sys', `Starting: ${config.name}…`);
       set({ panelOpen: true, panelTab: 'console' });
       const session = await dapStartSession(projectId, name, currentFile);
       set({ session, panelOpen: true, panelTab: 'session' });
       get().pushConsole('sys', `Started: ${session.configName} (${session.status})`);
-      notifyInfo('Debug', `Debugging “${session.configName}”`);
+      // No toast — Debug panel / status bar icon already show session state.
       // Handshake waits for entry stop when possible — load stack/highlight immediately.
       if (session.status === 'stopped' || session.status === 'starting') {
         void get().refreshStackAndVars();
@@ -386,7 +378,6 @@ export const useDebugStore = create<DebugState>((set, get) => ({
   runEntry: (entry) => {
     get().pushConsole('sys', `Run: ${entry.runCommand}`);
     useTaskStore.getState().runTask(entry.runCommand, `entry-run:${entry.id}`);
-    notifyInfo('Run', entry.runCommand);
   },
 
   stop: async () => {

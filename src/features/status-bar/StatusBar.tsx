@@ -382,52 +382,51 @@ export function StatusBar() {
           <button
             type="button"
             className={cn(
-              'flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
+              'relative flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
               consolePanelOpen ? 'text-text-primary' : '',
             )}
-            title={consolePanelOpen ? 'Hide task console' : 'Show task console'}
+            title={
+              runningConsoleCount > 0
+                ? `Console · ${activeConsole?.name ?? 'running'}`
+                : consolePanelOpen
+                  ? 'Hide task console'
+                  : 'Show task console'
+            }
             onClick={() => toggleConsolePanel()}
           >
-            <Terminal size={12} className="shrink-0" />
-            {runningConsoleCount > 0 || activeConsole ? (
-              <>
-                <span
-                  className={cn(
-                    'w-1.5 h-1.5 rounded-full shrink-0',
-                    runningConsoleCount > 0
-                      ? 'bg-accent-green animate-pulse'
-                      : activeConsole?.status === 'failed'
-                        ? 'bg-accent-red'
-                        : 'bg-text-muted',
-                  )}
-                />
-                <span className="truncate max-w-[140px]">
-                  {runningConsoleCount > 0
-                    ? `Console · ${activeConsole?.name ?? 'running'}`
-                    : `Console · ${activeConsole?.name ?? 'idle'}`}
-                </span>
-              </>
-            ) : (
-              <span>Console</span>
-            )}
+            <span className="relative inline-flex">
+              <Terminal size={12} className="shrink-0" />
+              {runningConsoleCount > 0 ? (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
+              ) : activeConsole?.status === 'failed' ? (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-accent-red" />
+              ) : null}
+            </span>
+            <span>Console</span>
           </button>
         ) : null}
         {activeProjectId ? (
           <button
             type="button"
             className={cn(
-              'flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
+              'relative flex items-center gap-1.5 hover:text-text-primary cursor-pointer',
               debugPanelOpen ? 'text-text-primary' : '',
             )}
-            title={debugPanelOpen ? 'Hide debug panel' : 'Show debug panel'}
+            title={
+              debugSession
+                ? `Debug · ${debugSession.status}${debugSession.configName ? ` · ${debugSession.configName}` : ''}`
+                : debugPanelOpen
+                  ? 'Hide debug panel'
+                  : 'Show debug panel'
+            }
             onClick={() => toggleDebugPanel()}
           >
-            <Bug size={12} className="shrink-0" />
-            {debugSession ? (
-              <>
+            <span className="relative inline-flex">
+              <Bug size={12} className="shrink-0" />
+              {debugSession ? (
                 <span
                   className={cn(
-                    'w-1.5 h-1.5 rounded-full shrink-0',
+                    'absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full',
                     debugSession.status === 'stopped'
                       ? 'bg-accent-yellow'
                       : debugSession.status === 'running' ||
@@ -436,13 +435,9 @@ export function StatusBar() {
                         : 'bg-text-muted',
                   )}
                 />
-                <span className="truncate max-w-[140px]">
-                  Debug · {debugSession.status}
-                </span>
-              </>
-            ) : (
-              <span>Debug</span>
-            )}
+              ) : null}
+            </span>
+            <span>Debug</span>
           </button>
         ) : null}
         {cursorPosition && (
