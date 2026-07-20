@@ -75,7 +75,7 @@ function TaskConsolePanel() {
   const active = sessions.find((s) => s.id === activeConsoleId) ?? sessions[0] ?? null;
 
   return (
-    <div className="shrink-0 mx-11 px-0.5 pb-1">
+    <div className="shrink-0 mx-11 px-px pb-0.5">
       <div
         className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
         style={{ height: panelHeight }}

@@ -231,10 +231,10 @@ function DebugPanel() {
 
   const bpCount = breakpoints.length;
 
-  // Island shell: align with DockLayout toolbars (w-11) + zone gutters (px-0.5 pb-1).
+  // Island shell: align with DockLayout toolbars (w-11) + zone gutters (px-px pb-0.5).
   // Surface: rounded-lg shadow-sm bg-bg-secondary — same as DockZone / center editor.
   return (
-    <div className="shrink-0 mx-11 px-0.5 pb-1">
+    <div className="shrink-0 mx-11 px-px pb-0.5">
       <div
         className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
         style={{ height: panelHeight }}

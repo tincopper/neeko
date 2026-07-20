@@ -208,7 +208,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
           collapsedSize="0%"
           minSize="12%"
           maxSize="35%"
-          className="py-1 pr-0.5"
+          className="py-0.5 pr-px"
           elementRef={leftPanelElRef}
           panelRef={leftZonePanelRef}
           onResize={handleLeftPanelResize}
@@ -224,7 +224,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
         />
 
         {/* Center area: editor content (island) */}
-        <ResizablePanel id="center-area" minSize="20%" className="py-1 px-0.5 overflow-hidden">
+        <ResizablePanel id="center-area" minSize="20%" className="py-0.5 px-px overflow-hidden">
           {children}
         </ResizablePanel>
 
@@ -242,7 +242,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
           collapsedSize="0%"
           minSize="12%"
           maxSize="80%"
-          className="py-1 pl-0.5"
+          className="py-0.5 pl-px"
           panelRef={rightPanelRef}
           onResize={handleRightPanelResize}
         >
