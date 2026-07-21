@@ -34,6 +34,21 @@
   --cm-bool: #d19a66;
   --cm-punctuation: #abb2bf;
   --cm-bracket: #abb2bf;
+
+  /* Default: dark UI chrome (native scrollbars, form controls) */
+  color-scheme: dark;
+}
+
+/* Align native scrollbars / form controls with light themes */
+:root[data-theme="light"],
+:root[data-theme="claude"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"],
+:root[data-theme="classic-dark"],
+:root[data-theme="one-dark-pro"] {
+  color-scheme: dark;
 }
 
 :root[data-theme="classic-dark"] {

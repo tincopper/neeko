@@ -196,25 +196,48 @@ pub async fn get_skill_document(
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound("Skill not found".to_string()))?;
-        let central = PathBuf::from(&skill.central_path);
-        let candidates = [
-            "SKILL.md",
-            "skill.md",
-            "CLAUDE.md",
-            "README.md",
-            "readme.md",
-        ];
-        for name in &candidates {
-            let path = central.join(name);
-            if path.exists() {
-                let content = std::fs::read_to_string(&path).map_err(AppError::from)?;
-                return Ok(SkillDocumentDtoOut { content });
-            }
-        }
-        Err(AppError::NotFound(
-            "No documentation file found".to_string(),
-        ))
+        read_skill_doc_from_dir(&PathBuf::from(&skill.central_path))
     }).await
+}
+
+/// Read SKILL.md (or fallback docs) from an arbitrary skill directory on disk.
+///
+/// Used for agent-local skills that are not managed in the central library.
+#[tauri::command]
+pub async fn get_skill_document_at_path(
+    path: String,
+) -> Result<SkillDocumentDtoOut, AppError> {
+    run_blocking_result(move || {
+        let dir = PathBuf::from(&path);
+        if !dir.is_dir() {
+            return Err(AppError::NotFound(format!(
+                "Skill directory not found: {}",
+                path
+            )));
+        }
+        read_skill_doc_from_dir(&dir)
+    })
+    .await
+}
+
+fn read_skill_doc_from_dir(dir: &std::path::Path) -> Result<SkillDocumentDtoOut, AppError> {
+    let candidates = [
+        "SKILL.md",
+        "skill.md",
+        "CLAUDE.md",
+        "README.md",
+        "readme.md",
+    ];
+    for name in &candidates {
+        let path = dir.join(name);
+        if path.exists() {
+            let content = std::fs::read_to_string(&path).map_err(AppError::from)?;
+            return Ok(SkillDocumentDtoOut { content });
+        }
+    }
+    Err(AppError::NotFound(
+        "No documentation file found".to_string(),
+    ))
 }
 
 /// Re-parse every managed skill's SKILL.md and write descriptions back to DB.
@@ -1338,6 +1361,73 @@ pub async fn import_skill_to_agent_cmd(
             last_error: None,
         };
         store.insert_target(&target_rec).map_err(AppError::from)?;
+
+        Ok(())
+    })
+    .await
+}
+
+/// Remove a skill from an agent's skills directory (unlink symlink/copy + drop target record).
+///
+/// - Managed skills: remove disk entry under the agent skill path and delete skill_targets row.
+/// - Local-only skills (not managed): remove the directory/symlink on disk only.
+#[tauri::command]
+pub async fn remove_skill_from_agent_cmd(
+    agent_id: String,
+    skill_path: String,
+    skill_id: Option<String>,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    let store = state.skill_store.clone();
+
+    // Ensure the agent exists and path belongs to its skill directory when configured.
+    let agent_skill_path = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agent(&agent_id)
+        .and_then(|a| a.skill_path.clone());
+
+    run_blocking_result(move || {
+        let path = std::path::PathBuf::from(&skill_path);
+        if !path.exists() && !path.is_symlink() {
+            return Err(AppError::NotFound(format!(
+                "Skill path not found: {}",
+                skill_path
+            )));
+        }
+
+        // Optional safety: path should sit under the agent's skill dir when known.
+        if let Some(sp) = agent_skill_path.as_ref() {
+            let agent_dir =
+                std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
+            if let (Ok(agent_canon), Ok(path_parent)) =
+                (agent_dir.canonicalize(), path.parent().map(|p| p.canonicalize()).transpose())
+            {
+                if let Some(parent) = path_parent {
+                    if !parent.starts_with(&agent_canon) {
+                        return Err(AppError::InvalidInput(format!(
+                            "Skill path is outside agent skill directory: {}",
+                            skill_path
+                        )));
+                    }
+                }
+            }
+        }
+
+        super::sync_engine::remove_target(&path).map_err(AppError::from)?;
+
+        if let Some(sid) = skill_id.as_deref() {
+            let _ = store.delete_target(sid, &agent_id);
+        } else {
+            // Fall back: clear any target row matching this path + tool.
+            let all = store.get_all_targets().unwrap_or_default();
+            for t in all {
+                if t.tool == agent_id && t.target_path == skill_path {
+                    let _ = store.delete_target(&t.skill_id, &agent_id);
+                }
+            }
+        }
 
         Ok(())
     })

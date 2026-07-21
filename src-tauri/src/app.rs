@@ -86,14 +86,57 @@ pub fn run() {
                 }
             }
 
-            if let Ok(config) = state.storage_manager.load_config() {
-                if let Some(custom_agents) = config.get("customAgents").and_then(|v| v.as_array()) {
-                    if let Ok(mut am) = state.agent_manager.lock() {
-                        for agent_json in custom_agents {
-                            if let Ok(agent) =
-                                serde_json::from_value::<AgentConfig>(agent_json.clone())
-                            {
-                                // Replace built-in agent with same ID, or add as new custom agent
+            // Load custom agents + migrate legacy agentSkillPathOverrides → skill_path
+            if let Ok(mut config) = state.storage_manager.load_config() {
+                let legacy_overrides = legacy_skill_path_overrides(&config);
+                let mut migrated = false;
+
+                if let Some(custom_agents) =
+                    config.get_mut("customAgents").and_then(|v| v.as_array_mut())
+                {
+                    for agent_json in custom_agents.iter_mut() {
+                        // Inject skill_path from legacy overrides when missing
+                        let id = agent_json
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let has_path = agent_json
+                            .get("skill_path")
+                            .and_then(|v| v.as_str())
+                            .map(|s| !s.trim().is_empty())
+                            .unwrap_or(false);
+                        if !has_path {
+                            if let Some(id) = id.as_ref() {
+                                if let Some(path) = legacy_overrides.get(id) {
+                                    if let Some(obj) = agent_json.as_object_mut() {
+                                        obj.insert(
+                                            "skill_path".into(),
+                                            serde_json::Value::String(path.clone()),
+                                        );
+                                        migrated = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Ok(mut agent) =
+                            serde_json::from_value::<AgentConfig>(agent_json.clone())
+                        {
+                            // Normalize fullwidth tilde etc. on skill_path
+                            if let Some(ref sp) = agent.skill_path {
+                                let normalized = normalize_skill_path_str(sp);
+                                if normalized != *sp {
+                                    agent.skill_path = Some(normalized.clone());
+                                    if let Some(obj) = agent_json.as_object_mut() {
+                                        obj.insert(
+                                            "skill_path".into(),
+                                            serde_json::Value::String(normalized),
+                                        );
+                                        migrated = true;
+                                    }
+                                }
+                            }
+                            if let Ok(mut am) = state.agent_manager.lock() {
                                 if am.get_agent(&agent.id).is_some() {
                                     am.remove_agent(&agent.id);
                                 }
@@ -101,6 +144,39 @@ pub fn run() {
                             }
                         }
                     }
+                }
+
+                // Apply leftover overrides for agents not present in customAgents
+                // (e.g. built-in skill path overrides from older builds)
+                if !legacy_overrides.is_empty() {
+                    if let Ok(mut am) = state.agent_manager.lock() {
+                        for (id, path) in &legacy_overrides {
+                            if let Some(existing) = am.get_agent(id).cloned() {
+                                if existing
+                                    .skill_path
+                                    .as_ref()
+                                    .map(|s| s.trim().is_empty())
+                                    .unwrap_or(true)
+                                {
+                                    let mut updated = existing;
+                                    updated.skill_path = Some(path.clone());
+                                    am.remove_agent(id);
+                                    am.add_agent(updated);
+                                    migrated = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if migrated {
+                    if let Some(obj) = config.as_object_mut() {
+                        obj.remove("agentSkillPathOverrides");
+                    }
+                    let _ = state.storage_manager.save_config(&config);
+                    log::info!(
+                        "Migrated legacy agentSkillPathOverrides into agent skill_path fields"
+                    );
                 }
             }
 
@@ -177,4 +253,70 @@ pub fn run() {
         .invoke_handler(crate::neeko_invoke_handler!())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Read legacy `agentSkillPathOverrides` map from config (pre skill_path-on-agent).
+fn legacy_skill_path_overrides(
+    config: &serde_json::Value,
+) -> std::collections::HashMap<String, String> {
+    config
+        .get("agentSkillPathOverrides")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter()
+                .filter_map(|(k, v)| {
+                    v.as_str()
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| (k.clone(), normalize_skill_path_str(s)))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Normalize home-relative skill paths (ASCII `~` vs fullwidth `～`/`〜`).
+fn normalize_skill_path_str(path: &str) -> String {
+    let trimmed = path.trim();
+    // U+FF5E FULLWIDTH TILDE, U+301C WAVE DASH — common IME mistakes
+    if let Some(rest) = trimmed.strip_prefix('\u{FF5E}') {
+        return format!("~{rest}");
+    }
+    if let Some(rest) = trimmed.strip_prefix('\u{301C}') {
+        return format!("~{rest}");
+    }
+    trimmed.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_normalize_fullwidth_tilde_skill_path() {
+        assert_eq!(
+            normalize_skill_path_str("～/.gork/skills"),
+            "~/.gork/skills"
+        );
+        assert_eq!(
+            normalize_skill_path_str("〜/.grok/skills"),
+            "~/.grok/skills"
+        );
+        assert_eq!(normalize_skill_path_str("~/ok"), "~/ok");
+    }
+
+    #[test]
+    fn should_read_legacy_skill_path_overrides() {
+        let config = serde_json::json!({
+            "agentSkillPathOverrides": {
+                "custom:grok": "～/.gork/skills",
+                "custom:mimo": "~/.mimo/skills",
+                "empty": "  "
+            }
+        });
+        let map = legacy_skill_path_overrides(&config);
+        assert_eq!(map.get("custom:grok").map(String::as_str), Some("~/.gork/skills"));
+        assert_eq!(map.get("custom:mimo").map(String::as_str), Some("~/.mimo/skills"));
+        assert!(!map.contains_key("empty"));
+    }
 }

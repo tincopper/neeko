@@ -201,7 +201,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
                     className={cn(
                       'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
                       selected
-                        ? 'bg-accent-green/20 border-accent-green text-accent-green'
+                        ? 'bg-accent-blue/15 border-accent-blue text-accent-blue'
                         : 'border-border bg-transparent',
                     )}
                   >

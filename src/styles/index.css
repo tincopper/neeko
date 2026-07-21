@@ -122,16 +122,29 @@
   .custom-radio input:checked ~ .radio-mark::after { transform: scale(1); }
   .custom-radio:hover .radio-mark { border-color: var(--accent-blue); }
 
-  /* Scrollbars */
+  /* Scrollbars — theme tokens (match app chrome, not OS default black) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-hover) var(--bg-secondary);
+  }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
+  ::-webkit-scrollbar-corner { background: var(--bg-secondary); }
 
-  .thin-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
-  .thin-scrollbar::-webkit-scrollbar-track { background: var(--bg-secondary); }
-  .thin-scrollbar::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
-  .thin-scrollbar { scrollbar-width: thin; }
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-hover) var(--bg-secondary);
+  }
+  .thin-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .thin-scrollbar::-webkit-scrollbar-corner { background: transparent; }
 
   .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }
 

@@ -1,4 +1,4 @@
-import type { ManagedSkillDto } from '@/shared/types';
+import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
 
 // ─── Dialog State ────────────────────────────────────────────────────────────
 
@@ -10,6 +10,8 @@ export type SkillDialogState =
   | { type: 'create' }
   | { type: 'edit'; skill: ManagedSkillDto }
   | { type: 'view'; skill: ManagedSkillDto }
+  /** View agent-local skill by disk path (managed or not). */
+  | { type: 'view-disk'; skill: AgentDiskSkill }
   | { type: 'git-install' }
   | { type: 'assign-tag'; skillId: string; skillName: string }
   | null;

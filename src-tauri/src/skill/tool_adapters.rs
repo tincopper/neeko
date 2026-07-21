@@ -107,8 +107,19 @@ impl ToolAdapter {
 }
 
 /// Expand `~/…` paths to absolute paths under the user home directory.
+///
+/// Also accepts fullwidth tilde (`～` U+FF5E) / wave dash (`〜` U+301C) prefixes,
+/// which often appear when paths are typed with an IME.
 pub fn expand_skill_path(path: &str) -> PathBuf {
     let trimmed = path.trim();
+    let normalized = if let Some(rest) = trimmed.strip_prefix('\u{FF5E}') {
+        format!("~{rest}")
+    } else if let Some(rest) = trimmed.strip_prefix('\u{301C}') {
+        format!("~{rest}")
+    } else {
+        trimmed.to_string()
+    };
+    let trimmed = normalized.as_str();
     if trimmed == "~" {
         return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     }

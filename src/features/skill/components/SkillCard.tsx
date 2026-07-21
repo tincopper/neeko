@@ -1,4 +1,3 @@
-import React, { useEffect, useState } from 'react';
 import {
   Trash2,
   Eye,
@@ -10,6 +9,13 @@ import {
   ArrowUpCircle,
   Tags,
 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+
+import { getSkillDocument } from '@/features/skill/api/skillApi';
+import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
+import { cn } from '@/lib/utils';
+import type { ManagedSkillDto } from '@/shared/types';
+import { getAgentIconSrc } from '@/shared/utils/agents';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -18,18 +24,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/ui';
-import type { ManagedSkillDto } from '@/shared/types';
-import { cn } from '@/lib/utils';
-import { getAgentIconSrc } from '@/shared/utils/agents';
-import { tagChipClass, presetBadgeClass } from './skillTagColors';
-import { getSkillDocument } from '@/features/skill/api/skillApi';
-import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
+
 import {
   skillMenuContentClass,
   skillMenuItemClass,
   skillMenuLabelClass,
   skillMenuSeparatorClass,
 } from './skillMenuStyles';
+import { tagChipClass, presetBadgeClass } from './skillTagColors';
 
 interface SkillCardProps {
   skill: ManagedSkillDto;
@@ -131,7 +133,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
         role="button"
         tabIndex={0}
         onClick={onSelect}
-        onKeyDown={e => {
+        onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onSelect();
@@ -141,8 +143,8 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           'group flex flex-col h-full min-h-[160px] rounded-xl cursor-pointer',
           'bg-bg-primary transition-colors duration-150',
           'border',
-          enabled ? 'border-accent-green/60' : 'border-border',
-          isSelected && 'ring-1 ring-accent-blue/50',
+          enabled ? 'border-border' : 'border-border/70 opacity-90',
+          isSelected && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
           'hover:bg-bg-hover/40',
         )}
       >
@@ -157,7 +159,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                 type="button"
                 className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover"
                 title="View"
-                onClick={e => {
+                onClick={(e) => {
                   e.stopPropagation();
                   onAction('detail');
                 }}
@@ -168,7 +170,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                 type="button"
                 className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover"
                 title="Edit"
-                onClick={e => {
+                onClick={(e) => {
                   e.stopPropagation();
                   onAction('edit');
                 }}
@@ -188,7 +190,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                     'transition-opacity shrink-0',
                   )}
                   title="Actions"
-                  onClick={e => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
@@ -197,7 +199,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                 align="end"
                 sideOffset={6}
                 className={skillMenuContentClass('w-[188px]')}
-                onClick={e => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
               >
                 <DropdownMenuItem
                   className={skillMenuItemClass()}
@@ -223,7 +225,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                         Add to preset
                       </span>
                     </DropdownMenuLabel>
-                    {tagGroups.map(tg => (
+                    {tagGroups.map((tg) => (
                       <DropdownMenuItem
                         key={tg.id}
                         className={skillMenuItemClass({ className: 'pl-3' })}
@@ -249,7 +251,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                     {hasUpdate && onUpdateSkill && (
                       <DropdownMenuItem
                         className={skillMenuItemClass({
-                          className: 'text-accent-green data-[highlighted]:text-accent-green',
+                          className: 'text-accent-blue data-[highlighted]:text-accent-blue',
                         })}
                         onSelect={() => onUpdateSkill()}
                       >
@@ -285,16 +287,16 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
 
           {chips.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {chips.map(tag => (
+              {chips.map((tag) => (
                 <span
                   key={tag}
                   role="button"
                   tabIndex={0}
-                  onClick={e => {
+                  onClick={(e) => {
                     e.stopPropagation();
                     onTagClick?.(tag);
                   }}
-                  onKeyDown={e => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       e.stopPropagation();
@@ -313,7 +315,12 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           )}
 
           {presetLabel && (
-            <span className={cn('inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium', presetBadgeClass(presetLabel))}>
+            <span
+              className={cn(
+                'inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium',
+                presetBadgeClass(presetLabel),
+              )}
+            >
               {presetLabel}
             </span>
           )}
@@ -322,7 +329,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             <button
               type="button"
               className="self-start text-[12px] font-medium text-accent-yellow hover:underline"
-              onClick={e => {
+              onClick={(e) => {
                 e.stopPropagation();
                 onUpdateSkill?.();
               }}
@@ -338,7 +345,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {showAgents.map(agent => {
+            {showAgents.map((agent) => {
               const src = getAgentIconSrc(agent.icon);
               if (!src) return null;
               return (
@@ -359,7 +366,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           <span
             className={cn(
               'shrink-0 font-semibold',
-              enabled ? 'text-accent-green' : 'text-text-muted',
+              enabled ? 'text-accent-blue' : 'text-text-muted',
             )}
           >
             {enabled ? 'Enabled' : 'Enable'}

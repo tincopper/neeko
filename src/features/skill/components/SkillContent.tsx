@@ -1,28 +1,30 @@
 import React, { useState, useCallback, useEffect } from 'react';
+
 import { useSkillStore } from '@/features/skill/store';
-import type { SkillDialogState } from './skillItemTypes';
+
+import AgentSkillContent from './AgentSkillContent';
+import AssignTagGroupDialog from './AssignTagGroupDialog';
+import CreateSkillDialog from './CreateSkillDialog';
+import EditSkillDialog from './EditSkillDialog';
+import GitInstallDialog from './GitInstallDialog';
 import LocalSkillContent from './LocalSkillContent';
 import MarketplaceContent from './MarketplaceContent';
 import ProjectSkillContent from './ProjectSkillContent';
-import AgentSkillContent from './AgentSkillContent';
-import CreateSkillDialog from './CreateSkillDialog';
-import EditSkillDialog from './EditSkillDialog';
+import type { SkillDialogState } from './skillItemTypes';
 import ViewSkillDialog from './ViewSkillDialog';
-import GitInstallDialog from './GitInstallDialog';
-import AssignTagGroupDialog from './AssignTagGroupDialog';
 
 /**
  * Skill 内容区：路由子视图 + 统一管理对话框。
  * 必须占满父级高度，否则内部 overflow-y-auto 无法滚动。
  */
 const SkillContent: React.FC = React.memo(() => {
-  const activeSkillView = useSkillStore(s => s.activeSkillView);
-  const createSkill = useSkillStore(s => s.createSkill);
-  const updateSkillDocument = useSkillStore(s => s.updateSkillDocument);
-  const refreshSkills = useSkillStore(s => s.refreshSkills);
-  const refreshTagGroups = useSkillStore(s => s.refreshTagGroups);
-  const tagGroups = useSkillStore(s => s.tagGroups);
-  const addSkillToTagGroup = useSkillStore(s => s.addSkillToTagGroup);
+  const activeSkillView = useSkillStore((s) => s.activeSkillView);
+  const createSkill = useSkillStore((s) => s.createSkill);
+  const updateSkillDocument = useSkillStore((s) => s.updateSkillDocument);
+  const refreshSkills = useSkillStore((s) => s.refreshSkills);
+  const refreshTagGroups = useSkillStore((s) => s.refreshTagGroups);
+  const tagGroups = useSkillStore((s) => s.tagGroups);
+  const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
 
   useEffect(() => {
     void refreshSkills();
@@ -93,7 +95,7 @@ const SkillContent: React.FC = React.memo(() => {
 
       <CreateSkillDialog
         open={dialog?.type === 'create'}
-        onOpenChange={open => !open && closeDialog()}
+        onOpenChange={(open) => !open && closeDialog()}
         onConfirm={handleCreateConfirm}
       />
 
@@ -105,14 +107,15 @@ const SkillContent: React.FC = React.memo(() => {
       />
 
       <ViewSkillDialog
-        open={dialog?.type === 'view'}
+        open={dialog?.type === 'view' || dialog?.type === 'view-disk'}
         skill={dialog?.type === 'view' ? dialog.skill : null}
+        diskSkill={dialog?.type === 'view-disk' ? dialog.skill : null}
         onClose={closeDialog}
       />
 
       <GitInstallDialog
         open={dialog?.type === 'git-install'}
-        onOpenChange={open => !open && closeDialog()}
+        onOpenChange={(open) => !open && closeDialog()}
         onInstalled={handleGitInstalled}
       />
 

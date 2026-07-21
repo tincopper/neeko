@@ -1,31 +1,31 @@
 /**
- * Soft pastel-like chips using theme-aware translucent colors
- * (works on dark Neeko themes; mirrors Skills Manager chip variety).
+ * Tag / preset chip colors using Neeko theme tokens only
+ * (accent + surface vars from theme.css — no hard-coded Tailwind palette).
  */
 const TAG_PALETTE = [
-  'bg-sky-500/20 text-sky-300',
-  'bg-violet-500/20 text-violet-300',
-  'bg-emerald-500/20 text-emerald-300',
-  'bg-amber-500/20 text-amber-300',
-  'bg-rose-500/20 text-rose-300',
-  'bg-cyan-500/20 text-cyan-300',
-  'bg-fuchsia-500/20 text-fuchsia-300',
-  'bg-orange-500/20 text-orange-300',
-  'bg-lime-500/20 text-lime-300',
-  'bg-indigo-500/20 text-indigo-300',
+  'bg-accent-blue/15 text-accent-blue',
+  'bg-bg-selected text-text-secondary',
+  'bg-accent-green/15 text-accent-green',
+  'bg-accent-yellow/15 text-accent-yellow',
+  'bg-bg-hover text-text-secondary',
+  'bg-accent-blue/10 text-text-secondary',
+  'bg-accent-red/12 text-accent-red',
+  'bg-bg-tertiary text-text-muted',
+  'bg-accent-green/10 text-text-secondary',
+  'bg-accent-yellow/10 text-text-secondary',
 ] as const;
 
 const PRESET_PALETTE = [
-  'bg-amber-500/15 text-amber-400',
-  'bg-emerald-500/15 text-emerald-400',
-  'bg-violet-500/15 text-violet-400',
-  'bg-rose-500/15 text-rose-400',
-  'bg-cyan-500/15 text-cyan-400',
-  'bg-lime-500/15 text-lime-400',
-  'bg-fuchsia-500/15 text-fuchsia-400',
-  'bg-indigo-500/15 text-indigo-400',
-  'bg-pink-500/15 text-pink-400',
-  'bg-sky-500/15 text-sky-400',
+  'bg-accent-blue/15 text-accent-blue',
+  'bg-accent-green/15 text-accent-green',
+  'bg-bg-selected text-text-secondary',
+  'bg-accent-yellow/15 text-accent-yellow',
+  'bg-bg-hover text-text-secondary',
+  'bg-accent-red/12 text-accent-red',
+  'bg-bg-tertiary text-text-muted',
+  'bg-accent-blue/10 text-text-secondary',
+  'bg-accent-green/10 text-text-secondary',
+  'bg-bg-selected text-text-muted',
 ] as const;
 
 function hashTag(tag: string): number {

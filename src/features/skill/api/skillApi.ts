@@ -19,6 +19,11 @@ export function getSkillDocument(skillId: string): Promise<SkillDocumentDto> {
   return invoke<SkillDocumentDto>('get_skill_document', { skillId });
 }
 
+/** Read SKILL.md from an on-disk skill directory (agent-local, not necessarily managed). */
+export function getSkillDocumentAtPath(path: string): Promise<SkillDocumentDto> {
+  return invoke<SkillDocumentDto>('get_skill_document_at_path', { path });
+}
+
 /** Re-parse SKILL.md for all managed skills; returns number of rows updated. */
 export function refreshSkillMetadata(): Promise<number> {
   return invoke<number>('refresh_skill_metadata');
@@ -227,4 +232,16 @@ export function getAgentSkills(): Promise<AgentSkillGroup[]> {
 
 export function importSkillToAgent(skillId: string, agentId: string): Promise<void> {
   return invoke<void>('import_skill_to_agent_cmd', { skillId, agentId });
+}
+
+export function removeSkillFromAgent(
+  agentId: string,
+  skillPath: string,
+  skillId?: string | null,
+): Promise<void> {
+  return invoke<void>('remove_skill_from_agent_cmd', {
+    agentId,
+    skillPath,
+    skillId: skillId ?? null,
+  });
 }

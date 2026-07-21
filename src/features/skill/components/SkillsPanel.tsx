@@ -12,11 +12,11 @@ import {
 } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
 
+import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
-import { useSkillStore } from '@/features/skill/store';
 import { getAgentSkills } from '@/features/skill/api/skillApi';
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import type { SkillView, AgentSkillGroup } from '@/shared/types';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
@@ -331,7 +331,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                       <button
                         type="button"
                         onClick={(e) => void handleDelete(e, tg.id)}
-                        className="p-0.5 rounded text-text-muted hover:text-red-400"
+                        className="p-0.5 rounded text-text-muted hover:text-accent-red"
                         title="Delete tag"
                       >
                         <Trash2 className="h-3 w-3" />

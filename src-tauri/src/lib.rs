@@ -217,6 +217,7 @@ macro_rules! neeko_invoke_handler {
             // ── skill ────────────────────────────────────────────────────────
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,
+            $crate::skill::commands::get_skill_document_at_path,
             $crate::skill::commands::refresh_skill_metadata,
             $crate::skill::commands::clear_all_managed_skills,
             $crate::skill::commands::delete_managed_skill,
@@ -252,6 +253,7 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::install_from_skillssh,
             $crate::skill::commands::get_agent_skills_cmd,
             $crate::skill::commands::import_skill_to_agent_cmd,
+            $crate::skill::commands::remove_skill_from_agent_cmd,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,
