@@ -16,6 +16,9 @@ vi.mock('../SkillListSection', () => ({
 vi.mock('../MarkdownEditor', () => ({
   default: () => <div data-testid="markdown-editor">MarkdownEditor</div>,
 }));
+vi.mock('@/features/agent/api/agentApi', () => ({
+  listAgents: () => Promise.resolve([]),
+}));
 
 beforeEach(() => {
   useSkillStore.setState(initialSkillState);

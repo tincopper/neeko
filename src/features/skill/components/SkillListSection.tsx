@@ -26,6 +26,7 @@ const SkillCardSkeleton: React.FC = () => (
 export interface SkillListSectionExtraProps {
   presetLabel?: string | null;
   skillPresetMap?: Record<string, string[]>;
+  agents?: Array<{ id: string; icon: string | null; name: string }>;
 }
 
 /**
@@ -40,6 +41,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
     tagGroups = [],
     presetLabel,
     skillPresetMap = {},
+    agents = [],
     onDescriptionResolved,
     onTagClick,
   }) => {
@@ -93,6 +95,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 skill={s}
                 isSelected={selectedSkillId === s.id}
                 tagGroups={tagGroups}
+                agents={agents}
                 presetLabel={cardPreset}
                 onDescriptionResolved={onDescriptionResolved}
                 onTagClick={onTagClick}

@@ -423,13 +423,31 @@ pub struct DiscoveredSkillDto {
 #[tauri::command]
 pub async fn scan_local_skills(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    state: tauri::State<'_, crate::AppStateWrapper>,
 ) -> Result<Vec<DiscoveredSkillDto>, AppError> {
     let store = store.inner().clone();
+    let (custom_tool_paths_str, custom_tools_str) = {
+        let config = state
+            .storage_manager
+            .load_config()
+            .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
+        let paths = config
+            .get("customToolPathOverrides")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        let tools = config
+            .get("customToolAdapters")
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        (paths, tools)
+    };
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
         let managed_paths: Vec<String> = skills.iter().map(|s| s.central_path.clone()).collect();
+        let adapters =
+            super::tool_adapters::all_tool_adapters(&custom_tool_paths_str, &custom_tools_str);
         let discovered =
-            super::scanner::scan_local_skills(&managed_paths).map_err(AppError::from)?;
+            super::scanner::scan_local_skills(&managed_paths, &adapters).map_err(AppError::from)?;
         Ok(discovered
             .into_iter()
             .map(|d| DiscoveredSkillDto {
@@ -439,7 +457,8 @@ pub async fn scan_local_skills(
                 name_guess: d.name_guess,
             })
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Import a discovered skill into the central repository.

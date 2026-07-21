@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use super::content_hash;
 use super::skill_metadata;
-use super::tool_adapters;
+use super::tool_adapters::ToolAdapter;
 
 /// An unmanaged skill directory found outside the central repository.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -21,12 +21,14 @@ pub struct DiscoveredSkill {
     pub fingerprint: Option<String>,
 }
 
-/// Scan all tool directories for unmanaged skill directories.
-pub fn scan_local_skills(managed_paths: &[String]) -> Result<Vec<DiscoveredSkill>> {
-    let adapters = tool_adapters::default_tool_adapters();
+/// Scan given adapters' tool directories for unmanaged skill directories.
+pub fn scan_local_skills(
+    managed_paths: &[String],
+    adapters: &[ToolAdapter],
+) -> Result<Vec<DiscoveredSkill>> {
     let mut discovered = Vec::new();
 
-    for adapter in &adapters {
+    for adapter in adapters {
         if !adapter.is_installed() {
             continue;
         }

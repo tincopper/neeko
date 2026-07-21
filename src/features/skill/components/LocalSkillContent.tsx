@@ -9,6 +9,7 @@ import SourceTypeFilter from './SourceTypeFilter';
 import TagCloudFilter from './TagCloudFilter';
 import DiscoveredSkillsList from './DiscoveredSkillsList';
 import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
+import { listAgents } from '@/features/agent/api/agentApi';
 
 interface LocalSkillContentProps {
   setDialog: (state: SkillDialogState) => void;
@@ -44,6 +45,21 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
 
   const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
   const [skillPresetMap, setSkillPresetMap] = useState<Record<string, string[]>>({});
+  const [agents, setAgents] = useState<Array<{ id: string; icon: string | null; name: string }>>([]);
+
+  useEffect(() => {
+    if (!activeTagGroupId) {
+      setTagGroupSkills(null);
+      return;
+    }
+    void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
+  }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
+
+  useEffect(() => {
+    void listAgents().then(agents => {
+      setAgents(agents.map(a => ({ id: a.id, icon: a.icon ?? null, name: a.name })));
+    });
+  }, []);
 
   useEffect(() => {
     if (!activeTagGroupId) {
@@ -150,6 +166,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           tagGroups={tagGroups.map(g => ({ id: g.id, name: g.name }))}
           presetLabel={activeGroupName}
           skillPresetMap={skillPresetMap}
+          agents={agents}
           onDescriptionResolved={patchSkillDescription}
           onTagClick={toggleTagFilter}
         />

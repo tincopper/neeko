@@ -40,20 +40,13 @@ interface SkillCardProps {
   onCheckUpdate?: () => void;
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
-  installedAgents?: string[];
+  agents?: Array<{ id: string; icon: string | null; name: string }>;
   presetLabel?: string | null;
   /** Called when description is recovered from SKILL.md so store can update. */
   onDescriptionResolved?: (skillId: string, description: string) => void;
   /** Called when a tag chip is clicked. */
   onTagClick?: (tag: string) => void;
 }
-
-const AGENT_STRIP = [
-  { key: 'claude-code', label: 'Claude Code', icon: 'claude-code.png' },
-  { key: 'codex', label: 'Codex', icon: 'codex.png' },
-  { key: 'opencode', label: 'OpenCode', icon: 'opencode.png' },
-  { key: 'gemini', label: 'Gemini', icon: 'gemini.png' },
-];
 
 function SourceLabel({ source }: { source: string }) {
   if (source === 'skillssh') {
@@ -90,7 +83,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     onCheckUpdate,
     onUpdateSkill,
     tagGroups = [],
-    installedAgents = [],
+    agents = [],
     presetLabel,
     onDescriptionResolved,
     onTagClick,
@@ -129,10 +122,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
       };
     }, [skill.id, propDesc, onDescriptionResolved]);
 
-    const showAgents =
-      installedAgents.length > 0
-        ? AGENT_STRIP.filter(a => installedAgents.includes(a.key))
-        : AGENT_STRIP;
+    const showAgents = agents;
 
     const displayDesc = resolvedDesc || 'No description';
 
@@ -353,10 +343,10 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
               if (!src) return null;
               return (
                 <img
-                  key={agent.key}
+                  key={agent.id}
                   src={src}
-                  alt={agent.label}
-                  title={agent.label}
+                  alt={agent.name}
+                  title={agent.name}
                   className={cn(
                     'w-4 h-4 rounded-[3px]',
                     enabled ? 'opacity-100' : 'opacity-30 grayscale',

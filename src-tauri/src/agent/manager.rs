@@ -88,7 +88,7 @@ fn default_agents() -> Vec<AgentConfig> {
                 "-f".into(),
             ]),
             is_builtin: true,
-            default_skill_path: Some("~/.agents/skills".into()),
+            default_skill_path: Some("~/.config/opencode/skills".into()),
             ..Default::default()
         },
         AgentConfig {
