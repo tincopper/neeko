@@ -62,7 +62,7 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   const navItems: NavItem[] = [
     { key: 'local', label: 'Library', icon: Package, count: skills.length },
-    { key: 'marketplace', label: 'Install Skills', icon: Download },
+    { key: 'marketplace', label: 'Marketplace', icon: Download },
   ];
 
   const handleTagGroupSelect = useCallback(

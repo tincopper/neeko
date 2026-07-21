@@ -73,7 +73,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
           </div>
           <p className="text-[var(--font-size)] text-text-secondary font-medium">No skills yet</p>
           <p className="text-[11px] text-text-muted mt-1 max-w-[260px] leading-relaxed">
-            Create one, install from a directory or Git, or open Install Skills.
+            Create one, install from a directory or Git, or open Marketplace.
           </p>
         </div>
       );

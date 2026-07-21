@@ -120,7 +120,7 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
       <div className="h-full min-h-0 flex flex-col overflow-hidden">
         <div className="shrink-0">
           <div className="flex items-center gap-2 h-11 px-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-text-primary">Install Skills</h2>
+            <h2 className="text-sm font-semibold text-text-primary">Marketplace</h2>
             {totalItems > 0 && (
               <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
                 {totalItems}

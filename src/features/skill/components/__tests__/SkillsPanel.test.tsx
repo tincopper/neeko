@@ -12,13 +12,13 @@ describe('SkillsPanel — 导航', () => {
   it('渲染两个视图切换按钮', () => {
     render(<SkillsPanel />);
     expect(screen.getByText('Library')).toBeInTheDocument();
-    expect(screen.getByText('Install Skills')).toBeInTheDocument();
+    expect(screen.getByText('Marketplace')).toBeInTheDocument();
   });
 
-  it('点击 Install Skills 切换 activeSkillView', () => {
+  it('点击 Marketplace 切换 activeSkillView', () => {
     useSkillStore.setState({ activeSkillView: 'local' });
     render(<SkillsPanel />);
-    fireEvent.click(screen.getByText('Install Skills'));
+    fireEvent.click(screen.getByText('Marketplace'));
     expect(useSkillStore.getState().activeSkillView).toBe('marketplace');
   });
 
