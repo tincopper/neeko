@@ -1,5 +1,5 @@
 import React from "react";
-import type { AppConfig } from '@/shared/types';
+import type { AgentConfig, AppConfig } from '@/shared/types';
 import { PRESET_AGENT_ICONS } from '@/shared/utils/agents';
 import { resolveAgentIconSrc } from "@/features/agent/api/agentApi";
 import { cn } from '@/lib/utils';
@@ -24,16 +24,9 @@ interface CustomAgentsSectionProps {
   onAddCustomAgent: () => void;
   onRemoveCustomAgent: (index: number) => void;
   onUploadAgentIcon: () => void;
-  getEffectiveSkillPath: (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => string;
-  onSelectSkillPath: (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => void;
+  onSelectSkillPath: (agent: AgentConfig) => void;
   onStartEditSkillPath: (agentId: string, currentPath: string) => void;
-  onSaveSkillPath: (agentId: string, fallback: string | null | undefined) => void;
+  onSaveSkillPath: (agent: AgentConfig) => void;
   onCancelSkillPathEdit: () => void;
 }
 
@@ -55,7 +48,6 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
   onAddCustomAgent,
   onRemoveCustomAgent,
   onUploadAgentIcon,
-  getEffectiveSkillPath,
   onSelectSkillPath,
   onStartEditSkillPath,
   onSaveSkillPath,
@@ -77,8 +69,8 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
         <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
           {(config.customAgents || []).map((agent, idx) => {
             const iconSrc = resolveAgentIconSrc(agent.icon);
-            const effectiveSkillPath = getEffectiveSkillPath(agent.id, agent.skillPath);
-            const hasSkillPath = !!effectiveSkillPath;
+            const skillPathValue = agent.skill_path ?? "";
+            const hasSkillPath = !!skillPathValue;
 
             return (
               <React.Fragment key={agent.id}>
@@ -125,10 +117,10 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                         autoFocus
                         spellCheck={false}
                         onChange={(e) => onSkillPathInputValueChange(e.target.value)}
-                        onBlur={() => onSaveSkillPath(agent.id, agent.skillPath)}
+                        onBlur={() => onSaveSkillPath(agent)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
-                            onSaveSkillPath(agent.id, agent.skillPath);
+                            onSaveSkillPath(agent);
                           }
                           if (e.key === "Escape") {
                             onCancelSkillPathEdit();
@@ -139,7 +131,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                         type="button"
                         className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-text-primary"
                         title="Select folder"
-                        onClick={() => onSelectSkillPath(agent.id, agent.skillPath)}
+                        onClick={() => onSelectSkillPath(agent)}
                       >
                         <FolderIcon size={14} />
                       </button>
@@ -150,7 +142,7 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                         type="button"
                         className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue"
                         title="Select folder"
-                        onClick={() => onSelectSkillPath(agent.id, agent.skillPath)}
+                        onClick={() => onSelectSkillPath(agent)}
                       >
                         <FolderIcon size={14} />
                       </button>
@@ -163,11 +155,11 @@ const CustomAgentsSection: React.FC<CustomAgentsSectionProps> = ({
                         onClick={() =>
                           onStartEditSkillPath(
                             agent.id,
-                            effectiveSkillPath || agent.skillPath || "",
+                            skillPathValue || "",
                           )
                         }
                       >
-                        {hasSkillPath ? effectiveSkillPath : "Not set"}
+                        {hasSkillPath ? skillPathValue : "Not set"}
                       </span>
                     </>
                   )}

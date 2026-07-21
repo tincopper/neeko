@@ -6,9 +6,8 @@ export interface AgentConfig {
   env: Record<string, string>;
   icon: string | null;
   enabled: boolean;
-  skillPath?: string | null;
+  skill_path?: string | null;
   prompt_args?: string[] | null;
   post_prompt_args?: string[] | null;
   is_builtin?: boolean;
-  default_skill_path?: string | null;
 }

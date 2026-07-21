@@ -13,7 +13,7 @@ use crate::common::runtime::{run_blocking, run_blocking_result};
 use crate::AppError;
 
 /// Managed skill DTO returned to the frontend.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ManagedSkillDtoOut {
     /// Unique skill identifier.
     pub id: String,
@@ -51,6 +51,38 @@ pub struct ManagedSkillDtoOut {
     pub created_at: i64,
     /// Last update timestamp.
     pub updated_at: i64,
+}
+
+/// A skill found in an agent's skills directory on disk.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentDiskSkillDto {
+    /// Skill name derived from directory name.
+    pub name: String,
+    /// Optional description from SKILL.md frontmatter.
+    pub description: Option<String>,
+    /// Absolute path on disk.
+    pub path: String,
+    /// Whether this skill is managed in the central library.
+    pub managed: bool,
+    /// If managed, the library skill ID.
+    pub skill_id: Option<String>,
+}
+
+/// Agent skill group DTO — skills found in an agent's skills directory.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentSkillGroupDto {
+    /// Agent ID (matches `AgentConfig.id` / `SkillTargetRecord.tool`).
+    pub agent_id: String,
+    /// Human-readable agent name.
+    pub agent_name: String,
+    /// Optional icon identifier.
+    pub agent_icon: Option<String>,
+    /// Whether the agent is enabled.
+    pub agent_enabled: bool,
+    /// Absolute path to the agent's skills directory on disk, if any.
+    pub agent_skill_path: Option<String>,
+    /// Skills found in the agent's skills directory.
+    pub skills: Vec<AgentDiskSkillDto>,
 }
 
 /// Tag group DTO returned to the frontend.
@@ -868,7 +900,7 @@ fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<super::tool_adapt
         .map(|am| {
             am.get_agents()
                 .iter()
-                .map(|a| (a.id.clone(), a.enabled, a.default_skill_path.clone()))
+                .map(|a| (a.id.clone(), a.enabled, a.skill_path.clone()))
                 .collect()
         })
         .unwrap_or_default();
@@ -954,7 +986,7 @@ fn sync_skills_to_targets(
 /// Deploy all skills in a tag group to agent skill directories.
 ///
 /// Sync strategy: **install only** (symlink/copy). Does not remove other skills.
-/// Targets come from enabled agents' `default_skill_path` (aligned with AgentManager).
+/// Targets come from enabled agents' `skill_path` (aligned with AgentManager).
 #[tauri::command]
 pub async fn sync_tag_group_cmd(
     tag_group_id: String,
@@ -1109,6 +1141,207 @@ pub async fn remove_project_tag_group_cmd(
             .remove_project_tag_group(&project_id, &tag_group_id)
             .map_err(AppError::from)
     }).await
+}
+
+/// Get skills found in each agent's skills directory, grouped by agent.
+///
+/// Scans each enabled agent's `skill_path` on disk for skill directories.
+/// Skills that are symlinks to the central repository are marked as managed.
+#[tauri::command]
+pub async fn get_agent_skills_cmd(
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<Vec<AgentSkillGroupDto>, AppError> {
+    let agent_info: Vec<(String, String, Option<String>, bool, Option<String>)> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .iter()
+        .map(|a| {
+            (
+                a.id.clone(),
+                a.name.clone(),
+                a.icon.clone(),
+                a.enabled,
+                a.skill_path.clone(),
+            )
+        })
+        .collect();
+
+    let store = state.skill_store.clone();
+    let central = super::central_repo::skills_dir();
+
+    run_blocking_result(move || {
+        let managed_skills = store.get_all_skills().map_err(AppError::from)?;
+        // Build a map: central_path -> skill_id for quick lookups
+        let central_map: std::collections::HashMap<String, String> = managed_skills
+            .iter()
+            .map(|s| (s.central_path.clone(), s.id.clone()))
+            .collect();
+
+        let mut result: Vec<AgentSkillGroupDto> = Vec::new();
+
+        for (id, name, icon, enabled, skill_path) in &agent_info {
+            let Some(sp) = skill_path.as_ref() else {
+                result.push(AgentSkillGroupDto {
+                    agent_id: id.clone(),
+                    agent_name: name.clone(),
+                    agent_icon: icon.clone(),
+                    agent_enabled: *enabled,
+                    agent_skill_path: None,
+                    skills: Vec::new(),
+                });
+                continue;
+            };
+
+            let skills_dir = std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
+            let path_str = skills_dir.to_string_lossy().to_string();
+
+            let mut skills: Vec<AgentDiskSkillDto> = Vec::new();
+
+            if skills_dir.exists() && skills_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&skills_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if !path.is_dir() {
+                            continue;
+                        }
+                        if !super::skill_metadata::is_valid_skill_dir(&path) {
+                            continue;
+                        }
+
+                        let name_guess = super::skill_metadata::infer_skill_name(&path);
+                        let description =
+                            super::skill_metadata::parse_skill_md(&path).description;
+
+                        let path_abs = path.to_string_lossy().to_string();
+
+                        // Check if symlink to central repository
+                        let (managed, skill_id) = if let Ok(target) = std::fs::read_link(&path) {
+                            if target.starts_with(&central) {
+                                let id = central_map.get(&target.to_string_lossy().to_string());
+                                (true, id.cloned())
+                            } else {
+                                (false, None)
+                            }
+                        } else {
+                            (false, None)
+                        };
+
+                        skills.push(AgentDiskSkillDto {
+                            name: name_guess,
+                            description,
+                            path: path_abs,
+                            managed,
+                            skill_id,
+                        });
+                    }
+                }
+            }
+
+            // Sort: managed skills first, then by name
+            skills.sort_by(|a, b| {
+                b.managed
+                    .cmp(&a.managed)
+                    .then(a.name.cmp(&b.name))
+            });
+
+            result.push(AgentSkillGroupDto {
+                agent_id: id.clone(),
+                agent_name: name.clone(),
+                agent_icon: icon.clone(),
+                agent_enabled: *enabled,
+                agent_skill_path: Some(path_str),
+                skills,
+            });
+        }
+
+        // Sort: enabled agents first, then by name
+        result.sort_by(|a, b| {
+            b.agent_enabled
+                .cmp(&a.agent_enabled)
+                .then(a.agent_name.cmp(&b.agent_name))
+        });
+
+        Ok(result)
+    })
+    .await
+}
+
+/// Deploy a managed skill from the central library to an agent's skills directory.
+///
+/// Creates a symlink in the agent's `skill_path` pointing to the skill's
+/// central repository path. Records the deployment in the `skill_targets` table.
+#[tauri::command]
+pub async fn import_skill_to_agent_cmd(
+    skill_id: String,
+    agent_id: String,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    let store = state.skill_store.clone();
+
+    let agent_skill_path = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agent(&agent_id)
+        .and_then(|a| a.skill_path.clone())
+        .ok_or_else(|| AppError::NotFound(format!("Agent '{}' has no skill path", agent_id)))?;
+
+    run_blocking_result(move || {
+        let skill = store
+            .get_skill_by_id(&skill_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Skill '{}' not found", skill_id)))?;
+
+        let source = std::path::PathBuf::from(&skill.central_path);
+        if !source.exists() {
+            return Err(AppError::NotFound(format!(
+                "Skill directory not found: {}",
+                skill.central_path
+            )));
+        }
+
+        let agent_skills_dir =
+            std::path::PathBuf::from(super::tool_adapters::expand_skill_path(&agent_skill_path));
+        let target = agent_skills_dir.join(&skill.name);
+
+        // Create parent directory if needed
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(AppError::from)?;
+        }
+
+        // Remove existing if stale symlink
+        if target.exists() || target.is_symlink() {
+            let _ = std::fs::remove_file(&target);
+        }
+
+        // Create symlink
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&source, &target).map_err(AppError::from)?;
+        #[cfg(not(unix))]
+        {
+            // Fallback: copy directory recursively
+            super::sync_engine::copy_dir_recursive(&source, &target)
+                .map_err(AppError::from)?;
+        }
+
+        // Record in skill_targets
+        let target_rec = super::types::SkillTargetRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            skill_id: skill.id.clone(),
+            tool: agent_id.clone(),
+            target_path: target.to_string_lossy().to_string(),
+            mode: "symlink".to_string(),
+            status: "ok".to_string(),
+            synced_at: Some(chrono::Utc::now().timestamp_millis()),
+            last_error: None,
+        };
+        store.insert_target(&target_rec).map_err(AppError::from)?;
+
+        Ok(())
+    })
+    .await
 }
 
 /// Create a new skill by writing a SKILL.md file in the central repository.

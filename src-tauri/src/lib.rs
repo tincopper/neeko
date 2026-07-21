@@ -250,6 +250,8 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::fetch_leaderboard,
             $crate::skill::commands::search_skillssh,
             $crate::skill::commands::install_from_skillssh,
+            $crate::skill::commands::get_agent_skills_cmd,
+            $crate::skill::commands::import_skill_to_agent_cmd,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,

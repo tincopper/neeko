@@ -80,3 +80,20 @@ export interface InstallProgress {
   phase: "cloning" | "installing" | "done" | "error";
   error?: string;
 }
+
+export interface AgentDiskSkill {
+  name: string;
+  description: string | null;
+  path: string;
+  managed: boolean;
+  skill_id: string | null;
+}
+
+export interface AgentSkillGroup {
+  agent_id: string;
+  agent_name: string;
+  agent_icon: string | null;
+  agent_enabled: boolean;
+  agent_skill_path: string | null;
+  skills: AgentDiskSkill[];
+}

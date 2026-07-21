@@ -4,6 +4,7 @@ import type { SkillDialogState } from './skillItemTypes';
 import LocalSkillContent from './LocalSkillContent';
 import MarketplaceContent from './MarketplaceContent';
 import ProjectSkillContent from './ProjectSkillContent';
+import AgentSkillContent from './AgentSkillContent';
 import CreateSkillDialog from './CreateSkillDialog';
 import EditSkillDialog from './EditSkillDialog';
 import ViewSkillDialog from './ViewSkillDialog';
@@ -79,6 +80,8 @@ const SkillContent: React.FC = React.memo(() => {
         return <MarketplaceContent onSkillInstalled={openAssignDialog} />;
       case 'project':
         return <ProjectSkillContent />;
+      case 'agents':
+        return <AgentSkillContent setDialog={setDialog} />;
       default:
         return <LocalSkillContent setDialog={setDialog} />;
     }

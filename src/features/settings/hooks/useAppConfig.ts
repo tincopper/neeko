@@ -30,8 +30,7 @@ const DEFAULT_CONFIG: AppConfig = {
    fontFamily: "",
    customIdes: [],
    ideCommandOverrides: {},
-   agentCommandOverrides: {},
-   agentSkillPathOverrides: {},
+    agentCommandOverrides: {},
    customAgents: [],
    agentSelectorShowPresetBar: true,
    agentSelectorCompactMode: false,
@@ -277,17 +276,12 @@ export function useAppConfig() {
                         typeof saved.ideCommandOverrides === "object"
                         ? saved.ideCommandOverrides
                         : DEFAULT_CONFIG.ideCommandOverrides,
-                  agentCommandOverrides:
-                     saved.agentCommandOverrides &&
-                        typeof saved.agentCommandOverrides === "object"
-                        ? saved.agentCommandOverrides
-                        : DEFAULT_CONFIG.agentCommandOverrides,
-                  agentSkillPathOverrides:
-                     saved.agentSkillPathOverrides &&
-                        typeof saved.agentSkillPathOverrides === "object"
-                        ? saved.agentSkillPathOverrides
-                        : DEFAULT_CONFIG.agentSkillPathOverrides,
-                  customAgents: Array.isArray(saved.customAgents)
+                   agentCommandOverrides:
+                      saved.agentCommandOverrides &&
+                         typeof saved.agentCommandOverrides === "object"
+                         ? saved.agentCommandOverrides
+                         : DEFAULT_CONFIG.agentCommandOverrides,
+                   customAgents: Array.isArray(saved.customAgents)
                      ? saved.customAgents
                      : DEFAULT_CONFIG.customAgents,
                   agentSelectorShowPresetBar:

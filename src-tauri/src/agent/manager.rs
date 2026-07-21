@@ -88,7 +88,7 @@ fn default_agents() -> Vec<AgentConfig> {
                 "-f".into(),
             ]),
             is_builtin: true,
-            default_skill_path: Some("~/.config/opencode/skills".into()),
+            skill_path: Some("~/.config/opencode/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -100,7 +100,7 @@ fn default_agents() -> Vec<AgentConfig> {
             prompt_args: Some(vec!["--bare".into(), "-p".into()]),
             post_prompt_args: Some(vec!["--dangerously-skip-permissions".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.claude/skills".into()),
+            skill_path: Some("~/.claude/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -111,7 +111,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["--prompt".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.gemini/skills".into()),
+            skill_path: Some("~/.gemini/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -122,7 +122,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec![]),
             is_builtin: true,
-            default_skill_path: Some("~/.codex/skills".into()),
+            skill_path: Some("~/.codex/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -133,7 +133,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["--prompt".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.qoder/skills".into()),
+            skill_path: Some("~/.qoder/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -144,7 +144,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["--prompt".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.codebuddy/skills".into()),
+            skill_path: Some("~/.codebuddy/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -155,7 +155,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["-p".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.pi/skills".into()),
+            skill_path: Some("~/.pi/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -166,7 +166,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["-p".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.omp/skills".into()),
+            skill_path: Some("~/.omp/skills".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -177,7 +177,7 @@ fn default_agents() -> Vec<AgentConfig> {
             enabled: true,
             prompt_args: Some(vec!["run".into(), "--yolo".into()]),
             is_builtin: true,
-            default_skill_path: Some("~/.reasonix/skills".into()),
+            skill_path: Some("~/.reasonix/skills".into()),
             ..Default::default()
         },
     ]
@@ -203,8 +203,8 @@ mod tests {
                 agent.id
             );
             assert!(
-                agent.default_skill_path.is_some(),
-                "default agent {} should have default_skill_path",
+                agent.skill_path.is_some(),
+                "default agent {} should have skill_path",
                 agent.id
             );
         }

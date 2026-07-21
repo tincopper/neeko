@@ -205,6 +205,8 @@ export function useSettingsPanelState({
           .filter(Boolean)
       : [];
 
+    const skillPath = newAgentSkillPath.trim() || undefined;
+
     const newAgent: AgentConfig = {
       id,
       name,
@@ -213,18 +215,14 @@ export function useSettingsPanelState({
       env: {},
       icon: newAgentIcon,
       enabled: true,
+      skill_path: skillPath,
     };
 
     const nextCustom = [...(config.customAgents || []), newAgent];
-    const nextOverrides = { ...(config.agentSkillPathOverrides || {}) };
-    if (newAgentSkillPath.trim()) {
-      nextOverrides[id] = newAgentSkillPath.trim();
-    }
 
     onConfigChange({
       ...config,
       customAgents: nextCustom,
-      agentSkillPathOverrides: nextOverrides,
     });
 
     try {
@@ -278,25 +276,28 @@ export function useSettingsPanelState({
   const getEffectiveAgentCommand = (agent: AgentConfig) =>
     config.agentCommandOverrides?.[agent.id] ?? agent.command;
 
-  const getEffectiveSkillPath = (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => config.agentSkillPathOverrides?.[agentId] ?? fallback ?? "";
+  const updateAgentSkillPath = async (agent: AgentConfig, newPath: string) => {
+    const trimmed = newPath.trim();
+    const updated: AgentConfig = {
+      ...agent,
+      skill_path: trimmed || undefined,
+    };
+    onConfigChange({
+      ...config,
+      customAgents: upsertCustomAgent(config.customAgents, updated),
+    });
+    try {
+      await addAgent(updated);
+    } catch (e) {
+      console.error("[Settings] Failed to update agent:", e);
+    }
+  };
 
-  const selectSkillPath = async (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => {
+  const selectSkillPath = async (agent: AgentConfig) => {
     try {
       const selected = await open({ multiple: false, directory: true });
       if (selected && typeof selected === "string") {
-        const overrides = { ...(config.agentSkillPathOverrides || {}) };
-        if (selected !== fallback) {
-          overrides[agentId] = selected;
-        } else {
-          delete overrides[agentId];
-        }
-        onConfigChange({ ...config, agentSkillPathOverrides: overrides });
+        await updateAgentSkillPath(agent, selected);
       }
     } catch (e) {
       console.error("[Settings] Failed to select skill path:", e);
@@ -308,21 +309,28 @@ export function useSettingsPanelState({
     setSkillPathInputValue(currentPath);
   };
 
-  const saveSkillPath = (agentId: string, fallback: string | null | undefined) => {
+  const saveSkillPath = async (agent: AgentConfig) => {
     const trimmed = skillPathInputValue.trim();
-    const overrides = { ...(config.agentSkillPathOverrides || {}) };
-    if (trimmed && trimmed !== fallback) {
-      overrides[agentId] = trimmed;
-    } else {
-      delete overrides[agentId];
+    if (trimmed !== (agent.skill_path ?? "")) {
+      await updateAgentSkillPath(agent, trimmed);
     }
-    onConfigChange({ ...config, agentSkillPathOverrides: overrides });
     setSkillPathEditingAgentId(null);
   };
 
   const cancelSkillPathEdit = () => {
     setSkillPathEditingAgentId(null);
   };
+
+  /** Upsert an agent into the customAgents array by matching ID. */
+  function upsertCustomAgent(agents: AgentConfig[], updated: AgentConfig): AgentConfig[] {
+    const idx = agents.findIndex((a) => a.id === updated.id);
+    if (idx >= 0) {
+      const next = [...agents];
+      next[idx] = updated;
+      return next;
+    }
+    return [...agents, updated];
+  }
 
   const startEditPreset = (ide: IdePreset) => {
     const current = config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
@@ -424,7 +432,6 @@ export function useSettingsPanelState({
     saveAgentOverride,
     getEffectiveAgentCommand,
 
-    getEffectiveSkillPath,
     selectSkillPath,
     startEditSkillPath,
     saveSkillPath,

@@ -1,6 +1,6 @@
 import type { AgentConfig } from "@/features/agent/types";
 
-export type SkillView = "local" | "marketplace" | "project";
+export type SkillView = "local" | "marketplace" | "project" | "agents";
 export type DiffMode = "unified" | "split";
 export type AppTheme = string;
 
@@ -61,7 +61,6 @@ export interface AppConfig {
   customIdes: { name: string; command: string }[];
   ideCommandOverrides: Record<string, string>;
   agentCommandOverrides: Record<string, string>;
-  agentSkillPathOverrides: Record<string, string>;
   customAgents: AgentConfig[];
   agentSelectorShowPresetBar: boolean;
   agentSelectorCompactMode: boolean;

@@ -13,6 +13,9 @@ vi.mock('../MarketplaceContent', () => ({
 vi.mock('../ProjectSkillContent', () => ({
   default: () => <div data-testid="project-skill-content">ProjectSkillContent</div>,
 }));
+vi.mock('../AgentSkillContent', () => ({
+  default: () => <div data-testid="agent-skill-content">AgentSkillContent</div>,
+}));
 vi.mock('../CreateSkillDialog', () => ({
   default: ({ open }: { open: boolean }) =>
     open ? <div data-testid="create-dialog">CreateSkillDialog</div> : null,
@@ -49,6 +52,12 @@ describe('SkillContent — 视图路由', () => {
     useSkillStore.setState({ activeSkillView: 'project' });
     render(<SkillContent />);
     expect(screen.getByTestId('project-skill-content')).toBeInTheDocument();
+  });
+
+  it('activeSkillView="agents" 时渲染 AgentSkillContent', () => {
+    useSkillStore.setState({ activeSkillView: 'agents' });
+    render(<SkillContent />);
+    expect(screen.getByTestId('agent-skill-content')).toBeInTheDocument();
   });
 });
 

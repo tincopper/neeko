@@ -2,11 +2,30 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { useSkillStore, initialSkillState } from '../../store';
 import { createManagedSkill, createTagGroup } from '../../../../testing/factories';
+import { invoke } from '@tauri-apps/api/core';
 import SkillsPanel from '../SkillsPanel';
+
+const mockInvoke = vi.mocked(invoke);
+
+const mockAgentData = [
+  {
+    agent_id: 'opencode',
+    agent_name: 'OpenCode',
+    agent_icon: null,
+    agent_enabled: true,
+    skills: [createManagedSkill({ id: 's1', name: 'git-helper' })],
+  },
+];
 
 beforeEach(() => {
   useSkillStore.setState(initialSkillState);
+  mockInvoke.mockReset();
+  mockInvoke.mockResolvedValue(mockAgentData);
 });
+
+vi.mock('@/features/skill/api/skillApi', () => ({
+  getAgentSkills: () => mockInvoke('get_agent_skills_cmd').then(() => mockAgentData),
+}));
 
 describe('SkillsPanel — 导航', () => {
   it('渲染两个视图切换按钮', () => {
@@ -39,6 +58,14 @@ describe('SkillsPanel — 导航', () => {
     });
     render(<SkillsPanel />);
     expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
+  it('点击 Agents 中的 agent 设置 activeAgentId 和 activeSkillView', async () => {
+    render(<SkillsPanel />);
+    const agentBtn = await screen.findByText('OpenCode');
+    fireEvent.click(agentBtn);
+    expect(useSkillStore.getState().activeAgentId).toBe('opencode');
+    expect(useSkillStore.getState().activeSkillView).toBe('agents');
   });
 });
 

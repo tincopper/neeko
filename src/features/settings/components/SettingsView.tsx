@@ -172,9 +172,8 @@ function SettingsView() {
             onSaveAgentOverride={state.saveAgentOverride}
             onCancelPresetEdit={state.cancelPresetEdit}
             getEffectiveAgentCommand={state.getEffectiveAgentCommand}
-            getEffectiveSkillPath={state.getEffectiveSkillPath}
-            onSelectSkillPath={(agentId, fallback) => {
-              void state.selectSkillPath(agentId, fallback);
+            onSelectSkillPath={(agent) => {
+              void state.selectSkillPath(agent);
             }}
             onStartEditSkillPath={state.startEditSkillPath}
             onSaveSkillPath={state.saveSkillPath}

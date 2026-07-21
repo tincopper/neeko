@@ -134,7 +134,7 @@ pub struct SkillTargetDir {
     pub dir: PathBuf,
 }
 
-/// Resolve skill directories from agent configs (`default_skill_path`).
+/// Resolve skill directories from agent configs (`skill_path`).
 ///
 /// Only enabled agents with a non-empty skill path are included.
 pub fn skill_targets_from_agents(
@@ -161,7 +161,7 @@ pub fn skill_targets_from_agents(
 
 /// Built-in tool adapters aligned with Neeko agents + common IDE tools.
 ///
-/// Keys for Neeko agents match `AgentConfig.id` / `default_skill_path`.
+/// Keys for Neeko agents match `AgentConfig.id` / `skill_path`.
 pub fn default_tool_adapters() -> Vec<ToolAdapter> {
     vec![
         // ── Neeko built-in agents (paths match AgentManager) ──

@@ -30,9 +30,9 @@ pub struct AgentConfig {
     /// 是否为内置 agent。仅由后端 `add_default_agents` 设置为 true，前端无法伪造。
     #[serde(default)]
     pub is_builtin: bool,
-    /// 内置 agent 的默认 skill 路径。用户自定义 agent 此字段始终为 None。
+    /// Agent's skill directory path on disk.
     #[serde(default)]
-    pub default_skill_path: Option<String>,
+    pub skill_path: Option<String>,
 }
 
 impl AgentConfig {

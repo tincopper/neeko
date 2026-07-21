@@ -55,6 +55,8 @@ interface SkillStoreState {
   sourceFilter: 'all' | 'local' | 'git' | 'skillssh';
   /** Filter by tag names (AND logic, empty = no filter). */
   tagFilter: string[];
+  /** Active agent detail view. */
+  activeAgentId: string | null;
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -106,6 +108,7 @@ interface SkillStoreActions {
   setSearchQuery: (q: string) => void;
   setSelectedSkillId: (id: string | null) => void;
   setActiveTagGroupId: (id: string | null) => void;
+  setActiveAgentId: (id: string | null) => void;
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => void;
   setTagFilter: (tags: string[]) => void;
   toggleTagFilter: (tag: string) => void;
@@ -129,6 +132,7 @@ export const initialSkillState: SkillStoreState = {
   applyingProjectId: null,
   sourceFilter: 'all',
   tagFilter: [],
+  activeAgentId: null,
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -335,6 +339,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   setSelectedSkillId: (id: string | null) => set({ selectedSkillId: id }),
   setActiveTagGroupId: (id: string | null) => set({ activeTagGroupId: id }),
+  setActiveAgentId: (id: string | null) => set({ activeAgentId: id }),
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => set({ sourceFilter: source }),
   setTagFilter: (tags: string[]) => set({ tagFilter: tags }),
   toggleTagFilter: (tag: string) => {

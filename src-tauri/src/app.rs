@@ -90,12 +90,13 @@ pub fn run() {
                 if let Some(custom_agents) = config.get("customAgents").and_then(|v| v.as_array()) {
                     if let Ok(mut am) = state.agent_manager.lock() {
                         for agent_json in custom_agents {
-                            if let Ok(mut agent) =
+                            if let Ok(agent) =
                                 serde_json::from_value::<AgentConfig>(agent_json.clone())
                             {
-                                // customAgents 永远不是内置，且不应携带 default_skill_path
-                                agent.is_builtin = false;
-                                agent.default_skill_path = None;
+                                // Replace built-in agent with same ID, or add as new custom agent
+                                if am.get_agent(&agent.id).is_some() {
+                                    am.remove_agent(&agent.id);
+                                }
                                 am.add_agent(agent);
                             }
                         }

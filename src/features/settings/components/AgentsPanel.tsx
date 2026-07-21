@@ -31,16 +31,9 @@ interface AgentsPanelProps {
   onSaveAgentOverride: (agentId: string) => void;
   onCancelPresetEdit: () => void;
   getEffectiveAgentCommand: (agent: AgentConfig) => string;
-  getEffectiveSkillPath: (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => string;
-  onSelectSkillPath: (
-    agentId: string,
-    fallback: string | null | undefined,
-  ) => void;
+  onSelectSkillPath: (agent: AgentConfig) => void;
   onStartEditSkillPath: (agentId: string, currentPath: string) => void;
-  onSaveSkillPath: (agentId: string, fallback: string | null | undefined) => void;
+  onSaveSkillPath: (agent: AgentConfig) => void;
   onCancelSkillPathEdit: () => void;
 }
 
@@ -71,7 +64,6 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   onSaveAgentOverride,
   onCancelPresetEdit,
   getEffectiveAgentCommand,
-  getEffectiveSkillPath,
   onSelectSkillPath,
   onStartEditSkillPath,
   onSaveSkillPath,
@@ -135,7 +127,6 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         onSaveAgentOverride={onSaveAgentOverride}
         onCancelPresetEdit={onCancelPresetEdit}
         getEffectiveAgentCommand={getEffectiveAgentCommand}
-        getEffectiveSkillPath={getEffectiveSkillPath}
         onSelectSkillPath={onSelectSkillPath}
         onStartEditSkillPath={onStartEditSkillPath}
         onSaveSkillPath={onSaveSkillPath}
@@ -160,7 +151,6 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         onAddCustomAgent={onAddCustomAgent}
         onRemoveCustomAgent={onRemoveCustomAgent}
         onUploadAgentIcon={onUploadAgentIcon}
-        getEffectiveSkillPath={getEffectiveSkillPath}
         onSelectSkillPath={onSelectSkillPath}
         onStartEditSkillPath={onStartEditSkillPath}
         onSaveSkillPath={onSaveSkillPath}

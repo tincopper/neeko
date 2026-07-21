@@ -29,17 +29,19 @@ pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<Agen
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))
 }
 
-/// Add a custom agent and persist to config.
+/// Add or update an agent and persist to config.
+///
+/// If an agent with the same ID already exists (built-in or custom),
+/// it is replaced. The change is persisted to the `customAgents` config array.
 #[tauri::command]
-pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
-    // 防御：用户自定义 agent 永远不能伪造 is_builtin / default_skill_path
-    agent.is_builtin = false;
-    agent.default_skill_path = None;
-    state
-        .agent_manager
-        .lock()
-        .map_err(AppError::from)?
-        .add_agent(agent.clone());
+pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
+    {
+        let mut am = state.agent_manager.lock().map_err(AppError::from)?;
+        if am.get_agent(&agent.id).is_some() {
+            am.remove_agent(&agent.id);
+        }
+        am.add_agent(agent.clone());
+    }
     let mut config = state
         .storage_manager
         .load_config()
@@ -52,10 +54,13 @@ pub fn add_agent(mut agent: AgentConfig, state: State<AppStateWrapper>) -> Resul
                 .as_array_mut()
         })
         .ok_or_else(|| AppError::Storage("Failed to access config".to_string()))?;
-    if !custom_agents
+    // Upsert: replace existing entry with same ID, or append
+    if let Some(pos) = custom_agents
         .iter()
-        .any(|a| a.get("id").and_then(|v| v.as_str()) == Some(&agent.id))
+        .position(|a| a.get("id").and_then(|v| v.as_str()) == Some(&agent.id))
     {
+        custom_agents[pos] = serde_json::to_value(&agent).map_err(AppError::from)?;
+    } else {
         custom_agents.push(serde_json::to_value(&agent).map_err(AppError::from)?);
     }
     state

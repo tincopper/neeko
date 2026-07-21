@@ -71,7 +71,7 @@ fn add_custom_agent() {
         prompt_args: None,
         post_prompt_args: None,
         is_builtin: false,
-        default_skill_path: None,
+        skill_path: None,
     });
 
     assert_eq!(manager.get_agents().len(), initial + 1);
@@ -96,7 +96,7 @@ fn add_agent_with_duplicate_id() {
         prompt_args: None,
         post_prompt_args: None,
         is_builtin: false,
-        default_skill_path: None,
+        skill_path: None,
     });
 
     // duplicates are allowed — both entries exist
@@ -117,7 +117,7 @@ fn remove_agent() {
         prompt_args: None,
         post_prompt_args: None,
         is_builtin: false,
-        default_skill_path: None,
+        skill_path: None,
     });
     assert!(manager.get_agent("temp").is_some());
 

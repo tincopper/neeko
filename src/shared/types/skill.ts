@@ -8,4 +8,6 @@ export type {
   LeaderboardType,
   SkillsShSkill,
   InstallProgress,
+  AgentSkillGroup,
+  AgentDiskSkill,
 } from "@/features/skill/types";

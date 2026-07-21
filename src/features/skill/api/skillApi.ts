@@ -6,6 +6,7 @@ import type {
   SkillDocumentDto,
   DiscoveredSkillDto,
   SkillsShSkill,
+  AgentSkillGroup,
 } from '@/shared/types';
 
 // ─── Managed Skills ──────────────────────────────────────────────────────────
@@ -218,4 +219,12 @@ export function searchSkillssh(query: string, limit?: number | null): Promise<Sk
 
 export function installFromSkillssh(source: string, skillId: string): Promise<ManagedSkillDto> {
   return invoke<ManagedSkillDto>('install_from_skillssh', { source, skillId });
+}
+
+export function getAgentSkills(): Promise<AgentSkillGroup[]> {
+  return invoke<AgentSkillGroup[]>('get_agent_skills_cmd');
+}
+
+export function importSkillToAgent(skillId: string, agentId: string): Promise<void> {
+  return invoke<void>('import_skill_to_agent_cmd', { skillId, agentId });
 }

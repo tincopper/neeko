@@ -8,14 +8,17 @@ import {
   RefreshCw,
   LayoutGrid,
   Pencil,
+  Terminal,
 } from 'lucide-react';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
 import { useSkillStore } from '@/features/skill/store';
+import { getAgentSkills } from '@/features/skill/api/skillApi';
+import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
-import type { SkillView } from '@/shared/types';
+import type { SkillView, AgentSkillGroup } from '@/shared/types';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
 interface NavItem {
@@ -34,14 +37,17 @@ const SkillsPanel: React.FC = React.memo(() => {
   const skills = useSkillStore((s) => s.skills);
   const tagGroups = useSkillStore((s) => s.tagGroups);
   const activeTagGroupId = useSkillStore((s) => s.activeTagGroupId);
+  const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const setActiveSkillView = useSkillStore((s) => s.setActiveSkillView);
   const setActiveTagGroupId = useSkillStore((s) => s.setActiveTagGroupId);
+  const setActiveAgentId = useSkillStore((s) => s.setActiveAgentId);
   const deleteTagGroup = useSkillStore((s) => s.deleteTagGroup);
   const updateTagGroup = useSkillStore((s) => s.updateTagGroup);
   const createTagGroup = useSkillStore((s) => s.createTagGroup);
   const syncTagGroup = useSkillStore((s) => s.syncTagGroup);
 
   const [projectsExpanded, setProjectsExpanded] = useState(true);
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
   const [presetsExpanded, setTagsExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -51,6 +57,13 @@ const SkillsPanel: React.FC = React.memo(() => {
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const selectProject = useProjectStore((s) => s.selectProject);
+
+  const [agentGroups, setAgentGroups] = useState<AgentSkillGroup[]>([]);
+  useEffect(() => {
+    getAgentSkills()
+      .then(setAgentGroups)
+      .catch(() => {});
+  }, []);
 
   const toast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     useNotificationStore.getState().addNotification({
@@ -343,6 +356,69 @@ const SkillsPanel: React.FC = React.memo(() => {
                 <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
                   Group skills by role (Backend, Frontend…)
                 </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Agent list */}
+        <div className="border-t border-border mt-0.5 pt-1">
+          <button
+            type="button"
+            className="flex items-center gap-1 px-3 py-1.5 w-full min-w-0 text-left select-none"
+            onClick={() => setAgentsExpanded((v) => !v)}
+          >
+            {agentsExpanded ? (
+              <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
+            )}
+            <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
+              Agents
+            </span>
+          </button>
+
+          {agentsExpanded && (
+            <div className="pb-1 px-1.5">
+              {agentGroups.length === 0 ? (
+                <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
+                  No agents configured.
+                </p>
+              ) : (
+                agentGroups.map((group) => {
+                  const icon = resolveAgentIconSrc(group.agent_icon);
+                  const isActiveAgent = activeAgentId === group.agent_id;
+                  return (
+                    <button
+                      key={group.agent_id}
+                      type="button"
+                      onClick={() => {
+                        setActiveAgentId(group.agent_id);
+                        setActiveSkillView('agents');
+                      }}
+                      className={cn(
+                        'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
+                        'text-[var(--font-size)]',
+                        isActiveAgent
+                          ? 'bg-bg-selected text-text-primary'
+                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                      )}
+                    >
+                      {icon ? (
+                        <img src={icon} alt="" className="h-4 w-4 rounded shrink-0" />
+                      ) : (
+                        <Terminal className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                      )}
+                      <span className="truncate flex-1 font-medium">{group.agent_name}</span>
+                      {!group.agent_enabled && (
+                        <span className="text-[10px] text-text-muted">disabled</span>
+                      )}
+                      <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
+                        {group.skills.length}
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
           )}
