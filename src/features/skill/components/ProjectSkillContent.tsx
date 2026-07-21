@@ -167,7 +167,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
         </Button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-2">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-2 thin-scrollbar">
         <div className="px-3 py-1.5 text-[10.5px] font-bold tracking-[0.16em] uppercase text-text-muted">
           Bound groups
         </div>

@@ -89,24 +89,57 @@ pub fn fetch_leaderboard(
     parse_skills_from_html(&html)
 }
 
-/// Search skills.sh marketplace for skills matching a query.
+/// Response from skills.sh search API at GET /api/search.
+#[derive(Deserialize)]
+struct SearchApiResponse {
+    skills: Vec<SearchApiSkill>,
+}
+
+#[derive(Deserialize)]
+struct SearchApiSkill {
+    #[serde(alias = "skillId")]
+    skill_id: String,
+    name: String,
+    installs: u64,
+    source: String,
+}
+
+/// Search skills.sh marketplace for skills matching a query via the JSON API.
 pub fn search_skills(
     query: &str,
-    _limit: usize,
+    limit: usize,
     proxy_url: Option<&str>,
 ) -> Result<Vec<SkillsShSkill>> {
     let client = build_http_client(proxy_url, 30)?;
     let encoded_query = urlencoding::encode(query);
-    let url = format!("https://skills.sh/?q={}", encoded_query);
+    let url = format!(
+        "https://skills.sh/api/search?q={}&limit={}",
+        encoded_query, limit
+    );
 
-    let html = client
+    let body = client
         .get(&url)
         .send()
-        .context("Failed to search skills")?
+        .context("Failed to search skills via API")?
         .text()
-        .context("Failed to read response body")?;
+        .context("Failed to read search response body")?;
 
-    parse_skills_from_html(&html)
+    let resp: SearchApiResponse =
+        serde_json::from_str(&body).context("Failed to parse search API response")?;
+
+    let skills = resp
+        .skills
+        .into_iter()
+        .map(|s| SkillsShSkill {
+            id: format!("{}/{}", s.source, s.skill_id),
+            skill_id: s.skill_id,
+            name: s.name,
+            source: s.source,
+            installs: s.installs,
+        })
+        .collect();
+
+    Ok(skills)
 }
 
 fn parse_skills_from_html(html: &str) -> Result<Vec<SkillsShSkill>> {

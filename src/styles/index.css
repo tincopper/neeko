@@ -128,6 +128,11 @@
   ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+  .thin-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+  .thin-scrollbar::-webkit-scrollbar-track { background: var(--bg-secondary); }
+  .thin-scrollbar::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+  .thin-scrollbar { scrollbar-width: thin; }
+
   .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }
 
   /* Worktree animations */

@@ -22,7 +22,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
     if (sources.length === 0) return null;
 
     return (
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border overflow-x-auto shrink-0">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border overflow-x-auto shrink-0 thin-scrollbar">
         <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-text-muted shrink-0">
           Source
         </span>

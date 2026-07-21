@@ -1,5 +1,10 @@
-import { create } from 'zustand';
 import { open } from '@tauri-apps/plugin-dialog';
+import { create } from 'zustand';
+
+import type { ManagedSkillDto, TagGroup, DiscoveredSkillDto, SkillView } from '@/shared/types';
+
+import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
+
 import {
   getManagedSkills,
   deleteManagedSkill,
@@ -17,19 +22,13 @@ import {
   addSkillToTagGroup as addSkillToTagGroupApi,
   removeSkillFromTagGroup as removeSkillFromTagGroupApi,
   syncTagGroup as syncTagGroupApi,
+  updateTagGroup as updateTagGroupApi,
   getProjectTagGroups as getProjectTagGroupsApi,
   setProjectTagGroups as setProjectTagGroupsApi,
   applyProjectSkills as applyProjectSkillsApi,
   checkSkillUpdate as checkSkillUpdateApi,
   updateSkill as updateSkillApi,
 } from './api/skillApi';
-import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
-import type {
-  ManagedSkillDto,
-  TagGroup,
-  DiscoveredSkillDto,
-  SkillView,
-} from '@/shared/types';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +69,7 @@ interface SkillStoreActions {
   refreshTagGroups: () => Promise<void>;
   createTagGroup: (name: string, description?: string, icon?: string) => Promise<void>;
   deleteTagGroup: (id: string) => Promise<void>;
+  updateTagGroup: (id: string, name: string) => Promise<void>;
   addSkillToTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
   removeSkillFromTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
   syncTagGroup: (tagGroupId: string) => Promise<void>;
@@ -86,7 +86,9 @@ interface SkillStoreActions {
   scanSkills: () => Promise<DiscoveredSkillDto[]>;
   createSkill: (name: string, content: string) => Promise<void>;
   importDiscoveredSkill: (discoveredPath: string, name?: string) => Promise<void>;
-  checkSkillUpdate: (skillId: string) => Promise<{ status: string; remote_revision: string | null }>;
+  checkSkillUpdate: (
+    skillId: string,
+  ) => Promise<{ status: string; remote_revision: string | null }>;
   updateSkillFromSource: (skillId: string) => Promise<void>;
 
   // 文档编辑
@@ -152,7 +154,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   deleteSkill: async (id: string) => {
     await deleteManagedSkill(id);
-    set(state => ({ skills: state.skills.filter(s => s.id !== id) }));
+    set((state) => ({ skills: state.skills.filter((s) => s.id !== id) }));
   },
 
   getSkillDocument: async (skillId: string): Promise<string> => {
@@ -174,15 +176,23 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   createTagGroup: async (name: string, description?: string, icon?: string) => {
     const group = await createTagGroupApi(name, description, icon);
-    set(state => ({ tagGroups: [...state.tagGroups, group] }));
+    set((state) => ({ tagGroups: [...state.tagGroups, group] }));
   },
 
   deleteTagGroup: async (id: string) => {
     await deleteTagGroupApi(id);
-    set(state => ({
-      tagGroups: state.tagGroups.filter(g => g.id !== id),
+    set((state) => ({
+      tagGroups: state.tagGroups.filter((g) => g.id !== id),
       activeTagGroupId: state.activeTagGroupId === id ? null : state.activeTagGroupId,
-      projectTagGroups: state.projectTagGroups.filter(g => g.id !== id),
+      projectTagGroups: state.projectTagGroups.filter((g) => g.id !== id),
+    }));
+  },
+
+  updateTagGroup: async (id: string, name: string) => {
+    await updateTagGroupApi(id, name);
+    set((state) => ({
+      tagGroups: state.tagGroups.map((g) => (g.id === id ? { ...g, name } : g)),
+      projectTagGroups: state.projectTagGroups.map((g) => (g.id === id ? { ...g, name } : g)),
     }));
   },
 
@@ -218,7 +228,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     await setProjectTagGroupsApi(projectId, tagGroupIds);
     const all = get().tagGroups;
     set({
-      projectTagGroups: all.filter(g => tagGroupIds.includes(g.id)),
+      projectTagGroups: all.filter((g) => tagGroupIds.includes(g.id)),
     });
   },
 
@@ -277,8 +287,8 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   checkSkillUpdate: async (skillId: string) => {
     const result = await checkSkillUpdateApi(skillId);
-    set(state => ({
-      skills: state.skills.map(s =>
+    set((state) => ({
+      skills: state.skills.map((s) =>
         s.id === skillId ? { ...s, update_status: result.status } : s,
       ),
     }));
@@ -287,8 +297,8 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   updateSkillFromSource: async (skillId: string) => {
     const updated = await updateSkillApi(skillId);
-    set(state => ({
-      skills: state.skills.map(s => (s.id === skillId ? { ...s, ...updated } : s)),
+    set((state) => ({
+      skills: state.skills.map((s) => (s.id === skillId ? { ...s, ...updated } : s)),
     }));
   },
 
@@ -296,7 +306,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   updateSkillDocument: async (skillId: string, _name: string, content: string) => {
-    const skill = get().skills.find(s => s.id === skillId);
+    const skill = get().skills.find((s) => s.id === skillId);
     if (!skill) {
       throw new Error(`Skill not found: ${skillId}`);
     }
@@ -320,8 +330,8 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   patchSkillDescription: (skillId, description) => {
     const desc = description.trim();
     if (!desc) return;
-    set(state => ({
-      skills: state.skills.map(s =>
+    set((state) => ({
+      skills: state.skills.map((s) =>
         s.id === skillId && !s.description?.trim() ? { ...s, description: desc } : s,
       ),
     }));

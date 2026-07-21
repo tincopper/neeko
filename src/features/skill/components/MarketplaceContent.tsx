@@ -152,7 +152,7 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
           ) : null}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
           {loading && displayList.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-text-muted gap-2">
               <Loader2 className="h-5 w-5 animate-spin opacity-50" />
