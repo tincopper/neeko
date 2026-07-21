@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, FolderDown, Radar, GitBranch } from '@/shared/components/icons';
+import { Plus, FolderDown, Radar, GitBranch, RefreshCw } from '@/shared/components/icons';
 import {
   Button,
   DropdownMenu,
@@ -13,6 +13,7 @@ interface SkillHeaderProps {
   onInstallDirectoryClick: () => void;
   onInstallGitClick: () => void;
   onScanClick: () => void;
+  onRefreshMetadataClick?: () => void;
   filterLabel?: string | null;
   count?: number;
 }
@@ -26,6 +27,7 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
     onInstallDirectoryClick,
     onInstallGitClick,
     onScanClick,
+    onRefreshMetadataClick,
     filterLabel,
     count,
   }) => {
@@ -89,6 +91,18 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             <Radar className="h-3.5 w-3.5" />
             Scan
           </Button>
+          {onRefreshMetadataClick && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRefreshMetadataClick}
+              className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
+              title="Re-read SKILL.md descriptions into the library"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Meta
+            </Button>
+          )}
         </div>
       </div>
     );

@@ -21,6 +21,8 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   const tagGroups = useSkillStore(s => s.tagGroups);
   const setSearchQuery = useSkillStore(s => s.setSearchQuery);
   const fetchSkillsForTagGroup = useSkillStore(s => s.fetchSkillsForTagGroup);
+  const patchSkillDescription = useSkillStore(s => s.patchSkillDescription);
+  const refreshMetadata = useSkillStore(s => s.refreshMetadata);
 
   const {
     discoveredSkills,
@@ -96,6 +98,9 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           onInstallDirectoryClick={handleInstall}
           onInstallGitClick={handleInstallGit}
           onScanClick={handleScan}
+          onRefreshMetadataClick={() => {
+            void refreshMetadata().catch(console.error);
+          }}
           filterLabel={activeGroupName}
           count={filteredSkills.length}
         />
@@ -126,6 +131,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           tagGroups={tagGroups.map(g => ({ id: g.id, name: g.name }))}
           presetLabel={activeGroupName}
           skillPresetMap={skillPresetMap}
+          onDescriptionResolved={patchSkillDescription}
         />
       </div>
     </div>

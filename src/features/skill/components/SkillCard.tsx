@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Trash2,
   FileText,
@@ -25,6 +25,8 @@ import type { ManagedSkillDto } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 import { tagChipClass } from './skillTagColors';
+import { getSkillDocument } from '@/features/skill/api/skillApi';
+import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
 
 interface SkillCardProps {
   skill: ManagedSkillDto;
@@ -37,6 +39,8 @@ interface SkillCardProps {
   tagGroups?: Array<{ id: string; name: string }>;
   installedAgents?: string[];
   presetLabel?: string | null;
+  /** Called when description is recovered from SKILL.md so store can update. */
+  onDescriptionResolved?: (skillId: string, description: string) => void;
 }
 
 const AGENT_STRIP = [
@@ -71,10 +75,6 @@ function SourceLabel({ source }: { source: string }) {
   );
 }
 
-/**
- * Skills Manager–style library card (reference layout).
- * Uses theme tokens: accent-green for enabled state.
- */
 const SkillCard: React.FC<SkillCardProps> = React.memo(
   ({
     skill,
@@ -87,16 +87,48 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     tagGroups = [],
     installedAgents = [],
     presetLabel,
+    onDescriptionResolved,
   }) => {
     const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
     const hasUpdate = skill.update_status === 'update_available';
     const enabled = Boolean(skill.enabled);
     const chips = skill.tags.slice(0, 4);
 
+    const propDesc = skill.description?.trim() || '';
+    const [resolvedDesc, setResolvedDesc] = useState(propDesc);
+
+    // Sync when store provides description
+    useEffect(() => {
+      if (propDesc) setResolvedDesc(propDesc);
+    }, [propDesc, skill.id]);
+
+    // Lazy-fill description from SKILL.md when missing
+    useEffect(() => {
+      if (propDesc) return;
+      let cancelled = false;
+      void (async () => {
+        try {
+          const doc = await getSkillDocument(skill.id);
+          const parsed = parseSkillDescription(doc.content);
+          if (!cancelled && parsed) {
+            setResolvedDesc(parsed);
+            onDescriptionResolved?.(skill.id, parsed);
+          }
+        } catch {
+          /* no document on disk */
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [skill.id, propDesc, onDescriptionResolved]);
+
     const showAgents =
       installedAgents.length > 0
         ? AGENT_STRIP.filter(a => installedAgents.includes(a.key))
         : AGENT_STRIP;
+
+    const displayDesc = resolvedDesc || 'No description';
 
     return (
       <article
@@ -112,16 +144,13 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
         className={cn(
           'group flex flex-col h-full min-h-[172px] rounded-xl cursor-pointer',
           'bg-bg-primary transition-colors duration-150',
-          // Full outline: green when enabled (reference), gray when not
           'border-2',
           enabled ? 'border-accent-green/70' : 'border-border',
           isSelected && 'ring-2 ring-accent-blue/40',
           'hover:bg-bg-hover/40',
         )}
       >
-        {/* Body */}
         <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">
-          {/* Row 1: status circle + title + menu */}
           <div className="flex items-center gap-2">
             <span
               className={cn(
@@ -223,12 +252,17 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </DropdownMenu>
           </div>
 
-          {/* Description (indented under title, past the circle) */}
-          <p className="text-[12px] text-text-muted leading-relaxed line-clamp-2 pl-[26px]">
-            {skill.description?.trim() || 'No description'}
+          {/* Description — always reserve 2 lines; use secondary color for readability */}
+          <p
+            className={cn(
+              'text-[12px] leading-relaxed line-clamp-2 pl-[26px] min-h-[2.5em]',
+              resolvedDesc ? 'text-text-secondary' : 'text-text-muted italic',
+            )}
+            title={displayDesc}
+          >
+            {displayDesc}
           </p>
 
-          {/* Update link — same position as reference (under description) */}
           {hasUpdate && (
             <button
               type="button"
@@ -242,7 +276,6 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </button>
           )}
 
-          {/* Soft tag pills */}
           {chips.length > 0 && (
             <div className="flex flex-wrap gap-1.5 pl-[26px]">
               {chips.map(tag => (
@@ -260,7 +293,6 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           )}
         </div>
 
-        {/* Footer: source · Preset | agents | Enabled */}
         <div className="flex items-center gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
           <div className="flex items-center gap-1 min-w-0 flex-1 text-text-muted">
             <SourceLabel source={skill.source_type} />

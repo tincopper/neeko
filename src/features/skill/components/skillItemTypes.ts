@@ -54,4 +54,6 @@ export interface SkillListSectionProps {
   actions: SkillItemActions;
   /** 可选标签组（用于「加入标签组」菜单） */
   tagGroups?: Array<{ id: string; name: string }>;
+  /** Description recovered from SKILL.md on the card */
+  onDescriptionResolved?: (skillId: string, description: string) => void;
 }

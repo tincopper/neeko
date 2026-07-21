@@ -43,6 +43,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
     tagGroups = [],
     presetLabel,
     skillPresetMap = {},
+    onDescriptionResolved,
   }) => {
     const {
       onSelectSkill,
@@ -95,6 +96,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 isSelected={selectedSkillId === s.id}
                 tagGroups={tagGroups}
                 presetLabel={cardPreset}
+                onDescriptionResolved={onDescriptionResolved}
                 onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
                 onAddToTagGroup={
                   onAddToTagGroup ? tagGroupId => onAddToTagGroup(s.id, tagGroupId) : undefined

@@ -18,6 +18,16 @@ export function getSkillDocument(skillId: string): Promise<SkillDocumentDto> {
   return invoke<SkillDocumentDto>('get_skill_document', { skillId });
 }
 
+/** Re-parse SKILL.md for all managed skills; returns number of rows updated. */
+export function refreshSkillMetadata(): Promise<number> {
+  return invoke<number>('refresh_skill_metadata');
+}
+
+/** Wipe managed skills + central repo dirs (tag groups kept). */
+export function clearAllManagedSkills(): Promise<number> {
+  return invoke<number>('clear_all_managed_skills');
+}
+
 export function deleteManagedSkill(skillId: string): Promise<void> {
   return invoke<void>('delete_managed_skill', { skillId });
 }

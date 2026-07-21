@@ -4,6 +4,8 @@ import {
   getManagedSkills,
   deleteManagedSkill,
   getSkillDocument as getSkillDocumentApi,
+  refreshSkillMetadata as refreshSkillMetadataApi,
+  clearAllManagedSkills as clearAllManagedSkillsApi,
   getTagGroups as getTagGroupsApi,
   createTagGroup as createTagGroupApi,
   deleteTagGroup as deleteTagGroupApi,
@@ -57,6 +59,10 @@ interface SkillStoreState {
 interface SkillStoreActions {
   // 数据动作
   refreshSkills: () => Promise<void>;
+  /** Re-parse descriptions from disk; then reload list. */
+  refreshMetadata: () => Promise<number>;
+  /** Clear all managed skills (DB + central files). */
+  clearAllSkills: () => Promise<number>;
   deleteSkill: (id: string) => Promise<void>;
   getSkillDocument: (skillId: string) => Promise<string>;
 
@@ -94,6 +100,8 @@ interface SkillStoreActions {
   setSearchQuery: (q: string) => void;
   setSelectedSkillId: (id: string | null) => void;
   setActiveTagGroupId: (id: string | null) => void;
+  /** Patch description after SKILL.md lazy parse (keeps list in sync). */
+  patchSkillDescription: (skillId: string, description: string) => void;
 }
 
 // ─── 初始状态（导出供测试重置使用）────────────────────────────────────────
@@ -128,6 +136,18 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       set({ loading: false });
       throw e;
     }
+  },
+
+  refreshMetadata: async () => {
+    const n = await refreshSkillMetadataApi();
+    await get().refreshSkills();
+    return n;
+  },
+
+  clearAllSkills: async () => {
+    const n = await clearAllManagedSkillsApi();
+    set({ skills: [], loading: false });
+    return n;
   },
 
   deleteSkill: async (id: string) => {
@@ -296,4 +316,14 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   setSelectedSkillId: (id: string | null) => set({ selectedSkillId: id }),
   setActiveTagGroupId: (id: string | null) => set({ activeTagGroupId: id }),
+
+  patchSkillDescription: (skillId, description) => {
+    const desc = description.trim();
+    if (!desc) return;
+    set(state => ({
+      skills: state.skills.map(s =>
+        s.id === skillId && !s.description?.trim() ? { ...s, description: desc } : s,
+      ),
+    }));
+  },
 }));

@@ -3,6 +3,7 @@ import { Download, Check, Loader2, ExternalLink } from '@/shared/components/icon
 import { Button } from '@/ui';
 import type { SkillsShSkill, InstallProgress } from '@/shared/types';
 import { cn } from '@/lib/utils';
+import { humanizeSkillId } from '@/features/skill/utils/parseSkillDescription';
 
 interface MarketSkillCardProps {
   skill: SkillsShSkill;
@@ -77,7 +78,10 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
             <div className="text-[13px] font-semibold text-text-primary truncate leading-snug">
               {skill.name || skill.skill_id}
             </div>
-            <div className="text-[12px] text-text-muted truncate font-mono mt-0.5">
+            <p className="text-[12px] text-text-secondary line-clamp-2 leading-relaxed mt-0.5">
+              {humanizeSkillId(skill.skill_id || skill.name)}
+            </p>
+            <div className="text-[11px] text-text-muted truncate font-mono mt-1">
               {skill.source}
             </div>
           </div>

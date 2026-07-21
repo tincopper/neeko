@@ -217,6 +217,8 @@ macro_rules! neeko_invoke_handler {
             // ── skill ────────────────────────────────────────────────────────
             $crate::skill::commands::get_managed_skills,
             $crate::skill::commands::get_skill_document,
+            $crate::skill::commands::refresh_skill_metadata,
+            $crate::skill::commands::clear_all_managed_skills,
             $crate::skill::commands::delete_managed_skill,
             $crate::skill::commands::get_tag_groups,
             $crate::skill::commands::create_tag_group,

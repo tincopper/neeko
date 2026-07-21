@@ -167,6 +167,74 @@ pub async fn get_skill_document(
     }).await
 }
 
+/// Re-parse every managed skill's SKILL.md and write descriptions back to DB.
+///
+/// Returns how many skills received a non-empty description update.
+#[tauri::command]
+pub async fn refresh_skill_metadata(
+    store: State<'_, Arc<SkillStore>>,
+) -> Result<u32, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let skills = store.get_all_skills().map_err(AppError::from)?;
+        let mut updated = 0u32;
+        for mut s in skills {
+            let path = PathBuf::from(&s.central_path);
+            if !path.is_dir() {
+                continue;
+            }
+            let meta = super::skill_metadata::parse_skill_md(&path);
+            let mut dirty = false;
+            if let Some(desc) = meta.description {
+                if !desc.trim().is_empty() && s.description.as_deref() != Some(desc.as_str()) {
+                    s.description = Some(desc);
+                    dirty = true;
+                }
+            }
+            if let Some(name) = meta.name {
+                if let Some(sanitized) = super::skill_metadata::sanitize_skill_name(&name) {
+                    if !sanitized.is_empty() && s.name != sanitized {
+                        // keep directory name as id path; only update display name if empty-ish
+                        if s.name.trim().is_empty() {
+                            s.name = sanitized;
+                            dirty = true;
+                        }
+                    }
+                }
+            }
+            if dirty {
+                store.update_skill(&s).map_err(AppError::from)?;
+                updated += 1;
+            }
+        }
+        Ok(updated)
+    })
+    .await
+}
+
+/// Delete all managed skills and wipe the central skills directory (keeps tag groups).
+#[tauri::command]
+pub async fn clear_all_managed_skills(
+    store: State<'_, Arc<SkillStore>>,
+) -> Result<u32, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let skills = store.get_all_skills().map_err(AppError::from)?;
+        let n = skills.len() as u32;
+        for s in &skills {
+            let path = PathBuf::from(&s.central_path);
+            if path.is_dir() && path.starts_with(super::central_repo::skills_dir()) {
+                let _ = std::fs::remove_dir_all(&path);
+            }
+            store.delete_skill(&s.id).map_err(AppError::from)?;
+        }
+        // Ensure central dir exists after wipe
+        let _ = super::central_repo::ensure_central_repo();
+        Ok(n)
+    })
+    .await
+}
+
 /// Delete a managed skill and its central directory.
 #[tauri::command]
 pub async fn delete_managed_skill(
