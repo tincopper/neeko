@@ -1,5 +1,12 @@
 import React from 'react';
-import { Plus, FolderDown, Radar, GitBranch, RefreshCw } from '@/shared/components/icons';
+import {
+  Plus,
+  FolderDown,
+  Radar,
+  GitBranch,
+  RefreshCw,
+  ChevronDown,
+} from '@/shared/components/icons';
 import {
   Button,
   DropdownMenu,
@@ -7,6 +14,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/ui';
+import {
+  skillMenuContentClass,
+  skillMenuItemClass,
+} from './skillMenuStyles';
 
 interface SkillHeaderProps {
   onCreateClick: () => void;
@@ -19,7 +30,7 @@ interface SkillHeaderProps {
 }
 
 /**
- * Library toolbar: title + count badge + actions (Skills Manager style, Neeko theme).
+ * Library toolbar: title + compact actions.
  */
 const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
   ({
@@ -43,49 +54,56 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={onCreateClick}
-            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
+            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover"
           >
             <Plus className="h-3.5 w-3.5" />
             Create
           </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
+                className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover data-[state=open]:bg-bg-hover data-[state=open]:text-text-primary"
               >
                 <FolderDown className="h-3.5 w-3.5" />
                 Install
+                <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent
+              align="end"
+              sideOffset={6}
+              className={skillMenuContentClass('w-[200px]')}
+            >
               <DropdownMenuItem
-                className="flex items-center gap-2 cursor-pointer text-xs"
+                className={skillMenuItemClass()}
                 onSelect={onInstallDirectoryClick}
               >
                 <FolderDown className="h-3.5 w-3.5" />
-                From directory
+                <span className="flex-1">From directory</span>
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="flex items-center gap-2 cursor-pointer text-xs"
+                className={skillMenuItemClass()}
                 onSelect={onInstallGitClick}
               >
                 <GitBranch className="h-3.5 w-3.5" />
-                From Git / GitHub
+                <span className="flex-1">From Git / GitHub</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
           <Button
             variant="ghost"
             size="sm"
             onClick={onScanClick}
-            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
+            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover"
             title="Scan agent skill directories"
           >
             <Radar className="h-3.5 w-3.5" />
@@ -96,7 +114,7 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
               variant="ghost"
               size="sm"
               onClick={onRefreshMetadataClick}
-              className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary"
+              className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover"
               title="Re-read SKILL.md descriptions into the library"
             >
               <RefreshCw className="h-3.5 w-3.5" />

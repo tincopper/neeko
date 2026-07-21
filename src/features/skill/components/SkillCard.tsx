@@ -15,9 +15,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
 } from '@/ui';
 import type { ManagedSkillDto } from '@/shared/types';
@@ -26,6 +24,12 @@ import { getAgentIconSrc } from '@/shared/utils/agents';
 import { tagChipClass } from './skillTagColors';
 import { getSkillDocument } from '@/features/skill/api/skillApi';
 import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
+import {
+  skillMenuContentClass,
+  skillMenuItemClass,
+  skillMenuLabelClass,
+  skillMenuSeparatorClass,
+} from './skillMenuStyles';
 
 interface SkillCardProps {
   skill: ManagedSkillDto;
@@ -161,7 +165,9 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                   type="button"
                   className={cn(
                     'p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover',
-                    'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0',
+                    'opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100',
+                    'data-[state=open]:bg-bg-hover data-[state=open]:text-text-primary',
+                    'transition-opacity shrink-0',
                   )}
                   title="Actions"
                   onClick={e => e.stopPropagation()}
@@ -171,68 +177,77 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-40"
+                sideOffset={6}
+                className={skillMenuContentClass('w-[188px]')}
                 onClick={e => e.stopPropagation()}
               >
                 <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-xs"
+                  className={skillMenuItemClass()}
                   onSelect={() => onAction('edit')}
                 >
-                  <Edit3 className="h-3 w-3" />
+                  <Edit3 />
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-xs"
+                  className={skillMenuItemClass()}
                   onSelect={() => onAction('detail')}
                 >
-                  <FileText className="h-3 w-3" />
+                  <FileText />
                   View
                 </DropdownMenuItem>
+
                 {tagGroups.length > 0 && onAddToTagGroup && (
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger className="flex items-center gap-2 cursor-pointer text-xs">
-                      <Tags className="h-3 w-3" />
-                      Add to group
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent className="w-36">
-                      {tagGroups.map(tg => (
-                        <DropdownMenuItem
-                          key={tg.id}
-                          className="cursor-pointer text-xs"
-                          onSelect={() => onAddToTagGroup(tg.id)}
-                        >
-                          {tg.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                )}
-                {isGitSource && onCheckUpdate && (
                   <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="flex items-center gap-2 cursor-pointer text-xs"
-                      onSelect={() => onCheckUpdate()}
-                    >
-                      Check update
-                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
+                    <DropdownMenuLabel className={skillMenuLabelClass()}>
+                      <span className="inline-flex items-center gap-1.5 normal-case tracking-normal font-medium text-text-muted">
+                        <Tags className="h-3 w-3 opacity-70" />
+                        Add to preset
+                      </span>
+                    </DropdownMenuLabel>
+                    {tagGroups.map(tg => (
+                      <DropdownMenuItem
+                        key={tg.id}
+                        className={skillMenuItemClass({ className: 'pl-3' })}
+                        onSelect={() => onAddToTagGroup(tg.id)}
+                      >
+                        <span className="truncate">{tg.name}</span>
+                      </DropdownMenuItem>
+                    ))}
                   </>
                 )}
-                {isGitSource && hasUpdate && onUpdateSkill && (
-                  <DropdownMenuItem
-                    className="flex items-center gap-2 cursor-pointer text-xs text-accent-green"
-                    onSelect={() => onUpdateSkill()}
-                  >
-                    <ArrowUpCircle className="h-3 w-3" />
-                    Update skill
-                  </DropdownMenuItem>
+
+                {isGitSource && (onCheckUpdate || (hasUpdate && onUpdateSkill)) && (
+                  <>
+                    <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
+                    {onCheckUpdate && (
+                      <DropdownMenuItem
+                        className={skillMenuItemClass()}
+                        onSelect={() => onCheckUpdate()}
+                      >
+                        Check update
+                      </DropdownMenuItem>
+                    )}
+                    {hasUpdate && onUpdateSkill && (
+                      <DropdownMenuItem
+                        className={skillMenuItemClass({
+                          className: 'text-accent-green data-[highlighted]:text-accent-green',
+                        })}
+                        onSelect={() => onUpdateSkill()}
+                      >
+                        <ArrowUpCircle />
+                        Update skill
+                      </DropdownMenuItem>
+                    )}
+                  </>
                 )}
-                <DropdownMenuSeparator />
+
+                <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
                 <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer text-xs text-accent-red"
+                  className={skillMenuItemClass({ danger: true })}
                   onSelect={() => onAction('delete')}
                 >
-                  <Trash2 className="h-3 w-3" />
+                  <Trash2 />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
