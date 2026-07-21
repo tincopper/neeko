@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useSkillStore } from '@/features/skill/store';
+import { useNotificationStore } from '@/features/notification/notificationStore';
 import type { ManagedSkillDto, DiscoveredSkillDto } from '@/shared/types';
 import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
 
@@ -15,12 +16,15 @@ import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
  * 组件只需消费返回值，不持有任何业务逻辑�?
  */
 export function useLocalSkillActions(setDialog: (state: SkillDialogState) => void) {
-  // ── 瞬�?scan 状�?──────────────────────────────────────────────────────────
   const [discoveredSkills, setDiscoveredSkills] = useState<DiscoveredSkillDto[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [refreshingMeta, setRefreshingMeta] = useState(false);
+  const toast = useNotificationStore.getState().addNotification;
 
   // ── Store actions ───────────────────────────────────────────────────────────
   const installLocal = useSkillStore(s => s.installLocal);
   const scanSkills = useSkillStore(s => s.scanSkills);
+  const refreshMetadata = useSkillStore(s => s.refreshMetadata);
   const importDiscoveredSkill = useSkillStore(s => s.importDiscoveredSkill);
   const deleteSkill = useSkillStore(s => s.deleteSkill);
   const addSkillToTagGroup = useSkillStore(s => s.addSkillToTagGroup);
@@ -47,14 +51,36 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   }, [setDialog]);
 
   const handleScan = useCallback(async () => {
+    setScanning(true);
     try {
       const results = await scanSkills();
       setDiscoveredSkills(results);
+      toast(results.length > 0
+        ? { type: 'success', title: 'Scan complete', message: `Found ${results.length} new skill${results.length > 1 ? 's' : ''}` }
+        : { type: 'info', title: 'Scan complete', message: 'No new skills found' });
     } catch (e) {
       console.error('[useLocalSkillActions] scan failed:', e);
       setDiscoveredSkills([]);
+      toast({ type: 'error', title: 'Scan failed', message: String(e) });
+    } finally {
+      setScanning(false);
     }
-  }, [scanSkills]);
+  }, [scanSkills, toast]);
+
+  const handleRefreshMetadata = useCallback(async () => {
+    setRefreshingMeta(true);
+    try {
+      const updated = await refreshMetadata();
+      toast(updated > 0
+        ? { type: 'success', title: 'Metadata refreshed', message: `Updated ${updated} skill description${updated > 1 ? 's' : ''}` }
+        : { type: 'info', title: 'Metadata refreshed', message: 'All descriptions already up to date' });
+    } catch (e) {
+      console.error('[useLocalSkillActions] metadata refresh failed:', e);
+      toast({ type: 'error', title: 'Metadata refresh failed', message: String(e) });
+    } finally {
+      setRefreshingMeta(false);
+    }
+  }, [refreshMetadata, toast]);
 
   // ── Discovered skills callbacks ─────────────────────────────────────────────
 
@@ -102,10 +128,13 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
 
   return {
     discoveredSkills,
+    scanning,
+    refreshingMeta,
     handleCreate,
     handleInstall,
     handleInstallGit,
     handleScan,
+    handleRefreshMetadata,
     handleImport,
     handleClearDiscovered,
     actions,

@@ -21,7 +21,7 @@ import {
 import type { ManagedSkillDto } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { getAgentIconSrc } from '@/shared/utils/agents';
-import { tagChipClass } from './skillTagColors';
+import { tagChipClass, presetBadgeClass } from './skillTagColors';
 import { getSkillDocument } from '@/features/skill/api/skillApi';
 import { parseSkillDescription } from '@/features/skill/utils/parseSkillDescription';
 import {
@@ -44,6 +44,8 @@ interface SkillCardProps {
   presetLabel?: string | null;
   /** Called when description is recovered from SKILL.md so store can update. */
   onDescriptionResolved?: (skillId: string, description: string) => void;
+  /** Called when a tag chip is clicked. */
+  onTagClick?: (tag: string) => void;
 }
 
 const AGENT_STRIP = [
@@ -91,6 +93,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     installedAgents = [],
     presetLabel,
     onDescriptionResolved,
+    onTagClick,
   }) => {
     const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
     const hasUpdate = skill.update_status === 'update_available';
@@ -265,6 +268,41 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             {displayDesc}
           </p>
 
+          {chips.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map(tag => (
+                <span
+                  key={tag}
+                  role="button"
+                  tabIndex={0}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onTagClick?.(tag);
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onTagClick?.(tag);
+                    }
+                  }}
+                  className={cn(
+                    'inline-flex items-center text-[11px] leading-none px-2 py-1 rounded-md font-medium cursor-pointer hover:opacity-80 transition-opacity',
+                    tagChipClass(tag),
+                  )}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {presetLabel && (
+            <span className={cn('inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium', presetBadgeClass(presetLabel))}>
+              {presetLabel}
+            </span>
+          )}
+
           {hasUpdate && (
             <button
               type="button"
@@ -277,33 +315,11 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
               Update
             </button>
           )}
-
-          {chips.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {chips.map(tag => (
-                <span
-                  key={tag}
-                  className={cn(
-                    'inline-flex items-center text-[11px] leading-none px-2 py-1 rounded-md font-medium',
-                    tagChipClass(tag),
-                  )}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
           <div className="flex items-center gap-1 min-w-0 flex-1 text-text-muted">
             <SourceLabel source={skill.source_type} />
-            {presetLabel ? (
-              <>
-                <span className="opacity-40 shrink-0">·</span>
-                <span className="truncate font-medium text-orange-400">{presetLabel}</span>
-              </>
-            ) : null}
           </div>
 
           <div className="flex items-center gap-1 shrink-0">

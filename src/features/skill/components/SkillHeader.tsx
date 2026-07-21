@@ -1,4 +1,5 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 import {
   Plus,
   FolderDown,
@@ -24,7 +25,9 @@ interface SkillHeaderProps {
   onInstallDirectoryClick: () => void;
   onInstallGitClick: () => void;
   onScanClick: () => void;
+  scanning?: boolean;
   onRefreshMetadataClick?: () => void;
+  refreshingMeta?: boolean;
   filterLabel?: string | null;
   count?: number;
 }
@@ -38,7 +41,9 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
     onInstallDirectoryClick,
     onInstallGitClick,
     onScanClick,
+    scanning,
     onRefreshMetadataClick,
+    refreshingMeta,
     filterLabel,
     count,
   }) => {
@@ -103,22 +108,30 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             variant="ghost"
             size="sm"
             onClick={onScanClick}
-            className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover"
+            disabled={scanning}
+            className={cn(
+              'h-7 px-2.5 text-xs gap-1',
+              scanning ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+            )}
             title="Scan agent skill directories"
           >
-            <Radar className="h-3.5 w-3.5" />
-            Scan
+            <Radar className={cn('h-3.5 w-3.5', scanning && 'animate-spin')} />
+            {scanning ? 'Scanning…' : 'Scan'}
           </Button>
           {onRefreshMetadataClick && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onRefreshMetadataClick}
-              className="h-7 px-2.5 text-xs gap-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover"
+              disabled={refreshingMeta}
+              className={cn(
+                'h-7 px-2.5 text-xs gap-1',
+                refreshingMeta ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              )}
               title="Re-read SKILL.md descriptions into the library"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Meta
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshingMeta && 'animate-spin')} />
+              {refreshingMeta ? 'Refreshing…' : 'Meta'}
             </Button>
           )}
         </div>

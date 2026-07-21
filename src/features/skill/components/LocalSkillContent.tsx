@@ -5,6 +5,8 @@ import { useLocalSkillActions } from './useLocalSkillActions';
 import SkillHeader from './SkillHeader';
 import SkillSearchInput from './SkillSearchInput';
 import SkillListSection from './SkillListSection';
+import SourceTypeFilter from './SourceTypeFilter';
+import TagCloudFilter from './TagCloudFilter';
 import DiscoveredSkillsList from './DiscoveredSkillsList';
 import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
 
@@ -19,17 +21,22 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   const activeTagGroupId = useSkillStore(s => s.activeTagGroupId);
   const selectedSkillId = useSkillStore(s => s.selectedSkillId);
   const tagGroups = useSkillStore(s => s.tagGroups);
+  const sourceFilter = useSkillStore(s => s.sourceFilter);
+  const tagFilter = useSkillStore(s => s.tagFilter);
   const setSearchQuery = useSkillStore(s => s.setSearchQuery);
   const fetchSkillsForTagGroup = useSkillStore(s => s.fetchSkillsForTagGroup);
   const patchSkillDescription = useSkillStore(s => s.patchSkillDescription);
-  const refreshMetadata = useSkillStore(s => s.refreshMetadata);
+  const toggleTagFilter = useSkillStore(s => s.toggleTagFilter);
 
   const {
     discoveredSkills,
+    scanning,
+    refreshingMeta,
     handleCreate,
     handleInstall,
     handleInstallGit,
     handleScan,
+    handleRefreshMetadata,
     handleImport,
     handleClearDiscovered,
     actions,
@@ -78,17 +85,27 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     [tagGroups, activeTagGroupId],
   );
 
+  const baseSkills = tagGroupSkills ?? skills;
+
   const filteredSkills = useMemo(() => {
-    const base = tagGroupSkills ?? skills;
-    if (!searchQuery.trim()) return base;
-    const q = searchQuery.toLowerCase();
-    return base.filter(
-      s =>
-        s.name.toLowerCase().includes(q) ||
-        s.description?.toLowerCase().includes(q) ||
-        s.tags.some(t => t.toLowerCase().includes(q)),
-    );
-  }, [tagGroupSkills, skills, searchQuery]);
+    let list = baseSkills;
+    if (sourceFilter !== 'all') {
+      list = list.filter((s) => s.source_type === sourceFilter);
+    }
+    if (tagFilter.length > 0) {
+      list = list.filter((s) => s.tags.some((t) => tagFilter.includes(t)));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.description?.toLowerCase().includes(q) ||
+          s.tags.some((t) => t.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [baseSkills, sourceFilter, tagFilter, searchQuery]);
 
   return (
     <div className="h-full min-h-0 flex flex-col overflow-hidden">
@@ -98,9 +115,9 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           onInstallDirectoryClick={handleInstall}
           onInstallGitClick={handleInstallGit}
           onScanClick={handleScan}
-          onRefreshMetadataClick={() => {
-            void refreshMetadata().catch(console.error);
-          }}
+          scanning={scanning}
+          onRefreshMetadataClick={handleRefreshMetadata}
+          refreshingMeta={refreshingMeta}
           filterLabel={activeGroupName}
           count={filteredSkills.length}
         />
@@ -119,6 +136,8 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           onImport={handleImport}
           onClear={handleClearDiscovered}
         />
+        <SourceTypeFilter />
+        <TagCloudFilter skills={baseSkills} />
       </div>
 
       {/* Scroll region — must be flex-1 + min-h-0 + overflow-y-auto */}
@@ -132,6 +151,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           presetLabel={activeGroupName}
           skillPresetMap={skillPresetMap}
           onDescriptionResolved={patchSkillDescription}
+          onTagClick={toggleTagFilter}
         />
       </div>
     </div>

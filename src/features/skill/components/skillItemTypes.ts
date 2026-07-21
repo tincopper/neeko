@@ -56,4 +56,6 @@ export interface SkillListSectionProps {
   tagGroups?: Array<{ id: string; name: string }>;
   /** Description recovered from SKILL.md on the card */
   onDescriptionResolved?: (skillId: string, description: string) => void;
+  /** Called when a tag chip is clicked. */
+  onTagClick?: (tag: string) => void;
 }

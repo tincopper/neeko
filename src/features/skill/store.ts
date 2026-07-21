@@ -51,6 +51,10 @@ interface SkillStoreState {
   /** Last project id we auto-applied skills for (dedupe). */
   lastAppliedProjectId: string | null;
   applyingProjectId: string | null;
+  /** Filter by source type. */
+  sourceFilter: 'all' | 'local' | 'git' | 'skillssh';
+  /** Filter by tag names (AND logic, empty = no filter). */
+  tagFilter: string[];
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -102,6 +106,9 @@ interface SkillStoreActions {
   setSearchQuery: (q: string) => void;
   setSelectedSkillId: (id: string | null) => void;
   setActiveTagGroupId: (id: string | null) => void;
+  setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => void;
+  setTagFilter: (tags: string[]) => void;
+  toggleTagFilter: (tag: string) => void;
   /** Patch description after SKILL.md lazy parse (keeps list in sync). */
   patchSkillDescription: (skillId: string, description: string) => void;
 }
@@ -120,6 +127,8 @@ export const initialSkillState: SkillStoreState = {
   projectBindingsLoading: false,
   lastAppliedProjectId: null,
   applyingProjectId: null,
+  sourceFilter: 'all',
+  tagFilter: [],
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -326,6 +335,18 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   setSelectedSkillId: (id: string | null) => set({ selectedSkillId: id }),
   setActiveTagGroupId: (id: string | null) => set({ activeTagGroupId: id }),
+  setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => set({ sourceFilter: source }),
+  setTagFilter: (tags: string[]) => set({ tagFilter: tags }),
+  toggleTagFilter: (tag: string) => {
+    set((state) => {
+      const active = state.tagFilter.includes(tag);
+      return {
+        tagFilter: active
+          ? state.tagFilter.filter((t) => t !== tag)
+          : [...state.tagFilter, tag],
+      };
+    });
+  },
 
   patchSkillDescription: (skillId, description) => {
     const desc = description.trim();
