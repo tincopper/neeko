@@ -109,7 +109,7 @@ const SkillsPanel: React.FC = React.memo(() => {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-2 h-10 px-3 border-b border-border shrink-0">
-        <LayoutGrid className="h-4 w-4 text-accent shrink-0" />
+        <LayoutGrid className="h-4 w-4 text-text-secondary shrink-0" />
         <span className="text-[var(--font-size)] font-semibold text-text-primary">Skills</span>
       </div>
 
@@ -195,7 +195,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                     className={cn(
                       'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
                       'bg-bg-hover/60 border border-border text-text-primary',
-                      'outline-none focus:border-accent/50 placeholder:text-text-muted',
+                      'outline-none focus:border-border focus:bg-bg-primary placeholder:text-text-muted',
                     )}
                     placeholder="e.g. Backend"
                     value={newName}
@@ -210,7 +210,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                   />
                   <button
                     type="button"
-                    className="h-7 px-2 text-[11px] text-accent hover:bg-accent/15 rounded-md shrink-0"
+                    className="h-7 px-2.5 text-[11px] font-medium text-text-primary bg-bg-selected hover:bg-bg-hover rounded-md shrink-0 border border-border"
                     onClick={() => void handleCreate()}
                   >
                     Add
@@ -249,7 +249,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                       <button
                         type="button"
                         onClick={e => void handleSync(e, tg.id, tg.name)}
-                        className="p-0.5 rounded text-text-muted hover:text-accent"
+                        className="p-0.5 rounded text-text-muted hover:text-text-primary"
                         title="Sync to agents"
                         disabled={syncingId === tg.id}
                       >

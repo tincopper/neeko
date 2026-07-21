@@ -154,7 +154,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 px-2 text-[11px] gap-1 text-text-secondary hover:text-accent"
+          className="h-6 px-2 text-[11px] gap-1 text-text-secondary hover:text-text-primary"
           disabled={isApplying || draftIds.length === 0}
           onClick={() => void handleApply()}
         >
@@ -193,7 +193,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
                   className={cn(
                     'flex items-center gap-2.5 w-[calc(100%-12px)] mx-1.5 pl-3 pr-2 py-2 rounded-md text-left transition-colors duration-150',
                     selected
-                      ? 'bg-accent/12 text-text-primary'
+                      ? 'bg-bg-selected text-text-primary'
                       : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                   )}
                 >
@@ -201,7 +201,7 @@ const ProjectSkillContent: React.FC = React.memo(() => {
                     className={cn(
                       'w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
                       selected
-                        ? 'bg-accent border-accent text-white'
+                        ? 'bg-accent-green/20 border-accent-green text-accent-green'
                         : 'border-border bg-transparent',
                     )}
                   >

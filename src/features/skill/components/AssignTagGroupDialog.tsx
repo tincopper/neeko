@@ -79,7 +79,7 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
                     onClick={() => void handlePick(tg.id)}
                     className={cn(
                       'w-full text-left px-3 py-2 rounded border border-border text-xs',
-                      'hover:bg-accent/15 hover:border-accent text-text-primary transition-colors',
+                      'hover:bg-bg-hover border-border text-text-primary transition-colors',
                       busyId === tg.id && 'opacity-60',
                     )}
                   >

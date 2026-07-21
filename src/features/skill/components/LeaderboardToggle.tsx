@@ -35,7 +35,7 @@ const LeaderboardToggle: React.FC<LeaderboardToggleProps> = React.memo(
               className={cn(
                 'flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors duration-150',
                 isActive
-                  ? 'bg-accent/12 text-accent'
+                  ? 'bg-bg-selected text-text-primary'
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                 disabled && 'opacity-50 cursor-not-allowed',
               )}

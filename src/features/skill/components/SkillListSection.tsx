@@ -6,16 +6,13 @@ import { Package } from 'lucide-react';
 const SKELETON_COUNT = 6;
 
 const SkillCardSkeleton: React.FC = () => (
-  <div className="rounded-xl border-2 border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[172px]">
-    <div className="flex gap-2 items-center">
-      <div className="w-[18px] h-[18px] rounded-full bg-bg-hover shrink-0" />
-      <div className="h-3.5 w-2/5 rounded bg-bg-hover" />
-    </div>
-    <div className="pl-[26px] space-y-1.5">
+  <div className="rounded-xl border border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[160px]">
+    <div className="h-3.5 w-2/5 rounded bg-bg-hover" />
+    <div className="space-y-1.5">
       <div className="h-2.5 w-full rounded bg-bg-hover" />
       <div className="h-2.5 w-3/4 rounded bg-bg-hover" />
     </div>
-    <div className="pl-[26px] flex gap-1.5">
+    <div className="flex gap-1.5">
       <div className="h-5 w-14 rounded-md bg-bg-hover" />
       <div className="h-5 w-12 rounded-md bg-bg-hover" />
     </div>

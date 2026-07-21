@@ -150,7 +150,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
       <ResizablePanel open={open} onClose={() => void handleClose()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
-            <GitBranch className="h-4 w-4 text-accent" />
+            <GitBranch className="h-4 w-4 text-text-secondary" />
             <span className="text-sm font-semibold text-text-primary">Install from Git</span>
           </div>
           <button
@@ -219,7 +219,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
                 </label>
                 <button
                   type="button"
-                  className="text-[11px] text-accent hover:underline"
+                  className="text-[11px] text-text-secondary hover:text-text-primary hover:underline"
                   disabled={installing}
                   onClick={() => {
                     if (selected.size === skills.length) setSelected(new Set());
@@ -237,7 +237,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
                       <label
                         className={cn(
                           'flex items-start gap-2 px-3 py-2 cursor-pointer text-xs hover:bg-bg-hover',
-                          checked && 'bg-accent/10',
+                          checked && 'bg-bg-selected',
                         )}
                       >
                         <input

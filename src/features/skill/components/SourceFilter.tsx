@@ -44,7 +44,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
           className={cn(
             'shrink-0 h-6 px-2 text-[11px] rounded-md transition-colors',
             value === null
-              ? 'bg-accent/12 text-accent'
+              ? 'bg-bg-selected text-text-primary'
               : 'text-text-secondary hover:bg-bg-hover',
             disabled && 'opacity-50 cursor-not-allowed',
           )}
@@ -60,7 +60,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
             className={cn(
               'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors',
               value === source
-                ? 'bg-accent/12 text-accent'
+                ? 'bg-bg-selected text-text-primary'
                 : 'text-text-secondary hover:bg-bg-hover',
               disabled && 'opacity-50 cursor-not-allowed',
             )}

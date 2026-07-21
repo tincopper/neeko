@@ -31,7 +31,7 @@ const SkillSearchInput: React.FC<SkillSearchInputProps> = ({
             'w-full h-8 pl-8 text-[var(--font-size)] rounded-lg',
             'bg-bg-hover/50 border border-border/80',
             'text-text-primary placeholder:text-text-muted',
-            'outline-none focus:border-accent/40 focus:bg-bg-primary transition-colors',
+            'outline-none focus:border-border focus:bg-bg-primary transition-colors',
             clearable && value ? 'pr-8' : 'pr-3',
           )}
         />

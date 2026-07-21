@@ -25,9 +25,9 @@ const DiscoveredSkillsList: React.FC<DiscoveredSkillsListProps> = React.memo(
     if (skills.length === 0) return null;
 
     return (
-      <div className="border-b border-border bg-accent/5 shrink-0">
+      <div className="border-b border-border bg-bg-hover/40 shrink-0">
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-accent">
+          <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-text-secondary">
             Discovered · {skills.length}
           </span>
           <Button
@@ -60,7 +60,7 @@ const DiscoveredSkillsList: React.FC<DiscoveredSkillsListProps> = React.memo(
                 onClick={() =>
                   void handleImport(skill.found_path, skill.name_guess || undefined)
                 }
-                className="h-6 px-2 text-[11px] gap-1 shrink-0 text-text-secondary hover:text-accent"
+                className="h-6 px-2 text-[11px] gap-1 shrink-0 text-text-secondary hover:text-text-primary"
               >
                 <Download className="h-3 w-3" />
                 Import

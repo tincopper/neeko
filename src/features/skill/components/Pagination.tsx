@@ -77,7 +77,7 @@ const Pagination: React.FC<PaginationProps> = React.memo(
                 className={cn(
                   "min-w-[24px] h-6 text-[11px] rounded transition-colors",
                   p === page
-                    ? "bg-accent/15 text-accent font-medium"
+                    ? "bg-bg-selected text-text-primary font-medium"
                     : "text-text-secondary hover:text-text-primary hover:bg-bg-hover",
                   disabled && "opacity-50 cursor-not-allowed"
                 )}

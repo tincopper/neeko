@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { Download, Check, Loader2, ExternalLink } from '@/shared/components/icons';
+import { Download, Loader2, ExternalLink } from '@/shared/components/icons';
 import { Button } from '@/ui';
 import type { SkillsShSkill, InstallProgress } from '@/shared/types';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,10 @@ interface MarketSkillCardProps {
   skill: SkillsShSkill;
   isInstalled: boolean;
   isInstalling: boolean;
+  isUninstalling?: boolean;
   installPhase?: InstallProgress['phase'];
   onInstall: (source: string, skillId: string) => void;
+  onUninstall?: (skillId: string) => void;
 }
 
 const phaseLabels: Record<InstallProgress['phase'], string> = {
@@ -35,11 +37,26 @@ function getSkillPageUrl(source: string, skillId: string): string {
   return `https://skills.sh/${source}/${skillId}`;
 }
 
+/** Compact marketplace card — 4-up grid friendly. */
 const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
-  ({ skill, isInstalled, isInstalling, installPhase, onInstall }) => {
+  ({
+    skill,
+    isInstalled,
+    isInstalling,
+    isUninstalling = false,
+    installPhase,
+    onInstall,
+    onUninstall,
+  }) => {
+    const busy = isInstalling || isUninstalling;
+
     const handleInstall = useCallback(() => {
       onInstall(skill.source, skill.skill_id);
     }, [skill.source, skill.skill_id, onInstall]);
+
+    const handleUninstall = useCallback(() => {
+      onUninstall?.(skill.skill_id);
+    }, [skill.skill_id, onUninstall]);
 
     const avatarUrl = useMemo(() => getAvatarUrl(skill.source), [skill.source]);
     const skillPageUrl = useMemo(
@@ -50,77 +67,78 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
     return (
       <div
         className={cn(
-          'group flex flex-col h-full min-h-[140px] rounded-xl bg-bg-primary border-2',
-          'transition-colors duration-150 hover:bg-bg-hover/40',
-          isInstalled ? 'border-accent-green/70' : 'border-border',
+          'group flex flex-col h-full min-h-[112px] rounded-lg bg-bg-primary border',
+          'transition-colors duration-150 hover:bg-bg-hover/50',
+          isInstalled ? 'border-accent-green/60' : 'border-border',
         )}
       >
-        <div className="flex items-start gap-2.5 px-3.5 pt-3.5 pb-2 flex-1">
-          <span
-            className={cn(
-              'mt-0.5 w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0',
-              isInstalled
-                ? 'border-accent-green bg-accent-green/15 text-accent-green'
-                : 'border-text-muted/45',
-            )}
-          >
-            {isInstalled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
-          </span>
-
+        <div className="flex items-start gap-2 px-2.5 pt-2.5 pb-1.5 flex-1 min-w-0">
           <img
             src={avatarUrl}
             alt=""
-            className="w-7 h-7 rounded-md shrink-0 border border-border bg-bg-hover"
+            className="w-6 h-6 rounded-md shrink-0 border border-border bg-bg-hover mt-0.5"
             loading="lazy"
           />
 
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-semibold text-text-primary truncate leading-snug">
-              {skill.name || skill.skill_id}
+            <div className="flex items-start gap-1">
+              <span className="text-[12px] font-semibold text-text-primary truncate leading-snug flex-1">
+                {skill.name || skill.skill_id}
+              </span>
+              <a
+                href={skillPageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-0.5 rounded text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                title="Open on skills.sh"
+                onClick={e => e.stopPropagation()}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </a>
             </div>
-            <p className="text-[12px] text-text-secondary line-clamp-2 leading-relaxed mt-0.5">
+            <p className="text-[11px] text-text-secondary truncate leading-snug mt-0.5">
               {humanizeSkillId(skill.skill_id || skill.name)}
             </p>
-            <div className="text-[11px] text-text-muted truncate font-mono mt-1">
+            <div className="text-[10px] text-text-muted truncate font-mono mt-0.5">
               {skill.source}
             </div>
           </div>
-
-          <a
-            href={skillPageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-1 rounded-md text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Open on skills.sh"
-            onClick={e => e.stopPropagation()}
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-t border-border">
+        <div className="flex items-center justify-between gap-1.5 px-2.5 py-1.5 border-t border-border/80">
           {skill.installs > 0 ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-text-muted tabular-nums">
-              <Download className="h-3 w-3" />
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-text-muted tabular-nums">
+              <Download className="h-2.5 w-2.5" />
               {formatInstalls(skill.installs)}
             </span>
           ) : (
             <span />
           )}
 
-          {isInstalled && !isInstalling ? (
-            <span className="text-[11px] font-semibold text-accent-green">Installed</span>
-          ) : isInstalling ? (
-            <span className="inline-flex items-center gap-1 text-[11px] text-accent-yellow">
+          {busy ? (
+            <span className="inline-flex items-center gap-1 text-[10px] text-text-muted">
               <Loader2 className="h-3 w-3 animate-spin" />
-              {installPhase ? phaseLabels[installPhase] : '…'}
+              {isUninstalling
+                ? 'Removing…'
+                : installPhase
+                  ? phaseLabels[installPhase]
+                  : '…'}
             </span>
+          ) : isInstalled ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleUninstall}
+              className="h-6 px-2 text-[10px] font-semibold text-text-secondary hover:text-accent-red"
+            >
+              Uninstall
+            </Button>
           ) : (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleInstall}
-              className="h-6 px-2.5 text-[11px] font-semibold text-text-secondary hover:text-accent-green"
+              className="h-6 px-2 text-[10px] font-semibold text-text-secondary hover:text-accent-blue"
             >
               Install
             </Button>

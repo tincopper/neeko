@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Store, Loader2 } from '@/shared/components/icons';
 import { useSkillStore } from '@/features/skill/store';
 import { useMarketplace } from '@/features/skill/hooks/useMarketplace';
@@ -16,8 +16,28 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
   ({ onSkillInstalled }) => {
     const skills = useSkillStore(s => s.skills);
     const refreshSkills = useSkillStore(s => s.refreshSkills);
+    const deleteSkill = useSkillStore(s => s.deleteSkill);
+
+    const [uninstallingIds, setUninstallingIds] = useState<Set<string>>(new Set());
 
     const installedSkillNames = useMemo(() => skills.map(s => s.name), [skills]);
+
+    /** Map marketplace skill_id / name → managed skill id for uninstall. */
+    const installedIdByKey = useMemo(() => {
+      const map = new Map<string, string>();
+      for (const s of skills) {
+        map.set(s.name.toLowerCase(), s.id);
+        if (s.source_ref) {
+          const tail = s.source_ref.split('/').pop()?.replace(/\.git$/, '');
+          if (tail) map.set(tail.toLowerCase(), s.id);
+        }
+        // skillssh often stores subpath as skill name
+        if (s.source_type === 'skillssh' && s.source_ref) {
+          map.set(s.name.toLowerCase(), s.id);
+        }
+      }
+      return map;
+    }, [skills]);
 
     const handleInstalled = useCallback(
       (info: { id: string; name: string }) => {
@@ -61,6 +81,36 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
         }
       },
       [installFromMarket],
+    );
+
+    const handleUninstall = useCallback(
+      async (marketSkillId: string) => {
+        const managedId =
+          installedIdByKey.get(marketSkillId.toLowerCase()) ??
+          skills.find(
+            s =>
+              s.name === marketSkillId ||
+              s.name.toLowerCase() === marketSkillId.toLowerCase(),
+          )?.id;
+        if (!managedId) {
+          console.error('No managed skill found for', marketSkillId);
+          return;
+        }
+        setUninstallingIds(prev => new Set(prev).add(marketSkillId));
+        try {
+          await deleteSkill(managedId);
+          await refreshSkills();
+        } catch (e) {
+          console.error('Uninstall failed:', e);
+        } finally {
+          setUninstallingIds(prev => {
+            const next = new Set(prev);
+            next.delete(marketSkillId);
+            return next;
+          });
+        }
+      },
+      [installedIdByKey, skills, deleteSkill, refreshSkills],
     );
 
     const getFullId = (source: string, skillId: string) => `${source}/${skillId}`;
@@ -118,17 +168,19 @@ const MarketplaceContent: React.FC<MarketplaceContentProps> = React.memo(
               </span>
             </div>
           ) : (
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
+            <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 content-start">
               {displayList.map(skill => {
                 const fullId = getFullId(skill.source, skill.skill_id);
                 return (
                   <MarketSkillCard
                     key={skill.id}
                     skill={skill}
-                    isInstalled={isInstalled(skill.skill_id)}
+                    isInstalled={isInstalled(skill.skill_id) || isInstalled(skill.name)}
                     isInstalling={installingIds.has(fullId)}
+                    isUninstalling={uninstallingIds.has(skill.skill_id)}
                     installPhase={installProgress.get(fullId)}
                     onInstall={handleInstall}
+                    onUninstall={handleUninstall}
                   />
                 );
               })}

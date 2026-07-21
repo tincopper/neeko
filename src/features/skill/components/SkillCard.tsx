@@ -4,7 +4,6 @@ import {
   FileText,
   Edit3,
   MoreHorizontal,
-  Check,
   HardDrive,
   GitBranch,
   Store,
@@ -142,28 +141,16 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           }
         }}
         className={cn(
-          'group flex flex-col h-full min-h-[172px] rounded-xl cursor-pointer',
+          'group flex flex-col h-full min-h-[160px] rounded-xl cursor-pointer',
           'bg-bg-primary transition-colors duration-150',
-          'border-2',
-          enabled ? 'border-accent-green/70' : 'border-border',
-          isSelected && 'ring-2 ring-accent-blue/40',
+          'border',
+          enabled ? 'border-accent-green/60' : 'border-border',
+          isSelected && 'ring-1 ring-accent-blue/50',
           'hover:bg-bg-hover/40',
         )}
       >
         <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center shrink-0',
-                enabled
-                  ? 'border-accent-green bg-accent-green/15 text-accent-green'
-                  : 'border-text-muted/45 bg-transparent',
-              )}
-              aria-hidden
-            >
-              {enabled ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
-            </span>
-
             <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-text-primary truncate leading-none">
               {skill.name}
             </h3>
@@ -252,10 +239,10 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </DropdownMenu>
           </div>
 
-          {/* Description — always reserve 2 lines; use secondary color for readability */}
+          {/* Description — always reserve 2 lines */}
           <p
             className={cn(
-              'text-[12px] leading-relaxed line-clamp-2 pl-[26px] min-h-[2.5em]',
+              'text-[12px] leading-relaxed line-clamp-2 min-h-[2.5em]',
               resolvedDesc ? 'text-text-secondary' : 'text-text-muted italic',
             )}
             title={displayDesc}
@@ -266,7 +253,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           {hasUpdate && (
             <button
               type="button"
-              className="self-start pl-[26px] text-[12px] font-medium text-accent-yellow hover:underline"
+              className="self-start text-[12px] font-medium text-accent-yellow hover:underline"
               onClick={e => {
                 e.stopPropagation();
                 onUpdateSkill?.();
@@ -277,7 +264,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           )}
 
           {chips.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pl-[26px]">
+            <div className="flex flex-wrap gap-1.5">
               {chips.map(tag => (
                 <span
                   key={tag}
