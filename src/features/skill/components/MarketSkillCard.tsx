@@ -4,6 +4,7 @@ import { Button } from '@/ui';
 import type { SkillsShSkill, InstallProgress } from '@/shared/types';
 import { cn } from '@/lib/utils';
 import { humanizeSkillId } from '@/features/skill/utils/parseSkillDescription';
+import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 
 interface MarketSkillCardProps {
   skill: SkillsShSkill;
@@ -64,6 +65,19 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
       [skill.source, skill.skill_id],
     );
 
+    const handleOpenExternal = useCallback(
+      async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          await openInDefaultBrowser(skillPageUrl);
+        } catch (err) {
+          console.error('Failed to open skills.sh:', err);
+        }
+      },
+      [skillPageUrl],
+    );
+
     return (
       <div
         className={cn(
@@ -85,16 +99,14 @@ const MarketSkillCard: React.FC<MarketSkillCardProps> = React.memo(
               <span className="text-[12px] font-semibold text-text-primary truncate leading-snug flex-1">
                 {skill.name || skill.skill_id}
               </span>
-              <a
-                href={skillPageUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
                 className="p-0.5 rounded text-text-muted hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 title="Open on skills.sh"
-                onClick={e => e.stopPropagation()}
+                onClick={e => void handleOpenExternal(e)}
               >
                 <ExternalLink className="h-3 w-3" />
-              </a>
+              </button>
             </div>
             <p className="text-[11px] text-text-secondary truncate leading-snug mt-0.5">
               {humanizeSkillId(skill.skill_id || skill.name)}
