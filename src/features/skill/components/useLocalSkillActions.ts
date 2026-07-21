@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useSkillStore } from '@/features/skill/store';
+
 import { useNotificationStore } from '@/features/notification/notificationStore';
+import { useSkillStore } from '@/features/skill/store';
 import type { ManagedSkillDto, DiscoveredSkillDto } from '@/shared/types';
+
 import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -22,15 +24,15 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   const toast = useNotificationStore.getState().addNotification;
 
   // ── Store actions ───────────────────────────────────────────────────────────
-  const installLocal = useSkillStore(s => s.installLocal);
-  const scanSkills = useSkillStore(s => s.scanSkills);
-  const refreshMetadata = useSkillStore(s => s.refreshMetadata);
-  const importDiscoveredSkill = useSkillStore(s => s.importDiscoveredSkill);
-  const deleteSkill = useSkillStore(s => s.deleteSkill);
-  const addSkillToTagGroup = useSkillStore(s => s.addSkillToTagGroup);
-  const checkSkillUpdate = useSkillStore(s => s.checkSkillUpdate);
-  const updateSkillFromSource = useSkillStore(s => s.updateSkillFromSource);
-  const setSelectedSkillId = useSkillStore(s => s.setSelectedSkillId);
+  const installLocal = useSkillStore((s) => s.installLocal);
+  const scanSkills = useSkillStore((s) => s.scanSkills);
+  const refreshMetadata = useSkillStore((s) => s.refreshMetadata);
+  const importDiscoveredSkill = useSkillStore((s) => s.importDiscoveredSkill);
+  const deleteSkill = useSkillStore((s) => s.deleteSkill);
+  const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
+  const checkSkillUpdate = useSkillStore((s) => s.checkSkillUpdate);
+  const updateSkillFromSource = useSkillStore((s) => s.updateSkillFromSource);
+  const setSelectedSkillId = useSkillStore((s) => s.setSelectedSkillId);
 
   // ── Header callbacks ────────────────────────────────────────────────────────
 
@@ -55,9 +57,15 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
     try {
       const results = await scanSkills();
       setDiscoveredSkills(results);
-      toast(results.length > 0
-        ? { type: 'success', title: 'Scan complete', message: `Found ${results.length} new skill${results.length > 1 ? 's' : ''}` }
-        : { type: 'info', title: 'Scan complete', message: 'No new skills found' });
+      toast(
+        results.length > 0
+          ? {
+              type: 'success',
+              title: 'Scan complete',
+              message: `Found ${results.length} new skill${results.length > 1 ? 's' : ''}`,
+            }
+          : { type: 'info', title: 'Scan complete', message: 'No new skills found' },
+      );
     } catch (e) {
       console.error('[useLocalSkillActions] scan failed:', e);
       setDiscoveredSkills([]);
@@ -71,9 +79,19 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
     setRefreshingMeta(true);
     try {
       const updated = await refreshMetadata();
-      toast(updated > 0
-        ? { type: 'success', title: 'Metadata refreshed', message: `Updated ${updated} skill description${updated > 1 ? 's' : ''}` }
-        : { type: 'info', title: 'Metadata refreshed', message: 'All descriptions already up to date' });
+      toast(
+        updated > 0
+          ? {
+              type: 'success',
+              title: 'Metadata refreshed',
+              message: `Updated ${updated} skill description${updated > 1 ? 's' : ''}`,
+            }
+          : {
+              type: 'info',
+              title: 'Metadata refreshed',
+              message: 'All descriptions already up to date',
+            },
+      );
     } catch (e) {
       console.error('[useLocalSkillActions] metadata refresh failed:', e);
       toast({ type: 'error', title: 'Metadata refresh failed', message: String(e) });
@@ -87,7 +105,7 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   const handleImport = useCallback(
     async (discoveredPath: string, name?: string) => {
       await importDiscoveredSkill(discoveredPath, name);
-      setDiscoveredSkills(prev => prev.filter(d => d.found_path !== discoveredPath));
+      setDiscoveredSkills((prev) => prev.filter((d) => d.found_path !== discoveredPath));
     },
     [importDiscoveredSkill],
   );
@@ -109,8 +127,26 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       onAddToTagGroup: (skillId: string, tagGroupId: string) => {
         void addSkillToTagGroup(tagGroupId, skillId).catch(console.error);
       },
-      onCheckUpdate: (skill: ManagedSkillDto) => {
-        void checkSkillUpdate(skill.id).catch(console.error);
+      onCheckUpdate: async (skill: ManagedSkillDto) => {
+        try {
+          const result = await checkSkillUpdate(skill.id);
+          if (result.status === 'update_available') {
+            toast({
+              type: 'info',
+              title: 'Update available',
+              message: `"${skill.name}" has a remote update ready`,
+            });
+          } else {
+            toast({
+              type: 'success',
+              title: 'Up to date',
+              message: `"${skill.name}" is already at the latest version`,
+            });
+          }
+        } catch (e) {
+          console.error('[useLocalSkillActions] check update failed:', e);
+          toast({ type: 'error', title: 'Check failed', message: String(e) });
+        }
       },
       onUpdateSkill: (skill: ManagedSkillDto) => {
         void updateSkillFromSource(skill.id).catch(console.error);
@@ -123,6 +159,7 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       addSkillToTagGroup,
       checkSkillUpdate,
       updateSkillFromSource,
+      toast,
     ],
   );
 

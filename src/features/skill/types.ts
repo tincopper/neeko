@@ -20,11 +20,17 @@ export interface ManagedSkillDto {
   description: string | null;
   source_type: string;
   source_ref: string | null;
+  source_ref_resolved: string | null;
+  source_subpath: string | null;
+  source_branch: string | null;
+  source_revision: string | null;
+  remote_revision: string | null;
   central_path: string;
   enabled: boolean;
   status: string;
   update_status: string;
   tags: string[];
+  last_checked_at: number | null;
   created_at: number;
   updated_at: number;
 }

@@ -133,6 +133,16 @@ pub struct ManagedSkillDto {
     pub source_type: String,
     /// Original source reference.
     pub source_ref: Option<String>,
+    /// Resolved source reference (e.g. full git URL after shorthand expansion).
+    pub source_ref_resolved: Option<String>,
+    /// Optional subpath within the source repository.
+    pub source_subpath: Option<String>,
+    /// Git branch name.
+    pub source_branch: Option<String>,
+    /// Current local git revision.
+    pub source_revision: Option<String>,
+    /// Latest remote revision from last update check.
+    pub remote_revision: Option<String>,
     /// Absolute path in the central repository.
     pub central_path: String,
     /// Whether the skill is enabled.
@@ -143,6 +153,8 @@ pub struct ManagedSkillDto {
     pub update_status: String,
     /// Associated tag names.
     pub tags: Vec<String>,
+    /// Timestamp of last update check.
+    pub last_checked_at: Option<i64>,
     /// Creation timestamp.
     pub created_at: i64,
     /// Last update timestamp.

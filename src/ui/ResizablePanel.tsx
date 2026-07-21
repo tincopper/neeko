@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { cn } from '@/lib/utils';
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 
 interface ResizablePanelProps {
   open: boolean;
@@ -10,6 +11,8 @@ interface ResizablePanelProps {
   onWidthPersist?: (width: number) => void;
   children: React.ReactNode;
   className?: string;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 const MIN_WIDTH = 400;
@@ -25,6 +28,8 @@ export function ResizablePanel({
   onWidthPersist,
   children,
   className,
+  expanded,
+  onToggleExpand,
 }: ResizablePanelProps) {
   const [width, setWidth] = useState(defaultWidth);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -44,6 +49,8 @@ export function ResizablePanel({
       document.body.style.userSelect = "";
     };
   }, []);
+
+  const effectiveWidth = expanded ? maxWidth : width;
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -90,12 +97,26 @@ export function ResizablePanel({
           "relative ml-auto flex flex-col bg-bg-secondary border-l border-border shadow-xl",
           className
         )}
-        style={{ width: `${width}px` }}
+        style={{ width: `${effectiveWidth}px` }}
       >
         <div
           className="absolute top-0 left-[-5px] w-[10px] h-full cursor-col-resize z-10 hover:bg-accent/30 active:bg-accent/50 transition-colors"
           onMouseDown={handleResizeStart}
         />
+
+        {onToggleExpand && (
+          <button
+            onClick={onToggleExpand}
+            className="absolute top-2 left-[-24px] p-1 rounded-l-md bg-bg-secondary border border-border border-r-0 text-text-muted hover:text-text-primary hover:bg-bg-hover z-20"
+            title={expanded ? "Collapse panel" : "Expand panel"}
+          >
+            {expanded ? (
+              <ChevronsRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
 
         {children}
       </div>

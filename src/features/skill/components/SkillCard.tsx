@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Trash2,
-  FileText,
+  Eye,
   Edit3,
   MoreHorizontal,
   HardDrive,
@@ -162,6 +162,31 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
               {skill.name}
             </h3>
 
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <button
+                type="button"
+                className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover"
+                title="View"
+                onClick={e => {
+                  e.stopPropagation();
+                  onAction('detail');
+                }}
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover"
+                title="Edit"
+                onClick={e => {
+                  e.stopPropagation();
+                  onAction('edit');
+                }}
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -195,7 +220,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                   className={skillMenuItemClass()}
                   onSelect={() => onAction('detail')}
                 >
-                  <FileText />
+                  <Eye />
                   View
                 </DropdownMenuItem>
 

@@ -25,6 +25,16 @@ pub struct ManagedSkillDtoOut {
     pub source_type: String,
     /// Original source reference.
     pub source_ref: Option<String>,
+    /// Resolved source reference (e.g. full git URL after shorthand expansion).
+    pub source_ref_resolved: Option<String>,
+    /// Optional subpath within the source repository.
+    pub source_subpath: Option<String>,
+    /// Git branch name.
+    pub source_branch: Option<String>,
+    /// Current local git revision.
+    pub source_revision: Option<String>,
+    /// Latest remote revision from last update check.
+    pub remote_revision: Option<String>,
     /// Absolute path in the central repository.
     pub central_path: String,
     /// Whether the skill is enabled.
@@ -35,6 +45,8 @@ pub struct ManagedSkillDtoOut {
     pub update_status: String,
     /// Associated tags.
     pub tags: Vec<String>,
+    /// Timestamp of last update check.
+    pub last_checked_at: Option<i64>,
     /// Creation timestamp.
     pub created_at: i64,
     /// Last update timestamp.
@@ -101,10 +113,16 @@ fn skill_to_dto(s: SkillRecord, tags: Vec<String>) -> ManagedSkillDtoOut {
         description: s.description,
         source_type: s.source_type,
         source_ref: s.source_ref,
+        source_ref_resolved: s.source_ref_resolved,
+        source_subpath: s.source_subpath,
+        source_branch: s.source_branch,
+        source_revision: s.source_revision,
+        remote_revision: s.remote_revision,
         central_path: s.central_path,
         enabled: s.enabled,
         status: s.status,
         update_status: s.update_status,
+        last_checked_at: s.last_checked_at,
         created_at: s.created_at,
         updated_at: s.updated_at,
     }
@@ -371,10 +389,16 @@ pub async fn install_local_skill(
             description: result.description,
             source_type: "local".to_string(),
             source_ref: None,
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
             central_path: result.central_path.to_string_lossy().to_string(),
             enabled: true,
             status: "ok".to_string(),
             update_status: "unknown".to_string(),
+            last_checked_at: None,
             tags: vec![],
             created_at: now,
             updated_at: now,
@@ -437,7 +461,7 @@ pub async fn import_discovered_skill(
             name: result.name.clone(),
             description: result.description.clone(),
             source_type: "local".to_string(),
-            source_ref: Some(discovered_path),
+            source_ref: Some(discovered_path.clone()),
             source_ref_resolved: None,
             source_subpath: None,
             source_branch: None,
@@ -456,14 +480,20 @@ pub async fn import_discovered_skill(
         store.insert_skill(&skill).map_err(AppError::from)?;
         Ok(ManagedSkillDtoOut {
             id,
-            name: result.name,
-            description: result.description,
+            name: skill.name.clone(),
+            description: skill.description.clone(),
             source_type: "local".to_string(),
-            source_ref: None,
-            central_path: result.central_path.to_string_lossy().to_string(),
+            source_ref: Some(discovered_path.clone()),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: skill.central_path.clone(),
             enabled: true,
             status: "ok".to_string(),
             update_status: "unknown".to_string(),
+            last_checked_at: None,
             tags: vec![],
             created_at: now,
             updated_at: now,
@@ -581,11 +611,17 @@ pub async fn confirm_git_install(
             name: result.name,
             description: result.description,
             source_type: "git".to_string(),
-            source_ref: Some(confirmed.clone_url),
+            source_ref: Some(confirmed.clone_url.clone()),
+            source_ref_resolved: Some(confirmed.clone_url.clone()),
+            source_subpath: confirmed.source_subpath.clone(),
+            source_branch: confirmed.branch.clone(),
+            source_revision: None,
+            remote_revision: None,
             central_path: result.central_path.to_string_lossy().to_string(),
             enabled: true,
             status: "ok".to_string(),
             update_status: "unknown".to_string(),
+            last_checked_at: None,
             tags: vec![],
             created_at: now,
             updated_at: now,
@@ -665,10 +701,16 @@ pub async fn update_skill(
             description: updated.description,
             source_type: updated.source_type,
             source_ref: updated.source_ref,
+            source_ref_resolved: updated.source_ref_resolved,
+            source_subpath: updated.source_subpath,
+            source_branch: updated.source_branch,
+            source_revision: updated.source_revision,
+            remote_revision: updated.remote_revision,
             central_path: updated.central_path,
             enabled: updated.enabled,
             status: updated.status,
             update_status: updated.update_status,
+            last_checked_at: updated.last_checked_at,
             tags: vec![],
             created_at: updated.created_at,
             updated_at: updated.updated_at,
@@ -1106,14 +1148,20 @@ pub async fn create_skill(
 
         Ok(ManagedSkillDtoOut {
             id,
-            name: sanitized,
-            description,
+            name: skill.name.clone(),
+            description: skill.description.clone(),
             source_type: "local".to_string(),
             source_ref: None,
-            central_path: dest.to_string_lossy().to_string(),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: skill.central_path.clone(),
             enabled: true,
             status: "ok".to_string(),
             update_status: "unknown".to_string(),
+            last_checked_at: None,
             tags: vec![],
             created_at: now,
             updated_at: now,
@@ -1298,6 +1346,13 @@ pub async fn install_from_skillssh(
         // Get revision
         let revision = super::git_fetcher::get_head_revision(&repo_path).ok();
 
+        // Compute relative subpath from repo root
+        let source_subpath = skill_dir
+            .strip_prefix(&repo_path)
+            .ok()
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_string_lossy().to_string());
+
         // Insert skill record
         let now = chrono::Utc::now().timestamp_millis();
         let id = uuid::Uuid::new_v4().to_string();
@@ -1308,7 +1363,7 @@ pub async fn install_from_skillssh(
             source_type: "skillssh".to_string(),
             source_ref: Some(git_url.clone()),
             source_ref_resolved: None,
-            source_subpath: Some(skill_id.clone()),
+            source_subpath: source_subpath.clone(),
             source_branch: None,
             source_revision: revision,
             remote_revision: None,
@@ -1342,10 +1397,16 @@ pub async fn install_from_skillssh(
             description: result.description,
             source_type: "skillssh".to_string(),
             source_ref: Some(git_url),
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
             central_path: result.central_path.to_string_lossy().to_string(),
             enabled: true,
             status: "ok".to_string(),
             update_status: "up_to_date".to_string(),
+            last_checked_at: None,
             tags: vec![],
             created_at: now,
             updated_at: now,
