@@ -249,6 +249,11 @@ impl SkillStore {
         self.repo.get_all_project_skill_counts()
     }
 
+    /// Bound tag-group counts for all projects (`project_id`, count).
+    pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
+        self.repo.get_all_project_tag_group_counts()
+    }
+
     /// Add a tag group binding to a project.
     pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
         self.repo.add_project_tag_group(project_id, tag_group_id)

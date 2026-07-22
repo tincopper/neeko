@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neeko Skills · Project ↔ Tag Group 关系原型</title>
+  <style>
+    :root {
+      --bg-primary: #1e2127;
+      --bg-secondary: #181a1c;
+      --bg-tertiary: #2a2d34;
+      --bg-hover: #3b3b40;
+      --bg-selected: #44444a;
+      --text-primary: #e8e8e8;
+      --text-secondary: #cccccc;
+      --text-muted: #8a8a8a;
+      --border: #3b3b40;
+      --accent-blue: #2997ff;
+      --accent-blue-dim: rgba(41, 151, 255, 0.15);
+      --accent-green: #98c379;
+      --accent-red: #e06c75;
+      --radius: 8px;
+      --font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font: var(--font);
+      color: var(--text-primary);
+      background: #0f1012;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-bottom: 18px;
+      max-width: 920px;
+      line-height: 1.55;
+    }
+    .subtitle code {
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--bg-tertiary);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--text-secondary);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent-blue);
+    }
+    .dot.muted { background: var(--text-muted); }
+    .dot.green { background: var(--accent-green); }
+
+    /* App chrome */
+    .app {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      height: min(720px, calc(100vh - 140px));
+      min-height: 560px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg-primary);
+      box-shadow: 0 20px 50px rgba(0,0,0,.45);
+    }
+
+    /* Left rail */
+    .rail {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .rail-head {
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      margin: 1px 6px;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: default;
+    }
+    .nav-item .count {
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 12px 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+    }
+    .section-label .chev { opacity: .7; font-size: 10px; }
+
+    .project-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: calc(100% - 12px);
+      margin: 1px 6px;
+      padding: 7px 10px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: background .12s, color .12s;
+    }
+    .project-row:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .project-row.active {
+      background: var(--bg-selected);
+      color: var(--text-primary);
+    }
+    .avatar {
+      width: 20px; height: 20px;
+      border-radius: 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .project-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    /* Dual metric — NEW */
+    .metrics {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+    }
+    .metrics .disk {
+      color: var(--text-muted);
+      min-width: 1.1rem;
+      text-align: right;
+    }
+    .metrics .sep { color: var(--border); }
+    .metrics .groups {
+      color: var(--text-muted);
+      opacity: .85;
+      min-width: 1.6rem;
+      text-align: right;
+    }
+    .project-row.active .metrics .disk { color: var(--text-secondary); }
+    .project-row.active .metrics .groups { color: var(--accent-blue); }
+
+    .callout {
+      margin: 8px 10px 12px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px dashed rgba(41,151,255,.35);
+      background: var(--accent-blue-dim);
+      color: var(--text-secondary);
+      font-size: 10.5px;
+      line-height: 1.45;
+    }
+    .callout strong { color: var(--accent-blue); font-weight: 600; }
+
+    /* Right content */
+    .content {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg-primary);
+    }
+    .content-header {
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .content-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-width: 1.35rem;
+      height: 20px;
+      padding: 0 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .path {
+      margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Bound tag groups — NEW section */
+    .bound-section {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px 12px;
+      background: linear-gradient(180deg, rgba(41,151,255,.04), transparent 90%);
+    }
+    .bound-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .bound-head h3 {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .bound-head .hint {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      opacity: .85;
+    }
+    .bound-head .spacer { flex: 1; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--bg-selected); }
+    .btn.primary {
+      background: var(--accent-blue);
+      border-color: transparent;
+      color: #fff;
+    }
+    .btn.primary:hover { filter: brightness(1.08); }
+    .btn.ghost {
+      background: transparent;
+      color: var(--text-secondary);
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .bound-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .bound-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 10px 0 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 11.5px;
+    }
+    .bound-chip .icon {
+      width: 14px; height: 14px;
+      opacity: .55;
+    }
+    .bound-chip .sc {
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      font-size: 10.5px;
+    }
+    .bound-empty {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      padding: 6px 0 2px;
+      line-height: 1.5;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .search {
+      flex: 1;
+      min-width: 160px;
+      max-width: 320px;
+      height: 32px;
+      padding: 0 10px 0 30px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      color: var(--text-muted);
+      font: inherit;
+      position: relative;
+    }
+    .search-wrap { position: relative; flex: 1; min-width: 160px; max-width: 320px; }
+    .search-wrap::before {
+      content: "⌕";
+      position: absolute;
+      left: 10px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 13px;
+      pointer-events: none;
+    }
+    .seg {
+      display: flex;
+      gap: 2px;
+      padding: 2px;
+      border-radius: 8px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+    }
+    .seg span {
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+    }
+    .seg span.on {
+      background: var(--bg-selected);
+      color: var(--text-primary);
+      box-shadow: 0 1px 0 rgba(0,0,0,.2);
+    }
+
+    .skill-grid {
+      flex: 1;
+      overflow: auto;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+    .skill-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-secondary);
+      padding: 12px;
+      min-height: 96px;
+    }
+    .skill-card h4 {
+      font-size: 12.5px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .skill-card p {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .skill-card .tags {
+      margin-top: 10px;
+      display: flex;
+      gap: 4px;
+    }
+    .pill {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .pill.on {
+      color: var(--accent-blue);
+      border-color: rgba(41,151,255,.35);
+      background: var(--accent-blue-dim);
+    }
+
+    /* Dialog */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+    .overlay.open { display: flex; }
+    .dialog {
+      width: min(440px, 100%);
+      max-height: min(80vh, 560px);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.55);
+      overflow: hidden;
+    }
+    .dialog-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dialog-head h2 { font-size: 13px; font-weight: 600; }
+    .dialog-head p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .dialog-body {
+      flex: 1;
+      overflow: auto;
+      padding: 8px 0;
+    }
+    .tg-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px;
+      cursor: pointer;
+    }
+    .tg-row:hover { background: var(--bg-hover); }
+    .tg-row input { accent-color: var(--accent-blue); }
+    .tg-row .name { flex: 1; font-weight: 500; }
+    .tg-row .sc { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .dialog-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .dialog-foot .sel { font-size: 11px; color: var(--text-muted); }
+    .dialog-foot .actions { display: flex; gap: 8px; }
+
+    .notes {
+      margin-top: 18px;
+      max-width: 960px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+    .notes h3 {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin: 12px 0 4px;
+    }
+    .notes ul { padding-left: 18px; }
+    .notes li { margin: 3px 0; }
+    .notes code {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      background: #222;
+      padding: 0 4px;
+      border-radius: 3px;
+    }
+    .new-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--accent-blue);
+      border: 1px solid rgba(41,151,255,.4);
+      background: var(--accent-blue-dim);
+      padding: 1px 5px;
+      border-radius: 3px;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Project ↔ Tag Group 关系 · UI 原型</h1>
+  <p class="subtitle">
+    对应任务 <code>07-22-project-skills-relation-ui</code> · 决策 D1–D4：
+    左侧双指标（磁盘 skill 数 + 绑定组数）只读；右侧 Bound Tag Groups 可查看/管理；
+    绑定仅更新 DB，不自动 import / 不删磁盘 skill。
+  </p>
+
+  <div class="legend">
+    <span><i class="dot"></i> 新增 / 本任务改动区</span>
+    <span><i class="dot muted"></i> 现有 UI 保持</span>
+    <span><i class="dot green"></i> 可点击演示</span>
+  </div>
+
+  <div class="app" role="application" aria-label="Skills panel prototype">
+    <!-- LEFT RAIL -->
+    <aside class="rail">
+      <div class="rail-head">Skills</div>
+      <div class="nav-item">📦 Library <span class="count">48</span></div>
+      <div class="nav-item">↓ Marketplace</div>
+
+      <div class="section-label"><span class="chev">▾</span> Tags</div>
+      <div class="nav-item">▦ Backend <span class="count">12</span></div>
+      <div class="nav-item">▦ Frontend <span class="count">8</span></div>
+      <div class="nav-item">▦ Review <span class="count">5</span></div>
+
+      <div class="section-label"><span class="chev">▾</span> Agents</div>
+      <div class="nav-item">◎ Claude Code <span class="count">14</span></div>
+      <div class="nav-item">◎ Codex <span class="count">6</span></div>
+
+      <div class="section-label"><span class="chev">▾</span> Projects</div>
+      <div class="callout">
+        <strong>NEW</strong> 行尾双指标：
+        <code style="margin:0 2px">磁盘数</code>·
+        <code style="margin:0 2px">Ng</code>（绑定 Tag Group 数）
+      </div>
+
+      <button type="button" class="project-row active" data-project="neeko" title="3 skills on disk · 2 tag groups bound">
+        <span class="avatar" style="background:#5b6cff">Ne</span>
+        <span class="project-name">neeko</span>
+        <span class="metrics" aria-label="3 disk skills, 2 bound groups">
+          <span class="disk">3</span>
+          <span class="sep">·</span>
+          <span class="groups">2g</span>
+        </span>
+      </button>
+      <button type="button" class="project-row" data-project="demo-api" title="0 skills on disk · 0 tag groups bound">
+        <span class="avatar" style="background:#c678dd">Da</span>
+        <span class="project-name">demo-api</span>
+        <span class="metrics" aria-label="0 disk skills, 0 bound groups">
+          <span class="disk">0</span>
+          <span class="sep">·</span>
+          <span class="groups">0g</span>
+        </span>
+      </button>
+      <button type="button" class="project-row" data-project="web-ui" title="7 skills on disk · 1 tag group bound">
+        <span class="avatar" style="background:#98c379">Wu</span>
+        <span class="project-name">web-ui</span>
+        <span class="metrics" aria-label="7 disk skills, 1 bound group">
+          <span class="disk">7</span>
+          <span class="sep">·</span>
+          <span class="groups">1g</span>
+        </span>
+      </button>
+    </aside>
+
+    <!-- RIGHT CONTENT -->
+    <main class="content">
+      <div class="content-header">
+        <h2>
+          <span id="proj-title">neeko</span>
+          <span class="badge" id="proj-badge">3 / 2</span>
+        </h2>
+        <div class="path" id="proj-path">~/RustroverProjects/neeko · 3 skills / 2 enabled</div>
+      </div>
+
+      <!-- Bound Tag Groups — NEW -->
+      <section class="bound-section" aria-labelledby="bound-title">
+        <div class="bound-head">
+          <h3 id="bound-title">Bound Tag Groups <span class="new-tag">New</span></h3>
+          <span class="hint">声明层 · 不自动改磁盘</span>
+          <span class="spacer"></span>
+          <button type="button" class="btn" id="btn-manage" title="Open bind dialog">
+            ⚙ Manage
+          </button>
+        </div>
+        <div class="bound-list" id="bound-list"></div>
+        <div class="bound-empty" id="bound-empty" hidden>
+          尚未绑定标签组。点击 Manage 选择 Tag Group；绑定后不会自动 import 到项目目录。
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <div class="search-wrap">
+          <input class="search" type="text" readonly placeholder="Search project skills…" aria-label="Search" />
+        </div>
+        <div class="seg">
+          <span class="on">All</span>
+          <span>Enabled</span>
+          <span>Disabled</span>
+        </div>
+        <span class="spacer" style="flex:1"></span>
+        <button type="button" class="btn primary">＋ Add Skill</button>
+      </div>
+
+      <div class="skill-grid" id="skill-grid" aria-label="Project disk skills"></div>
+    </main>
+  </div>
+
+  <!-- Bind dialog -->
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    <div class="dialog">
+      <div class="dialog-head">
+        <div>
+          <h2 id="dlg-title">Bind tag groups</h2>
+          <p>Skills in selected groups are <strong style="color:var(--text-secondary);font-weight:600">bound</strong> to
+            <span id="dlg-project">neeko</span> — disk install stays separate (Import / apply hook).</p>
+        </div>
+        <button type="button" class="btn ghost" id="dlg-close" aria-label="Close">✕</button>
+      </div>
+      <div class="dialog-body" id="dlg-body"></div>
+      <div class="dialog-foot">
+        <span class="sel" id="dlg-sel">0 selected</span>
+        <div class="actions">
+          <button type="button" class="btn" id="dlg-cancel">Cancel</button>
+          <button type="button" class="btn primary" id="dlg-save">Save bindings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h3>交互说明（与 prd 对齐）</h3>
+    <ul>
+      <li><strong>左侧</strong>：主数字 = 磁盘 skill 数；副 <code>Ng</code> = 绑定 Tag Group 数。Hover title 双语义。只读，不在行内编辑。</li>
+      <li><strong>右侧 Bound Tag Groups</strong>：展示绑定的组名 + 组内 skill 数；Manage 打开对话框。</li>
+      <li><strong>Save bindings</strong>：只更新绑定列表与左侧 <code>Ng</code>；下方磁盘 skill 网格不变（D4）。</li>
+      <li><strong>Add Skill</strong>：现有 Import 流程，负责项目磁盘落盘（本原型不实现）。</li>
+    </ul>
+    <h3>演示数据</h3>
+    <ul>
+      <li>切换左侧项目可看不同绑定/磁盘状态；<code>demo-api</code> 为空态。</li>
+      <li>在对话框勾选/取消后 Save，观察左侧 <code>Ng</code> 与 Bound 区同步变化。</li>
+    </ul>
+  </div>
+
+  <script>
+    const ALL_GROUPS = [
+      { id: 'backend', name: 'Backend', skill_count: 12 },
+      { id: 'frontend', name: 'Frontend', skill_count: 8 },
+      { id: 'review', name: 'Review', skill_count: 5 },
+      { id: 'devops', name: 'DevOps', skill_count: 4 },
+    ];
+
+    const PROJECTS = {
+      neeko: {
+        name: 'neeko',
+        path: '~/RustroverProjects/neeko',
+        disk: 3,
+        enabled: 2,
+        bound: ['backend', 'review'],
+        skills: [
+          { name: 'tdd', desc: 'Test-driven development workflow for features.', enabled: true },
+          { name: 'rust-patterns', desc: 'Idiomatic Rust patterns for this codebase.', enabled: true },
+          { name: 'code-walkthrough', desc: 'Guided code walkthrough for PR review.', enabled: false },
+        ],
+      },
+      'demo-api': {
+        name: 'demo-api',
+        path: '~/work/demo-api',
+        disk: 0,
+        enabled: 0,
+        bound: [],
+        skills: [],
+      },
+      'web-ui': {
+        name: 'web-ui',
+        path: '~/work/web-ui',
+        disk: 7,
+        enabled: 5,
+        bound: ['frontend'],
+        skills: [
+          { name: 'react-doctor', desc: 'React best practices checklist.', enabled: true },
+          { name: 'ui-ux-pro-max', desc: 'UI/UX polish patterns.', enabled: true },
+          { name: 'shadcn', desc: 'shadcn component guidance.', enabled: true },
+          { name: 'a11y-pass', desc: 'Accessibility pass before ship.', enabled: false },
+          { name: 'storybook', desc: 'Story scaffolding.', enabled: true },
+          { name: 'tailwind-tune', desc: 'Spacing and token cleanup.', enabled: true },
+          { name: 'form-patterns', desc: 'Form validation patterns.', enabled: false },
+        ],
+      },
+    };
+
+    let activeId = 'neeko';
+    let draftBound = new Set();
+
+    const boundList = document.getElementById('bound-list');
+    const boundEmpty = document.getElementById('bound-empty');
+    const skillGrid = document.getElementById('skill-grid');
+    const overlay = document.getElementById('overlay');
+
+    function groupById(id) {
+      return ALL_GROUPS.find((g) => g.id === id);
+    }
+
+    function renderMetrics() {
+      document.querySelectorAll('.project-row').forEach((row) => {
+        const id = row.dataset.project;
+        const p = PROJECTS[id];
+        const disk = row.querySelector('.disk');
+        const groups = row.querySelector('.groups');
+        disk.textContent = String(p.disk);
+        groups.textContent = p.bound.length + 'g';
+        row.title = `${p.disk} skills on disk · ${p.bound.length} tag group${p.bound.length === 1 ? '' : 's'} bound`;
+        row.setAttribute(
+          'aria-label',
+          `${p.name}: ${p.disk} disk skills, ${p.bound.length} bound groups`,
+        );
+      });
+    }
+
+    function renderBound() {
+      const p = PROJECTS[activeId];
+      boundList.innerHTML = '';
+      if (p.bound.length === 0) {
+        boundEmpty.hidden = false;
+        return;
+      }
+      boundEmpty.hidden = true;
+      p.bound.forEach((gid) => {
+        const g = groupById(gid);
+        if (!g) return;
+        const chip = document.createElement('div');
+        chip.className = 'bound-chip';
+        chip.innerHTML = `
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+          <span>${g.name}</span>
+          <span class="sc">${g.skill_count}</span>
+        `;
+        boundList.appendChild(chip);
+      });
+    }
+
+    function renderSkills() {
+      const p = PROJECTS[activeId];
+      skillGrid.innerHTML = '';
+      if (p.skills.length === 0) {
+        skillGrid.innerHTML =
+          '<div style="grid-column:1/-1;color:var(--text-muted);font-size:12px;padding:32px 8px;text-align:center">No skills in this project on disk. Use Add Skill to import from Library.</div>';
+        return;
+      }
+      p.skills.forEach((s) => {
+        const card = document.createElement('article');
+        card.className = 'skill-card';
+        card.innerHTML = `
+          <h4>${s.name}</h4>
+          <p>${s.desc}</p>
+          <div class="tags">
+            <span class="pill ${s.enabled ? 'on' : ''}">${s.enabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        `;
+        skillGrid.appendChild(card);
+      });
+    }
+
+    function renderHeader() {
+      const p = PROJECTS[activeId];
+      document.getElementById('proj-title').textContent = p.name;
+      document.getElementById('proj-badge').textContent = `${p.disk} / ${p.enabled}`;
+      document.getElementById('proj-path').textContent =
+        `${p.path} · ${p.disk} skills / ${p.enabled} enabled`;
+      document.getElementById('dlg-project').textContent = p.name;
+    }
+
+    function selectProject(id) {
+      activeId = id;
+      document.querySelectorAll('.project-row').forEach((row) => {
+        row.classList.toggle('active', row.dataset.project === id);
+      });
+      renderHeader();
+      renderBound();
+      renderSkills();
+    }
+
+    function openDialog() {
+      const p = PROJECTS[activeId];
+      draftBound = new Set(p.bound);
+      const body = document.getElementById('dlg-body');
+      body.innerHTML = '';
+      ALL_GROUPS.forEach((g) => {
+        const row = document.createElement('label');
+        row.className = 'tg-row';
+        row.innerHTML = `
+          <input type="checkbox" data-id="${g.id}" ${draftBound.has(g.id) ? 'checked' : ''} />
+          <span class="name">${g.name}</span>
+          <span class="sc">${g.skill_count} skills</span>
+        `;
+        row.querySelector('input').addEventListener('change', (e) => {
+          if (e.target.checked) draftBound.add(g.id);
+          else draftBound.delete(g.id);
+          document.getElementById('dlg-sel').textContent = `${draftBound.size} selected`;
+        });
+        body.appendChild(row);
+      });
+      document.getElementById('dlg-sel').textContent = `${draftBound.size} selected`;
+      overlay.classList.add('open');
+    }
+
+    function closeDialog() {
+      overlay.classList.remove('open');
+    }
+
+    function saveDialog() {
+      const p = PROJECTS[activeId];
+      const beforeDisk = p.disk;
+      const beforeSkills = p.skills.slice();
+      p.bound = Array.from(draftBound);
+      // D4: disk skills unchanged
+      p.disk = beforeDisk;
+      p.skills = beforeSkills;
+      renderMetrics();
+      renderBound();
+      closeDialog();
+    }
+
+    document.querySelectorAll('.project-row').forEach((row) => {
+      row.addEventListener('click', () => selectProject(row.dataset.project));
+    });
+    document.getElementById('btn-manage').addEventListener('click', openDialog);
+    document.getElementById('dlg-close').addEventListener('click', closeDialog);
+    document.getElementById('dlg-cancel').addEventListener('click', closeDialog);
+    document.getElementById('dlg-save').addEventListener('click', saveDialog);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeDialog();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeDialog();
+    });
+
+    // init
+    renderMetrics();
+    selectProject('neeko');
+  </script>
+</body>
+</html>

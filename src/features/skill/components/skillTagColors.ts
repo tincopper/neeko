@@ -1,5 +1,5 @@
 /**
- * Tag / preset chip colors using Neeko theme tokens only
+ * Tag / tag-group chip colors using Neeko theme tokens only
  * (accent + surface vars from theme.css — no hard-coded Tailwind palette).
  */
 const TAG_PALETTE = [
@@ -15,7 +15,7 @@ const TAG_PALETTE = [
   'bg-accent-yellow/10 text-text-secondary',
 ] as const;
 
-const PRESET_PALETTE = [
+const TAG_GROUP_PALETTE = [
   'bg-accent-blue/15 text-accent-blue',
   'bg-accent-green/15 text-accent-green',
   'bg-bg-selected text-text-secondary',
@@ -40,6 +40,10 @@ export function tagChipClass(tag: string): string {
   return TAG_PALETTE[hashTag(tag) % TAG_PALETTE.length];
 }
 
-export function presetBadgeClass(name: string): string {
-  return PRESET_PALETTE[hashTag(name) % PRESET_PALETTE.length];
+/** Badge colors for Tag Group labels on skill cards. */
+export function tagGroupBadgeClass(name: string): string {
+  return TAG_GROUP_PALETTE[hashTag(name) % TAG_GROUP_PALETTE.length];
 }
+
+/** @deprecated Use {@link tagGroupBadgeClass} */
+export const presetBadgeClass = tagGroupBadgeClass;

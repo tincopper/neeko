@@ -1,5 +1,6 @@
 import {
   Bot,
+  CheckSquare,
   Globe2,
   LayoutGrid,
   List,
@@ -8,23 +9,20 @@ import {
   RefreshCw,
   Search,
   Terminal,
+  Trash2,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Cross-feature toast (same pattern as useLocalSkillActions / SkillsPanel)
 // eslint-disable-next-line import/no-restricted-paths -- notification is the shared toast bus
+import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useNotificationStore } from '@/features/notification/notificationStore';
-import {
-  getAgentSkills,
-  importSkillToAgent,
-  removeSkillFromAgent,
-} from '@/features/skill/api/skillApi';
+import { importSkillToAgent, removeSkillFromAgent } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
-import type { AgentDiskSkill, AgentSkillGroup, ManagedSkillDto } from '@/shared/types';
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
 import { Button } from '@/ui';
 
 import AgentSkillCard from './AgentSkillCard';
@@ -51,9 +49,10 @@ function homeTildePath(path: string | null): string {
 const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDialog }) => {
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const skills = useSkillStore((s) => s.skills);
+  const groups = useSkillStore((s) => s.agentSkillGroups);
+  const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
   const toast = useNotificationStore((s) => s.addNotification);
 
-  const [groups, setGroups] = useState<AgentSkillGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -62,31 +61,60 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [pendingRemove, setPendingRemove] = useState<AgentDiskSkill | null>(null);
   const [removing, setRemoving] = useState(false);
+  /** Explicit multi-select mode (toggled from toolbar after List view). */
+  const [selectionMode, setSelectionMode] = useState(false);
+  /** Multi-select: skill paths currently checked for batch actions. */
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [bulkRemoving, setBulkRemoving] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
 
-  const reload = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setLoading(true);
-    else setRefreshing(true);
-    try {
-      const data = await getAgentSkills();
-      setGroups(data);
-    } catch {
-      /* keep previous */
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const reload = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      else setRefreshing(true);
+      try {
+        // Shared store: updates left-rail agent counts in SkillsPanel too.
+        await refreshAgentSkills();
+      } catch {
+        /* keep previous */
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [refreshAgentSkills],
+  );
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // Clear search when switching agents
+  // Clear search / selection when switching agents
   useEffect(() => {
     setSearchQuery('');
     setImportOpen(false);
     setPendingRemove(null);
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+    setBulkConfirmOpen(false);
   }, [activeAgentId]);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+    setBulkConfirmOpen(false);
+  }, []);
+
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => {
+      if (prev) {
+        setSelectedPaths(new Set());
+        setBulkConfirmOpen(false);
+        return false;
+      }
+      return true;
+    });
+  }, []);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.agent_id === activeAgentId) ?? null,
@@ -165,6 +193,12 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
         message: `"${pendingRemove.name}" removed from ${activeGroup?.agent_name ?? 'agent'}`,
       });
       setPendingRemove(null);
+      setSelectedPaths((prev) => {
+        if (!prev.has(pendingRemove.path)) return prev;
+        const next = new Set(prev);
+        next.delete(pendingRemove.path);
+        return next;
+      });
       await reload({ silent: true });
     } catch (e) {
       toast({ type: 'error', title: 'Remove failed', message: String(e) });
@@ -172,6 +206,83 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
       setRemoving(false);
     }
   }, [activeAgentId, pendingRemove, activeGroup, reload, toast]);
+
+  const toggleSelected = useCallback((path: string, checked: boolean) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(path);
+      else next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredSkills.length === 0) return false;
+    return filteredSkills.every((s) => selectedPaths.has(s.path));
+  }, [filteredSkills, selectedPaths]);
+
+  const someFilteredSelected = useMemo(
+    () => filteredSkills.some((s) => selectedPaths.has(s.path)),
+    [filteredSkills, selectedPaths],
+  );
+
+  const handleSelectAllFiltered = useCallback(() => {
+    setSelectedPaths((prev) => {
+      if (filteredSkills.length === 0) return prev;
+      const allOn = filteredSkills.every((s) => prev.has(s.path));
+      if (allOn) {
+        const next = new Set(prev);
+        for (const s of filteredSkills) next.delete(s.path);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const s of filteredSkills) next.add(s.path);
+      return next;
+    });
+  }, [filteredSkills]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedPaths(new Set());
+  }, []);
+
+  const selectedSkills = useMemo(() => {
+    if (!activeGroup || selectedPaths.size === 0) return [] as AgentDiskSkill[];
+    return activeGroup.skills.filter((s) => selectedPaths.has(s.path));
+  }, [activeGroup, selectedPaths]);
+
+  const handleBulkRemove = useCallback(async () => {
+    if (!activeAgentId || selectedSkills.length === 0) return;
+    setBulkRemoving(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const skill of selectedSkills) {
+        try {
+          await removeSkillFromAgent(activeAgentId, skill.path, skill.skill_id);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (ok > 0) {
+        toast({
+          type: 'success',
+          title: 'Removed',
+          message:
+            failed > 0
+              ? `Removed ${ok}; ${failed} failed`
+              : `Removed ${ok} skill${ok === 1 ? '' : 's'} from ${activeGroup?.agent_name ?? 'agent'}`,
+        });
+      } else {
+        toast({ type: 'error', title: 'Remove failed', message: 'Could not remove skills' });
+      }
+      setSelectedPaths(new Set());
+      setBulkConfirmOpen(false);
+      await reload({ silent: true });
+    } finally {
+      setBulkRemoving(false);
+    }
+  }, [activeAgentId, selectedSkills, activeGroup, reload, toast]);
 
   /** View any agent skill: prefer Library document when managed, else disk path. */
   const openViewSkill = useCallback(
@@ -250,90 +361,185 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
         </div>
       </div>
 
-      {/* Toolbar: search + actions */}
-      <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border">
-        <div className="relative flex-1 min-w-0 max-w-md">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search agent skills…"
-            className={cn(
-              'w-full h-8 pl-8 text-[var(--font-size)] rounded-lg',
-              'bg-bg-hover/50 border border-border/80',
-              'text-text-primary placeholder:text-text-muted',
-              'outline-none focus:border-border focus:bg-bg-primary transition-colors',
-              searchQuery ? 'pr-8' : 'pr-3',
-            )}
-            aria-label="Search agent skills"
-          />
-          {searchQuery ? (
+      {/* Toolbar: search + batch + actions */}
+      <div className="shrink-0 flex flex-col gap-0 border-b border-border">
+        <div className="flex items-center gap-2 px-4 py-2.5">
+          <div className="relative flex-1 min-w-0 max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search agent skills…"
+              className={cn(
+                'w-full h-8 pl-8 text-[var(--font-size)] rounded-lg',
+                'bg-bg-hover/50 border border-border/80',
+                'text-text-primary placeholder:text-text-muted',
+                'outline-none focus:border-border focus:bg-bg-primary transition-colors',
+                searchQuery ? 'pr-8' : 'pr-3',
+              )}
+              aria-label="Search agent skills"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-text-primary rounded"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0 ml-auto">
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-muted hover:text-text-primary rounded"
-              aria-label="Clear search"
+              onClick={() => void reload({ silent: true })}
+              disabled={refreshing}
+              title="Refresh"
+              aria-label="Refresh agent skills"
+              className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-50"
             >
-              <X className="h-3.5 w-3.5" />
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
             </button>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              title="Grid view"
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
+              className={cn(
+                'p-1.5 rounded-md transition-colors',
+                viewMode === 'grid'
+                  ? 'bg-bg-selected text-text-primary'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              title="List view"
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              className={cn(
+                'p-1.5 rounded-md transition-colors',
+                viewMode === 'list'
+                  ? 'bg-bg-selected text-text-primary'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={toggleSelectionMode}
+              disabled={total === 0}
+              title={selectionMode ? 'Exit multi-select' : 'Multi-select'}
+              aria-label={selectionMode ? 'Exit multi-select' : 'Multi-select'}
+              aria-pressed={selectionMode}
+              data-testid="agent-skill-multi-select-toggle"
+              className={cn(
+                'p-1.5 rounded-md transition-colors',
+                selectionMode
+                  ? 'bg-accent-blue/15 text-accent-blue'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+                'disabled:opacity-40 disabled:cursor-not-allowed',
+              )}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+            </button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={!canAdd}
+              onClick={() => setImportOpen(true)}
+              title={canAdd ? 'Add skill from library' : 'Agent has no skill path configured'}
+              className="h-8 px-3 ml-1 text-xs gap-1.5 font-medium"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Skill
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-0.5 shrink-0 ml-auto">
-          <button
-            type="button"
-            onClick={() => void reload({ silent: true })}
-            disabled={refreshing}
-            title="Refresh"
-            aria-label="Refresh agent skills"
-            className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover disabled:opacity-50"
+        {selectionMode && total > 0 ? (
+          <div
+            className="flex items-center gap-2 px-4 pb-2.5 flex-wrap border-t border-border/60 pt-2"
+            data-testid="agent-skill-batch-bar"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('grid')}
-            title="Grid view"
-            aria-label="Grid view"
-            aria-pressed={viewMode === 'grid'}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              viewMode === 'grid'
-                ? 'bg-bg-selected text-text-primary'
-                : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
-            )}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            title="List view"
-            aria-label="List view"
-            aria-pressed={viewMode === 'list'}
-            className={cn(
-              'p-1.5 rounded-md transition-colors',
-              viewMode === 'list'
-                ? 'bg-bg-selected text-text-primary'
-                : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
-            )}
-          >
-            <List className="h-3.5 w-3.5" />
-          </button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            disabled={!canAdd}
-            onClick={() => setImportOpen(true)}
-            title={canAdd ? 'Add skill from library' : 'Agent has no skill path configured'}
-            className="h-8 px-3 ml-1 text-xs gap-1.5 font-medium"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Skill
-          </Button>
-        </div>
+            <button
+              type="button"
+              onClick={handleSelectAllFiltered}
+              disabled={filteredSkills.length === 0}
+              data-testid="agent-skill-select-all"
+              aria-pressed={allFilteredSelected}
+              className={cn(
+                'inline-flex items-center gap-1.5 h-7 px-2 rounded-md border text-[11px] font-medium transition-colors',
+                allFilteredSelected || someFilteredSelected
+                  ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue'
+                  : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover',
+                'disabled:opacity-50',
+              )}
+            >
+              <span
+                className={cn(
+                  'w-3.5 h-3.5 rounded border flex items-center justify-center',
+                  allFilteredSelected ? 'bg-accent-blue/20 border-accent-blue' : 'border-border',
+                )}
+                aria-hidden
+              >
+                {allFilteredSelected ? (
+                  <span className="text-[9px] leading-none">✓</span>
+                ) : someFilteredSelected ? (
+                  <span className="w-1.5 h-0.5 bg-accent-blue rounded" />
+                ) : null}
+              </span>
+              {allFilteredSelected ? 'Deselect all' : 'Select all'}
+            </button>
+            <span
+              className="text-[11px] text-text-muted tabular-nums"
+              data-testid="agent-skill-selected-count"
+            >
+              {selectedPaths.size} selected
+            </span>
+            {selectedPaths.size > 0 ? (
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="text-[11px] text-text-muted hover:text-text-primary"
+                data-testid="agent-skill-clear-selection"
+              >
+                Clear
+              </button>
+            ) : null}
+            <span className="flex-1" />
+            {/* Agents view: delete only */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={bulkRemoving || selectedPaths.size === 0}
+              onClick={() => setBulkConfirmOpen(true)}
+              className="h-7 px-2.5 text-[11px] gap-1.5 text-accent-red border-accent-red/30 hover:bg-accent-red/10 disabled:opacity-40"
+              data-testid="agent-skill-bulk-remove"
+            >
+              <Trash2 className="h-3 w-3" />
+              Delete
+            </Button>
+            <button
+              type="button"
+              onClick={exitSelectionMode}
+              className="h-7 px-2 text-[11px] text-text-muted hover:text-text-primary rounded-md hover:bg-bg-hover"
+              data-testid="agent-skill-exit-selection"
+            >
+              Done
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Body */}
@@ -381,6 +587,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                 diskSkill.skill_id != null
                   ? (skills.find((s) => s.id === diskSkill.skill_id) ?? null)
                   : null;
+              const checked = selectedPaths.has(diskSkill.path);
               return (
                 <div key={diskSkill.path} role="listitem" className="min-w-0 h-full">
                   <AgentSkillCard
@@ -388,6 +595,11 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                     librarySkill={lib}
                     agentIcon={activeGroup.agent_icon}
                     agentName={activeGroup.agent_name}
+                    checked={checked}
+                    selectionMode={selectionMode}
+                    onCheckedChange={
+                      selectionMode ? (next) => toggleSelected(diskSkill.path, next) : undefined
+                    }
                     onSelect={() => openViewSkill(diskSkill)}
                     onView={() => openViewSkill(diskSkill)}
                     onRemove={() => setPendingRemove(diskSkill)}
@@ -402,49 +614,74 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
             className="divide-y divide-border/60"
             aria-label={`Agent skills (${filteredSkills.length})`}
           >
-            {filteredSkills.map((diskSkill) => (
-              <li
-                key={diskSkill.path}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-hover/40 transition-colors"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-text-primary truncate">
-                      {diskSkill.name}
-                    </span>
-                    {diskSkill.managed ? (
-                      <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-selected text-text-secondary border border-border font-medium">
-                        Synced
-                      </span>
-                    ) : (
-                      <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-hover text-text-muted border border-border font-medium">
-                        Local
-                      </span>
-                    )}
-                  </div>
-                  {diskSkill.description ? (
-                    <p className="text-[11px] text-text-muted truncate mt-0.5">
-                      {diskSkill.description}
-                    </p>
+            {filteredSkills.map((diskSkill) => {
+              const checked = selectedPaths.has(diskSkill.path);
+              return (
+                <li
+                  key={diskSkill.path}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-2.5 hover:bg-bg-hover/40 transition-colors',
+                    selectionMode && checked && 'bg-accent-blue/[0.04]',
+                  )}
+                >
+                  {selectionMode ? (
+                    <button
+                      type="button"
+                      data-testid={`agent-skill-check-${diskSkill.name}`}
+                      aria-label={
+                        checked ? `Deselect ${diskSkill.name}` : `Select ${diskSkill.name}`
+                      }
+                      aria-pressed={checked}
+                      onClick={() => toggleSelected(diskSkill.path, !checked)}
+                      className={cn(
+                        'shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors',
+                        checked
+                          ? 'bg-accent-blue/20 border-accent-blue text-accent-blue'
+                          : 'border-border bg-transparent text-text-muted',
+                      )}
+                    >
+                      {checked ? <span className="text-[9px] leading-none">✓</span> : null}
+                    </button>
                   ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openViewSkill(diskSkill)}
-                  className="shrink-0 text-[11px] font-medium text-accent-blue hover:brightness-110"
-                >
-                  View
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPendingRemove(diskSkill)}
-                  className="shrink-0 p-1 rounded-md text-text-muted hover:text-accent-red hover:bg-accent-red/10"
-                  aria-label={`Remove ${diskSkill.name}`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-text-primary truncate">
+                        {diskSkill.name}
+                      </span>
+                      {diskSkill.managed ? (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-selected text-text-secondary border border-border font-medium">
+                          Synced
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-hover text-text-muted border border-border font-medium">
+                          Local
+                        </span>
+                      )}
+                    </div>
+                    {diskSkill.description ? (
+                      <p className="text-[11px] text-text-muted truncate mt-0.5">
+                        {diskSkill.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openViewSkill(diskSkill)}
+                    className="shrink-0 text-[11px] font-medium text-accent-blue hover:brightness-110"
+                  >
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingRemove(diskSkill)}
+                    className="shrink-0 p-1 rounded-md text-text-muted hover:text-accent-red hover:bg-accent-red/10"
+                    aria-label={`Remove ${diskSkill.name}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -480,6 +717,25 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
         confirmLabel={removing ? 'Removing…' : 'Remove'}
         danger
         onConfirm={() => void handleRemoveConfirm()}
+      />
+
+      <ConfirmDialog
+        open={bulkConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !bulkRemoving) setBulkConfirmOpen(false);
+        }}
+        title={`Remove ${selectedSkills.length} skill${selectedSkills.length === 1 ? '' : 's'}?`}
+        description={
+          <p className="text-sm text-text-secondary">
+            Remove <span className="font-medium text-text-primary">{selectedSkills.length}</span>{' '}
+            selected skill{selectedSkills.length === 1 ? '' : 's'} from{' '}
+            <span className="font-medium text-text-primary">{activeGroup.agent_name}</span>? Library
+            copies are kept.
+          </p>
+        }
+        confirmLabel={bulkRemoving ? 'Removing…' : 'Remove selected'}
+        danger
+        onConfirm={() => void handleBulkRemove()}
       />
     </div>
   );

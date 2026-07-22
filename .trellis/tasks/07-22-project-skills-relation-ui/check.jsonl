@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "检查绑定区块与列表行是否符合组件规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "性能/可访问性/错误提示质量门禁"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "绑定变更后 store 刷新一致性"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "确认 SkillsPanel / ProjectSkillContent 测试覆盖 AC"}
+{"file": ".trellis/spec/backend/api-layer.md", "reason": "若新增 count 命令则检查错误与序列化约定"}

@@ -31,7 +31,7 @@ import {
   skillMenuLabelClass,
   skillMenuSeparatorClass,
 } from './skillMenuStyles';
-import { tagChipClass, presetBadgeClass } from './skillTagColors';
+import { tagChipClass, tagGroupBadgeClass } from './skillTagColors';
 
 interface SkillCardProps {
   skill: ManagedSkillDto;
@@ -43,7 +43,8 @@ interface SkillCardProps {
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
   agents?: Array<{ id: string; icon: string | null; name: string }>;
-  presetLabel?: string | null;
+  /** Active / first tag-group name badge on the card. */
+  tagGroupLabel?: string | null;
   /** Called when description is recovered from SKILL.md so store can update. */
   onDescriptionResolved?: (skillId: string, description: string) => void;
   /** Called when a tag chip is clicked. */
@@ -86,7 +87,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     onUpdateSkill,
     tagGroups = [],
     agents = [],
-    presetLabel,
+    tagGroupLabel,
     onDescriptionResolved,
     onTagClick,
   }) => {
@@ -140,7 +141,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           }
         }}
         className={cn(
-          'group flex flex-col h-full min-h-[160px] rounded-xl cursor-pointer',
+          'group flex flex-col h-full min-h-[160px] rounded-lg cursor-pointer',
           'bg-bg-primary transition-colors duration-150',
           'border',
           enabled ? 'border-border' : 'border-border/70 opacity-90',
@@ -222,7 +223,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                     <DropdownMenuLabel className={skillMenuLabelClass()}>
                       <span className="inline-flex items-center gap-1.5 normal-case tracking-normal font-medium text-text-muted">
                         <Tags className="h-3 w-3 opacity-70" />
-                        Add to preset
+                        Add to tag group
                       </span>
                     </DropdownMenuLabel>
                     {tagGroups.map((tg) => (
@@ -314,16 +315,17 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </div>
           )}
 
-          {presetLabel && (
+          {tagGroupLabel ? (
             <span
               className={cn(
                 'inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium',
-                presetBadgeClass(presetLabel),
+                tagGroupBadgeClass(tagGroupLabel),
               )}
+              title={tagGroupLabel}
             >
-              {presetLabel}
+              {tagGroupLabel}
             </span>
-          )}
+          ) : null}
 
           {hasUpdate && (
             <button

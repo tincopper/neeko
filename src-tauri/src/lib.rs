@@ -260,6 +260,7 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::set_project_skill_agent_enabled_cmd,
             $crate::skill::commands::set_project_skill_enabled_cmd,
             $crate::skill::commands::get_all_project_skill_counts,
+            $crate::skill::commands::get_all_project_tag_group_counts,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,

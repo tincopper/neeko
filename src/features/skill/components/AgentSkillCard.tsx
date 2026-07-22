@@ -1,4 +1,4 @@
-import { Eye, HardDrive, Link2, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Check, Eye, HardDrive, Link2, MoreHorizontal, Trash2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import { getSkillDocument } from '@/features/skill/api/skillApi';
@@ -28,6 +28,12 @@ interface AgentSkillCardProps {
   agentIcon?: string | null;
   agentName?: string;
   isSelected?: boolean;
+  /** Multi-select checked state for batch actions. */
+  checked?: boolean;
+  /** Toggle multi-select for this card. */
+  onCheckedChange?: (checked: boolean) => void;
+  /** When true, show checkbox affordance even if not checked. */
+  selectionMode?: boolean;
   onSelect?: () => void;
   /** View skill content (library doc or on-disk SKILL.md). */
   onView?: () => void;
@@ -45,6 +51,9 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
     agentIcon = null,
     agentName,
     isSelected = false,
+    checked = false,
+    onCheckedChange,
+    selectionMode = false,
     onSelect,
     onView,
     onRemove,
@@ -79,8 +88,14 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
 
     const displayDesc = resolvedDesc || 'No description';
     const agentIconSrc = getAgentIconSrc(agentIcon);
+    const canCheck = Boolean(onCheckedChange);
 
     const handleSelect = () => {
+      // In selection mode, card click toggles multi-select instead of opening view.
+      if (canCheck && (selectionMode || checked)) {
+        onCheckedChange?.(!checked);
+        return;
+      }
       onSelect?.();
     };
 
@@ -89,6 +104,7 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
         role="button"
         tabIndex={0}
         data-testid={`agent-skill-card-${skill.name}`}
+        data-checked={checked ? 'true' : 'false'}
         onClick={handleSelect}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -97,16 +113,40 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
           }
         }}
         className={cn(
-          'group flex flex-col h-full min-h-[160px] rounded-xl cursor-pointer',
+          'group flex flex-col h-full min-h-[160px] rounded-lg cursor-pointer',
           'bg-bg-primary transition-colors duration-150',
           'border',
           managed ? 'border-border' : 'border-border border-dashed',
-          isSelected && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
+          (isSelected || checked) && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
+          checked && 'bg-accent-blue/[0.04]',
           'hover:bg-bg-hover/40',
         )}
       >
         <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">
           <div className="flex items-center gap-2">
+            {canCheck ? (
+              <button
+                type="button"
+                data-testid={`agent-skill-check-${skill.name}`}
+                aria-label={checked ? `Deselect ${skill.name}` : `Select ${skill.name}`}
+                aria-pressed={checked}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCheckedChange?.(!checked);
+                }}
+                className={cn(
+                  'shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors',
+                  checked
+                    ? 'bg-accent-blue/20 border-accent-blue text-accent-blue'
+                    : 'border-border bg-transparent text-transparent group-hover:border-text-muted',
+                  !checked &&
+                    !selectionMode &&
+                    'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                )}
+              >
+                <Check className="h-2.5 w-2.5" strokeWidth={3} />
+              </button>
+            ) : null}
             <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-text-primary truncate leading-none">
               {skill.name}
             </h3>

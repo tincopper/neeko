@@ -1,33 +1,35 @@
 import React, { useMemo, useEffect, useState } from 'react';
+
+import { listAgents } from '@/features/agent/api/agentApi';
+import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
-import type { SkillDialogState } from './skillItemTypes';
-import { useLocalSkillActions } from './useLocalSkillActions';
+
+import DiscoveredSkillsList from './DiscoveredSkillsList';
 import SkillHeader from './SkillHeader';
-import SkillSearchInput from './SkillSearchInput';
+import type { SkillDialogState } from './skillItemTypes';
 import SkillListSection from './SkillListSection';
+import SkillSearchInput from './SkillSearchInput';
 import SourceTypeFilter from './SourceTypeFilter';
 import TagCloudFilter from './TagCloudFilter';
-import DiscoveredSkillsList from './DiscoveredSkillsList';
-import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
-import { listAgents } from '@/features/agent/api/agentApi';
+import { useLocalSkillActions } from './useLocalSkillActions';
 
 interface LocalSkillContentProps {
   setDialog: (state: SkillDialogState) => void;
 }
 
 const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDialog }) => {
-  const skills = useSkillStore(s => s.skills);
-  const loading = useSkillStore(s => s.loading);
-  const searchQuery = useSkillStore(s => s.searchQuery);
-  const activeTagGroupId = useSkillStore(s => s.activeTagGroupId);
-  const selectedSkillId = useSkillStore(s => s.selectedSkillId);
-  const tagGroups = useSkillStore(s => s.tagGroups);
-  const sourceFilter = useSkillStore(s => s.sourceFilter);
-  const tagFilter = useSkillStore(s => s.tagFilter);
-  const setSearchQuery = useSkillStore(s => s.setSearchQuery);
-  const fetchSkillsForTagGroup = useSkillStore(s => s.fetchSkillsForTagGroup);
-  const patchSkillDescription = useSkillStore(s => s.patchSkillDescription);
-  const toggleTagFilter = useSkillStore(s => s.toggleTagFilter);
+  const skills = useSkillStore((s) => s.skills);
+  const loading = useSkillStore((s) => s.loading);
+  const searchQuery = useSkillStore((s) => s.searchQuery);
+  const activeTagGroupId = useSkillStore((s) => s.activeTagGroupId);
+  const selectedSkillId = useSkillStore((s) => s.selectedSkillId);
+  const tagGroups = useSkillStore((s) => s.tagGroups);
+  const sourceFilter = useSkillStore((s) => s.sourceFilter);
+  const tagFilter = useSkillStore((s) => s.tagFilter);
+  const setSearchQuery = useSkillStore((s) => s.setSearchQuery);
+  const fetchSkillsForTagGroup = useSkillStore((s) => s.fetchSkillsForTagGroup);
+  const patchSkillDescription = useSkillStore((s) => s.patchSkillDescription);
+  const toggleTagFilter = useSkillStore((s) => s.toggleTagFilter);
 
   const {
     discoveredSkills,
@@ -44,8 +46,10 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   } = useLocalSkillActions(setDialog);
 
   const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
-  const [skillPresetMap, setSkillPresetMap] = useState<Record<string, string[]>>({});
-  const [agents, setAgents] = useState<Array<{ id: string; icon: string | null; name: string }>>([]);
+  const [skillTagGroupMap, setSkillTagGroupMap] = useState<Record<string, string[]>>({});
+  const [agents, setAgents] = useState<Array<{ id: string; icon: string | null; name: string }>>(
+    [],
+  );
 
   useEffect(() => {
     if (!activeTagGroupId) {
@@ -56,8 +60,8 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
 
   useEffect(() => {
-    void listAgents().then(agents => {
-      setAgents(agents.map(a => ({ id: a.id, icon: a.icon ?? null, name: a.name })));
+    void listAgents().then((agents) => {
+      setAgents(agents.map((a) => ({ id: a.id, icon: a.icon ?? null, name: a.name })));
     });
   }, []);
 
@@ -71,14 +75,14 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
 
   useEffect(() => {
     if (tagGroups.length === 0) {
-      setSkillPresetMap({});
+      setSkillTagGroupMap({});
       return;
     }
     let cancelled = false;
     void (async () => {
       const map: Record<string, string[]> = {};
       await Promise.all(
-        tagGroups.map(async tg => {
+        tagGroups.map(async (tg) => {
           try {
             const list = await getSkillsForTagGroup(tg.id);
             for (const s of list) {
@@ -89,7 +93,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           }
         }),
       );
-      if (!cancelled) setSkillPresetMap(map);
+      if (!cancelled) setSkillTagGroupMap(map);
     })();
     return () => {
       cancelled = true;
@@ -97,7 +101,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   }, [tagGroups, skills]);
 
   const activeGroupName = useMemo(
-    () => tagGroups.find(g => g.id === activeTagGroupId)?.name ?? null,
+    () => tagGroups.find((g) => g.id === activeTagGroupId)?.name ?? null,
     [tagGroups, activeTagGroupId],
   );
 
@@ -163,9 +167,9 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           loading={loading && skills.length === 0}
           selectedSkillId={selectedSkillId}
           actions={actions}
-          tagGroups={tagGroups.map(g => ({ id: g.id, name: g.name }))}
-          presetLabel={activeGroupName}
-          skillPresetMap={skillPresetMap}
+          tagGroups={tagGroups.map((g) => ({ id: g.id, name: g.name }))}
+          tagGroupLabel={activeGroupName}
+          skillTagGroupMap={skillTagGroupMap}
           agents={agents}
           onDescriptionResolved={patchSkillDescription}
           onTagClick={toggleTagFilter}

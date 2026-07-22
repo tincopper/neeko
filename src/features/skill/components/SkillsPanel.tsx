@@ -15,10 +15,9 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
-import { getAgentSkills } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
-import type { SkillView, AgentSkillGroup } from '@/shared/types';
+import type { SkillView } from '@/shared/types';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
 interface NavItem {
@@ -49,10 +48,16 @@ const SkillsPanel: React.FC = React.memo(() => {
   const projectSkillCountsLoading = useSkillStore((s) => s.projectSkillCountsLoading);
   const projectSkillCountsError = useSkillStore((s) => s.projectSkillCountsError);
   const refreshProjectSkillCounts = useSkillStore((s) => s.refreshProjectSkillCounts);
+  const projectTagGroupCounts = useSkillStore((s) => s.projectTagGroupCounts);
+  const projectTagGroupCountsLoading = useSkillStore((s) => s.projectTagGroupCountsLoading);
+  const projectTagGroupCountsError = useSkillStore((s) => s.projectTagGroupCountsError);
+  const refreshProjectTagGroupCounts = useSkillStore((s) => s.refreshProjectTagGroupCounts);
+  const agentGroups = useSkillStore((s) => s.agentSkillGroups);
+  const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
 
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [agentsExpanded, setAgentsExpanded] = useState(true);
-  const [presetsExpanded, setTagsExpanded] = useState(true);
+  const [tagsExpanded, setTagsExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -66,13 +71,6 @@ const SkillsPanel: React.FC = React.memo(() => {
     [projects],
   );
 
-  const [agentGroups, setAgentGroups] = useState<AgentSkillGroup[]>([]);
-  useEffect(() => {
-    getAgentSkills()
-      .then(setAgentGroups)
-      .catch(() => {});
-  }, []);
-
   const toast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     useNotificationStore.getState().addNotification({
       type: type === 'error' ? 'error' : 'info',
@@ -81,23 +79,67 @@ const SkillsPanel: React.FC = React.memo(() => {
     });
   }, []);
 
+  // Left-rail counts: agents once on mount; project counts when project list changes.
+  useEffect(() => {
+    void refreshAgentSkills().catch((e) => {
+      toast(`Failed to load agent skill counts: ${String(e)}`, 'error');
+    });
+  }, [refreshAgentSkills, toast]);
+
   useEffect(() => {
     void refreshProjectSkillCounts().catch((e) => {
       toast(`Failed to load project skill counts: ${String(e)}`, 'error');
     });
-  }, [projectsKey, refreshProjectSkillCounts, toast]);
+    void refreshProjectTagGroupCounts().catch((e) => {
+      toast(`Failed to load project tag group counts: ${String(e)}`, 'error');
+    });
+  }, [projectsKey, refreshProjectSkillCounts, refreshProjectTagGroupCounts, toast]);
 
   const navItems: NavItem[] = [
     { key: 'local', label: 'Library', icon: Package, count: skills.length },
     { key: 'marketplace', label: 'Marketplace', icon: Download },
   ];
 
+  /** Single active destination in the rail — Library / Tag / Agent / Project are exclusive. */
+  const selectLibrary = useCallback(() => {
+    setActiveSkillView('local');
+    setActiveTagGroupId(null);
+    setActiveAgentId(null);
+  }, [setActiveSkillView, setActiveTagGroupId, setActiveAgentId]);
+
+  const selectMarketplace = useCallback(() => {
+    setActiveSkillView('marketplace');
+    setActiveTagGroupId(null);
+    setActiveAgentId(null);
+  }, [setActiveSkillView, setActiveTagGroupId, setActiveAgentId]);
+
   const handleTagGroupSelect = useCallback(
     (id: string) => {
-      setActiveTagGroupId(id === activeTagGroupId ? null : id);
+      const next = id === activeTagGroupId ? null : id;
+      setActiveTagGroupId(next);
       setActiveSkillView('local');
+      setActiveAgentId(null);
     },
-    [activeTagGroupId, setActiveTagGroupId, setActiveSkillView],
+    [activeTagGroupId, setActiveTagGroupId, setActiveSkillView, setActiveAgentId],
+  );
+
+  const selectAgent = useCallback(
+    (agentId: string) => {
+      setActiveAgentId(agentId);
+      setActiveSkillView('agents');
+      setActiveTagGroupId(null);
+    },
+    [setActiveAgentId, setActiveSkillView, setActiveTagGroupId],
+  );
+
+  const selectProjectNav = useCallback(
+    (projectId: string) => {
+      selectProject(projectId);
+      setActiveSkillView('project');
+      setActiveTagGroupId(null);
+      setActiveAgentId(null);
+    },
+    [selectProject, setActiveSkillView, setActiveTagGroupId, setActiveAgentId],
   );
 
   const handleCreate = useCallback(async () => {
@@ -107,7 +149,7 @@ const SkillsPanel: React.FC = React.memo(() => {
       await createTagGroup(name);
       setNewName('');
       setCreating(false);
-      toast(`Created preset "${name}"`);
+      toast(`Created tag group "${name}"`);
     } catch (e) {
       toast(String(e), 'error');
     }
@@ -180,9 +222,6 @@ const SkillsPanel: React.FC = React.memo(() => {
             const Icon = item.icon;
             const isActive =
               activeSkillView === item.key && (item.key !== 'local' || activeTagGroupId === null);
-            // Library stays "active looking" when a preset is selected too
-            const librarySoft =
-              item.key === 'local' && activeSkillView === 'local' && activeTagGroupId !== null;
             return (
               <button
                 key={item.key}
@@ -192,17 +231,15 @@ const SkillsPanel: React.FC = React.memo(() => {
                   'text-[var(--font-size)]',
                   isActive
                     ? 'bg-bg-selected text-text-primary'
-                    : librarySoft
-                      ? 'text-text-primary'
-                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                    : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                 )}
                 onClick={() => {
-                  setActiveSkillView(item.key);
-                  if (item.key === 'local') {
-                    /* keep or clear preset? clear when clicking Library root */
+                  if (item.key === 'local') selectLibrary();
+                  else if (item.key === 'marketplace') selectMarketplace();
+                  else {
+                    setActiveSkillView(item.key);
                     setActiveTagGroupId(null);
-                  } else {
-                    setActiveTagGroupId(null);
+                    setActiveAgentId(null);
                   }
                 }}
               >
@@ -226,7 +263,7 @@ const SkillsPanel: React.FC = React.memo(() => {
               className="flex items-center gap-1 flex-1 min-w-0 text-left"
               onClick={() => setTagsExpanded((v) => !v)}
             >
-              {presetsExpanded ? (
+              {tagsExpanded ? (
                 <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
               ) : (
                 <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
@@ -238,14 +275,14 @@ const SkillsPanel: React.FC = React.memo(() => {
             <button
               type="button"
               className="p-1 rounded-md text-text-muted hover:bg-white/[0.06] hover:text-text-primary transition-colors"
-              title="New preset"
+              title="New tag group"
               onClick={() => setCreating(true)}
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          {presetsExpanded && (
+          {tagsExpanded && (
             <div className="pb-2 px-1.5">
               {creating && (
                 <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
@@ -401,15 +438,13 @@ const SkillsPanel: React.FC = React.memo(() => {
               ) : (
                 agentGroups.map((group) => {
                   const icon = resolveAgentIconSrc(group.agent_icon);
-                  const isActiveAgent = activeAgentId === group.agent_id;
+                  const isActiveAgent =
+                    activeAgentId === group.agent_id && activeSkillView === 'agents';
                   return (
                     <button
                       key={group.agent_id}
                       type="button"
-                      onClick={() => {
-                        setActiveAgentId(group.agent_id);
-                        setActiveSkillView('agents');
-                      }}
+                      onClick={() => selectAgent(group.agent_id)}
                       className={cn(
                         'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
                         'text-[var(--font-size)]',
@@ -464,20 +499,29 @@ const SkillsPanel: React.FC = React.memo(() => {
               ) : (
                 projects.map((project) => {
                   const isActive = activeProjectId === project.id && activeSkillView === 'project';
-                  const count = projectSkillCounts.get(project.id);
-                  const countLabel = projectSkillCountsError
+                  const diskCount = projectSkillCounts.get(project.id);
+                  const groupCount = projectTagGroupCounts.get(project.id);
+                  const diskLabel = projectSkillCountsError
                     ? '!'
-                    : projectSkillCountsLoading && count === undefined
-                      ? '...'
-                      : (count ?? 0);
+                    : projectSkillCountsLoading && diskCount === undefined
+                      ? '…'
+                      : String(diskCount ?? 0);
+                  const groupLabel = projectTagGroupCountsError
+                    ? '!'
+                    : projectTagGroupCountsLoading && groupCount === undefined
+                      ? '…'
+                      : `${groupCount ?? 0}g`;
+                  const diskNum = diskCount ?? 0;
+                  const groupNum = groupCount ?? 0;
+                  const metricsTitle =
+                    projectSkillCountsError || projectTagGroupCountsError
+                      ? (projectSkillCountsError ?? projectTagGroupCountsError ?? undefined)
+                      : `${diskNum} skill${diskNum === 1 ? '' : 's'} on disk · ${groupNum} tag group${groupNum === 1 ? '' : 's'} bound`;
                   return (
                     <button
                       key={project.id}
                       type="button"
-                      onClick={() => {
-                        selectProject(project.id);
-                        setActiveSkillView('project');
-                      }}
+                      onClick={() => selectProjectNav(project.id)}
                       className={cn(
                         'flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
                         'text-[var(--font-size)]',
@@ -485,6 +529,8 @@ const SkillsPanel: React.FC = React.memo(() => {
                           ? 'bg-bg-selected text-text-primary'
                           : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
                       )}
+                      title={metricsTitle}
+                      data-testid={`project-skill-row-${project.id}`}
                     >
                       <span
                         className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
@@ -495,12 +541,26 @@ const SkillsPanel: React.FC = React.memo(() => {
                       <span className="truncate flex-1 font-medium">{project.name}</span>
                       <span
                         className={cn(
-                          'text-[11px] tabular-nums min-w-[1.25rem] text-right',
-                          projectSkillCountsError ? 'text-accent-red' : 'text-text-muted',
+                          'inline-flex items-baseline gap-1 text-[11px] tabular-nums shrink-0',
+                          projectSkillCountsError || projectTagGroupCountsError
+                            ? 'text-accent-red'
+                            : 'text-text-muted',
                         )}
-                        title={projectSkillCountsError ?? undefined}
+                        data-testid={`project-skill-metrics-${project.id}`}
+                        aria-label={`${diskLabel} on disk, ${groupLabel} bound`}
                       >
-                        {countLabel}
+                        <span data-testid={`project-disk-count-${project.id}`}>{diskLabel}</span>
+                        <span className="opacity-40" aria-hidden>
+                          ·
+                        </span>
+                        <span
+                          className={cn(
+                            isActive && !projectTagGroupCountsError && 'text-accent-blue/90',
+                          )}
+                          data-testid={`project-group-count-${project.id}`}
+                        >
+                          {groupLabel}
+                        </span>
                       </span>
                     </button>
                   );

@@ -1028,17 +1028,59 @@ pub async fn sync_tag_group_cmd(
     .await
 }
 
-/// Apply all tag groups bound to a project: incremental sync (install only, no unsync).
+/// Apply all tag groups bound to a project: incremental install into **project-local**
+/// agent skill dirs (never global `~/.agent/skills`).
 ///
-/// When the user selects a project, call this to ensure bound skills are present in
-/// agent skill directories. Skills not in the binding are left untouched.
+/// Target agents:
+/// 1. The project's `selected_agent` when set and project-capable
+/// 2. Otherwise no disk install (bindings remain declarative only)
+///
+/// Install-only: skills not in the binding are left untouched on disk.
 #[tauri::command]
 pub async fn apply_project_skills_cmd(
     project_id: String,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
     let store = state.skill_store.clone();
-    let targets = resolve_sync_targets(state.inner());
+
+    // Resolve project path + selected_agent under project manager lock
+    let (project_path, selected_agent): (Option<String>, Option<String>) = {
+        let pm = state.project_manager.lock().map_err(AppError::from)?;
+        match pm.get_project(&project_id) {
+            Some(p) => (
+                Some(p.path.to_string_lossy().to_string()),
+                p.selected_agent.clone(),
+            ),
+            None => (None, None),
+        }
+    };
+
+    let Some(project_path) = project_path else {
+        return Err(AppError::NotFound(format!(
+            "Project not found: {project_id}"
+        )));
+    };
+
+    let agent_skill_path = {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        selected_agent
+            .as_deref()
+            .and_then(|agent_id| am.get_agent(agent_id))
+            .and_then(|agent| agent.skill_path.clone())
+    };
+
+    let project = PathBuf::from(&project_path);
+    let Some((agent_id, skills_dir)) = resolve_project_skill_target(
+        &project,
+        selected_agent.as_deref(),
+        agent_skill_path.as_deref(),
+    ) else {
+        log::debug!(
+            "apply_project_skills: project {project_id} has no project-capable target agent; skip disk sync"
+        );
+        return Ok(());
+    };
+
     run_blocking_result(move || {
         let tg_ids = store
             .get_project_tag_groups(&project_id)
@@ -1046,7 +1088,13 @@ pub async fn apply_project_skills_cmd(
         if tg_ids.is_empty() {
             return Ok(());
         }
-        let configured_mode = store.get_setting("sync_mode").map_err(AppError::from)?;
+
+        if !project.is_dir() {
+            return Err(AppError::NotFound(format!(
+                "Project path not found: {project_path}"
+            )));
+        }
+
         // Deduplicate skills across multiple tag groups
         let mut seen = std::collections::HashSet::new();
         let mut skills = Vec::new();
@@ -1060,7 +1108,21 @@ pub async fn apply_project_skills_cmd(
                 }
             }
         }
-        sync_skills_to_targets(&store, &skills, &targets, configured_mode.as_deref());
+        let tool_key = project_tool_key(&project_path, &agent_id);
+        for (skill_id, target) in deploy_project_skills(&skills_dir, &skills) {
+            let target_rec = super::types::SkillTargetRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                skill_id: skill_id.clone(),
+                tool: tool_key.clone(),
+                target_path: target.to_string_lossy().to_string(),
+                mode: "symlink".to_string(),
+                status: "ok".to_string(),
+                synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                last_error: None,
+            };
+            let _ = store.delete_target(&skill_id, &tool_key);
+            let _ = store.insert_target(&target_rec);
+        }
         Ok(())
     })
     .await
@@ -1173,6 +1235,36 @@ pub struct ProjectSkillCountDto {
     pub project_id: String,
     /// Total number of project-local skill entries shown in Project Skills.
     pub total_count: i64,
+}
+
+/// Bound tag-group count per project (declaration layer only).
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectTagGroupCountDto {
+    /// Project identifier.
+    pub project_id: String,
+    /// Number of tag groups bound via `project_tag_groups`.
+    pub group_count: i64,
+}
+
+/// Get bound tag-group counts for all projects that have at least one binding.
+#[tauri::command]
+pub async fn get_all_project_tag_group_counts(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<ProjectTagGroupCountDto>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let rows = store
+            .get_all_project_tag_group_counts()
+            .map_err(AppError::from)?;
+        Ok(rows
+            .into_iter()
+            .map(|(project_id, group_count)| ProjectTagGroupCountDto {
+                project_id,
+                group_count,
+            })
+            .collect())
+    })
+    .await
 }
 
 /// Get total project-local skill counts for all loaded projects.
@@ -1546,6 +1638,38 @@ fn deploy_skill_to_project_agent(
     Ok(())
 }
 
+fn deploy_project_skills(
+    skills_dir: &std::path::Path,
+    skills: &[SkillRecord],
+) -> Vec<(String, PathBuf)> {
+    let mut deployed = Vec::new();
+    for skill in skills {
+        if !skill.enabled {
+            continue;
+        }
+        let source = PathBuf::from(&skill.central_path);
+        if !source.exists() {
+            log::warn!(
+                "Skill central path missing, skip apply: {} ({})",
+                skill.name,
+                skill.central_path
+            );
+            continue;
+        }
+        let target = skills_dir.join(&skill.name);
+        if let Err(e) = deploy_skill_to_project_agent(&source, &target) {
+            log::warn!(
+                "Failed to apply skill {} to {}: {e}",
+                skill.id,
+                target.display()
+            );
+            continue;
+        }
+        deployed.push((skill.id.clone(), target));
+    }
+    deployed
+}
+
 /// Derive a project-relative skills segment from a home-level `skill_path`
 /// (e.g. `~/.gork/skills` → `.gork/skills`).
 fn relative_skills_from_agent_path(skill_path: &str) -> Option<String> {
@@ -1623,6 +1747,99 @@ fn project_agent_skills_dir(
     }
 
     None
+}
+
+fn resolve_project_skill_target(
+    project_path: &std::path::Path,
+    selected_agent: Option<&str>,
+    agent_skill_path: Option<&str>,
+) -> Option<(String, PathBuf)> {
+    let agent_id = selected_agent.map(str::trim).filter(|id| !id.is_empty())?;
+    let skill_path = agent_skill_path
+        .map(str::trim)
+        .filter(|path| !path.is_empty())?;
+    let skills_dir = project_agent_skills_dir(project_path, agent_id, Some(skill_path))?;
+    skills_dir
+        .starts_with(project_path)
+        .then(|| (agent_id.to_string(), skills_dir))
+}
+
+#[cfg(test)]
+mod project_skill_sync_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn skill_record(id: &str, name: &str, central_path: &std::path::Path) -> SkillRecord {
+        SkillRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: None,
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_ref_resolved: None,
+            source_subpath: None,
+            source_branch: None,
+            source_revision: None,
+            remote_revision: None,
+            central_path: central_path.to_string_lossy().to_string(),
+            content_hash: None,
+            enabled: true,
+            status: "ok".to_string(),
+            update_status: "unknown".to_string(),
+            last_checked_at: None,
+            last_check_error: None,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn apply_target_is_selected_agent_project_directory_only() {
+        let temp = tempdir().unwrap();
+        let project = temp.path().join("project");
+        let central_skill = temp.path().join("central").join("review");
+        let selected_global = temp.path().join("home").join(".claude").join("skills");
+        let other_global = temp
+            .path()
+            .join("home")
+            .join(".config")
+            .join("opencode")
+            .join("skills");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&central_skill).unwrap();
+        std::fs::write(central_skill.join("SKILL.md"), "# Review\n").unwrap();
+
+        let (_, skills_dir) =
+            resolve_project_skill_target(&project, Some("claude-code"), selected_global.to_str())
+                .unwrap();
+        let deployed = deploy_project_skills(
+            &skills_dir,
+            &[skill_record("skill-1", "review", &central_skill)],
+        );
+
+        assert_eq!(skills_dir, project.join(".claude").join("skills"));
+        assert_eq!(deployed.len(), 1);
+        assert_eq!(deployed[0].0, "skill-1");
+        assert_eq!(deployed[0].1, skills_dir.join("review"));
+        assert!(deployed[0].1.exists());
+        assert!(!selected_global.exists());
+        assert!(!other_global.exists());
+        assert!(!project.join(".config/opencode/skills/review").exists());
+    }
+
+    #[test]
+    fn apply_target_is_none_without_project_capable_selected_agent() {
+        let temp = tempdir().unwrap();
+        let project = temp.path().join("project");
+        std::fs::create_dir_all(&project).unwrap();
+
+        assert!(resolve_project_skill_target(&project, None, None).is_none());
+        assert!(resolve_project_skill_target(&project, Some("claude-code"), None).is_none());
+        assert!(
+            resolve_project_skill_target(&project, Some("  "), Some("~/.claude/skills")).is_none()
+        );
+        assert_eq!(std::fs::read_dir(&project).unwrap().count(), 0);
+    }
 }
 
 fn scan_skill_dir(

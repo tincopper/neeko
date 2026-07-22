@@ -1,7 +1,13 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { create } from 'zustand';
 
-import type { ManagedSkillDto, TagGroup, DiscoveredSkillDto, SkillView } from '@/shared/types';
+import type {
+  ManagedSkillDto,
+  TagGroup,
+  DiscoveredSkillDto,
+  SkillView,
+  AgentSkillGroup,
+} from '@/shared/types';
 
 import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
 
@@ -27,6 +33,8 @@ import {
   setProjectTagGroups as setProjectTagGroupsApi,
   applyProjectSkills as applyProjectSkillsApi,
   getAllProjectSkillCounts as getAllProjectSkillCountsApi,
+  getAllProjectTagGroupCounts as getAllProjectTagGroupCountsApi,
+  getAgentSkills as getAgentSkillsApi,
   checkSkillUpdate as checkSkillUpdateApi,
   updateSkill as updateSkillApi,
 } from './api/skillApi';
@@ -56,6 +64,13 @@ interface SkillStoreState {
   projectSkillCounts: Map<string, number>;
   projectSkillCountsLoading: boolean;
   projectSkillCountsError: string | null;
+  /** Bound tag-group counts keyed by project id (missing => 0). */
+  projectTagGroupCounts: Map<string, number>;
+  projectTagGroupCountsLoading: boolean;
+  projectTagGroupCountsError: string | null;
+  /** Per-agent disk skill groups (left rail counts + Agents view source). */
+  agentSkillGroups: AgentSkillGroup[];
+  agentSkillGroupsLoading: boolean;
   /** Filter by source type. */
   sourceFilter: 'all' | 'local' | 'git' | 'skillssh';
   /** Filter by tag names (AND logic, empty = no filter). */
@@ -75,6 +90,13 @@ interface SkillStoreActions {
   clearAllSkills: () => Promise<number>;
   deleteSkill: (id: string) => Promise<void>;
   getSkillDocument: (skillId: string) => Promise<string>;
+  /** Refresh left-rail agent skill counts (disk scan). */
+  refreshAgentSkills: () => Promise<void>;
+  /**
+   * Refresh all left-rail numeric badges after mutations:
+   * Library length (via skills), tag skill_count, agent counts, project disk counts.
+   */
+  refreshRailCounts: () => Promise<void>;
 
   // TagGroup 动作
   refreshTagGroups: () => Promise<void>;
@@ -92,6 +114,8 @@ interface SkillStoreActions {
   /** Auto apply on project switch — install only, no remove; deduped. */
   applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
   refreshProjectSkillCounts: () => Promise<void>;
+  /** Bulk refresh bound tag-group counts for all projects. */
+  refreshProjectTagGroupCounts: () => Promise<void>;
 
   // Install 动作
   installLocal: () => Promise<void>;
@@ -139,6 +163,11 @@ export const initialSkillState: SkillStoreState = {
   projectSkillCounts: new Map(),
   projectSkillCountsLoading: false,
   projectSkillCountsError: null,
+  projectTagGroupCounts: new Map(),
+  projectTagGroupCountsLoading: false,
+  projectTagGroupCountsError: null,
+  agentSkillGroups: [],
+  agentSkillGroupsLoading: false,
   sourceFilter: 'all',
   tagFilter: [],
   activeAgentId: null,
@@ -177,11 +206,53 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   deleteSkill: async (id: string) => {
     await deleteManagedSkill(id);
     set((state) => ({ skills: state.skills.filter((s) => s.id !== id) }));
+    // Tag membership + agent/project disk counts may change when a library skill is removed.
+    void get()
+      .refreshRailCounts()
+      .catch((e) => console.error('[skillStore] refreshRailCounts after deleteSkill:', e));
   },
 
   getSkillDocument: async (skillId: string): Promise<string> => {
     const result = await getSkillDocumentApi(skillId);
     return result.content;
+  },
+
+  refreshAgentSkills: async () => {
+    set({ agentSkillGroupsLoading: true });
+    try {
+      const agentSkillGroups = await getAgentSkillsApi();
+      set({ agentSkillGroups, agentSkillGroupsLoading: false });
+    } catch (e) {
+      console.error('[skillStore] refreshAgentSkills failed:', e);
+      set({ agentSkillGroupsLoading: false });
+      throw e;
+    }
+  },
+
+  refreshRailCounts: async () => {
+    const tasks = [
+      get()
+        .refreshTagGroups()
+        .catch((e) => {
+          console.error('[skillStore] refreshTagGroups in refreshRailCounts:', e);
+        }),
+      get()
+        .refreshAgentSkills()
+        .catch((e) => {
+          console.error('[skillStore] refreshAgentSkills in refreshRailCounts:', e);
+        }),
+      get()
+        .refreshProjectSkillCounts()
+        .catch((e) => {
+          console.error('[skillStore] refreshProjectSkillCounts in refreshRailCounts:', e);
+        }),
+      get()
+        .refreshProjectTagGroupCounts()
+        .catch((e) => {
+          console.error('[skillStore] refreshProjectTagGroupCounts in refreshRailCounts:', e);
+        }),
+    ];
+    await Promise.all(tasks);
   },
 
   // ── TagGroup 动作 ──
@@ -203,11 +274,15 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   deleteTagGroup: async (id: string) => {
     await deleteTagGroupApi(id);
+    // Cascade delete on DB also drops project_tag_groups rows.
     set((state) => ({
       tagGroups: state.tagGroups.filter((g) => g.id !== id),
       activeTagGroupId: state.activeTagGroupId === id ? null : state.activeTagGroupId,
       projectTagGroups: state.projectTagGroups.filter((g) => g.id !== id),
     }));
+    void get()
+      .refreshProjectTagGroupCounts()
+      .catch((e) => console.error('[skillStore] refresh counts after deleteTagGroup:', e));
   },
 
   updateTagGroup: async (id: string, name: string) => {
@@ -230,6 +305,10 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   syncTagGroup: async (tagGroupId: string) => {
     await syncTagGroupApi(tagGroupId);
+    // Global agent dirs may change — refresh left-rail agent counts.
+    void get()
+      .refreshAgentSkills()
+      .catch((e) => console.error('[skillStore] refreshAgentSkills after syncTagGroup:', e));
   },
 
   // ── Project bindings ──
@@ -248,10 +327,20 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
 
   setProjectTagGroups: async (projectId: string, tagGroupIds: string[]) => {
     await setProjectTagGroupsApi(projectId, tagGroupIds);
-    const all = get().tagGroups;
-    set({
-      projectTagGroups: all.filter((g) => tagGroupIds.includes(g.id)),
+    // Reload full DTOs (skill_count) rather than filtering local list only.
+    await get().loadProjectTagGroups(projectId);
+    // Keep left-rail summary in sync without requiring full remount.
+    set((state) => {
+      const next = new Map(state.projectTagGroupCounts);
+      next.set(projectId, tagGroupIds.length);
+      return { projectTagGroupCounts: next };
     });
+    // Bind save may install project-local skills — refresh disk counts.
+    void get()
+      .refreshProjectSkillCounts()
+      .catch((e) =>
+        console.error('[skillStore] refreshProjectSkillCounts after setProjectTagGroups:', e),
+      );
   },
 
   applyProjectSkills: async (projectId: string) => {
@@ -300,6 +389,30 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     }
   },
 
+  refreshProjectTagGroupCounts: async () => {
+    set({ projectTagGroupCountsLoading: true, projectTagGroupCountsError: null });
+    try {
+      const counts = await getAllProjectTagGroupCountsApi();
+      const map = new Map<string, number>();
+      for (const c of counts) {
+        map.set(c.project_id, c.group_count);
+      }
+      set({
+        projectTagGroupCounts: map,
+        projectTagGroupCountsLoading: false,
+        projectTagGroupCountsError: null,
+      });
+    } catch (e) {
+      const message = String(e);
+      console.error('[skillStore] refreshProjectTagGroupCounts failed:', e);
+      set({
+        projectTagGroupCountsLoading: false,
+        projectTagGroupCountsError: message,
+      });
+      throw e;
+    }
+  },
+
   // ── Install 动作 ──
 
   installLocal: async () => {
@@ -312,6 +425,10 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     if (!selected) return;
     await installLocalSkillApi(selected as string);
     await get().refreshSkills();
+    // Library badge uses skills.length; tags/agents unchanged but keep rail consistent.
+    void get()
+      .refreshRailCounts()
+      .catch((e) => console.error('[skillStore] refreshRailCounts after installLocal:', e));
   },
 
   scanSkills: async (): Promise<DiscoveredSkillDto[]> => {
@@ -326,6 +443,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   importDiscoveredSkill: async (discoveredPath: string, name?: string) => {
     await importDiscoveredSkillApi(discoveredPath, name);
     await get().refreshSkills();
+    void get()
+      .refreshRailCounts()
+      .catch((e) =>
+        console.error('[skillStore] refreshRailCounts after importDiscoveredSkill:', e),
+      );
   },
 
   checkSkillUpdate: async (skillId: string) => {
@@ -376,9 +498,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     set((state) => {
       const active = state.tagFilter.includes(tag);
       return {
-        tagFilter: active
-          ? state.tagFilter.filter((t) => t !== tag)
-          : [...state.tagFilter, tag],
+        tagFilter: active ? state.tagFilter.filter((t) => t !== tag) : [...state.tagFilter, tag],
       };
     });
   },

@@ -8,6 +8,19 @@ import { useSkillStore, initialSkillState } from '../../store';
 import AgentSkillContent from '../AgentSkillContent';
 
 const mockInvoke = vi.mocked(invoke);
+const mockGetAgentSkills = vi.hoisted(() => vi.fn());
+const mockRemoveSkillFromAgent = vi.hoisted(() => vi.fn());
+const mockImportSkillToAgent = vi.hoisted(() => vi.fn());
+
+vi.mock('@/features/skill/api/skillApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/skillApi')>();
+  return {
+    ...actual,
+    getAgentSkills: (...args: unknown[]) => mockGetAgentSkills(...args),
+    removeSkillFromAgent: (...args: unknown[]) => mockRemoveSkillFromAgent(...args),
+    importSkillToAgent: (...args: unknown[]) => mockImportSkillToAgent(...args),
+  };
+});
 
 const mockData = [
   {
@@ -55,18 +68,26 @@ beforeEach(() => {
   useSkillStore.setState({
     ...initialSkillState,
     activeAgentId: null,
+    agentSkillGroups: [],
+    agentSkillGroupsLoading: false,
     skills: [
       createManagedSkill({ id: 's1', name: 'git-helper' }),
       createManagedSkill({ id: 's2', name: 'extra-skill', description: 'Extra from library' }),
     ],
   });
   mockInvoke.mockReset();
+  mockGetAgentSkills.mockReset();
+  mockRemoveSkillFromAgent.mockReset();
+  mockImportSkillToAgent.mockReset();
+  mockGetAgentSkills.mockResolvedValue(mockData);
+  mockRemoveSkillFromAgent.mockResolvedValue(undefined);
+  mockImportSkillToAgent.mockResolvedValue(undefined);
   mockInvoke.mockResolvedValue(mockData);
 });
 
 describe('AgentSkillContent', () => {
   it('loading 时显示 spinner', () => {
-    mockInvoke.mockImplementation(() => new Promise(() => {}));
+    mockGetAgentSkills.mockImplementation(() => new Promise(() => {}));
     render(<AgentSkillContent setDialog={vi.fn()} />);
     const container = screen.getByTestId('agent-skill-loading');
     expect(container.querySelector('.animate-spin')).toBeInTheDocument();
@@ -113,7 +134,7 @@ describe('AgentSkillContent', () => {
   });
 
   it('agent 没有 skills 时显示友好空状态与 Add Skill', async () => {
-    mockInvoke.mockResolvedValue([
+    mockGetAgentSkills.mockResolvedValue([
       {
         agent_id: 'empty-agent',
         agent_name: 'Empty Agent',
@@ -189,5 +210,64 @@ describe('AgentSkillContent', () => {
     // List view still shows skill names
     expect(screen.getByText('git-helper')).toBeInTheDocument();
     expect(screen.getByText('code-formatter')).toBeInTheDocument();
+  });
+
+  it('multi-select toggle after List view shows batch bar with Delete only', async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({ activeAgentId: 'opencode' });
+
+    render(<AgentSkillContent setDialog={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-skill-card-git-helper')).toBeInTheDocument();
+    });
+
+    // Batch bar hidden until multi-select is enabled
+    expect(screen.queryByTestId('agent-skill-batch-bar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('agent-skill-multi-select-toggle')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('agent-skill-multi-select-toggle'));
+    expect(screen.getByTestId('agent-skill-batch-bar')).toBeInTheDocument();
+    // Agents: only Delete action (no disable/update)
+    expect(screen.getByTestId('agent-skill-bulk-remove')).toHaveTextContent(/^Delete$/);
+    expect(screen.queryByText(/Disable/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Update/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('agent-skill-check-git-helper'));
+    await user.click(screen.getByTestId('agent-skill-check-code-formatter'));
+    expect(screen.getByTestId('agent-skill-selected-count')).toHaveTextContent('2 selected');
+
+    await user.click(screen.getByTestId('agent-skill-bulk-remove'));
+    const confirmBtn = await screen.findByRole('button', { name: /Remove selected/i });
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockRemoveSkillFromAgent).toHaveBeenCalledWith('opencode', '/skills/git-helper', 's1');
+      expect(mockRemoveSkillFromAgent).toHaveBeenCalledWith(
+        'opencode',
+        '/skills/code-formatter',
+        null,
+      );
+    });
+  });
+
+  it('select all in multi-select mode selects filtered skills only', async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({ activeAgentId: 'opencode' });
+    render(<AgentSkillContent setDialog={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-skill-multi-select-toggle')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('agent-skill-multi-select-toggle'));
+
+    await user.type(screen.getByLabelText(/Search agent skills/i), 'git');
+    await waitFor(() => {
+      expect(screen.getByText('git-helper')).toBeInTheDocument();
+      expect(screen.queryByText('code-formatter')).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId('agent-skill-select-all'));
+    expect(screen.getByTestId('agent-skill-selected-count')).toHaveTextContent('1 selected');
   });
 });

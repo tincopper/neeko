@@ -552,6 +552,26 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
+    /// Bound tag-group counts for all projects.
+    ///
+    /// Returns `(project_id, bound_group_count)` from `project_tag_groups`.
+    /// Projects with zero bindings are omitted (caller treats missing as 0).
+    pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT project_id, COUNT(*)
+             FROM project_tag_groups
+             GROUP BY project_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
     // Settings
 
     /// Get a setting value by key.
@@ -684,4 +704,51 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_group(id: &str, name: &str) -> TagGroupRecord {
+        TagGroupRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: None,
+            icon: None,
+            sort_order: 0,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn get_all_project_tag_group_counts_groups_by_project() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_tag_group(&sample_group("tg-a", "Backend"))
+            .unwrap();
+        repo.insert_tag_group(&sample_group("tg-b", "Frontend"))
+            .unwrap();
+        repo.insert_tag_group(&sample_group("tg-c", "Review"))
+            .unwrap();
+
+        repo.set_project_tag_groups("proj-1", &["tg-a".into(), "tg-b".into()])
+            .unwrap();
+        repo.set_project_tag_groups("proj-2", &["tg-c".into()])
+            .unwrap();
+
+        let mut counts = repo.get_all_project_tag_group_counts().unwrap();
+        counts.sort_by(|a, b| a.0.cmp(&b.0));
+
+        assert_eq!(counts, vec![("proj-1".into(), 2), ("proj-2".into(), 1)]);
+    }
+
+    #[test]
+    fn get_all_project_tag_group_counts_empty_when_no_bindings() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_tag_group(&sample_group("tg-a", "Backend"))
+            .unwrap();
+        let counts = repo.get_all_project_tag_group_counts().unwrap();
+        assert!(counts.is_empty());
+    }
 }

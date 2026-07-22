@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "SkillsPanel / ProjectSkillContent / BindTagGroupsDialog 组件约定与拆分"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "skillStore 新 Map 状态与 refresh 模式"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "列表摘要、对话框绑定保存交互"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TagGroup / ProjectSkillCount 类型与 API DTO"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "TDD 与前端测试分层要求"}
+{"file": ".trellis/spec/backend/api-layer.md", "reason": "可选批量 tag-group counts Tauri 命令约定（若做后端）"}

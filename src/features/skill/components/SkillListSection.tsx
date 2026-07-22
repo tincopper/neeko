@@ -1,12 +1,13 @@
-import React from 'react';
-import type { SkillListSectionProps } from './skillItemTypes';
-import SkillCard from './SkillCard';
 import { Package } from 'lucide-react';
+import React from 'react';
+
+import SkillCard from './SkillCard';
+import type { SkillListSectionProps } from './skillItemTypes';
 
 const SKELETON_COUNT = 6;
 
 const SkillCardSkeleton: React.FC = () => (
-  <div className="rounded-xl border border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[160px]">
+  <div className="rounded-lg border border-border bg-bg-primary p-3.5 flex flex-col gap-2.5 animate-pulse min-h-[160px]">
     <div className="h-3.5 w-2/5 rounded bg-bg-hover" />
     <div className="space-y-1.5">
       <div className="h-2.5 w-full rounded bg-bg-hover" />
@@ -24,8 +25,10 @@ const SkillCardSkeleton: React.FC = () => (
 );
 
 export interface SkillListSectionExtraProps {
-  presetLabel?: string | null;
-  skillPresetMap?: Record<string, string[]>;
+  /** Active tag-group filter label shown on cards. */
+  tagGroupLabel?: string | null;
+  /** skillId → tag-group names for badge fallback. */
+  skillTagGroupMap?: Record<string, string[]>;
   agents?: Array<{ id: string; icon: string | null; name: string }>;
 }
 
@@ -39,8 +42,8 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
     selectedSkillId,
     actions,
     tagGroups = [],
-    presetLabel,
-    skillPresetMap = {},
+    tagGroupLabel,
+    skillTagGroupMap = {},
     agents = [],
     onDescriptionResolved,
     onTagClick,
@@ -85,10 +88,10 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
         role="list"
         aria-label={`Skills (${skills.length})`}
       >
-        {skills.map(s => {
-          const groups = skillPresetMap[s.id];
-          const cardPreset =
-            presetLabel ?? (groups && groups.length > 0 ? groups[0] : null);
+        {skills.map((s) => {
+          const groups = skillTagGroupMap[s.id];
+          const cardTagGroupLabel =
+            tagGroupLabel ?? (groups && groups.length > 0 ? groups[0] : null);
           return (
             <div key={s.id} role="listitem" className="min-w-0 h-full">
               <SkillCard
@@ -96,16 +99,16 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 isSelected={selectedSkillId === s.id}
                 tagGroups={tagGroups}
                 agents={agents}
-                presetLabel={cardPreset}
+                tagGroupLabel={cardTagGroupLabel}
                 onDescriptionResolved={onDescriptionResolved}
                 onTagClick={onTagClick}
                 onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
                 onAddToTagGroup={
-                  onAddToTagGroup ? tagGroupId => onAddToTagGroup(s.id, tagGroupId) : undefined
+                  onAddToTagGroup ? (tagGroupId) => onAddToTagGroup(s.id, tagGroupId) : undefined
                 }
                 onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
                 onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}
-                onAction={action => {
+                onAction={(action) => {
                   if (action === 'delete') onDeleteSkill(s.id);
                   else if (action === 'edit') onEditSkill(s);
                   else if (action === 'detail') onViewSkill(s);

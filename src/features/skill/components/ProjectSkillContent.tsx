@@ -12,7 +12,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- list agents for targets + card icons
-import { listAgents, resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { listAgents, resolveAgentIconSrc, setProjectAgent } from '@/features/agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- shared toast bus
 import { useNotificationStore } from '@/features/notification/notificationStore';
 // eslint-disable-next-line import/no-restricted-paths -- active project
@@ -29,8 +29,16 @@ import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { ManagedSkillDto, ProjectDiskSkill } from '@/shared/types';
-import { Button } from '@/ui';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/ui';
 
+import BindTagGroupsDialog from './BindTagGroupsDialog';
+import BoundTagGroupsSection from './BoundTagGroupsSection';
 import ImportToProjectDialog, { type ProjectAgentOption } from './ImportToProjectDialog';
 import ProjectSkillCard from './ProjectSkillCard';
 import type { SkillDialogState } from './skillItemTypes';
@@ -57,16 +65,15 @@ const PROJECT_CAPABLE_AGENT_KEYS = new Set([
   'windsurf',
 ]);
 
-/** Builtin adapters, or custom agents (with or without skill_path — backend falls back). */
+/** Target agents must expose a non-empty skill_path, matching the backend sync contract. */
 function isProjectCapable(agentId: string, skillPath?: string | null): boolean {
+  if (!skillPath?.trim()) return false;
   if (PROJECT_CAPABLE_AGENT_KEYS.has(agentId)) return true;
   const stripped = agentId.startsWith('custom:') ? agentId.slice('custom:'.length) : agentId;
   if (PROJECT_CAPABLE_AGENT_KEYS.has(stripped)) return true;
-  // Custom agents are always installable under project (via skill_path or .agents/{id}/skills)
+  // Custom and third-party agents with a configured path map to a project-local directory.
   if (agentId.startsWith('custom:')) return true;
-  // Any agent with a configured skill path can map into the project
-  if (skillPath && skillPath.trim()) return true;
-  return false;
+  return true;
 }
 
 function displayPath(path: string | undefined | null): string {
@@ -79,9 +86,13 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   const activeProject = useProjectStore((s) => s.activeProject);
   const librarySkills = useSkillStore((s) => s.skills);
   const tagGroups = useSkillStore((s) => s.tagGroups);
+  const projectTagGroups = useSkillStore((s) => s.projectTagGroups);
+  const projectBindingsLoading = useSkillStore((s) => s.projectBindingsLoading);
   const refreshSkills = useSkillStore((s) => s.refreshSkills);
   const refreshTagGroups = useSkillStore((s) => s.refreshTagGroups);
   const refreshProjectSkillCounts = useSkillStore((s) => s.refreshProjectSkillCounts);
+  const loadProjectTagGroups = useSkillStore((s) => s.loadProjectTagGroups);
+  const setProjectTagGroups = useSkillStore((s) => s.setProjectTagGroups);
 
   const [diskSkills, setDiskSkills] = useState<ProjectDiskSkill[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,13 +101,20 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   /** `'all'` or a specific agent id */
   const [agentFilter, setAgentFilter] = useState<string>('all');
+  /** `'all'` or a bound tag-group id */
+  const [tagGroupFilter, setTagGroupFilter] = useState<string>('all');
+  /** skill ids / names belonging to each bound tag group (for filter). */
+  const [groupMembership, setGroupMembership] = useState<Map<string, Set<string>>>(() => new Map());
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [importOpen, setImportOpen] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [bindOpen, setBindOpen] = useState(false);
+  const [bindSaving, setBindSaving] = useState(false);
   const [agents, setAgents] = useState<ProjectAgentOption[]>([]);
   const [pendingRemove, setPendingRemove] = useState<ProjectDiskSkill | null>(null);
   const [removing, setRemoving] = useState(false);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
+  const [settingTargetAgent, setSettingTargetAgent] = useState(false);
 
   const toast = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
     useNotificationStore.getState().addNotification({
@@ -129,13 +147,16 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     [activeProject?.path, toast],
   );
 
+  const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
+
   const refreshCounts = useCallback(async () => {
     try {
-      await refreshProjectSkillCounts();
+      // Project disk counts (left rail) + agent rail if global paths also touched
+      await Promise.all([refreshProjectSkillCounts(), refreshAgentSkills().catch(() => undefined)]);
     } catch (e) {
       toast(`Failed to refresh project skill counts: ${String(e)}`, 'error');
     }
-  }, [refreshProjectSkillCounts, toast]);
+  }, [refreshProjectSkillCounts, refreshAgentSkills, toast]);
 
   useEffect(() => {
     void refreshSkills();
@@ -160,12 +181,284 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     setSearchQuery('');
     setStatusFilter('all');
     setAgentFilter('all');
+    setTagGroupFilter('all');
+    setGroupMembership(new Map());
     setImportOpen(false);
+    setBindOpen(false);
     setPendingRemove(null);
     void reload();
   }, [activeProjectId, reload]);
 
+  useEffect(() => {
+    if (!activeProjectId) return;
+    void loadProjectTagGroups(activeProjectId).catch((e) => {
+      toast(`Failed to load bound tag groups: ${String(e)}`, 'error');
+    });
+  }, [activeProjectId, loadProjectTagGroups, toast]);
+
+  // Resolve skill membership for each bound tag group (used by tag-group filter chips).
+  useEffect(() => {
+    let cancelled = false;
+    if (projectTagGroups.length === 0) {
+      setGroupMembership(new Map());
+      setTagGroupFilter((prev) => (prev === 'all' ? prev : 'all'));
+      return;
+    }
+    void (async () => {
+      const next = new Map<string, Set<string>>();
+      await Promise.all(
+        projectTagGroups.map(async (g) => {
+          try {
+            const skills = await getSkillsForTagGroup(g.id);
+            const keys = new Set<string>();
+            for (const s of skills) {
+              if (s.id) keys.add(s.id);
+              if (s.name) keys.add(s.name);
+            }
+            next.set(g.id, keys);
+          } catch {
+            next.set(g.id, new Set());
+          }
+        }),
+      );
+      if (cancelled) return;
+      setGroupMembership(next);
+      setTagGroupFilter((prev) => (prev !== 'all' && !next.has(prev) ? 'all' : prev));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectTagGroups]);
+
+  /** Agents associated with this project that can receive project-local skills. */
+  const projectTargetAgentIds = useMemo(() => {
+    const selected = activeProject?.selected_agent?.trim();
+    if (!selected) return [] as string[];
+    const match = agents.find((a) => a.id === selected && a.projectCapable);
+    return match ? [match.id] : [];
+  }, [activeProject?.selected_agent, agents]);
+
+  const handleSaveBindings = useCallback(
+    async (tagGroupIds: string[]) => {
+      if (!activeProjectId || !activeProject?.path) return;
+      setBindSaving(true);
+      try {
+        const prevIds = new Set(projectTagGroups.map((g) => g.id));
+        const nextIds = new Set(tagGroupIds);
+        const removedGroupIds = [...prevIds].filter((id) => !nextIds.has(id));
+        const addedGroupIds = [...nextIds].filter((id) => !prevIds.has(id));
+
+        // Skills that remain covered by still-bound groups must not be deleted on unbind.
+        const remainingSkillKeys = new Set<string>();
+        if (nextIds.size > 0) {
+          const remainingLists = await Promise.all(
+            [...nextIds].map((id) => getSkillsForTagGroup(id)),
+          );
+          for (const list of remainingLists) {
+            for (const s of list) {
+              if (s.id) remainingSkillKeys.add(s.id);
+              if (s.name) remainingSkillKeys.add(s.name);
+            }
+          }
+        }
+
+        // Skills that were only provided by removed groups → delete from project agent dirs.
+        const toRemove: Array<{ name: string; skillId: string | null }> = [];
+        if (removedGroupIds.length > 0) {
+          const removedLists = await Promise.all(
+            removedGroupIds.map((id) => getSkillsForTagGroup(id)),
+          );
+          const seenNames = new Set<string>();
+          for (const list of removedLists) {
+            for (const s of list) {
+              const stillBound =
+                (s.id != null && remainingSkillKeys.has(s.id)) || remainingSkillKeys.has(s.name);
+              if (stillBound) continue;
+              if (seenNames.has(s.name)) continue;
+              seenNames.add(s.name);
+              toRemove.push({ name: s.name, skillId: s.id ?? null });
+            }
+          }
+        }
+
+        // 1) Persist declaration
+        await setProjectTagGroups(activeProjectId, tagGroupIds);
+
+        // 2) Remove disk skills for unbound groups (target agent if set; else all linked agents on disk).
+        let removedCount = 0;
+        if (toRemove.length > 0) {
+          const fallbackAgentIds = projectTargetAgentIds.length
+            ? projectTargetAgentIds
+            : [
+                ...new Set(
+                  diskSkills.flatMap((s) =>
+                    s.agent_ids.length ? s.agent_ids : (s.agents ?? []).map((a) => a.agent_id),
+                  ),
+                ),
+              ];
+          for (const item of toRemove) {
+            const disk = diskSkills.find(
+              (s) => s.name === item.name || (item.skillId && s.skill_id === item.skillId),
+            );
+            const agentIds =
+              disk && (disk.agent_ids.length > 0 || (disk.agents?.length ?? 0) > 0)
+                ? disk.agent_ids.length
+                  ? disk.agent_ids
+                  : (disk.agents ?? []).map((a) => a.agent_id)
+                : fallbackAgentIds;
+            if (agentIds.length === 0) continue;
+            try {
+              await removeSkillFromProject(
+                activeProject.path,
+                item.name,
+                agentIds,
+                item.skillId ?? disk?.skill_id ?? null,
+              );
+              removedCount += 1;
+            } catch (e) {
+              console.error('[ProjectSkillContent] remove on unbind failed:', item.name, e);
+            }
+          }
+        }
+
+        // 3) Install skills from newly bound groups onto target agent only.
+        let imported = 0;
+        let syncSkippedReason: string | null = null;
+        if (addedGroupIds.length > 0) {
+          const skillIds = new Set<string>();
+          const groupResults = await Promise.all(
+            addedGroupIds.map((id) => getSkillsForTagGroup(id)),
+          );
+          for (const list of groupResults) {
+            for (const s of list) skillIds.add(s.id);
+          }
+
+          const agentIds = projectTargetAgentIds;
+          if (skillIds.size === 0) {
+            syncSkippedReason = null;
+          } else if (agentIds.length === 0) {
+            syncSkippedReason =
+              'No target agent on this project (set project agent) — bindings saved without disk sync';
+          } else {
+            imported = await importSkillsToProject(
+              activeProject.path,
+              Array.from(skillIds),
+              agentIds,
+            );
+          }
+        }
+
+        if (removedCount > 0 || imported > 0) {
+          await reload({ silent: true });
+          await refreshCounts();
+        }
+
+        const groupLabel = `${tagGroupIds.length} group${tagGroupIds.length === 1 ? '' : 's'}`;
+        const parts: string[] = [`Bound ${groupLabel}`];
+        if (imported > 0) {
+          parts.push(`synced ${imported} deployment${imported === 1 ? '' : 's'} to target agent`);
+        }
+        if (removedCount > 0) {
+          parts.push(`removed ${removedCount} skill${removedCount === 1 ? '' : 's'} from project`);
+        }
+        if (syncSkippedReason) {
+          toast(`${parts.join('; ')}. ${syncSkippedReason}`, 'info');
+        } else {
+          toast(parts.join('; '), 'success');
+        }
+        setBindOpen(false);
+      } catch (e) {
+        toast(String(e), 'error');
+        throw e;
+      } finally {
+        setBindSaving(false);
+      }
+    },
+    [
+      activeProject?.path,
+      activeProjectId,
+      diskSkills,
+      projectTagGroups,
+      projectTargetAgentIds,
+      refreshCounts,
+      reload,
+      setProjectTagGroups,
+      toast,
+    ],
+  );
+
   const existingNames = useMemo(() => new Set(diskSkills.map((s) => s.name)), [diskSkills]);
+
+  /** skill key (id or name) → bound tag groups it belongs to */
+  const skillTagGroups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }[]>();
+    for (const g of projectTagGroups) {
+      const keys = groupMembership.get(g.id);
+      if (!keys) continue;
+      const chip = { id: g.id, name: g.name };
+      for (const key of keys) {
+        const list = map.get(key) ?? [];
+        if (!list.some((x) => x.id === g.id)) list.push(chip);
+        map.set(key, list);
+      }
+    }
+    return map;
+  }, [projectTagGroups, groupMembership]);
+
+  const tagGroupsForSkill = useCallback(
+    (skill: ProjectDiskSkill) => {
+      const byId = skill.skill_id ? skillTagGroups.get(skill.skill_id) : undefined;
+      const byName = skillTagGroups.get(skill.name);
+      if (!byId && !byName) return [];
+      const merged = new Map<string, { id: string; name: string }>();
+      for (const t of [...(byId ?? []), ...(byName ?? [])]) merged.set(t.id, t);
+      return Array.from(merged.values());
+    },
+    [skillTagGroups],
+  );
+
+  const targetAgentMeta = useMemo(() => {
+    const id = activeProject?.selected_agent?.trim();
+    if (!id) return null;
+    return agents.find((a) => a.id === id) ?? { id, name: id, icon: null, projectCapable: false };
+  }, [activeProject?.selected_agent, agents]);
+
+  const capableAgents = useMemo(() => agents.filter((a) => a.projectCapable), [agents]);
+
+  /** Persist project target agent from Skills → Projects panel. */
+  const handleSetTargetAgent = useCallback(
+    async (agentId: string | null) => {
+      if (!activeProjectId) return;
+      setSettingTargetAgent(true);
+      try {
+        await setProjectAgent(activeProjectId, agentId);
+        // Keep project store in sync so bind-sync / UI badge update immediately
+        useProjectStore.setState((state) => {
+          const nextProjects = state.projects.map((p) =>
+            p.id === activeProjectId ? { ...p, selected_agent: agentId } : p,
+          );
+          const nextActive =
+            state.activeProject?.id === activeProjectId
+              ? { ...state.activeProject, selected_agent: agentId }
+              : state.activeProject;
+          return { projects: nextProjects, activeProject: nextActive };
+        });
+        const name =
+          agentId == null ? null : (agents.find((a) => a.id === agentId)?.name ?? agentId);
+        toast(
+          name
+            ? `Target agent set to ${name}`
+            : 'Target agent cleared — bind sync will skip disk install',
+          'success',
+        );
+      } catch (e) {
+        toast(String(e), 'error');
+      } finally {
+        setSettingTargetAgent(false);
+      }
+    },
+    [activeProjectId, agents, toast],
+  );
 
   /** Agents that currently have at least one skill in this project (for filter chips). */
   const agentsInProject = useMemo(() => {
@@ -173,8 +466,10 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     for (const s of diskSkills) {
       for (const id of s.agent_ids) ids.add(id);
     }
+    // Always include project target agent in filter chips when set
+    if (activeProject?.selected_agent) ids.add(activeProject.selected_agent);
     return agents.filter((a) => ids.has(a.id));
-  }, [diskSkills, agents]);
+  }, [diskSkills, agents, activeProject?.selected_agent]);
 
   const filteredSkills = useMemo(() => {
     let list = diskSkills;
@@ -187,6 +482,14 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           (s.agents ?? []).some((a) => a.agent_id === agentFilter),
       );
     }
+    if (tagGroupFilter !== 'all') {
+      const keys = groupMembership.get(tagGroupFilter);
+      if (keys) {
+        list = list.filter((s) => (s.skill_id != null && keys.has(s.skill_id)) || keys.has(s.name));
+      } else {
+        list = [];
+      }
+    }
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -195,7 +498,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       );
     }
     return list;
-  }, [diskSkills, statusFilter, agentFilter, searchQuery]);
+  }, [diskSkills, statusFilter, agentFilter, tagGroupFilter, groupMembership, searchQuery]);
 
   const handleToggleAgent = useCallback(
     async (skill: ProjectDiskSkill, agentId: string, enabled: boolean) => {
@@ -203,13 +506,22 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       const key = `${skill.name}:${agentId}`;
       setTogglingKey(key);
       try {
-        await setProjectSkillAgentEnabled(
-          activeProject.path,
-          skill.name,
-          agentId,
-          enabled,
-          skill.skill_id,
-        );
+        const alreadyLinked =
+          skill.agent_ids.includes(agentId) ||
+          (skill.agents ?? []).some((a) => a.agent_id === agentId);
+
+        if (enabled && !alreadyLinked && skill.skill_id) {
+          // Stock skill: add to a new agent via project import (install-only for that agent)
+          await importSkillsToProject(activeProject.path, [skill.skill_id], [agentId]);
+        } else {
+          await setProjectSkillAgentEnabled(
+            activeProject.path,
+            skill.name,
+            agentId,
+            enabled,
+            skill.skill_id,
+          );
+        }
         await reload({ silent: true });
         await refreshCounts();
       } catch (e) {
@@ -349,6 +661,96 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           <span className="inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
             {total} / {enabledCount}
           </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                disabled={
+                  settingTargetAgent || (capableAgents.length === 0 && targetAgentMeta == null)
+                }
+                data-testid={
+                  targetAgentMeta ? 'project-target-agent' : 'project-target-agent-missing'
+                }
+                title={
+                  targetAgentMeta
+                    ? `Target agent: ${targetAgentMeta.name} (click to change)`
+                    : 'Set project target agent for skill sync'
+                }
+                className={cn(
+                  'inline-flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-md border shrink-0 transition-colors',
+                  'text-[11px] font-medium max-w-[12rem]',
+                  'disabled:opacity-60 disabled:cursor-not-allowed',
+                  targetAgentMeta
+                    ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/15'
+                    : 'text-text-muted border-dashed border-border hover:bg-bg-hover hover:text-text-secondary',
+                )}
+              >
+                {targetAgentMeta ? (
+                  <>
+                    {resolveAgentIconSrc(targetAgentMeta.icon) ? (
+                      <img
+                        src={resolveAgentIconSrc(targetAgentMeta.icon)!}
+                        alt=""
+                        className="h-4 w-4 rounded-[3px]"
+                      />
+                    ) : (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
+                        {targetAgentMeta.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="truncate">{targetAgentMeta.name}</span>
+                  </>
+                ) : (
+                  <span>Set target agent</span>
+                )}
+                <span className="opacity-50 text-[9px]" aria-hidden>
+                  ▾
+                </span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={6} className="min-w-[180px]">
+              {capableAgents.map((a) => {
+                const active = targetAgentMeta?.id === a.id;
+                const src = resolveAgentIconSrc(a.icon);
+                return (
+                  <DropdownMenuItem
+                    key={a.id}
+                    disabled={settingTargetAgent}
+                    onSelect={() => void handleSetTargetAgent(a.id)}
+                    className={cn('gap-2', active && 'bg-bg-selected')}
+                    data-testid={`set-target-agent-${a.id}`}
+                  >
+                    {src ? (
+                      <img src={src} alt="" className="h-4 w-4 rounded-[3px]" />
+                    ) : (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
+                        {a.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="truncate flex-1">{a.name}</span>
+                    {active ? (
+                      <span className="text-[10px] text-accent-blue font-medium">Target</span>
+                    ) : null}
+                  </DropdownMenuItem>
+                );
+              })}
+              {targetAgentMeta ? (
+                <DropdownMenuItem
+                  disabled={settingTargetAgent}
+                  onSelect={() => void handleSetTargetAgent(null)}
+                  className="text-text-muted"
+                  data-testid="clear-target-agent"
+                >
+                  Clear target agent
+                </DropdownMenuItem>
+              ) : null}
+              {capableAgents.length === 0 ? (
+                <div className="px-2 py-1.5 text-[11px] text-text-muted">
+                  No project-capable agents enabled
+                </div>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div
           className="px-4 pb-2.5 text-[11px] text-text-muted truncate"
@@ -367,6 +769,14 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           ) : null}
         </div>
       </div>
+
+      <BoundTagGroupsSection
+        groups={projectTagGroups}
+        loading={projectBindingsLoading}
+        activeGroupId={tagGroupFilter === 'all' ? null : tagGroupFilter}
+        onSelectGroup={(id) => setTagGroupFilter(id ?? 'all')}
+        onManage={() => setBindOpen(true)}
+      />
 
       {/* Toolbar */}
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border flex-wrap">
@@ -579,6 +989,8 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                 <ProjectSkillCard
                   skill={skill}
                   agents={agents}
+                  tagGroups={tagGroupsForSkill(skill)}
+                  targetAgentId={activeProject.selected_agent}
                   onSelect={() => openView(skill)}
                   onView={() => openView(skill)}
                   onRemove={() => setPendingRemove(skill)}
@@ -692,6 +1104,19 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           importing={importing}
           onClose={() => setImportOpen(false)}
           onImport={handleImport}
+        />
+      ) : null}
+
+      {bindOpen ? (
+        <BindTagGroupsDialog
+          key={`bind-${activeProject.id}`}
+          open
+          projectName={activeProject.name}
+          tagGroups={tagGroups}
+          boundIds={projectTagGroups.map((g) => g.id)}
+          saving={bindSaving}
+          onClose={() => setBindOpen(false)}
+          onSave={handleSaveBindings}
         />
       ) : null}
 

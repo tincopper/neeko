@@ -240,6 +240,16 @@ export function getAllProjectSkillCounts(): Promise<ProjectSkillCount[]> {
   return invoke<ProjectSkillCount[]>('get_all_project_skill_counts');
 }
 
+/** Bound tag-group count per project (declaration layer; missing project => 0). */
+export interface ProjectTagGroupCount {
+  project_id: string;
+  group_count: number;
+}
+
+export function getAllProjectTagGroupCounts(): Promise<ProjectTagGroupCount[]> {
+  return invoke<ProjectTagGroupCount[]>('get_all_project_tag_group_counts');
+}
+
 export function importSkillToAgent(skillId: string, agentId: string): Promise<void> {
   return invoke<void>('import_skill_to_agent_cmd', { skillId, agentId });
 }
