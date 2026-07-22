@@ -7,6 +7,7 @@ import type {
   DiscoveredSkillDto,
   SkillsShSkill,
   AgentSkillGroup,
+  ProjectDiskSkill,
 } from '@/shared/types';
 
 // ─── Managed Skills ──────────────────────────────────────────────────────────
@@ -230,6 +231,15 @@ export function getAgentSkills(): Promise<AgentSkillGroup[]> {
   return invoke<AgentSkillGroup[]>('get_agent_skills_cmd');
 }
 
+export interface ProjectSkillCount {
+  project_id: string;
+  total_count: number;
+}
+
+export function getAllProjectSkillCounts(): Promise<ProjectSkillCount[]> {
+  return invoke<ProjectSkillCount[]>('get_all_project_skill_counts');
+}
+
 export function importSkillToAgent(skillId: string, agentId: string): Promise<void> {
   return invoke<void>('import_skill_to_agent_cmd', { skillId, agentId });
 }
@@ -243,5 +253,72 @@ export function removeSkillFromAgent(
     agentId,
     skillPath,
     skillId: skillId ?? null,
+  });
+}
+
+// ─── Project-local agent skill dirs ──────────────────────────────────────────
+
+export function getProjectSkills(projectPath: string): Promise<ProjectDiskSkill[]> {
+  return invoke<ProjectDiskSkill[]>('get_project_skills_cmd', { projectPath });
+}
+
+/** Deploy library skills into `{project}/{agent-relative-skills-dir}/`. */
+export function importSkillsToProject(
+  projectPath: string,
+  skillIds: string[],
+  agentIds: string[],
+): Promise<number> {
+  return invoke<number>('import_skills_to_project_cmd', {
+    projectPath,
+    skillIds,
+    agentIds,
+  });
+}
+
+export function removeSkillFromProject(
+  projectPath: string,
+  skillName: string,
+  agentIds?: string[] | null,
+  skillId?: string | null,
+): Promise<void> {
+  return invoke<void>('remove_skill_from_project_cmd', {
+    projectPath,
+    skillName,
+    agentIds: agentIds ?? null,
+    skillId: skillId ?? null,
+  });
+}
+
+/** Toggle one agent for a project skill (symlink on/off). */
+export function setProjectSkillAgentEnabled(
+  projectPath: string,
+  skillName: string,
+  agentId: string,
+  enabled: boolean,
+  skillId?: string | null,
+): Promise<void> {
+  return invoke<void>('set_project_skill_agent_enabled_cmd', {
+    projectPath,
+    skillName,
+    skillId: skillId ?? null,
+    agentId,
+    enabled,
+  });
+}
+
+/** Enable or pause a project skill for all given agents. */
+export function setProjectSkillEnabled(
+  projectPath: string,
+  skillName: string,
+  agentIds: string[],
+  enabled: boolean,
+  skillId?: string | null,
+): Promise<void> {
+  return invoke<void>('set_project_skill_enabled_cmd', {
+    projectPath,
+    skillName,
+    skillId: skillId ?? null,
+    agentIds,
+    enabled,
   });
 }

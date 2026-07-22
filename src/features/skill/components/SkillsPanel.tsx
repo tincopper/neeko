@@ -10,7 +10,7 @@ import {
   Pencil,
   Terminal,
 } from 'lucide-react';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useNotificationStore } from '@/features/notification/notificationStore';
@@ -45,6 +45,10 @@ const SkillsPanel: React.FC = React.memo(() => {
   const updateTagGroup = useSkillStore((s) => s.updateTagGroup);
   const createTagGroup = useSkillStore((s) => s.createTagGroup);
   const syncTagGroup = useSkillStore((s) => s.syncTagGroup);
+  const projectSkillCounts = useSkillStore((s) => s.projectSkillCounts);
+  const projectSkillCountsLoading = useSkillStore((s) => s.projectSkillCountsLoading);
+  const projectSkillCountsError = useSkillStore((s) => s.projectSkillCountsError);
+  const refreshProjectSkillCounts = useSkillStore((s) => s.refreshProjectSkillCounts);
 
   const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [agentsExpanded, setAgentsExpanded] = useState(true);
@@ -57,6 +61,10 @@ const SkillsPanel: React.FC = React.memo(() => {
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const selectProject = useProjectStore((s) => s.selectProject);
+  const projectsKey = useMemo(
+    () => projects.map((project) => `${project.id}:${project.path}`).join('\n'),
+    [projects],
+  );
 
   const [agentGroups, setAgentGroups] = useState<AgentSkillGroup[]>([]);
   useEffect(() => {
@@ -72,6 +80,12 @@ const SkillsPanel: React.FC = React.memo(() => {
       message,
     });
   }, []);
+
+  useEffect(() => {
+    void refreshProjectSkillCounts().catch((e) => {
+      toast(`Failed to load project skill counts: ${String(e)}`, 'error');
+    });
+  }, [projectsKey, refreshProjectSkillCounts, toast]);
 
   const navItems: NavItem[] = [
     { key: 'local', label: 'Library', icon: Package, count: skills.length },
@@ -449,12 +463,21 @@ const SkillsPanel: React.FC = React.memo(() => {
                 </p>
               ) : (
                 projects.map((project) => {
-                  const isActive = activeProjectId === project.id;
+                  const isActive = activeProjectId === project.id && activeSkillView === 'project';
+                  const count = projectSkillCounts.get(project.id);
+                  const countLabel = projectSkillCountsError
+                    ? '!'
+                    : projectSkillCountsLoading && count === undefined
+                      ? '...'
+                      : (count ?? 0);
                   return (
                     <button
                       key={project.id}
                       type="button"
-                      onClick={() => selectProject(project.id)}
+                      onClick={() => {
+                        selectProject(project.id);
+                        setActiveSkillView('project');
+                      }}
                       className={cn(
                         'flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
                         'text-[var(--font-size)]',
@@ -470,6 +493,15 @@ const SkillsPanel: React.FC = React.memo(() => {
                         {getProjectInitials(project.name)}
                       </span>
                       <span className="truncate flex-1 font-medium">{project.name}</span>
+                      <span
+                        className={cn(
+                          'text-[11px] tabular-nums min-w-[1.25rem] text-right',
+                          projectSkillCountsError ? 'text-accent-red' : 'text-text-muted',
+                        )}
+                        title={projectSkillCountsError ?? undefined}
+                      >
+                        {countLabel}
+                      </span>
                     </button>
                   );
                 })

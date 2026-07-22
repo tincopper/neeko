@@ -2,13 +2,13 @@ export interface SkillRecord {
   id: string;
   name: string;
   description: string | null;
-  source_type: "local" | "git";
+  source_type: 'local' | 'git';
   source_ref: string | null;
   central_path: string;
   content_hash: string | null;
   enabled: boolean;
   status: string;
-  update_status: "up_to_date" | "update_available" | "unknown";
+  update_status: 'up_to_date' | 'update_available' | 'unknown';
   tags: string[];
   created_at: number;
   updated_at: number;
@@ -49,7 +49,7 @@ export interface SkillTargetRecord {
   skill_id: string;
   tool: string;
   target_path: string;
-  mode: "symlink" | "copy";
+  mode: 'symlink' | 'copy';
   status: string;
   synced_at: number | null;
 }
@@ -65,7 +65,7 @@ export interface DiscoveredSkillDto {
   name_guess: string | null;
 }
 
-export type LeaderboardType = "hot" | "trending" | "alltime";
+export type LeaderboardType = 'hot' | 'trending' | 'alltime';
 
 export interface SkillsShSkill {
   id: string;
@@ -77,7 +77,7 @@ export interface SkillsShSkill {
 
 export interface InstallProgress {
   skill_id: string;
-  phase: "cloning" | "installing" | "done" | "error";
+  phase: 'cloning' | 'installing' | 'done' | 'error';
   error?: string;
 }
 
@@ -96,4 +96,26 @@ export interface AgentSkillGroup {
   agent_enabled: boolean;
   agent_skill_path: string | null;
   skills: AgentDiskSkill[];
+}
+
+/** Per-agent enable state for a project skill. */
+export interface ProjectSkillAgentState {
+  agent_id: string;
+  enabled: boolean;
+  path: string;
+}
+
+/** Skill found under project-local agent dirs (e.g. `.claude/skills`). */
+export interface ProjectDiskSkill {
+  name: string;
+  description: string | null;
+  path: string;
+  managed: boolean;
+  skill_id: string | null;
+  /** True if enabled for at least one agent. */
+  enabled: boolean;
+  /** All agent associations (on + paused). */
+  agents: ProjectSkillAgentState[];
+  /** Convenience: all agent ids. */
+  agent_ids: string[];
 }

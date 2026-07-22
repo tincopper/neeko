@@ -81,7 +81,7 @@ const SkillContent: React.FC = React.memo(() => {
       case 'marketplace':
         return <MarketplaceContent onSkillInstalled={openAssignDialog} />;
       case 'project':
-        return <ProjectSkillContent />;
+        return <ProjectSkillContent setDialog={setDialog} />;
       case 'agents':
         return <AgentSkillContent setDialog={setDialog} />;
       default:

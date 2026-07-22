@@ -1166,6 +1166,56 @@ pub async fn remove_project_tag_group_cmd(
     }).await
 }
 
+/// Total project-local skill count per project.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectSkillCountDto {
+    /// Project identifier.
+    pub project_id: String,
+    /// Total number of project-local skill entries shown in Project Skills.
+    pub total_count: i64,
+}
+
+/// Get total project-local skill counts for all loaded projects.
+#[tauri::command]
+pub async fn get_all_project_skill_counts(
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<Vec<ProjectSkillCountDto>, AppError> {
+    let projects: Vec<(String, String)> = state
+        .project_manager
+        .lock()
+        .map_err(AppError::from)?
+        .list_projects()
+        .into_iter()
+        .map(|p| (p.id, p.path.to_string_lossy().to_string()))
+        .collect();
+
+    let agent_info: Vec<(String, Option<String>)> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .iter()
+        .filter(|a| a.enabled)
+        .map(|a| (a.id.clone(), a.skill_path.clone()))
+        .collect();
+
+    let store = state.skill_store.clone();
+    run_blocking_result(move || {
+        projects
+            .into_iter()
+            .map(|(project_id, project_path)| {
+                let total_count =
+                    collect_project_disk_skills(&project_path, &agent_info, &store)?.len() as i64;
+                Ok(ProjectSkillCountDto {
+                    project_id,
+                    total_count,
+                })
+            })
+            .collect()
+    })
+    .await
+}
+
 /// Get skills found in each agent's skills directory, grouped by agent.
 ///
 /// Scans each enabled agent's `skill_path` on disk for skill directories.
@@ -1429,6 +1479,592 @@ pub async fn remove_skill_from_agent_cmd(
             }
         }
 
+        Ok(())
+    })
+    .await
+}
+
+// ─── Project-local agent skill directories ───────────────────────────────────────
+
+/// Per-agent enable state for a project skill.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectSkillAgentStateDto {
+    /// Agent id.
+    pub agent_id: String,
+    /// Whether the skill is active (symlink present) for this agent.
+    pub enabled: bool,
+    /// Absolute path under the project for this agent.
+    pub path: String,
+}
+
+/// A skill found under a project's agent-relative skills dir (e.g. `.claude/skills`).
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectDiskSkillDto {
+    /// Skill directory name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Representative absolute path (first enabled agent, else first agent).
+    pub path: String,
+    /// Whether linked to the central library.
+    pub managed: bool,
+    /// Library skill id when managed.
+    pub skill_id: Option<String>,
+    /// True if enabled for at least one agent.
+    pub enabled: bool,
+    /// All agent associations (enabled and paused).
+    pub agents: Vec<ProjectSkillAgentStateDto>,
+    /// Convenience: all agent ids (enabled + paused).
+    pub agent_ids: Vec<String>,
+}
+
+fn project_tool_key(project_path: &str, agent_id: &str) -> String {
+    format!("project:{}:{}", project_path, agent_id)
+}
+
+fn agent_id_from_project_tool(tool: &str, project_path: &str) -> Option<String> {
+    let prefix = format!("project:{}:", project_path);
+    tool.strip_prefix(&prefix).map(|s| s.to_string())
+}
+
+fn deploy_skill_to_project_agent(
+    source: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), AppError> {
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(AppError::from)?;
+    }
+    if target.exists() || target.is_symlink() {
+        let _ = super::sync_engine::remove_target(target);
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(source, target).map_err(AppError::from)?;
+    #[cfg(not(unix))]
+    {
+        super::sync_engine::copy_dir_recursive(source, target).map_err(AppError::from)?;
+    }
+    Ok(())
+}
+
+/// Derive a project-relative skills segment from a home-level `skill_path`
+/// (e.g. `~/.gork/skills` → `.gork/skills`).
+fn relative_skills_from_agent_path(skill_path: &str) -> Option<String> {
+    let trimmed = skill_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Fast path: already looks like ~/...
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+        .or_else(|| trimmed.strip_prefix("\u{FF5E}/"))
+        .or_else(|| trimmed.strip_prefix("\u{301C}/"))
+    {
+        let rest = rest.trim_start_matches('/').trim_start_matches('\\');
+        if rest.is_empty() {
+            return None;
+        }
+        return Some(rest.to_string());
+    }
+
+    let expanded = super::tool_adapters::expand_skill_path(trimmed);
+    let home = dirs::home_dir()?;
+    if let Ok(rel) = expanded.strip_prefix(&home) {
+        let s = rel.to_string_lossy();
+        let s = s.trim_start_matches('/').trim_start_matches('\\');
+        if s.is_empty() {
+            return None;
+        }
+        return Some(s.to_string());
+    }
+    None
+}
+
+/// Resolve the project-relative skills directory for an agent.
+///
+/// 1. Built-in tool adapter `relative_skills_dir` (e.g. `.claude/skills`)
+/// 2. Else derive from the agent's configured `skill_path` under `$HOME`
+/// 3. Else for custom agents: `.agents/{sanitized_id}/skills`
+fn project_agent_skills_dir(
+    project_path: &std::path::Path,
+    agent_id: &str,
+    agent_skill_path: Option<&str>,
+) -> Option<PathBuf> {
+    let adapters = super::tool_adapters::default_tool_adapters();
+    let key = agent_id.strip_prefix("custom:").unwrap_or(agent_id);
+    if let Some(a) = adapters
+        .into_iter()
+        .find(|a| a.key == agent_id || a.key == key)
+    {
+        return Some(project_path.join(&a.relative_skills_dir));
+    }
+
+    if let Some(sp) = agent_skill_path {
+        if let Some(rel) = relative_skills_from_agent_path(sp) {
+            return Some(project_path.join(rel));
+        }
+    }
+
+    // Custom agents without a mappable path still get a project-local dir
+    if agent_id.starts_with("custom:") || agent_skill_path.is_some() {
+        let safe = key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        if !safe.is_empty() {
+            return Some(project_path.join(".agents").join(safe).join("skills"));
+        }
+    }
+
+    None
+}
+
+fn scan_skill_dir(
+    dir: &std::path::Path,
+    central: &std::path::Path,
+    central_map: &std::collections::HashMap<String, String>,
+) -> Vec<AgentDiskSkillDto> {
+    let mut skills = Vec::new();
+    if !dir.exists() || !dir.is_dir() {
+        return skills;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return skills;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // is_dir() follows symlinks; accept skill dirs and skill-dir symlinks
+        if !path.is_dir() {
+            continue;
+        }
+        if !super::skill_metadata::is_valid_skill_dir(&path) {
+            continue;
+        }
+
+        let name_guess = super::skill_metadata::infer_skill_name(&path);
+        let description = super::skill_metadata::parse_skill_md(&path).description;
+        let path_abs = path.to_string_lossy().to_string();
+        let (managed, skill_id) = if let Ok(target) = std::fs::read_link(&path) {
+            if target.starts_with(central) {
+                let id = central_map.get(&target.to_string_lossy().to_string());
+                (true, id.cloned())
+            } else {
+                (false, None)
+            }
+        } else {
+            (false, None)
+        };
+        skills.push(AgentDiskSkillDto {
+            name: name_guess,
+            description,
+            path: path_abs,
+            managed,
+            skill_id,
+        });
+    }
+    skills.sort_by(|a, b| b.managed.cmp(&a.managed).then(a.name.cmp(&b.name)));
+    skills
+}
+
+fn collect_project_disk_skills(
+    project_path: &str,
+    agent_info: &[(String, Option<String>)],
+    store: &SkillStore,
+) -> Result<Vec<ProjectDiskSkillDto>, AppError> {
+    let managed_skills = store.get_all_skills().map_err(AppError::from)?;
+    let central = super::central_repo::skills_dir();
+    let central_map: std::collections::HashMap<String, String> = managed_skills
+        .iter()
+        .map(|s| (s.central_path.clone(), s.id.clone()))
+        .collect();
+    let skill_by_id: std::collections::HashMap<String, super::types::SkillRecord> =
+        managed_skills.into_iter().map(|s| (s.id.clone(), s)).collect();
+
+    let project = PathBuf::from(project_path);
+    let mut by_name: std::collections::BTreeMap<
+        String,
+        (
+            Option<String>,
+            Option<String>,
+            bool,
+            Option<String>,
+            std::collections::BTreeMap<String, ProjectSkillAgentStateDto>,
+        ),
+    > = std::collections::BTreeMap::new();
+
+    for (agent_id, skill_path) in agent_info {
+        let Some(skills_dir) = project_agent_skills_dir(&project, agent_id, skill_path.as_deref())
+        else {
+            continue;
+        };
+        let found = scan_skill_dir(&skills_dir, &central, &central_map);
+        for s in found {
+            let entry = by_name.entry(s.name.clone()).or_insert_with(|| {
+                (
+                    s.description.clone(),
+                    Some(s.path.clone()),
+                    s.managed,
+                    s.skill_id.clone(),
+                    std::collections::BTreeMap::new(),
+                )
+            });
+            if entry.0.is_none() && s.description.is_some() {
+                entry.0 = s.description.clone();
+            }
+            if entry.3.is_none() && s.skill_id.is_some() {
+                entry.3 = s.skill_id.clone();
+                entry.2 = s.managed;
+            }
+            entry.4.insert(
+                agent_id.clone(),
+                ProjectSkillAgentStateDto {
+                    agent_id: agent_id.clone(),
+                    enabled: true,
+                    path: s.path.clone(),
+                },
+            );
+        }
+    }
+
+    let all_targets = store.get_all_targets().unwrap_or_default();
+    for t in all_targets {
+        let Some(agent_id) = agent_id_from_project_tool(&t.tool, project_path) else {
+            continue;
+        };
+        if t.status != "disabled" {
+            continue;
+        }
+        let skill_rec = skill_by_id.get(&t.skill_id);
+        let name = skill_rec.map(|s| s.name.clone()).unwrap_or_else(|| {
+            std::path::Path::new(&t.target_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| t.skill_id.clone())
+        });
+        let entry = by_name.entry(name.clone()).or_insert_with(|| {
+            (
+                skill_rec.and_then(|s| s.description.clone()),
+                Some(t.target_path.clone()),
+                true,
+                Some(t.skill_id.clone()),
+                std::collections::BTreeMap::new(),
+            )
+        });
+        if entry.3.is_none() {
+            entry.3 = Some(t.skill_id.clone());
+            entry.2 = true;
+        }
+        if entry.0.is_none() {
+            entry.0 = skill_rec.and_then(|s| s.description.clone());
+        }
+        entry.4.entry(agent_id.clone()).or_insert_with(|| ProjectSkillAgentStateDto {
+            agent_id: agent_id.clone(),
+            enabled: false,
+            path: t.target_path.clone(),
+        });
+    }
+
+    let mut out: Vec<ProjectDiskSkillDto> = by_name
+        .into_iter()
+        .map(|(name, (description, path_opt, managed, skill_id, agents_map))| {
+            let agents: Vec<ProjectSkillAgentStateDto> = agents_map.into_values().collect();
+            let enabled = agents.iter().any(|a| a.enabled);
+            let path = agents
+                .iter()
+                .find(|a| a.enabled)
+                .or_else(|| agents.first())
+                .map(|a| a.path.clone())
+                .or(path_opt)
+                .unwrap_or_default();
+            let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id.clone()).collect();
+            ProjectDiskSkillDto {
+                name,
+                description,
+                path,
+                managed,
+                skill_id,
+                enabled,
+                agents,
+                agent_ids,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Scan agent-relative skill directories under a project root.
+#[tauri::command]
+pub async fn get_project_skills_cmd(
+    project_path: String,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<Vec<ProjectDiskSkillDto>, AppError> {
+    let agent_info: Vec<(String, Option<String>)> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .iter()
+        .filter(|a| a.enabled)
+        .map(|a| (a.id.clone(), a.skill_path.clone()))
+        .collect();
+
+    let store = state.skill_store.clone();
+
+    run_blocking_result(move || collect_project_disk_skills(&project_path, &agent_info, &store))
+    .await
+}
+
+/// Import library skills into project-local agent skill directories for selected agents.
+///
+/// Target path: `{project_path}/{adapter.relative_skills_dir}/{skill_name}`
+/// (e.g. `go-demo/.claude/skills/code-review`).
+#[tauri::command]
+pub async fn import_skills_to_project_cmd(
+    project_path: String,
+    skill_ids: Vec<String>,
+    agent_ids: Vec<String>,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<u32, AppError> {
+    if skill_ids.is_empty() {
+        return Err(AppError::InvalidInput("No skills selected".into()));
+    }
+    if agent_ids.is_empty() {
+        return Err(AppError::InvalidInput("No agents selected".into()));
+    }
+
+    let store = state.skill_store.clone();
+    // Validate agents exist and collect skill_path for project dir resolution
+    let agent_paths: std::collections::HashMap<String, Option<String>> = {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        let mut map = std::collections::HashMap::new();
+        for id in &agent_ids {
+            let agent = am
+                .get_agent(id)
+                .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", id)))?;
+            map.insert(id.clone(), agent.skill_path.clone());
+        }
+        map
+    };
+
+    run_blocking_result(move || {
+        let project = PathBuf::from(&project_path);
+        if !project.is_dir() {
+            return Err(AppError::NotFound(format!(
+                "Project path not found: {}",
+                project_path
+            )));
+        }
+
+        let mut installed = 0u32;
+        for skill_id in &skill_ids {
+            let skill = store
+                .get_skill_by_id(skill_id)
+                .map_err(AppError::from)?
+                .ok_or_else(|| AppError::NotFound(format!("Skill '{}' not found", skill_id)))?;
+
+            let source = PathBuf::from(&skill.central_path);
+            if !source.exists() {
+                return Err(AppError::NotFound(format!(
+                    "Skill directory not found: {}",
+                    skill.central_path
+                )));
+            }
+
+            for agent_id in &agent_ids {
+                let sp = agent_paths.get(agent_id).and_then(|p| p.as_deref());
+                let Some(skills_dir) = project_agent_skills_dir(&project, agent_id, sp) else {
+                    // Skip agents without a known project-relative skills layout
+                    continue;
+                };
+                let target = skills_dir.join(&skill.name);
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent).map_err(AppError::from)?;
+                }
+                if target.exists() || target.is_symlink() {
+                    let _ = std::fs::remove_file(&target);
+                    if target.is_dir() {
+                        let _ = std::fs::remove_dir_all(&target);
+                    }
+                }
+
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&source, &target).map_err(AppError::from)?;
+                #[cfg(not(unix))]
+                {
+                    super::sync_engine::copy_dir_recursive(&source, &target)
+                        .map_err(AppError::from)?;
+                }
+
+                let tool_key = project_tool_key(&project_path, agent_id);
+                let target_rec = super::types::SkillTargetRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    skill_id: skill.id.clone(),
+                    tool: tool_key,
+                    target_path: target.to_string_lossy().to_string(),
+                    mode: "symlink".to_string(),
+                    status: "ok".to_string(),
+                    synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                    last_error: None,
+                };
+                let _ = store.insert_target(&target_rec);
+                installed += 1;
+            }
+        }
+        Ok(installed)
+    })
+    .await
+}
+
+/// Enable or pause a project skill for a single agent (symlink on/off + target status).
+#[tauri::command]
+pub async fn set_project_skill_agent_enabled_cmd(
+    project_path: String,
+    skill_name: String,
+    skill_id: Option<String>,
+    agent_id: String,
+    enabled: bool,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    let store = state.skill_store.clone();
+    let agent_skill_path = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agent(&agent_id)
+        .map(|a| a.skill_path.clone())
+        .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))?;
+
+    run_blocking_result(move || {
+        let project = PathBuf::from(&project_path);
+        let skills_dir = project_agent_skills_dir(&project, &agent_id, agent_skill_path.as_deref())
+            .ok_or_else(|| {
+                AppError::InvalidInput(format!(
+                    "No project skill path for agent '{}'",
+                    agent_id
+                ))
+            })?;
+        let target = skills_dir.join(&skill_name);
+        let tool_key = project_tool_key(&project_path, &agent_id);
+
+        if enabled {
+            let sid = skill_id.ok_or_else(|| {
+                AppError::InvalidInput(
+                    "Cannot re-enable a non-library skill without skill_id".into(),
+                )
+            })?;
+            let skill = store
+                .get_skill_by_id(&sid)
+                .map_err(AppError::from)?
+                .ok_or_else(|| AppError::NotFound(format!("Skill '{}' not found", sid)))?;
+            let source = PathBuf::from(&skill.central_path);
+            if !source.exists() {
+                return Err(AppError::NotFound(format!(
+                    "Skill directory not found: {}",
+                    skill.central_path
+                )));
+            }
+            deploy_skill_to_project_agent(&source, &target)?;
+            let target_rec = super::types::SkillTargetRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                skill_id: sid,
+                tool: tool_key,
+                target_path: target.to_string_lossy().to_string(),
+                mode: "symlink".to_string(),
+                status: "ok".to_string(),
+                synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                last_error: None,
+            };
+            store.insert_target(&target_rec).map_err(AppError::from)?;
+        } else {
+            if target.exists() || target.is_symlink() {
+                let _ = super::sync_engine::remove_target(&target);
+            }
+            if let Some(sid) = skill_id.as_ref() {
+                let target_rec = super::types::SkillTargetRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    skill_id: sid.clone(),
+                    tool: tool_key,
+                    target_path: target.to_string_lossy().to_string(),
+                    mode: "symlink".to_string(),
+                    status: "disabled".to_string(),
+                    synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                    last_error: None,
+                };
+                let _ = store.insert_target(&target_rec);
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+/// Enable or pause a project skill for all listed agents.
+#[tauri::command]
+pub async fn set_project_skill_enabled_cmd(
+    project_path: String,
+    skill_name: String,
+    skill_id: Option<String>,
+    agent_ids: Vec<String>,
+    enabled: bool,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    for agent_id in agent_ids {
+        set_project_skill_agent_enabled_cmd(
+            project_path.clone(),
+            skill_name.clone(),
+            skill_id.clone(),
+            agent_id,
+            enabled,
+            state.clone(),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Remove a skill directory from a project (and optional agent filter).
+#[tauri::command]
+pub async fn remove_skill_from_project_cmd(
+    project_path: String,
+    skill_name: String,
+    agent_ids: Option<Vec<String>>,
+    skill_id: Option<String>,
+    state: State<'_, crate::AppStateWrapper>,
+) -> Result<(), AppError> {
+    let store = state.skill_store.clone();
+    let agent_paths: std::collections::HashMap<String, Option<String>> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .iter()
+        .map(|a| (a.id.clone(), a.skill_path.clone()))
+        .collect();
+
+    run_blocking_result(move || {
+        let project = PathBuf::from(&project_path);
+        let targets: Vec<String> = agent_ids.unwrap_or_else(|| agent_paths.keys().cloned().collect());
+        for agent_id in targets {
+            let sp = agent_paths.get(&agent_id).and_then(|p| p.as_deref());
+            let Some(skills_dir) = project_agent_skills_dir(&project, &agent_id, sp) else {
+                continue;
+            };
+            let path = skills_dir.join(&skill_name);
+            if path.exists() || path.is_symlink() {
+                let _ = super::sync_engine::remove_target(&path);
+            }
+            if let Some(ref sid) = skill_id {
+                let tool_key = project_tool_key(&project_path, &agent_id);
+                let _ = store.delete_target(sid, &tool_key);
+            }
+        }
         Ok(())
     })
     .await

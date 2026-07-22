@@ -10,4 +10,6 @@ export type {
   InstallProgress,
   AgentSkillGroup,
   AgentDiskSkill,
+  ProjectDiskSkill,
+  ProjectSkillAgentState,
 } from "@/features/skill/types";

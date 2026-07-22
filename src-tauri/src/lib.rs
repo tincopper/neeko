@@ -254,6 +254,12 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::get_agent_skills_cmd,
             $crate::skill::commands::import_skill_to_agent_cmd,
             $crate::skill::commands::remove_skill_from_agent_cmd,
+            $crate::skill::commands::get_project_skills_cmd,
+            $crate::skill::commands::import_skills_to_project_cmd,
+            $crate::skill::commands::remove_skill_from_project_cmd,
+            $crate::skill::commands::set_project_skill_agent_enabled_cmd,
+            $crate::skill::commands::set_project_skill_enabled_cmd,
+            $crate::skill::commands::get_all_project_skill_counts,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,

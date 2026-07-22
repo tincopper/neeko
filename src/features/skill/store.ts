@@ -26,6 +26,7 @@ import {
   getProjectTagGroups as getProjectTagGroupsApi,
   setProjectTagGroups as setProjectTagGroupsApi,
   applyProjectSkills as applyProjectSkillsApi,
+  getAllProjectSkillCounts as getAllProjectSkillCountsApi,
   checkSkillUpdate as checkSkillUpdateApi,
   updateSkill as updateSkillApi,
 } from './api/skillApi';
@@ -51,6 +52,10 @@ interface SkillStoreState {
   /** Last project id we auto-applied skills for (dedupe). */
   lastAppliedProjectId: string | null;
   applyingProjectId: string | null;
+  /** Project-local skill counts keyed by project id. */
+  projectSkillCounts: Map<string, number>;
+  projectSkillCountsLoading: boolean;
+  projectSkillCountsError: string | null;
   /** Filter by source type. */
   sourceFilter: 'all' | 'local' | 'git' | 'skillssh';
   /** Filter by tag names (AND logic, empty = no filter). */
@@ -86,6 +91,7 @@ interface SkillStoreActions {
   applyProjectSkills: (projectId: string) => Promise<void>;
   /** Auto apply on project switch — install only, no remove; deduped. */
   applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
+  refreshProjectSkillCounts: () => Promise<void>;
 
   // Install 动作
   installLocal: () => Promise<void>;
@@ -130,6 +136,9 @@ export const initialSkillState: SkillStoreState = {
   projectBindingsLoading: false,
   lastAppliedProjectId: null,
   applyingProjectId: null,
+  projectSkillCounts: new Map(),
+  projectSkillCountsLoading: false,
+  projectSkillCountsError: null,
   sourceFilter: 'all',
   tagFilter: [],
   activeAgentId: null,
@@ -267,6 +276,27 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     } catch (e) {
       // Non-blocking for project switch — log only; UI can toast if needed
       console.error('[skillStore] applyProjectSkillsOnSelect failed:', e);
+    }
+  },
+
+  refreshProjectSkillCounts: async () => {
+    set({ projectSkillCountsLoading: true, projectSkillCountsError: null });
+    try {
+      const counts = await getAllProjectSkillCountsApi();
+      const map = new Map<string, number>();
+      for (const c of counts) {
+        map.set(c.project_id, c.total_count);
+      }
+      set({
+        projectSkillCounts: map,
+        projectSkillCountsLoading: false,
+        projectSkillCountsError: null,
+      });
+    } catch (e) {
+      const message = String(e);
+      console.error('[skillStore] refreshProjectSkillCounts failed:', e);
+      set({ projectSkillCountsLoading: false, projectSkillCountsError: message });
+      throw e;
     }
   },
 

@@ -531,6 +531,27 @@ impl SkillRepository {
         Ok(())
     }
 
+    /// Get total skill counts for all projects that have tag group bindings.
+    ///
+    /// Returns `(project_id, total_skill_count)` pairs by joining
+    /// `project_tag_groups` with `tag_group_skills`.
+    pub fn get_all_project_skill_counts(&self) -> Result<Vec<(String, i64)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT ptg.project_id, COUNT(tgs.skill_id)
+             FROM project_tag_groups ptg
+             LEFT JOIN tag_group_skills tgs ON tgs.tag_group_id = ptg.tag_group_id
+             GROUP BY ptg.project_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
     // Settings
 
     /// Get a setting value by key.
