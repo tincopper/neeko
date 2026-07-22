@@ -39,11 +39,13 @@ pub fn load_breakpoints_file(project_path: &Path) -> Result<Vec<BreakpointSpec>,
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| {
-        AppError::Dap(format!("Failed to read {}: {e}", path.display()))
-    })?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::Dap(format!("Failed to read {}: {e}", path.display())))?;
     let file: BreakpointsFile = serde_json::from_str(&text).map_err(|e| {
-        AppError::Dap(format!("Invalid breakpoints.json at {}: {e}", path.display()))
+        AppError::Dap(format!(
+            "Invalid breakpoints.json at {}: {e}",
+            path.display()
+        ))
     })?;
     Ok(file.breakpoints)
 }
@@ -70,12 +72,10 @@ pub fn load_launch_file(project_path: &Path) -> Result<LaunchFile, AppError> {
     if !path.exists() {
         return Ok(LaunchFile::default());
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| {
-        AppError::Dap(format!("Failed to read {}: {e}", path.display()))
-    })?;
-    serde_json::from_str(&text).map_err(|e| {
-        AppError::Dap(format!("Invalid launch.json at {}: {e}", path.display()))
-    })
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::Dap(format!("Failed to read {}: {e}", path.display())))?;
+    serde_json::from_str(&text)
+        .map_err(|e| AppError::Dap(format!("Invalid launch.json at {}: {e}", path.display())))
 }
 
 /// Write launch file (creates `.neeko/` if needed).
@@ -88,11 +88,7 @@ pub fn save_launch_file(project_path: &Path, file: &LaunchFile) -> Result<(), Ap
 }
 
 /// Expand `${workspaceFolder}` style placeholders.
-pub fn expand_variables(
-    s: &str,
-    workspace: &Path,
-    current_file: Option<&str>,
-) -> String {
+pub fn expand_variables(s: &str, workspace: &Path, current_file: Option<&str>) -> String {
     let ws = workspace.to_string_lossy();
     let basename = workspace
         .file_name()
@@ -167,11 +163,7 @@ mod tests {
     #[test]
     fn should_expand_file_placeholders() {
         let ws = PathBuf::from("/proj");
-        let r = expand_variables(
-            "${fileBasenameNoExtension}",
-            &ws,
-            Some("/proj/src/main.rs"),
-        );
+        let r = expand_variables("${fileBasenameNoExtension}", &ws, Some("/proj/src/main.rs"));
         assert_eq!(r, "main");
         assert_eq!(
             expand_variables("${fileDirname}", &ws, Some("/proj/cmd/agent/main.go")),

@@ -248,7 +248,11 @@ pub fn execute_agent_cli_on_target(
 
     let mut args: Vec<String> = Vec::new();
     if uses_file_mode {
-        for arg in config.prompt_args.iter().take(config.prompt_args.len().saturating_sub(1)) {
+        for arg in config
+            .prompt_args
+            .iter()
+            .take(config.prompt_args.len().saturating_sub(1))
+        {
             args.push(arg.clone());
         }
         args.push(prompt_message.clone());

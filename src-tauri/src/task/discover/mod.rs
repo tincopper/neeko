@@ -106,7 +106,11 @@ mod tests {
             r#"{ "name": "demo", "scripts": { "dev": "vite", "test": "vitest" } }"#,
         )
         .unwrap();
-        fs::write(dir.path().join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+        fs::write(
+            dir.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
 
         let tasks = discover_tasks(dir.path());
         assert!(tasks.iter().any(|t| t.id == "pkg:dev"));

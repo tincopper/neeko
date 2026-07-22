@@ -76,7 +76,9 @@ mod tests {
         let first = RequestId::from(10i32);
         let second = RequestId::from(11i32);
 
-        assert!(tracker.register("textDocument/hover", first.clone()).is_none());
+        assert!(tracker
+            .register("textDocument/hover", first.clone())
+            .is_none());
         let prev = tracker.register("textDocument/hover", second);
         assert_eq!(prev, Some(first));
     }

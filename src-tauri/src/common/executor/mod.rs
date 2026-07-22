@@ -145,11 +145,7 @@ impl ExecChild {
         Option<BoxAsyncRead>,
         Option<BoxAsyncRead>,
     ) {
-        (
-            self.stdin.take(),
-            self.stdout.take(),
-            self.stderr.take(),
-        )
+        (self.stdin.take(), self.stdout.take(), self.stderr.take())
     }
 
     /// Consume into wait future + kill future factory (after stdio taken).

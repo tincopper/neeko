@@ -197,16 +197,15 @@ pub async fn get_skill_document(
             .map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound("Skill not found".to_string()))?;
         read_skill_doc_from_dir(&PathBuf::from(&skill.central_path))
-    }).await
+    })
+    .await
 }
 
 /// Read SKILL.md (or fallback docs) from an arbitrary skill directory on disk.
 ///
 /// Used for agent-local skills that are not managed in the central library.
 #[tauri::command]
-pub async fn get_skill_document_at_path(
-    path: String,
-) -> Result<SkillDocumentDtoOut, AppError> {
+pub async fn get_skill_document_at_path(path: String) -> Result<SkillDocumentDtoOut, AppError> {
     run_blocking_result(move || {
         let dir = PathBuf::from(&path);
         if !dir.is_dir() {
@@ -244,9 +243,7 @@ fn read_skill_doc_from_dir(dir: &std::path::Path) -> Result<SkillDocumentDtoOut,
 ///
 /// Returns how many skills received a non-empty description update.
 #[tauri::command]
-pub async fn refresh_skill_metadata(
-    store: State<'_, Arc<SkillStore>>,
-) -> Result<u32, AppError> {
+pub async fn refresh_skill_metadata(store: State<'_, Arc<SkillStore>>) -> Result<u32, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
@@ -287,9 +284,7 @@ pub async fn refresh_skill_metadata(
 
 /// Delete all managed skills and wipe the central skills directory (keeps tag groups).
 #[tauri::command]
-pub async fn clear_all_managed_skills(
-    store: State<'_, Arc<SkillStore>>,
-) -> Result<u32, AppError> {
+pub async fn clear_all_managed_skills(store: State<'_, Arc<SkillStore>>) -> Result<u32, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
@@ -325,7 +320,8 @@ pub async fn delete_managed_skill(
             std::fs::remove_dir_all(&central).ok();
         }
         store.delete_skill(&skill_id).map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Get all tag groups with skill counts.
@@ -352,7 +348,8 @@ pub async fn get_tag_groups(
                 }
             })
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Create a new tag group.
@@ -387,7 +384,8 @@ pub async fn create_tag_group(
             created_at: now,
             updated_at: now,
         })
-    }).await
+    })
+    .await
 }
 
 /// Delete a tag group by ID.
@@ -397,9 +395,7 @@ pub async fn delete_tag_group_cmd(
     store: State<'_, Arc<SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    run_blocking_result(move || {
-        store.delete_tag_group(&id).map_err(AppError::from)
-    }).await
+    run_blocking_result(move || store.delete_tag_group(&id).map_err(AppError::from)).await
 }
 
 /// Install a skill from a local filesystem path.
@@ -458,7 +454,8 @@ pub async fn install_local_skill(
             created_at: now,
             updated_at: now,
         })
-    }).await
+    })
+    .await
 }
 
 /// A discovered unmanaged skill from tool directory scanning.
@@ -572,7 +569,8 @@ pub async fn import_discovered_skill(
             created_at: now,
             updated_at: now,
         })
-    }).await
+    })
+    .await
 }
 
 /// Git installation preview: cloned repo info and available skill directories.
@@ -600,9 +598,7 @@ fn normalize_git_clone_url(input: &str) -> String {
     }
     // GitHub shorthand: owner/repo or owner/repo.git
     let bare = t.trim_end_matches(".git");
-    if bare.chars().filter(|c| *c == '/').count() == 1
-        && !bare.contains(' ')
-        && !bare.contains(':')
+    if bare.chars().filter(|c| *c == '/').count() == 1 && !bare.contains(' ') && !bare.contains(':')
     {
         return format!("https://github.com/{}.git", bare);
     }
@@ -752,7 +748,8 @@ pub async fn check_skill_update(
                 remote_revision: None,
             }),
         }
-    }).await
+    })
+    .await
 }
 
 /// Update a skill by re-installing from its source.
@@ -789,7 +786,8 @@ pub async fn update_skill(
             created_at: updated.created_at,
             updated_at: updated.updated_at,
         })
-    }).await
+    })
+    .await
 }
 
 /// Update a tag group's name, description, and icon.
@@ -806,7 +804,8 @@ pub async fn update_tag_group_cmd(
         store
             .update_tag_group(&id, &name, description.as_deref(), icon.as_deref())
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Reorder tag groups by providing a sorted list of IDs.
@@ -816,9 +815,7 @@ pub async fn reorder_tag_groups_cmd(
     store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
-    run_blocking_result(move || {
-        store.reorder_tag_groups(&ids).map_err(AppError::from)
-    }).await
+    run_blocking_result(move || store.reorder_tag_groups(&ids).map_err(AppError::from)).await
 }
 
 /// Add a skill to a tag group.
@@ -833,7 +830,8 @@ pub async fn add_skill_to_tag_group_cmd(
         store
             .add_skill_to_tag_group(&tag_group_id, &skill_id)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Remove a skill from a tag group.
@@ -848,7 +846,8 @@ pub async fn remove_skill_from_tag_group_cmd(
         store
             .remove_skill_from_tag_group(&tag_group_id, &skill_id)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Get all skills belonging to a tag group.
@@ -871,7 +870,8 @@ pub async fn get_skills_for_tag_group_cmd(
                 skill_to_dto(s, tags)
             })
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Get all unique tag names across all skills.
@@ -895,7 +895,8 @@ pub async fn set_skill_tags_cmd(
         store
             .set_tags_for_skill(&skill_id, &tags)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Enable or disable a tool for a skill within a tag group.
@@ -912,11 +913,14 @@ pub async fn set_skill_tool_toggle_cmd(
         store
             .set_tag_group_skill_tool_enabled(&tag_group_id, &skill_id, &tool, enabled)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Collect skill deploy targets from AgentManager (preferred) with adapter fallback.
-fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<super::tool_adapters::SkillTargetDir> {
+fn resolve_sync_targets(
+    state: &crate::AppStateWrapper,
+) -> Vec<super::tool_adapters::SkillTargetDir> {
     let agent_triples: Vec<(String, bool, Option<String>)> = state
         .agent_manager
         .lock()
@@ -976,8 +980,7 @@ fn sync_skills_to_targets(
         }
         for target in targets {
             let dest = target.dir.join(&skill.name);
-            let mode =
-                super::sync_engine::sync_mode_for_tool(&target.key, configured_mode);
+            let mode = super::sync_engine::sync_mode_for_tool(&target.key, configured_mode);
             match super::sync_engine::sync_skill(&source, &dest, mode) {
                 Ok(actual_mode) => {
                     let now = chrono::Utc::now().timestamp_millis();
@@ -1148,7 +1151,8 @@ pub async fn unsync_tag_group_cmd(
             }
         }
         Ok(())
-    }).await
+    })
+    .await
 }
 
 /// Get tag groups bound to a specific project.
@@ -1180,7 +1184,8 @@ pub async fn get_project_tag_groups_cmd(
                 }
             })
             .collect())
-    }).await
+    })
+    .await
 }
 
 /// Set which tag groups are bound to a project.
@@ -1195,7 +1200,8 @@ pub async fn set_project_tag_groups_cmd(
         store
             .set_project_tag_groups(&project_id, &tag_group_ids)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Bind a tag group to a project.
@@ -1210,7 +1216,8 @@ pub async fn add_project_tag_group_cmd(
         store
             .add_project_tag_group(&project_id, &tag_group_id)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Remove a tag group binding from a project.
@@ -1225,7 +1232,8 @@ pub async fn remove_project_tag_group_cmd(
         store
             .remove_project_tag_group(&project_id, &tag_group_id)
             .map_err(AppError::from)
-    }).await
+    })
+    .await
 }
 
 /// Total project-local skill count per project.
@@ -1376,8 +1384,7 @@ pub async fn get_agent_skills_cmd(
                         }
 
                         let name_guess = super::skill_metadata::infer_skill_name(&path);
-                        let description =
-                            super::skill_metadata::parse_skill_md(&path).description;
+                        let description = super::skill_metadata::parse_skill_md(&path).description;
 
                         let path_abs = path.to_string_lossy().to_string();
 
@@ -1405,11 +1412,7 @@ pub async fn get_agent_skills_cmd(
             }
 
             // Sort: managed skills first, then by name
-            skills.sort_by(|a, b| {
-                b.managed
-                    .cmp(&a.managed)
-                    .then(a.name.cmp(&b.name))
-            });
+            skills.sort_by(|a, b| b.managed.cmp(&a.managed).then(a.name.cmp(&b.name)));
 
             result.push(AgentSkillGroupDto {
                 agent_id: id.clone(),
@@ -1487,8 +1490,7 @@ pub async fn import_skill_to_agent_cmd(
         #[cfg(not(unix))]
         {
             // Fallback: copy directory recursively
-            super::sync_engine::copy_dir_recursive(&source, &target)
-                .map_err(AppError::from)?;
+            super::sync_engine::copy_dir_recursive(&source, &target).map_err(AppError::from)?;
         }
 
         // Record in skill_targets
@@ -1541,11 +1543,11 @@ pub async fn remove_skill_from_agent_cmd(
 
         // Optional safety: path should sit under the agent's skill dir when known.
         if let Some(sp) = agent_skill_path.as_ref() {
-            let agent_dir =
-                std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
-            if let (Ok(agent_canon), Ok(path_parent)) =
-                (agent_dir.canonicalize(), path.parent().map(|p| p.canonicalize()).transpose())
-            {
+            let agent_dir = std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
+            if let (Ok(agent_canon), Ok(path_parent)) = (
+                agent_dir.canonicalize(),
+                path.parent().map(|p| p.canonicalize()).transpose(),
+            ) {
                 if let Some(parent) = path_parent {
                     if !parent.starts_with(&agent_canon) {
                         return Err(AppError::InvalidInput(format!(
@@ -1900,8 +1902,10 @@ fn collect_project_disk_skills(
         .iter()
         .map(|s| (s.central_path.clone(), s.id.clone()))
         .collect();
-    let skill_by_id: std::collections::HashMap<String, super::types::SkillRecord> =
-        managed_skills.into_iter().map(|s| (s.id.clone(), s)).collect();
+    let skill_by_id: std::collections::HashMap<String, super::types::SkillRecord> = managed_skills
+        .into_iter()
+        .map(|s| (s.id.clone(), s))
+        .collect();
 
     let project = PathBuf::from(project_path);
     let mut by_name: std::collections::BTreeMap<
@@ -1980,37 +1984,42 @@ fn collect_project_disk_skills(
         if entry.0.is_none() {
             entry.0 = skill_rec.and_then(|s| s.description.clone());
         }
-        entry.4.entry(agent_id.clone()).or_insert_with(|| ProjectSkillAgentStateDto {
-            agent_id: agent_id.clone(),
-            enabled: false,
-            path: t.target_path.clone(),
-        });
+        entry
+            .4
+            .entry(agent_id.clone())
+            .or_insert_with(|| ProjectSkillAgentStateDto {
+                agent_id: agent_id.clone(),
+                enabled: false,
+                path: t.target_path.clone(),
+            });
     }
 
     let mut out: Vec<ProjectDiskSkillDto> = by_name
         .into_iter()
-        .map(|(name, (description, path_opt, managed, skill_id, agents_map))| {
-            let agents: Vec<ProjectSkillAgentStateDto> = agents_map.into_values().collect();
-            let enabled = agents.iter().any(|a| a.enabled);
-            let path = agents
-                .iter()
-                .find(|a| a.enabled)
-                .or_else(|| agents.first())
-                .map(|a| a.path.clone())
-                .or(path_opt)
-                .unwrap_or_default();
-            let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id.clone()).collect();
-            ProjectDiskSkillDto {
-                name,
-                description,
-                path,
-                managed,
-                skill_id,
-                enabled,
-                agents,
-                agent_ids,
-            }
-        })
+        .map(
+            |(name, (description, path_opt, managed, skill_id, agents_map))| {
+                let agents: Vec<ProjectSkillAgentStateDto> = agents_map.into_values().collect();
+                let enabled = agents.iter().any(|a| a.enabled);
+                let path = agents
+                    .iter()
+                    .find(|a| a.enabled)
+                    .or_else(|| agents.first())
+                    .map(|a| a.path.clone())
+                    .or(path_opt)
+                    .unwrap_or_default();
+                let agent_ids: Vec<String> = agents.iter().map(|a| a.agent_id.clone()).collect();
+                ProjectDiskSkillDto {
+                    name,
+                    description,
+                    path,
+                    managed,
+                    skill_id,
+                    enabled,
+                    agents,
+                    agent_ids,
+                }
+            },
+        )
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
@@ -2035,7 +2044,7 @@ pub async fn get_project_skills_cmd(
     let store = state.skill_store.clone();
 
     run_blocking_result(move || collect_project_disk_skills(&project_path, &agent_info, &store))
-    .await
+        .await
 }
 
 /// Import library skills into project-local agent skill directories for selected agents.
@@ -2162,10 +2171,7 @@ pub async fn set_project_skill_agent_enabled_cmd(
         let project = PathBuf::from(&project_path);
         let skills_dir = project_agent_skills_dir(&project, &agent_id, agent_skill_path.as_deref())
             .ok_or_else(|| {
-                AppError::InvalidInput(format!(
-                    "No project skill path for agent '{}'",
-                    agent_id
-                ))
+                AppError::InvalidInput(format!("No project skill path for agent '{}'", agent_id))
             })?;
         let target = skills_dir.join(&skill_name);
         let tool_key = project_tool_key(&project_path, &agent_id);
@@ -2267,7 +2273,8 @@ pub async fn remove_skill_from_project_cmd(
 
     run_blocking_result(move || {
         let project = PathBuf::from(&project_path);
-        let targets: Vec<String> = agent_ids.unwrap_or_else(|| agent_paths.keys().cloned().collect());
+        let targets: Vec<String> =
+            agent_ids.unwrap_or_else(|| agent_paths.keys().cloned().collect());
         for agent_id in targets {
             let sp = agent_paths.get(&agent_id).and_then(|p| p.as_deref());
             let Some(skills_dir) = project_agent_skills_dir(&project, &agent_id, sp) else {
@@ -2361,7 +2368,8 @@ pub async fn create_skill(
             created_at: now,
             updated_at: now,
         })
-    }).await
+    })
+    .await
 }
 
 // --- Marketplace Commands ---
@@ -2420,7 +2428,9 @@ pub async fn fetch_leaderboard(
         }
 
         Ok(dtos)
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Search skills.sh marketplace for skills matching a query.
@@ -2463,7 +2473,9 @@ pub async fn search_skillssh(
         }
 
         Ok(dtos)
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Install a skill from skills.sh by cloning its GitHub repository.
@@ -2520,9 +2532,7 @@ pub async fn install_from_skillssh(
                     }
                 }
                 // Single-skill repo: root itself is the skill
-                if resolved.is_none()
-                    && super::skill_metadata::is_valid_skill_dir(&repo_path)
-                {
+                if resolved.is_none() && super::skill_metadata::is_valid_skill_dir(&repo_path) {
                     resolved = Some(repo_path.clone());
                 }
                 match resolved {
@@ -2606,5 +2616,7 @@ pub async fn install_from_skillssh(
             created_at: now,
             updated_at: now,
         })
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

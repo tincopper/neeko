@@ -117,4 +117,3 @@ pub(crate) async fn do_send_request(
         _ => bail!("Unexpected message type for request: {}", method),
     }
 }
-

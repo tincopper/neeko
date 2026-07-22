@@ -10,10 +10,7 @@ use crate::AppStateWrapper;
 
 /// Resolve project execution environment and record it on the LSP manager
 /// before any session spawn / binary check.
-fn bind_project_exec_target(
-    state: &AppStateWrapper,
-    project_path: &str,
-) -> Result<(), AppError> {
+fn bind_project_exec_target(state: &AppStateWrapper, project_path: &str) -> Result<(), AppError> {
     let env = state.environment_for_project_path(project_path)?;
     state
         .lsp_manager

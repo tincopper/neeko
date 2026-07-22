@@ -85,13 +85,7 @@ fn resolve_host_user_path() -> Option<String> {
             continue;
         }
         let text = String::from_utf8_lossy(&output.stdout);
-        let path = text
-            .trim()
-            .lines()
-            .last()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let path = text.trim().lines().last().unwrap_or("").trim().to_string();
         if !path.is_empty() {
             return Some(dedupe_path(&path, ':'));
         }
@@ -138,10 +132,7 @@ mod tests {
 
     #[test]
     fn should_dedupe_path_entries_preserving_order() {
-        assert_eq!(
-            dedupe_path("/a:/b:/a:/c", ':'),
-            "/a:/b:/c"
-        );
+        assert_eq!(dedupe_path("/a:/b:/a:/c", ':'), "/a:/b:/c");
     }
 
     #[test]

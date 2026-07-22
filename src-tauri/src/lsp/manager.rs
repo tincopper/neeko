@@ -1,7 +1,7 @@
 //! LSP session manager: lifecycle, plugin discovery, diagnostics, and auto-start policies.
 
-use std::collections::HashMap;
 use crate::common::runtime::AppRuntime;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,11 +11,9 @@ use serde_json::Value;
 use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
-use super::plugin::{
-    LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
-};
 #[cfg(test)]
 use super::plugin::CustomLspServerConfig;
+use super::plugin::{LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings};
 use super::profile::{detect_project_profile_with_markers, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport};
 use super::types::LspSessionInfo;
@@ -49,7 +47,6 @@ fn session_key(project_path: &str, language_id: &str) -> SessionKey {
 fn restart_delay(attempt: u32) -> Duration {
     Duration::from_millis(RESTART_BASE_DELAY_MS * 2_u64.saturating_pow(attempt))
 }
-
 
 use super::session::{do_send_request, LspSession, LspSessionStatus};
 
@@ -174,10 +171,7 @@ impl LspManager {
         registry.reset_to_defaults();
         for custom in &settings.custom_servers {
             if custom.language_id.trim().is_empty() || custom.command.is_empty() {
-                log::warn!(
-                    "[LSP] Skipping invalid custom server id={}",
-                    custom.id
-                );
+                log::warn!("[LSP] Skipping invalid custom server id={}", custom.id);
                 continue;
             }
             registry.register(LspPlugin::from_custom(custom));
@@ -247,10 +241,10 @@ impl LspManager {
 
     /// Server binary name for a language id from the live plugin registry.
     pub fn plugin_server_binary(&self, language_id: &str) -> Option<String> {
-        self.plugin_registry
-            .lock()
-            .ok()
-            .and_then(|r| r.resolve_by_language(language_id).map(|p| p.server_binary.clone()))
+        self.plugin_registry.lock().ok().and_then(|r| {
+            r.resolve_by_language(language_id)
+                .map(|p| p.server_binary.clone())
+        })
     }
 
     /// Register a custom LSP plugin at runtime (e.g. from user settings).
@@ -647,8 +641,7 @@ impl LspManager {
             .lock()
             .expect("infallible")
             .detection_markers();
-        let profile =
-            detect_project_profile_with_markers(project_path, &markers, primary_override);
+        let profile = detect_project_profile_with_markers(project_path, &markers, primary_override);
         if let Ok(mut map) = self.profiles.lock() {
             map.insert(project_path.to_string(), profile.clone());
         }

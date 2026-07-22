@@ -2,8 +2,7 @@ use super::super::types::LspPlugin;
 
 pub fn plugins() -> Vec<LspPlugin> {
     vec![
-        LspPlugin::builtin("c", &["c", "h"], "clangd", &["clangd"], None)
-            .with_detect_priority(50),
+        LspPlugin::builtin("c", &["c", "h"], "clangd", &["clangd"], None).with_detect_priority(50),
         LspPlugin::builtin(
             "cpp",
             &["cpp", "hpp", "cc", "cxx"],

@@ -208,11 +208,7 @@ mod tests {
     #[test]
     fn should_discover_node_main_without_scripts() {
         let dir = tempdir().unwrap();
-        fs::write(
-            dir.path().join("package.json"),
-            r#"{ "main": "index.js" }"#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("package.json"), r#"{ "main": "index.js" }"#).unwrap();
         fs::write(dir.path().join("index.js"), "console.log(1)\n").unwrap();
         let tasks = MainEntrySource.discover(dir.path());
         assert!(tasks.iter().any(|t| t.command == "node index.js"));

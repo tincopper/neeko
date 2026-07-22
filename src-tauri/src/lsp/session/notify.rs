@@ -5,7 +5,6 @@ use serde_json::Value;
 use super::super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::super::transport::{LspTransport, ProgressKind};
 
-
 pub(super) fn handle_diagnostics_notification(
     params: &Value,
     project_path: &str,
@@ -105,4 +104,3 @@ pub(super) fn handle_progress_notification(
         _ => {}
     }
 }
-

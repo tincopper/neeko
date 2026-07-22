@@ -111,9 +111,9 @@ pub async fn set_active_project(
             .ok_or_else(|| AppError::NotFound(format!("Project not found: {}", project_id)))?
             .path
             .clone();
-        let old_path = current.as_ref().and_then(|id| {
-            pm.get_project(id).map(|p| p.path.clone())
-        });
+        let old_path = current
+            .as_ref()
+            .and_then(|id| pm.get_project(id).map(|p| p.path.clone()));
         (new_path, old_path)
     };
 
@@ -183,20 +183,12 @@ pub fn set_project_primary_language(
     // Re-detect profile so soft-warm / StatusBar pick up the new primary immediately
     // when this is the active project.
     if let Some(path) = path {
-        let active = state
-            .active_project_id
-            .lock()
-            .ok()
-            .and_then(|g| g.clone());
+        let active = state.active_project_id.lock().ok().and_then(|g| g.clone());
         if active.as_deref() == Some(project_id.as_str()) {
-            let override_lang = state
-                .project_manager
-                .lock()
-                .ok()
-                .and_then(|pm| {
-                    pm.get_project(&project_id)
-                        .and_then(|p| p.primary_language.clone())
-                });
+            let override_lang = state.project_manager.lock().ok().and_then(|pm| {
+                pm.get_project(&project_id)
+                    .and_then(|p| p.primary_language.clone())
+            });
             let _ = state
                 .lsp_manager
                 .activate_project(&path, override_lang.as_deref());

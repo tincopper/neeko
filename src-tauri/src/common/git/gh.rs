@@ -313,8 +313,9 @@ mod tests {
         let err = ExecError::CommandFailed {
             code: 1,
             stdout: vec![],
-            stderr: b"GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)\n"
-                .to_vec(),
+            stderr:
+                b"GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)\n"
+                    .to_vec(),
         };
         let mapped = map_gh_exec_error(err);
         let s = mapped.to_string();

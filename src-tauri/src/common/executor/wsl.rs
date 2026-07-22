@@ -14,9 +14,9 @@ use futures::FutureExt;
 #[cfg(target_os = "windows")]
 use tokio::sync::Mutex;
 
-use super::{CommandExecutor, ExecChild, ExecError, SpawnOptions};
 #[cfg(target_os = "windows")]
 use super::{BoxAsyncRead, BoxAsyncWrite};
+use super::{CommandExecutor, ExecChild, ExecError, SpawnOptions};
 
 /// Executor that runs commands inside a WSL distribution.
 ///

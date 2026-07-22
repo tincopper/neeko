@@ -226,7 +226,10 @@ mod tests {
 
     #[test]
     fn should_map_adapter_kind_from_config_type() {
-        assert_eq!(AdapterKind::from_config_type("go").unwrap(), AdapterKind::Go);
+        assert_eq!(
+            AdapterKind::from_config_type("go").unwrap(),
+            AdapterKind::Go
+        );
         assert_eq!(
             AdapterKind::from_config_type("rust").unwrap(),
             AdapterKind::Lldb

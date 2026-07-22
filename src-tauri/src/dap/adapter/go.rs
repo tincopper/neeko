@@ -44,11 +44,7 @@ impl DebugAdapterPlugin for GoAdapter {
             // Delve is a headless TCP DAP server (not stdio).
             // `--listen=127.0.0.1:0` picks an ephemeral port; address is printed on stdout:
             // `DAP server listening at: 127.0.0.1:<port>`
-            args: vec![
-                "dap".into(),
-                "--listen=127.0.0.1:0".into(),
-                "--log".into(),
-            ],
+            args: vec!["dap".into(), "--listen=127.0.0.1:0".into(), "--log".into()],
             transport: AdapterTransport::TcpListen,
         })
     }
@@ -58,14 +54,8 @@ impl DebugAdapterPlugin for GoAdapter {
     }
 
     fn build_launch_args(&self, cfg: &LaunchConfig, workspace: &str) -> Result<Value, AppError> {
-        let cwd = cfg
-            .cwd
-            .clone()
-            .unwrap_or_else(|| workspace.to_string());
-        let program = cfg
-            .program
-            .clone()
-            .unwrap_or_else(|| workspace.to_string());
+        let cwd = cfg.cwd.clone().unwrap_or_else(|| workspace.to_string());
+        let program = cfg.program.clone().unwrap_or_else(|| workspace.to_string());
         let mode = cfg.mode.clone().unwrap_or_else(|| "debug".into());
         // Delve's DAP stopOnEntry leaves a Dummy thread that cannot stackTrace.
         // Entry pause is implemented via setFunctionBreakpoints("main.main") instead.

@@ -166,11 +166,7 @@ pub struct CustomLspServerConfig {
     /// argv, e.g. ["foo-lsp", "--stdio"]
     pub command: Vec<String>,
     /// File extensions without leading dots, e.g. ["proto", "foo"].
-    #[serde(
-        default,
-        rename = "file_extensions",
-        alias = "fileExtensions"
-    )]
+    #[serde(default, rename = "file_extensions", alias = "fileExtensions")]
     pub file_extensions: Vec<String>,
     /// Root marker files for project detection (e.g. ["buf.yaml"]).
     #[serde(default)]

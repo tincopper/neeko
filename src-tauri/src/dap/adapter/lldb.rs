@@ -60,10 +60,7 @@ impl DebugAdapterPlugin for LldbAdapter {
     }
 
     fn build_launch_args(&self, cfg: &LaunchConfig, workspace: &str) -> Result<Value, AppError> {
-        let cwd = cfg
-            .cwd
-            .clone()
-            .unwrap_or_else(|| workspace.to_string());
+        let cwd = cfg.cwd.clone().unwrap_or_else(|| workspace.to_string());
         let program = cfg.program.clone().ok_or_else(|| {
             AppError::Dap("Rust/lldb launch requires \"program\" (path to binary)".into())
         })?;

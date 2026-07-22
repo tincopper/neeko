@@ -91,8 +91,9 @@ pub fn run() {
                 let legacy_overrides = legacy_skill_path_overrides(&config);
                 let mut migrated = false;
 
-                if let Some(custom_agents) =
-                    config.get_mut("customAgents").and_then(|v| v.as_array_mut())
+                if let Some(custom_agents) = config
+                    .get_mut("customAgents")
+                    .and_then(|v| v.as_array_mut())
                 {
                     for agent_json in custom_agents.iter_mut() {
                         // Inject skill_path from legacy overrides when missing
@@ -315,8 +316,14 @@ mod tests {
             }
         });
         let map = legacy_skill_path_overrides(&config);
-        assert_eq!(map.get("custom:grok").map(String::as_str), Some("~/.gork/skills"));
-        assert_eq!(map.get("custom:mimo").map(String::as_str), Some("~/.mimo/skills"));
+        assert_eq!(
+            map.get("custom:grok").map(String::as_str),
+            Some("~/.gork/skills")
+        );
+        assert_eq!(
+            map.get("custom:mimo").map(String::as_str),
+            Some("~/.mimo/skills")
+        );
         assert!(!map.contains_key("empty"));
     }
 }

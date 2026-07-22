@@ -148,9 +148,7 @@ pub struct SkillTargetDir {
 /// Resolve skill directories from agent configs (`skill_path`).
 ///
 /// Only enabled agents with a non-empty skill path are included.
-pub fn skill_targets_from_agents(
-    agents: &[(String, bool, Option<String>)],
-) -> Vec<SkillTargetDir> {
+pub fn skill_targets_from_agents(agents: &[(String, bool, Option<String>)]) -> Vec<SkillTargetDir> {
     let mut out = Vec::new();
     for (id, enabled, skill_path) in agents {
         if !enabled {
@@ -288,10 +286,7 @@ mod tests {
         let home = dirs::home_dir().unwrap();
         assert_eq!(expand_skill_path("~/foo/bar"), home.join("foo/bar"));
         assert_eq!(expand_skill_path("~"), home);
-        assert_eq!(
-            expand_skill_path("/abs/path"),
-            PathBuf::from("/abs/path")
-        );
+        assert_eq!(expand_skill_path("/abs/path"), PathBuf::from("/abs/path"));
     }
 
     #[test]
@@ -305,15 +300,15 @@ mod tests {
         let targets = skill_targets_from_agents(&agents);
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].key, "claude-code");
-        assert!(targets[0].dir.ends_with("skills") || targets[0].dir.to_string_lossy().contains("claude"));
+        assert!(
+            targets[0].dir.ends_with("skills")
+                || targets[0].dir.to_string_lossy().contains("claude")
+        );
     }
 
     #[test]
     fn default_adapters_include_neeko_agent_ids() {
-        let keys: Vec<_> = default_tool_adapters()
-            .into_iter()
-            .map(|a| a.key)
-            .collect();
+        let keys: Vec<_> = default_tool_adapters().into_iter().map(|a| a.key).collect();
         for expected in [
             "opencode",
             "claude-code",

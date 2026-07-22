@@ -98,9 +98,7 @@ pub async fn connect_transport(
                         }
                         Err(e) => {
                             if let Some(tx) = addr_tx.take() {
-                                let _ = tx.send(Err(format!(
-                                    "Failed reading adapter stdout: {e}"
-                                )));
+                                let _ = tx.send(Err(format!("Failed reading adapter stdout: {e}")));
                             }
                             break;
                         }

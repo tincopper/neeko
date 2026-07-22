@@ -25,8 +25,7 @@ pub struct LocalExecutor;
 impl CommandExecutor for LocalExecutor {
     async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
         let path = crate::common::utils::command::local::resolve_full_path();
-        let resolved =
-            crate::common::utils::command::local::resolve_command_path(opts.cmd, &path);
+        let resolved = crate::common::utils::command::local::resolve_command_path(opts.cmd, &path);
 
         let mut command = Command::new(&resolved);
         command

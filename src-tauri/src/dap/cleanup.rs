@@ -80,7 +80,9 @@ fn is_debug_artifact(path: &Path) -> bool {
             return true;
         }
         let rest = &stem["__debug_bin".len()..];
-        return rest.chars().all(|c| c.is_ascii_digit() || c == '_' || c == '-');
+        return rest
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '_' || c == '-');
     }
     // go test -c
     if stem == "debug.test" {

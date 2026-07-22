@@ -10,9 +10,7 @@ mod lldb;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::types::{
-    AdapterKind, AdapterSpawn, HandshakeOrder, LaunchConfig,
-};
+use super::types::{AdapterKind, AdapterSpawn, HandshakeOrder, LaunchConfig};
 use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 

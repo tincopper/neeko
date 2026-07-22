@@ -116,10 +116,7 @@ impl DapManager {
             let mut map = self.breakpoints.lock().await;
             let project = map.entry(project_id.to_string()).or_default();
             for b in list {
-                project
-                    .entry(b.file_path)
-                    .or_default()
-                    .push(b.line);
+                project.entry(b.file_path).or_default().push(b.line);
             }
             for lines in project.values_mut() {
                 lines.sort_unstable();
@@ -155,11 +152,7 @@ impl DapManager {
                 });
             }
         }
-        out.sort_by(|a, b| {
-            a.file_path
-                .cmp(&b.file_path)
-                .then(a.line.cmp(&b.line))
-        });
+        out.sort_by(|a, b| a.file_path.cmp(&b.file_path).then(a.line.cmp(&b.line)));
         out
     }
 
@@ -293,7 +286,9 @@ impl DapManager {
             s.stop().await;
             Ok(())
         } else {
-            Err(AppError::NotFound(format!("Session not found: {session_id}")))
+            Err(AppError::NotFound(format!(
+                "Session not found: {session_id}"
+            )))
         }
     }
 

@@ -24,19 +24,52 @@ pub async fn generate_commit_message(
 
     let output = match t.exec_target() {
         ExecTarget::Local => {
-            run_agent_local(&state, &wd, &agent_id, agent_command_override.as_deref(), &file_paths).await?
+            run_agent_local(
+                &state,
+                &wd,
+                &agent_id,
+                agent_command_override.as_deref(),
+                &file_paths,
+            )
+            .await?
         }
-        ExecTarget::Remote { ref host, port, ref username, ref auth } => {
-            run_agent_remote(&wd, &agent_cmd, &prompt_args, &post_prompt_args, &prompt, host.as_str(), port, username.as_str(), auth).await?
+        ExecTarget::Remote {
+            ref host,
+            port,
+            ref username,
+            ref auth,
+        } => {
+            run_agent_remote(
+                &wd,
+                &agent_cmd,
+                &prompt_args,
+                &post_prompt_args,
+                &prompt,
+                host.as_str(),
+                port,
+                username.as_str(),
+                auth,
+            )
+            .await?
         }
         ExecTarget::Wsl { ref distro } => {
-            run_agent_wsl(&wd, &agent_cmd, &prompt_args, &post_prompt_args, &prompt, distro).await?
+            run_agent_wsl(
+                &wd,
+                &agent_cmd,
+                &prompt_args,
+                &post_prompt_args,
+                &prompt,
+                distro,
+            )
+            .await?
         }
     };
 
     let message = ai_svc::clean_ai_output(&output);
     if message.is_empty() {
-        return Err(AppError::InvalidInput("Agent returned an empty response.".to_string()));
+        return Err(AppError::InvalidInput(
+            "Agent returned an empty response.".to_string(),
+        ));
     }
     Ok(message)
 }
@@ -67,7 +100,8 @@ async fn run_agent_remote(
     auth: &crate::common::connection::types::AuthMethod,
 ) -> Result<String, AppError> {
     let sp = crate::common::utils::command::local::safe_path(wd);
-    let actual_cmd = ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
+    let actual_cmd =
+        ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
 
     log::info!("[AI commit Remote] agent_cmd='{}'", agent_cmd);
 
@@ -85,7 +119,10 @@ async fn run_agent_remote(
         }
         Err(e) => {
             log::error!("[AI commit Remote] exec failed: {}", e);
-            Err(AppError::InvalidInput(format!("Failed to run agent on remote: {}", e)))
+            Err(AppError::InvalidInput(format!(
+                "Failed to run agent on remote: {}",
+                e
+            )))
         }
     }
 }
@@ -100,7 +137,8 @@ async fn run_agent_wsl(
     distro: &str,
 ) -> Result<String, AppError> {
     let sp = crate::common::utils::command::local::safe_path(wd);
-    let actual_cmd = ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
+    let actual_cmd =
+        ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
 
     // PATH/profile loading is handled by WslExecutor (login shell).
     let target = ExecTarget::Wsl {
@@ -133,7 +171,10 @@ fn resolve_agent_config(
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))?;
 
     let prompt_args = agent.resolve_prompt_args().ok_or_else(|| {
-        AppError::InvalidInput(format!("Agent '{}' does not support prompt mode.", agent.name))
+        AppError::InvalidInput(format!(
+            "Agent '{}' does not support prompt mode.",
+            agent.name
+        ))
     })?;
 
     let command = command_override
@@ -142,7 +183,11 @@ fn resolve_agent_config(
         .to_string();
 
     let post_prompt_args = agent.resolve_post_prompt_args();
-    Ok(ai_svc::AgentInvokeConfig { command, prompt_args, post_prompt_args })
+    Ok(ai_svc::AgentInvokeConfig {
+        command,
+        prompt_args,
+        post_prompt_args,
+    })
 }
 
 /// Resolve agent command and args for remote/WSL execution.
@@ -151,7 +196,11 @@ fn resolve_agent_for_remote(
     selected_agent: &str,
 ) -> (String, Vec<String>, Vec<String>) {
     if let Ok(config) = resolve_agent_config(state, selected_agent, None) {
-        return (selected_agent.to_string(), config.prompt_args, config.post_prompt_args);
+        return (
+            selected_agent.to_string(),
+            config.prompt_args,
+            config.post_prompt_args,
+        );
     }
 
     let cmd_name = selected_agent
@@ -162,7 +211,11 @@ fn resolve_agent_for_remote(
         .trim_end_matches(".cmd");
 
     if let Ok(config) = resolve_agent_config(state, cmd_name, None) {
-        return (selected_agent.to_string(), config.prompt_args, config.post_prompt_args);
+        return (
+            selected_agent.to_string(),
+            config.prompt_args,
+            config.post_prompt_args,
+        );
     }
 
     (selected_agent.to_string(), vec![], vec![])

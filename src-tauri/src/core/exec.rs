@@ -83,7 +83,13 @@ pub async fn command_exists(target: &ExecTarget, cmd: &str) -> bool {
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             // Login-shell wrapping is applied by the executor; a simple
             // `command -v` is enough (do not nest another `bash -c` unnecessarily).
-            match run(target, "sh", &["-c", &format!("command -v {}", shell_quote(cmd))]).await {
+            match run(
+                target,
+                "sh",
+                &["-c", &format!("command -v {}", shell_quote(cmd))],
+            )
+            .await
+            {
                 Ok(out) => !out.trim().is_empty(),
                 Err(_) => false,
             }

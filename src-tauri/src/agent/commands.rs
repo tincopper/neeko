@@ -136,9 +136,8 @@ pub async fn check_agents_installed(
     // Snapshot under lock — never hold the mutex across await / remote checks.
     let commands = {
         let am = state.agent_manager.lock().map_err(AppError::from)?;
-        let ids = agent_ids.unwrap_or_else(|| {
-            am.get_agents().iter().map(|a| a.id.clone()).collect()
-        });
+        let ids =
+            agent_ids.unwrap_or_else(|| am.get_agents().iter().map(|a| a.id.clone()).collect());
         am.resolve_commands(&ids)
     };
 

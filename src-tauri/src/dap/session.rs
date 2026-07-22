@@ -115,10 +115,7 @@ impl DapSession {
         // Single resolve path — always against project ExecTarget.
         let spawn = plugin.resolve_spawn(&target).await?;
         let adapter_proc = process::spawn_adapter(&target, &project_path, &spawn).await?;
-        let process::AdapterProcess {
-            io,
-            kill: kill_fn,
-        } = adapter_proc;
+        let process::AdapterProcess { io, kill: kill_fn } = adapter_proc;
         let stderr_buf = Arc::clone(&io.stderr_buf);
         let mut proc_out_rx = io.proc_out_rx;
 
@@ -127,8 +124,7 @@ impl DapSession {
 
         // Arc::new_cyclic: handler holds Weak, client starts before Arc is fully built.
         let session = Arc::new_cyclic(|weak| {
-            let handler: Arc<dyn DapEventHandler> =
-                Arc::new(SessionHandler(weak.clone()));
+            let handler: Arc<dyn DapEventHandler> = Arc::new(SessionHandler(weak.clone()));
             let client = DapClient::start(io.reader, io.writer, handler);
             Self {
                 session_id: session_id.clone(),
@@ -264,18 +260,12 @@ impl DapSession {
                 .is_err()
             {
                 log::warn!("[DAP] no stopped event after configurationDone");
-                self.set_status(
-                    SessionStatus::Running,
-                    Some("Debug session running".into()),
-                )
-                .await;
+                self.set_status(SessionStatus::Running, Some("Debug session running".into()))
+                    .await;
             }
         } else {
-            self.set_status(
-                SessionStatus::Running,
-                Some("Debug session running".into()),
-            )
-            .await;
+            self.set_status(SessionStatus::Running, Some("Debug session running".into()))
+                .await;
         }
 
         let status = *self.status.lock().await;
@@ -480,10 +470,7 @@ impl DapSession {
         let action = ControlAction::parse(action)?;
         let thread_id = self.resolve_thread_id().await;
         self.client
-            .request(
-                action.dap_command(),
-                json!({ "threadId": thread_id }),
-            )
+            .request(action.dap_command(), json!({ "threadId": thread_id }))
             .await?;
         Ok(())
     }

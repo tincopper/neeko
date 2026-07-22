@@ -129,10 +129,7 @@ fn select_primary(
             return Some(found.clone());
         }
         // Synthetic primary when override language is known to the marker catalog
-        if let Some((_, _, server)) = all_markers
-            .iter()
-            .find(|(_, lang, _)| lang == override_id)
-        {
+        if let Some((_, _, server)) = all_markers.iter().find(|(_, lang, _)| lang == override_id) {
             return Some(DetectedLanguage {
                 language_id: override_id.to_string(),
                 server_name: server.clone(),

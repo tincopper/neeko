@@ -100,7 +100,10 @@ impl DapClient {
         let msg_type = msg.get("type").and_then(|t| t.as_str()).unwrap_or("");
         match msg_type {
             "response" => {
-                let req_seq = msg.get("request_seq").and_then(|s| s.as_i64()).unwrap_or(-1);
+                let req_seq = msg
+                    .get("request_seq")
+                    .and_then(|s| s.as_i64())
+                    .unwrap_or(-1);
                 let mut pending = self.pending.lock().await;
                 if let Some(tx) = pending.remove(&req_seq) {
                     let _ = tx.send(msg);
@@ -191,7 +194,10 @@ impl DapClient {
             .map_err(|_| AppError::Dap(format!("timeout waiting for {command}")))?
             .map_err(|_| AppError::Dap(format!("canceled waiting for {command}")))?;
 
-        let success = resp.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+        let success = resp
+            .get("success")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
         if !success {
             let message = resp
                 .get("message")

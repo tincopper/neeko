@@ -26,7 +26,14 @@ impl LspProcess {
     /// Take ownership of stdio handles (for reader/writer threads).
     pub fn take_stdio(
         &mut self,
-    ) -> Result<(Box<dyn Write + Send>, Box<dyn Read + Send>, Box<dyn Read + Send>), String> {
+    ) -> Result<
+        (
+            Box<dyn Write + Send>,
+            Box<dyn Read + Send>,
+            Box<dyn Read + Send>,
+        ),
+        String,
+    > {
         let stdin = self
             .stdin
             .take()

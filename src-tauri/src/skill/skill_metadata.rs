@@ -13,7 +13,13 @@ const SKILL_DIR_MARKERS: &[&str] = &[
 
 /// Parse SKILL.md (or fallback markers) for name/description metadata.
 pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
-    let candidates = ["SKILL.md", "skill.md", "CLAUDE.md", "README.md", "readme.md"];
+    let candidates = [
+        "SKILL.md",
+        "skill.md",
+        "CLAUDE.md",
+        "README.md",
+        "readme.md",
+    ];
     for candidate in &candidates {
         let path = dir.join(candidate);
         if path.exists() {
@@ -31,7 +37,12 @@ pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
 /// Parse skill markdown: YAML frontmatter first, then body fallback for description.
 pub fn parse_skill_document(content: &str) -> SkillMetadata {
     let mut meta = parse_frontmatter(content);
-    if meta.description.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+    if meta
+        .description
+        .as_ref()
+        .map(|s| s.trim().is_empty())
+        .unwrap_or(true)
+    {
         if let Some(body_desc) = extract_description_from_body(content) {
             meta.description = Some(body_desc);
         }
@@ -61,10 +72,7 @@ fn yaml_value_to_string(v: &serde_yaml::Value) -> Option<String> {
         serde_yaml::Value::Number(n) => Some(n.to_string()),
         serde_yaml::Value::Bool(b) => Some(b.to_string()),
         serde_yaml::Value::Sequence(seq) => {
-            let parts: Vec<String> = seq
-                .iter()
-                .filter_map(yaml_value_to_string)
-                .collect();
+            let parts: Vec<String> = seq.iter().filter_map(yaml_value_to_string).collect();
             if parts.is_empty() {
                 None
             } else {
@@ -343,7 +351,8 @@ mod tests {
 
     #[test]
     fn parse_body_fallback_when_no_frontmatter() {
-        let content = "# Code Review\n\nReviews pull requests for style and correctness.\n\n## Steps\n";
+        let content =
+            "# Code Review\n\nReviews pull requests for style and correctness.\n\n## Steps\n";
         let meta = parse_skill_document(content);
         assert_eq!(
             meta.description.as_deref(),

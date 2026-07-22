@@ -27,21 +27,14 @@ pub async fn spawn_adapter(
     spawn: &AdapterSpawn,
 ) -> Result<AdapterProcess, AppError> {
     let args_refs: Vec<&str> = spawn.args.iter().map(|s| s.as_str()).collect();
-    let mut child = exec::spawn_with(
-        target,
-        &spawn.program,
-        &args_refs,
-        Some(project_path),
-    )
-    .await
-    .map_err(|e| AppError::Dap(format!("Failed to spawn {}: {e}", spawn.program)))?;
+    let mut child = exec::spawn_with(target, &spawn.program, &args_refs, Some(project_path))
+        .await
+        .map_err(|e| AppError::Dap(format!("Failed to spawn {}: {e}", spawn.program)))?;
 
     let (async_stdin, async_stdout, async_stderr) = child.take_stdio();
     let async_stdin = async_stdin.ok_or_else(|| AppError::Dap("adapter has no stdin".into()))?;
-    let async_stdout =
-        async_stdout.ok_or_else(|| AppError::Dap("adapter has no stdout".into()))?;
-    let async_stderr =
-        async_stderr.ok_or_else(|| AppError::Dap("adapter has no stderr".into()))?;
+    let async_stdout = async_stdout.ok_or_else(|| AppError::Dap("adapter has no stdout".into()))?;
+    let async_stderr = async_stderr.ok_or_else(|| AppError::Dap("adapter has no stderr".into()))?;
     let (wait_fut, kill_fn) = child.into_wait_and_kill();
 
     let (kill_tx, kill_rx) = oneshot::channel::<()>();

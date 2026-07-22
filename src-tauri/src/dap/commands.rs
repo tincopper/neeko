@@ -4,9 +4,7 @@ use tauri::{AppHandle, State};
 
 use super::adapter;
 use super::discover::EntryPoint;
-use super::types::{
-    BreakpointSpec, DapSessionInfo, LaunchConfig, StackFrameDto, VariableDto,
-};
+use super::types::{BreakpointSpec, DapSessionInfo, LaunchConfig, StackFrameDto, VariableDto};
 use crate::AppError;
 use crate::AppStateWrapper;
 

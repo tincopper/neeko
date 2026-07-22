@@ -6,9 +6,7 @@
 use std::collections::HashMap;
 
 use super::builtins;
-use super::types::{
-    CustomLspServerConfig, LspExtensionConflict, LspExtensionMapEntry, LspPlugin,
-};
+use super::types::{CustomLspServerConfig, LspExtensionConflict, LspExtensionMapEntry, LspPlugin};
 
 /// Registry of all available LSP language plugins.
 pub struct LspPluginRegistry {
@@ -163,11 +161,7 @@ impl LspPluginRegistry {
         let mut out = Vec::new();
         for p in plugins {
             for m in &p.root_markers {
-                out.push((
-                    m.clone(),
-                    p.language_id.clone(),
-                    p.server_binary.clone(),
-                ));
+                out.push((m.clone(), p.language_id.clone(), p.server_binary.clone()));
             }
         }
         out
@@ -178,11 +172,7 @@ impl LspPluginRegistry {
         let mut out = Vec::new();
         for p in self.plugins.values().filter(|p| p.is_custom) {
             for m in &p.root_markers {
-                out.push((
-                    m.clone(),
-                    p.language_id.clone(),
-                    p.server_binary.clone(),
-                ));
+                out.push((m.clone(), p.language_id.clone(), p.server_binary.clone()));
             }
         }
         out
@@ -241,8 +231,12 @@ mod tests {
     fn should_expose_detection_markers_from_builtins() {
         let registry = LspPluginRegistry::with_defaults();
         let markers = registry.detection_markers();
-        assert!(markers.iter().any(|(m, lang, _)| m == "Cargo.toml" && lang == "rust"));
-        assert!(markers.iter().any(|(m, lang, _)| m == "go.mod" && lang == "go"));
+        assert!(markers
+            .iter()
+            .any(|(m, lang, _)| m == "Cargo.toml" && lang == "rust"));
+        assert!(markers
+            .iter()
+            .any(|(m, lang, _)| m == "go.mod" && lang == "go"));
         // Priority: go (5) before rust (10)
         let go_idx = markers.iter().position(|(m, _, _)| m == "go.mod").unwrap();
         let rust_idx = markers

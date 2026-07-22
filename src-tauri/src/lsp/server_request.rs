@@ -113,10 +113,7 @@ mod tests {
 
     #[test]
     fn should_return_null_ok_when_register_capability() {
-        let r = req(
-            "client/registerCapability",
-            json!({"registrations": []}),
-        );
+        let r = req("client/registerCapability", json!({"registrations": []}));
         let resp = respond_to_server_request(&r, None);
 
         assert!(resp.error.is_none());
@@ -126,10 +123,8 @@ mod tests {
     #[test]
     fn should_return_workspace_folder_when_uri_provided() {
         let r = req("workspace/workspaceFolders", json!(null));
-        let resp = respond_to_server_request(
-            &r,
-            Some("file:///Users/tomgs/workspaces/go_space/codeant"),
-        );
+        let resp =
+            respond_to_server_request(&r, Some("file:///Users/tomgs/workspaces/go_space/codeant"));
 
         assert!(resp.error.is_none());
         let result = resp.result.expect("ok result");

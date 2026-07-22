@@ -420,7 +420,8 @@ mod tests {
         let mut out = Vec::new();
         discover_java(dir.path(), &mut out);
         assert!(
-            out.iter().any(|t| t.description.as_deref() == Some("com.demo.Main")),
+            out.iter()
+                .any(|t| t.description.as_deref() == Some("com.demo.Main")),
             "{out:?}"
         );
     }

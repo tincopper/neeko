@@ -171,8 +171,7 @@ pub fn resolve_full_path() -> String {
             }
         }
         // Append latest fnm node-versions/*/installation/bin if present
-        let fnm_versions = std::path::PathBuf::from(&home)
-            .join(".local/share/fnm/node-versions");
+        let fnm_versions = std::path::PathBuf::from(&home).join(".local/share/fnm/node-versions");
         if let Ok(entries) = std::fs::read_dir(&fnm_versions) {
             let mut version_bins: Vec<String> = entries
                 .flatten()

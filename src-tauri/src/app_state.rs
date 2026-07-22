@@ -192,7 +192,10 @@ impl AppStateWrapper {
             let project = manager
                 .get_project(project_id)
                 .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
-            (project.environment.clone(), project.path.to_string_lossy().to_string())
+            (
+                project.environment.clone(),
+                project.path.to_string_lossy().to_string(),
+            )
         };
 
         match env {
@@ -208,10 +211,21 @@ impl AppStateWrapper {
 
                 let session = self
                     .terminal_manager
-                    .create_session(&path_string, cols, rows, shell, working_dir, command, app_handle)
+                    .create_session(
+                        &path_string,
+                        cols,
+                        rows,
+                        shell,
+                        working_dir,
+                        command,
+                        app_handle,
+                    )
                     .map_err(AppError::from)?;
 
-                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                let _ = self
+                    .session_owner
+                    .lock()
+                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
                 Ok(session)
             }
             #[cfg(target_os = "windows")]
@@ -235,12 +249,16 @@ impl AppStateWrapper {
                     }
                     let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
                     if read_enable_opencode_theme_sync() {
-                        if let Err(e) = write_wsl_tui_config(distro, &path_string, &current_theme).await {
+                        if let Err(e) =
+                            write_wsl_tui_config(distro, &path_string, &current_theme).await
+                        {
                             log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
                         }
                     }
                     if read_enable_pi_theme_sync() {
-                        if let Err(e) = pi::write_wsl_pi_settings(distro, &path_string, &current_theme).await {
+                        if let Err(e) =
+                            pi::write_wsl_pi_settings(distro, &path_string, &current_theme).await
+                        {
                             log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
                         }
                     }
@@ -251,7 +269,10 @@ impl AppStateWrapper {
                     .create_wsl_session(distro, &path_string, cols, rows, app_handle)
                     .map_err(AppError::from)?;
 
-                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                let _ = self
+                    .session_owner
+                    .lock()
+                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
                 Ok(session)
             }
             crate::core::project::ProjectEnvironment::Remote {
@@ -262,11 +283,23 @@ impl AppStateWrapper {
             } => {
                 let session = self
                     .remote_terminal_manager
-                    .create_session(&host, port, &username, &auth, &path_string, cols, rows, app_handle)
+                    .create_session(
+                        &host,
+                        port,
+                        &username,
+                        &auth,
+                        &path_string,
+                        cols,
+                        rows,
+                        app_handle,
+                    )
                     .await
                     .map_err(AppError::from)?;
 
-                let _ = self.session_owner.lock().map(|mut m| m.insert(session.id.clone(), SessionOwner::Ssh));
+                let _ = self
+                    .session_owner
+                    .lock()
+                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Ssh));
                 Ok(session)
             }
         }
@@ -296,9 +329,15 @@ impl AppStateWrapper {
 
     /// Close a terminal session, dispatching to the correct backend.
     pub fn close_session(&self, session_id: &str) {
-        let owner = self.session_owner.lock().ok().and_then(|mut m| m.remove(session_id));
+        let owner = self
+            .session_owner
+            .lock()
+            .ok()
+            .and_then(|mut m| m.remove(session_id));
         match owner {
-            Some(SessionOwner::Pty) => self.terminal_manager.close_session_in_background(session_id),
+            Some(SessionOwner::Pty) => self
+                .terminal_manager
+                .close_session_in_background(session_id),
             Some(SessionOwner::Ssh) => self.remote_terminal_manager.close_session(session_id),
             None => log::warn!("[Terminal] Attempted to close unknown session: {session_id}"),
         }
@@ -355,10 +394,6 @@ impl AppStateWrapper {
 
 /// Loose path equality for project environment lookup.
 fn paths_equal_for_env(a: &str, b: &str) -> bool {
-    let norm = |s: &str| {
-        s.replace('\\', "/")
-            .trim_end_matches('/')
-            .to_string()
-    };
+    let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_string();
     norm(a) == norm(b)
 }

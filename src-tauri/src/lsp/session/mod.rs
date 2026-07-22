@@ -26,7 +26,6 @@ pub(crate) use request::do_send_request;
 
 // ── LspSessionStatus ────────────────────────────────────────────────────
 
-
 /// Lifecycle status of an LSP session, emitted to the frontend.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -147,13 +146,11 @@ impl LspSession {
         );
 
         let args: Vec<&str> = cmd[1..].iter().map(|s| s.as_str()).collect();
-        let mut process = super::process::spawn_lsp_process(
-            &exec_target,
-            &cmd[0],
-            &args,
-            Some(project_path),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e))?;
+        let mut process =
+            super::process::spawn_lsp_process(&exec_target, &cmd[0], &args, Some(project_path))
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e)
+                })?;
 
         transport.push_session_event(
             project_path,
@@ -163,9 +160,8 @@ impl LspSession {
             None,
         );
 
-        let (child_stdin, child_stdout, child_stderr) = process
-            .take_stdio()
-            .map_err(|e| anyhow::anyhow!(e))?;
+        let (child_stdin, child_stdout, child_stderr) =
+            process.take_stdio().map_err(|e| anyhow::anyhow!(e))?;
         // Channel for writing messages to server
         let (writer_tx, writer_rx): (Sender<Message>, Receiver<Message>) =
             crossbeam_channel::unbounded();
@@ -456,4 +452,3 @@ impl LspSession {
         );
     }
 }
-
