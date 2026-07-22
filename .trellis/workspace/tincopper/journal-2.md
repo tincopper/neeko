@@ -19,7 +19,9 @@ Deleted useDelayedInit (inlined 3-line useEffect). Extracted mergeSubTree/getTab
 
 ### Main Changes
 
-(Add details)
+- Added project disk Skill and bound Tag Group counts, binding management, group filtering, target Agent selection, and per-Skill Agent controls.
+- Restricted project-bound Skill synchronization to the selected Agent's project-local directory, with successful no-op behavior for invalid targets and shared-Skill preservation during unbind.
+- Added Agent Skill multi-select and bulk delete, cross-layer regression tests, and the project Skill synchronization code specification.
 
 ### Git Commits
 
@@ -29,7 +31,10 @@ Deleted useDelayedInit (inlined 3-line useEffect). Extracted mergeSubTree/getTab
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] Skill frontend suite: 10 files, 92 tests
+- [OK] TypeScript type-check and scoped ESLint/Prettier
+- [OK] Rust Skill suite: 70 tests; cargo check and scoped rustfmt
+- [OK] Production build and Vite HTTP smoke (`200 OK`)
 
 ### Status
 
@@ -1036,6 +1041,39 @@ Improved PR list failure UX: classify gh errors (repo access/auth/network), fix 
 |------|---------|
 | `a79a51c` | (see git log) |
 | `3f2ba7e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 89: Complete project skill relation management
+
+**Date**: 2026-07-22
+**Task**: Complete project skill relation management
+**Branch**: `main`
+
+### Summary
+
+Completed project tag-group and Skill relation UI, selected-Agent project-local synchronization, unbind reconciliation, Agent controls, tests, runtime verification, and backend sync specification.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9f1b26b` | (see git log) |
 
 ### Testing
 
