@@ -143,11 +143,11 @@ function MainContent() {
       [installedMap, onAgentClick, showToast]
    );
 
-   const selectedAgent = useMemo(() => {
-      const agentId = activeProject?.selected_agent;
-      if (!agentId) return null;
-      return agents.find((a) => a.id === agentId) ?? null;
-   }, [activeProject?.selected_agent, agents]);
+    const selectedAgent = useMemo(() => {
+        const agentId = activeProject?.selected_agents?.[0];
+        if (!agentId) return null;
+        return agents.find((a) => a.id === agentId) ?? null;
+    }, [activeProject?.selected_agents, agents]);
 
    const handleGuideOpenTerminal = useCallback(() => {
       handleAddTerminalTab();

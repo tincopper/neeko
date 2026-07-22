@@ -116,6 +116,8 @@ const ImportToProjectDialog: React.FC<ImportToProjectDialogProps> = React.memo(
             s.tags.some((t) => t.toLowerCase().includes(q)),
         );
       }
+      // Skip disabled skills (Library disable now respected in selection)
+      list = list.filter((s) => s.enabled);
       return list;
     }, [importableSkills, sourceFilter, tagFilter, query]);
 

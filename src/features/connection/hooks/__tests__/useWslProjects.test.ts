@@ -16,9 +16,9 @@ function makeWslEntry(overrides: Partial<WSLEntrySession> = {}): WSLEntrySession
     id: 'e1',
     distro: 'Ubuntu',
     projects: [
-      { id: 'p1', name: 'proj-p1', path: '/home/user/p1', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
-      { id: 'p2', name: 'proj-p2', path: '/home/user/p2', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
-      { id: 'p3', name: 'proj-p3', path: '/home/user/p3', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
+      { id: 'p1', name: 'proj-p1', path: '/home/user/p1', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+      { id: 'p2', name: 'proj-p2', path: '/home/user/p2', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+      { id: 'p3', name: 'proj-p3', path: '/home/user/p3', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
     ],
     ...overrides,
   };
@@ -161,9 +161,9 @@ describe('useWslProjects', () => {
       const entry = makeWslEntry({
         id: 'e1',
         projects: [
-          { id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
-          { id: 'p2', name: 'B', path: '/b', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
-          { id: 'p3', name: 'C', path: '/c', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null },
+          { id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+          { id: 'p2', name: 'B', path: '/b', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+          { id: 'p3', name: 'C', path: '/c', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
         ],
       });
 
@@ -197,8 +197,8 @@ describe('useWslProjects', () => {
     it('跨 entry 拖拽被忽略', () => {
       const { result } = renderHook(() => useWslProjects(mockSaveSession));
       const entries = [
-        makeWslEntry({ id: 'e1', projects: [{ id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null }] }),
-        makeWslEntry({ id: 'e2', projects: [{ id: 'p2', name: 'B', path: '/b', entry_id: 'e2', selected_agent: null, selected_ide: null, git_info: null, avatar_color: null }] }),
+        makeWslEntry({ id: 'e1', projects: [{ id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null }] }),
+        makeWslEntry({ id: 'e2', projects: [{ id: 'p2', name: 'B', path: '/b', entry_id: 'e2', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null }] }),
       ];
 
       act(() => {

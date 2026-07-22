@@ -242,7 +242,7 @@ export function RemoteDialog({
          name: projectName,
          path: projectPath,
          entry_id: selectedServer?.id || crypto.randomUUID(),
-         selected_agent: selectedAgentId,
+          selected_agents: selectedAgentId ? [selectedAgentId] : [],
          selected_ide: selectedIdeCommand,
          avatar_color: randomAvatarColor(),
       };

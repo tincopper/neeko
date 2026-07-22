@@ -3,13 +3,13 @@ import { renderHook } from "@testing-library/react";
 import { useProjectListFromData } from "@/features/project/hooks/useProjectList";
 import type { ProjectEnvironment } from "@/features/project/types";
 
-function proj(id: string, overrides: Partial<{ name: string; path: string; git_info: unknown; selected_agent: string | null; environment?: ProjectEnvironment }> = {}) {
+function proj(id: string, overrides: Partial<{ name: string; path: string; git_info: unknown; selected_agents: string[]; environment?: ProjectEnvironment }> = {}) {
   return {
     id,
     name: overrides.name ?? id,
     path: overrides.path ?? `/tmp/${id}`,
     git_info: overrides.git_info ?? null,
-    selected_agent: overrides.selected_agent ?? null,
+    selected_agents: overrides.selected_agents ?? [],
     environment: overrides.environment ?? { type: "Local" as const },
   };
 }
@@ -52,13 +52,13 @@ describe("useProjectList", () => {
     expect(result.current.items[1].has_git_info).toBe(true);
   });
 
-  it("sets selected_agent from project", () => {
+  it("sets selected_agents from project", () => {
     const { result } = renderHook(() =>
       useProjectListFromData(
-        [proj("p1", { selected_agent: "agent-1" })],
+        [proj("p1", { selected_agents: ["agent-1"] })],
       )
     );
-    expect(result.current.items[0].selected_agent).toBe("agent-1");
+    expect(result.current.items[0].selected_agents).toEqual(["agent-1"]);
   });
 
   it("includes remote projects via environment field", () => {

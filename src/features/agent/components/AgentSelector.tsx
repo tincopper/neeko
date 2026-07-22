@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { checkAgentsInstalled, listAgents, setProjectAgent } from "../api/agentApi";
+import { checkAgentsInstalled, listAgents, setProjectAgents } from "../api/agentApi";
 import { loadConfig as loadSessionConfig, saveConfig as saveSessionConfig } from "../../session/api/sessionApi";
 import AgentIcon from "./AgentIcon";
 import type { AppConfig, AgentConfig } from '@/shared/types';
@@ -243,7 +243,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
     
     if (!skipBackendPersist) {
       try {
-        await setProjectAgent(projectId, agentId);
+        await setProjectAgents(projectId, agentId ? [agentId] : []);
       } catch (error) {
         console.error("Failed to set agent:", error);
       }

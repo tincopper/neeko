@@ -37,7 +37,7 @@ function createProject(overrides: Partial<Project> = {}): Project {
       history: [],
       agent: null,
     },
-    selected_agent: null,
+    selected_agents: [],
     selected_ide: null,
     active_view: "Terminal",
     collapsed: false,

@@ -73,7 +73,7 @@ impl ProjectManager {
             environment: ProjectEnvironment::Local,
             git_info,
             terminal: terminal_session,
-            selected_agent: agent_id,
+            selected_agents: agent_id.map(|id| vec![id]).unwrap_or_default(),
             selected_ide: ide,
             active_view: ViewMode::Terminal,
             collapsed: true,
@@ -113,7 +113,7 @@ impl ProjectManager {
             environment: session.environment.clone(),
             git_info: None,
             terminal: terminal_session,
-            selected_agent: session.selected_agent.clone(),
+            selected_agents: session.selected_agents.clone(),
             selected_ide: session.selected_ide.clone(),
             active_view: ViewMode::Terminal,
             collapsed: session.collapsed,
@@ -199,10 +199,10 @@ impl ProjectManager {
         Ok(())
     }
 
-    /// Sets the selected AI agent for a project.
-    pub fn set_selected_agent(&mut self, project_id: &str, agent_id: Option<String>) {
+    /// Sets the selected AI agents for a project.
+    pub fn set_selected_agents(&mut self, project_id: &str, agent_ids: Vec<String>) {
         if let Some(project) = self.projects.iter_mut().find(|p| p.id == project_id) {
-            project.selected_agent = agent_id;
+            project.selected_agents = agent_ids;
         }
         self.notify_persist();
     }

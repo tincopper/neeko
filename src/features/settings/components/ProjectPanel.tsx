@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { renameProject, changeProjectPath, setProjectIde, setProjectColor, removeProject, setProjectPrimaryLanguage } from "../../project/api/projectApi";
-import { setProjectAgent, listAgents } from "../../agent/api/agentApi";
+import { setProjectAgents, listAgents } from "../../agent/api/agentApi";
 import { useLspStore } from "@/features/lsp/store/lspStore";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Pencil, Trash2, Plus } from "@/shared/components/icons"
@@ -117,8 +117,8 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleAgentChange = useCallback(
     (value: string) => {
       const agentId = value === "__global__" ? null : value;
-      setProjectAgent(projectId, agentId);
-      patchProject({ selected_agent: agentId });
+      setProjectAgents(projectId, agentId ? [agentId] : []);
+      patchProject({ selected_agents: agentId ? [agentId] : [] });
     },
     [projectId, patchProject],
   );
@@ -299,7 +299,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           <div>
             <div className="text-[0.79em] text-text-muted mb-1.5">Agent</div>
             <Select
-              value={project.selected_agent ?? "__global__"}
+              value={project.selected_agents?.[0] ?? "__global__"}
               onValueChange={handleAgentChange}
             >
               <SelectTrigger>

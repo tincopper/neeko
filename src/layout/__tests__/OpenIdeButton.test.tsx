@@ -13,7 +13,7 @@ function makeProject(partial: Partial<Project> = {}): Project {
     id: "p1",
     name: "test-project",
     path: "/tmp/test",
-    selected_agent: null,
+    selected_agents: [],
     selected_ide: "goland",
     git_info: null,
     active_view: "Terminal",

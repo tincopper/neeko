@@ -27,8 +27,9 @@ pub struct ProjectSession {
     #[serde(default = "default_environment")]
     /// Execution environment (local, WSL, or remote).
     pub environment: ProjectEnvironment,
-    /// Selected AI agent identifier.
-    pub selected_agent: Option<String>,
+    /// Selected AI agent identifiers for this project.
+    #[serde(default)]
+    pub selected_agents: Vec<String>,
     /// Selected IDE identifier.
     pub selected_ide: Option<String>,
     #[serde(default)]
@@ -99,7 +100,7 @@ impl SessionStore {
                     name: wp.name,
                     path: PathBuf::from(wp.path),
                     environment: ProjectEnvironment::Wsl { distro: wp.distro },
-                    selected_agent: wp.selected_agent,
+                    selected_agents: wp.selected_agent.map(|a| vec![a]).unwrap_or_default(),
                     selected_ide: wp.selected_ide,
                     terminal_history: Vec::new(),
                     last_status: TerminalStatus::Idle,
@@ -133,7 +134,7 @@ impl SessionStore {
                             crate::common::connection::types::AuthMethod::Password(String::new()),
                         ),
                     },
-                    selected_agent: rp.selected_agent,
+                    selected_agents: rp.selected_agent.map(|a| vec![a]).unwrap_or_default(),
                     selected_ide: rp.selected_ide,
                     terminal_history: Vec::new(),
                     last_status: TerminalStatus::Idle,

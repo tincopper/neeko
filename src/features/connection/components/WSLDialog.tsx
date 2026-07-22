@@ -195,7 +195,7 @@ export function WSLDialog({ isOpen, onClose, onAdd, existingEntries, selectedEnt
          path: finalPath,
          distro: selectedDistro,
          entry_id: existingEntry?.id || crypto.randomUUID(),
-         selected_agent: selectedAgentId,
+          selected_agents: selectedAgentId ? [selectedAgentId] : [],
          selected_ide: selectedIdeCommand,
          avatar_color: randomAvatarColor(),
       };

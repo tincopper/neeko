@@ -600,7 +600,6 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                     onCheckedChange={
                       selectionMode ? (next) => toggleSelected(diskSkill.path, next) : undefined
                     }
-                    onSelect={() => openViewSkill(diskSkill)}
                     onView={() => openViewSkill(diskSkill)}
                     onRemove={() => setPendingRemove(diskSkill)}
                     removing={removing && pendingRemove?.path === diskSkill.path}

@@ -8,6 +8,8 @@ import {
   Store,
   ArrowUpCircle,
   Tags,
+  Power,
+  PowerOff,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -49,6 +51,10 @@ interface SkillCardProps {
   onDescriptionResolved?: (skillId: string, description: string) => void;
   /** Called when a tag chip is clicked. */
   onTagClick?: (tag: string) => void;
+  /** Whether to show agent association badges/icons (defaults to true; false for Library to keep agnostic). */
+  showAgentAssociations?: boolean;
+  /** Toggle enable/disable for the skill (used in Library menu). */
+  onToggleEnabled?: (enabled: boolean) => void;
 }
 
 function SourceLabel({ source }: { source: string }) {
@@ -90,10 +96,13 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     tagGroupLabel,
     onDescriptionResolved,
     onTagClick,
+    showAgentAssociations = true,
+    onToggleEnabled,
   }) => {
     const isGitSource = skill.source_type === 'git' || skill.source_type === 'skillssh';
     const hasUpdate = skill.update_status === 'update_available';
     const enabled = Boolean(skill.enabled);
+    const [toggling, setToggling] = useState(false);
     const chips = skill.tags.slice(0, 4);
 
     const propDesc = skill.description?.trim() || '';
@@ -263,6 +272,23 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                   </>
                 )}
 
+                {onToggleEnabled && (
+                  <>
+                    <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
+                    <DropdownMenuItem
+                      className={skillMenuItemClass()}
+                      disabled={toggling}
+                      onSelect={() => {
+                        setToggling(true);
+                        onToggleEnabled?.(!enabled).finally(() => setToggling(false));
+                      }}
+                    >
+                      {enabled ? <PowerOff /> : <Power />}
+                      {enabled ? 'Disable skill' : 'Enable skill'}
+                    </DropdownMenuItem>
+                  </>
+                )}
+
                 <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
                 <DropdownMenuItem
                   className={skillMenuItemClass({ danger: true })}
@@ -347,22 +373,23 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {showAgents.map((agent) => {
-              const src = getAgentIconSrc(agent.icon);
-              if (!src) return null;
-              return (
-                <img
-                  key={agent.id}
-                  src={src}
-                  alt={agent.name}
-                  title={agent.name}
-                  className={cn(
-                    'w-4 h-4 rounded-[3px]',
-                    enabled ? 'opacity-100' : 'opacity-30 grayscale',
-                  )}
-                />
-              );
-            })}
+            {showAgentAssociations &&
+              showAgents.map((agent) => {
+                const src = getAgentIconSrc(agent.icon);
+                if (!src) return null;
+                return (
+                  <img
+                    key={agent.id}
+                    src={src}
+                    alt={agent.name}
+                    title={agent.name}
+                    className={cn(
+                      'w-4 h-4 rounded-[3px]',
+                      enabled ? 'opacity-100' : 'opacity-30 grayscale',
+                    )}
+                  />
+                );
+              })}
           </div>
 
           <span

@@ -171,6 +171,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           tagGroupLabel={activeGroupName}
           skillTagGroupMap={skillTagGroupMap}
           agents={agents}
+          showAgentAssociations={false}
           onDescriptionResolved={patchSkillDescription}
           onTagClick={toggleTagFilter}
         />

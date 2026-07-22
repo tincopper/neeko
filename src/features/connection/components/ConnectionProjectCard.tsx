@@ -264,7 +264,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           <ProjectSettingsDialog
             projectId={project.id}
             projectName={project.name}
-            currentAgent={project.selected_agent ?? null}
+            currentAgent={project.selected_agents?.[0] ?? null}
             currentIde={project.selected_ide ?? null}
             agents={agents ?? []}
             config={config}

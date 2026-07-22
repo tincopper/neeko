@@ -1,18 +1,22 @@
 import {
+  Ban,
+  CheckSquare,
   Folder,
   Layers,
   LayoutGrid,
   List,
   Loader2,
   Plus,
+  Power,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- list agents for targets + card icons
-import { listAgents, resolveAgentIconSrc, setProjectAgent } from '@/features/agent/api/agentApi';
+import { listAgents, resolveAgentIconSrc, setProjectAgents } from '@/features/agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- shared toast bus
 import { useNotificationStore } from '@/features/notification/notificationStore';
 // eslint-disable-next-line import/no-restricted-paths -- active project
@@ -31,10 +35,6 @@ import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { ManagedSkillDto, ProjectDiskSkill } from '@/shared/types';
 import {
   Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
 } from '@/ui';
 
 import BindTagGroupsDialog from './BindTagGroupsDialog';
@@ -84,6 +84,10 @@ function displayPath(path: string | undefined | null): string {
 const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ setDialog }) => {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProject = useProjectStore((s) => s.activeProject);
+  const selectedAgentIds = useMemo(
+    () => new Set(activeProject?.selected_agents ?? []),
+    [activeProject?.selected_agents],
+  );
   const librarySkills = useSkillStore((s) => s.skills);
   const tagGroups = useSkillStore((s) => s.tagGroups);
   const projectTagGroups = useSkillStore((s) => s.projectTagGroups);
@@ -114,7 +118,33 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   const [pendingRemove, setPendingRemove] = useState<ProjectDiskSkill | null>(null);
   const [removing, setRemoving] = useState(false);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
-  const [settingTargetAgent, setSettingTargetAgent] = useState(false);
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(() => new Set());
+  const [bulkRemoving, setBulkRemoving] = useState(false);
+  const [bulkDisabling, setBulkDisabling] = useState(false);
+  const [bulkEnabling, setBulkEnabling] = useState(false);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((v) => {
+      if (v) setSelectedNames(new Set());
+      return !v;
+    });
+  }, []);
+
+  const toggleSelected = useCallback((name: string, checked: boolean) => {
+    setSelectedNames((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedNames(new Set());
+  }, []);
 
   const toast = useCallback((message: string, type: 'info' | 'error' | 'success' = 'info') => {
     useNotificationStore.getState().addNotification({
@@ -186,6 +216,8 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     setImportOpen(false);
     setBindOpen(false);
     setPendingRemove(null);
+    setSelectionMode(false);
+    setSelectedNames(new Set());
     void reload();
   }, [activeProjectId, reload]);
 
@@ -232,11 +264,9 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
 
   /** Agents associated with this project that can receive project-local skills. */
   const projectTargetAgentIds = useMemo(() => {
-    const selected = activeProject?.selected_agent?.trim();
-    if (!selected) return [] as string[];
-    const match = agents.find((a) => a.id === selected && a.projectCapable);
-    return match ? [match.id] : [];
-  }, [activeProject?.selected_agent, agents]);
+    const selected = activeProject?.selected_agents ?? [];
+    return agents.filter((a) => selected.includes(a.id) && a.projectCapable).map((a) => a.id);
+  }, [activeProject?.selected_agents, agents]);
 
   const handleSaveBindings = useCallback(
     async (tagGroupIds: string[]) => {
@@ -245,83 +275,12 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       try {
         const prevIds = new Set(projectTagGroups.map((g) => g.id));
         const nextIds = new Set(tagGroupIds);
-        const removedGroupIds = [...prevIds].filter((id) => !nextIds.has(id));
         const addedGroupIds = [...nextIds].filter((id) => !prevIds.has(id));
 
-        // Skills that remain covered by still-bound groups must not be deleted on unbind.
-        const remainingSkillKeys = new Set<string>();
-        if (nextIds.size > 0) {
-          const remainingLists = await Promise.all(
-            [...nextIds].map((id) => getSkillsForTagGroup(id)),
-          );
-          for (const list of remainingLists) {
-            for (const s of list) {
-              if (s.id) remainingSkillKeys.add(s.id);
-              if (s.name) remainingSkillKeys.add(s.name);
-            }
-          }
-        }
+        // 1) Persist declaration + backend reconcile (removes orphaned skills)
+        await setProjectTagGroups(activeProjectId, tagGroupIds, activeProject.path);
 
-        // Skills that were only provided by removed groups → delete from project agent dirs.
-        const toRemove: Array<{ name: string; skillId: string | null }> = [];
-        if (removedGroupIds.length > 0) {
-          const removedLists = await Promise.all(
-            removedGroupIds.map((id) => getSkillsForTagGroup(id)),
-          );
-          const seenNames = new Set<string>();
-          for (const list of removedLists) {
-            for (const s of list) {
-              const stillBound =
-                (s.id != null && remainingSkillKeys.has(s.id)) || remainingSkillKeys.has(s.name);
-              if (stillBound) continue;
-              if (seenNames.has(s.name)) continue;
-              seenNames.add(s.name);
-              toRemove.push({ name: s.name, skillId: s.id ?? null });
-            }
-          }
-        }
-
-        // 1) Persist declaration
-        await setProjectTagGroups(activeProjectId, tagGroupIds);
-
-        // 2) Remove disk skills for unbound groups (target agent if set; else all linked agents on disk).
-        let removedCount = 0;
-        if (toRemove.length > 0) {
-          const fallbackAgentIds = projectTargetAgentIds.length
-            ? projectTargetAgentIds
-            : [
-                ...new Set(
-                  diskSkills.flatMap((s) =>
-                    s.agent_ids.length ? s.agent_ids : (s.agents ?? []).map((a) => a.agent_id),
-                  ),
-                ),
-              ];
-          for (const item of toRemove) {
-            const disk = diskSkills.find(
-              (s) => s.name === item.name || (item.skillId && s.skill_id === item.skillId),
-            );
-            const agentIds =
-              disk && (disk.agent_ids.length > 0 || (disk.agents?.length ?? 0) > 0)
-                ? disk.agent_ids.length
-                  ? disk.agent_ids
-                  : (disk.agents ?? []).map((a) => a.agent_id)
-                : fallbackAgentIds;
-            if (agentIds.length === 0) continue;
-            try {
-              await removeSkillFromProject(
-                activeProject.path,
-                item.name,
-                agentIds,
-                item.skillId ?? disk?.skill_id ?? null,
-              );
-              removedCount += 1;
-            } catch (e) {
-              console.error('[ProjectSkillContent] remove on unbind failed:', item.name, e);
-            }
-          }
-        }
-
-        // 3) Install skills from newly bound groups onto target agent only.
+        // 2) Install skills from newly bound groups onto target agent only.
         let imported = 0;
         let syncSkippedReason: string | null = null;
         if (addedGroupIds.length > 0) {
@@ -348,18 +307,13 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           }
         }
 
-        if (removedCount > 0 || imported > 0) {
-          await reload({ silent: true });
-          await refreshCounts();
-        }
+        await reload({ silent: true });
+        await refreshCounts();
 
         const groupLabel = `${tagGroupIds.length} group${tagGroupIds.length === 1 ? '' : 's'}`;
         const parts: string[] = [`Bound ${groupLabel}`];
         if (imported > 0) {
           parts.push(`synced ${imported} deployment${imported === 1 ? '' : 's'} to target agent`);
-        }
-        if (removedCount > 0) {
-          parts.push(`removed ${removedCount} skill${removedCount === 1 ? '' : 's'} from project`);
         }
         if (syncSkippedReason) {
           toast(`${parts.join('; ')}. ${syncSkippedReason}`, 'info');
@@ -377,7 +331,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     [
       activeProject?.path,
       activeProjectId,
-      diskSkills,
       projectTagGroups,
       projectTargetAgentIds,
       refreshCounts,
@@ -417,47 +370,35 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     [skillTagGroups],
   );
 
-  const targetAgentMeta = useMemo(() => {
-    const id = activeProject?.selected_agent?.trim();
-    if (!id) return null;
-    return agents.find((a) => a.id === id) ?? { id, name: id, icon: null, projectCapable: false };
-  }, [activeProject?.selected_agent, agents]);
-
   const capableAgents = useMemo(() => agents.filter((a) => a.projectCapable), [agents]);
 
-  /** Persist project target agent from Skills → Projects panel. */
-  const handleSetTargetAgent = useCallback(
-    async (agentId: string | null) => {
+  /** Toggle agent selection for skill sync. */
+  const handleToggleAgentSelection = useCallback(
+    async (agentId: string) => {
       if (!activeProjectId) return;
-      setSettingTargetAgent(true);
+      const prev = activeProject?.selected_agents ?? [];
+      const next = prev.includes(agentId)
+        ? prev.filter((id) => id !== agentId)
+        : [...prev, agentId];
       try {
-        await setProjectAgent(activeProjectId, agentId);
-        // Keep project store in sync so bind-sync / UI badge update immediately
+        await setProjectAgents(activeProjectId, next);
         useProjectStore.setState((state) => {
           const nextProjects = state.projects.map((p) =>
-            p.id === activeProjectId ? { ...p, selected_agent: agentId } : p,
+            p.id === activeProjectId ? { ...p, selected_agents: next } : p,
           );
           const nextActive =
             state.activeProject?.id === activeProjectId
-              ? { ...state.activeProject, selected_agent: agentId }
+              ? { ...state.activeProject, selected_agents: next }
               : state.activeProject;
           return { projects: nextProjects, activeProject: nextActive };
         });
-        const name =
-          agentId == null ? null : (agents.find((a) => a.id === agentId)?.name ?? agentId);
-        toast(
-          name
-            ? `Target agent set to ${name}`
-            : 'Target agent cleared — bind sync will skip disk install',
-          'success',
-        );
+        await reload({ silent: true });
+        await refreshCounts();
       } catch (e) {
         toast(String(e), 'error');
-      } finally {
-        setSettingTargetAgent(false);
       }
     },
-    [activeProjectId, agents, toast],
+    [activeProjectId, activeProject?.selected_agents, reload, refreshCounts, toast],
   );
 
   /** Agents that currently have at least one skill in this project (for filter chips). */
@@ -466,10 +407,10 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     for (const s of diskSkills) {
       for (const id of s.agent_ids) ids.add(id);
     }
-    // Always include project target agent in filter chips when set
-    if (activeProject?.selected_agent) ids.add(activeProject.selected_agent);
+    // Always include project target agents in filter chips when set
+    for (const id of activeProject?.selected_agents ?? []) ids.add(id);
     return agents.filter((a) => ids.has(a.id));
-  }, [diskSkills, agents, activeProject?.selected_agent]);
+  }, [diskSkills, agents, activeProject?.selected_agents]);
 
   const filteredSkills = useMemo(() => {
     let list = diskSkills;
@@ -499,6 +440,161 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     }
     return list;
   }, [diskSkills, statusFilter, agentFilter, tagGroupFilter, groupMembership, searchQuery]);
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredSkills.length === 0) return false;
+    return filteredSkills.every((s) => selectedNames.has(s.name));
+  }, [filteredSkills, selectedNames]);
+
+  const someFilteredSelected = useMemo(
+    () => filteredSkills.some((s) => selectedNames.has(s.name)),
+    [filteredSkills, selectedNames],
+  );
+
+  const handleSelectAllFiltered = useCallback(() => {
+    setSelectedNames((prev) => {
+      if (filteredSkills.length === 0) return prev;
+      const allOn = filteredSkills.every((s) => prev.has(s.name));
+      if (allOn) {
+        const next = new Set(prev);
+        for (const s of filteredSkills) next.delete(s.name);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const s of filteredSkills) next.add(s.name);
+      return next;
+    });
+  }, [filteredSkills]);
+
+  const selectedSkills = useMemo(() => {
+    if (selectedNames.size === 0) return [] as ProjectDiskSkill[];
+    return filteredSkills.filter((s) => selectedNames.has(s.name));
+  }, [filteredSkills, selectedNames]);
+
+  const handleBulkRemove = useCallback(async () => {
+    if (!activeProject?.path || selectedSkills.length === 0) return;
+    setBulkRemoving(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const skill of selectedSkills) {
+        try {
+          await removeSkillFromProject(
+            activeProject.path,
+            skill.name,
+            skill.agent_ids,
+            skill.skill_id,
+          );
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (ok > 0) {
+        toast(
+          failed > 0
+            ? `Removed ${ok} skill${ok === 1 ? '' : 's'} from project; ${failed} failed`
+            : `Removed ${ok} skill${ok === 1 ? '' : 's'} from project`,
+          failed > 0 ? 'info' : 'success',
+        );
+      } else {
+        toast('Could not remove skills', 'error');
+      }
+      setSelectedNames(new Set());
+      setSelectionMode(false);
+      setBulkConfirmOpen(false);
+      await reload({ silent: true });
+      await refreshCounts();
+    } finally {
+      setBulkRemoving(false);
+    }
+  }, [activeProject?.path, selectedSkills, reload, refreshCounts, toast]);
+
+  const handleBulkEnable = useCallback(async () => {
+    if (!activeProject?.path || selectedSkills.length === 0) return;
+    setBulkEnabling(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const skill of selectedSkills) {
+        try {
+          const agentIds = skill.agent_ids.length
+            ? skill.agent_ids
+            : (skill.agents ?? []).map((a) => a.agent_id);
+          if (agentIds.length === 0) continue;
+          await setProjectSkillEnabled(
+            activeProject.path,
+            skill.name,
+            agentIds,
+            true,
+            skill.skill_id,
+          );
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (ok > 0) {
+        toast(
+          failed > 0
+            ? `Enabled ${ok} skill${ok === 1 ? '' : 's'}; ${failed} failed`
+            : `Enabled ${ok} skill${ok === 1 ? '' : 's'}`,
+          failed > 0 ? 'info' : 'success',
+        );
+      } else {
+        toast('Could not enable skills', 'error');
+      }
+      setSelectedNames(new Set());
+      setSelectionMode(false);
+      await reload({ silent: true });
+      await refreshCounts();
+    } finally {
+      setBulkEnabling(false);
+    }
+  }, [activeProject?.path, selectedSkills, reload, refreshCounts, toast]);
+
+  const handleBulkDisable = useCallback(async () => {
+    if (!activeProject?.path || selectedSkills.length === 0) return;
+    setBulkDisabling(true);
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (const skill of selectedSkills) {
+        try {
+          const agentIds = skill.agent_ids.length
+            ? skill.agent_ids
+            : (skill.agents ?? []).map((a) => a.agent_id);
+          if (agentIds.length === 0) continue;
+          await setProjectSkillEnabled(
+            activeProject.path,
+            skill.name,
+            agentIds,
+            false,
+            skill.skill_id,
+          );
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (ok > 0) {
+        toast(
+          failed > 0
+            ? `Disabled ${ok} skill${ok === 1 ? '' : 's'}; ${failed} failed`
+            : `Disabled ${ok} skill${ok === 1 ? '' : 's'}`,
+          failed > 0 ? 'info' : 'success',
+        );
+      } else {
+        toast('Could not disable skills', 'error');
+      }
+      setSelectedNames(new Set());
+      setSelectionMode(false);
+      await reload({ silent: true });
+      await refreshCounts();
+    } finally {
+      setBulkDisabling(false);
+    }
+  }, [activeProject?.path, selectedSkills, reload, refreshCounts, toast]);
 
   const handleToggleAgent = useCallback(
     async (skill: ProjectDiskSkill, agentId: string, enabled: boolean) => {
@@ -661,64 +757,25 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           <span className="inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
             {total} / {enabledCount}
           </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={
-                  settingTargetAgent || (capableAgents.length === 0 && targetAgentMeta == null)
-                }
-                data-testid={
-                  targetAgentMeta ? 'project-target-agent' : 'project-target-agent-missing'
-                }
-                title={
-                  targetAgentMeta
-                    ? `Target agent: ${targetAgentMeta.name} (click to change)`
-                    : 'Set project target agent for skill sync'
-                }
-                className={cn(
-                  'inline-flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-md border shrink-0 transition-colors',
-                  'text-[11px] font-medium max-w-[12rem]',
-                  'disabled:opacity-60 disabled:cursor-not-allowed',
-                  targetAgentMeta
-                    ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/15'
-                    : 'text-text-muted border-dashed border-border hover:bg-bg-hover hover:text-text-secondary',
-                )}
-              >
-                {targetAgentMeta ? (
-                  <>
-                    {resolveAgentIconSrc(targetAgentMeta.icon) ? (
-                      <img
-                        src={resolveAgentIconSrc(targetAgentMeta.icon)!}
-                        alt=""
-                        className="h-4 w-4 rounded-[3px]"
-                      />
-                    ) : (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
-                        {targetAgentMeta.name.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="truncate">{targetAgentMeta.name}</span>
-                  </>
-                ) : (
-                  <span>Set target agent</span>
-                )}
-                <span className="opacity-50 text-[9px]" aria-hidden>
-                  ▾
-                </span>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="min-w-[180px]">
-              {capableAgents.map((a) => {
-                const active = targetAgentMeta?.id === a.id;
+          <div className="flex items-center gap-1.5 flex-1 min-w-0 ml-2" data-testid="project-agent-chips">
+            {capableAgents.length === 0 ? (
+              <span className="text-[11px] text-text-muted italic">No project-capable agents</span>
+            ) : (
+              capableAgents.map((a) => {
+                const selected = activeProject?.selected_agents?.includes(a.id) ?? false;
                 const src = resolveAgentIconSrc(a.icon);
                 return (
-                  <DropdownMenuItem
+                  <button
                     key={a.id}
-                    disabled={settingTargetAgent}
-                    onSelect={() => void handleSetTargetAgent(a.id)}
-                    className={cn('gap-2', active && 'bg-bg-selected')}
-                    data-testid={`set-target-agent-${a.id}`}
+                    type="button"
+                    onClick={() => void handleToggleAgentSelection(a.id)}
+                    data-testid={`project-agent-chip-${a.id}`}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-md border shrink-0 transition-colors text-[11px] font-medium',
+                      selected
+                        ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/15'
+                        : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                    )}
                   >
                     {src ? (
                       <img src={src} alt="" className="h-4 w-4 rounded-[3px]" />
@@ -727,30 +784,12 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                         {a.name.slice(0, 1).toUpperCase()}
                       </span>
                     )}
-                    <span className="truncate flex-1">{a.name}</span>
-                    {active ? (
-                      <span className="text-[10px] text-accent-blue font-medium">Target</span>
-                    ) : null}
-                  </DropdownMenuItem>
+                    <span className="truncate max-w-[5rem]">{a.name}</span>
+                  </button>
                 );
-              })}
-              {targetAgentMeta ? (
-                <DropdownMenuItem
-                  disabled={settingTargetAgent}
-                  onSelect={() => void handleSetTargetAgent(null)}
-                  className="text-text-muted"
-                  data-testid="clear-target-agent"
-                >
-                  Clear target agent
-                </DropdownMenuItem>
-              ) : null}
-              {capableAgents.length === 0 ? (
-                <div className="px-2 py-1.5 text-[11px] text-text-muted">
-                  No project-capable agents enabled
-                </div>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              })
+            )}
+          </div>
         </div>
         <div
           className="px-4 pb-2.5 text-[11px] text-text-muted truncate"
@@ -926,6 +965,24 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           >
             <List className="h-3.5 w-3.5" />
           </button>
+          <button
+            type="button"
+            onClick={toggleSelectionMode}
+            disabled={total === 0}
+            title={selectionMode ? 'Exit multi-select' : 'Multi-select'}
+            aria-label={selectionMode ? 'Exit multi-select' : 'Multi-select'}
+            aria-pressed={selectionMode}
+            data-testid="project-skill-multi-select-toggle"
+            className={cn(
+              'p-1.5 rounded-md transition-colors',
+              selectionMode
+                ? 'bg-accent-blue/15 text-accent-blue'
+                : 'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+            )}
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+          </button>
           <Button
             type="button"
             variant="primary"
@@ -938,6 +995,96 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           </Button>
         </div>
       </div>
+
+      {selectionMode && total > 0 ? (
+        <div
+          className="flex items-center gap-2 px-4 pb-2.5 flex-wrap border-t border-border/60 pt-2"
+          data-testid="project-skill-batch-bar"
+        >
+          <button
+            type="button"
+            onClick={handleSelectAllFiltered}
+            disabled={filteredSkills.length === 0}
+            data-testid="project-skill-select-all"
+            aria-pressed={allFilteredSelected}
+            className={cn(
+              'inline-flex items-center gap-1.5 h-7 px-2 rounded-md border text-[11px] font-medium transition-colors',
+              allFilteredSelected || someFilteredSelected
+                ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue'
+                : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover',
+              'disabled:opacity-50',
+            )}
+          >
+            <span
+              className={cn(
+                'w-3.5 h-3.5 rounded border flex items-center justify-center',
+                allFilteredSelected ? 'bg-accent-blue/20 border-accent-blue' : 'border-border',
+              )}
+              aria-hidden
+            >
+              {allFilteredSelected ? (
+                <span className="text-[9px] leading-none">✓</span>
+              ) : someFilteredSelected ? (
+                <span className="w-1.5 h-0.5 bg-accent-blue rounded" />
+              ) : null}
+            </span>
+            {allFilteredSelected ? 'Deselect all' : 'Select all'}
+          </button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={bulkRemoving || selectedNames.size === 0}
+            onClick={() => setBulkConfirmOpen(true)}
+            className="h-7 px-2.5 text-[11px] gap-1.5 text-accent-red border-accent-red/30 hover:bg-accent-red/10 disabled:opacity-40"
+            data-testid="project-skill-bulk-remove"
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={bulkEnabling || selectedNames.size === 0}
+            onClick={() => void handleBulkEnable()}
+            className="h-7 px-2.5 text-[11px] gap-1.5 text-accent-green border-accent-green/30 hover:bg-accent-green/10 disabled:opacity-40"
+            data-testid="project-skill-bulk-enable"
+          >
+            <Power className="h-3 w-3" />
+            Enable
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={bulkDisabling || selectedNames.size === 0}
+            onClick={() => void handleBulkDisable()}
+            className="h-7 px-2.5 text-[11px] gap-1.5 text-accent-orange border-accent-orange/30 hover:bg-accent-orange/10 disabled:opacity-40"
+            data-testid="project-skill-bulk-disable"
+          >
+            <Ban className="h-3 w-3" />
+            Disable
+          </Button>
+          <span className="flex-1" />
+          <span
+            className="text-[11px] text-text-muted tabular-nums"
+            data-testid="project-skill-selected-count"
+          >
+            {selectedNames.size} selected
+          </span>
+          {selectedNames.size > 0 ? (
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="text-[11px] text-text-muted hover:text-text-primary"
+              data-testid="project-skill-clear-selection"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Body */}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
@@ -990,8 +1137,8 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                   skill={skill}
                   agents={agents}
                   tagGroups={tagGroupsForSkill(skill)}
-                  targetAgentId={activeProject.selected_agent}
-                  onSelect={() => openView(skill)}
+                  targetAgentId={activeProject.selected_agents?.[0] ?? null}
+                  selectedAgentIds={selectedAgentIds}
                   onView={() => openView(skill)}
                   onRemove={() => setPendingRemove(skill)}
                   onToggleAgent={(agentId, enabled) =>
@@ -1003,6 +1150,9 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                     (togglingKey?.startsWith(`${skill.name}:`) ?? false)
                   }
                   removing={removing && pendingRemove?.name === skill.name}
+                  checked={selectedNames.has(skill.name)}
+                  onCheckedChange={(checked) => toggleSelected(skill.name, checked)}
+                  selectionMode={selectionMode}
                 />
               </div>
             ))}
@@ -1046,6 +1196,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                   {(skill.agents ?? []).map((st) => {
                     const meta = agents.find((a) => a.id === st.agent_id);
                     const src = resolveAgentIconSrc(meta?.icon ?? null);
+                    const agentSelected = selectedAgentIds.has(st.agent_id);
                     return (
                       <button
                         key={st.agent_id}
@@ -1056,6 +1207,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                         onClick={() => void handleToggleAgent(skill, st.agent_id, !st.enabled)}
                         className={cn(
                           'p-0.5 rounded transition-all cursor-pointer hover:bg-bg-hover hover:ring-1 hover:ring-accent-blue/50 hover:scale-110',
+                          !agentSelected && 'opacity-25 grayscale',
                           !st.enabled && 'opacity-35 grayscale',
                         )}
                       >
@@ -1139,6 +1291,25 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
         confirmLabel={removing ? 'Removing…' : 'Remove'}
         danger
         onConfirm={() => void handleRemoveConfirm()}
+      />
+      <ConfirmDialog
+        open={bulkConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !bulkRemoving) setBulkConfirmOpen(false);
+        }}
+        title={`Remove ${selectedSkills.length} skill${selectedSkills.length === 1 ? '' : 's'} from project?`}
+        description={
+          <p className="text-sm text-text-secondary">
+            Remove <span className="font-medium text-text-primary">{selectedSkills.length}</span>{' '}
+            selected skill{selectedSkills.length === 1 ? '' : 's'} from agent skill directories
+            under{' '}
+            <span className="font-medium text-text-primary">{activeProject?.name}</span>? The
+            Library copies are kept.
+          </p>
+        }
+        confirmLabel={bulkRemoving ? 'Removing…' : `Remove ${selectedSkills.length}`}
+        danger
+        onConfirm={() => void handleBulkRemove()}
       />
     </div>
   );

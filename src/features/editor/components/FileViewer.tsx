@@ -765,7 +765,7 @@ function FileEditor({
 
   const handleCreateTab = useCallback(() => {
     const { addTab } = useTerminalTabs();
-    const agentId = useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
+    const agentId = useProjectStore.getState().activeProject?.selected_agents?.[0] ?? 'opencode';
     const tab = addTab(currentProjectIdForToolbar, agentId, agentId);
     if (tab && pending) {
       setTimeout(() => {

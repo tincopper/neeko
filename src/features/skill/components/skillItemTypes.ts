@@ -37,6 +37,8 @@ export interface SkillItemActions {
   onCheckUpdate?: (skill: ManagedSkillDto) => void;
   /** 从源更新 skill */
   onUpdateSkill?: (skill: ManagedSkillDto) => void;
+  /** Toggle enable/disable for a skill (Library menu) */
+  onToggleEnabled?: (enabled: boolean) => void;
 }
 
 // ─── Component Props ─────────────────────────────────────────────────────────

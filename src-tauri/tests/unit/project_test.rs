@@ -46,7 +46,7 @@ fn add_project_with_agent_and_ide() {
         )
         .unwrap();
 
-    assert_eq!(project.selected_agent, Some("claude-code".into()));
+    assert_eq!(project.selected_agents, vec!["claude-code".to_string()]);
     assert_eq!(project.selected_ide, Some("code".into()));
 }
 
@@ -118,25 +118,25 @@ fn remove_nonexistent_project_is_noop() {
 }
 
 #[test]
-fn set_selected_agent() {
+fn set_selected_agents() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new(|_| {});
     let project = pm
         .add_project(tmp.path().to_path_buf(), None, None, None)
         .unwrap();
 
-    pm.set_selected_agent(&project.id, Some("opencode".into()));
+    pm.set_selected_agents(&project.id, vec!["opencode".to_string()]);
     assert_eq!(
-        pm.get_project(&project.id).unwrap().selected_agent,
-        Some("opencode".into())
+        pm.get_project(&project.id).unwrap().selected_agents,
+        vec!["opencode".to_string()]
     );
 
-    pm.set_selected_agent(&project.id, None);
+    pm.set_selected_agents(&project.id, vec![]);
     assert!(pm
         .get_project(&project.id)
         .unwrap()
-        .selected_agent
-        .is_none());
+        .selected_agents
+        .is_empty());
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn add_project_from_session() {
         name: "test".into(),
         path: tmp.path().to_path_buf(),
         environment: ProjectEnvironment::Local,
-        selected_agent: Some("gemini".into()),
+        selected_agents: vec!["gemini".to_string()],
         selected_ide: Some("vim".into()),
         terminal_history: vec![],
         last_status: TerminalStatus::Idle,
@@ -257,7 +257,7 @@ fn add_project_from_session() {
     let project = pm.add_project_from_session(&ps).unwrap();
 
     assert_eq!(project.id, "custom-id");
-    assert_eq!(project.selected_agent, Some("gemini".into()));
+    assert_eq!(project.selected_agents, vec!["gemini".to_string()]);
     assert_eq!(project.primary_language, Some("go".into()));
     assert!(!project.collapsed);
 }
@@ -291,7 +291,7 @@ fn add_project_from_session_nonexistent_path_fails() {
         name: "nonexistent".into(),
         path: "/nonexistent".into(),
         environment: ProjectEnvironment::Local,
-        selected_agent: None,
+        selected_agents: vec![],
         selected_ide: None,
         terminal_history: vec![],
         last_status: TerminalStatus::Idle,

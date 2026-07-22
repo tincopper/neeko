@@ -41,7 +41,7 @@ export interface Project {
     history: string[];
     agent: AgentConfig | null;
   };
-  selected_agent: string | null;
+  selected_agents: string[];
   selected_ide: string | null;
   active_view: "Terminal" | { Diff: { file_path: string } };
   collapsed: boolean;
@@ -92,7 +92,7 @@ export interface ProjectView {
   readonly name: string;
   readonly path: string;
   readonly gitInfo: GitInfo | null;
-  readonly selectedAgent: string | null;
+  readonly selectedAgent: string[];
   readonly selectedIde: string | null;
 }
 

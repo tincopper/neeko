@@ -18,7 +18,7 @@ const project = {
   git_info: null,
   terminal: { id: 't1', pid: null, status: 'Idle' as const },
   agent_id: null,
-  selected_agent: 'claude-code',
+  selected_agents: ['claude-code'],
   avatar_color: null,
 };
 
@@ -26,7 +26,7 @@ const mockGetProjectTagGroups = vi.hoisted(() => vi.fn());
 const mockSetProjectTagGroups = vi.hoisted(() => vi.fn());
 const mockImportSkillsToProject = vi.hoisted(() => vi.fn());
 const mockGetSkillsForTagGroup = vi.hoisted(() => vi.fn());
-const mockSetProjectAgent = vi.hoisted(() => vi.fn());
+const mockSetProjectAgents = vi.hoisted(() => vi.fn());
 const mockRemoveSkillFromProject = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/skill/api/skillApi', async (importOriginal) => {
@@ -45,7 +45,7 @@ vi.mock('@/features/agent/api/agentApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/agent/api/agentApi')>();
   return {
     ...actual,
-    setProjectAgent: (...args: unknown[]) => mockSetProjectAgent(...args),
+    setProjectAgents: (...args: unknown[]) => mockSetProjectAgents(...args),
   };
 });
 
@@ -70,14 +70,14 @@ beforeEach(() => {
   mockSetProjectTagGroups.mockReset();
   mockImportSkillsToProject.mockReset();
   mockGetSkillsForTagGroup.mockReset();
-  mockSetProjectAgent.mockReset();
+  mockSetProjectAgents.mockReset();
   mockRemoveSkillFromProject.mockReset();
   mockGetProjectTagGroups.mockResolvedValue([]);
   mockSetProjectTagGroups.mockResolvedValue(undefined);
   mockRemoveSkillFromProject.mockResolvedValue(undefined);
   mockImportSkillsToProject.mockResolvedValue(0);
   mockGetSkillsForTagGroup.mockResolvedValue([]);
-  mockSetProjectAgent.mockResolvedValue(undefined);
+  mockSetProjectAgents.mockResolvedValue(undefined);
   mockInvoke.mockImplementation(async (cmd: string) => {
     if (cmd === 'list_agents') {
       return [
@@ -364,7 +364,7 @@ describe('ProjectSkillContent', () => {
     await user.click(within(dialog).getByRole('button', { name: /Bind 1 group/i }));
 
     await waitFor(() => {
-      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-1']);
+      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-1'], project.path);
     });
     await waitFor(() => {
       expect(mockGetSkillsForTagGroup).toHaveBeenCalledWith('tg-1');
@@ -383,8 +383,8 @@ describe('ProjectSkillContent', () => {
     const user = userEvent.setup();
     useProjectStore.setState({
       activeProjectId: 'proj-1',
-      activeProject: { ...project, selected_agent: null } as never,
-      projects: [{ ...project, selected_agent: null } as never],
+      activeProject: { ...project, selected_agents: [] } as never,
+      projects: [{ ...project, selected_agents: [] } as never],
     });
     mockGetSkillsForTagGroup.mockResolvedValue([
       createManagedSkill({ id: 's1', name: 'code-review' }),
@@ -402,12 +402,12 @@ describe('ProjectSkillContent', () => {
     await user.click(within(dialog).getByRole('button', { name: /Bind 1 group/i }));
 
     await waitFor(() => {
-      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-1']);
+      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-1'], project.path);
     });
     expect(mockImportSkillsToProject).not.toHaveBeenCalled();
   });
 
-  it('unbinding a tag group removes its exclusive skills from project agent dirs', async () => {
+  it('unbinding a tag group delegates reconcile to backend', async () => {
     const user = userEvent.setup();
     const boundGroups = [
       createTagGroup({ id: 'tg-1', name: 'Backend', skill_count: 1 }),
@@ -486,24 +486,12 @@ describe('ProjectSkillContent', () => {
     await user.click(within(dialog).getByText('Backend'));
     await user.click(within(dialog).getByRole('button', { name: /Bind 1 group/i }));
 
+    // setProjectTagGroups is called with project path for backend reconcile
     await waitFor(() => {
-      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-2']);
+      expect(mockSetProjectTagGroups).toHaveBeenCalledWith('proj-1', ['tg-2'], project.path);
     });
-    await waitFor(() => {
-      expect(mockRemoveSkillFromProject).toHaveBeenCalledWith(
-        project.path,
-        'code-review',
-        ['claude-code'],
-        's1',
-      );
-    });
-    // help still bound via Frontend — must not be removed
-    expect(mockRemoveSkillFromProject).not.toHaveBeenCalledWith(
-      project.path,
-      'help',
-      expect.anything(),
-      expect.anything(),
-    );
+    // Frontend no longer calls remove — backend handles it
+    expect(mockRemoveSkillFromProject).not.toHaveBeenCalled();
   });
 
   it('filters disk skills by bound tag group chip', async () => {
@@ -592,7 +580,7 @@ describe('ProjectSkillContent', () => {
     });
   });
 
-  it('shows project target agent and tag groups on skill cards', async () => {
+  it('shows project target agent chips and tag groups on skill cards', async () => {
     mockGetProjectTagGroups.mockResolvedValue([
       createTagGroup({ id: 'tg-1', name: 'Backend', skill_count: 1 }),
     ]);
@@ -649,26 +637,20 @@ describe('ProjectSkillContent', () => {
     render(<ProjectSkillContent setDialog={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('project-target-agent')).toHaveTextContent(/Claude Code/i);
+      expect(screen.getByTestId('project-agent-chip-claude-code')).toHaveTextContent(/Claude Code/i);
     });
     await waitFor(() => {
       expect(screen.getByTestId('project-skill-tags-code-review')).toHaveTextContent('Backend');
     });
-    // Unlinked capable agent shown for stock management (add)
-    await waitFor(() => {
-      expect(screen.getByTestId('project-skill-agent-code-review-codex')).toHaveAttribute(
-        'data-linked',
-        'false',
-      );
-    });
+    // Only linked agents shown (unlinked capable agents no longer appear)
+    expect(screen.queryByTestId('project-skill-agent-code-review-codex')).not.toBeInTheDocument();
     expect(screen.getByTestId('project-skill-agent-code-review-claude-code')).toHaveAttribute(
       'data-target',
       'true',
     );
   });
 
-  it('adds an unlinked agent to an existing project skill via import', async () => {
-    const user = userEvent.setup();
+  it('only shows linked agents on skill cards, not unlinked capable agents', async () => {
     mockGetProjectTagGroups.mockResolvedValue([]);
     mockImportSkillsToProject.mockResolvedValue(1);
     mockInvoke.mockImplementation(async (cmd: string) => {
@@ -717,23 +699,20 @@ describe('ProjectSkillContent', () => {
 
     render(<ProjectSkillContent setDialog={vi.fn()} />);
 
+    // Linked agent still shown
     await waitFor(() => {
-      expect(screen.getByTestId('project-skill-agent-code-review-codex')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-agent-code-review-claude-code')).toBeInTheDocument();
     });
-
-    await user.click(screen.getByTestId('project-skill-agent-code-review-codex'));
-
-    await waitFor(() => {
-      expect(mockImportSkillsToProject).toHaveBeenCalledWith(project.path, ['s1'], ['codex']);
-    });
+    // Unlinked capable agent no longer shown on card
+    expect(screen.queryByTestId('project-skill-agent-code-review-codex')).not.toBeInTheDocument();
   });
 
-  it('can set project target agent from the Projects skills header', async () => {
+  it('can toggle project target agent from chips in the Projects skills header', async () => {
     const user = userEvent.setup();
     useProjectStore.setState({
       activeProjectId: 'proj-1',
-      activeProject: { ...project, selected_agent: null } as never,
-      projects: [{ ...project, selected_agent: null } as never],
+      activeProject: { ...project, selected_agents: [] } as never,
+      projects: [{ ...project, selected_agents: [] } as never],
     });
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_agents') {
@@ -766,24 +745,23 @@ describe('ProjectSkillContent', () => {
     render(<ProjectSkillContent setDialog={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('project-target-agent-missing')).toBeInTheDocument();
+      expect(screen.getByTestId('project-agent-chip-codex')).toBeInTheDocument();
     });
 
-    await user.click(screen.getByTestId('project-target-agent-missing'));
-    await user.click(await screen.findByTestId('set-target-agent-codex'));
+    await user.click(screen.getByTestId('project-agent-chip-codex'));
 
     await waitFor(() => {
-      expect(mockSetProjectAgent).toHaveBeenCalledWith('proj-1', 'codex');
+      expect(mockSetProjectAgents).toHaveBeenCalledWith('proj-1', ['codex']);
     });
-    expect(useProjectStore.getState().activeProject?.selected_agent).toBe('codex');
+    expect(useProjectStore.getState().activeProject?.selected_agents).toEqual(['codex']);
   });
 
-  it('excludes agents without a skill path from project target choices', async () => {
+  it('excludes agents without a skill path from project target chips', async () => {
     const user = userEvent.setup();
     useProjectStore.setState({
       activeProjectId: 'proj-1',
-      activeProject: { ...project, selected_agent: null } as never,
-      projects: [{ ...project, selected_agent: null } as never],
+      activeProject: { ...project, selected_agents: [] } as never,
+      projects: [{ ...project, selected_agents: [] } as never],
     });
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_agents') {
@@ -815,8 +793,9 @@ describe('ProjectSkillContent', () => {
 
     render(<ProjectSkillContent setDialog={vi.fn()} />);
 
-    await user.click(await screen.findByTestId('project-target-agent-missing'));
-    expect(await screen.findByTestId('set-target-agent-codex')).toBeInTheDocument();
-    expect(screen.queryByTestId('set-target-agent-claude-code')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('project-agent-chip-codex')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('project-agent-chip-claude-code')).not.toBeInTheDocument();
   });
 });

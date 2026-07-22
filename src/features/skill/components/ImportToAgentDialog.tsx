@@ -84,6 +84,8 @@ const ImportToAgentDialog: React.FC<ImportToAgentDialogProps> = React.memo(
             s.tags.some((t) => t.toLowerCase().includes(q)),
         );
       }
+      // Skip disabled skills (Library disable now respected in selection)
+      list = list.filter((s) => s.enabled);
       return list;
     }, [importableSkills, sourceFilter, tagFilter, query]);
 

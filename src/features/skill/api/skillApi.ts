@@ -126,8 +126,16 @@ export function getProjectTagGroups(projectId: string): Promise<TagGroup[]> {
   return invoke<TagGroup[]>('get_project_tag_groups_cmd', { projectId });
 }
 
-export function setProjectTagGroups(projectId: string, tagGroupIds: string[]): Promise<void> {
-  return invoke<void>('set_project_tag_groups_cmd', { projectId, tagGroupIds });
+export function setProjectTagGroups(
+  projectId: string,
+  tagGroupIds: string[],
+  projectPath?: string,
+): Promise<void> {
+  return invoke<void>('set_project_tag_groups_cmd', {
+    projectId,
+    tagGroupIds,
+    projectPath: projectPath ?? null,
+  });
 }
 
 export function addProjectTagGroup(projectId: string, tagGroupId: string): Promise<void> {

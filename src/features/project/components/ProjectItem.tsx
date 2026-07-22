@@ -192,7 +192,7 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
         <ProjectSettingsDialog
           projectId={project.id}
           projectName={project.name}
-          currentAgent={project.selected_agent}
+          currentAgent={project.selected_agents?.[0] ?? null}
           currentIde={project.selected_ide}
           agents={agents ?? []}
           config={config}

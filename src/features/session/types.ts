@@ -5,7 +5,7 @@ export interface ProjectSessionData {
   name: string;
   path: string;
   environment: ProjectEnvironment;
-  selected_agent: string | null;
+  selected_agents: string[];
   selected_ide: string | null;
   terminal_history: string[];
   last_status: string;

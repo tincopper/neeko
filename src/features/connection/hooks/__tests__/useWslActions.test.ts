@@ -26,7 +26,7 @@ function makeWslProject(id = "wp1", overrides: Record<string, unknown> = {}) {
     name: `proj-${id}`,
     path: `/home/user/${id}`,
     entry_id: "e1",
-    selected_agent: null as string | null,
+    selected_agents: [] as string[],
     selected_ide: null,
     ...overrides,
   };
@@ -46,7 +46,7 @@ function createWslProject(id = "wp1") {
     environment: { type: 'Wsl' as const, distro: 'Ubuntu' },
     git_info: null,
     terminal: { id: 't1', pid: null, status: 'Idle' as const, history: [], agent: null },
-    selected_agent: null as string | null,
+    selected_agents: [] as string[],
     selected_ide: null,
     active_view: 'Terminal' as const,
     collapsed: false,
@@ -106,7 +106,7 @@ describe("useWslActions", () => {
       });
 
       const state = useConnectionStore.getState();
-      expect(state.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
+      expect(state.wslEntries[0].projects[0].selected_agents).toEqual(["claude-code"]);
     });
 
     it("更新 activeProject 的 selected_agent", () => {
@@ -121,7 +121,7 @@ describe("useWslActions", () => {
       });
 
       const state = useProjectStore.getState();
-      expect(state.activeProject?.selected_agent).toBe("claude-code");
+      expect(state.activeProject?.selected_agents).toEqual(["claude-code"]);
     });
 
     it("传入 null 时清空 selected_agent", () => {
@@ -133,7 +133,7 @@ describe("useWslActions", () => {
           environment: { type: 'Wsl', distro: 'Ubuntu' },
           git_info: null,
           terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
-          selected_agent: 'old-agent',
+          selected_agents: ['old-agent'],
           selected_ide: null,
           active_view: 'Terminal',
           collapsed: false,
@@ -149,7 +149,7 @@ describe("useWslActions", () => {
       });
 
       const state = useProjectStore.getState();
-      expect(state.activeProject?.selected_agent).toBeNull();
+      expect(state.activeProject?.selected_agents).toEqual([]);
     });
 
     it("调用 saveSession 持久化", () => {
@@ -229,9 +229,9 @@ describe("useWslActions", () => {
       });
 
       const state = useProjectStore.getState();
-      expect(state.activeProject?.selected_agent).toBe("claude-code");
+      expect(state.activeProject?.selected_agents).toEqual(["claude-code"]);
       const connState = useConnectionStore.getState();
-      expect(connState.wslEntries[0].projects[0].selected_agent).toBe("claude-code");
+      expect(connState.wslEntries[0].projects[0].selected_agents).toEqual(["claude-code"]);
     });
 
     it("传入 null 时不调用 switchAgentInWslTerminal", async () => {

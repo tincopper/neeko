@@ -34,7 +34,6 @@ interface AgentSkillCardProps {
   onCheckedChange?: (checked: boolean) => void;
   /** When true, show checkbox affordance even if not checked. */
   selectionMode?: boolean;
-  onSelect?: () => void;
   /** View skill content (library doc or on-disk SKILL.md). */
   onView?: () => void;
   onRemove?: () => void;
@@ -54,7 +53,6 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
     checked = false,
     onCheckedChange,
     selectionMode = false,
-    onSelect,
     onView,
     onRemove,
     removing,
@@ -90,13 +88,10 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
     const agentIconSrc = getAgentIconSrc(agentIcon);
     const canCheck = Boolean(onCheckedChange);
 
-    const handleSelect = () => {
-      // In selection mode, card click toggles multi-select instead of opening view.
-      if (canCheck && (selectionMode || checked)) {
-        onCheckedChange?.(!checked);
-        return;
-      }
-      onSelect?.();
+    const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      if (canCheck && (selectionMode || checked)) onCheckedChange?.(!checked);
     };
 
     return (
@@ -105,13 +100,10 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
         tabIndex={0}
         data-testid={`agent-skill-card-${skill.name}`}
         data-checked={checked ? 'true' : 'false'}
-        onClick={handleSelect}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleSelect();
-          }
+        onClick={() => {
+          if (canCheck && (selectionMode || checked)) onCheckedChange?.(!checked);
         }}
+        onKeyDown={handleCardKeyDown}
         className={cn(
           'group flex flex-col h-full min-h-[160px] rounded-lg cursor-pointer',
           'bg-bg-primary transition-colors duration-150',

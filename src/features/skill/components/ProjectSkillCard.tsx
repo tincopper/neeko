@@ -1,5 +1,5 @@
-import { Eye, LayoutGrid, MoreHorizontal, Plus, Power, PowerOff, Trash2 } from 'lucide-react';
-import React, { useMemo } from 'react';
+import { Check, Eye, LayoutGrid, MoreHorizontal, Plus, Power, PowerOff, Trash2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- custom agent icons
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
@@ -40,8 +40,9 @@ interface ProjectSkillCardProps {
   tagGroups?: TagGroupChip[];
   /** Project target agent id (`selected_agent`) — highlighted when present. */
   targetAgentId?: string | null;
+  /** Set of agent ids that are active in the current project. */
+  selectedAgentIds?: Set<string>;
   isSelected?: boolean;
-  onSelect?: () => void;
   onView?: () => void;
   onRemove?: () => void;
   /**
@@ -54,9 +55,14 @@ interface ProjectSkillCardProps {
   onToggleEnabled?: (enabled: boolean) => void;
   toggling?: boolean;
   removing?: boolean;
+  /** Multi-select checked state for batch actions. */
+  checked?: boolean;
+  /** Toggle multi-select for this card. */
+  onCheckedChange?: (checked: boolean) => void;
+  /** When true, show checkbox affordance even if not checked. */
+  selectionMode?: boolean;
 }
 
-const MAX_AGENT_ICONS = 8;
 const MAX_TAG_CHIPS = 3;
 
 /**
@@ -69,69 +75,91 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
     agents = [],
     tagGroups = [],
     targetAgentId = null,
+    selectedAgentIds,
     isSelected = false,
-    onSelect,
     onView,
     onRemove,
     onToggleAgent,
     onToggleEnabled,
     toggling,
     removing,
+    checked = false,
+    onCheckedChange,
+    selectionMode = false,
   }) => {
     const agentMeta = new Map(agents.map((a) => [a.id, a]));
     const states = useMemo(() => skill.agents ?? [], [skill.agents]);
-    const linkedIds = useMemo(() => new Set(states.map((s) => s.agent_id)), [states]);
     const enabled = skill.enabled;
     const inLibrary = skill.managed;
     const displayDesc = skill.description?.trim() || 'No description';
 
-    // Linked agents first, then other project-capable agents that can still be added.
     const agentRows = useMemo(() => {
-      const linked = states.map((st) => ({
+      return states.map((st) => ({
         agent_id: st.agent_id,
         enabled: st.enabled,
         linked: true as const,
       }));
-      const canAdd = Boolean(onToggleAgent && skill.skill_id);
-      if (!canAdd) return linked;
+    }, [states]);
 
-      const extras = agents
-        .filter((a) => a.projectCapable !== false && !linkedIds.has(a.id))
-        .map((a) => ({
-          agent_id: a.id,
-          enabled: false,
-          linked: false as const,
-        }));
-      return [...linked, ...extras];
-    }, [agents, linkedIds, onToggleAgent, skill.skill_id, states]);
-
-    const visible = agentRows.slice(0, MAX_AGENT_ICONS);
-    const overflow = Math.max(0, agentRows.length - MAX_AGENT_ICONS);
+    const visible = agentRows.slice(0, 4);
+    const overflow = Math.max(0, agentRows.length - 4);
     const shownTags = tagGroups.slice(0, MAX_TAG_CHIPS);
     const tagOverflow = Math.max(0, tagGroups.length - MAX_TAG_CHIPS);
+
+    const [expanded, setExpanded] = useState(false);
+
+    const canCheck = Boolean(onCheckedChange);
+
+    const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      if (canCheck && (selectionMode || checked)) onCheckedChange?.(!checked);
+    };
 
     return (
       <div
         role="button"
         tabIndex={0}
         data-testid={`project-skill-card-${skill.name}`}
-        onClick={() => onSelect?.()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect?.();
-          }
+        data-checked={checked ? 'true' : 'false'}
+        onClick={() => {
+          if (canCheck && (selectionMode || checked)) onCheckedChange?.(!checked);
         }}
+        onKeyDown={handleCardKeyDown}
         className={cn(
-          'group flex flex-col h-full min-h-[132px] rounded-lg cursor-pointer',
-          'bg-bg-primary transition-colors duration-150 border border-border',
-          !enabled && 'opacity-90',
-          isSelected && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
+          'group flex flex-col h-full min-h-[132px] rounded-lg',
+          'bg-bg-primary transition-colors duration-150 border',
           'hover:bg-bg-hover/40',
+          !enabled && 'opacity-90',
+          (isSelected || checked) && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
+          checked && 'bg-accent-blue/[0.04]',
+          !checked && !isSelected && 'border-border',
+          canCheck && (selectionMode || checked) && 'cursor-pointer',
         )}
       >
         <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">
           <div className="flex items-center gap-2">
+            {canCheck ? (
+              <button
+                type="button"
+                data-testid={`project-skill-check-${skill.name}`}
+                aria-label={checked ? `Deselect ${skill.name}` : `Select ${skill.name}`}
+                aria-pressed={checked}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCheckedChange?.(!checked);
+                }}
+                className={cn(
+                  'shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors',
+                  checked
+                    ? 'bg-accent-blue border-accent-blue text-white'
+                    : 'border-border bg-bg-secondary',
+                  selectionMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                )}
+              >
+                {checked ? <Check className="w-3 h-3" /> : null}
+              </button>
+            ) : null}
             <h3 className="flex-1 min-w-0 text-[13px] font-semibold text-text-primary truncate leading-none">
               {skill.name}
             </h3>
@@ -245,7 +273,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
           </span>
 
           <div
-            className="flex items-center gap-1 min-w-0 flex-1 justify-end"
+            className="flex items-center gap-0.5 min-w-0 flex-1 justify-end"
             data-testid={`project-skill-agents-${skill.name}`}
           >
             {visible.map((st) => {
@@ -254,6 +282,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
               const label = meta?.name ?? st.agent_id;
               const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
               const isLinked = st.linked;
+              const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
               const canToggle = Boolean(
                 onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
               );
@@ -292,6 +321,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     'relative p-0.5 rounded-[4px] transition-all',
                     canToggle &&
                       'hover:bg-bg-hover hover:ring-1 hover:ring-accent-blue/50 hover:scale-110 cursor-pointer',
+                    !agentSelected && 'opacity-25 grayscale',
                     isLinked && !st.enabled && 'opacity-35 grayscale',
                     !isLinked && 'opacity-70 border border-dashed border-border',
                     isTarget && 'ring-1 ring-accent-blue/60',
@@ -299,24 +329,122 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                   )}
                 >
                   {src ? (
-                    <img src={src} alt="" className="w-4 h-4 rounded-[3px]" />
+                    <img src={src} alt="" className="w-3.5 h-3.5 rounded-[3px]" />
                   ) : (
-                    <span className="inline-flex w-4 h-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
+                    <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
                       {label.slice(0, 1).toUpperCase()}
                     </span>
                   )}
                   {!isLinked ? (
-                    <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-bg-secondary border border-border">
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-bg-secondary border border-border">
                       <Plus className="h-2 w-2 text-text-muted" aria-hidden />
                     </span>
                   ) : null}
                 </button>
               );
             })}
-            {overflow > 0 ? (
-              <span className="text-[10px] text-text-muted tabular-nums pl-0.5">+{overflow}</span>
-            ) : null}
+            {overflow > 0 && (
+              <span
+                className="text-[10px] text-text-muted tabular-nums pl-0.5 cursor-pointer hover:text-text-primary transition-colors"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? '▲' : `+${overflow}...`}
+              </span>
+            )}
           </div>
+
+          {expanded && (
+            <div className="flex overflow-x-auto gap-1 mt-1 px-3.5 pb-1 thin-scrollbar">
+              {agentRows.map((st) => {
+                const meta = agentMeta.get(st.agent_id);
+                const src = resolveAgentIconSrc(meta?.icon ?? null);
+                const label = meta?.name ?? st.agent_id;
+                const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
+                const isLinked = st.linked;
+                const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
+                const canToggle = Boolean(
+                  onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
+                );
+                return (
+                  <button
+                    key={st.agent_id}
+                    type="button"
+                    disabled={toggling || !canToggle}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canToggle) return;
+                      if (!isLinked) onToggleAgent?.(st.agent_id, true);
+                      else onToggleAgent?.(st.agent_id, !st.enabled);
+                    }}
+                    className={cn(
+                      'shrink-0 flex items-center gap-1 p-1.5 rounded-[6px] transition-all whitespace-nowrap',
+                      canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
+                      !agentSelected && 'opacity-25 grayscale',
+                      isLinked && !st.enabled && 'opacity-35 grayscale',
+                      isTarget && 'ring-1 ring-accent-blue/60 bg-accent-blue/10',
+                      (toggling || !canToggle) && 'cursor-default',
+                    )}
+                  >
+                    {src ? (
+                      <img src={src} alt="" className="w-4 h-4 rounded-[4px] shrink-0" />
+                    ) : (
+                      <span className="inline-flex w-4 h-4 items-center justify-center rounded-[4px] bg-bg-hover text-[10px] font-semibold text-text-muted shrink-0">
+                        {label.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-medium text-text-primary shrink-0">
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {expanded && (
+            <div className="flex flex-wrap gap-1 mt-1 px-3.5">
+              {agentRows.map((st) => {
+                const meta = agentMeta.get(st.agent_id);
+                const src = resolveAgentIconSrc(meta?.icon ?? null);
+                const label = meta?.name ?? st.agent_id;
+                const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
+                const isLinked = st.linked;
+                const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
+                const canToggle = Boolean(
+                  onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
+                );
+                return (
+                  <button
+                    key={st.agent_id}
+                    type="button"
+                    disabled={toggling || !canToggle}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!canToggle) return;
+                      if (!isLinked) onToggleAgent?.(st.agent_id, true);
+                      else onToggleAgent?.(st.agent_id, !st.enabled);
+                    }}
+                    className={cn(
+                      'p-0.5 rounded-[4px] transition-all',
+                      canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
+                      !agentSelected && 'opacity-25 grayscale',
+                      isLinked && !st.enabled && 'opacity-35 grayscale',
+                      isTarget && 'ring-1 ring-accent-blue/60',
+                      (toggling || !canToggle) && 'cursor-default',
+                    )}
+                  >
+                    {src ? (
+                      <img src={src} alt="" className="w-4 h-4 rounded-[3px]" />
+                    ) : (
+                      <span className="inline-flex w-4 h-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
+                        {label.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <button
             type="button"

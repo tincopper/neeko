@@ -12,7 +12,7 @@ export function toLocalView(project: Project): ProjectView {
     name: project.name,
     path: project.path,
     gitInfo: project.git_info ?? null,
-    selectedAgent: project.selected_agent,
+    selectedAgent: project.selected_agents,
     selectedIde: project.selected_ide,
   };
 }

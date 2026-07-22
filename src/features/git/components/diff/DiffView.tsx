@@ -233,7 +233,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
                         import('@/features/project/store').then(({ useProjectStore }) => {
                           const { addTab } = useTerminalTabs();
                           const agentId =
-                            useProjectStore.getState().activeProject?.selected_agent ?? 'opencode';
+                            useProjectStore.getState().activeProject?.selected_agents?.[0] ?? 'opencode';
                           addTab(currentProjectId, agentId, agentId);
                           if (pending) {
                             setTimeout(() => {

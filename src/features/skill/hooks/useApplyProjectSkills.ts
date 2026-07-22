@@ -8,7 +8,7 @@ import { useSkillStore } from '@/features/skill/store';
  * into that project's **local** agent skill dirs (e.g. `{project}/.claude/skills`),
  * install-only — never global `~/.agent/skills`, never removes other skills.
  *
- * Requires the project to have a `selected_agent` (target agent); otherwise a no-op.
+ * Requires the project to have a `selected_agents` (target agents); otherwise a no-op.
  *
  * Mount once near the app shell so it runs regardless of Skills panel visibility.
  */

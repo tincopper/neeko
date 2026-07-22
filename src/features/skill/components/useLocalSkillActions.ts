@@ -151,6 +151,10 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       onUpdateSkill: (skill: ManagedSkillDto) => {
         void updateSkillFromSource(skill.id).catch(console.error);
       },
+      onToggleEnabled: (enabled: boolean) => {
+        // TODO: implement store call for toggle (placeholder — full store action needed)
+        toast({ type: 'info', title: 'Toggle', message: `Skill enable state would change to ${enabled}` });
+      },
     }),
     [
       setDialog,

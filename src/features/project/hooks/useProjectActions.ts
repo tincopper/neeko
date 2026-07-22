@@ -232,13 +232,13 @@ export function useProjectActions({
         [storeKey]: updateProjectInEntries(
           state[storeKey],
           activeProject.id,
-          (project: any) => ({ ...project, selected_agent: agentId }),
+          (project: any) => ({ ...project, selected_agents: agentId ? [agentId] : [] }),
         ),
       }));
 
       useProjectStore.setState((state) => {
         if (state.activeProject?.id !== activeProject.id) return state;
-        return { activeProject: { ...state.activeProject, selected_agent: agentId } };
+        return { activeProject: { ...state.activeProject, selected_agents: agentId ? [agentId] : [] } };
       });
       saveSession().catch(console.error);
     },

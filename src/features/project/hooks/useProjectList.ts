@@ -8,7 +8,7 @@ export interface ProjectListItem {
   name: string;
   path: string;
   has_git_info: boolean;
-  selected_agent?: string | null;
+  selected_agents?: string[];
   distro?: string;
   entryId?: string;
   host?: string;
@@ -40,7 +40,7 @@ export function useProjectList(): {
 
 /** Pure function version — testable without React context */
 export function useProjectListFromData(
-  projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agent?: string | null; environment?: ProjectEnvironment }[],
+  projects: { id: string; name: string; path: string; git_info?: unknown | null; selected_agents?: string[]; environment?: ProjectEnvironment }[],
 ): { items: ProjectListItem[]; isEmpty: boolean } {
   return useMemo(() => {
     const items: ProjectListItem[] = [];
@@ -56,7 +56,7 @@ export function useProjectListFromData(
         name: p.name,
         path: p.path,
         has_git_info: !!p.git_info,
-        selected_agent: p.selected_agent,
+        selected_agents: p.selected_agents,
         distro: env && isWslEnv(env) ? env.distro : undefined,
         host: env && isRemoteEnv(env) ? env.host : undefined,
         isLast: false,

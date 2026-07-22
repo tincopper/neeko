@@ -108,7 +108,7 @@ describe('useKeyboardShortcuts', () => {
         path: '/tmp/p1',
         git_info: null,
         terminal: { id: 't1', pid: null, status: 'Idle', history: [], agent: null },
-        selected_agent: null,
+        selected_agents: [],
         selected_ide: 'code',
         active_view: 'Terminal',
         collapsed: true,

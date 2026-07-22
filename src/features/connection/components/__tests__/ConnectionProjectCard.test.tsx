@@ -13,7 +13,7 @@ function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
     path: "/home/user/demo",
     distro: "Ubuntu",
     entry_id: "entry-1",
-    selected_agent: null,
+    selected_agents: [],
     selected_ide: null,
     git_info: {
       current_branch: "main",

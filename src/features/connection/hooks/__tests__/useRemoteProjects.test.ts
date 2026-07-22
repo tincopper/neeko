@@ -19,7 +19,7 @@ function makeRemoteProject(id = 'rp1') {
     name: `proj-${id}`,
     path: `/home/user/${id}`,
     entry_id: 'entry-1',
-    selected_agent: null as string | null,
+    selected_agents: [] as string[],
     selected_ide: null as string | null,
     git_info: null as any,
     avatar_color: null as string | null,

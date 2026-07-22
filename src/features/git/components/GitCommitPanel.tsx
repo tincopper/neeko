@@ -213,9 +213,10 @@ const handleCredentialSubmit = useCallback(
     }
     setAiGenerating(true);
     try {
-      const agentCommandOverride = config.agentCommandOverrides?.[project.selectedAgent] ?? null;
+      const selectedAgent = project.selectedAgent?.[0] ?? '';
+      const agentCommandOverride = config.agentCommandOverrides?.[selectedAgent] ?? null;
       const generated = await commands.generateCommitMessage(
-        project.selectedAgent,
+        selectedAgent,
         files,
         agentCommandOverride,
       );

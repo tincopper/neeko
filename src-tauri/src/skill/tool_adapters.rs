@@ -177,8 +177,8 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
         ToolAdapter {
             key: "opencode".into(),
             display_name: "OpenCode".into(),
-            relative_skills_dir: ".agents/skills".into(),
-            relative_detect_dir: ".agents".into(),
+            relative_skills_dir: ".opencode/skills".into(),
+            relative_detect_dir: ".opencode".into(),
             additional_scan_dirs: vec![".config/opencode/skills".into()],
             override_skills_dir: None,
             is_custom: false,

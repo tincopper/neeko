@@ -99,7 +99,7 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::commands::get_agent,
             $crate::agent::commands::add_agent,
             $crate::agent::commands::remove_agent,
-            $crate::agent::commands::set_project_agent,
+            $crate::agent::commands::set_project_agents,
             $crate::agent::commands::check_agents_installed,
             $crate::agent::commands::import_agent_icon,
             // ── connection ───────────────────────────────────────────────────

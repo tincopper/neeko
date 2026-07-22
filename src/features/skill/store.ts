@@ -109,7 +109,7 @@ interface SkillStoreActions {
 
   // Project bindings
   loadProjectTagGroups: (projectId: string) => Promise<void>;
-  setProjectTagGroups: (projectId: string, tagGroupIds: string[]) => Promise<void>;
+  setProjectTagGroups: (projectId: string, tagGroupIds: string[], projectPath?: string) => Promise<void>;
   applyProjectSkills: (projectId: string) => Promise<void>;
   /** Auto apply on project switch — install only, no remove; deduped. */
   applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
@@ -325,17 +325,14 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     }
   },
 
-  setProjectTagGroups: async (projectId: string, tagGroupIds: string[]) => {
-    await setProjectTagGroupsApi(projectId, tagGroupIds);
-    // Reload full DTOs (skill_count) rather than filtering local list only.
+  setProjectTagGroups: async (projectId: string, tagGroupIds: string[], projectPath?: string) => {
+    await setProjectTagGroupsApi(projectId, tagGroupIds, projectPath);
     await get().loadProjectTagGroups(projectId);
-    // Keep left-rail summary in sync without requiring full remount.
     set((state) => {
       const next = new Map(state.projectTagGroupCounts);
       next.set(projectId, tagGroupIds.length);
       return { projectTagGroupCounts: next };
     });
-    // Bind save may install project-local skills — refresh disk counts.
     void get()
       .refreshProjectSkillCounts()
       .catch((e) =>

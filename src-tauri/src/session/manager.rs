@@ -109,7 +109,7 @@ impl StorageManager {
                 name: p.name.clone(),
                 path: p.path.clone(),
                 environment: p.environment.clone(),
-                selected_agent: p.selected_agent.clone(),
+                selected_agents: p.selected_agents.clone(),
                 selected_ide: p.selected_ide.clone(),
                 terminal_history: p.terminal.history.clone(),
                 last_status: p.terminal.status.clone(),

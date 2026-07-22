@@ -13,7 +13,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     path: "/Users/dev/demo",
     git_info: null,
     terminal: { id: "t1", pid: null, status: "Idle", history: [], agent: null },
-    selected_agent: null,
+    selected_agents: [],
     selected_ide: null,
     active_view: "Terminal",
     collapsed: false,

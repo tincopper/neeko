@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { setProjectIde } from "../api/projectApi";
-import { setProjectAgent } from "../../agent/api/agentApi";
+import { setProjectAgents } from "../../agent/api/agentApi";
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from "@/shared/utils/idePresets";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
@@ -90,7 +90,7 @@ function ProjectSettingsDialog({
     }
 
     try {
-      await setProjectAgent(projectId, selectedAgentId);
+      await setProjectAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
     } catch (e) {
       console.error("Failed to set agent:", e);
     }

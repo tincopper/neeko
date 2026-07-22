@@ -105,18 +105,18 @@ pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(
         .map_err(AppError::from)
 }
 
-/// Set the selected agent for a project.
+/// Set the selected agents for a project.
 #[tauri::command]
-pub fn set_project_agent(
+pub fn set_project_agents(
     project_id: String,
-    agent_id: Option<String>,
+    agent_ids: Vec<String>,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     state
         .project_manager
         .lock()
         .map_err(AppError::from)?
-        .set_selected_agent(&project_id, agent_id);
+        .set_selected_agents(&project_id, agent_ids);
     Ok(())
 }
 

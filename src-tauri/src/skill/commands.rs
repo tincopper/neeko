@@ -1046,15 +1046,15 @@ pub async fn apply_project_skills_cmd(
 ) -> Result<(), AppError> {
     let store = state.skill_store.clone();
 
-    // Resolve project path + selected_agent under project manager lock
-    let (project_path, selected_agent): (Option<String>, Option<String>) = {
+    // Resolve project path + selected_agents under project manager lock
+    let (project_path, selected_agents): (Option<String>, Vec<String>) = {
         let pm = state.project_manager.lock().map_err(AppError::from)?;
         match pm.get_project(&project_id) {
             Some(p) => (
                 Some(p.path.to_string_lossy().to_string()),
-                p.selected_agent.clone(),
+                p.selected_agents.clone(),
             ),
-            None => (None, None),
+            None => (None, vec![]),
         }
     };
 
@@ -1064,59 +1064,75 @@ pub async fn apply_project_skills_cmd(
         )));
     };
 
-    let agent_skill_path = {
-        let am = state.agent_manager.lock().map_err(AppError::from)?;
-        selected_agent
-            .as_deref()
-            .and_then(|agent_id| am.get_agent(agent_id))
-            .and_then(|agent| agent.skill_path.clone())
-    };
-
     let project = PathBuf::from(&project_path);
-    let Some((agent_id, skills_dir)) = resolve_project_skill_target(
-        &project,
-        selected_agent.as_deref(),
-        agent_skill_path.as_deref(),
-    ) else {
-        log::debug!(
-            "apply_project_skills: project {project_id} has no project-capable target agent; skip disk sync"
-        );
-        return Ok(());
+    let selected_agents = {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        selected_agents
+            .iter()
+            .filter(|agent_id| {
+                am.get_agent(agent_id)
+                    .and_then(|agent| agent.skill_path.as_deref())
+                    .is_some()
+            })
+            .cloned()
+            .collect::<Vec<_>>()
     };
 
-    run_blocking_result(move || {
-        let tg_ids = store
-            .get_project_tag_groups(&project_id)
-            .map_err(AppError::from)?;
-        if tg_ids.is_empty() {
-            return Ok(());
-        }
+    for agent_id in &selected_agents {
+        let agent_skill_path = {
+            let am = state.agent_manager.lock().map_err(AppError::from)?;
+            am.get_agent(agent_id)
+                .and_then(|agent| agent.skill_path.clone())
+        };
+        let Some((resolved_agent_id, skills_dir)) = resolve_project_skill_target(
+            &project,
+            Some(agent_id),
+            agent_skill_path.as_deref(),
+        ) else {
+            log::debug!(
+                "apply_project_skills: agent {agent_id} for project {project_id} has no project-capable target; skip"
+            );
+            continue;
+        };
 
-        if !project.is_dir() {
-            return Err(AppError::NotFound(format!(
-                "Project path not found: {project_path}"
-            )));
-        }
+        let store = store.clone();
+        let project_path = project_path.clone();
+        let project = project.clone();
+        let project_id = project_id.clone();
 
-        // Deduplicate skills across multiple tag groups
-        let mut seen = std::collections::HashSet::new();
-        let mut skills = Vec::new();
-        for tg_id in &tg_ids {
-            for skill in store
-                .get_skills_for_tag_group(tg_id)
-                .map_err(AppError::from)?
-            {
-                if seen.insert(skill.id.clone()) {
-                    skills.push(skill);
+        run_blocking_result(move || {
+            let tg_ids = store
+                .get_project_tag_groups(&project_id)
+                .map_err(AppError::from)?;
+            if tg_ids.is_empty() {
+                return Ok(());
+            }
+
+            if !project.is_dir() {
+                return Err(AppError::NotFound(format!(
+                    "Project path not found: {project_path}"
+                )));
+            }
+
+            // Deduplicate skills across multiple tag groups
+            let mut seen = std::collections::HashSet::new();
+            let mut skills = Vec::new();
+            for tg_id in &tg_ids {
+                for skill in store
+                    .get_skills_for_tag_group(tg_id)
+                    .map_err(AppError::from)?
+                {
+                    if seen.insert(skill.id.clone()) {
+                        skills.push(skill);
+                    }
                 }
             }
-        }
-        let tool_key = project_tool_key(&project_path, &agent_id);
-        for (skill_id, target) in deploy_project_skills(&skills_dir, &skills) {
-            let target_rec = super::types::SkillTargetRecord {
-                id: uuid::Uuid::new_v4().to_string(),
-                skill_id: skill_id.clone(),
-                tool: tool_key.clone(),
+            let tool_key = project_tool_key(&project_path, &resolved_agent_id);
+            for (skill_id, target) in deploy_project_skills(&skills_dir, &skills) {
+                let target_rec = super::types::SkillTargetRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    skill_id: skill_id.clone(),
+                    tool: tool_key.clone(),
                 target_path: target.to_string_lossy().to_string(),
                 mode: "symlink".to_string(),
                 status: "ok".to_string(),
@@ -1128,7 +1144,10 @@ pub async fn apply_project_skills_cmd(
         }
         Ok(())
     })
-    .await
+    .await?;
+    }
+
+    Ok(())
 }
 
 /// Remove all deployed skill targets for a tag group.
@@ -1189,17 +1208,88 @@ pub async fn get_project_tag_groups_cmd(
 }
 
 /// Set which tag groups are bound to a project.
+///
+/// When `project_path` is provided, orphaned skills (present in old bindings
+/// but not in new) are removed from project agent directories and their target
+/// records are deleted.
 #[tauri::command]
 pub async fn set_project_tag_groups_cmd(
     project_id: String,
     tag_group_ids: Vec<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    project_path: Option<String>,
+    state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = store.inner().clone();
+    let store = state.skill_store.clone();
+    let agent_info: Vec<(String, Option<String>)> = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agents()
+        .iter()
+        .filter(|a| a.enabled)
+        .map(|a| (a.id.clone(), a.skill_path.clone()))
+        .collect();
+
     run_blocking_result(move || {
+        // 1) Old tag group IDs before updating
+        let old_group_ids: Vec<String> = store
+            .get_project_tag_groups(&project_id)
+            .unwrap_or_default();
+
+        // 2) Skill IDs from old groups
+        let mut old_skill_map: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for gid in &old_group_ids {
+            if let Ok(skills) = store.get_skills_for_tag_group(gid) {
+                for s in skills {
+                    old_skill_map.entry(s.id.clone()).or_insert(s.name.clone());
+                }
+            }
+        }
+
+        // 3) Skill IDs from new groups
+        let mut new_skill_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        for gid in &tag_group_ids {
+            if let Ok(skills) = store.get_skills_for_tag_group(gid) {
+                for s in skills {
+                    new_skill_ids.insert(s.id.clone());
+                }
+            }
+        }
+
+        // 4) Orphaned = old - new
+        let orphaned: Vec<(String, String)> = old_skill_map
+            .into_iter()
+            .filter(|(id, _)| !new_skill_ids.contains(id))
+            .collect();
+
+        // 5) Update DB declaration (atomic replace)
         store
             .set_project_tag_groups(&project_id, &tag_group_ids)
-            .map_err(AppError::from)
+            .map_err(AppError::from)?;
+
+        // 6) Remove orphaned skills from disk + DB targets
+        if let Some(ref path) = project_path {
+            let project = std::path::PathBuf::from(path);
+            for (skill_id, skill_name) in &orphaned {
+                for (agent_id, skill_path) in &agent_info {
+                    let Some(skills_dir) =
+                        project_agent_skills_dir(&project, agent_id, skill_path.as_deref())
+                    else {
+                        continue;
+                    };
+                    let target = skills_dir.join(skill_name);
+                    if target.exists() || target.is_symlink() {
+                        let _ = super::sync_engine::remove_target(&target);
+                    }
+                    let tool_key = project_tool_key(path, agent_id);
+                    let _ = store.delete_target(skill_id, &tool_key);
+                }
+            }
+        }
+
+        Ok(())
     })
     .await
 }
@@ -2524,7 +2614,7 @@ pub async fn install_from_skillssh(
                 direct
             } else {
                 let mut resolved = None;
-                for prefix in ["skills", "packages", ".agents/skills"] {
+                for prefix in ["skills", "packages", ".opencode/skills", ".agents/skills"] {
                     let alt = repo_path.join(prefix).join(&skill_id);
                     if alt.exists() {
                         resolved = Some(alt);

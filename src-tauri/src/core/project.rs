@@ -120,8 +120,9 @@ pub struct Project {
     pub git_info: Option<GitInfo>,
     /// Active terminal session for this project.
     pub terminal: TerminalSession,
-    /// Selected AI agent for this project.
-    pub selected_agent: Option<String>,
+    /// Selected AI agents for this project.
+    #[serde(default)]
+    pub selected_agents: Vec<String>,
     /// Selected IDE for this project.
     pub selected_ide: Option<String>,
     /// Current view mode (terminal or diff).

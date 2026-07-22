@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { setProjectAgent } from "../api/agentApi";
+import { setProjectAgents } from "../api/agentApi";
 import { useProjectStore } from '@/features/project/store';
 import type { AgentConfig } from '@/shared/types';
 import type { TerminalTab } from '@/shared/types/terminal';
@@ -51,7 +51,7 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
           remoteActions.handleSelectAgent(agent);
         }
       } else if (activeProject) {
-        setProjectAgent(activeProject.id, agent.id).catch((err: unknown) => {
+        setProjectAgents(activeProject.id, [agent.id]).catch((err: unknown) => {
           console.error("[TitleBar] Failed to set agent:", err);
         });
         if (!newTab) {

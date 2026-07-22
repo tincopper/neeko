@@ -6,7 +6,7 @@ import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
 interface UseTabManagementOptions {
-  activeProject: { id: string; selected_agent?: string | null } | null;
+  activeProject: { id: string; selected_agents?: string[] } | null;
   activeWorktreePath: string | null;
   agents: { id: string; name?: string }[] | null;
 }
@@ -38,11 +38,11 @@ export function useTabManagement(options: UseTabManagementOptions) {
     const hasAnyTabs = projectTabs && projectTabs.tabs.length > 0;
 
     if (!hasAnyTabs) {
-      const agentId = activeProject?.selected_agent ?? null;
+      const agentId = activeProject?.selected_agents?.[0] ?? null;
       const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
       ensureDefaultTab(tabKey, agentId, agentName);
     }
-  }, [tabKey, ensureDefaultTab, activeProject?.selected_agent, agents, activeProject, activeWorktreePath]);
+  }, [tabKey, ensureDefaultTab, activeProject?.selected_agents, agents, activeProject, activeWorktreePath]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = useEditorStore((state) => state.activeTabId);

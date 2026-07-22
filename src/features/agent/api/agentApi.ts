@@ -19,8 +19,8 @@ export function removeAgent(agentId: string): Promise<void> {
   return invoke<void>('remove_agent', { agentId });
 }
 
-export function setProjectAgent(projectId: string, agentId?: string | null): Promise<void> {
-  return invoke<void>('set_project_agent', { projectId, agentId });
+export function setProjectAgents(projectId: string, agentIds: string[]): Promise<void> {
+  return invoke<void>('set_project_agents', { projectId, agentIds });
 }
 
 /**

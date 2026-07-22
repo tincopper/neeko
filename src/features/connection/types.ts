@@ -6,7 +6,7 @@ export interface WSLProject {
   path: string;
   distro: string;
   entry_id: string;
-  selected_agent: string | null;
+  selected_agents: string[];
   selected_ide: string | null;
   git_info?: GitInfo | null;
   avatar_color?: string | null;
@@ -23,7 +23,7 @@ export interface RemoteProject {
   name: string;
   path: string;
   entry_id: string;
-  selected_agent: string | null;
+  selected_agents: string[];
   selected_ide: string | null;
   git_info?: GitInfo | null;
   avatar_color?: string | null;

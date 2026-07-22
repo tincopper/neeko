@@ -53,12 +53,12 @@ export function useAgentActions({
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((project) => (
         project.id === currentActiveProject.id
-          ? { ...project, selected_agent: agentId }
+          ? { ...project, selected_agents: agentId ? [agentId] : [] }
           : project
       ));
 
       const nextActiveProject = state.activeProject && state.activeProject.id === currentActiveProject.id
-        ? { ...state.activeProject, selected_agent: agentId }
+        ? { ...state.activeProject, selected_agents: agentId ? [agentId] : [] }
         : state.activeProject;
 
       return {
@@ -116,7 +116,7 @@ export function useAgentActions({
         project.id === projectId
           ? {
               ...project,
-              selected_agent: agentId,
+              selected_agents: agentId ? [agentId] : [],
               selected_ide: ideCommand,
             }
           : project
@@ -125,7 +125,7 @@ export function useAgentActions({
       const nextActiveProject = state.activeProject && state.activeProject.id === projectId
         ? {
             ...state.activeProject,
-            selected_agent: agentId,
+            selected_agents: agentId ? [agentId] : [],
             selected_ide: ideCommand,
           }
         : state.activeProject;
