@@ -98,8 +98,8 @@ const ProjectItem: React.FC<ProjectItemProps & ProjectItemViewExtras> = ({
     }
   };
 
-  const openDialog = (type: DialogType, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openDialog = (type: DialogType, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     onOpenDialog({
       type,
       projectId: project.id,
