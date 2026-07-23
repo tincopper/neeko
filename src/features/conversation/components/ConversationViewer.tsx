@@ -290,7 +290,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
               <ChevronDown className="w-4 h-4" />
             )}
           </Button>
-          {conversationMeta && onResume && (
+          {conversationMeta && onResume && conversationMeta.supportsResume === true && (
             <Button
               variant="ghost"
               size="sm"

@@ -18,6 +18,7 @@ function createMeta(overrides: Partial<ConversationMeta> = {}): ConversationMeta
     projectPath: "/tmp/project",
     userTitle: null,
     tags: [],
+    supportsResume: true,
     ...overrides,
   };
 }
@@ -106,8 +107,43 @@ describe("ConversationItem", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Resume"));
+    fireEvent.click(screen.getByTitle("Resume"));
     expect(onResume).toHaveBeenCalledWith(meta);
+  });
+
+  it("hides Resume when supportsResume is false", () => {
+    const meta = createMeta({ supportsResume: false });
+    const agents = [createAgent()];
+    const onView = vi.fn();
+    const onResume = vi.fn();
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={onView}
+        onResume={onResume}
+      />,
+    );
+
+    expect(screen.queryByTitle("Resume")).not.toBeInTheDocument();
+    expect(screen.getByTitle("View")).toBeInTheDocument();
+  });
+
+  it("hides Resume when supportsResume is undefined (legacy payload)", () => {
+    const meta = createMeta({ supportsResume: undefined });
+    const agents = [createAgent()];
+
+    render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        onView={vi.fn()}
+        onResume={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTitle("Resume")).not.toBeInTheDocument();
   });
 
   it("calls onView when View button is clicked", () => {
@@ -125,7 +161,7 @@ describe("ConversationItem", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("View"));
+    fireEvent.click(screen.getByTitle("View"));
     expect(onView).toHaveBeenCalledWith(meta);
   });
 

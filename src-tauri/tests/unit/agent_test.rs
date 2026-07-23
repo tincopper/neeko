@@ -31,6 +31,7 @@ fn new_manager_contains_all_defaults() {
         "pi",
         "omp",
         "reasonix",
+        "grok",
     ];
     for id in expected_ids {
         assert!(

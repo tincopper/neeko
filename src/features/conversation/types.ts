@@ -12,6 +12,12 @@ export interface ConversationMeta {
   projectPath: string | null;
   userTitle: string | null;
   tags: string[];
+  /**
+   * Whether native resume is available.
+   * Backend always sends a boolean; UI shows Resume only when `true`.
+   * Optional for older/mock payloads — treat missing as not supported.
+   */
+  supportsResume?: boolean;
 }
 
 /// 消息内容块 - 表示 Agent 执行过程中的不同类型内容

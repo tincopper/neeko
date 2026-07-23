@@ -84,33 +84,8 @@ impl ConversationManager {
             let errors: Vec<String> = Vec::new();
 
             for (meta, synthetic_path) in metas {
-                let native_session_id = meta.native_session_id;
-                let id = format!("{agent_id}:{native_session_id}");
-
-                let resolved_title = resolve_title(
-                    meta.title.as_deref(),
-                    meta.first_user_message.as_deref(),
-                    agent_id,
-                    &native_session_id,
-                );
-                let resolved_preview = build_preview_messages(&meta.recent_messages);
-
-                let conversation = ConversationMeta {
-                    id,
-                    native_session_id,
-                    agent_id: agent_id.to_string(),
-                    title: resolved_title,
-                    model: meta.model,
-                    started_at: meta.started_at,
-                    updated_at: meta.updated_at,
-                    message_count: meta.message_count,
-                    preview: resolved_preview,
-                    file_path: synthetic_path,
-                    project_path: meta.project_path,
-                    user_title: None,
-                    tags: Vec::new(),
-                };
-
+                let conversation =
+                    build_conversation_meta(agent_id, adapter, meta, synthetic_path);
                 let mut cache = self
                     .cache
                     .lock()
@@ -136,10 +111,14 @@ impl ConversationManager {
             });
         }
 
-        let pattern_regex = pattern_to_regex(adapter.file_pattern());
+        // Basename-only patterns (no `/`, no leading `**/`) match nested paths by default.
+        let effective_pattern = normalize_file_pattern(adapter.file_pattern());
+        let pattern_regex = pattern_to_regex(&effective_pattern);
 
         let mut sessions_found: u32 = 0;
         let mut errors: Vec<String> = Vec::new();
+        let mut files_seen: u32 = 0;
+        let mut pattern_hits: u32 = 0;
 
         for entry in WalkDir::new(&root)
             .min_depth(1)
@@ -150,6 +129,7 @@ impl ConversationManager {
             if !path.is_file() {
                 continue;
             }
+            files_seen = files_seen.saturating_add(1);
 
             // 使用相对于 session_root 的路径匹配 pattern
             let rel_path = match path.strip_prefix(&root) {
@@ -161,36 +141,16 @@ impl ConversationManager {
             if !pattern_regex.is_match(&rel_str) {
                 continue;
             }
+            pattern_hits = pattern_hits.saturating_add(1);
 
             match adapter.parse_meta(path) {
                 Ok(meta) => {
-                    let native_session_id = meta.native_session_id;
-                    let id = format!("{agent_id}:{native_session_id}");
-
-                    let resolved_title = resolve_title(
-                        meta.title.as_deref(),
-                        meta.first_user_message.as_deref(),
+                    let conversation = build_conversation_meta(
                         agent_id,
-                        &native_session_id,
+                        adapter,
+                        meta,
+                        path.to_path_buf(),
                     );
-                    let resolved_preview = build_preview_messages(&meta.recent_messages);
-
-                    let conversation = ConversationMeta {
-                        id,
-                        native_session_id,
-                        agent_id: agent_id.to_string(),
-                        title: resolved_title,
-                        model: meta.model,
-                        started_at: meta.started_at,
-                        updated_at: meta.updated_at,
-                        message_count: meta.message_count,
-                        preview: resolved_preview,
-                        file_path: path.to_path_buf(),
-                        project_path: meta.project_path,
-                        user_title: None,
-                        tags: Vec::new(),
-                    };
-
                     let mut cache = self
                         .cache
                         .lock()
@@ -199,9 +159,24 @@ impl ConversationManager {
                     sessions_found += 1;
                 }
                 Err(e) => {
-                    errors.push(format!("Failed to parse {}: {e}", path.display()));
+                    // Intentional main-session / noise filters use `bail!("skip: ...")`.
+                    // Do not flood ScanReport.errors with expected noise.
+                    if is_intentional_skip(&e) {
+                        log::debug!("scan skip {}: {e}", path.display());
+                    } else {
+                        errors.push(format!("Failed to parse {}: {e}", path.display()));
+                    }
                 }
             }
+        }
+
+        if sessions_found == 0 && files_seen > 0 {
+            let msg = format!(
+                "scan found 0 sessions for {agent_id} under {} (files_seen={files_seen}, pattern_hits={pattern_hits}, pattern={effective_pattern})",
+                root.display()
+            );
+            log::warn!("{msg}");
+            errors.push(msg);
         }
 
         Ok(ScanReport {
@@ -356,7 +331,7 @@ impl ConversationManager {
             .get(agent_id)
             .with_context(|| format!("Adapter not found for agent: {agent_id}"))?;
 
-        let (native_session_id, project_path) = {
+        let (native_session_id, project_path, file_path) = {
             let cache = self
                 .cache
                 .lock()
@@ -364,13 +339,19 @@ impl ConversationManager {
             let meta = cache
                 .get(conversation_id)
                 .context("Conversation not found in cache")?;
-            (meta.native_session_id.clone(), meta.project_path.clone())
+            (
+                meta.native_session_id.clone(),
+                meta.project_path.clone(),
+                meta.file_path.clone(),
+            )
         };
 
-        match project_path {
-            Some(pp) => Ok(adapter.resume_command(&native_session_id, &pp)),
-            None => Ok(None),
-        }
+        // Prefer path-aware resume (e.g. Reasonix needs absolute session file path).
+        Ok(adapter.resume_command_for_file(
+            &native_session_id,
+            project_path.as_deref().unwrap_or(""),
+            &file_path,
+        ))
     }
 
     /// 构建恢复上下文字符串
@@ -434,13 +415,86 @@ impl ConversationManager {
     }
 }
 
+/// Build a cache entry from adapter-parsed meta (shared by bulk + WalkDir paths).
+fn build_conversation_meta(
+    agent_id: &str,
+    adapter: &dyn AgentSessionAdapter,
+    meta: crate::conversation::adapter::ParsedMeta,
+    file_path: std::path::PathBuf,
+) -> ConversationMeta {
+    let native_session_id = meta.native_session_id;
+    let id = format!("{agent_id}:{native_session_id}");
+    let resolved_title = resolve_title(
+        meta.title.as_deref(),
+        meta.first_user_message.as_deref(),
+        agent_id,
+        &native_session_id,
+    );
+    let resolved_preview = build_preview_messages(&meta.recent_messages);
+    let supports_resume = adapter
+        .resume_command_for_file(
+            &native_session_id,
+            meta.project_path.as_deref().unwrap_or(""),
+            &file_path,
+        )
+        .is_some();
+
+    ConversationMeta {
+        id,
+        native_session_id,
+        agent_id: agent_id.to_string(),
+        title: resolved_title,
+        model: meta.model,
+        started_at: meta.started_at,
+        updated_at: meta.updated_at,
+        message_count: meta.message_count,
+        preview: resolved_preview,
+        file_path,
+        project_path: meta.project_path,
+        user_title: None,
+        tags: Vec::new(),
+        supports_resume,
+    }
+}
+
+/// Adapters signal intentional noise filters with `bail!("skip: ...")`.
+fn is_intentional_skip(err: &anyhow::Error) -> bool {
+    err.to_string().starts_with("skip:")
+}
+
 /// Parse a conversation ID like `agent:session` into its components.
 fn parse_conversation_id(id: &str) -> Option<(&str, &str)> {
     let colon_pos = id.find(':')?;
     Some((&id[..colon_pos], &id[colon_pos + 1..]))
 }
 
+/// Normalize adapter `file_pattern` so basename-only globs match nested paths.
+///
+/// - If the pattern already contains `/` or starts with `**/`, it is returned as-is.
+/// - Otherwise (e.g. `*.jsonl`, `rollout-*.jsonl`), prefix `**/` so WalkDir relative
+///   paths like `2026/07/16/rollout-….jsonl` match.
+///
+/// This fixes silent empty scans for Codex/Pi/Gemini/Qoder-style nested layouts
+/// without requiring every adapter to remember `**/`.
+pub(crate) fn normalize_file_pattern(pattern: &str) -> String {
+    let p = pattern.trim();
+    if p.is_empty() {
+        return p.to_string();
+    }
+    if p.contains('/') || p.starts_with("**/") {
+        p.to_string()
+    } else {
+        format!("**/{p}")
+    }
+}
+
 /// Convert a simple glob pattern into a regular expression.
+///
+/// Globstar rules:
+/// - `**/` matches zero or more path segments (including root), so `**/*.jsonl`
+///   matches both `session.jsonl` and `a/b/session.jsonl`.
+/// - bare `**` (not followed by `/`) matches any characters including `/`.
+/// - single `*` matches a single path segment (no `/`).
 fn pattern_to_regex(pattern: &str) -> Regex {
     let mut regex_str = String::new();
     let chars: Vec<char> = pattern.chars().collect();
@@ -448,10 +502,16 @@ fn pattern_to_regex(pattern: &str) -> Regex {
     while i < chars.len() {
         match chars[i] {
             '*' => {
-                // `**` = globstar: 匹配任意深度
                 if i + 1 < chars.len() && chars[i + 1] == '*' {
-                    regex_str.push_str(".*");
-                    i += 1; // skip second *
+                    // `**/` = zero or more directories (optional prefix)
+                    if i + 2 < chars.len() && chars[i + 2] == '/' {
+                        regex_str.push_str("(?:.*/)?");
+                        i += 2; // skip second `*` and `/`
+                    } else {
+                        // bare `**`
+                        regex_str.push_str(".*");
+                        i += 1; // skip second `*`
+                    }
                 } else {
                     // `*` = 匹配单层文件名（不含 /）
                     regex_str.push_str("[^/]*");
@@ -875,8 +935,108 @@ mod tests {
         assert!(reports[0].errors.is_empty());
     }
 
+    // ─── L0: file_pattern nested scan contract ───
+
     #[test]
-    fn should_get_resume_command_return_none_without_project_path() {
+    fn should_normalize_basename_pattern_with_globstar_prefix() {
+        assert_eq!(normalize_file_pattern("*.jsonl"), "**/*.jsonl");
+        assert_eq!(normalize_file_pattern("rollout-*.jsonl"), "**/rollout-*.jsonl");
+        assert_eq!(normalize_file_pattern("**/*.jsonl"), "**/*.jsonl");
+        assert_eq!(normalize_file_pattern("a/b/*.json"), "a/b/*.json");
+        assert_eq!(normalize_file_pattern("  *.json  "), "**/*.json");
+    }
+
+    #[test]
+    fn should_match_nested_and_top_level_with_globstar_pattern() {
+        let re = pattern_to_regex(&normalize_file_pattern("rollout-*.jsonl"));
+        assert!(re.is_match("rollout-2026-07-16T11-08-58-uuid.jsonl"));
+        assert!(re.is_match("2026/07/16/rollout-2026-07-16T11-08-58-uuid.jsonl"));
+        assert!(!re.is_match("2026/07/16/other.jsonl"));
+
+        let re_jsonl = pattern_to_regex(&normalize_file_pattern("*.jsonl"));
+        assert!(re_jsonl.is_match("session-1.jsonl"));
+        assert!(re_jsonl.is_match("sanitized-path/session-1.jsonl"));
+    }
+
+    #[test]
+    fn should_scan_nested_rollout_layout_with_basename_pattern() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("2026").join("07").join("16");
+        std::fs::create_dir_all(&nested).unwrap();
+        let name = "rollout-2026-07-16T11-08-58-019f68e6-1a7f-75e0-8765-84171499aa7b.jsonl";
+        create_fixture(&dir, &format!("2026/07/16/{name}"), Some("/projects/nested"));
+
+        let mut adapter = TestAdapter::new("codex-like", dir.path().to_path_buf());
+        adapter.file_pattern = "rollout-*.jsonl".to_string();
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        let reports = manager.scan_all().unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(
+            reports[0].sessions_found, 1,
+            "basename pattern must discover nested rollout-*.jsonl"
+        );
+        assert!(
+            reports[0].errors.is_empty(),
+            "unexpected scan errors: {:?}",
+            reports[0].errors
+        );
+
+        let list = manager.list(None, None).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].native_session_id.contains("rollout-"));
+    }
+
+    #[test]
+    fn should_scan_nested_sanitized_path_with_star_jsonl_pattern() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("-Users-tomgs-project");
+        std::fs::create_dir_all(&nested).unwrap();
+        create_fixture(
+            &dir,
+            "-Users-tomgs-project/session-abc.jsonl",
+            Some("/Users/tomgs/project"),
+        );
+
+        // Default TestAdapter pattern is `*.jsonl` (basename-only)
+        let adapter = TestAdapter::new("pi-like", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        let reports = manager.scan_all().unwrap();
+        assert_eq!(
+            reports[0].sessions_found, 1,
+            "*.jsonl must discover nested sanitized-path sessions"
+        );
+        let list = manager.list(Some("/Users/tomgs/project"), None).unwrap();
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn should_report_zero_sessions_when_root_has_files_but_no_pattern_hits() {
+        let dir = TempDir::new().unwrap();
+        // File exists under root but does not match rollout-*.jsonl
+        std::fs::write(dir.path().join("notes.txt"), "noise").unwrap();
+
+        let mut adapter = TestAdapter::new("codex-like", dir.path().to_path_buf());
+        adapter.file_pattern = "rollout-*.jsonl".to_string();
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        let reports = manager.scan_all().unwrap();
+        assert_eq!(reports[0].sessions_found, 0);
+        assert!(
+            reports[0]
+                .errors
+                .iter()
+                .any(|e| e.contains("scan found 0 sessions") && e.contains("files_seen=")),
+            "expected observability error, got {:?}",
+            reports[0].errors
+        );
+    }
+
+    #[test]
+    fn should_get_resume_command_even_without_project_path_when_adapter_allows() {
+        // TestAdapter ignores project_path and always returns Some; scan and get_resume
+        // must stay consistent (no fake "/" probe vs runtime None split).
         let dir = TempDir::new().unwrap();
         create_fixture(&dir, "session-1.jsonl", None);
 
@@ -885,10 +1045,65 @@ mod tests {
         manager.scan_all().unwrap();
 
         let list = manager.list(None, None).unwrap();
-        let conv_id = &list[0].id;
+        let conv = &list[0];
+        assert!(
+            conv.supports_resume,
+            "supports_resume must match resume_command capability even when project_path is None"
+        );
 
-        let cmd = manager.get_resume_command(conv_id).unwrap();
-        assert!(cmd.is_none());
+        let cmd = manager.get_resume_command(&conv.id).unwrap();
+        assert_eq!(
+            cmd,
+            Some(vec![
+                "test-agent".to_string(),
+                "resume".to_string(),
+                conv.native_session_id.clone(),
+            ])
+        );
+    }
+
+    #[test]
+    fn should_set_supports_resume_false_when_adapter_returns_none() {
+        struct NoResumeAdapter {
+            inner: TestAdapter,
+        }
+        impl AgentSessionAdapter for NoResumeAdapter {
+            fn agent_id(&self) -> &str {
+                self.inner.agent_id()
+            }
+            fn session_root(&self) -> PathBuf {
+                self.inner.session_root()
+            }
+            fn file_pattern(&self) -> &str {
+                self.inner.file_pattern()
+            }
+            fn parse_meta(&self, p: &Path) -> Result<ParsedMeta> {
+                self.inner.parse_meta(p)
+            }
+            fn parse_messages(&self, p: &Path) -> Result<Vec<ParsedMessage>> {
+                self.inner.parse_messages(p)
+            }
+            fn extract_session_id(&self, p: &Path) -> Option<String> {
+                self.inner.extract_session_id(p)
+            }
+            fn resume_command(
+                &self,
+                _native_session_id: &str,
+                _project_path: &str,
+            ) -> Option<Vec<String>> {
+                None
+            }
+        }
+
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "session-1.jsonl", Some("/projects/p"));
+        let manager = ConversationManager::new(vec![Box::new(NoResumeAdapter {
+            inner: TestAdapter::new("test-agent", dir.path().to_path_buf()),
+        })]);
+        manager.scan_all().unwrap();
+        let list = manager.list(None, None).unwrap();
+        assert!(!list[0].supports_resume);
+        assert!(manager.get_resume_command(&list[0].id).unwrap().is_none());
     }
 
     #[test]

@@ -73,18 +73,20 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
           {timeStr}
         </span>
         <div className="flex items-center gap-1 ml-auto">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'w-5 h-5',
-              'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
-            )}
-            onClick={() => onResume(meta)}
-            title="Resume"
-          >
-            <Play className="w-3 h-3" />
-          </Button>
+          {meta.supportsResume === true ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'w-5 h-5',
+                'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
+              )}
+              onClick={() => onResume(meta)}
+              title="Resume"
+            >
+              <Play className="w-3 h-3" />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"

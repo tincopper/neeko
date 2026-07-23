@@ -383,23 +383,23 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
         return;
       }
 
-      // Get resume command from backend
+      // Native resume only (D4): no bare launch / context injection fallback.
       let resumeCmd: string[] | null = null;
       try {
         resumeCmd = await getResumeCommand(meta.id);
       } catch (err) {
         console.warn('[ConversationsPanel] Failed to get resume command:', err);
+        showToast('Failed to resolve resume command', 'error');
+        return;
       }
 
-      // Build the full command to execute in the PTY
-      let taskCommand: string | undefined;
-      if (resumeCmd && resumeCmd.length > 0) {
-        // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
-        taskCommand = `${agentCommand} ${resumeCmd.join(' ')}`;
-      } else {
-        // No native resume: just open the agent
-        taskCommand = agentCommand;
+      if (!resumeCmd || resumeCmd.length === 0) {
+        showToast('This conversation does not support native resume', 'error');
+        return;
       }
+
+      // Native resume: adapter returns e.g. ["--resume", "<id>"] or ["resume", "<id>"]
+      const taskCommand = `${agentCommand} ${resumeCmd.join(' ')}`;
 
       // Create a new terminal tab — the PTY will execute taskCommand directly
       const tabId = `tab_${crypto.randomUUID()}`;

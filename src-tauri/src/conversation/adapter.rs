@@ -66,6 +66,19 @@ pub trait AgentSessionAdapter: Send + Sync {
     /// 构建恢复命令。None = 不支持原生恢复。
     fn resume_command(&self, native_session_id: &str, project_path: &str) -> Option<Vec<String>>;
 
+    /// Build resume CLI args with access to the session file path.
+    ///
+    /// Default: delegate to [`Self::resume_command`]. Override when the CLI needs an
+    /// absolute transcript path (e.g. Reasonix `run --resume <PATH>`).
+    fn resume_command_for_file(
+        &self,
+        native_session_id: &str,
+        project_path: &str,
+        _file_path: &Path,
+    ) -> Option<Vec<String>> {
+        self.resume_command(native_session_id, project_path)
+    }
+
     /// 批量解析全部元数据（用于单文件多会话场景，如 SQLite 数据库）。
     ///
     /// 返回 `None` 表示使用默认的逐文件扫描（现有行为）。

@@ -7,6 +7,7 @@ import codebuddyIcon from "../../assets/agents/codebuddy.svg";
 import piIcon from "../../assets/agents/pi.svg";
 import ompIcon from "../../assets/agents/omp.svg";
 import reasonixIcon from "../../assets/agents/reasonix.svg";
+import grokIcon from "../../assets/agents/grok.ico";
 import cliIcon from "../../assets/agents/cli.svg";
 
 const AGENT_ICONS: Record<string, string> = {
@@ -19,6 +20,7 @@ const AGENT_ICONS: Record<string, string> = {
   "pi.svg": piIcon,
   "omp.svg": ompIcon,
   "reasonix.svg": reasonixIcon,
+  "grok.ico": grokIcon,
   "cli.svg": cliIcon,
 };
 

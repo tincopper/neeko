@@ -33,6 +33,10 @@ pub struct ConversationMeta {
     pub user_title: Option<String>,
     /// User-assigned tags for categorization.
     pub tags: Vec<String>,
+    /// Whether the agent adapter can produce a native resume command.
+    /// Frontend hides the Resume button when false (D4).
+    #[serde(default)]
+    pub supports_resume: bool,
 }
 
 /// 消息内容块 - 表示 Agent 执行过程中的不同类型内容

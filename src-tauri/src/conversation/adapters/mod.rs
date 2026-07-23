@@ -15,20 +15,29 @@ pub mod codebuddy;
 pub mod codex;
 /// Adapter for Gemini session files.
 pub mod gemini;
+/// Adapter for Grok session files.
+pub mod grok;
+/// Adapter for OMP session files.
+pub mod omp;
 /// Adapter for OpenCode session files.
 pub mod opencode;
 /// Adapter for Pi session files.
 pub mod pi;
 /// Adapter for Qoder session files.
 pub mod qoder;
+/// Adapter for Reasonix session files.
+pub mod reasonix;
 
 pub use claude_code::ClaudeCodeAdapter;
 pub use codebuddy::CodeBuddyAdapter;
 pub use codex::CodexAdapter;
 pub use gemini::GeminiAdapter;
+pub use grok::GrokAdapter;
+pub use omp::OmpAdapter;
 pub use opencode::OpenCodeAdapter;
 pub use pi::PiAdapter;
 pub use qoder::QoderAdapter;
+pub use reasonix::ReasonixAdapter;
 
 /// 返回所有已注册的 AgentSessionAdapter 实例
 #[must_use]
@@ -41,6 +50,9 @@ pub fn all_adapters() -> Vec<Box<dyn AgentSessionAdapter>> {
         Box::new(QoderAdapter),
         Box::new(CodeBuddyAdapter),
         Box::new(OpenCodeAdapter),
+        Box::new(OmpAdapter::new()),
+        Box::new(GrokAdapter),
+        Box::new(ReasonixAdapter),
     ]
 }
 
@@ -196,5 +208,42 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
         s.to_string()
     } else {
         format!("{}...", s.chars().take(max_chars).collect::<String>())
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::all_adapters;
+    use crate::agent::AgentManager;
+
+    /// L2: every history adapter agent_id must exist in default AgentConfig ids.
+    #[test]
+    fn should_align_history_adapter_ids_with_default_agents() {
+        let manager = AgentManager::new();
+        let agent_ids: std::collections::HashSet<&str> = manager
+            .get_agents()
+            .iter()
+            .map(|a| a.id.as_str())
+            .collect();
+
+        for adapter in all_adapters() {
+            let id = adapter.agent_id();
+            assert!(
+                agent_ids.contains(id),
+                "history adapter `{id}` has no matching AgentConfig in default_agents"
+            );
+        }
+    }
+
+    #[test]
+    fn should_register_omp_grok_reasonix_adapters() {
+        let adapters = all_adapters();
+        let ids: Vec<&str> = adapters.iter().map(|a| a.agent_id()).collect();
+        for expected in ["omp", "grok", "reasonix", "codex", "pi", "claude-code", "opencode"] {
+            assert!(
+                ids.contains(&expected),
+                "missing adapter {expected} in all_adapters: {ids:?}"
+            );
+        }
     }
 }

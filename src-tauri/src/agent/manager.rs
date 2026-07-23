@@ -180,6 +180,18 @@ fn default_agents() -> Vec<AgentConfig> {
             skill_path: Some("~/.reasonix/skills".into()),
             ..Default::default()
         },
+        AgentConfig {
+            id: "grok".into(),
+            name: "grok".into(),
+            command: "grok".into(),
+            icon: Some("grok.ico".into()),
+            enabled: true,
+            // headless single-turn: `grok -p "<prompt>"`
+            prompt_args: Some(vec!["-p".into()]),
+            is_builtin: true,
+            skill_path: Some("~/.grok/skills".into()),
+            ..Default::default()
+        },
     ]
 }
 
@@ -188,9 +200,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_nine_presets() {
+    fn should_initialize_with_ten_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 9);
+        assert_eq!(manager.get_agents().len(), 10);
+    }
+
+    #[test]
+    fn should_include_grok_default_agent() {
+        let manager = AgentManager::new();
+        let agent = manager.get_agent("grok").expect("grok should be a default agent");
+        assert_eq!(agent.command, "grok");
+        assert_eq!(agent.icon.as_deref(), Some("grok.ico"));
+        assert!(agent.is_builtin);
     }
 
     #[test]
@@ -227,6 +248,7 @@ mod tests {
     #[test]
     fn should_add_custom_agent() {
         let mut manager = AgentManager::new();
+        let before = manager.get_agents().len();
         let custom = AgentConfig {
             id: "custom".into(),
             name: "Custom Agent".into(),
@@ -234,23 +256,25 @@ mod tests {
             ..Default::default()
         };
         manager.add_agent(custom);
-        assert_eq!(manager.get_agents().len(), 10);
+        assert_eq!(manager.get_agents().len(), before + 1);
         assert!(manager.get_agent("custom").is_some());
     }
 
     #[test]
     fn should_remove_agent() {
         let mut manager = AgentManager::new();
+        let before = manager.get_agents().len();
         manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), 8);
+        assert_eq!(manager.get_agents().len(), before - 1);
         assert!(manager.get_agent("opencode").is_none());
     }
 
     #[test]
     fn should_not_panic_when_removing_nonexistent() {
         let mut manager = AgentManager::new();
+        let before = manager.get_agents().len();
         manager.remove_agent("nonexistent");
-        assert_eq!(manager.get_agents().len(), 9);
+        assert_eq!(manager.get_agents().len(), before);
     }
 
     #[test]
@@ -258,13 +282,23 @@ mod tests {
         let manager = AgentManager::new();
         let agents = manager.get_agents();
         let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
-        assert!(ids.contains(&"opencode"));
-        assert!(ids.contains(&"claude-code"));
-        assert!(ids.contains(&"gemini"));
-        assert!(ids.contains(&"codex"));
-        assert!(ids.contains(&"qoder"));
-        assert!(ids.contains(&"codebuddy"));
-        assert!(ids.contains(&"pi"));
+        for expected in [
+            "opencode",
+            "claude-code",
+            "gemini",
+            "codex",
+            "qoder",
+            "codebuddy",
+            "pi",
+            "omp",
+            "reasonix",
+            "grok",
+        ] {
+            assert!(
+                ids.contains(&expected),
+                "missing default agent {expected}: {ids:?}"
+            );
+        }
     }
 
     #[test]
@@ -311,6 +345,7 @@ mod tests {
     #[test]
     fn should_allow_duplicate_ids_on_add() {
         let mut manager = AgentManager::new();
+        let before = manager.get_agents().len();
         let dup = AgentConfig {
             id: "opencode".into(),
             name: "dup".into(),
@@ -320,7 +355,7 @@ mod tests {
         manager.add_agent(dup);
         // Current behavior: allows duplicates, get_agent returns first match
         assert_eq!(manager.get_agent("opencode").unwrap().name, "opencode");
-        assert_eq!(manager.get_agents().len(), 10);
+        assert_eq!(manager.get_agents().len(), before + 1);
     }
 
     #[test]
