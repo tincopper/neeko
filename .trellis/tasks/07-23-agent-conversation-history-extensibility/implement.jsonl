@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "Primary AgentSessionAdapter contract, scan/resume routing, and testing requirements"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend layer index"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "Rust typing conventions for manager and adapters"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Scan error aggregation and command errors"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "TDD and fixture expectations for nested scan tests"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "conversationApi and get_resume_command null handling"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Conversation UI stays agent-agnostic"}
+{"file": ".trellis/tasks/07-23-agent-conversation-history-extensibility/prd.md", "reason": "Requirements and AC1–AC10"}
+{"file": ".trellis/tasks/07-23-agent-conversation-history-extensibility/design.md", "reason": "L0 normalize, L3 adapters, main-session filter"}
+{"file": ".trellis/tasks/07-23-agent-conversation-history-extensibility/implement.md", "reason": "Phased checklist and validation commands"}

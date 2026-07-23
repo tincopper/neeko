@@ -181,9 +181,32 @@ get_messages(conversation_id) → split(':') 取 [0] 为 agent_id
 ```
 get_resume_command(conversation_id) → split(':') 取 [0] 为 agent_id
   → find adapter by agent_id
-  → adapter.resume_command(native_session_id, project_path)
-  → None = 不支持原生恢复 → 使用 build_resume_context 注入上下文
+  → adapter.resume_command_for_file(native_id, project_path, file_path)
+       （默认委托 resume_command；需要绝对 transcript 路径的 Agent 覆盖此方法）
+  → None = 不支持原生恢复 → 前端隐藏 Resume（不注入上下文、不降级 bare launch）
 ```
+
+`ConversationMeta.supports_resume` 在扫描时根据 `resume_command_for_file(...).is_some()` 写入，供 UI 判断。  
+探测与 `get_resume_command` 必须使用同一入口，避免 `supports_resume=true` 但实际 resume 为 None。
+
+### 4.3.1 file_pattern 与嵌套扫描
+
+- `file_pattern` 相对 `session_root` 匹配。
+- 不含 `/` 且不以 `**/` 开头的 basename 模式由 Manager 自动加 `**/` 前缀（如 `rollout-*.jsonl` → `**/rollout-*.jsonl`）。
+- `**/` 在 regex 中匹配 **零段或多段**路径前缀，因此顶层与嵌套文件均可命中。
+- 扫描 0 会话但根下存在文件时写入 `log::warn` 与 `ScanReport.errors` 提示。
+- 适配器对噪声文件使用 `bail!("skip: …")`；Manager 静默跳过，不写入 `ScanReport.errors`。
+- Launch 注册表（`AgentManager::default_agents`）与 History 注册表（`all_adapters`）分离；每个 adapter 的 `agent_id` 必须能在默认 AgentConfig 中找到（registry 测试守护）。
+
+### 4.3.2 常见 Agent 存储与解析陷阱
+
+| Agent | 主存储 | 详情/Resume 注意 |
+|-------|--------|------------------|
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl`；`$CODEX_HOME` 优先 | 现代消息在 `response_item.payload.content[{type:input_text\|output_text,text}]`，不是 `delta`/`transcript`。标题：meta → `session_index.jsonl` → 首条真实 user。过滤 worker/subagent。 |
+| Reasonix | 列表：`~/.reasonix/projects/**/sessions/*.jsonl` | **多轮正文在兄弟文件 `*.events.jsonl`（replace/append）**；主 jsonl 常为 stub。Resume：交互式 `reasonix --dir <cwd> --resume <path\|id>`（需 TTY）；`run --resume PATH` 是一次性任务模式，History 不要用。 |
+| OMP | `~/.omp/agent/sessions/<sanitized>/*.jsonl` | 仅主会话深度（`<sanitized>/<file>.jsonl`），排除 session 子目录 trace。 |
+| Grok | `~/.grok/sessions/<urlenc-cwd>/<uuid>/summary.json` | 消息来自 sibling `updates.jsonl` 分块合并。 |
+| Pi / Claude | 嵌套 jsonl | 依赖 L0 自动 `**/`；勿写仅顶层的 basename pattern 而不测 WalkDir。 |
 
 ### 4.4 搜索行为
 

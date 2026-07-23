@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/conversation-adapter.md", "reason": "Check scan/resume/id contracts still hold after L0–L3"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Check nested scan and adapter fixture tests meet standards"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Check Resume visibility is agent-agnostic"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "Check conversation API surface stability"}
+{"file": ".trellis/tasks/07-23-agent-conversation-history-extensibility/prd.md", "reason": "AC1–AC10 verification"}
+{"file": ".trellis/tasks/07-23-agent-conversation-history-extensibility/design.md", "reason": "No L4 scope creep; main-session filter and pattern normalize"}
