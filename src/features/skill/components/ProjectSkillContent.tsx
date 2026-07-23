@@ -1,6 +1,8 @@
 import {
   Ban,
   CheckSquare,
+  ChevronDown,
+  ChevronUp,
   Folder,
   GitBranch,
   HardDrive,
@@ -53,6 +55,9 @@ interface ProjectSkillContentProps {
 type ViewMode = 'grid' | 'list';
 type StatusFilter = 'all' | 'enabled' | 'disabled';
 type SourceFilter = 'all' | 'local' | 'git' | 'skillssh';
+
+/** Max agent chips shown in the project header before folding (+N expand). */
+const AGENT_CHIPS_COLLAPSED_LIMIT = 5;
 
 const SKILL_SOURCES: Array<{
   value: SourceFilter;
@@ -142,6 +147,8 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   const [bulkDisabling, setBulkDisabling] = useState(false);
   const [bulkEnabling, setBulkEnabling] = useState(false);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  /** Expand overflow project-target agent chips in the header. */
+  const [agentChipsExpanded, setAgentChipsExpanded] = useState(false);
 
   const toggleSelectionMode = useCallback(() => {
     setSelectionMode((v) => {
@@ -236,6 +243,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     setPendingRemove(null);
     setSelectionMode(false);
     setSelectedNames(new Set());
+    setAgentChipsExpanded(false);
     void reload();
   }, [activeProjectId, reload]);
 
@@ -389,6 +397,41 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   );
 
   const capableAgents = useMemo(() => agents.filter((a) => a.projectCapable), [agents]);
+
+  /**
+   * Header chips: selected project agents first, then the rest.
+   * When collapsed, always keep selected visible; fill remaining slots up to the limit.
+   */
+  const { visibleAgentChips, hiddenAgentChipCount, agentChipsCollapsible } = useMemo(() => {
+    const selectedIds = activeProject?.selected_agents ?? [];
+    const selectedSet = new Set(selectedIds);
+    const selected = capableAgents.filter((a) => selectedSet.has(a.id));
+    const unselected = capableAgents.filter((a) => !selectedSet.has(a.id));
+    const ordered = [...selected, ...unselected];
+    const collapsible = ordered.length > AGENT_CHIPS_COLLAPSED_LIMIT;
+    if (!collapsible || agentChipsExpanded) {
+      return {
+        visibleAgentChips: ordered,
+        hiddenAgentChipCount: 0,
+        agentChipsCollapsible: collapsible,
+      };
+    }
+    // Prefer selected: never fold them away if possible; fill rest with unselected.
+    let visible: typeof ordered;
+    if (selected.length >= AGENT_CHIPS_COLLAPSED_LIMIT) {
+      visible = selected;
+    } else {
+      visible = [
+        ...selected,
+        ...unselected.slice(0, AGENT_CHIPS_COLLAPSED_LIMIT - selected.length),
+      ];
+    }
+    return {
+      visibleAgentChips: visible,
+      hiddenAgentChipCount: Math.max(0, ordered.length - visible.length),
+      agentChipsCollapsible: collapsible,
+    };
+  }, [capableAgents, activeProject?.selected_agents, agentChipsExpanded]);
 
   /** Toggle agent selection for skill sync. */
   const handleToggleAgentSelection = useCallback(
@@ -798,43 +841,84 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     >
       {/* Header */}
       <div className="shrink-0 border-b border-border">
-        <div className="flex items-center gap-2.5 h-11 px-4">
-          <Folder className="h-4 w-4 text-text-secondary shrink-0" />
-          <h2 className="text-sm font-semibold text-text-primary truncate">{activeProject.name}</h2>
-          <span className="inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
+        <div className="flex items-start gap-2.5 min-h-11 px-4 py-2">
+          <Folder className="h-4 w-4 text-text-secondary shrink-0 mt-1" />
+          <h2 className="text-sm font-semibold text-text-primary truncate shrink-0 max-w-[10rem] mt-0.5">
+            {activeProject.name}
+          </h2>
+          <span className="inline-flex items-center justify-center min-w-[1.35rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border shrink-0 mt-0.5">
             {total} / {enabledCount}
           </span>
-          <div className="flex items-center gap-1.5 flex-1 min-w-0 ml-2" data-testid="project-agent-chips">
+          <div
+            className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0 ml-1"
+            data-testid="project-agent-chips"
+            data-expanded={agentChipsExpanded ? 'true' : 'false'}
+          >
             {capableAgents.length === 0 ? (
               <span className="text-[11px] text-text-muted italic">No project-capable agents</span>
             ) : (
-              capableAgents.map((a) => {
-                const selected = activeProject?.selected_agents?.includes(a.id) ?? false;
-                const src = resolveAgentIconSrc(a.icon);
-                return (
+              <>
+                {visibleAgentChips.map((a) => {
+                  const selected = activeProject?.selected_agents?.includes(a.id) ?? false;
+                  const src = resolveAgentIconSrc(a.icon);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => void handleToggleAgentSelection(a.id)}
+                      data-testid={`project-agent-chip-${a.id}`}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-md border shrink-0 transition-colors text-[11px] font-medium',
+                        selected
+                          ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/15'
+                          : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                      )}
+                    >
+                      {src ? (
+                        <img src={src} alt="" className="h-4 w-4 rounded-[3px]" />
+                      ) : (
+                        <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
+                          {a.name.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="truncate max-w-[5rem]">{a.name}</span>
+                    </button>
+                  );
+                })}
+                {agentChipsCollapsible ? (
                   <button
-                    key={a.id}
                     type="button"
-                    onClick={() => void handleToggleAgentSelection(a.id)}
-                    data-testid={`project-agent-chip-${a.id}`}
+                    onClick={() => setAgentChipsExpanded((v) => !v)}
+                    data-testid="project-agent-chips-toggle"
+                    aria-expanded={agentChipsExpanded}
+                    title={
+                      agentChipsExpanded
+                        ? 'Collapse agent list'
+                        : `Show ${hiddenAgentChipCount} more agents`
+                    }
+                    aria-label={
+                      agentChipsExpanded
+                        ? 'Collapse agent list'
+                        : `Show ${hiddenAgentChipCount} more agents`
+                    }
                     className={cn(
-                      'inline-flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-md border shrink-0 transition-colors text-[11px] font-medium',
-                      selected
-                        ? 'bg-accent-blue/10 border-accent-blue/30 text-accent-blue hover:bg-accent-blue/15'
-                        : 'bg-bg-hover/50 border-border text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                      'inline-flex items-center justify-center h-6 min-w-6 px-1.5 rounded-md border shrink-0',
+                      'text-[11px] font-medium tabular-nums transition-colors',
+                      'bg-bg-hover/50 border-border text-text-secondary',
+                      'hover:bg-bg-hover hover:text-text-primary',
                     )}
                   >
-                    {src ? (
-                      <img src={src} alt="" className="h-4 w-4 rounded-[3px]" />
+                    {agentChipsExpanded ? (
+                      <ChevronUp className="h-3.5 w-3.5" aria-hidden />
                     ) : (
-                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold">
-                        {a.name.slice(0, 1).toUpperCase()}
-                      </span>
+                      <>
+                        <span className="px-0.5">+{hiddenAgentChipCount}</span>
+                        <ChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+                      </>
                     )}
-                    <span className="truncate max-w-[5rem]">{a.name}</span>
                   </button>
-                );
-              })
+                ) : null}
+              </>
             )}
           </div>
         </div>

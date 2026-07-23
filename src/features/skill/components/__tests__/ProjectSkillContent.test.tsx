@@ -952,7 +952,6 @@ describe('ProjectSkillContent', () => {
   });
 
   it('excludes agents without a skill path from project target chips', async () => {
-    const user = userEvent.setup();
     useProjectStore.setState({
       activeProjectId: 'proj-1',
       activeProject: { ...project, selected_agents: [] } as never,
@@ -992,5 +991,68 @@ describe('ProjectSkillContent', () => {
       expect(screen.getByTestId('project-agent-chip-codex')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('project-agent-chip-claude-code')).not.toBeInTheDocument();
+  });
+
+  it('folds overflow project agent chips and expands on +N', async () => {
+    const user = userEvent.setup();
+    useProjectStore.setState({
+      activeProjectId: 'proj-1',
+      activeProject: { ...project, selected_agents: ['claude-code'] } as never,
+      projects: [{ ...project, selected_agents: ['claude-code'] } as never],
+    });
+    const manyAgents = [
+      'opencode',
+      'claude-code',
+      'gemini',
+      'codex',
+      'qoder',
+      'codebuddy',
+      'pi',
+      'omp',
+    ].map((id) => ({
+      id,
+      name: id,
+      icon: `${id}.png`,
+      enabled: true,
+      command: id,
+      skill_path: `.${id}/skills`,
+    }));
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_agents') return manyAgents;
+      if (cmd === 'get_project_skills_cmd') return [];
+      if (cmd === 'get_project_tag_groups_cmd') return [];
+      if (cmd === 'get_managed_skills') return [];
+      if (cmd === 'get_tag_groups') return [];
+      return undefined;
+    });
+
+    render(<ProjectSkillContent setDialog={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-agent-chips-toggle')).toBeInTheDocument();
+    });
+
+    const chips = screen.getByTestId('project-agent-chips');
+    expect(chips).toHaveAttribute('data-expanded', 'false');
+    // Collapsed: selected + fill to limit (5), rest folded
+    expect(screen.getByTestId('project-agent-chip-claude-code')).toBeInTheDocument();
+    expect(screen.getByTestId('project-agent-chips-toggle')).toHaveTextContent('+3');
+    // Hidden when collapsed
+    expect(screen.queryByTestId('project-agent-chip-pi')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-agent-chip-omp')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('project-agent-chips-toggle'));
+    expect(chips).toHaveAttribute('data-expanded', 'true');
+    expect(screen.getByTestId('project-agent-chip-pi')).toBeInTheDocument();
+    expect(screen.getByTestId('project-agent-chip-omp')).toBeInTheDocument();
+    // Collapse control is icon-only (no "Less" label)
+    const toggle = screen.getByTestId('project-agent-chips-toggle');
+    expect(toggle).toHaveAttribute('aria-label', 'Collapse agent list');
+    expect(toggle).not.toHaveTextContent(/Less/i);
+    expect(toggle.querySelector('.lucide-chevron-up')).toBeTruthy();
+
+    await user.click(toggle);
+    expect(chips).toHaveAttribute('data-expanded', 'false');
+    expect(screen.queryByTestId('project-agent-chip-omp')).not.toBeInTheDocument();
   });
 });
