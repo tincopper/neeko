@@ -12,6 +12,12 @@ export {
 export { createTerminalForProject } from "./components/terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./components/terminalCommands";
 export { worktreeKey } from "./components/worktreeTerminalKey";
+export {
+  cleanupTerminalsForTab,
+  cleanupTerminalsForTabKey,
+  closeEditorTab,
+  closeAllEditorTabs,
+} from "./components/terminalTabCleanup";
 
 // Deprecated WSL terminal exports — kept for backward compatibility.
 export { default as WSLTerminalView } from "./components/WSLTerminalView";

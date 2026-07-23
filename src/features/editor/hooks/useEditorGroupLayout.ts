@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useEditorStore } from '@/shared/store';
+import { closeAllEditorTabs, closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
 
@@ -114,7 +115,7 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
       if (!projectTabs) return;
       for (const tab of projectTabs.tabs) {
         if (tab.id !== keepTabId) {
-          store.closeTab(tabKey, tab.id);
+          closeEditorTab(tabKey, tab.id);
         }
       }
     },
@@ -122,7 +123,7 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
   );
 
   const closeAllTabs = useCallback(() => {
-    useEditorStore.getState().clearProjectTabs(tabKey);
+    closeAllEditorTabs(tabKey);
   }, [tabKey]);
 
   return {

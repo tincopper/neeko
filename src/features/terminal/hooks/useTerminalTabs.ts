@@ -1,7 +1,10 @@
 import { useCallback } from "react";
 import { useShallow } from "zustand/shallow";
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
-import { destroyTerminalCachesByPrefix } from "../components/terminalCache";
+import {
+  closeAllEditorTabs,
+  closeEditorTab,
+} from "../components/terminalTabCleanup";
 import { useEditorStore } from '@/shared/store';
 
 function generateTabId(): string {
@@ -90,12 +93,12 @@ export function useTerminalTabs() {
           });
         }
 
-        // 如果当前 active tab �?terminal tab，返回它
+        // 如果当前 active tab 是terminal tab，返回它
         const activeTerminal = terminalTabs.find((t) => t.id === existing?.activeTabId);
         if (activeTerminal) return activeTerminal.id;
 
-        // 如果 active tab 不是 terminal tab，不要强制激�?terminal tab
-        // 保留用户当前�?tab 选择（例�?file/diff tab�?
+        // 如果 active tab 不是 terminal tab，不要强制激活terminal tab
+        // 保留用户当前的tab 选择（例如file/diff tab）
         return terminalTabs[0].id;
       }
 
@@ -157,9 +160,8 @@ export function useTerminalTabs() {
 
   const closeTab = useCallback(
     (projectId: string, tabId: string): void => {
-      // Clean up terminal cache before closing
-      destroyTerminalCachesByPrefix(`${projectId}:${tabId}`);
-      useEditorStore.getState().closeTab(projectId, tabId);
+      // Recycle terminal PTY caches then remove the editor tab.
+      closeEditorTab(projectId, tabId);
     },
     []
   );
@@ -205,17 +207,8 @@ export function useTerminalTabs() {
 
   const clearProjectTabs = useCallback(
     (projectId: string): void => {
-      // Clean up all terminal caches for this project
-      const state = useEditorStore.getState();
-      const existing = state.tabs[projectId];
-      if (existing) {
-        for (const tab of existing.tabs) {
-          if (isTerminalTab(tab)) {
-            destroyTerminalCachesByPrefix(`${projectId}:${tab.id}`);
-          }
-        }
-      }
-      state.clearProjectTabs(projectId);
+      // Recycle all terminal PTY caches for this tab space then clear tabs.
+      closeAllEditorTabs(projectId);
     },
     []
   );
