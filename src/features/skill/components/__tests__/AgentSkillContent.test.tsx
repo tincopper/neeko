@@ -130,7 +130,8 @@ describe('AgentSkillContent', () => {
     await waitFor(() => {
       expect(screen.getByText('Synced')).toBeInTheDocument();
     });
-    expect(screen.getByText('Local')).toBeInTheDocument();
+    // Local badge + source filter button both render "Local"
+    expect(screen.getAllByText('Local').length).toBeGreaterThanOrEqual(2);
   });
 
   it('agent 没有 skills 时显示友好空状态与 Add Skill', async () => {

@@ -2,12 +2,15 @@ import {
   Bot,
   CheckSquare,
   Globe2,
+  HardDrive,
+  GitBranch,
   LayoutGrid,
   List,
   Loader2,
   Plus,
   RefreshCw,
   Search,
+  Store,
   Terminal,
   Trash2,
   X,
@@ -46,6 +49,17 @@ function homeTildePath(path: string | null): string {
   }
 }
 
+const SKILL_SOURCES: Array<{
+  value: 'all' | 'local' | 'git' | 'skillssh';
+  label: string;
+  icon?: React.ReactNode;
+}> = [
+  { value: 'all', label: 'All' },
+  { value: 'local', label: 'Local', icon: <HardDrive className="h-3 w-3" /> },
+  { value: 'git', label: 'Git', icon: <GitBranch className="h-3 w-3" /> },
+  { value: 'skillssh', label: 'skills.sh', icon: <Store className="h-3 w-3" /> },
+];
+
 const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDialog }) => {
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const skills = useSkillStore((s) => s.skills);
@@ -58,6 +72,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
   const [importing, setImporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'git' | 'skillssh'>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [pendingRemove, setPendingRemove] = useState<AgentDiskSkill | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -136,15 +151,32 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
     [activeGroup],
   );
 
+  const getSkillSourceType = useCallback(
+    (diskSkill: AgentDiskSkill): 'local' | 'git' | 'skillssh' => {
+      if (diskSkill.managed && diskSkill.skill_id) {
+        const libSkill = skills.find((s) => s.id === diskSkill.skill_id);
+        if (libSkill) return libSkill.source_type as 'local' | 'git' | 'skillssh';
+      }
+      return 'local';
+    },
+    [skills],
+  );
+
   const filteredSkills = useMemo(() => {
     if (!activeGroup) return [];
+    let list = activeGroup.skills;
+    if (sourceFilter !== 'all') {
+      list = list.filter((s) => getSkillSourceType(s) === sourceFilter);
+    }
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return activeGroup.skills;
-    return activeGroup.skills.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) || (s.description?.toLowerCase().includes(q) ?? false),
-    );
-  }, [activeGroup, searchQuery]);
+    if (q) {
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) || (s.description?.toLowerCase().includes(q) ?? false),
+      );
+    }
+    return list;
+  }, [activeGroup, searchQuery, sourceFilter]);
 
   const handleImportMany = useCallback(
     async (skillIds: string[]) => {
@@ -359,6 +391,29 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
             {total} / {managedCount} managed / {managedCount} synced
           </span>
         </div>
+      </div>
+
+      {/* Source filter bar */}
+      <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border shrink-0">
+        <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-text-muted shrink-0 mr-1">
+          Source
+        </span>
+        {SKILL_SOURCES.map(({ value, label, icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setSourceFilter(value)}
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors',
+              sourceFilter === value
+                ? 'bg-bg-selected text-text-primary'
+                : 'text-text-secondary hover:bg-bg-hover',
+            )}
+          >
+            {icon}
+            <span>{label}</span>
+          </button>
+        ))}
       </div>
 
       {/* Toolbar: search + batch + actions */}

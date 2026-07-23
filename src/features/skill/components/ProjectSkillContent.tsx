@@ -2,6 +2,8 @@ import {
   Ban,
   CheckSquare,
   Folder,
+  GitBranch,
+  HardDrive,
   Layers,
   LayoutGrid,
   List,
@@ -10,6 +12,7 @@ import {
   Power,
   RefreshCw,
   Search,
+  Store,
   Trash2,
   X,
 } from 'lucide-react';
@@ -49,6 +52,18 @@ interface ProjectSkillContentProps {
 
 type ViewMode = 'grid' | 'list';
 type StatusFilter = 'all' | 'enabled' | 'disabled';
+type SourceFilter = 'all' | 'local' | 'git' | 'skillssh';
+
+const SKILL_SOURCES: Array<{
+  value: SourceFilter;
+  label: string;
+  icon?: React.ReactNode;
+}> = [
+  { value: 'all', label: 'All' },
+  { value: 'local', label: 'Local', icon: <HardDrive className="h-3 w-3" /> },
+  { value: 'git', label: 'Git', icon: <GitBranch className="h-3 w-3" /> },
+  { value: 'skillssh', label: 'skills.sh', icon: <Store className="h-3 w-3" /> },
+];
 
 /** Built-in agents with tool-adapter project-relative skill dirs. */
 const PROJECT_CAPABLE_AGENT_KEYS = new Set([
@@ -103,6 +118,8 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  /** Library source type filter (local includes `import`; unmanaged → local). */
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   /** `'all'` or a specific agent id */
   const [agentFilter, setAgentFilter] = useState<string>('all');
   /** `'all'` or a bound tag-group id */
@@ -210,6 +227,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
   useEffect(() => {
     setSearchQuery('');
     setStatusFilter('all');
+    setSourceFilter('all');
     setAgentFilter('all');
     setTagGroupFilter('all');
     setGroupMembership(new Map());
@@ -412,6 +430,23 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
     return agents.filter((a) => ids.has(a.id));
   }, [diskSkills, agents, activeProject?.selected_agents]);
 
+  /** Resolve disk skill → source chip value via library (import folds into local). */
+  const getSkillSourceType = useCallback(
+    (diskSkill: ProjectDiskSkill): Exclude<SourceFilter, 'all'> => {
+      if (diskSkill.managed && diskSkill.skill_id) {
+        const libSkill = librarySkills.find((s) => s.id === diskSkill.skill_id);
+        if (libSkill) {
+          if (libSkill.source_type === 'git') return 'git';
+          if (libSkill.source_type === 'skillssh') return 'skillssh';
+          // local | import | unknown → Local
+          return 'local';
+        }
+      }
+      return 'local';
+    },
+    [librarySkills],
+  );
+
   const filteredSkills = useMemo(() => {
     let list = diskSkills;
     if (statusFilter === 'enabled') list = list.filter((s) => s.enabled);
@@ -431,6 +466,9 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
         list = [];
       }
     }
+    if (sourceFilter !== 'all') {
+      list = list.filter((s) => getSkillSourceType(s) === sourceFilter);
+    }
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -439,7 +477,16 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       );
     }
     return list;
-  }, [diskSkills, statusFilter, agentFilter, tagGroupFilter, groupMembership, searchQuery]);
+  }, [
+    diskSkills,
+    statusFilter,
+    agentFilter,
+    tagGroupFilter,
+    groupMembership,
+    sourceFilter,
+    getSkillSourceType,
+    searchQuery,
+  ]);
 
   const allFilteredSelected = useMemo(() => {
     if (filteredSkills.length === 0) return false;
@@ -816,6 +863,35 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
         onSelectGroup={(id) => setTagGroupFilter(id ?? 'all')}
         onManage={() => setBindOpen(true)}
       />
+
+      {/* Source filter bar — same chips as Agents */}
+      <div
+        className="flex items-center gap-1 px-4 py-1.5 border-b border-border shrink-0"
+        data-testid="project-skill-source-filter"
+        role="group"
+        aria-label="Filter by source"
+      >
+        <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-text-muted shrink-0 mr-1">
+          Source
+        </span>
+        {SKILL_SOURCES.map(({ value, label, icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setSourceFilter(value)}
+            aria-pressed={sourceFilter === value}
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors',
+              sourceFilter === value
+                ? 'bg-bg-selected text-text-primary'
+                : 'text-text-secondary hover:bg-bg-hover',
+            )}
+          >
+            {icon}
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Toolbar */}
       <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-border flex-wrap">

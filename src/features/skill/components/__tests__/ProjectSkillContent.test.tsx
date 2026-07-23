@@ -580,6 +580,148 @@ describe('ProjectSkillContent', () => {
     });
   });
 
+  it('filters disk skills by source type (import folds into local)', async () => {
+    const user = userEvent.setup();
+    useSkillStore.setState({
+      ...useSkillStore.getState(),
+      skills: [
+        createManagedSkill({ id: 's-local', name: 'local-skill', source_type: 'local' }),
+        createManagedSkill({ id: 's-import', name: 'import-skill', source_type: 'import' }),
+        createManagedSkill({ id: 's-git', name: 'git-skill', source_type: 'git' }),
+        createManagedSkill({ id: 's-ssh', name: 'market-skill', source_type: 'skillssh' }),
+      ],
+    });
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_agents') {
+        return [
+          {
+            id: 'claude-code',
+            name: 'Claude Code',
+            icon: 'claude-code.png',
+            enabled: true,
+            command: 'claude',
+            skill_path: '.claude/skills',
+          },
+        ];
+      }
+      if (cmd === 'get_project_skills_cmd') {
+        return [
+          {
+            name: 'local-skill',
+            description: 'Local managed',
+            path: '/p/.claude/skills/local-skill',
+            managed: true,
+            skill_id: 's-local',
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/local-skill' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+          {
+            name: 'import-skill',
+            description: 'Imported',
+            path: '/p/.claude/skills/import-skill',
+            managed: true,
+            skill_id: 's-import',
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/import-skill' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+          {
+            name: 'git-skill',
+            description: 'From git',
+            path: '/p/.claude/skills/git-skill',
+            managed: true,
+            skill_id: 's-git',
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/git-skill' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+          {
+            name: 'market-skill',
+            description: 'From skills.sh',
+            path: '/p/.claude/skills/market-skill',
+            managed: true,
+            skill_id: 's-ssh',
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/market-skill' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+          {
+            name: 'unmanaged',
+            description: 'Disk only',
+            path: '/p/.claude/skills/unmanaged',
+            managed: false,
+            skill_id: null,
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/unmanaged' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+        ];
+      }
+      if (cmd === 'get_project_tag_groups_cmd') return [];
+      if (cmd === 'get_tag_groups') return [];
+      if (cmd === 'get_managed_skills') {
+        return useSkillStore.getState().skills;
+      }
+      return undefined;
+    });
+
+    render(<ProjectSkillContent setDialog={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-skill-card-local-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-git-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-unmanaged')).toBeInTheDocument();
+    });
+
+    const sourceBar = screen.getByTestId('project-skill-source-filter');
+    expect(sourceBar).toBeInTheDocument();
+
+    // Local: local + import + unmanaged
+    await user.click(within(sourceBar).getByRole('button', { name: /Local/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('project-skill-card-local-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-import-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-unmanaged')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-skill-card-git-skill')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('project-skill-card-market-skill')).not.toBeInTheDocument();
+    });
+
+    // Git
+    await user.click(within(sourceBar).getByRole('button', { name: /^Git$/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('project-skill-card-git-skill')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-skill-card-local-skill')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('project-skill-card-unmanaged')).not.toBeInTheDocument();
+    });
+
+    // skills.sh
+    await user.click(within(sourceBar).getByRole('button', { name: /skills\.sh/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('project-skill-card-market-skill')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-skill-card-git-skill')).not.toBeInTheDocument();
+    });
+
+    // All restores
+    await user.click(within(sourceBar).getByRole('button', { name: /^All$/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('project-skill-card-local-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-git-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-market-skill')).toBeInTheDocument();
+      expect(screen.getByTestId('project-skill-card-unmanaged')).toBeInTheDocument();
+    });
+  });
+
   it('shows project target agent chips and tag groups on skill cards', async () => {
     mockGetProjectTagGroups.mockResolvedValue([
       createTagGroup({ id: 'tg-1', name: 'Backend', skill_count: 1 }),
