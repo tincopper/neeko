@@ -1,6 +1,8 @@
 /**
- * Bottom Console panel for task run output (not editor tabs).
- * Layout chrome aligned with DebugPanel.
+ * Bottom Console panel — read-only task output viewer.
+ *
+ * Does not own process lifecycle. Hide/show only toggles visibility; runs and
+ * their output buffers live in the task store until the tab is closed.
  */
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Square, Terminal, X } from "@/shared/components/icons";
@@ -9,7 +11,7 @@ import { buildFontFamily } from "@/shared/utils/terminal";
 import { useAppContext } from "@/shared/contexts/AppContext";
 
 import { useTaskStore } from "../store";
-import TaskConsoleTerminal from "./TaskConsoleTerminal";
+import TaskConsoleOutput from "./TaskConsoleOutput";
 
 const PANEL_H_KEY = "neeko.task.consoleHeight";
 const PANEL_H_DEFAULT = 260;
@@ -85,7 +87,7 @@ function TaskConsolePanel() {
   const active = sessions.find((s) => s.id === activeConsoleId) ?? sessions[0] ?? null;
 
   return (
-    <div className="shrink-0 mx-11 px-px pb-0.5">
+    <div className="shrink-0 mx-11 px-px pb-0.5" data-testid="task-console-panel">
       <div
         className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
         style={{ height: panelHeight }}
@@ -102,7 +104,7 @@ function TaskConsolePanel() {
           <div className="absolute left-1/2 top-1 -translate-x-1/2 w-8 h-[3px] rounded-full bg-border/80 group-hover:bg-accent-blue/70 group-active:bg-accent-blue transition-colors" />
         </div>
 
-        {/* Header + session tabs */}
+        {/* Header + run tabs */}
         <div className="flex items-center border-b border-border shrink-0 bg-bg-secondary h-8 rounded-t-lg gap-1 pr-1">
           <div className="inline-flex items-center gap-1.5 shrink-0 px-2.5">
             <Terminal size={13} className="text-text-secondary shrink-0" />
@@ -132,6 +134,7 @@ function TaskConsolePanel() {
                     )}
                     onClick={() => setActiveConsoleId(s.id)}
                     title={`${s.name}\n${s.command}`}
+                    data-testid={`task-console-tab-${s.id}`}
                   >
                     <span
                       className={cn(
@@ -149,7 +152,7 @@ function TaskConsolePanel() {
                     <button
                       type="button"
                       className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-text-muted hover:text-text-primary"
-                      title="Close console tab"
+                      title="Close output tab"
                       onClick={(e) => {
                         e.stopPropagation();
                         closeConsoleSession(s.id);
@@ -180,12 +183,13 @@ function TaskConsolePanel() {
             className="shrink-0 p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover cursor-pointer"
             title="Hide console"
             onClick={() => setConsolePanelOpen(false)}
+            data-testid="task-console-hide"
           >
             <X size={14} />
           </button>
         </div>
 
-        {/* Body: keep all session terminals mounted for output retention */}
+        {/* Body: one output view per run; inactive hidden via display */}
         <div
           className="flex-1 flex flex-col min-h-0"
           style={{ backgroundColor: "var(--terminal-bg, var(--bg-secondary))" }}
@@ -204,9 +208,9 @@ function TaskConsolePanel() {
               </div>
             ) : (
               sessions.map((s) => (
-                <TaskConsoleTerminal
-                  key={`${s.id}:${s.rebuildKey}`}
-                  session={s}
+                <TaskConsoleOutput
+                  key={s.id}
+                  run={s}
                   active={s.id === (active?.id ?? "")}
                 />
               ))

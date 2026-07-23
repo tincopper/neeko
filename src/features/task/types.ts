@@ -17,8 +17,15 @@ export interface DiscoveredTask {
   priority: number;
 }
 
-/** One task run shown as a tab in the bottom Console panel. */
-export interface TaskConsoleSession {
+export type TaskRunStatus = "running" | "idle" | "failed";
+
+/**
+ * One task *run* shown as a tab in the bottom Console panel.
+ *
+ * Lifecycle is owned by the task domain (process + output buffer), not by
+ * whether the Console panel is mounted. Hide/show only toggles visibility.
+ */
+export interface TaskRun {
   id: string;
   projectId: string;
   projectPath: string;
@@ -26,13 +33,20 @@ export interface TaskConsoleSession {
   /** Tab label — task name. */
   name: string;
   command: string;
-  status: "running" | "idle" | "failed";
-  ptySessionId: string | null;
-  /** Bump to force terminal remount / re-run. */
-  rebuildKey: number;
+  status: TaskRunStatus;
+  /** Backend process/PTY id while running; null after exit or stop. */
+  processId: string | null;
+  /** Accumulated ANSI/plain output for the output console. */
+  output: string;
+  exitCode: number | null;
+  startedAt: number;
+  endedAt: number | null;
 }
 
-/** @deprecated Prefer TaskConsoleSession — kept for any residual imports. */
+/** @deprecated Use TaskRun — Console is an output view over runs, not a PTY host. */
+export type TaskConsoleSession = TaskRun;
+
+/** @deprecated Prefer TaskRun — kept for residual imports. */
 export interface TaskState {
   status: "idle" | "running";
   activeConfigId: string | null;

@@ -112,11 +112,9 @@ export async function createTerminalForProject(
     log(`Session created: ${sid}, PID: ${session.pid}`);
     term.write(`\x1b[32m[Terminal] Connected (PID: ${session.pid})\x1b[0m\r\n\r\n`);
 
-    // Task console: taskConfigId is the console session id (not editor tab).
-    if (taskConfigId) {
-      const { useTaskStore } = await import('../../task/store');
-      useTaskStore.getState().setPtySessionId(taskConfigId, sid);
-    }
+    // taskConfigId retained for editor-tab task/resume terminals only;
+    // bottom Task Console no longer mounts through this factory.
+    void taskConfigId;
 
     const unlistenOutput = await listen<number[]>(`terminal-output-${sid}`, (event) => {
       const bytes = new Uint8Array(event.payload);
@@ -130,25 +128,13 @@ export async function createTerminalForProject(
     const unlistenClosed = await listen<{ exit_code: number }>(
       `terminal-closed-${sid}`,
       async (event) => {
-        const exitCode = event.payload?.exit_code ?? -1;
-        log(`Session ${sid} closed by backend (exit_code=${exitCode})`);
+        log(
+          `Session ${sid} closed by backend (exit_code=${event.payload?.exit_code ?? -1})`,
+        );
         unlistenClosed();
 
-        if (taskConfigId) {
-          // Task console terminal: process exited — keep output, mark session idle/failed.
-          const { useTaskStore } = await import('../../task/store');
-          useTaskStore.getState().markConsoleExit(taskConfigId, exitCode);
-
-          const exitLabel =
-            exitCode === 0
-              ? '\r\n\x1b[90m[Process exited with code 0]\x1b[0m\r\n'
-              : `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`;
-          term.write(exitLabel);
-          cache.sessionId = null;
-          return;
-        }
-
-        // Normal (non-task) terminal: existing behavior �?destroy and rebuild
+        // Interactive terminal: destroy and rebuild so the shell can be reused.
+        // (Task Console uses taskRunner + TaskConsoleOutput — not this path.)
         const wasExecuted = executedAgentKeys.has(cacheKey);
         destroyTerminalCache(cacheKey);
         if (wasExecuted) {
