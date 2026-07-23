@@ -1,4 +1,13 @@
-import { Check, Eye, HardDrive, Link2, MoreHorizontal, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Eye,
+  HardDrive,
+  Library,
+  Link2,
+  MoreHorizontal,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 import { getSkillDocument } from '@/features/skill/api/skillApi';
@@ -38,6 +47,12 @@ interface AgentSkillCardProps {
   onView?: () => void;
   onRemove?: () => void;
   removing?: boolean;
+  /** Re-deploy managed skill from library to this agent. */
+  onResync?: () => void;
+  resyncing?: boolean;
+  /** Import unmanaged disk skill into the central library. */
+  onImportToLibrary?: () => void;
+  importingToLibrary?: boolean;
 }
 
 /**
@@ -56,8 +71,13 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
     onView,
     onRemove,
     removing,
+    onResync,
+    resyncing,
+    onImportToLibrary,
+    importingToLibrary,
   }) => {
     const managed = skill.managed;
+    const libraryDisabled = Boolean(managed && librarySkill && !librarySkill.enabled);
     const propDesc = skill.description?.trim() || librarySkill?.description?.trim() || '';
     const [resolvedDesc, setResolvedDesc] = useState(propDesc);
     const chips = (librarySkill?.tags ?? []).slice(0, 4);
@@ -109,6 +129,7 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
           'bg-bg-primary transition-colors duration-150',
           'border',
           managed ? 'border-border' : 'border-border border-dashed',
+          libraryDisabled && 'opacity-90',
           (isSelected || checked) && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
           checked && 'bg-accent-blue/[0.04]',
           'hover:bg-bg-hover/40',
@@ -187,7 +208,32 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
                     View
                   </DropdownMenuItem>
                 ) : null}
-                {onView && onRemove ? (
+                {managed && onResync ? (
+                  <DropdownMenuItem
+                    className={skillMenuItemClass()}
+                    disabled={resyncing || libraryDisabled}
+                    onSelect={() => onResync()}
+                    title={
+                      libraryDisabled
+                        ? 'Enable this skill in the Library first'
+                        : 'Re-install from library to this agent'
+                    }
+                  >
+                    <RefreshCw className={cn(resyncing && 'animate-spin')} />
+                    Re-sync from library
+                  </DropdownMenuItem>
+                ) : null}
+                {!managed && onImportToLibrary ? (
+                  <DropdownMenuItem
+                    className={skillMenuItemClass()}
+                    disabled={importingToLibrary}
+                    onSelect={() => onImportToLibrary()}
+                  >
+                    <Library />
+                    Import to library
+                  </DropdownMenuItem>
+                ) : null}
+                {(onView || onResync || onImportToLibrary) && onRemove ? (
                   <DropdownMenuSeparator className={skillMenuSeparatorClass()} />
                 ) : null}
                 {onRemove ? (
@@ -234,14 +280,14 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
         <div className="flex items-center gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
           <div className="flex items-center gap-1 min-w-0 flex-1 text-text-muted">
             {managed ? (
-              <span className="inline-flex items-center gap-1 min-w-0">
+              <span className="inline-flex items-center gap-1 min-w-0" title="Linked to library">
                 <Link2 className="h-3 w-3 shrink-0 opacity-70" />
-                <span className="truncate">library</span>
+                <span className="truncate">In library</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 min-w-0">
+              <span className="inline-flex items-center gap-1 min-w-0" title="Only on this agent">
                 <HardDrive className="h-3 w-3 shrink-0 opacity-70" />
-                <span className="truncate">local</span>
+                <span className="truncate">Local</span>
               </span>
             )}
           </div>
@@ -252,19 +298,31 @@ const AgentSkillCard: React.FC<AgentSkillCardProps> = React.memo(
                 src={agentIconSrc}
                 alt={agentName ?? ''}
                 title={agentName}
-                className="w-4 h-4 rounded-[3px] opacity-100"
+                className={cn('w-4 h-4 rounded-[3px]', libraryDisabled && 'opacity-40 grayscale')}
               />
             </div>
           ) : null}
 
-          <span
-            className={cn(
-              'shrink-0 font-semibold',
-              managed ? 'text-accent-blue' : 'text-text-muted',
+          <div className="flex items-center gap-1 shrink-0">
+            {libraryDisabled ? (
+              <span
+                className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-medium border border-border bg-bg-hover text-text-muted"
+                data-testid={`agent-skill-library-disabled-${skill.name}`}
+                title="Disabled in Library — future re-sync is blocked until re-enabled"
+              >
+                Library disabled
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  'shrink-0 font-semibold',
+                  managed ? 'text-accent-blue' : 'text-text-muted',
+                )}
+              >
+                {managed ? 'Synced' : 'Local'}
+              </span>
             )}
-          >
-            {managed ? 'Synced' : 'Local'}
-          </span>
+          </div>
         </div>
       </div>
     );

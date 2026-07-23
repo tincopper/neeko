@@ -353,14 +353,16 @@ impl SkillRepository {
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// Count the number of skills in a tag group.
+    /// Count **enabled** skills in a tag group (disabled library skills excluded).
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM tag_group_skills WHERE tag_group_id = ?1",
+            "SELECT COUNT(*) FROM tag_group_skills tgs
+             INNER JOIN skills s ON s.id = tgs.skill_id
+             WHERE tgs.tag_group_id = ?1 AND s.enabled = 1",
             params![tag_group_id],
             |row| row.get(0),
         )?;

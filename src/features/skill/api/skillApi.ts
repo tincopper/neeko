@@ -94,6 +94,14 @@ export function setSkillTags(skillId: string, tags: string[]): Promise<void> {
   return invoke<void>('set_skill_tags_cmd', { skillId, tags });
 }
 
+/** Toggle library skill enable (global sync/deploy gate; does not uninstall existing installs). */
+export function setManagedSkillEnabled(
+  skillId: string,
+  enabled: boolean,
+): Promise<ManagedSkillDto> {
+  return invoke<ManagedSkillDto>('set_managed_skill_enabled_cmd', { skillId, enabled });
+}
+
 // ─── Tool Toggle ─────────────────────────────────────────────────────────────
 
 export function setSkillToolToggle(

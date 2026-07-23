@@ -53,8 +53,8 @@ interface SkillCardProps {
   onTagClick?: (tag: string) => void;
   /** Whether to show agent association badges/icons (defaults to true; false for Library to keep agnostic). */
   showAgentAssociations?: boolean;
-  /** Toggle enable/disable for the skill (used in Library menu). */
-  onToggleEnabled?: (enabled: boolean) => void;
+  /** Toggle library enable/disable (blocks future sync; does not uninstall). */
+  onToggleEnabled?: (enabled: boolean) => void | Promise<void>;
 }
 
 function SourceLabel({ source }: { source: string }) {
@@ -280,7 +280,9 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                       disabled={toggling}
                       onSelect={() => {
                         setToggling(true);
-                        onToggleEnabled?.(!enabled).finally(() => setToggling(false));
+                        void Promise.resolve(onToggleEnabled?.(!enabled)).finally(() =>
+                          setToggling(false),
+                        );
                       }}
                     >
                       {enabled ? <PowerOff /> : <Power />}
@@ -392,14 +394,42 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
               })}
           </div>
 
-          <span
-            className={cn(
-              'shrink-0 font-semibold',
-              enabled ? 'text-accent-blue' : 'text-text-muted',
-            )}
-          >
-            {enabled ? 'Enabled' : 'Enable'}
-          </span>
+          {onToggleEnabled ? (
+            <button
+              type="button"
+              disabled={toggling}
+              title={
+                enabled
+                  ? 'Disable skill (won’t sync until re-enabled; existing installs kept)'
+                  : 'Enable skill for future sync/deploy'
+              }
+              data-testid={`skill-enable-${skill.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setToggling(true);
+                void Promise.resolve(onToggleEnabled(!enabled)).finally(() => setToggling(false));
+              }}
+              className={cn(
+                'shrink-0 inline-flex items-center h-6 px-2 rounded-md text-[11px] font-semibold border transition-colors',
+                enabled
+                  ? 'text-accent-blue border-accent-blue/30 bg-accent-blue/10 hover:bg-accent-blue/20'
+                  : 'text-text-muted border-border bg-bg-hover hover:bg-bg-selected hover:text-text-secondary',
+                toggling && 'opacity-60 cursor-default',
+                !toggling && 'cursor-pointer',
+              )}
+            >
+              {enabled ? 'Enabled' : 'Disabled'}
+            </button>
+          ) : (
+            <span
+              className={cn(
+                'shrink-0 font-semibold',
+                enabled ? 'text-accent-blue' : 'text-text-muted',
+              )}
+            >
+              {enabled ? 'Enabled' : 'Disabled'}
+            </span>
+          )}
         </div>
       </article>
     );

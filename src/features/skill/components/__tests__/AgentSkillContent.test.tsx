@@ -130,8 +130,22 @@ describe('AgentSkillContent', () => {
     await waitFor(() => {
       expect(screen.getByText('Synced')).toBeInTheDocument();
     });
-    // Local badge + source filter button both render "Local"
+    // managed shows "In library"; local badge + source filter both render "Local"
+    expect(screen.getByText('In library')).toBeInTheDocument();
     expect(screen.getAllByText('Local').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows Library disabled badge when managed skill is disabled in library', async () => {
+    useSkillStore.setState({
+      activeAgentId: 'opencode',
+      skills: [createManagedSkill({ id: 's1', name: 'git-helper', enabled: false })],
+    });
+    render(<AgentSkillContent setDialog={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-skill-library-disabled-git-helper')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Synced')).not.toBeInTheDocument();
   });
 
   it('agent 没有 skills 时显示友好空状态与 Add Skill', async () => {

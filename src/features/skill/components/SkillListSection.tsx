@@ -59,6 +59,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
       onAddToTagGroup,
       onCheckUpdate,
       onUpdateSkill,
+      onToggleEnabled,
     } = actions;
 
     if (loading) {
@@ -111,6 +112,11 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 }
                 onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
                 onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}
+                onToggleEnabled={
+                  onToggleEnabled
+                    ? (enabled) => Promise.resolve(onToggleEnabled(s, enabled))
+                    : undefined
+                }
                 onAction={(action) => {
                   if (action === 'delete') onDeleteSkill(s.id);
                   else if (action === 'edit') onEditSkill(s);

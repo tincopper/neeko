@@ -37,6 +37,7 @@ import {
   getAgentSkills as getAgentSkillsApi,
   checkSkillUpdate as checkSkillUpdateApi,
   updateSkill as updateSkillApi,
+  setManagedSkillEnabled as setManagedSkillEnabledApi,
 } from './api/skillApi';
 
 // ─── 常量 ────────────────────────────────────────────────────────────────────
@@ -126,6 +127,8 @@ interface SkillStoreActions {
     skillId: string,
   ) => Promise<{ status: string; remote_revision: string | null }>;
   updateSkillFromSource: (skillId: string) => Promise<void>;
+  /** Library-level enable gate for future sync/deploy (does not remove installs). */
+  setSkillEnabled: (skillId: string, enabled: boolean) => Promise<void>;
 
   // 文档编辑
   updateSkillDocument: (skillId: string, name: string, content: string) => Promise<void>;
@@ -462,6 +465,17 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     set((state) => ({
       skills: state.skills.map((s) => (s.id === skillId ? { ...s, ...updated } : s)),
     }));
+  },
+
+  setSkillEnabled: async (skillId: string, enabled: boolean) => {
+    const updated = await setManagedSkillEnabledApi(skillId, enabled);
+    set((state) => ({
+      skills: state.skills.map((s) => (s.id === skillId ? { ...s, ...updated } : s)),
+    }));
+    // Tag-group skill_count only includes enabled skills — refresh badges.
+    await get().refreshTagGroups().catch((e) => {
+      console.error('[skillStore] refreshTagGroups after setSkillEnabled:', e);
+    });
   },
 
   // ── 文档编辑 ──

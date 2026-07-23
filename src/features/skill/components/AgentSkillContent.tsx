@@ -21,7 +21,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 // eslint-disable-next-line import/no-restricted-paths -- notification is the shared toast bus
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useNotificationStore } from '@/features/notification/notificationStore';
-import { importSkillToAgent, removeSkillFromAgent } from '@/features/skill/api/skillApi';
+import {
+  importDiscoveredSkill,
+  importSkillToAgent,
+  removeSkillFromAgent,
+} from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
@@ -65,6 +69,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
   const skills = useSkillStore((s) => s.skills);
   const groups = useSkillStore((s) => s.agentSkillGroups);
   const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
+  const refreshSkills = useSkillStore((s) => s.refreshSkills);
   const toast = useNotificationStore((s) => s.addNotification);
 
   const [loading, setLoading] = useState(true);
@@ -82,6 +87,8 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [bulkRemoving, setBulkRemoving] = useState(false);
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [resyncingPath, setResyncingPath] = useState<string | null>(null);
+  const [importingPath, setImportingPath] = useState<string | null>(null);
 
   const reload = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -142,7 +149,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
   );
 
   const importableSkills = useMemo(
-    () => skills.filter((s) => !existingNames.has(s.name)),
+    () => skills.filter((s) => s.enabled && !existingNames.has(s.name)),
     [skills, existingNames],
   );
 
@@ -329,6 +336,67 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
       setDialog({ type: 'view-disk', skill: diskSkill });
     },
     [skills, setDialog],
+  );
+
+  /** Re-deploy managed skill from library central path onto this agent. */
+  const handleResync = useCallback(
+    async (diskSkill: AgentDiskSkill) => {
+      if (!activeAgentId || !diskSkill.skill_id) return;
+      const lib = skills.find((s) => s.id === diskSkill.skill_id);
+      if (lib && !lib.enabled) {
+        toast({
+          type: 'error',
+          title: 'Library disabled',
+          message: `"${diskSkill.name}" is disabled in the Library — enable it before re-sync`,
+        });
+        return;
+      }
+      setResyncingPath(diskSkill.path);
+      try {
+        await importSkillToAgent(diskSkill.skill_id, activeAgentId);
+        toast({
+          type: 'success',
+          title: 'Re-synced',
+          message: `"${diskSkill.name}" re-installed from library`,
+        });
+        await reload({ silent: true });
+      } catch (e) {
+        toast({ type: 'error', title: 'Re-sync failed', message: String(e) });
+      } finally {
+        setResyncingPath(null);
+      }
+    },
+    [activeAgentId, skills, toast, reload],
+  );
+
+  /** Copy an unmanaged agent skill into the central library and re-link this agent. */
+  const handleImportToLibrary = useCallback(
+    async (diskSkill: AgentDiskSkill) => {
+      if (diskSkill.managed) return;
+      setImportingPath(diskSkill.path);
+      try {
+        const dto = await importDiscoveredSkill(diskSkill.path, diskSkill.name);
+        if (activeAgentId) {
+          try {
+            await importSkillToAgent(dto.id, activeAgentId);
+          } catch {
+            /* library import succeeded; agent re-link optional */
+          }
+        }
+        await refreshSkills();
+        await reload({ silent: true });
+        toast({
+          type: 'success',
+          title: 'Imported',
+          message: `"${diskSkill.name}" added to Library`,
+        });
+      } catch (e) {
+        toast({ type: 'error', title: 'Import failed', message: String(e) });
+      } finally {
+        setImportingPath(null);
+      }
+    },
+    [activeAgentId, refreshSkills, reload, toast],
   );
 
   if (loading) {
@@ -658,6 +726,18 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                     onView={() => openViewSkill(diskSkill)}
                     onRemove={() => setPendingRemove(diskSkill)}
                     removing={removing && pendingRemove?.path === diskSkill.path}
+                    onResync={
+                      diskSkill.managed && diskSkill.skill_id
+                        ? () => void handleResync(diskSkill)
+                        : undefined
+                    }
+                    resyncing={resyncingPath === diskSkill.path}
+                    onImportToLibrary={
+                      !diskSkill.managed
+                        ? () => void handleImportToLibrary(diskSkill)
+                        : undefined
+                    }
+                    importingToLibrary={importingPath === diskSkill.path}
                   />
                 </div>
               );
@@ -670,6 +750,11 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
           >
             {filteredSkills.map((diskSkill) => {
               const checked = selectedPaths.has(diskSkill.path);
+              const lib =
+                diskSkill.skill_id != null
+                  ? (skills.find((s) => s.id === diskSkill.skill_id) ?? null)
+                  : null;
+              const libraryDisabled = Boolean(diskSkill.managed && lib && !lib.enabled);
               return (
                 <li
                   key={diskSkill.path}
@@ -702,7 +787,11 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                       <span className="text-sm font-medium text-text-primary truncate">
                         {diskSkill.name}
                       </span>
-                      {diskSkill.managed ? (
+                      {libraryDisabled ? (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-hover text-text-muted border border-border font-medium">
+                          Library disabled
+                        </span>
+                      ) : diskSkill.managed ? (
                         <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-bg-selected text-text-secondary border border-border font-medium">
                           Synced
                         </span>
@@ -718,6 +807,25 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                       </p>
                     ) : null}
                   </div>
+                  {diskSkill.managed && diskSkill.skill_id ? (
+                    <button
+                      type="button"
+                      disabled={resyncingPath === diskSkill.path || libraryDisabled}
+                      onClick={() => void handleResync(diskSkill)}
+                      className="shrink-0 text-[11px] font-medium text-text-secondary hover:text-text-primary disabled:opacity-40"
+                    >
+                      Re-sync
+                    </button>
+                  ) : !diskSkill.managed ? (
+                    <button
+                      type="button"
+                      disabled={importingPath === diskSkill.path}
+                      onClick={() => void handleImportToLibrary(diskSkill)}
+                      className="shrink-0 text-[11px] font-medium text-text-secondary hover:text-text-primary disabled:opacity-40"
+                    >
+                      Import
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => openViewSkill(diskSkill)}

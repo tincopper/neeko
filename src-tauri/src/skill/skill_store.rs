@@ -506,8 +506,13 @@ mod tests {
         store.add_skill_to_tag_group("tg1", &s2.id).unwrap();
         assert_eq!(store.count_skills_for_tag_group("tg1").unwrap(), 2);
         assert_eq!(store.get_skills_for_tag_group("tg1").unwrap().len(), 2);
-        store.remove_skill_from_tag_group("tg1", &s1.id).unwrap();
+        // Disabled library skills must not contribute to the displayed count
+        let mut s2_disabled = s2.clone();
+        s2_disabled.enabled = false;
+        store.update_skill(&s2_disabled).unwrap();
         assert_eq!(store.count_skills_for_tag_group("tg1").unwrap(), 1);
+        store.remove_skill_from_tag_group("tg1", &s1.id).unwrap();
+        assert_eq!(store.count_skills_for_tag_group("tg1").unwrap(), 0);
     }
 
     #[test]

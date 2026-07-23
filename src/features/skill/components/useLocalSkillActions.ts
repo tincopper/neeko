@@ -32,6 +32,7 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
   const checkSkillUpdate = useSkillStore((s) => s.checkSkillUpdate);
   const updateSkillFromSource = useSkillStore((s) => s.updateSkillFromSource);
+  const setSkillEnabled = useSkillStore((s) => s.setSkillEnabled);
   const setSelectedSkillId = useSkillStore((s) => s.setSelectedSkillId);
 
   // ── Header callbacks ────────────────────────────────────────────────────────
@@ -151,9 +152,21 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       onUpdateSkill: (skill: ManagedSkillDto) => {
         void updateSkillFromSource(skill.id).catch(console.error);
       },
-      onToggleEnabled: (enabled: boolean) => {
-        // TODO: implement store call for toggle (placeholder — full store action needed)
-        toast({ type: 'info', title: 'Toggle', message: `Skill enable state would change to ${enabled}` });
+      onToggleEnabled: async (skill: ManagedSkillDto, enabled: boolean) => {
+        try {
+          await setSkillEnabled(skill.id, enabled);
+          toast({
+            type: 'success',
+            title: enabled ? 'Enabled' : 'Disabled',
+            message: enabled
+              ? `"${skill.name}" can be synced / installed again`
+              : `"${skill.name}" won’t sync until re-enabled (existing installs kept)`,
+          });
+        } catch (e) {
+          console.error('[useLocalSkillActions] toggle enabled failed:', e);
+          toast({ type: 'error', title: 'Toggle failed', message: String(e) });
+          throw e;
+        }
       },
     }),
     [
@@ -163,6 +176,7 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       addSkillToTagGroup,
       checkSkillUpdate,
       updateSkillFromSource,
+      setSkillEnabled,
       toast,
     ],
   );

@@ -239,6 +239,7 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::get_skills_for_tag_group_cmd,
             $crate::skill::commands::get_all_tags_cmd,
             $crate::skill::commands::set_skill_tags_cmd,
+            $crate::skill::commands::set_managed_skill_enabled_cmd,
             $crate::skill::commands::set_skill_tool_toggle_cmd,
             $crate::skill::commands::sync_tag_group_cmd,
             $crate::skill::commands::unsync_tag_group_cmd,

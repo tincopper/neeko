@@ -899,6 +899,35 @@ pub async fn set_skill_tags_cmd(
     .await
 }
 
+/// Enable or disable a managed library skill (global gate for future sync/deploy).
+///
+/// Does **not** remove existing installs under agent or project skill dirs.
+/// Disabled skills are skipped by tag-group sync and project apply.
+#[tauri::command]
+pub async fn set_managed_skill_enabled_cmd(
+    skill_id: String,
+    enabled: bool,
+    store: State<'_, Arc<SkillStore>>,
+) -> Result<ManagedSkillDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let mut skill = store
+            .get_skill_by_id(&skill_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Skill '{}' not found", skill_id)))?;
+        skill.enabled = enabled;
+        skill.updated_at = chrono::Utc::now().timestamp_millis();
+        store.update_skill(&skill).map_err(AppError::from)?;
+        let tags = store
+            .get_tags_map()
+            .map_err(AppError::from)?
+            .remove(&skill_id)
+            .unwrap_or_default();
+        Ok(skill_to_dto(skill, tags))
+    })
+    .await
+}
+
 /// Enable or disable a tool for a skill within a tag group.
 #[tauri::command]
 pub async fn set_skill_tool_toggle_cmd(
@@ -1551,6 +1580,13 @@ pub async fn import_skill_to_agent_cmd(
             .get_skill_by_id(&skill_id)
             .map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound(format!("Skill '{}' not found", skill_id)))?;
+
+        if !skill.enabled {
+            return Err(AppError::InvalidInput(format!(
+                "Skill '{}' is disabled in the library; enable it before installing to an agent",
+                skill.name
+            )));
+        }
 
         let source = std::path::PathBuf::from(&skill.central_path);
         if !source.exists() {
