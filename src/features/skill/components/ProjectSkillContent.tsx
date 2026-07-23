@@ -1272,7 +1272,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                   {(skill.agents ?? []).map((st) => {
                     const meta = agents.find((a) => a.id === st.agent_id);
                     const src = resolveAgentIconSrc(meta?.icon ?? null);
-                    const agentSelected = selectedAgentIds.has(st.agent_id);
                     return (
                       <button
                         key={st.agent_id}
@@ -1280,10 +1279,11 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                         title={meta?.name ?? st.agent_id}
                         aria-label={meta?.name ?? st.agent_id}
                         aria-pressed={st.enabled}
+                        data-enabled={st.enabled ? 'true' : 'false'}
                         onClick={() => void handleToggleAgent(skill, st.agent_id, !st.enabled)}
                         className={cn(
                           'p-0.5 rounded transition-all cursor-pointer hover:bg-bg-hover hover:ring-1 hover:ring-accent-blue/50 hover:scale-110',
-                          !agentSelected && 'opacity-25 grayscale',
+                          // Highlight from disk link + enable; do not dim for project selected_agents.
                           !st.enabled && 'opacity-35 grayscale',
                         )}
                       >

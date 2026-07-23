@@ -792,6 +792,59 @@ describe('ProjectSkillContent', () => {
     );
   });
 
+  it('keeps linked enabled agent icons highlighted when project has no selected_agents', async () => {
+    useProjectStore.setState({
+      activeProjectId: 'proj-1',
+      activeProject: { ...project, selected_agents: [] } as never,
+      projects: [{ ...project, selected_agents: [] } as never],
+    });
+    mockGetProjectTagGroups.mockResolvedValue([]);
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_agents') {
+        return [
+          {
+            id: 'claude-code',
+            name: 'Claude Code',
+            icon: 'claude-code.png',
+            enabled: true,
+            command: 'claude',
+            skill_path: '.claude/skills',
+          },
+        ];
+      }
+      if (cmd === 'get_project_skills_cmd') {
+        return [
+          {
+            name: 'code-review',
+            description: 'Strict review',
+            path: '/p/.claude/skills/code-review',
+            managed: true,
+            skill_id: 's1',
+            enabled: true,
+            agents: [
+              { agent_id: 'claude-code', enabled: true, path: '/p/.claude/skills/code-review' },
+            ],
+            agent_ids: ['claude-code'],
+          },
+        ];
+      }
+      if (cmd === 'get_project_tag_groups_cmd') return [];
+      if (cmd === 'get_managed_skills') {
+        return [createManagedSkill({ id: 's1', name: 'code-review' })];
+      }
+      return undefined;
+    });
+
+    render(<ProjectSkillContent setDialog={vi.fn()} />);
+
+    const agentBtn = await screen.findByTestId('project-skill-agent-code-review-claude-code');
+    expect(agentBtn).toHaveAttribute('data-linked', 'true');
+    expect(agentBtn).toHaveAttribute('data-enabled', 'true');
+    // Must not dim solely because selected_agents is empty
+    expect(agentBtn.className).not.toMatch(/opacity-25/);
+    expect(agentBtn.className).not.toMatch(/grayscale/);
+  });
+
   it('only shows linked agents on skill cards, not unlinked capable agents', async () => {
     mockGetProjectTagGroups.mockResolvedValue([]);
     mockImportSkillsToProject.mockResolvedValue(1);

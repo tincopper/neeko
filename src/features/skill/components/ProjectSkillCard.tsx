@@ -38,9 +38,13 @@ interface ProjectSkillCardProps {
   agents?: AgentChip[];
   /** Bound tag groups this skill belongs to (for display). */
   tagGroups?: TagGroupChip[];
-  /** Project target agent id (`selected_agent`) — highlighted when present. */
+  /** Project target agent id (`selected_agent`) — ring highlight when present. */
   targetAgentId?: string | null;
-  /** Set of agent ids that are active in the current project. */
+  /**
+   * @deprecated No longer used for icon dimming. Linked+enabled agents always
+   * render full-color; only paused (disabled) links are dimmed.
+   * Kept optional for call-site compatibility.
+   */
   selectedAgentIds?: Set<string>;
   isSelected?: boolean;
   onView?: () => void;
@@ -75,7 +79,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
     agents = [],
     tagGroups = [],
     targetAgentId = null,
-    selectedAgentIds,
+    selectedAgentIds: _selectedAgentIds,
     isSelected = false,
     onView,
     onRemove,
@@ -282,7 +286,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
               const label = meta?.name ?? st.agent_id;
               const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
               const isLinked = st.linked;
-              const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
               const canToggle = Boolean(
                 onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
               );
@@ -293,6 +296,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                   disabled={toggling || !canToggle}
                   data-testid={`project-skill-agent-${skill.name}-${st.agent_id}`}
                   data-linked={isLinked ? 'true' : 'false'}
+                  data-enabled={isLinked && st.enabled ? 'true' : 'false'}
                   data-target={isTarget ? 'true' : 'false'}
                   title={
                     !isLinked
@@ -321,7 +325,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     'relative p-0.5 rounded-[4px] transition-all',
                     canToggle &&
                       'hover:bg-bg-hover hover:ring-1 hover:ring-accent-blue/50 hover:scale-110 cursor-pointer',
-                    !agentSelected && 'opacity-25 grayscale',
+                    // Disk association drives highlight: only paused links are dimmed.
                     isLinked && !st.enabled && 'opacity-35 grayscale',
                     !isLinked && 'opacity-70 border border-dashed border-border',
                     isTarget && 'ring-1 ring-accent-blue/60',
@@ -361,7 +365,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                 const label = meta?.name ?? st.agent_id;
                 const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
                 const isLinked = st.linked;
-                const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
                 const canToggle = Boolean(
                   onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
                 );
@@ -379,7 +382,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     className={cn(
                       'shrink-0 flex items-center gap-1 p-1.5 rounded-[6px] transition-all whitespace-nowrap',
                       canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
-                      !agentSelected && 'opacity-25 grayscale',
                       isLinked && !st.enabled && 'opacity-35 grayscale',
                       isTarget && 'ring-1 ring-accent-blue/60 bg-accent-blue/10',
                       (toggling || !canToggle) && 'cursor-default',
@@ -409,7 +411,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                 const label = meta?.name ?? st.agent_id;
                 const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
                 const isLinked = st.linked;
-                const agentSelected = selectedAgentIds == null || selectedAgentIds.has(st.agent_id);
                 const canToggle = Boolean(
                   onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
                 );
@@ -427,7 +428,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     className={cn(
                       'p-0.5 rounded-[4px] transition-all',
                       canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
-                      !agentSelected && 'opacity-25 grayscale',
                       isLinked && !st.enabled && 'opacity-35 grayscale',
                       isTarget && 'ring-1 ring-accent-blue/60',
                       (toggling || !canToggle) && 'cursor-default',
