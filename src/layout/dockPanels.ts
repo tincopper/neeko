@@ -1,13 +1,13 @@
 import { lazy } from 'react';
 import {
+  Blocks,
   FolderOpen,
   FileText,
-  Wrench,
   GitCommitHorizontal,
   GitPullRequest,
   GitBranch,
   Globe,
-  MessageSquareText,
+  MessagesSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -29,14 +29,14 @@ export interface DockPanelDef {
 // ���� Icon map (static imports for tree-shaking) ����
 
 export const dockPanelIcons: Record<string, LucideIcon> = {
+  Blocks,
   FolderOpen,
   FileText,
-  Wrench,
   GitCommitHorizontal,
   GitPullRequest,
   GitBranch,
   Globe,
-  MessageSquareText,
+  MessagesSquare,
 };
 
 // ���� Lazy-loaded panel components ����
@@ -113,7 +113,7 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
   skills: {
     id: 'skills',
     title: 'Skills',
-    icon: 'Wrench',
+    icon: 'Blocks',
     defaultZone: 'left',
     defaultOrder: 2,
     component: LazySkillsPanelWrapper as React.LazyExoticComponent<
@@ -166,7 +166,7 @@ export const dockPanelRegistry: Record<string, DockPanelDef> = {
   conversations: {
     id: 'conversations',
     title: 'History',
-    icon: 'MessageSquareText',
+    icon: 'MessagesSquare',
     defaultZone: 'right',
     defaultOrder: 5,
     component: LazyConversationsPanelWrapper as React.LazyExoticComponent<
