@@ -569,16 +569,15 @@ impl AgentSessionAdapter for ReasonixAdapter {
     }
 
     fn resume_command(&self, native_session_id: &str, project_path: &str) -> Option<Vec<String>> {
-        // Official: `reasonix --resume <session-id>` (interactive TTY required).
-        // Prefer resume_command_for_file when the absolute jsonl path is known.
+        // pflag requires `--resume=<value>` (NoOptDefVal treats space-separated
+        // `--resume value` as boolean true without consuming the next arg).
         if project_path.is_empty() {
-            Some(vec!["--resume".into(), native_session_id.into()])
+            Some(vec![format!("--resume={}", native_session_id)])
         } else {
             Some(vec![
                 "--dir".into(),
                 project_path.to_string(),
-                "--resume".into(),
-                native_session_id.into(),
+                format!("--resume={}", native_session_id),
             ])
         }
     }
@@ -604,14 +603,15 @@ impl AgentSessionAdapter for ReasonixAdapter {
 
         // Interactive TUI resume — works in Neeko PTY (needs a real terminal).
         // Do NOT use `run --resume` here: that is one-shot task mode, not session continue.
+        // pflag requires `--resume=<value>`; `--resume value` (space-separated)
+        // is treated as boolean true via NoOptDefVal and the value is dropped.
         if project_path.is_empty() {
-            Some(vec!["--resume".into(), query])
+            Some(vec![format!("--resume={}", query)])
         } else {
             Some(vec![
                 "--dir".into(),
                 project_path.to_string(),
-                "--resume".into(),
-                query,
+                format!("--resume={}", query),
             ])
         }
     }
@@ -797,14 +797,13 @@ mod tests {
         let cmd = ReasonixAdapter
             .resume_command_for_file("sess-id", "/Users/tomgs/proj", &path)
             .expect("resume");
-        // Official interactive form (PTY): reasonix --dir <cwd> --resume <path|id>
+        // pflag requires `--resume=<value>` form (NoOptDefVal, not space-separated).
         assert_eq!(
             cmd,
             vec![
                 "--dir".to_string(),
                 "/Users/tomgs/proj".to_string(),
-                "--resume".to_string(),
-                path.to_string_lossy().to_string(),
+                format!("--resume={}", path.to_string_lossy()),
             ]
         );
     }
@@ -814,13 +813,13 @@ mod tests {
         let cmd = ReasonixAdapter
             .resume_command("20260711-101052.014171000-deepseek-v4-flash", "/p")
             .expect("resume");
+        // pflag requires `--resume=<value>` form.
         assert_eq!(
             cmd,
             vec![
                 "--dir".to_string(),
                 "/p".to_string(),
-                "--resume".to_string(),
-                "20260711-101052.014171000-deepseek-v4-flash".to_string(),
+                "--resume=20260711-101052.014171000-deepseek-v4-flash".to_string(),
             ]
         );
     }
@@ -889,11 +888,12 @@ mod tests {
             .get_resume_command(&list[0].id)
             .unwrap()
             .expect("resume");
-        // Interactive: reasonix [--dir …] --resume <path|id> — not `run --resume`
+        // Interactive: reasonix [--dir …] --resume=<path|id> — not `run --resume`
+        // pflag's NoOptDefVal requires `--resume=<value>` form.
         assert_eq!(resume[0], "--dir");
         assert!(
-            resume.iter().any(|a| a == "--resume"),
-            "expected --resume flag, got {resume:?}"
+            resume.iter().any(|a| a.starts_with("--resume=")),
+            "expected --resume=<value>, got {resume:?}"
         );
         assert!(
             !resume.iter().any(|a| a == "run"),
