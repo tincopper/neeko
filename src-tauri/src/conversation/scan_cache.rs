@@ -97,7 +97,12 @@ pub fn reset_scan_parse_cache_for_tests() {
     });
 }
 
-fn touch_insert<K: Eq + std::hash::Hash + Clone, V>(map: &mut HashMap<K, V>, key: K, value: V, max: usize) {
+fn touch_insert<K: Eq + std::hash::Hash + Clone, V>(
+    map: &mut HashMap<K, V>,
+    key: K,
+    value: V,
+    max: usize,
+) {
     // Refresh recency: remove then re-insert so eviction drops oldest insert order.
     map.remove(&key);
     map.insert(key, value);
@@ -176,9 +181,8 @@ pub fn put_cached_bulk_metas(
 /// - File only grew → read bytes from the last complete-line offset and append.
 /// - Shrink / non-monotonic change → full re-parse.
 pub fn read_jsonl_cached(path: &Path) -> Result<Vec<serde_json::Value>> {
-    let signature = source_signature(path).with_context(|| {
-        format!("Failed to stat JSONL for scan cache: {}", path.display())
-    })?;
+    let signature = source_signature(path)
+        .with_context(|| format!("Failed to stat JSONL for scan cache: {}", path.display()))?;
 
     // Snapshot prior entry without holding the lock across I/O.
     let prior = with_cache(|c| c.jsonl.get(path).cloned());
@@ -264,8 +268,8 @@ pub fn read_jsonl_from_offset(
     path: &Path,
     byte_offset: u64,
 ) -> Result<(Vec<serde_json::Value>, u64)> {
-    let mut file = File::open(path)
-        .with_context(|| format!("Failed to open JSONL: {}", path.display()))?;
+    let mut file =
+        File::open(path).with_context(|| format!("Failed to open JSONL: {}", path.display()))?;
     file.seek(SeekFrom::Start(byte_offset))
         .with_context(|| format!("Failed to seek JSONL: {}", path.display()))?;
 
@@ -373,10 +377,7 @@ mod tests {
     fn should_full_reread_when_jsonl_shrinks() {
         reset_scan_parse_cache_for_tests();
         let mut tmp = NamedTempFile::new().unwrap();
-        write_lines(
-            &mut tmp,
-            &[r#"{"n":1}"#, r#"{"n":2}"#, r#"{"n":3}"#],
-        );
+        write_lines(&mut tmp, &[r#"{"n":1}"#, r#"{"n":2}"#, r#"{"n":3}"#]);
         let first = read_jsonl_cached(tmp.path()).unwrap();
         assert_eq!(first.len(), 3);
 
@@ -438,11 +439,7 @@ mod tests {
             message_count: 0,
             project_path: Some("/p".into()),
         };
-        put_cached_bulk_metas(
-            path.clone(),
-            sig,
-            vec![(meta, PathBuf::from("syn#bulk-1"))],
-        );
+        put_cached_bulk_metas(path.clone(), sig, vec![(meta, PathBuf::from("syn#bulk-1"))]);
 
         let hit = get_cached_bulk_metas(&path, &sig).unwrap();
         assert_eq!(hit.len(), 1);
@@ -461,11 +458,14 @@ mod tests {
         assert_eq!(entries.len(), 1);
         // consumed should stop after the first line's newline, not include trailing junk.
         let content = std::fs::read(tmp.path()).unwrap();
-        assert_eq!(consumed as usize, content.iter().position(|&b| b == b'\n').unwrap() + 1);
+        assert_eq!(
+            consumed as usize,
+            content.iter().position(|&b| b == b'\n').unwrap() + 1
+        );
 
         // Completing the second line should resume correctly.
         writeln!(tmp).unwrap(); // finish with newline — incomplete object still fails parse
-        // Write a proper second line by rewriting file cleanly then appending after first read pattern:
+                                // Write a proper second line by rewriting file cleanly then appending after first read pattern:
         tmp.as_file_mut().set_len(0).unwrap();
         tmp.seek(SeekFrom::Start(0)).unwrap();
         write_lines(&mut tmp, &[r#"{"n":1}"#]);

@@ -6,16 +6,16 @@ pub mod adapter;
 pub mod adapters;
 /// Tauri command handlers for conversation operations.
 pub mod commands;
+/// Cold-start disk meta index under ~/.neeko.
+pub mod disk_index;
 /// Conversation lifecycle management and storage.
 pub mod manager;
+/// Conversation content normalization utilities.
+pub mod normalize;
 /// Process-local scan fingerprint / JSONL resume cache.
 pub mod scan_cache;
 /// Project-scoped session discovery helpers (path encode / prefix match).
 pub mod scope;
-/// Cold-start disk meta index under ~/.neeko.
-pub mod disk_index;
-/// Conversation content normalization utilities.
-pub mod normalize;
 pub mod types;
 
 pub use adapter::AgentSessionAdapter;

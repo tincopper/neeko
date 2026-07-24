@@ -120,4 +120,3 @@ pub struct ConversationListPage {
     /// Whether more rows exist after this page.
     pub has_more: bool,
 }
-

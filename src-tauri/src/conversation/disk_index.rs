@@ -79,8 +79,7 @@ pub fn save_index(path: &Path, index: &ConversationDiskIndex) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
     let raw = serde_json::to_string(index).context("serialize conversation index")?;
     fs::write(&tmp, raw).with_context(|| format!("write temp index {}", tmp.display()))?;
-    fs::rename(&tmp, path)
-        .with_context(|| format!("rename temp index onto {}", path.display()))?;
+    fs::rename(&tmp, path).with_context(|| format!("rename temp index onto {}", path.display()))?;
     Ok(())
 }
 

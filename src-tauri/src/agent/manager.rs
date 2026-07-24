@@ -208,7 +208,9 @@ mod tests {
     #[test]
     fn should_include_grok_default_agent() {
         let manager = AgentManager::new();
-        let agent = manager.get_agent("grok").expect("grok should be a default agent");
+        let agent = manager
+            .get_agent("grok")
+            .expect("grok should be a default agent");
         assert_eq!(agent.command, "grok");
         assert_eq!(agent.icon.as_deref(), Some("grok.ico"));
         assert!(agent.is_builtin);

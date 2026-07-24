@@ -88,9 +88,7 @@ fn looks_like_injected_context(text: &str) -> bool {
 
 /// Orca: skip internal worker/sub-agent transcripts (payload.source.subagent present).
 fn is_codex_worker_session(session_payload: &serde_json::Value) -> bool {
-    session_payload
-        .pointer("/source/subagent")
-        .is_some()
+    session_payload.pointer("/source/subagent").is_some()
 }
 
 impl AgentSessionAdapter for CodexAdapter {
@@ -117,7 +115,10 @@ impl AgentSessionAdapter for CodexAdapter {
 
         // Orca: skip internal worker / sub-agent transcripts in the same sessions tree.
         if let Some(meta) = session_meta {
-            let payload = meta.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+            let payload = meta
+                .get("payload")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             if is_codex_worker_session(&payload) {
                 anyhow::bail!("skip: codex worker/subagent session");
             }
@@ -162,9 +163,7 @@ impl AgentSessionAdapter for CodexAdapter {
             .map(|s| s.to_string());
 
         if title.is_none() {
-            if let Some(indexed) =
-                lookup_session_index_title(file_path, &native_session_id)
-            {
+            if let Some(indexed) = lookup_session_index_title(file_path, &native_session_id) {
                 title = Some(indexed);
             }
         }
@@ -250,7 +249,10 @@ impl AgentSessionAdapter for CodexAdapter {
             match entry_type {
                 // ── Current format: response_item message ───────────────
                 "response_item" => {
-                    let payload = entry.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+                    let payload = entry
+                        .get("payload")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let payload_type = payload.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
                     match payload_type {
@@ -263,8 +265,10 @@ impl AgentSessionAdapter for CodexAdapter {
                             if role == "developer" || role == "system" {
                                 continue;
                             }
-                            let content_val =
-                                payload.get("content").cloned().unwrap_or(serde_json::Value::Null);
+                            let content_val = payload
+                                .get("content")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
                             let text = extract_message_text(&content_val);
                             // Legacy delta fallback
                             let text = if text.is_empty() {
@@ -280,11 +284,7 @@ impl AgentSessionAdapter for CodexAdapter {
                             if cleaned.is_empty() || looks_like_injected_context(&cleaned) {
                                 continue;
                             }
-                            let role_out = if role == "user" {
-                                "user"
-                            } else {
-                                "assistant"
-                            };
+                            let role_out = if role == "user" { "user" } else { "assistant" };
                             messages.push(ParsedMessage {
                                 role: role_out.to_string(),
                                 content: cleaned.clone(),
@@ -345,10 +345,7 @@ impl AgentSessionAdapter for CodexAdapter {
                             }
                             // Truncate huge tool outputs for UI
                             let cleaned = if cleaned.chars().count() > 4000 {
-                                format!(
-                                    "{}…",
-                                    cleaned.chars().take(4000).collect::<String>()
-                                )
+                                format!("{}…", cleaned.chars().take(4000).collect::<String>())
                             } else {
                                 cleaned
                             };
@@ -379,9 +376,7 @@ impl AgentSessionAdapter for CodexAdapter {
                             messages.push(ParsedMessage {
                                 role: "assistant".to_string(),
                                 content: cleaned.clone(),
-                                blocks: vec![MessageBlock::Thinking {
-                                    thinking: cleaned,
-                                }],
+                                blocks: vec![MessageBlock::Thinking { thinking: cleaned }],
                                 model: None,
                                 timestamp,
                                 seq,
@@ -424,7 +419,10 @@ impl AgentSessionAdapter for CodexAdapter {
                 if entry.get("type").and_then(|v| v.as_str()) != Some("event_msg") {
                     continue;
                 }
-                let pl = entry.get("payload").cloned().unwrap_or(serde_json::Value::Null);
+                let pl = entry
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 let et = pl.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 let (role, text) = match et {
                     "user_message" => (
@@ -485,9 +483,8 @@ fn collect_chat_text_pairs(entries: &[serde_json::Value]) -> Vec<(String, String
                 if role != "user" && role != "assistant" {
                     continue;
                 }
-                let text = extract_message_text(
-                    pl.get("content").unwrap_or(&serde_json::Value::Null),
-                );
+                let text =
+                    extract_message_text(pl.get("content").unwrap_or(&serde_json::Value::Null));
                 let text = if text.is_empty() {
                     pl.get("delta")
                         .and_then(|v| v.as_str())
@@ -813,7 +810,10 @@ mod tests {
         // AGENTS.md injection filtered
         assert!(!messages.iter().any(|m| m.content.contains("AGENTS.md")));
         let assistant = messages.iter().find(|m| {
-            m.role == "assistant" && m.blocks.iter().any(|b| matches!(b, MessageBlock::Text { .. }))
+            m.role == "assistant"
+                && m.blocks
+                    .iter()
+                    .any(|b| matches!(b, MessageBlock::Text { .. }))
         });
         assert!(assistant.is_some());
         // tool blocks present
@@ -871,7 +871,10 @@ mod tests {
             preferred
         } else {
             let mut found = None;
-            for entry in walkdir::WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(&root)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 let p = entry.path();
                 if p.is_file()
                     && p.file_name()
@@ -904,11 +907,9 @@ mod tests {
             );
             // Injections must not surface as chat
             assert!(!messages.iter().any(|m| m.content.contains("AGENTS.md")));
-            assert!(
-                !messages
-                    .iter()
-                    .any(|m| m.content.to_ascii_lowercase().contains("<permissions"))
-            );
+            assert!(!messages
+                .iter()
+                .any(|m| m.content.to_ascii_lowercase().contains("<permissions")));
         }
     }
 
@@ -924,8 +925,7 @@ mod tests {
         std::fs::create_dir_all(&sessions).unwrap();
 
         let session_id = "019f8f27-8d73-7dd3-aa3c-b5bf01ca1b6f";
-        let rollout_name =
-            format!("rollout-2026-07-23T21-26-01-{session_id}.jsonl");
+        let rollout_name = format!("rollout-2026-07-23T21-26-01-{session_id}.jsonl");
         let path = sessions.join(&rollout_name);
 
         // Modern rollout without title / thread_name in session_meta
@@ -992,9 +992,9 @@ mod tests {
     #[test]
     fn should_skip_worker_subagent_session() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join(
-            "rollout-2026-07-16T11-08-58-019f68e6-1a7f-75e0-8765-84171499aa7b.jsonl",
-        );
+        let path = dir
+            .path()
+            .join("rollout-2026-07-16T11-08-58-019f68e6-1a7f-75e0-8765-84171499aa7b.jsonl");
         let content = r#"{"type":"session_meta","timestamp":"2026-07-16T03:09:03.825Z","payload":{"session_id":"019f68e6-1a7f-75e0-8765-84171499aa7b","id":"019f68e6-1a7f-75e0-8765-84171499aa7b","cwd":"/tmp","source":{"subagent":{"id":"worker-1"}}}}
 {"type":"response_item","timestamp":"2026-07-16T03:09:04.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"worker task"}]}}
 "#;
@@ -1012,9 +1012,8 @@ mod tests {
         let codex_home = TempDir::new().unwrap();
         let sessions = codex_home.path().join("sessions");
         std::fs::create_dir_all(&sessions).unwrap();
-        let path = sessions.join(
-            "rollout-2026-07-23T21-26-01-019f8f27-8d73-7dd3-aa3c-b5bf01ca1b6f.jsonl",
-        );
+        let path =
+            sessions.join("rollout-2026-07-23T21-26-01-019f8f27-8d73-7dd3-aa3c-b5bf01ca1b6f.jsonl");
         std::fs::write(
             &path,
             r#"{"type":"session_meta","timestamp":"2026-07-23T13:26:01Z","payload":{"id":"019f8f27-8d73-7dd3-aa3c-b5bf01ca1b6f","session_id":"019f8f27-8d73-7dd3-aa3c-b5bf01ca1b6f","cwd":"/p"}}
@@ -1028,10 +1027,9 @@ mod tests {
 
         let meta = CodexAdapter.parse_meta(&path).unwrap();
         assert!(meta.title.is_none());
-        assert!(
-            meta.first_user_message
-                .as_ref()
-                .is_some_and(|s| s.contains("no index"))
-        );
+        assert!(meta
+            .first_user_message
+            .as_ref()
+            .is_some_and(|s| s.contains("no index")));
     }
 }

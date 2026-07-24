@@ -28,10 +28,7 @@ impl AgentSessionAdapter for PiAdapter {
             .join("sessions")
     }
 
-    fn discovery_roots(
-        &self,
-        project_path: Option<&str>,
-    ) -> Option<Vec<std::path::PathBuf>> {
+    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
         crate::conversation::scope::discovery_roots_for(
             self.session_root(),
             project_path,

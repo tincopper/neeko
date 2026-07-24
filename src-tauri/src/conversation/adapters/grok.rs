@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl, recent_messages_from, strip_ansi};
+use crate::conversation::adapters::{
+    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+};
 use crate::conversation::types::MessageBlock;
 
 /// Grok CLI session adapter.
@@ -35,7 +37,10 @@ fn content_text(content: &serde_json::Value) -> Option<String> {
             }
             if let Some(t) = map.get("type").and_then(|v| v.as_str()) {
                 if t == "text" {
-                    return map.get("text").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    return map
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                 }
             }
             None
@@ -93,11 +98,17 @@ fn messages_from_updates(entries: &[serde_json::Value]) -> Vec<ParsedMessage> {
         let (role, piece) = match kind {
             "user_message_chunk" => (
                 "user",
-                update.get("content").and_then(content_text).unwrap_or_default(),
+                update
+                    .get("content")
+                    .and_then(content_text)
+                    .unwrap_or_default(),
             ),
             "agent_message_chunk" => (
                 "assistant",
-                update.get("content").and_then(content_text).unwrap_or_default(),
+                update
+                    .get("content")
+                    .and_then(content_text)
+                    .unwrap_or_default(),
             ),
             "agent_thought_chunk" => {
                 // thinking is not a separate chat turn for list; skip for message list simplicity
@@ -105,7 +116,13 @@ fn messages_from_updates(entries: &[serde_json::Value]) -> Vec<ParsedMessage> {
             }
             _ => {
                 // boundary on non-chunk updates
-                flush(&mut cur_role, &mut cur_buf, &mut cur_ts, &mut seq, &mut messages);
+                flush(
+                    &mut cur_role,
+                    &mut cur_buf,
+                    &mut cur_ts,
+                    &mut seq,
+                    &mut messages,
+                );
                 continue;
             }
         };
@@ -122,7 +139,13 @@ fn messages_from_updates(entries: &[serde_json::Value]) -> Vec<ParsedMessage> {
                 }
             }
             Some(_) => {
-                flush(&mut cur_role, &mut cur_buf, &mut cur_ts, &mut seq, &mut messages);
+                flush(
+                    &mut cur_role,
+                    &mut cur_buf,
+                    &mut cur_ts,
+                    &mut seq,
+                    &mut messages,
+                );
                 cur_role = Some(role.to_string());
                 cur_buf = piece;
                 cur_ts = ts;
@@ -168,7 +191,8 @@ impl AgentSessionAdapter for GrokAdapter {
 
         let content = std::fs::read_to_string(file_path)
             .with_context(|| format!("read {}", file_path.display()))?;
-        let root: serde_json::Value = serde_json::from_str(&content).context("parse summary.json")?;
+        let root: serde_json::Value =
+            serde_json::from_str(&content).context("parse summary.json")?;
 
         let info = root.get("info").cloned().unwrap_or(serde_json::Value::Null);
         let native_session_id = info
@@ -224,11 +248,8 @@ impl AgentSessionAdapter for GrokAdapter {
                     .iter()
                     .find(|m| m.role == "user")
                     .map(|m| m.content.clone());
-                recent_messages = recent_messages_from(
-                    msgs.into_iter()
-                        .map(|m| (m.role, m.content))
-                        .collect(),
-                );
+                recent_messages =
+                    recent_messages_from(msgs.into_iter().map(|m| (m.role, m.content)).collect());
             }
         }
 
@@ -325,7 +346,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let summary = write_grok_session(dir.path());
         let meta = GrokAdapter.parse_meta(&summary).unwrap();
-        assert_eq!(meta.native_session_id, "019f84cb-139c-7c02-a22d-a8cfb1680484");
+        assert_eq!(
+            meta.native_session_id,
+            "019f84cb-139c-7c02-a22d-a8cfb1680484"
+        );
         assert_eq!(meta.title.as_deref(), Some("Agent Skills UI Redesign"));
         assert_eq!(meta.project_path.as_deref(), Some("/Users/tomgs/project"));
         assert_eq!(meta.message_count, 4);

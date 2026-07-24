@@ -1113,11 +1113,9 @@ pub async fn apply_project_skills_cmd(
             am.get_agent(agent_id)
                 .and_then(|agent| agent.skill_path.clone())
         };
-        let Some((resolved_agent_id, skills_dir)) = resolve_project_skill_target(
-            &project,
-            Some(agent_id),
-            agent_skill_path.as_deref(),
-        ) else {
+        let Some((resolved_agent_id, skills_dir)) =
+            resolve_project_skill_target(&project, Some(agent_id), agent_skill_path.as_deref())
+        else {
             log::debug!(
                 "apply_project_skills: agent {agent_id} for project {project_id} has no project-capable target; skip"
             );
@@ -1162,18 +1160,18 @@ pub async fn apply_project_skills_cmd(
                     id: uuid::Uuid::new_v4().to_string(),
                     skill_id: skill_id.clone(),
                     tool: tool_key.clone(),
-                target_path: target.to_string_lossy().to_string(),
-                mode: "symlink".to_string(),
-                status: "ok".to_string(),
-                synced_at: Some(chrono::Utc::now().timestamp_millis()),
-                last_error: None,
-            };
-            let _ = store.delete_target(&skill_id, &tool_key);
-            let _ = store.insert_target(&target_rec);
-        }
-        Ok(())
-    })
-    .await?;
+                    target_path: target.to_string_lossy().to_string(),
+                    mode: "symlink".to_string(),
+                    status: "ok".to_string(),
+                    synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                    last_error: None,
+                };
+                let _ = store.delete_target(&skill_id, &tool_key);
+                let _ = store.insert_target(&target_rec);
+            }
+            Ok(())
+        })
+        .await?;
     }
 
     Ok(())
@@ -1277,8 +1275,7 @@ pub async fn set_project_tag_groups_cmd(
         }
 
         // 3) Skill IDs from new groups
-        let mut new_skill_ids: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut new_skill_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
         for gid in &tag_group_ids {
             if let Ok(skills) = store.get_skills_for_tag_group(gid) {
                 for s in skills {

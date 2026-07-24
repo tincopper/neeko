@@ -100,10 +100,7 @@ impl AgentSessionAdapter for OmpAdapter {
             .join("sessions")
     }
 
-    fn discovery_roots(
-        &self,
-        project_path: Option<&str>,
-    ) -> Option<Vec<std::path::PathBuf>> {
+    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
         crate::conversation::scope::discovery_roots_for(
             self.session_root(),
             project_path,
@@ -333,7 +330,10 @@ mod tests {
 
         let adapter = OmpAdapter::with_root(dir.path().to_path_buf());
         let meta = adapter.parse_meta(&path).unwrap();
-        assert_eq!(meta.native_session_id, "019f5bb5-892b-7000-81f0-17bad4822cf8");
+        assert_eq!(
+            meta.native_session_id,
+            "019f5bb5-892b-7000-81f0-17bad4822cf8"
+        );
         assert_eq!(meta.title.as_deref(), Some("Fix gh.rs"));
         assert_eq!(
             meta.project_path.as_deref(),
@@ -375,17 +375,17 @@ mod tests {
     #[test]
     fn should_skip_nested_trace_in_parse_meta() {
         let dir = TempDir::new().unwrap();
-        let nested = dir
-            .path()
-            .join("-RustroverProjects-neeko")
-            .join("sess-dir");
+        let nested = dir.path().join("-RustroverProjects-neeko").join("sess-dir");
         std::fs::create_dir_all(&nested).unwrap();
         let path = nested.join("Frontend.jsonl");
         std::fs::write(&path, "{}\n").unwrap();
 
         let adapter = OmpAdapter::with_root(dir.path().to_path_buf());
         let err = adapter.parse_meta(&path).unwrap_err().to_string();
-        assert!(err.starts_with("skip:"), "expected intentional skip, got {err}");
+        assert!(
+            err.starts_with("skip:"),
+            "expected intentional skip, got {err}"
+        );
     }
 
     #[test]

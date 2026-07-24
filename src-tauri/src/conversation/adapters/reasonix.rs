@@ -27,7 +27,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage, ParsedMeta};
-use crate::conversation::adapters::{parse_timestamp, read_jsonl, recent_messages_from, strip_ansi};
+use crate::conversation::adapters::{
+    parse_timestamp, read_jsonl, recent_messages_from, strip_ansi,
+};
 use crate::conversation::types::MessageBlock;
 
 /// Reasonix CLI session adapter.
@@ -223,10 +225,7 @@ fn extract_human_user_prompt(raw: &str) -> String {
             let after = idx + m.len();
             // For "[Plan mode …]" skip to matching closing `]`
             let after = if m.starts_with('[') {
-                s[after..]
-                    .find(']')
-                    .map(|j| after + j + 1)
-                    .unwrap_or(after)
+                s[after..].find(']').map(|j| after + j + 1).unwrap_or(after)
             } else {
                 after
             };
@@ -267,10 +266,7 @@ impl AgentSessionAdapter for ReasonixAdapter {
             .join("projects")
     }
 
-    fn discovery_roots(
-        &self,
-        project_path: Option<&str>,
-    ) -> Option<Vec<std::path::PathBuf>> {
+    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<std::path::PathBuf>> {
         crate::conversation::scope::discovery_roots_for(
             self.session_root(),
             project_path,
@@ -427,8 +423,10 @@ impl AgentSessionAdapter for ReasonixAdapter {
             match role.as_str() {
                 "system" => continue,
                 "user" => {
-                    let content_val =
-                        entry.get("content").cloned().unwrap_or(serde_json::Value::Null);
+                    let content_val = entry
+                        .get("content")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let raw = content_as_text(&content_val);
                     let text = if first_user_done {
                         strip_ansi(raw.trim())
@@ -451,8 +449,10 @@ impl AgentSessionAdapter for ReasonixAdapter {
                 }
                 "assistant" => {
                     let mut blocks = Vec::new();
-                    let content_val =
-                        entry.get("content").cloned().unwrap_or(serde_json::Value::Null);
+                    let content_val = entry
+                        .get("content")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let text = strip_ansi(content_as_text(&content_val).trim());
                     if !text.is_empty() {
                         blocks.push(MessageBlock::Text { text: text.clone() });
@@ -522,13 +522,9 @@ impl AgentSessionAdapter for ReasonixAdapter {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let name = entry
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("tool");
-                    let raw = content_as_text(
-                        entry.get("content").unwrap_or(&serde_json::Value::Null),
-                    );
+                    let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+                    let raw =
+                        content_as_text(entry.get("content").unwrap_or(&serde_json::Value::Null));
                     let cleaned = strip_ansi(raw.trim());
                     if cleaned.is_empty() {
                         continue;
@@ -785,11 +781,16 @@ mod tests {
             messages.len(),
             messages
                 .iter()
-                .map(|m| (m.role.as_str(), m.content.chars().take(40).collect::<String>()))
+                .map(|m| (
+                    m.role.as_str(),
+                    m.content.chars().take(40).collect::<String>()
+                ))
                 .collect::<Vec<_>>()
         );
         assert!(
-            messages.iter().any(|m| m.content.contains("Git Push") || m.content.contains("分析报告")),
+            messages
+                .iter()
+                .any(|m| m.content.contains("Git Push") || m.content.contains("分析报告")),
             "expected final analysis text from events log"
         );
         let meta = ReasonixAdapter.parse_meta(&jsonl).unwrap();
@@ -802,9 +803,7 @@ mod tests {
 
     #[test]
     fn should_resume_interactive_with_file_path_and_dir() {
-        let path = PathBuf::from(
-            "/Users/tomgs/.reasonix/projects/-Users-x/sessions/sess.jsonl",
-        );
+        let path = PathBuf::from("/Users/tomgs/.reasonix/projects/-Users-x/sessions/sess.jsonl");
         let cmd = ReasonixAdapter
             .resume_command_for_file("sess-id", "/Users/tomgs/proj", &path)
             .expect("resume");
@@ -911,7 +910,9 @@ mod tests {
             "History resume must not use one-shot run mode: {resume:?}"
         );
         assert!(
-            resume.iter().any(|a| a.contains(".jsonl") || a.contains("deepseek")),
+            resume
+                .iter()
+                .any(|a| a.contains(".jsonl") || a.contains("deepseek")),
             "resume query should be path or session id, got {resume:?}"
         );
     }
@@ -924,7 +925,10 @@ mod tests {
             return;
         }
         let mut found = None;
-        for entry in walkdir::WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+        for entry in walkdir::WalkDir::new(&root)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let p = entry.path();
             if p.is_file() && is_main_reasonix_session(p) {
                 if std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) > 5000 {

@@ -327,32 +327,33 @@ fn parse_opencode_db(
 
     // Light discovery: session row only (no correlated COUNT, no part JOIN).
     // Enrichment for preview/count is deferred to the most recent N sessions.
-    let (sql, params): (String, Vec<String>) = match project_path.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(pp) => {
-            let base = pp.trim_end_matches('/').to_string();
-            let nested_prefix = format!("{base}/");
-            (
-                "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
+    let (sql, params): (String, Vec<String>) =
+        match project_path.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(pp) => {
+                let base = pp.trim_end_matches('/').to_string();
+                let nested_prefix = format!("{base}/");
+                (
+                    "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
                  FROM session s
                  WHERE s.parent_id IS NULL
                    AND s.time_archived IS NULL
                    AND s.directory IS NOT NULL
                    AND (s.directory = ?1 OR s.directory LIKE ?2)
                  ORDER BY s.time_updated DESC"
-                    .to_string(),
-                vec![base, format!("{nested_prefix}%")],
-            )
-        }
-        None => (
-            "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
+                        .to_string(),
+                    vec![base, format!("{nested_prefix}%")],
+                )
+            }
+            None => (
+                "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
              FROM session s
              WHERE s.parent_id IS NULL
                AND s.time_archived IS NULL
              ORDER BY s.time_updated DESC"
-                .to_string(),
-            Vec::new(),
-        ),
-    };
+                    .to_string(),
+                Vec::new(),
+            ),
+        };
 
     let mut stmt = conn
         .prepare(&sql)
@@ -681,14 +682,16 @@ mod tests {
     }
 
     #[test]
-
     #[test]
     fn should_filter_opencode_db_by_project_path() {
         let dir = TempDir::new().unwrap();
         let db_path = create_opencode_fixture(&dir);
         let only_alpha = parse_opencode_db(&db_path, Some("/projects/test")).unwrap();
         assert_eq!(only_alpha.len(), 1);
-        assert_eq!(only_alpha[0].0.project_path.as_deref(), Some("/projects/test"));
+        assert_eq!(
+            only_alpha[0].0.project_path.as_deref(),
+            Some("/projects/test")
+        );
 
         let other = parse_opencode_db(&db_path, Some("/projects/other")).unwrap();
         assert!(other.is_empty());

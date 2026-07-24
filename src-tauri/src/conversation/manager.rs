@@ -8,7 +8,9 @@ use walkdir::WalkDir;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
-use crate::conversation::types::{ConversationListPage, ConversationMessage, ConversationMeta, ScanReport};
+use crate::conversation::types::{
+    ConversationListPage, ConversationMessage, ConversationMeta, ScanReport,
+};
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
 ///
@@ -197,7 +199,9 @@ impl ConversationManager {
             for agent_id in &agent_ids {
                 handles.push(scope.spawn(move || -> Result<ScanReport> {
                     let adapter = self.adapters.get(agent_id).ok_or_else(|| {
-                        anyhow::anyhow!("Adapter missing for agent id that was just listed: {agent_id}")
+                        anyhow::anyhow!(
+                            "Adapter missing for agent id that was just listed: {agent_id}"
+                        )
                     })?;
                     self.emit_progress(ScanProgressEvent {
                         agent_id: agent_id.clone(),
@@ -310,8 +314,7 @@ impl ConversationManager {
             let errors: Vec<String> = Vec::new();
 
             for (meta, synthetic_path) in metas {
-                let conversation =
-                    build_conversation_meta(agent_id, adapter, meta, synthetic_path);
+                let conversation = build_conversation_meta(agent_id, adapter, meta, synthetic_path);
                 let mut cache = self
                     .cache
                     .lock()
@@ -377,86 +380,82 @@ impl ConversationManager {
                 .into_iter()
                 .filter_map(|e| e.ok())
             {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            files_seen = files_seen.saturating_add(1);
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                files_seen = files_seen.saturating_add(1);
 
-            // 使用相对于 session_root 的路径匹配 pattern（scoped roots 仍相对完整 root）
-            let rel_path = match path.strip_prefix(&session_root) {
-                Ok(rp) => rp,
-                Err(_) => {
-                    // Fallback: relative to the walk root when outside session_root
-                    // (test adapters that inject a temp root as discovery root).
-                    match path.strip_prefix(walk_root) {
-                        Ok(rp) => rp,
-                        Err(_) => continue,
+                // 使用相对于 session_root 的路径匹配 pattern（scoped roots 仍相对完整 root）
+                let rel_path = match path.strip_prefix(&session_root) {
+                    Ok(rp) => rp,
+                    Err(_) => {
+                        // Fallback: relative to the walk root when outside session_root
+                        // (test adapters that inject a temp root as discovery root).
+                        match path.strip_prefix(walk_root) {
+                            Ok(rp) => rp,
+                            Err(_) => continue,
+                        }
+                    }
+                };
+                let rel_str = rel_path.to_string_lossy();
+
+                if !pattern_regex.is_match(&rel_str) {
+                    continue;
+                }
+                pattern_hits = pattern_hits.saturating_add(1);
+
+                // Fingerprint reuse: skip re-parsing unchanged session files.
+                let path_buf = path.to_path_buf();
+                let signature = crate::conversation::scan_cache::source_signature(path);
+                let cached_meta = signature.and_then(|sig| {
+                    crate::conversation::scan_cache::get_cached_file_meta(path, &sig)
+                });
+
+                let parse_result = if let Some(meta) = cached_meta {
+                    Ok(meta)
+                } else {
+                    adapter.parse_meta(path).map(|meta| {
+                        if let Some(sig) = signature {
+                            crate::conversation::scan_cache::put_cached_file_meta(
+                                path_buf.clone(),
+                                sig,
+                                meta.clone(),
+                            );
+                        }
+                        meta
+                    })
+                };
+
+                match parse_result {
+                    Ok(meta) => {
+                        let conversation =
+                            build_conversation_meta(agent_id, adapter, meta, path_buf);
+                        // Preserve user edits from prior cache entry when re-scan rebuilds meta.
+                        let mut cache = self
+                            .cache
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+                        let (user_title, tags) = cache
+                            .get(&conversation.id)
+                            .map(|prev| (prev.user_title.clone(), prev.tags.clone()))
+                            .unwrap_or((None, Vec::new()));
+                        let mut conversation = conversation;
+                        conversation.user_title = user_title;
+                        conversation.tags = tags;
+                        cache.insert(conversation.id.clone(), conversation);
+                        sessions_found += 1;
+                    }
+                    Err(e) => {
+                        // Intentional main-session / noise filters use `bail!("skip: ...")`.
+                        // Do not flood ScanReport.errors with expected noise.
+                        if is_intentional_skip(&e) {
+                            log::debug!("scan skip {}: {e}", path.display());
+                        } else {
+                            errors.push(format!("Failed to parse {}: {e}", path.display()));
+                        }
                     }
                 }
-            };
-            let rel_str = rel_path.to_string_lossy();
-
-            if !pattern_regex.is_match(&rel_str) {
-                continue;
-            }
-            pattern_hits = pattern_hits.saturating_add(1);
-
-            // Fingerprint reuse: skip re-parsing unchanged session files.
-            let path_buf = path.to_path_buf();
-            let signature = crate::conversation::scan_cache::source_signature(path);
-            let cached_meta = signature.and_then(|sig| {
-                crate::conversation::scan_cache::get_cached_file_meta(path, &sig)
-            });
-
-            let parse_result = if let Some(meta) = cached_meta {
-                Ok(meta)
-            } else {
-                adapter.parse_meta(path).map(|meta| {
-                    if let Some(sig) = signature {
-                        crate::conversation::scan_cache::put_cached_file_meta(
-                            path_buf.clone(),
-                            sig,
-                            meta.clone(),
-                        );
-                    }
-                    meta
-                })
-            };
-
-            match parse_result {
-                Ok(meta) => {
-                    let conversation = build_conversation_meta(
-                        agent_id,
-                        adapter,
-                        meta,
-                        path_buf,
-                    );
-                    // Preserve user edits from prior cache entry when re-scan rebuilds meta.
-                    let mut cache = self
-                        .cache
-                        .lock()
-                        .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
-                    let (user_title, tags) = cache
-                        .get(&conversation.id)
-                        .map(|prev| (prev.user_title.clone(), prev.tags.clone()))
-                        .unwrap_or((None, Vec::new()));
-                    let mut conversation = conversation;
-                    conversation.user_title = user_title;
-                    conversation.tags = tags;
-                    cache.insert(conversation.id.clone(), conversation);
-                    sessions_found += 1;
-                }
-                Err(e) => {
-                    // Intentional main-session / noise filters use `bail!("skip: ...")`.
-                    // Do not flood ScanReport.errors with expected noise.
-                    if is_intentional_skip(&e) {
-                        log::debug!("scan skip {}: {e}", path.display());
-                    } else {
-                        errors.push(format!("Failed to parse {}: {e}", path.display()));
-                    }
-                }
-            }
             }
         }
 
@@ -776,7 +775,6 @@ fn build_conversation_meta(
         supports_resume,
     }
 }
-
 
 /// Strict project ownership for History list/search.
 ///
@@ -1282,7 +1280,10 @@ mod tests {
     #[test]
     fn should_normalize_basename_pattern_with_globstar_prefix() {
         assert_eq!(normalize_file_pattern("*.jsonl"), "**/*.jsonl");
-        assert_eq!(normalize_file_pattern("rollout-*.jsonl"), "**/rollout-*.jsonl");
+        assert_eq!(
+            normalize_file_pattern("rollout-*.jsonl"),
+            "**/rollout-*.jsonl"
+        );
         assert_eq!(normalize_file_pattern("**/*.jsonl"), "**/*.jsonl");
         assert_eq!(normalize_file_pattern("a/b/*.json"), "a/b/*.json");
         assert_eq!(normalize_file_pattern("  *.json  "), "**/*.json");
@@ -1306,7 +1307,11 @@ mod tests {
         let nested = dir.path().join("2026").join("07").join("16");
         std::fs::create_dir_all(&nested).unwrap();
         let name = "rollout-2026-07-16T11-08-58-019f68e6-1a7f-75e0-8765-84171499aa7b.jsonl";
-        create_fixture(&dir, &format!("2026/07/16/{name}"), Some("/projects/nested"));
+        create_fixture(
+            &dir,
+            &format!("2026/07/16/{name}"),
+            Some("/projects/nested"),
+        );
 
         let mut adapter = TestAdapter::new("codex-like", dir.path().to_path_buf());
         adapter.file_pattern = "rollout-*.jsonl".to_string();
@@ -1839,7 +1844,10 @@ mod tests {
                 Ok(vec![])
             }
             fn extract_session_id(&self, file_path: &Path) -> Option<String> {
-                file_path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+                file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
             }
             fn resume_command(&self, _id: &str, _pp: &str) -> Option<Vec<String>> {
                 None
@@ -1852,10 +1860,18 @@ mod tests {
         let out_scope = root.join("-Users-tomgs-other");
         std::fs::create_dir_all(&in_scope).unwrap();
         std::fs::create_dir_all(&out_scope).unwrap();
-        std::fs::write(in_scope.join("a.jsonl"), "{}
-").unwrap();
-        std::fs::write(out_scope.join("b.jsonl"), "{}
-").unwrap();
+        std::fs::write(
+            in_scope.join("a.jsonl"),
+            "{}
+",
+        )
+        .unwrap();
+        std::fs::write(
+            out_scope.join("b.jsonl"),
+            "{}
+",
+        )
+        .unwrap();
 
         let parse_calls = Arc::new(AtomicUsize::new(0));
         let manager = ConversationManager::new(vec![Box::new(ScopedAdapter {
@@ -1938,8 +1954,12 @@ mod tests {
         }
 
         let dir = tempfile::TempDir::new().unwrap();
-        std::fs::write(dir.path().join("s.jsonl"), "{}
-").unwrap();
+        std::fs::write(
+            dir.path().join("s.jsonl"),
+            "{}
+",
+        )
+        .unwrap();
         let calls_a = Arc::new(AtomicUsize::new(0));
         let calls_b = Arc::new(AtomicUsize::new(0));
         let manager = ConversationManager::new(vec![
@@ -1963,7 +1983,6 @@ mod tests {
         assert_eq!(calls_b.load(Ordering::SeqCst), 0);
     }
 
-
     #[test]
     fn should_exclude_sessions_without_project_path_when_filtering() {
         let dir = TempDir::new().unwrap();
@@ -1979,10 +1998,7 @@ mod tests {
 
         let filtered = manager.list(Some("/projects/alpha"), None).unwrap();
         assert_eq!(filtered.len(), 1);
-        assert_eq!(
-            filtered[0].project_path.as_deref(),
-            Some("/projects/alpha")
-        );
+        assert_eq!(filtered[0].project_path.as_deref(), Some("/projects/alpha"));
     }
 
     #[test]
@@ -1997,26 +2013,20 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
         manager.scan_all(None).unwrap();
 
-        let page0 = manager
-            .list_page(Some("/projects/p"), None, 0, 2)
-            .unwrap();
+        let page0 = manager.list_page(Some("/projects/p"), None, 0, 2).unwrap();
         assert_eq!(page0.items.len(), 2);
         assert_eq!(page0.total, 3);
         assert_eq!(page0.offset, 0);
         assert_eq!(page0.limit, 2);
         assert!(page0.has_more);
 
-        let page1 = manager
-            .list_page(Some("/projects/p"), None, 2, 2)
-            .unwrap();
+        let page1 = manager.list_page(Some("/projects/p"), None, 2, 2).unwrap();
         assert_eq!(page1.items.len(), 1);
         assert_eq!(page1.total, 3);
         assert!(!page1.has_more);
 
         // limit=0 returns all remaining from offset.
-        let all = manager
-            .list_page(Some("/projects/p"), None, 0, 0)
-            .unwrap();
+        let all = manager.list_page(Some("/projects/p"), None, 0, 0).unwrap();
         assert_eq!(all.items.len(), 3);
         assert!(!all.has_more);
     }

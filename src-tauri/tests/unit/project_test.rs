@@ -266,7 +266,9 @@ fn add_project_from_session() {
 fn set_primary_language_persists_on_project() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new(|_| {});
-    let project = pm.add_project(tmp.path().to_path_buf(), None, None, None).unwrap();
+    let project = pm
+        .add_project(tmp.path().to_path_buf(), None, None, None)
+        .unwrap();
     assert!(project.primary_language.is_none());
 
     pm.set_primary_language(&project.id, Some("rust".into()));
@@ -276,11 +278,19 @@ fn set_primary_language_persists_on_project() {
     );
 
     pm.set_primary_language(&project.id, Some("  ".into()));
-    assert!(pm.get_project(&project.id).unwrap().primary_language.is_none());
+    assert!(pm
+        .get_project(&project.id)
+        .unwrap()
+        .primary_language
+        .is_none());
 
     pm.set_primary_language(&project.id, Some("go".into()));
     pm.set_primary_language(&project.id, None);
-    assert!(pm.get_project(&project.id).unwrap().primary_language.is_none());
+    assert!(pm
+        .get_project(&project.id)
+        .unwrap()
+        .primary_language
+        .is_none());
 }
 
 #[test]

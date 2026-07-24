@@ -206,11 +206,8 @@ mod registry_tests {
     #[test]
     fn should_align_history_adapter_ids_with_default_agents() {
         let manager = AgentManager::new();
-        let agent_ids: std::collections::HashSet<&str> = manager
-            .get_agents()
-            .iter()
-            .map(|a| a.id.as_str())
-            .collect();
+        let agent_ids: std::collections::HashSet<&str> =
+            manager.get_agents().iter().map(|a| a.id.as_str()).collect();
 
         for adapter in all_adapters() {
             let id = adapter.agent_id();
@@ -225,7 +222,15 @@ mod registry_tests {
     fn should_register_omp_grok_reasonix_adapters() {
         let adapters = all_adapters();
         let ids: Vec<&str> = adapters.iter().map(|a| a.agent_id()).collect();
-        for expected in ["omp", "grok", "reasonix", "codex", "pi", "claude-code", "opencode"] {
+        for expected in [
+            "omp",
+            "grok",
+            "reasonix",
+            "codex",
+            "pi",
+            "claude-code",
+            "opencode",
+        ] {
             assert!(
                 ids.contains(&expected),
                 "missing adapter {expected} in all_adapters: {ids:?}"
