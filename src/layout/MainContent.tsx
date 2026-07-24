@@ -16,6 +16,7 @@ import { useShallow } from "zustand/shallow";
 import { useAppViewStore } from "@/shared/store/appViewStore";
 import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
 import { useFileDrop } from "@/features/file/hooks/useFileDrop";
+import { FolderIcon, KeyRound } from '@/shared/components/icons';
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
 
@@ -228,7 +229,11 @@ function MainContent() {
           {needsRemoteAuth ? (
             <div className="empty-state flex-1 flex flex-col text-text-secondary">
                <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
-                  <div className="empty-icon text-[3.43em] opacity-50">🔑</div>
+                  <KeyRound
+                     className="h-[3.43em] w-[3.43em] text-text-muted opacity-60"
+                     strokeWidth={1.6}
+                     aria-hidden="true"
+                  />
                   <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
                   <Button
                      variant="primary"
@@ -266,7 +271,11 @@ function MainContent() {
          ) : !hasActiveProject ? (
             <div className="empty-state flex-1 flex flex-col text-text-secondary">
                <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
-                  <div className="empty-icon text-[3.43em] opacity-50">📁</div>
+                  <FolderIcon
+                     className="h-[5em] w-[5em] text-text-muted opacity-60"
+                     strokeWidth={1.6}
+                     aria-hidden="true"
+                  />
                   <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
                   <p className="text-[var(--font-size)]">Select a project or add a new one to get started</p>
                   <button
