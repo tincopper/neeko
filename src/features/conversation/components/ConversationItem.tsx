@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Play, FileText } from 'lucide-react';
+import { SquareTerminal, Eye } from 'lucide-react';
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
@@ -78,23 +78,26 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
               variant="ghost"
               size="icon"
               className={cn(
-                'w-5 h-5',
-                'text-accent-green hover:text-accent-green hover:bg-accent-green/10',
+                'w-5 h-5 text-text-muted',
+                'hover:text-accent-green hover:bg-accent-green/10',
               )}
               onClick={() => onResume(meta)}
               title="Resume"
             >
-              <Play className="w-3 h-3" />
+              <SquareTerminal className="w-3 h-3" />
             </Button>
           ) : null}
           <Button
             variant="ghost"
             size="icon"
-            className="w-5 h-5"
+            className={cn(
+              'w-5 h-5 text-text-muted',
+              'hover:text-text-primary hover:bg-bg-hover',
+            )}
             onClick={() => onView(meta)}
             title="View"
           >
-            <FileText className="w-3 h-3" />
+            <Eye className="w-3 h-3" />
           </Button>
         </div>
       </div>

@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
+import AgentIcon from '@/features/agent/components/AgentIcon';
 import { useConversationList } from '../hooks/useConversationList';
 import { useConversationResume } from '../hooks/useConversationResume';
 import ConversationList from './ConversationList';
@@ -18,6 +19,15 @@ interface ConversationPanelProps {
   onResumeConversation: (meta: ConversationMeta) => Promise<void>;
 }
 
+function matchesSearch(meta: ConversationMeta, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const title = (meta.userTitle ?? meta.title ?? '').toLowerCase();
+  const preview = (meta.preview ?? '').toLowerCase();
+  const agentId = (meta.agentId ?? '').toLowerCase();
+  return title.includes(q) || preview.includes(q) || agentId.includes(q);
+}
+
 const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   projectPath,
   projectId,
@@ -29,6 +39,8 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
 }) => {
   const { conversations, loading, refresh } = useConversationList(projectPath, isActive);
   const { isResuming } = useConversationResume(projectId);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [agentFilter, setAgentFilter] = useState<string | null>(null);
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -51,6 +63,42 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
       showToast(msg, 'error');
     }
   }, [isResuming, showToast, onResumeConversation, refresh]);
+
+  // Agents that appear in the current project conversation list (stable order by name)
+  const agentOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of conversations) {
+      counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1);
+    }
+    const ids = [...counts.keys()];
+    ids.sort((a, b) => {
+      const nameA = agents.find((x) => x.id === a)?.name ?? a;
+      const nameB = agents.find((x) => x.id === b)?.name ?? b;
+      return nameA.localeCompare(nameB);
+    });
+    return ids.map((id) => ({
+      id,
+      count: counts.get(id) ?? 0,
+      agent: agents.find((a) => a.id === id) ?? null,
+    }));
+  }, [conversations, agents]);
+
+  // Drop stale filter if that agent no longer appears after refresh
+  useEffect(() => {
+    if (agentFilter && !agentOptions.some((o) => o.id === agentFilter)) {
+      setAgentFilter(null);
+    }
+  }, [agentFilter, agentOptions]);
+
+  const filteredConversations = useMemo(() => {
+    const q = searchQuery.trim();
+    return conversations.filter((meta) => {
+      if (agentFilter && meta.agentId !== agentFilter) return false;
+      return matchesSearch(meta, q);
+    });
+  }, [conversations, agentFilter, searchQuery]);
+
+  const hasActiveFilters = Boolean(searchQuery.trim() || agentFilter);
 
   if (!projectPath) {
     return (
@@ -82,15 +130,109 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
         </Button>
       </div>
 
+      {/* Search */}
+      <div className="shrink-0 px-2 py-2 border-b border-border">
+        <div className="relative flex items-center">
+          <Search className="absolute left-2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            role="searchbox"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search title or preview…"
+            className={cn(
+              'w-full h-7 pl-7 text-[12px] rounded-md',
+              'bg-bg-hover/50 border border-border/80',
+              'text-text-primary placeholder:text-text-muted',
+              'outline-none focus:border-border focus:bg-bg-primary transition-colors',
+              searchQuery ? 'pr-7' : 'pr-2.5',
+            )}
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-1.5 p-0.5 text-text-muted hover:text-text-primary rounded"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Agent type filter */}
+      {agentOptions.length > 1 ? (
+        <div
+          className="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border overflow-x-auto thin-scrollbar"
+          role="group"
+          aria-label="Filter by agent"
+        >
+          <button
+            type="button"
+            onClick={() => setAgentFilter(null)}
+            aria-pressed={agentFilter === null}
+            className={cn(
+              'shrink-0 h-6 px-2 text-[11px] rounded-md transition-colors',
+              agentFilter === null
+                ? 'bg-bg-selected text-text-primary'
+                : 'text-text-secondary hover:bg-bg-hover',
+            )}
+          >
+            All
+            <span className="ml-1 text-text-muted tabular-nums">{conversations.length}</span>
+          </button>
+          {agentOptions.map(({ id, count, agent }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setAgentFilter(agentFilter === id ? null : id)}
+              aria-pressed={agentFilter === id}
+              title={agent?.name ?? id}
+              className={cn(
+                'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors max-w-[140px]',
+                agentFilter === id
+                  ? 'bg-bg-selected text-text-primary'
+                  : 'text-text-secondary hover:bg-bg-hover',
+              )}
+            >
+              {agent ? (
+                <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                  <AgentIcon icon={agent.icon} size={12} />
+                </span>
+              ) : null}
+              <span className="truncate">{agent?.name ?? id}</span>
+              <span className="text-text-muted tabular-nums shrink-0">{count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        <ConversationList
-          conversations={conversations}
-          agents={agents}
-          loading={loading}
-          onView={handleView}
-          onResume={handleResume}
-        />
+        {!loading && hasActiveFilters && filteredConversations.length === 0 && conversations.length > 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 gap-2 px-4">
+            <p className="text-xs text-text-secondary/60">No matching conversations</p>
+            <button
+              type="button"
+              className="text-[11px] text-accent-blue hover:underline"
+              onClick={() => {
+                setSearchQuery('');
+                setAgentFilter(null);
+              }}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <ConversationList
+            conversations={filteredConversations}
+            agents={agents}
+            loading={loading}
+            onView={handleView}
+            onResume={handleResume}
+          />
+        )}
       </div>
     </div>
   );

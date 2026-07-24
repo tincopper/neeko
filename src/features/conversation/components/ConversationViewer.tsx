@@ -9,7 +9,7 @@ import {
   Terminal,
   Search,
   Edit,
-  Play,
+  SquareTerminal,
 } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
@@ -297,7 +297,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
               className="h-7 px-2 text-xs gap-1 text-accent-green hover:text-accent-green hover:bg-accent-green/10"
               onClick={() => onResume(conversationMeta)}
             >
-              <Play className="w-3 h-3" />
+              <SquareTerminal className="w-3 h-3" />
               Resume
             </Button>
           )}
