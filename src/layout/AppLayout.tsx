@@ -6,16 +6,11 @@ import { cn } from '@/lib/utils';
 import { Plus, Settings } from '@/shared/components/icons';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip';
 
+import AddProjectMenu from './AddProjectMenu';
 import { DockLayout } from './dock-layout';
 import MainContent from './MainContent';
-import AddProjectMenu from './AddProjectMenu';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/ui/tooltip';
 
 interface AppLayoutProps {
   onAddProject: () => void;
