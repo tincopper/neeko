@@ -49,3 +49,15 @@ export function getResumeCommand(id: string): Promise<string[] | null> {
 export function exportConversation(id: string): Promise<string> {
   return invoke<string>('export_conversation', { id });
 }
+
+/** Backend emits this while `scan_conversations` runs (Stage C progress). */
+export const CONVERSATION_SCAN_PROGRESS_EVENT = 'conversation-scan-progress';
+
+export interface ConversationScanProgressEvent {
+  agentId: string;
+  /** `start` | `done` | `error` */
+  phase: string;
+  sessionsFound: number;
+  projectPath?: string | null;
+}
+

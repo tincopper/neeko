@@ -10,6 +10,10 @@ pub mod commands;
 pub mod manager;
 /// Process-local scan fingerprint / JSONL resume cache.
 pub mod scan_cache;
+/// Project-scoped session discovery helpers (path encode / prefix match).
+pub mod scope;
+/// Cold-start disk meta index under ~/.neeko.
+pub mod disk_index;
 /// Conversation content normalization utilities.
 pub mod normalize;
 pub mod types;

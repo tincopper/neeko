@@ -99,4 +99,16 @@ pub trait AgentSessionAdapter: Send + Sync {
         let _ = project_path;
         self.parse_all_metas()
     }
+
+    /// Optional project-scoped discovery roots for WalkDir-based adapters.
+    ///
+    /// - `None` → manager walks the full `session_root()` (default / unscoped).
+    /// - `Some(roots)` → manager only walks those directories.
+    /// - `Some(empty)` → early stop: no sessions for this project without a full walk.
+    ///
+    /// Bulk adapters (`parse_all_metas*`) ignore this; they scope inside SQL / bulk parse.
+    fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<PathBuf>> {
+        let _ = project_path;
+        None
+    }
 }

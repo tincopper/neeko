@@ -267,6 +267,17 @@ impl AgentSessionAdapter for ReasonixAdapter {
             .join("projects")
     }
 
+    fn discovery_roots(
+        &self,
+        project_path: Option<&str>,
+    ) -> Option<Vec<std::path::PathBuf>> {
+        crate::conversation::scope::discovery_roots_for(
+            self.session_root(),
+            project_path,
+            crate::conversation::scope::EncodeStyle::Claude,
+        )
+    }
+
     fn file_pattern(&self) -> &str {
         // Nested under projects/<sanitized>/sessions/
         "**/sessions/*.jsonl"

@@ -38,6 +38,24 @@ pub(crate) fn resolve_title(
 pub struct ConversationManager {
     adapters: HashMap<String, Box<dyn AgentSessionAdapter>>,
     cache: Mutex<HashMap<String, ConversationMeta>>,
+    /// Whether the cold-start disk index has been applied this process.
+    disk_index_hydrated: Mutex<bool>,
+    /// Optional progress callback for scan_agents (command layer may emit Tauri events).
+    scan_progress: Mutex<Option<Box<dyn Fn(ScanProgressEvent) + Send>>>,
+}
+
+/// Lightweight progress signal emitted during multi-agent scan.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgressEvent {
+    /// Agent currently being scanned.
+    pub agent_id: String,
+    /// `start` | `done` | `error`
+    pub phase: String,
+    /// Sessions found for this agent after `done` (0 on start/error).
+    pub sessions_found: u32,
+    /// Optional project scope for this scan.
+    pub project_path: Option<String>,
 }
 
 impl ConversationManager {
@@ -50,20 +68,129 @@ impl ConversationManager {
         Self {
             adapters: adapter_map,
             cache: Mutex::new(HashMap::new()),
+            disk_index_hydrated: Mutex::new(false),
+            scan_progress: Mutex::new(None),
         }
     }
 
-    /// 扫描所有已注册 Agent 的会话文件，更新内存缓存。
+    /// Register a process-wide scan progress listener (overwrites previous).
+    pub fn set_scan_progress_handler(
+        &self,
+        handler: Option<Box<dyn Fn(ScanProgressEvent) + Send>>,
+    ) {
+        if let Ok(mut slot) = self.scan_progress.lock() {
+            *slot = handler;
+        }
+    }
+
+    fn emit_progress(&self, event: ScanProgressEvent) {
+        if let Ok(slot) = self.scan_progress.lock() {
+            if let Some(handler) = slot.as_ref() {
+                handler(event);
+            }
+        }
+    }
+
+    /// Hydrate memory cache from `~/.neeko/conversation-index.json` once when empty.
     ///
-    /// Agents are scanned in parallel (scoped threads). Each agent writes into the
-    /// shared cache under a short critical section so discovery I/O stays concurrent.
+    /// Safe to call on every list/search: no-ops after first successful attempt
+    /// (including missing file). Does not overwrite non-empty cache entries.
+    pub fn hydrate_from_disk_index_if_empty(&self) -> Result<bool> {
+        {
+            let hydrated = self
+                .disk_index_hydrated
+                .lock()
+                .map_err(|e| anyhow::anyhow!("disk_index_hydrated lock poisoned: {e}"))?;
+            if *hydrated {
+                return Ok(false);
+            }
+        }
+
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+        if !cache.is_empty() {
+            if let Ok(mut h) = self.disk_index_hydrated.lock() {
+                *h = true;
+            }
+            return Ok(false);
+        }
+
+        let loaded = match crate::conversation::disk_index::load_default_index() {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("conversation disk index load failed: {e:#}");
+                if let Ok(mut h) = self.disk_index_hydrated.lock() {
+                    *h = true;
+                }
+                return Ok(false);
+            }
+        };
+
+        let Some(index) = loaded else {
+            if let Ok(mut h) = self.disk_index_hydrated.lock() {
+                *h = true;
+            }
+            return Ok(false);
+        };
+
+        for meta in index.conversations {
+            cache.entry(meta.id.clone()).or_insert(meta);
+        }
+        if let Ok(mut h) = self.disk_index_hydrated.lock() {
+            *h = true;
+        }
+        Ok(true)
+    }
+
+    /// Persist current memory cache to the cold-start disk index.
+    pub fn persist_disk_index(&self) -> Result<()> {
+        let snapshot: Vec<ConversationMeta> = {
+            let cache = self
+                .cache
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+            cache.values().cloned().collect()
+        };
+        crate::conversation::disk_index::save_default_index(snapshot)
+    }
+
     /// Scan every registered agent. When `project_path` is `Some`, adapters that
     /// support scoped discovery only parse sessions for that project.
     pub fn scan_all(&self, project_path: Option<&str>) -> Result<Vec<ScanReport>> {
+        self.scan_agents(project_path, None)
+    }
+
+    /// Scan a subset of agents (or all when `only_agent_ids` is `None`).
+    ///
+    /// Used by the command layer to skip disabled agents without coupling the
+    /// manager to `AgentManager`.
+    pub fn scan_agents(
+        &self,
+        project_path: Option<&str>,
+        only_agent_ids: Option<&[String]>,
+    ) -> Result<Vec<ScanReport>> {
         use std::thread;
 
-        // Materialize (id, adapter pointer) so we can share `&self` across scoped threads.
-        let agent_ids: Vec<String> = self.adapters.keys().cloned().collect();
+        // Materialize ids so we can share `&self` across scoped threads.
+        // If the enabled-agent filter yields no overlap with adapters, fall back
+        // to all adapters so History never goes silently empty.
+        let agent_ids: Vec<String> = match only_agent_ids {
+            Some(ids) => {
+                let filtered: Vec<String> = ids
+                    .iter()
+                    .filter(|id| self.adapters.contains_key(id.as_str()))
+                    .cloned()
+                    .collect();
+                if filtered.is_empty() {
+                    self.adapters.keys().cloned().collect()
+                } else {
+                    filtered
+                }
+            }
+            None => self.adapters.keys().cloned().collect(),
+        };
 
         thread::scope(|scope| {
             let mut handles = Vec::with_capacity(agent_ids.len());
@@ -72,7 +199,32 @@ impl ConversationManager {
                     let adapter = self.adapters.get(agent_id).ok_or_else(|| {
                         anyhow::anyhow!("Adapter missing for agent id that was just listed: {agent_id}")
                     })?;
-                    self.scan_agent_inner(agent_id, adapter.as_ref(), project_path)
+                    self.emit_progress(ScanProgressEvent {
+                        agent_id: agent_id.clone(),
+                        phase: "start".into(),
+                        sessions_found: 0,
+                        project_path: project_path.map(|s| s.to_string()),
+                    });
+                    match self.scan_agent_inner(agent_id, adapter.as_ref(), project_path) {
+                        Ok(report) => {
+                            self.emit_progress(ScanProgressEvent {
+                                agent_id: agent_id.clone(),
+                                phase: "done".into(),
+                                sessions_found: report.sessions_found,
+                                project_path: project_path.map(|s| s.to_string()),
+                            });
+                            Ok(report)
+                        }
+                        Err(e) => {
+                            self.emit_progress(ScanProgressEvent {
+                                agent_id: agent_id.clone(),
+                                phase: "error".into(),
+                                sessions_found: 0,
+                                project_path: project_path.map(|s| s.to_string()),
+                            });
+                            Err(e)
+                        }
+                    }
                 }));
             }
 
@@ -117,7 +269,32 @@ impl ConversationManager {
             .adapters
             .get(agent_id)
             .with_context(|| format!("Adapter not found for agent: {agent_id}"))?;
-        self.scan_agent_inner(agent_id, adapter.as_ref(), project_path)
+        self.emit_progress(ScanProgressEvent {
+            agent_id: agent_id.to_string(),
+            phase: "start".into(),
+            sessions_found: 0,
+            project_path: project_path.map(|s| s.to_string()),
+        });
+        match self.scan_agent_inner(agent_id, adapter.as_ref(), project_path) {
+            Ok(report) => {
+                self.emit_progress(ScanProgressEvent {
+                    agent_id: agent_id.to_string(),
+                    phase: "done".into(),
+                    sessions_found: report.sessions_found,
+                    project_path: project_path.map(|s| s.to_string()),
+                });
+                Ok(report)
+            }
+            Err(e) => {
+                self.emit_progress(ScanProgressEvent {
+                    agent_id: agent_id.to_string(),
+                    phase: "error".into(),
+                    sessions_found: 0,
+                    project_path: project_path.map(|s| s.to_string()),
+                });
+                Err(e)
+            }
+        }
     }
 
     fn scan_agent_inner(
@@ -157,15 +334,30 @@ impl ConversationManager {
             });
         }
 
-        // 默认逐文件扫描
-        let root = adapter.session_root();
-        if !root.exists() {
-            return Ok(ScanReport {
-                agent_id: agent_id.to_string(),
-                sessions_found: 0,
-                errors: Vec::new(),
-            });
-        }
+        // 默认逐文件扫描（可被 discovery_roots 收窄到项目目录）
+        let session_root = adapter.session_root();
+        let walk_roots: Vec<std::path::PathBuf> = match adapter.discovery_roots(project_path) {
+            // Adapter opted into scoped discovery for this project.
+            Some(roots) if roots.is_empty() => {
+                return Ok(ScanReport {
+                    agent_id: agent_id.to_string(),
+                    sessions_found: 0,
+                    errors: Vec::new(),
+                });
+            }
+            Some(roots) => roots,
+            // Unscoped / unsupported: full session_root walk.
+            None => {
+                if !session_root.exists() {
+                    return Ok(ScanReport {
+                        agent_id: agent_id.to_string(),
+                        sessions_found: 0,
+                        errors: Vec::new(),
+                    });
+                }
+                vec![session_root.clone()]
+            }
+        };
 
         // Basename-only patterns (no `/`, no leading `**/`) match nested paths by default.
         let effective_pattern = normalize_file_pattern(adapter.file_pattern());
@@ -176,21 +368,32 @@ impl ConversationManager {
         let mut files_seen: u32 = 0;
         let mut pattern_hits: u32 = 0;
 
-        for entry in WalkDir::new(&root)
-            .min_depth(1)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for walk_root in &walk_roots {
+            if !walk_root.exists() {
+                continue;
+            }
+            for entry in WalkDir::new(walk_root)
+                .min_depth(1)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
             let path = entry.path();
             if !path.is_file() {
                 continue;
             }
             files_seen = files_seen.saturating_add(1);
 
-            // 使用相对于 session_root 的路径匹配 pattern
-            let rel_path = match path.strip_prefix(&root) {
+            // 使用相对于 session_root 的路径匹配 pattern（scoped roots 仍相对完整 root）
+            let rel_path = match path.strip_prefix(&session_root) {
                 Ok(rp) => rp,
-                Err(_) => continue,
+                Err(_) => {
+                    // Fallback: relative to the walk root when outside session_root
+                    // (test adapters that inject a temp root as discovery root).
+                    match path.strip_prefix(walk_root) {
+                        Ok(rp) => rp,
+                        Err(_) => continue,
+                    }
+                }
             };
             let rel_str = rel_path.to_string_lossy();
 
@@ -254,12 +457,14 @@ impl ConversationManager {
                     }
                 }
             }
+            }
         }
 
         if sessions_found == 0 && files_seen > 0 {
             let msg = format!(
-                "scan found 0 sessions for {agent_id} under {} (files_seen={files_seen}, pattern_hits={pattern_hits}, pattern={effective_pattern})",
-                root.display()
+                "scan found 0 sessions for {agent_id} under {} (files_seen={files_seen}, pattern_hits={pattern_hits}, pattern={effective_pattern}, roots={})",
+                session_root.display(),
+                walk_roots.len()
             );
             log::warn!("{msg}");
             errors.push(msg);
@@ -1577,6 +1782,187 @@ mod tests {
         assert!(!matches_project_path(Some(""), "/proj"));
         assert!(!matches_project_path(Some("/proj"), ""));
     }
+
+    #[test]
+    fn should_scope_walk_to_discovery_roots_only() {
+        use crate::conversation::adapter::{ParsedMessage, ParsedMeta};
+        use std::path::{Path, PathBuf};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct ScopedAdapter {
+            root: PathBuf,
+            parse_calls: Arc<AtomicUsize>,
+        }
+
+        impl AgentSessionAdapter for ScopedAdapter {
+            fn agent_id(&self) -> &str {
+                "scoped-test"
+            }
+            fn session_root(&self) -> PathBuf {
+                self.root.clone()
+            }
+            fn file_pattern(&self) -> &str {
+                "*.jsonl"
+            }
+            fn discovery_roots(&self, project_path: Option<&str>) -> Option<Vec<PathBuf>> {
+                crate::conversation::scope::discovery_roots_for(
+                    self.root.clone(),
+                    project_path,
+                    crate::conversation::scope::EncodeStyle::Claude,
+                )
+            }
+            fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
+                self.parse_calls.fetch_add(1, Ordering::SeqCst);
+                let project = file_path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string());
+                Ok(ParsedMeta {
+                    native_session_id: file_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("x")
+                        .to_string(),
+                    title: Some("t".into()),
+                    first_user_message: None,
+                    recent_messages: vec![],
+                    model: None,
+                    started_at: 1,
+                    updated_at: 2,
+                    message_count: 1,
+                    project_path: project,
+                })
+            }
+            fn parse_messages(&self, _file_path: &Path) -> Result<Vec<ParsedMessage>> {
+                Ok(vec![])
+            }
+            fn extract_session_id(&self, file_path: &Path) -> Option<String> {
+                file_path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+            }
+            fn resume_command(&self, _id: &str, _pp: &str) -> Option<Vec<String>> {
+                None
+            }
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path();
+        let in_scope = root.join("-Users-tomgs-proj");
+        let out_scope = root.join("-Users-tomgs-other");
+        std::fs::create_dir_all(&in_scope).unwrap();
+        std::fs::create_dir_all(&out_scope).unwrap();
+        std::fs::write(in_scope.join("a.jsonl"), "{}
+").unwrap();
+        std::fs::write(out_scope.join("b.jsonl"), "{}
+").unwrap();
+
+        let parse_calls = Arc::new(AtomicUsize::new(0));
+        let manager = ConversationManager::new(vec![Box::new(ScopedAdapter {
+            root: root.to_path_buf(),
+            parse_calls: parse_calls.clone(),
+        })]);
+
+        let reports = manager
+            .scan_all(Some("/Users/tomgs/proj"))
+            .expect("scoped scan");
+        assert_eq!(reports[0].sessions_found, 1);
+        assert_eq!(
+            parse_calls.load(Ordering::SeqCst),
+            1,
+            "must not parse out-of-scope project dir"
+        );
+
+        let page = manager
+            .list_page(Some("/Users/tomgs/proj"), None, 0, 10)
+            .unwrap();
+        // project_path from dir name is sanitized form, list filter uses session project_path
+        // Our parse sets project_path to dir name; matches_project_path won't match.
+        // Still assert cache size via unfiltered list.
+        let all = manager.list(None, None).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].native_session_id, "a");
+        let _ = page;
+    }
+
+    #[test]
+    fn should_skip_disabled_agents_via_scan_agents_filter() {
+        use crate::conversation::adapter::{ParsedMessage, ParsedMeta};
+        use std::path::{Path, PathBuf};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct CountingAdapter {
+            id: String,
+            root: PathBuf,
+            calls: Arc<AtomicUsize>,
+        }
+
+        impl AgentSessionAdapter for CountingAdapter {
+            fn agent_id(&self) -> &str {
+                &self.id
+            }
+            fn session_root(&self) -> PathBuf {
+                self.root.clone()
+            }
+            fn file_pattern(&self) -> &str {
+                "*.jsonl"
+            }
+            fn parse_meta(&self, file_path: &Path) -> Result<ParsedMeta> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(ParsedMeta {
+                    native_session_id: file_path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("x")
+                        .to_string(),
+                    title: Some("t".into()),
+                    first_user_message: None,
+                    recent_messages: vec![],
+                    model: None,
+                    started_at: 1,
+                    updated_at: 2,
+                    message_count: 1,
+                    project_path: Some("/p".into()),
+                })
+            }
+            fn parse_messages(&self, _: &Path) -> Result<Vec<ParsedMessage>> {
+                Ok(vec![])
+            }
+            fn extract_session_id(&self, _: &Path) -> Option<String> {
+                None
+            }
+            fn resume_command(&self, _: &str, _: &str) -> Option<Vec<String>> {
+                None
+            }
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("s.jsonl"), "{}
+").unwrap();
+        let calls_a = Arc::new(AtomicUsize::new(0));
+        let calls_b = Arc::new(AtomicUsize::new(0));
+        let manager = ConversationManager::new(vec![
+            Box::new(CountingAdapter {
+                id: "agent-a".into(),
+                root: dir.path().to_path_buf(),
+                calls: calls_a.clone(),
+            }),
+            Box::new(CountingAdapter {
+                id: "agent-b".into(),
+                root: dir.path().to_path_buf(),
+                calls: calls_b.clone(),
+            }),
+        ]);
+
+        let only = vec!["agent-a".to_string()];
+        let reports = manager.scan_agents(None, Some(&only)).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].agent_id, "agent-a");
+        assert_eq!(calls_a.load(Ordering::SeqCst), 1);
+        assert_eq!(calls_b.load(Ordering::SeqCst), 0);
+    }
+
 
     #[test]
     fn should_exclude_sessions_without_project_path_when_filtering() {
