@@ -1,12 +1,33 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { ConversationMeta, ConversationMessage, ScanReport } from '../types';
+import type {
+  ConversationListPage,
+  ConversationMeta,
+  ConversationMessage,
+  ScanReport,
+} from '../types';
 
-export function scanConversations(agentId?: string): Promise<ScanReport[]> {
-  return invoke<ScanReport[]>('scan_conversations', { agentId });
+export function scanConversations(
+  agentId?: string,
+  projectPath?: string,
+): Promise<ScanReport[]> {
+  return invoke<ScanReport[]>('scan_conversations', { agentId, projectPath });
 }
 
-export function listConversations(projectPath?: string, agentId?: string): Promise<ConversationMeta[]> {
-  return invoke<ConversationMeta[]>('list_conversations', { projectPath, agentId });
+/**
+ * List conversations for a project (strict project ownership).
+ * Pass `limit` for paged infinite scroll; omit/`0` for full list.
+ */
+export function listConversations(
+  projectPath?: string,
+  agentId?: string,
+  options?: { offset?: number; limit?: number },
+): Promise<ConversationListPage> {
+  return invoke<ConversationListPage>('list_conversations', {
+    projectPath,
+    agentId,
+    offset: options?.offset ?? 0,
+    limit: options?.limit ?? 0,
+  });
 }
 
 export function getConversationMessages(id: string): Promise<ConversationMessage[]> {

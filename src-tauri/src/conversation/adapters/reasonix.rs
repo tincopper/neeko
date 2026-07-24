@@ -869,7 +869,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(RootRx {
             root: dir.path().to_path_buf(),
         })]);
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(
             reports[0].sessions_found, 1,
             "noise events/recovery must not count; errors={:?}",

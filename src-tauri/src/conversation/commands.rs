@@ -1,41 +1,56 @@
-use crate::conversation::types::{ConversationMessage, ConversationMeta, ScanReport};
+use crate::conversation::types::{
+    ConversationListPage, ConversationMessage, ConversationMeta, ScanReport,
+};
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
-/// Scan all registered agents for conversations, updating the cache.
+/// Scan agents for conversations, updating the in-memory cache.
 ///
-/// Async + `block_in_place` so heavy WalkDir / SQLite work yields the async
-/// worker's cooperative duties instead of looking like a hung IPC handler.
-/// The frontend fishbone path hydrates via `list_conversations` first, so scan
-/// is always on the background rib.
+/// Prefer passing `project_path` so bulk adapters (OpenCode) can restrict discovery
+/// to the active project. Async + `block_in_place` keeps heavy WalkDir / SQLite
+/// work off the cooperative async worker.
 #[tauri::command]
 pub async fn scan_conversations(
     agent_id: Option<String>,
+    project_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<ScanReport>, AppError> {
     tokio::task::block_in_place(|| match agent_id {
         Some(aid) => {
             let report = state
                 .conversation_manager
-                .scan_agent(&aid)
+                .scan_agent(&aid, project_path.as_deref())
                 .map_err(AppError::from)?;
             Ok(vec![report])
         }
-        None => state.conversation_manager.scan_all().map_err(AppError::from),
+        None => state
+            .conversation_manager
+            .scan_all(project_path.as_deref())
+            .map_err(AppError::from),
     })
 }
 
 /// List cached conversations, optionally filtered by project or agent.
+///
+/// When `limit` is omitted or `0`, returns all matches (legacy full list).
+/// With a positive `limit`, returns a page for infinite scroll.
 #[tauri::command]
 pub fn list_conversations(
     project_path: Option<String>,
     agent_id: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
     state: State<AppStateWrapper>,
-) -> Result<Vec<ConversationMeta>, AppError> {
+) -> Result<ConversationListPage, AppError> {
     state
         .conversation_manager
-        .list(project_path.as_deref(), agent_id.as_deref())
+        .list_page(
+            project_path.as_deref(),
+            agent_id.as_deref(),
+            offset.unwrap_or(0),
+            limit.unwrap_or(0),
+        )
         .map_err(AppError::from)
 }
 

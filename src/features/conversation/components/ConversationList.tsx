@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import ConversationItem from './ConversationItem';
 import ConversationListSkeleton from './ConversationListSkeleton';
 import { groupConversationsByDate } from '../utils/groupByDate';
@@ -12,6 +12,12 @@ interface ConversationListProps {
   loading: boolean;
   /** Soft background refresh; list stays visible. */
   refreshing?: boolean;
+  /** More pages available for infinite scroll. */
+  hasMore?: boolean;
+  /** Next page in flight. */
+  loadingMore?: boolean;
+  /** Request next page when sentinel is visible. */
+  onLoadMore?: () => void;
   activeId?: string | null;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
@@ -22,6 +28,9 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   agents,
   loading,
   refreshing = false,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   activeId,
   onView,
   onResume,
@@ -38,6 +47,35 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
     () => groupConversationsByDate(conversations),
     [conversations],
   );
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || loadingMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    // History list scrolls inside a nested overflow container, not the viewport.
+    let root: Element | null = el.parentElement;
+    while (root) {
+      const style = window.getComputedStyle(root);
+      const oy = style.overflowY;
+      if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') break;
+      root = root.parentElement;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          onLoadMore();
+        }
+      },
+      { root, rootMargin: '120px', threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore, conversations.length]);
 
   // Fishbone: empty + still loading/refreshing → skeleton, never flash empty state early.
   if (loading || (conversations.length === 0 && refreshing)) {
@@ -88,6 +126,15 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
           </div>
         </section>
       ))}
+      {hasMore ? (
+        <div
+          ref={sentinelRef}
+          className="flex items-center justify-center py-3 text-[10px] text-text-muted"
+          aria-hidden={!loadingMore}
+        >
+          {loadingMore ? 'Loading more…' : 'Scroll for more'}
+        </div>
+      ) : null}
     </div>
   );
 });

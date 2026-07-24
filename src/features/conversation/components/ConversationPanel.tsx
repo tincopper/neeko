@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
@@ -37,14 +37,34 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   onOpenConversationTab,
   onResumeConversation,
 }) => {
-  const { conversations, loading, refreshing, forceRefresh } = useConversationList(projectPath, isActive);
-  const { isResuming } = useConversationResume(projectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [filterOverflow, setFilterOverflow] = useState(false);
   const filterRowRef = useRef<HTMLDivElement | null>(null);
+  const {
+    conversations,
+    total,
+    hasMore,
+    loadingMore,
+    loading,
+    refreshing,
+    forceRefresh,
+    loadMore,
+  } = useConversationList(projectPath, isActive, agentFilter ?? undefined);
+  const { isResuming } = useConversationResume(projectId);
+
+  // Keep the unfiltered project total for the "All" chip while an agent filter is active.
+  const projectTotalRef = useRef(0);
+  if (!agentFilter && total > 0) {
+    projectTotalRef.current = total;
+  } else if (!agentFilter && conversations.length === 0 && !loading && !refreshing) {
+    projectTotalRef.current = 0;
+  }
+  const allChipCount = agentFilter
+    ? (projectTotalRef.current || conversations.length)
+    : (total || conversations.length);
 
   const handleRefresh = useCallback(() => {
     void forceRefresh();
@@ -69,13 +89,26 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
     }
   }, [isResuming, showToast, onResumeConversation, forceRefresh]);
 
-  // Agents that appear in the current project conversation list (stable order by name)
-  const agentOptions = useMemo(() => {
-    const counts = new Map<string, number>();
+  // Agent chips should reflect the project catalog, not the current server-filtered page.
+  // Rebuild counts only when viewing "All"; keep last catalog while an agent chip is active.
+  const agentCatalogRef = useRef<Map<string, number>>(new Map());
+  if (!agentFilter) {
+    const next = new Map<string, number>();
     for (const c of conversations) {
-      counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1);
+      next.set(c.agentId, (next.get(c.agentId) ?? 0) + 1);
     }
+    // Prefer non-empty catalog; avoid wiping chips during empty skeleton/hydrate.
+    if (next.size > 0 || agentCatalogRef.current.size === 0) {
+      agentCatalogRef.current = next;
+    }
+  }
+
+  const agentOptions = useMemo(() => {
+    const counts = agentCatalogRef.current;
     const ids = [...counts.keys()];
+    if (agentFilter && !ids.includes(agentFilter)) {
+      ids.push(agentFilter);
+    }
     ids.sort((a, b) => {
       const nameA = agents.find((x) => x.id === a)?.name ?? a;
       const nameB = agents.find((x) => x.id === b)?.name ?? b;
@@ -83,17 +116,12 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
     });
     return ids.map((id) => ({
       id,
-      count: counts.get(id) ?? 0,
+      // Selected agent uses server total; others keep last unfiltered page catalog counts.
+      count: agentFilter === id ? total : (counts.get(id) ?? 0),
       agent: agents.find((a) => a.id === id) ?? null,
     }));
-  }, [conversations, agents]);
-
-  // Drop stale filter if that agent no longer appears after refresh
-  useEffect(() => {
-    if (agentFilter && !agentOptions.some((o) => o.id === agentFilter)) {
-      setAgentFilter(null);
-    }
-  }, [agentFilter, agentOptions]);
+    // conversations dependency keeps options fresh on unfiltered reloads.
+  }, [conversations, agents, agentFilter, total]);
 
   // Detect whether the collapsed filter row overflows a single line.
   // Measure against the collapsed (single-line) height, so re-measure when
@@ -117,14 +145,15 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
     return () => ro.disconnect();
   }, [agentOptions, filterExpanded]);
 
+  // Agent filter is applied server-side via list_page so infinite scroll stays correct.
+  // Search remains client-side over the currently loaded pages.
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim();
-    return conversations.filter((meta) => {
-      if (agentFilter && meta.agentId !== agentFilter) return false;
-      return matchesSearch(meta, q);
-    });
-  }, [conversations, agentFilter, searchQuery]);
+    if (!q) return conversations;
+    return conversations.filter((meta) => matchesSearch(meta, q));
+  }, [conversations, searchQuery]);
 
+  const hasClientSearch = Boolean(searchQuery.trim());
   const hasActiveFilters = Boolean(searchQuery.trim() || agentFilter);
 
   if (!projectPath) {
@@ -224,7 +253,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
                 )}
               >
                 All
-                <span className="ml-1 text-text-muted tabular-nums">{conversations.length}</span>
+                <span className="ml-1 text-text-muted tabular-nums">{allChipCount}</span>
               </button>
               {agentOptions.map(({ id, count, agent }) => (
                 <button
@@ -269,14 +298,14 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
         {/* Result count while filtering */}
         {hasActiveFilters ? (
           <p className="text-[10px] text-text-muted tabular-nums px-0.5">
-            {filteredConversations.length} of {conversations.length}
+            {filteredConversations.length} of {Math.max(total, conversations.length)}
           </p>
         ) : null}
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {!(loading && conversations.length === 0) && hasActiveFilters && filteredConversations.length === 0 && conversations.length > 0 ? (
+        {!(loading && conversations.length === 0) && hasClientSearch && filteredConversations.length === 0 && conversations.length > 0 ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2 px-4">
             <p className="text-xs text-text-secondary/60">No matching conversations</p>
             <button
@@ -296,6 +325,9 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
             agents={agents}
             loading={loading}
             refreshing={refreshing}
+            hasMore={hasMore && !hasClientSearch}
+            loadingMore={loadingMore}
+            onLoadMore={loadMore}
             activeId={activeId}
             onView={handleView}
             onResume={handleResume}

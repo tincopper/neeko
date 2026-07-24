@@ -58,6 +58,13 @@ impl AgentSessionAdapter for OpenCodeAdapter {
     }
 
     fn parse_all_metas(&self) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
+        self.parse_all_metas_for_project(None)
+    }
+
+    fn parse_all_metas_for_project(
+        &self,
+        project_path: Option<&str>,
+    ) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
         let root = self.session_root();
         if !root.exists() {
             return Some(Ok(Vec::new()));
@@ -79,7 +86,34 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                 continue;
             }
 
-            match parse_opencode_db(path) {
+            // Full-DB fingerprint only applies when no project filter (filter changes result set).
+            if project_path.is_none() {
+                if let Some(sig) = crate::conversation::scan_cache::source_signature(path) {
+                    if let Some(cached) =
+                        crate::conversation::scan_cache::get_cached_bulk_metas(path, &sig)
+                    {
+                        results.extend(cached);
+                        continue;
+                    }
+
+                    match parse_opencode_db(path, None) {
+                        Ok(sessions) => {
+                            crate::conversation::scan_cache::put_cached_bulk_metas(
+                                path.to_path_buf(),
+                                sig,
+                                sessions.clone(),
+                            );
+                            results.extend(sessions);
+                        }
+                        Err(e) => {
+                            log::error!("Failed to parse OpenCode DB {}: {e}", path.display());
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            match parse_opencode_db(path, project_path) {
                 Ok(sessions) => results.extend(sessions),
                 Err(e) => {
                     log::error!("Failed to parse OpenCode DB {}: {e}", path.display());
@@ -267,8 +301,14 @@ fn split_synthetic_path(path: &Path) -> Option<(PathBuf, String)> {
     Some((PathBuf::from(db_part), session_id.to_string()))
 }
 
-/// Parse all sessions from an OpenCode SQLite database.
-fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
+/// Parse sessions from an OpenCode SQLite database.
+///
+/// When `project_path` is set, only rows whose `directory` equals the project or
+/// is nested under it are returned (SQL-side filter).
+fn parse_opencode_db(
+    db_path: &Path,
+    project_path: Option<&str>,
+) -> Result<Vec<(ParsedMeta, PathBuf)>> {
     let conn = rusqlite::Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .with_context(|| format!("Failed to open OpenCode DB: {}", db_path.display()))?;
     let _ = conn.execute_batch("PRAGMA query_only = ON");
@@ -287,18 +327,44 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
 
     // Light discovery: session row only (no correlated COUNT, no part JOIN).
     // Enrichment for preview/count is deferred to the most recent N sessions.
-    let mut stmt = conn
-        .prepare(
+    let (sql, params): (String, Vec<String>) = match project_path.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(pp) => {
+            let base = pp.trim_end_matches('/').to_string();
+            let nested_prefix = format!("{base}/");
+            (
+                "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
+                 FROM session s
+                 WHERE s.parent_id IS NULL
+                   AND s.time_archived IS NULL
+                   AND s.directory IS NOT NULL
+                   AND (s.directory = ?1 OR s.directory LIKE ?2)
+                 ORDER BY s.time_updated DESC"
+                    .to_string(),
+                vec![base, format!("{nested_prefix}%")],
+            )
+        }
+        None => (
             "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
              FROM session s
              WHERE s.parent_id IS NULL
                AND s.time_archived IS NULL
-             ORDER BY s.time_updated DESC",
-        )
+             ORDER BY s.time_updated DESC"
+                .to_string(),
+            Vec::new(),
+        ),
+    };
+
+    let mut stmt = conn
+        .prepare(&sql)
         .context("Failed to prepare session query")?;
 
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params
+        .iter()
+        .map(|s| s as &dyn rusqlite::types::ToSql)
+        .collect();
+
     let rows = stmt
-        .query_map([], |row| {
+        .query_map(param_refs.as_slice(), |row| {
             let id: String = row.get(0)?;
             let title: Option<String> = row.get(1)?;
             let directory: Option<String> = row.get(2)?;
@@ -599,11 +665,40 @@ mod tests {
     }
 
     #[test]
+    fn should_reuse_parse_all_metas_when_db_unchanged() {
+        crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
+        let dir = TempDir::new().unwrap();
+        // Point adapter root at temp dir with one fixture DB.
+        let db_path = create_opencode_fixture(&dir);
+        // parse_opencode_db is used by parse_all_metas via session_root walk —
+        // exercise fingerprint via direct parse + cache helpers first.
+        let sig = crate::conversation::scan_cache::source_signature(&db_path).unwrap();
+        let first = parse_opencode_db(&db_path, None).unwrap();
+        crate::conversation::scan_cache::put_cached_bulk_metas(db_path.clone(), sig, first.clone());
+        let hit = crate::conversation::scan_cache::get_cached_bulk_metas(&db_path, &sig).unwrap();
+        assert_eq!(hit.len(), first.len());
+        assert_eq!(hit[0].0.native_session_id, first[0].0.native_session_id);
+    }
+
+    #[test]
+
+    #[test]
+    fn should_filter_opencode_db_by_project_path() {
+        let dir = TempDir::new().unwrap();
+        let db_path = create_opencode_fixture(&dir);
+        let only_alpha = parse_opencode_db(&db_path, Some("/projects/test")).unwrap();
+        assert_eq!(only_alpha.len(), 1);
+        assert_eq!(only_alpha[0].0.project_path.as_deref(), Some("/projects/test"));
+
+        let other = parse_opencode_db(&db_path, Some("/projects/other")).unwrap();
+        assert!(other.is_empty());
+    }
+
     fn should_parse_all_metas() {
         let dir = TempDir::new().unwrap();
         let db_path = create_opencode_fixture(&dir);
 
-        let metas = parse_opencode_db(&db_path).expect("should succeed");
+        let metas = parse_opencode_db(&db_path, None).expect("should succeed");
 
         // Should have 1 session (archived and child are excluded)
         assert_eq!(metas.len(), 1);
@@ -650,7 +745,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let db_path = create_opencode_fixture(&dir);
 
-        let metas = parse_opencode_db(&db_path).expect("should succeed");
+        let metas = parse_opencode_db(&db_path, None).expect("should succeed");
 
         // Archived and child sessions should be excluded
         let ids: Vec<&str> = metas

@@ -41,3 +41,12 @@ export interface ScanReport {
   sessions_found: number;
   errors: string[];
 }
+
+export interface ConversationListPage {
+  items: ConversationMeta[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+

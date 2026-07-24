@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 
 use crate::conversation::adapter::{AgentSessionAdapter, ParsedMessage};
 use crate::conversation::normalize::{build_preview_messages, normalize_session_text, NormTarget};
-use crate::conversation::types::{ConversationMessage, ConversationMeta, ScanReport};
+use crate::conversation::types::{ConversationListPage, ConversationMessage, ConversationMeta, ScanReport};
 
 /// 会话标题三优先级解析（供 `scan` 循环与单测复用）。
 ///
@@ -57,7 +57,9 @@ impl ConversationManager {
     ///
     /// Agents are scanned in parallel (scoped threads). Each agent writes into the
     /// shared cache under a short critical section so discovery I/O stays concurrent.
-    pub fn scan_all(&self) -> Result<Vec<ScanReport>> {
+    /// Scan every registered agent. When `project_path` is `Some`, adapters that
+    /// support scoped discovery only parse sessions for that project.
+    pub fn scan_all(&self, project_path: Option<&str>) -> Result<Vec<ScanReport>> {
         use std::thread;
 
         // Materialize (id, adapter pointer) so we can share `&self` across scoped threads.
@@ -70,7 +72,7 @@ impl ConversationManager {
                     let adapter = self.adapters.get(agent_id).ok_or_else(|| {
                         anyhow::anyhow!("Adapter missing for agent id that was just listed: {agent_id}")
                     })?;
-                    self.scan_agent_inner(agent_id, adapter.as_ref())
+                    self.scan_agent_inner(agent_id, adapter.as_ref(), project_path)
                 }));
             }
 
@@ -110,21 +112,22 @@ impl ConversationManager {
     }
 
     /// 扫描指定 Agent 的会话文件，更新内存缓存
-    pub fn scan_agent(&self, agent_id: &str) -> Result<ScanReport> {
+    pub fn scan_agent(&self, agent_id: &str, project_path: Option<&str>) -> Result<ScanReport> {
         let adapter = self
             .adapters
             .get(agent_id)
             .with_context(|| format!("Adapter not found for agent: {agent_id}"))?;
-        self.scan_agent_inner(agent_id, adapter.as_ref())
+        self.scan_agent_inner(agent_id, adapter.as_ref(), project_path)
     }
 
     fn scan_agent_inner(
         &self,
         agent_id: &str,
         adapter: &dyn AgentSessionAdapter,
+        project_path: Option<&str>,
     ) -> Result<ScanReport> {
         // 优先使用批量解析（如 SQLite 单文件多会话适配器）
-        if let Some(bulk) = adapter.parse_all_metas() {
+        if let Some(bulk) = adapter.parse_all_metas_for_project(project_path) {
             let metas = bulk?;
             let mut sessions_found: u32 = 0;
             let errors: Vec<String> = Vec::new();
@@ -136,6 +139,13 @@ impl ConversationManager {
                     .cache
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+                let (user_title, tags) = cache
+                    .get(&conversation.id)
+                    .map(|prev| (prev.user_title.clone(), prev.tags.clone()))
+                    .unwrap_or((None, Vec::new()));
+                let mut conversation = conversation;
+                conversation.user_title = user_title;
+                conversation.tags = tags;
                 cache.insert(conversation.id.clone(), conversation);
                 sessions_found += 1;
             }
@@ -189,18 +199,48 @@ impl ConversationManager {
             }
             pattern_hits = pattern_hits.saturating_add(1);
 
-            match adapter.parse_meta(path) {
+            // Fingerprint reuse: skip re-parsing unchanged session files.
+            let path_buf = path.to_path_buf();
+            let signature = crate::conversation::scan_cache::source_signature(path);
+            let cached_meta = signature.and_then(|sig| {
+                crate::conversation::scan_cache::get_cached_file_meta(path, &sig)
+            });
+
+            let parse_result = if let Some(meta) = cached_meta {
+                Ok(meta)
+            } else {
+                adapter.parse_meta(path).map(|meta| {
+                    if let Some(sig) = signature {
+                        crate::conversation::scan_cache::put_cached_file_meta(
+                            path_buf.clone(),
+                            sig,
+                            meta.clone(),
+                        );
+                    }
+                    meta
+                })
+            };
+
+            match parse_result {
                 Ok(meta) => {
                     let conversation = build_conversation_meta(
                         agent_id,
                         adapter,
                         meta,
-                        path.to_path_buf(),
+                        path_buf,
                     );
+                    // Preserve user edits from prior cache entry when re-scan rebuilds meta.
                     let mut cache = self
                         .cache
                         .lock()
                         .map_err(|e| anyhow::anyhow!("Cache lock poisoned: {e}"))?;
+                    let (user_title, tags) = cache
+                        .get(&conversation.id)
+                        .map(|prev| (prev.user_title.clone(), prev.tags.clone()))
+                        .unwrap_or((None, Vec::new()));
+                    let mut conversation = conversation;
+                    conversation.user_title = user_title;
+                    conversation.tags = tags;
                     cache.insert(conversation.id.clone(), conversation);
                     sessions_found += 1;
                 }
@@ -232,16 +272,33 @@ impl ConversationManager {
         })
     }
 
-    /// 列出缓存的会话
+    /// 列出缓存的会话（全量，兼容旧调用方 / 测试）。
     ///
-    /// - `project_path`: 按项目路径精确过滤（为 None 时不过滤）
+    /// - `project_path`: 严格匹配会话所属项目（见 [`matches_project_path`]）
     /// - `agent_id`: 按 agent 过滤（为 None 时不过滤）
-    /// - 结果按 started_at 倒序排列
+    /// - 结果按 `updated_at` 倒序排列
     pub fn list(
         &self,
         project_path: Option<&str>,
         agent_id: Option<&str>,
     ) -> Result<Vec<ConversationMeta>> {
+        let page = self.list_page(project_path, agent_id, 0, 0)?;
+        Ok(page.items)
+    }
+
+    /// Paginated list for fishbone / infinite scroll.
+    ///
+    /// - `limit == 0` means "return all remaining from offset".
+    /// - Project filter is **strict**: only sessions whose `project_path` belongs
+    ///   to the selected project. Sessions with missing project path are excluded
+    ///   when a project filter is set (History is project-scoped).
+    pub fn list_page(
+        &self,
+        project_path: Option<&str>,
+        agent_id: Option<&str>,
+        offset: u32,
+        limit: u32,
+    ) -> Result<ConversationListPage> {
         let cache = self
             .cache
             .lock()
@@ -250,10 +307,8 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
-                // 项目路径过滤：会话的 project_path 以给定路径开头（子路径匹配）
-                // 无 project_path 的会话也纳入（agent 可能未记录 project_path）
                 let matches_project = match project_path {
-                    Some(pp) => m.project_path.as_deref().is_none_or(|p| p.starts_with(pp)),
+                    Some(pp) => matches_project_path(m.project_path.as_deref(), pp),
                     None => true,
                 };
                 let matches_agent = match agent_id {
@@ -266,7 +321,24 @@ impl ConversationManager {
             .collect();
 
         results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        Ok(results)
+
+        let total = results.len() as u32;
+        let start = (offset as usize).min(results.len());
+        let end = if limit == 0 {
+            results.len()
+        } else {
+            (start + limit as usize).min(results.len())
+        };
+        let items: Vec<ConversationMeta> = results[start..end].to_vec();
+        let has_more = (offset as u64 + items.len() as u64) < u64::from(total);
+
+        Ok(ConversationListPage {
+            items,
+            total,
+            offset,
+            limit,
+            has_more,
+        })
     }
 
     /// 获取会话的完整消息列表
@@ -344,12 +416,9 @@ impl ConversationManager {
         let mut results: Vec<ConversationMeta> = cache
             .values()
             .filter(|m| {
-                // project_path 子路径匹配
+                // project_path: strict project ownership (History is project-scoped)
                 if let Some(pp) = project_path {
-                    if m.project_path
-                        .as_deref()
-                        .is_some_and(|p| !p.starts_with(pp))
-                    {
+                    if !matches_project_path(m.project_path.as_deref(), pp) {
                         return false;
                     }
                 }
@@ -501,6 +570,28 @@ fn build_conversation_meta(
         tags: Vec::new(),
         supports_resume,
     }
+}
+
+
+/// Strict project ownership for History list/search.
+///
+/// A session belongs to `project` when its recorded path equals the project or
+/// is nested under it (`/proj` matches `/proj` and `/proj/sub`, not `/proj-other`).
+/// Missing session project path never matches a concrete project filter.
+pub(crate) fn matches_project_path(session_project: Option<&str>, project: &str) -> bool {
+    let Some(raw) = session_project.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    let project = project.trim().trim_end_matches('/');
+    if project.is_empty() {
+        return false;
+    }
+    let session = raw.trim_end_matches('/');
+    if session == project {
+        return true;
+    }
+    // Require boundary so `/proj` does not match `/proj-other`.
+    session.starts_with(project) && session[project.len()..].starts_with('/')
 }
 
 /// Adapters signal intentional noise filters with `bail!("skip: ...")`.
@@ -772,7 +863,7 @@ mod tests {
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].agent_id, "test-agent");
         assert_eq!(reports[0].sessions_found, 1);
@@ -790,7 +881,7 @@ mod tests {
         let adapter2 = TestAdapter::new("agent-b", dir2.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter1), Box::new(adapter2)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports.len(), 2);
     }
 
@@ -802,7 +893,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let results = manager.list(Some("/projects/alpha"), None).unwrap();
         assert_eq!(results.len(), 1);
@@ -816,7 +907,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let results = manager.list(None, Some("test-agent")).unwrap();
         assert_eq!(results.len(), 1);
@@ -839,7 +930,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv_id = &list[0].id;
@@ -866,7 +957,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let results = manager.search("login", None).unwrap();
         assert_eq!(results.len(), 1);
@@ -882,7 +973,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let results = manager.search("", None).unwrap();
         assert!(results.is_empty());
@@ -895,7 +986,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv_id = &list[0].id;
@@ -920,7 +1011,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv_id = &list[0].id;
@@ -937,7 +1028,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv_id = &list[0].id;
@@ -955,7 +1046,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv_id = &list[0].id;
@@ -976,7 +1067,7 @@ mod tests {
         let adapter = TestAdapter::new("test-agent", nonexistent);
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports[0].sessions_found, 0);
         assert!(reports[0].errors.is_empty());
     }
@@ -1016,7 +1107,7 @@ mod tests {
         adapter.file_pattern = "rollout-*.jsonl".to_string();
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(
             reports[0].sessions_found, 1,
@@ -1048,7 +1139,7 @@ mod tests {
         let adapter = TestAdapter::new("pi-like", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(
             reports[0].sessions_found, 1,
             "*.jsonl must discover nested sanitized-path sessions"
@@ -1067,7 +1158,7 @@ mod tests {
         adapter.file_pattern = "rollout-*.jsonl".to_string();
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports[0].sessions_found, 0);
         assert!(
             reports[0]
@@ -1088,7 +1179,7 @@ mod tests {
 
         let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         let conv = &list[0];
@@ -1146,7 +1237,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(NoResumeAdapter {
             inner: TestAdapter::new("test-agent", dir.path().to_path_buf()),
         })]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
         let list = manager.list(None, None).unwrap();
         assert!(!list[0].supports_resume);
         assert!(manager.get_resume_command(&list[0].id).unwrap().is_none());
@@ -1246,7 +1337,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(adapter)]);
 
         // 扫描
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].sessions_found, 1);
         assert!(reports[0].errors.is_empty());
@@ -1370,7 +1461,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(TestAdapter {
             root: dir.path().to_path_buf(),
         })]);
-        manager.scan_all().unwrap();
+        manager.scan_all(None).unwrap();
 
         let list = manager.list(None, None).unwrap();
         assert!(!list.is_empty(), "should find at least one conversation");
@@ -1450,5 +1541,97 @@ mod tests {
             ),
             "opencode sess9876"
         );
+    }
+
+    #[test]
+    fn should_reuse_file_meta_cache_on_second_scan_and_preserve_user_edits() {
+        crate::conversation::scan_cache::reset_scan_parse_cache_for_tests();
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "sess-cache.jsonl", Some("/proj/a"));
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+
+        let first = manager.scan_all(None).unwrap();
+        assert_eq!(first[0].sessions_found, 1);
+        let id = manager.list(None, None).unwrap()[0].id.clone();
+        manager
+            .update_meta(&id, Some("My Title".into()), Some(vec!["tag1".into()]))
+            .unwrap();
+
+        // Second scan: fingerprint hit path should still restore user_title/tags.
+        let second = manager.scan_all(None).unwrap();
+        assert_eq!(second[0].sessions_found, 1);
+        let listed = manager.list(None, None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].user_title.as_deref(), Some("My Title"));
+        assert_eq!(listed[0].tags, vec!["tag1".to_string()]);
+    }
+
+    #[test]
+    fn matches_project_path_requires_boundary_and_non_empty_session() {
+        assert!(matches_project_path(Some("/proj"), "/proj"));
+        assert!(matches_project_path(Some("/proj/"), "/proj"));
+        assert!(matches_project_path(Some("/proj/sub"), "/proj"));
+        assert!(!matches_project_path(Some("/proj-other"), "/proj"));
+        assert!(!matches_project_path(None, "/proj"));
+        assert!(!matches_project_path(Some(""), "/proj"));
+        assert!(!matches_project_path(Some("/proj"), ""));
+    }
+
+    #[test]
+    fn should_exclude_sessions_without_project_path_when_filtering() {
+        let dir = TempDir::new().unwrap();
+        create_fixture(&dir, "with-project.jsonl", Some("/projects/alpha"));
+        create_fixture(&dir, "no-project.jsonl", None);
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let all = manager.list(None, None).unwrap();
+        assert_eq!(all.len(), 2);
+
+        let filtered = manager.list(Some("/projects/alpha"), None).unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(
+            filtered[0].project_path.as_deref(),
+            Some("/projects/alpha")
+        );
+    }
+
+    #[test]
+    fn should_page_list_with_has_more() {
+        let dir = TempDir::new().unwrap();
+        // Distinct names so three sessions land in cache.
+        create_fixture(&dir, "s1.jsonl", Some("/projects/p"));
+        create_fixture(&dir, "s2.jsonl", Some("/projects/p"));
+        create_fixture(&dir, "s3.jsonl", Some("/projects/p"));
+
+        let adapter = TestAdapter::new("test-agent", dir.path().to_path_buf());
+        let manager = ConversationManager::new(vec![Box::new(adapter)]);
+        manager.scan_all(None).unwrap();
+
+        let page0 = manager
+            .list_page(Some("/projects/p"), None, 0, 2)
+            .unwrap();
+        assert_eq!(page0.items.len(), 2);
+        assert_eq!(page0.total, 3);
+        assert_eq!(page0.offset, 0);
+        assert_eq!(page0.limit, 2);
+        assert!(page0.has_more);
+
+        let page1 = manager
+            .list_page(Some("/projects/p"), None, 2, 2)
+            .unwrap();
+        assert_eq!(page1.items.len(), 1);
+        assert_eq!(page1.total, 3);
+        assert!(!page1.has_more);
+
+        // limit=0 returns all remaining from offset.
+        let all = manager
+            .list_page(Some("/projects/p"), None, 0, 0)
+            .unwrap();
+        assert_eq!(all.items.len(), 3);
+        assert!(!all.has_more);
     }
 }

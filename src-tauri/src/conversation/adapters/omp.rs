@@ -397,7 +397,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(OmpAdapter::with_root(
             dir.path().to_path_buf(),
         ))]);
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(
             reports[0].sessions_found, 1,
             "nested trace must be silent-skipped; errors={:?}",

@@ -4,6 +4,8 @@ import type { ConversationMeta } from '../types';
 import {
   initialListLoadState,
   listLoadKey,
+  LIST_PAGE_SIZE,
+  mergeConversationPages,
   resolveListAfterError,
   shouldAutoScan,
   type ListLoadState,
@@ -11,18 +13,27 @@ import {
 
 export interface UseConversationListResult extends ListLoadState {
   conversations: ConversationMeta[];
+  /** Total matching rows known to the backend after last list. */
+  total: number;
+  /** Whether more pages can be loaded. */
+  hasMore: boolean;
+  /** True while a next page request is in flight. */
+  loadingMore: boolean;
   /** Background refresh (throttled auto-scan). */
   refresh: () => Promise<void>;
-  /** Force scan+list, ignoring auto-scan throttle. */
+  /** Force scan+list page 0, ignoring auto-scan throttle. */
   forceRefresh: () => Promise<void>;
+  /** Load next page (infinite scroll). No-op when !hasMore. */
+  loadMore: () => Promise<void>;
 }
 
 /**
- * Fishbone list loader:
+ * Fishbone + project-scoped paged list loader:
  * 1) show shell + skeleton immediately when empty
- * 2) hydrate from backend memory cache (list)
- * 3) refresh via scan in the background (stale-while-revalidate)
- * 4) never blank the list on soft failures when rows already exist
+ * 2) hydrate first page from backend memory cache (list)
+ * 3) refresh via project-scoped scan in the background (stale-while-revalidate)
+ * 4) load more pages on scroll demand
+ * 5) never blank the list on soft failures when rows already exist
  */
 export function useConversationList(
   projectPath: string | null,
@@ -30,7 +41,9 @@ export function useConversationList(
   agentFilter?: string,
 ): UseConversationListResult {
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
-  // If the panel will load on mount, start in loading so skeleton paints before first effect.
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loadState, setLoadState] = useState<ListLoadState>(() =>
     isActive && projectPath
       ? { loading: true, refreshing: false, error: null }
@@ -40,12 +53,10 @@ export function useConversationList(
   const conversationsRef = useRef(conversations);
   conversationsRef.current = conversations;
 
-  /** Monotonic token so stale async results never clobber newer project keys. */
   const requestGenRef = useRef(0);
-  /** Last successful auto-scan timestamp per list key. */
   const lastScanAtRef = useRef<Map<string, number>>(new Map());
-  /** In-flight promise de-dupe for the same key. */
   const inFlightRef = useRef<Map<string, Promise<void>>>(new Map());
+  const loadMoreInFlightRef = useRef(false);
   const activeKeyRef = useRef<string | null>(
     isActive && projectPath ? listLoadKey(projectPath, agentFilter) : null,
   );
@@ -55,6 +66,8 @@ export function useConversationList(
       if (!projectPath) {
         setConversations([]);
         conversationsRef.current = [];
+        setTotal(0);
+        setHasMore(false);
         setLoadState(initialListLoadState());
         return;
       }
@@ -70,7 +83,6 @@ export function useConversationList(
       const hasRows = conversationsRef.current.length > 0;
 
       const task = (async () => {
-        // Spine: blocking loading only when empty; always mark refreshing while work runs.
         setLoadState((prev) => ({
           loading: !hasRows,
           refreshing: true,
@@ -78,15 +90,19 @@ export function useConversationList(
         }));
 
         try {
-          // Rib 1 — hydrate cache first (fast path).
-          const cached = await listConversations(projectPath, agentFilter);
+          // Rib 1 — hydrate first page only (project-scoped).
+          const cached = await listConversations(projectPath, agentFilter, {
+            offset: 0,
+            limit: LIST_PAGE_SIZE,
+          });
           if (gen !== requestGenRef.current) return;
 
-          setConversations(cached);
-          conversationsRef.current = cached;
+          setConversations(cached.items);
+          conversationsRef.current = cached.items;
+          setTotal(cached.total);
+          setHasMore(cached.hasMore);
 
-          // Keep hard-loading while empty AND still scanning, so we don't flash empty state.
-          const emptyAfterHydrate = cached.length === 0;
+          const emptyAfterHydrate = cached.items.length === 0;
           setLoadState({
             loading: emptyAfterHydrate,
             refreshing: true,
@@ -98,15 +114,21 @@ export function useConversationList(
           const needScan = options.forceScan || shouldAutoScan(lastScan, now);
 
           if (needScan) {
-            // Rib 2 — background scan, then re-list.
-            await scanConversations(agentFilter);
+            // Rib 2 — project-scoped background scan (all agents), then re-list page 0.
+            // Agent filter only affects list paging, never discovery scope.
+            await scanConversations(undefined, projectPath);
             if (gen !== requestGenRef.current) return;
 
             lastScanAtRef.current.set(key, Date.now());
-            const fresh = await listConversations(projectPath, agentFilter);
+            const fresh = await listConversations(projectPath, agentFilter, {
+              offset: 0,
+              limit: LIST_PAGE_SIZE,
+            });
             if (gen !== requestGenRef.current) return;
-            setConversations(fresh);
-            conversationsRef.current = fresh;
+            setConversations(fresh.items);
+            conversationsRef.current = fresh.items;
+            setTotal(fresh.total);
+            setHasMore(fresh.hasMore);
           }
 
           if (gen !== requestGenRef.current) return;
@@ -144,27 +166,57 @@ export function useConversationList(
     await runLoad({ forceScan: true });
   }, [runLoad]);
 
-  useEffect(() => {
-    if (!isActive || !projectPath) {
-      // Panel hidden or no project: cancel in-flight; keep rows so re-open can show instantly.
-      requestGenRef.current += 1;
-      if (!projectPath) {
-        setConversations([]);
-        conversationsRef.current = [];
-        setLoadState(initialListLoadState());
-        activeKeyRef.current = null;
-      }
-      return;
-    }
+  const loadMore = useCallback(async () => {
+    if (!projectPath || !hasMore || loadMoreInFlightRef.current) return;
+    if (loadState.loading || loadState.refreshing) return;
 
-    const key = listLoadKey(projectPath, agentFilter);
-    if (activeKeyRef.current !== key) {
-      // Different project/agent: drop previous rows to avoid cross-project flash.
+    loadMoreInFlightRef.current = true;
+    setLoadingMore(true);
+    const gen = requestGenRef.current;
+    const offset = conversationsRef.current.length;
+
+    try {
+      const page = await listConversations(projectPath, agentFilter, {
+        offset,
+        limit: LIST_PAGE_SIZE,
+      });
+      if (gen !== requestGenRef.current) return;
+
+      setConversations((prev) => {
+        const next = mergeConversationPages(prev, page.items);
+        conversationsRef.current = next;
+        return next;
+      });
+      setTotal(page.total);
+      setHasMore(page.hasMore);
+    } catch (err) {
+      if (gen !== requestGenRef.current) return;
+      console.error('[useConversationList] loadMore failed:', err);
+      // Soft fail: keep rows, surface error without clearing.
+      const message = err instanceof Error ? err.message : 'Failed to load more conversations';
+      setLoadState((prev) => ({ ...prev, error: message }));
+    } finally {
+      loadMoreInFlightRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [projectPath, agentFilter, hasMore, loadState.loading, loadState.refreshing]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const key = projectPath ? listLoadKey(projectPath, agentFilter) : null;
+    if (key !== activeKeyRef.current) {
       activeKeyRef.current = key;
       requestGenRef.current += 1;
-      conversationsRef.current = [];
       setConversations([]);
-      setLoadState({ loading: true, refreshing: false, error: null });
+      conversationsRef.current = [];
+      setTotal(0);
+      setHasMore(false);
+      setLoadState(
+        projectPath
+          ? { loading: true, refreshing: false, error: null }
+          : initialListLoadState(),
+      );
     }
 
     void runLoad({ forceScan: false });
@@ -172,10 +224,14 @@ export function useConversationList(
 
   return {
     conversations,
+    total,
+    hasMore,
+    loadingMore,
     loading: loadState.loading,
     refreshing: loadState.refreshing,
     error: loadState.error,
     refresh,
     forceRefresh,
+    loadMore,
   };
 }

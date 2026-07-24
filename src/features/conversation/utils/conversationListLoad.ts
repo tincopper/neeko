@@ -1,11 +1,14 @@
 /**
- * Conversation list load policy helpers (fishbone / SWR).
+ * Conversation list load policy helpers (fishbone / SWR + infinite scroll).
  *
  * Kept pure so hooks stay thin and unit-testable without React.
  */
 
 /** Min interval between automatic background scans for the same project key. */
 export const AUTO_SCAN_THROTTLE_MS = 5_000;
+
+/** First page size for History infinite scroll. */
+export const LIST_PAGE_SIZE = 40;
 
 export type ListLoadPhase = 'idle' | 'hydrating' | 'refreshing' | 'ready' | 'error';
 
@@ -40,4 +43,21 @@ export function shouldAutoScan(lastScanAt: number | undefined, now: number, thro
 export function resolveListAfterError<T>(previous: T[], fallbackEmpty: boolean): T[] {
   if (previous.length > 0) return previous;
   return fallbackEmpty ? [] : previous;
+}
+
+/** Merge a next page into existing rows by id (stable order: keep existing, append new). */
+export function mergeConversationPages<T extends { id: string }>(
+  previous: T[],
+  nextPage: T[],
+): T[] {
+  if (previous.length === 0) return nextPage;
+  if (nextPage.length === 0) return previous;
+  const seen = new Set(previous.map((r) => r.id));
+  const appended = nextPage.filter((r) => !seen.has(r.id));
+  return appended.length === 0 ? previous : [...previous, ...appended];
+}
+
+/** Replace page-0 refresh results while preserving order of newly returned ids. */
+export function replaceConversationPage<T extends { id: string }>(nextPage: T[]): T[] {
+  return nextPage;
 }

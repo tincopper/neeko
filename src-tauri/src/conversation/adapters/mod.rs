@@ -179,26 +179,12 @@ pub(crate) fn recent_messages_from(mut pairs: Vec<(String, String)>) -> Vec<(Str
     pairs
 }
 
-/// 读取 JSONL 文件，返回所有非空行
+/// 读取 JSONL 文件，返回所有非空行。
+///
+/// Uses the process-local scan cache so unchanged files and append-only growth
+/// avoid full re-reads during history rescans.
 pub(crate) fn read_jsonl(path: &std::path::Path) -> Result<Vec<serde_json::Value>> {
-    let content = std::fs::read_to_string(path)?;
-    let mut entries = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // 跳过尾随逗号
-        let cleaned = trimmed.strip_suffix(',').unwrap_or(trimmed);
-        match serde_json::from_str::<serde_json::Value>(cleaned) {
-            Ok(v) => entries.push(v),
-            Err(e) => {
-                // 跳过无法解析的行（可能包含非 JSON 内容）
-                log::debug!("Failed to parse JSONL line: {e}: {line}");
-            }
-        }
-    }
-    Ok(entries)
+    crate::conversation::scan_cache::read_jsonl_cached(path)
 }
 
 /// 对字符串截断到指定长度（在字符边界），附加省略号

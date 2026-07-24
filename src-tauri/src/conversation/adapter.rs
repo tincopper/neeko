@@ -87,4 +87,16 @@ pub trait AgentSessionAdapter: Send + Sync {
     fn parse_all_metas(&self) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
         None
     }
+
+    /// Project-scoped bulk parse. Default: full bulk then no extra filter (manager filters).
+    ///
+    /// Adapters that can cheaply restrict discovery (e.g. OpenCode SQL `directory`)
+    /// should override this so scan work stays proportional to the active project.
+    fn parse_all_metas_for_project(
+        &self,
+        project_path: Option<&str>,
+    ) -> Option<Result<Vec<(ParsedMeta, PathBuf)>>> {
+        let _ = project_path;
+        self.parse_all_metas()
+    }
 }

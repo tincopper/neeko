@@ -52,9 +52,19 @@ describe('ConversationPanel', () => {
 
   beforeEach(() => {
     mockInvoke.mockReset();
-    mockInvoke.mockImplementation(async (cmd: string) => {
+    mockInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'scan_conversations') return [];
-      if (cmd === 'list_conversations') return list;
+      if (cmd === 'list_conversations') {
+        const agentId = args?.agentId as string | undefined;
+        const items = agentId ? list.filter((c) => c.agentId === agentId) : list;
+        return {
+          items,
+          total: items.length,
+          offset: 0,
+          limit: items.length,
+          hasMore: false,
+        };
+      }
       return undefined;
     });
   });
@@ -107,8 +117,11 @@ describe('ConversationPanel', () => {
       .find((el) => el.getAttribute('aria-pressed') !== null);
     fireEvent.click(codexChip!);
 
-    expect(screen.queryByText('Auth refactor')).not.toBeInTheDocument();
-    expect(screen.getByText('Ship release')).toBeInTheDocument();
+    // Agent filter reloads a project-scoped page from the backend.
+    await waitFor(() => {
+      expect(screen.queryByText('Auth refactor')).not.toBeInTheDocument();
+      expect(screen.getByText('Ship release')).toBeInTheDocument();
+    });
   });
 
   it('shows clear-filters when nothing matches', async () => {

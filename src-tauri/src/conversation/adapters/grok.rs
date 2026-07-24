@@ -389,7 +389,7 @@ mod tests {
         let manager = ConversationManager::new(vec![Box::new(RootGrok {
             root: dir.path().to_path_buf(),
         })]);
-        let reports = manager.scan_all().unwrap();
+        let reports = manager.scan_all(None).unwrap();
         assert_eq!(reports[0].sessions_found, 1);
         let list = manager.list(Some("/Users/tomgs/project"), None).unwrap();
         assert_eq!(list.len(), 1);

@@ -104,3 +104,20 @@ pub struct ScanReport {
     /// Errors encountered during scan.
     pub errors: Vec<String>,
 }
+
+/// Paginated conversation list result (list rib / infinite scroll).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationListPage {
+    /// Page items sorted by `updated_at` desc.
+    pub items: Vec<ConversationMeta>,
+    /// Total matching rows (after project/agent filters).
+    pub total: u32,
+    /// Requested offset.
+    pub offset: u32,
+    /// Requested limit (0 means "all remaining" was requested and applied as unbounded).
+    pub limit: u32,
+    /// Whether more rows exist after this page.
+    pub has_more: bool,
+}
+

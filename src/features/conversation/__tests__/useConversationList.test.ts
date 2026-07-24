@@ -25,6 +25,19 @@ function createMeta(id: string, overrides: Partial<ConversationMeta> = {}): Conv
   };
 }
 
+function pageOf(
+  items: ConversationMeta[],
+  overrides: Partial<{ total: number; offset: number; limit: number; hasMore: boolean }> = {},
+) {
+  return {
+    items,
+    total: overrides.total ?? items.length,
+    offset: overrides.offset ?? 0,
+    limit: overrides.limit ?? items.length,
+    hasMore: overrides.hasMore ?? false,
+  };
+}
+
 describe('useConversationList', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
@@ -59,7 +72,7 @@ describe('useConversationList', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_conversations') {
         listCalls += 1;
-        return mockList;
+        return pageOf(mockList);
       }
       if (cmd === 'scan_conversations') {
         await scanPromise;
@@ -91,6 +104,8 @@ describe('useConversationList', () => {
       expect(result.current.refreshing).toBe(false);
     });
     expect(result.current.conversations).toHaveLength(2);
+    expect(result.current.total).toBe(2);
+    expect(result.current.hasMore).toBe(false);
   });
 
   it('keeps loading true when hydrate is empty until scan finishes', async () => {
@@ -100,7 +115,7 @@ describe('useConversationList', () => {
     });
 
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'list_conversations') return [];
+      if (cmd === 'list_conversations') return pageOf([]);
       if (cmd === 'scan_conversations') {
         await scanPromise;
         return [];
@@ -128,17 +143,42 @@ describe('useConversationList', () => {
   it('filters by agentId when provided', async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'scan_conversations') return [];
-      if (cmd === 'list_conversations') return [];
+      if (cmd === 'list_conversations') return pageOf([]);
       return undefined;
     });
 
     renderHook(() => useConversationList('/tmp/project', true, 'claude-code'));
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', { agentId: 'claude-code' });
-      expect(mockInvoke).toHaveBeenCalledWith('list_conversations', {
+      expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', {
+        agentId: undefined,
         projectPath: '/tmp/project',
-        agentId: 'claude-code',
+      });
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'list_conversations',
+        expect.objectContaining({
+          projectPath: '/tmp/project',
+          agentId: 'claude-code',
+          offset: 0,
+          limit: 40,
+        }),
+      );
+    });
+  });
+
+  it('passes projectPath on scan for project-scoped discovery', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'scan_conversations') return [];
+      if (cmd === 'list_conversations') return pageOf([]);
+      return undefined;
+    });
+
+    renderHook(() => useConversationList('/tmp/project', true));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', {
+        agentId: undefined,
+        projectPath: '/tmp/project',
       });
     });
   });
@@ -154,7 +194,7 @@ describe('useConversationList', () => {
       if (cmd === 'scan_conversations') return [];
       if (cmd === 'list_conversations') {
         const calls = mockInvoke.mock.calls.filter(([c]) => c === 'list_conversations').length;
-        return calls <= 2 ? firstList : secondList;
+        return pageOf(calls <= 2 ? firstList : secondList);
       }
       return undefined;
     });
@@ -173,6 +213,50 @@ describe('useConversationList', () => {
     expect(result.current.conversations).toHaveLength(2);
   });
 
+  it('loadMore appends next page without rescanning', async () => {
+    const page0 = [createMeta('claude-code:1'), createMeta('claude-code:2')];
+    const page1 = [createMeta('claude-code:3')];
+    let listCalls = 0;
+
+    mockInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'scan_conversations') return [];
+      if (cmd === 'list_conversations') {
+        listCalls += 1;
+        const offset = Number(args?.offset ?? 0);
+        if (offset === 0) {
+          return pageOf(page0, { total: 3, hasMore: true, limit: 40 });
+        }
+        return pageOf(page1, { total: 3, offset, hasMore: false, limit: 40 });
+      }
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+
+    await waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+      expect(result.current.conversations).toHaveLength(2);
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    const scanCallsBefore = mockInvoke.mock.calls.filter(([c]) => c === 'scan_conversations').length;
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+
+    expect(result.current.conversations.map((c) => c.id)).toEqual([
+      'claude-code:1',
+      'claude-code:2',
+      'claude-code:3',
+    ]);
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.total).toBe(3);
+    const scanCallsAfter = mockInvoke.mock.calls.filter(([c]) => c === 'scan_conversations').length;
+    expect(scanCallsAfter).toBe(scanCallsBefore);
+    expect(listCalls).toBeGreaterThanOrEqual(3); // hydrate + post-scan + loadMore
+  });
+
   it('keeps previous rows when scan fails after hydrate', async () => {
     const mockList: ConversationMeta[] = [createMeta('claude-code:1')];
     let listCalls = 0;
@@ -180,7 +264,7 @@ describe('useConversationList', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'list_conversations') {
         listCalls += 1;
-        return mockList;
+        return pageOf(mockList);
       }
       if (cmd === 'scan_conversations') {
         throw new Error('scan boom');

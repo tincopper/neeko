@@ -8,10 +8,12 @@ pub mod adapters;
 pub mod commands;
 /// Conversation lifecycle management and storage.
 pub mod manager;
+/// Process-local scan fingerprint / JSONL resume cache.
+pub mod scan_cache;
 /// Conversation content normalization utilities.
 pub mod normalize;
 pub mod types;
 
 pub use adapter::AgentSessionAdapter;
 pub use manager::ConversationManager;
-pub use types::{ConversationMessage, ConversationMeta, ScanReport};
+pub use types::{ConversationListPage, ConversationMessage, ConversationMeta, ScanReport};
