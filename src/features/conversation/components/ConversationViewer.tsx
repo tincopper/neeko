@@ -3,20 +3,22 @@ import {
   ArrowLeft,
   Download,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   File,
   Terminal,
   Search,
   Edit,
   SquareTerminal,
+  PanelRight,
 } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
 import ConversationMessage from './ConversationMessage';
 import { MessageBlockRenderer } from './MessageBlocks';
+import MessageBubble from './MessageBubble';
 import AgentIcon from '@/features/agent/components/AgentIcon';
+import { useProjectStore } from '@/features/project/store';
 import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
 import type { AgentConfig } from '@/features/agent/types';
 
@@ -102,10 +104,6 @@ function groupMessages(messages: ConversationMessageType[], startIdx: number): M
   return groups;
 }
 
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
   ({ conversationId, agentId, conversationMeta, agents = [], onBack, onResume, showToast }) => {
     const [messages, setMessages] = useState<ConversationMessageType[]>([]);
@@ -119,6 +117,11 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
     const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId]);
+
+    // Project avatar for user messages — falls back to Neeko icon when no active project.
+    const activeProject = useProjectStore((s) => s.activeProject);
+    const projectName = activeProject?.name ?? null;
+    const projectColor = activeProject?.avatar_color ?? null;
 
     // Load messages
     useEffect(() => {
@@ -141,10 +144,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       };
     }, [conversationId]);
 
-    // Auto-scroll to bottom on first load
+    // Jump to bottom on first load (instant — smooth animation janks on long transcripts)
     useEffect(() => {
       if (!loading && messages.length > 0) {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        bottomRef.current?.scrollIntoView({ behavior: 'auto' });
       }
     }, [loading, messages.length]);
 
@@ -243,74 +246,99 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
 
     const agentName = agent?.name ?? agentId ?? 'Conversation';
     const modelLabel = conversationMeta?.model;
+    // Prefer the conversation title (matches the History list row); fall back to agent name.
+    const title =
+      conversationMeta?.userTitle?.trim() ||
+      conversationMeta?.title?.trim() ||
+      agentName;
 
     return (
       <div className="flex flex-col h-full overflow-hidden bg-bg-primary">
-        {/* Toolbar */}
-        <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border bg-bg-secondary/50">
-          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              {agent && <AgentIcon icon={agent.icon} size={14} />}
-              <h3 className="text-sm font-medium text-text-primary truncate">{agentName}</h3>
-              {modelLabel && (
-                <span className="text-[11px] text-text-secondary/50 truncate">· {modelLabel}</span>
-              )}
-            </div>
-            {!loading && messages.length > 0 && (
-              <div className="flex items-center gap-1.5 text-[11px] text-text-secondary/50">
-                <span>{stats.totalMessages} msgs</span>
-                {stats.toolCalls > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>{stats.toolCalls} tools</span>
-                  </>
-                )}
-                {stats.thinkingCount > 0 && (
-                  <>
-                    <span>·</span>
-                    <span>{stats.thinkingCount} thinking</span>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Toolbar — mirrors History panel header: flat bg, title + muted meta, icon actions */}
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border">
           <Button
             variant="ghost"
             size="icon"
-            className={cn('w-7 h-7', sidebarOpen && 'bg-bg-hover')}
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            title="Toggle tool call sidebar"
+            className="w-7 h-7 text-text-muted hover:text-text-primary"
+            onClick={onBack}
+            title="Back to history"
           >
-            {sidebarOpen ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
+            <ArrowLeft className="w-4 h-4" />
           </Button>
-          {conversationMeta && onResume && conversationMeta.supportsResume === true && (
+
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-text-primary truncate leading-tight">
+              {title}
+            </h3>
+            <div className="flex items-center gap-1.5 text-[11px] text-text-muted min-w-0">
+              {agent ? (
+                <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                  <AgentIcon icon={agent.icon} size={12} />
+                </span>
+              ) : null}
+              <span className="truncate">{agentName}</span>
+              {modelLabel ? (
+                <>
+                  <span className="shrink-0">·</span>
+                  <span className="truncate font-mono text-[10px]">{modelLabel}</span>
+                </>
+              ) : null}
+              {!loading && messages.length > 0 ? (
+                <>
+                  <span className="shrink-0">·</span>
+                  <span className="shrink-0 tabular-nums">{stats.totalMessages} msgs</span>
+                  {stats.toolCalls > 0 ? (
+                    <>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0 tabular-nums">{stats.toolCalls} tools</span>
+                    </>
+                  ) : null}
+                  {stats.thinkingCount > 0 ? (
+                    <>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0 tabular-nums">{stats.thinkingCount} thinking</span>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-0.5 shrink-0">
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs gap-1 text-accent-green hover:text-accent-green hover:bg-accent-green/10"
-              onClick={() => onResume(conversationMeta)}
+              size="icon"
+              className={cn(
+                'w-7 h-7 text-text-muted hover:text-text-primary',
+                sidebarOpen && 'bg-bg-hover text-accent-blue hover:text-accent-blue',
+              )}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              title="Toggle tool call sidebar"
             >
-              <SquareTerminal className="w-3 h-3" />
-              Resume
+              <PanelRight className="w-3.5 h-3.5" />
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs gap-1"
-            onClick={handleExport}
-            disabled={exporting}
-          >
-            <Download className="w-3 h-3" />
-            {exporting ? 'Exporting...' : 'Export'}
-          </Button>
+            {conversationMeta && onResume && conversationMeta.supportsResume === true ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-7 h-7 text-text-muted hover:text-accent-green hover:bg-accent-green/10"
+                onClick={() => onResume(conversationMeta)}
+                title="Resume"
+              >
+                <SquareTerminal className="w-3.5 h-3.5" />
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-7 h-7 text-text-muted hover:text-text-primary"
+              onClick={handleExport}
+              disabled={exporting}
+              title={exporting ? 'Exporting…' : 'Export to clipboard'}
+            >
+              <Download className={cn('w-3.5 h-3.5', exporting && 'animate-pulse')} />
+            </Button>
+          </div>
         </div>
 
         {/* Main content area */}
@@ -343,32 +371,20 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                   const firstIdx = group.indices[0];
                   if (group.role === 'assistant') {
                     const firstMsg = group.messages[0];
-                    const time = formatTime(firstMsg.timestamp);
                     return (
                       <div
                         key={`g-${firstIdx}`}
                         ref={(el) => {
                           if (el) groupRefs.current.set(firstIdx, el);
                         }}
-                        className="flex gap-3 px-4 py-3 justify-start"
                       >
-                        <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-bg-secondary text-text-primary rounded-bl-md border border-border/50">
-                          {/* Role label + model */}
-                          <div className="flex items-center gap-1.5 mb-2">
-                            {agent && <AgentIcon icon={agent.icon} size={14} />}
-                            <span className="text-[11px] font-medium text-green-400">
-                              {agent?.name ?? agentId ?? 'Assistant'}
-                            </span>
-                            <span className="text-[11px] text-text-secondary/30 font-normal">
-                              {time}
-                            </span>
-                            {firstMsg.model && (
-                              <span className="text-[10px] font-mono text-text-secondary/40">
-                                · {firstMsg.model}
-                              </span>
-                            )}
-                          </div>
-
+                        <MessageBubble
+                          role="assistant"
+                          label={agent?.name ?? agentId ?? 'Assistant'}
+                          icon={agent ? <AgentIcon icon={agent.icon} size={14} /> : undefined}
+                          timestamp={firstMsg.timestamp}
+                          model={firstMsg.model}
+                        >
                           {/* Sub-messages */}
                           {group.messages.map((msg, msgIdx) => {
                             // 跳过无内容的消息
@@ -403,7 +419,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                               </React.Fragment>
                             );
                           })}
-                        </div>
+                        </MessageBubble>
                       </div>
                     );
                   }
@@ -416,7 +432,11 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                         if (el) groupRefs.current.set(firstIdx, el);
                       }}
                     >
-                      <ConversationMessage message={msg} />
+                      <ConversationMessage
+                        message={msg}
+                        projectName={projectName}
+                        projectColor={projectColor}
+                      />
                     </div>
                   ));
                 })}
