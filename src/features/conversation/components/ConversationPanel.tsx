@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Search, X } from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, RefreshCw, Search, X } from 'lucide-react';
 import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
 import AgentIcon from '@/features/agent/components/AgentIcon';
@@ -41,12 +41,17 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   const { isResuming } = useConversationResume(projectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [filterExpanded, setFilterExpanded] = useState(false);
+  const [filterOverflow, setFilterOverflow] = useState(false);
+  const filterRowRef = useRef<HTMLDivElement | null>(null);
 
   const handleRefresh = useCallback(() => {
     refresh();
   }, [refresh]);
 
   const handleView = useCallback((meta: ConversationMeta) => {
+    setActiveId(meta.id);
     onOpenConversationTab(meta);
   }, [onOpenConversationTab]);
 
@@ -90,6 +95,28 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
     }
   }, [agentFilter, agentOptions]);
 
+  // Detect whether the collapsed filter row overflows a single line.
+  // Measure against the collapsed (single-line) height, so re-measure when
+  // options change or the row width changes.
+  useLayoutEffect(() => {
+    const el = filterRowRef.current;
+    if (!el || agentOptions.length <= 1) {
+      setFilterOverflow(false);
+      return;
+    }
+    const measure = () => {
+      // scrollHeight exceeds one line's height => chips wrapped to >1 row
+      setFilterOverflow(el.scrollHeight - el.clientHeight > 1);
+    };
+    if (!filterExpanded) measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (!filterExpanded) measure();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [agentOptions, filterExpanded]);
+
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim();
     return conversations.filter((meta) => {
@@ -117,7 +144,14 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-sm font-medium text-text-primary">History</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-sm font-medium text-text-primary">History</span>
+          {conversations.length > 0 ? (
+            <span className="text-[11px] text-text-muted tabular-nums">
+              {conversations.length}
+            </span>
+          ) : null}
+        </div>
         <Button
           variant="ghost"
           size="icon"
@@ -130,8 +164,8 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="shrink-0 px-2 py-2 border-b border-border">
+      {/* Search + filters toolbar */}
+      <div className="shrink-0 flex flex-col gap-1.5 px-2 py-2 border-b border-border">
         <div className="relative flex items-center">
           <Search className="absolute left-2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
           <input
@@ -139,12 +173,18 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
             role="searchbox"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search title or preview…"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && searchQuery) {
+                e.preventDefault();
+                setSearchQuery('');
+              }
+            }}
+            placeholder="Search conversations…"
             className={cn(
               'w-full h-7 pl-7 text-[12px] rounded-md',
               'bg-bg-hover/50 border border-border/80',
               'text-text-primary placeholder:text-text-muted',
-              'outline-none focus:border-border focus:bg-bg-primary transition-colors',
+              'outline-none focus:border-accent-blue/60 focus:bg-bg-primary transition-colors',
               searchQuery ? 'pr-7' : 'pr-2.5',
             )}
           />
@@ -159,54 +199,80 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
             </button>
           ) : null}
         </div>
-      </div>
 
-      {/* Agent type filter */}
-      {agentOptions.length > 1 ? (
-        <div
-          className="shrink-0 flex items-center gap-1 px-2 py-1.5 border-b border-border overflow-x-auto thin-scrollbar"
-          role="group"
-          aria-label="Filter by agent"
-        >
-          <button
-            type="button"
-            onClick={() => setAgentFilter(null)}
-            aria-pressed={agentFilter === null}
-            className={cn(
-              'shrink-0 h-6 px-2 text-[11px] rounded-md transition-colors',
-              agentFilter === null
-                ? 'bg-bg-selected text-text-primary'
-                : 'text-text-secondary hover:bg-bg-hover',
-            )}
-          >
-            All
-            <span className="ml-1 text-text-muted tabular-nums">{conversations.length}</span>
-          </button>
-          {agentOptions.map(({ id, count, agent }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setAgentFilter(agentFilter === id ? null : id)}
-              aria-pressed={agentFilter === id}
-              title={agent?.name ?? id}
+        {/* Agent type filter — collapses to one line, expandable when it overflows */}
+        {agentOptions.length > 1 ? (
+          <div className="flex items-start gap-1">
+            <div
+              ref={filterRowRef}
               className={cn(
-                'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors max-w-[140px]',
-                agentFilter === id
-                  ? 'bg-bg-selected text-text-primary'
-                  : 'text-text-secondary hover:bg-bg-hover',
+                'flex flex-wrap items-center gap-1 min-w-0 flex-1',
+                filterExpanded ? '' : 'max-h-6 overflow-hidden',
               )}
+              role="group"
+              aria-label="Filter by agent"
             >
-              {agent ? (
-                <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                  <AgentIcon icon={agent.icon} size={12} />
-                </span>
-              ) : null}
-              <span className="truncate">{agent?.name ?? id}</span>
-              <span className="text-text-muted tabular-nums shrink-0">{count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+              <button
+                type="button"
+                onClick={() => setAgentFilter(null)}
+                aria-pressed={agentFilter === null}
+                className={cn(
+                  'shrink-0 h-6 px-2 text-[11px] rounded-md transition-colors',
+                  agentFilter === null
+                    ? 'bg-bg-selected text-text-primary'
+                    : 'text-text-secondary hover:bg-bg-hover',
+                )}
+              >
+                All
+                <span className="ml-1 text-text-muted tabular-nums">{conversations.length}</span>
+              </button>
+              {agentOptions.map(({ id, count, agent }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setAgentFilter(agentFilter === id ? null : id)}
+                  aria-pressed={agentFilter === id}
+                  title={agent?.name ?? id}
+                  className={cn(
+                    'shrink-0 inline-flex items-center gap-1 h-6 px-2 text-[11px] rounded-md transition-colors max-w-[140px]',
+                    agentFilter === id
+                      ? 'bg-bg-selected text-text-primary'
+                      : 'text-text-secondary hover:bg-bg-hover',
+                  )}
+                >
+                  {agent ? (
+                    <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                      <AgentIcon icon={agent.icon} size={12} />
+                    </span>
+                  ) : null}
+                  <span className="truncate">{agent?.name ?? id}</span>
+                  <span className="text-text-muted tabular-nums shrink-0">{count}</span>
+                </button>
+              ))}
+            </div>
+            {filterOverflow || filterExpanded ? (
+              <button
+                type="button"
+                onClick={() => setFilterExpanded((v) => !v)}
+                aria-expanded={filterExpanded}
+                title={filterExpanded ? 'Collapse filters' : 'Show all filters'}
+                className="shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                <ChevronDown
+                  className={cn('h-3.5 w-3.5 transition-transform', filterExpanded ? 'rotate-180' : '')}
+                />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Result count while filtering */}
+        {hasActiveFilters ? (
+          <p className="text-[10px] text-text-muted tabular-nums px-0.5">
+            {filteredConversations.length} of {conversations.length}
+          </p>
+        ) : null}
+      </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
@@ -229,6 +295,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
             conversations={filteredConversations}
             agents={agents}
             loading={loading}
+            activeId={activeId}
             onView={handleView}
             onResume={handleResume}
           />

@@ -74,22 +74,39 @@ describe("ConversationItem", () => {
     expect(screen.getByText("12 msgs")).toBeInTheDocument();
   });
 
-  it("renders preview text", () => {
-    const meta = createMeta({ preview: "Let me help you refactor" });
+  it("applies active left-border styling when active", () => {
+    const meta = createMeta();
+    const agents = [createAgent()];
+    const { container } = render(
+      <ConversationItem
+        meta={meta}
+        agents={agents}
+        active
+        onView={vi.fn()}
+        onResume={vi.fn()}
+      />,
+    );
+
+    const row = container.querySelector('[role="button"]');
+    expect(row?.className).toContain("border-l-accent-blue");
+  });
+
+  it("opens View when the whole row is clicked", () => {
+    const meta = createMeta();
     const agents = [createAgent()];
     const onView = vi.fn();
-    const onResume = vi.fn();
 
-    render(
+    const { container } = render(
       <ConversationItem
         meta={meta}
         agents={agents}
         onView={onView}
-        onResume={onResume}
+        onResume={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("Let me help you refactor")).toBeInTheDocument();
+    fireEvent.click(container.querySelector('[role="button"]')!);
+    expect(onView).toHaveBeenCalledWith(meta);
   });
 
   it("calls onResume when Resume button is clicked", () => {

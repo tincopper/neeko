@@ -100,7 +100,12 @@ describe('ConversationPanel', () => {
       expect(screen.getByText('Ship release')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Codex/i }));
+    // The agent filter chip is the pressable (aria-pressed) button labelled Codex,
+    // distinct from the conversation rows which are also role=button.
+    const codexChip = screen
+      .getAllByRole('button', { name: /Codex/i })
+      .find((el) => el.getAttribute('aria-pressed') !== null);
+    fireEvent.click(codexChip!);
 
     expect(screen.queryByText('Auth refactor')).not.toBeInTheDocument();
     expect(screen.getByText('Ship release')).toBeInTheDocument();
@@ -128,5 +133,53 @@ describe('ConversationPanel', () => {
     expect(screen.getByText('No matching conversations')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Clear filters'));
     expect(screen.getByText('Auth refactor')).toBeInTheDocument();
+  });
+
+  it('clears the search query when Escape is pressed in the search box', async () => {
+    render(
+      <ConversationPanel
+        projectPath="/tmp/project"
+        projectId="p1"
+        agents={agents}
+        isActive
+        showToast={vi.fn()}
+        onOpenConversationTab={vi.fn()}
+        onResumeConversation={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Auth refactor')).toBeInTheDocument();
+    });
+
+    const box = screen.getByRole('searchbox') as HTMLInputElement;
+    fireEvent.change(box, { target: { value: 'ship' } });
+    expect(screen.queryByText('Auth refactor')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(box.value).toBe('');
+    expect(screen.getByText('Auth refactor')).toBeInTheDocument();
+  });
+
+  it('shows a result count while filtering', async () => {
+    render(
+      <ConversationPanel
+        projectPath="/tmp/project"
+        projectId="p1"
+        agents={agents}
+        isActive
+        showToast={vi.fn()}
+        onOpenConversationTab={vi.fn()}
+        onResumeConversation={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Ship release')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ship' } });
+
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
   });
 });

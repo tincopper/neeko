@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { SquareTerminal, Eye } from 'lucide-react';
 import AgentIcon from '@/features/agent/components/AgentIcon';
-import { Button } from '@/ui/button';
 import { cn } from '@/lib/utils';
 import type { ConversationMeta } from '../types';
 import type { AgentConfig } from '@/features/agent/types';
@@ -9,6 +8,7 @@ import type { AgentConfig } from '@/features/agent/types';
 interface ConversationItemProps {
   meta: ConversationMeta;
   agents: AgentConfig[];
+  active?: boolean;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
 }
@@ -30,6 +30,7 @@ function formatRelativeTime(ts: number): string {
 const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
   meta,
   agents,
+  active = false,
   onView,
   onResume,
 }) => {
@@ -39,67 +40,82 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
   );
 
   const timeStr = useMemo(() => formatRelativeTime(meta.updatedAt), [meta.updatedAt]);
+  const fullTime = useMemo(() => new Date(meta.updatedAt).toLocaleString(), [meta.updatedAt]);
 
   return (
-    <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-md bg-bg-secondary/50 border border-border hover:bg-bg-hover transition-colors">
-      {/* Title */}
-      <span className="text-[var(--font-size)] text-text-primary font-medium truncate">
-        {meta.userTitle ?? meta.title}
-      </span>
-
-      {/* Preview */}
-      {meta.preview && (
-        <p className="text-xs text-text-secondary/70 line-clamp-2 leading-relaxed">
-          {meta.preview}
-        </p>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onView(meta)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onView(meta);
+        }
+      }}
+      className={cn(
+        'group relative flex flex-col gap-1 pl-3 pr-2 py-2 rounded-md cursor-pointer',
+        'border-l-2 transition-colors',
+        active
+          ? 'border-l-accent-blue bg-bg-hover/50'
+          : 'border-l-transparent hover:bg-bg-hover/40',
       )}
-
-      {/* Bottom row: agent info + msgs + time + actions */}
+    >
+      {/* Title + hover actions */}
       <div className="flex items-center gap-2">
-        {agent && (
-          <div className="shrink-0 w-4 h-4 flex items-center justify-center">
-            <AgentIcon icon={agent.icon} size={14} />
-          </div>
-        )}
-        <span className="text-[11px] text-text-secondary font-medium truncate">
-          {agent?.name ?? meta.agentId}
+        <span className="flex-1 min-w-0 text-[13px] text-text-primary font-medium truncate leading-tight">
+          {meta.userTitle ?? meta.title}
         </span>
-        {meta.messageCount > 0 && (
-          <span className="text-[10px] text-text-secondary/60 shrink-0">
-            {meta.messageCount} msgs
-          </span>
-        )}
-        <span className="text-[10px] text-text-secondary/40 shrink-0">
-          {timeStr}
-        </span>
-        <div className="flex items-center gap-1 ml-auto">
+        <div
+          className={cn(
+            'flex items-center gap-0.5 shrink-0 transition-opacity',
+            'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
+          )}
+        >
           {meta.supportsResume === true ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'w-5 h-5 text-text-muted',
-                'hover:text-accent-green hover:bg-accent-green/10',
-              )}
-              onClick={() => onResume(meta)}
+            <button
+              type="button"
+              className="p-1 rounded-md text-text-muted hover:text-accent-green hover:bg-accent-green/10 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onResume(meta);
+              }}
               title="Resume"
             >
-              <SquareTerminal className="w-3 h-3" />
-            </Button>
+              <SquareTerminal className="w-3.5 h-3.5" />
+            </button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              'w-5 h-5 text-text-muted',
-              'hover:text-text-primary hover:bg-bg-hover',
-            )}
-            onClick={() => onView(meta)}
+          <button
+            type="button"
+            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onView(meta);
+            }}
             title="View"
           >
-            <Eye className="w-3 h-3" />
-          </Button>
+            <Eye className="w-3.5 h-3.5" />
+          </button>
         </div>
+      </div>
+
+      {/* Meta row: agent · msgs ······ time */}
+      <div className="flex items-center gap-1.5 text-[11px] text-text-secondary min-w-0">
+        {agent ? (
+          <span className="shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+            <AgentIcon icon={agent.icon} size={12} />
+          </span>
+        ) : null}
+        <span className="truncate">{agent?.name ?? meta.agentId}</span>
+        {meta.messageCount > 0 ? (
+          <>
+            <span className="text-text-muted shrink-0">·</span>
+            <span className="text-text-muted shrink-0">{meta.messageCount} msgs</span>
+          </>
+        ) : null}
+        <span className="ml-auto shrink-0 text-text-muted" title={fullTime}>
+          {timeStr}
+        </span>
       </div>
     </div>
   );

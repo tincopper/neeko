@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import ConversationItem from './ConversationItem';
+import { groupConversationsByDate } from '../utils/groupByDate';
 import type { ConversationMeta } from '../types';
 import type { AgentConfig } from '@/features/agent/types';
 
@@ -7,6 +8,7 @@ interface ConversationListProps {
   conversations: ConversationMeta[];
   agents: AgentConfig[];
   loading: boolean;
+  activeId?: string | null;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
 }
@@ -15,6 +17,7 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   conversations,
   agents,
   loading,
+  activeId,
   onView,
   onResume,
 }) => {
@@ -25,6 +28,11 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   const handleResume = useCallback((meta: ConversationMeta) => {
     onResume(meta);
   }, [onResume]);
+
+  const groups = useMemo(
+    () => groupConversationsByDate(conversations),
+    [conversations],
+  );
 
   if (loading) {
     return (
@@ -46,15 +54,30 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   }
 
   return (
-    <div className="flex flex-col gap-2 px-2 py-2">
-      {conversations.map((meta) => (
-        <ConversationItem
-          key={meta.id}
-          meta={meta}
-          agents={agents}
-          onView={handleView}
-          onResume={handleResume}
-        />
+    <div className="flex flex-col py-1">
+      {groups.map((group) => (
+        <section key={group.key} className="flex flex-col">
+          <h4
+            className={
+              'sticky top-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ' +
+              'text-text-muted bg-bg-primary/95 backdrop-blur-sm'
+            }
+          >
+            {group.label}
+          </h4>
+          <div className="flex flex-col px-1">
+            {group.items.map((meta) => (
+              <ConversationItem
+                key={meta.id}
+                meta={meta}
+                agents={agents}
+                active={activeId === meta.id}
+                onView={handleView}
+                onResume={handleResume}
+              />
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
