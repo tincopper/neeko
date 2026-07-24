@@ -234,7 +234,7 @@ worktrees,
                      ) : (
                         <button
                            data-no-drag
-                           className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-tertiary hover:!text-accent-red opacity-0 group-hover:opacity-100"
+                           className="bg-transparent border-none text-text-muted cursor-pointer px-1.5 py-0.5 rounded flex items-center transition-all duration-150 hover:bg-bg-hover hover:!text-accent-red opacity-0 group-hover:opacity-100"
                            onClick={(e) => handleRemove(wt.path, wt.branch, e)}
                            title="Remove worktree and branch"
                         >

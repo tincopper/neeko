@@ -212,7 +212,7 @@ const Section: React.FC<SectionProps> = ({
 }) => {
   return (
     <div className="flex flex-col shrink-0 mb-1">
-      {/* Header: Chevron â†?Checkbox â†?Title â†?Count â†?Stats â†?Filter */}
+      {/* Header: Chevron ï¿½?Checkbox ï¿½?Title ï¿½?Count ï¿½?Stats ï¿½?Filter */}
       <div className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors duration-100 hover:bg-bg-hover select-none shrink-0">
         <ChevronRightIcon
           size={9}
@@ -253,7 +253,7 @@ const Section: React.FC<SectionProps> = ({
                 className={cn(
                   "flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer",
                   isSelected
-                    ? "bg-accent-blue/5 text-text-primary"
+                    ? "bg-bg-selected text-text-primary"
                     : "text-text-secondary hover:bg-bg-hover",
                 )}
                 onClick={() => onFileSelect?.(file.path)}

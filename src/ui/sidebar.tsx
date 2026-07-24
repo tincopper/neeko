@@ -1,5 +1,10 @@
 import * as React from "react";
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/ui/tooltip';
 
 // --- Sidebar (layout container) ---
 
@@ -22,7 +27,7 @@ function Sidebar({ variant, className, children, ...props }: SidebarProps) {
     );
   }
 
-  // variant="panel" resize handle removed in Phase 3 â€?replaced by DockLayout
+  // variant="panel" resize handle removed in Phase 3 ï¿½?replaced by DockLayout
   if (variant === "panel") {
     return (
       <div
@@ -128,9 +133,8 @@ function SidebarMenuButton({
   children,
   ...props
 }: SidebarMenuButtonProps) {
-  return (
+  const button = (
     <button
-      title={tooltip}
       className={cn(
         "relative w-full h-12 flex items-center justify-center",
         "transition-colors duration-150 focus:outline-none",
@@ -147,6 +151,19 @@ function SidebarMenuButton({
     >
       {children}
     </button>
+  );
+
+  if (!tooltip) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {button}
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

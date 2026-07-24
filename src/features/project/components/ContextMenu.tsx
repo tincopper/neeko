@@ -66,7 +66,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
             key={idx}
             className={cn(
               "flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover",
-              item.danger && "text-[#e06c75] hover:bg-[rgba(224,108,117,0.15)]",
+              item.danger && "text-[#e06c75] hover:bg-accent-red/15",
               item.disabled && "opacity-40 cursor-default pointer-events-none"
             )}
             onClick={() => {

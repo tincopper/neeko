@@ -90,8 +90,8 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
             type="button"
             className={cn(
               "bg-transparent border-none cursor-pointer p-1 rounded-md flex items-center",
-              "text-text-muted hover:text-text-primary hover:bg-white/[0.06] transition-colors",
-              "data-[state=open]:bg-white/[0.08] data-[state=open]:text-text-primary",
+              "text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors",
+              "data-[state=open]:bg-bg-selected data-[state=open]:text-text-primary",
             )}
             title="Git actions"
             aria-label="Git actions"

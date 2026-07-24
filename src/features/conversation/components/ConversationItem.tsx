@@ -56,9 +56,9 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(({
       className={cn(
         'group relative flex flex-col gap-1 pl-3 pr-2 py-2 rounded-md cursor-pointer',
         'border-l-2 transition-colors',
-        active
-          ? 'border-l-accent-blue bg-bg-hover/50'
-          : 'border-l-transparent hover:bg-bg-hover/40',
+          active
+            ? 'border-l-accent-blue bg-bg-selected'
+            : 'border-l-transparent hover:bg-bg-hover',
       )}
     >
       {/* Title + hover actions */}

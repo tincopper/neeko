@@ -121,7 +121,7 @@ function FileTreeNode({
     <>
       <div
         className={`flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded select-none min-w-0 ${
-          isActive ? "bg-accent/10" : "hover:bg-bg-hover"
+          isActive ? "bg-bg-selected" : "hover:bg-bg-hover"
         }`}
         style={{ paddingLeft: indent }}
         draggable={!node.is_dir}

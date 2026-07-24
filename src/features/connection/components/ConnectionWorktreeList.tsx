@@ -133,7 +133,7 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
                   className={cn(
                      "group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors",
                      isDeleting && "wt-deleting",
-                     isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.025]",
+                      isActive ? "bg-bg-selected" : "hover:bg-bg-hover",
                   )}
                   onClick={(e) => {
                      e.stopPropagation();

@@ -12,6 +12,12 @@ import { IS_WINDOWS } from '@/shared/utils/platform';
 
 import { DockLayout } from './dock-layout';
 import MainContent from './MainContent';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/ui/tooltip';
 
 interface AppLayoutProps {
   onAddProject: () => void;
@@ -50,18 +56,24 @@ const ToolbarFooter: React.FC<{
   }, []);
 
   return (
-    <>
+    <TooltipProvider delayDuration={300}>
       {/* Add Project menu */}
       <div className="relative flex flex-col items-center w-full" ref={addMenuRef}>
-        <button
-          className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
-          title="Add Project"
-          onClick={() => setShowAddMenu((v) => !v)}
-        >
-          <span className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-bg-hover">
-            <Plus size={20} strokeWidth={1.8} />
-          </span>
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+              onClick={() => setShowAddMenu((v) => !v)}
+            >
+              <span className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-bg-hover">
+                <Plus size={20} strokeWidth={1.8} />
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            <p>Add Project</p>
+          </TooltipContent>
+        </Tooltip>
         {showAddMenu && (
           <div className="absolute left-12 bottom-0 z-50 w-48 rounded-md border border-border bg-bg-tertiary shadow-lg overflow-hidden">
             <div
@@ -92,22 +104,28 @@ const ToolbarFooter: React.FC<{
       </div>
 
       {/* Settings button */}
-      <button
-        className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
-        title="Settings"
-        onClick={onOpenSettings}
-      >
-        <span
-          className={cn(
-            'flex items-center justify-center w-7 h-7 rounded-md',
-            'hover:bg-bg-hover',
-            isSettingsOpen && 'bg-bg-hover text-text-primary',
-          )}
-        >
-          <Settings size={20} strokeWidth={1.8} />
-        </span>
-      </button>
-    </>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
+            onClick={onOpenSettings}
+          >
+            <span
+              className={cn(
+                'flex items-center justify-center w-7 h-7 rounded-md',
+                'hover:bg-bg-hover',
+                isSettingsOpen && 'bg-bg-hover text-text-primary',
+              )}
+            >
+              <Settings size={20} strokeWidth={1.8} />
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          <p>Settings</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 });
 ToolbarFooter.displayName = 'ToolbarFooter';

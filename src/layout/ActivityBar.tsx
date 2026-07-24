@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { LibraryBig, Settings, Plus, ListTree } from "@/shared/components/icons"
 import { useSidebar, type ActivityPanel } from "@/shared/contexts/SidebarContext";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/ui/sidebar";
+import { TooltipProvider } from "@/ui/tooltip";
 import { IS_WINDOWS } from "@/shared/utils/platform";
 import linuxIcon from "../assets/linux.svg";
 import serverIcon from "../assets/server.svg";
@@ -52,6 +53,7 @@ function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote, isSe
    ];
 
    return (
+      <TooltipProvider delayDuration={300}>
       <Sidebar variant="icon">
          <SidebarContent>
             <SidebarMenu>
@@ -114,6 +116,7 @@ function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote, isSe
             </SidebarMenu>
          </SidebarFooter>
       </Sidebar>
+      </TooltipProvider>
    );
 }
 

@@ -18,7 +18,7 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
   <button
     type="button"
     title={title}
-    className="text-text-muted p-1 rounded-md hover:bg-white/[0.06] transition shrink-0"
+    className="text-text-muted p-1 rounded-md hover:bg-bg-hover transition shrink-0"
     onClick={(e) => {
       e.stopPropagation();
       onClick();

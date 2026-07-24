@@ -274,7 +274,7 @@ const SkillsPanel: React.FC = React.memo(() => {
             </button>
             <button
               type="button"
-              className="p-1 rounded-md text-text-muted hover:bg-white/[0.06] hover:text-text-primary transition-colors"
+              className="p-1 rounded-md text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
               title="New tag group"
               onClick={() => setCreating(true)}
             >

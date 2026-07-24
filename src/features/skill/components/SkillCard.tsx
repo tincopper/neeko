@@ -155,7 +155,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           'border',
           enabled ? 'border-border' : 'border-border/70 opacity-90',
           isSelected && 'ring-1 ring-accent-blue/50 border-accent-blue/40',
-          'hover:bg-bg-hover/40',
+          'hover:bg-bg-hover',
         )}
       >
         <div className="flex flex-col flex-1 gap-2 px-3.5 pt-3.5 pb-2 min-h-0">

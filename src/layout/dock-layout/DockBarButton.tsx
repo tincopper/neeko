@@ -24,11 +24,13 @@ const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
 
 interface DockBarButtonProps {
   panelId: string;
+  /** Toolbar side — controls tooltip placement away from the icon rail */
+  side?: "left" | "right";
 }
 
 /** Individual icon button on the DockBar (tool window bar).
  *  Subscribes directly to dockStore — no parent props needed for state. */
-const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
+const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }) => {
   const def = dockPanelRegistry[panelId];
   const isTab = def?.openAs === "tab";
 
@@ -123,7 +125,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId }) => {
           </Badge>
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={8}>
+      <TooltipContent side={side === "left" ? "right" : "left"} sideOffset={8}>
         <p>{def.title}</p>
       </TooltipContent>
     </Tooltip>
