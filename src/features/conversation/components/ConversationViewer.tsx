@@ -253,7 +253,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       agentName;
 
     return (
-      <div className="flex flex-col h-full overflow-hidden bg-bg-primary">
+      <div className="flex flex-col h-full overflow-hidden bg-bg-secondary">
         {/* Toolbar — mirrors History panel header: flat bg, title + muted meta, icon actions */}
         <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border">
           <Button
