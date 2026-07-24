@@ -23,6 +23,7 @@ import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { mergeSubTree } from '@/shared/utils/fileTree';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 import type { ConversationMeta } from '@/features/conversation/types';
+import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
@@ -438,7 +439,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       const tab: Tab = {
         id: tabId,
         projectId: currentProjectId ?? tabKey ?? 'conversation',
-        title: meta.title,
+        title: conversationTabTitle(meta),
         order: existingTabs?.tabs.length ?? 0,
         data: {
           kind: 'conversation',

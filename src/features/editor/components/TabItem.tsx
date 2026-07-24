@@ -122,7 +122,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(
         ref={reorderable ? setNodeRef : undefined}
         style={reorderable ? style : undefined}
         className={cn(
-          "flex items-center gap-1 h-6 px-2 rounded-md min-w-0 transition-colors",
+          "flex items-center gap-1 h-6 px-2 rounded-md min-w-0 max-w-[10rem] transition-colors",
           isActive
             ? "bg-bg-selected text-text-primary"
             : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
