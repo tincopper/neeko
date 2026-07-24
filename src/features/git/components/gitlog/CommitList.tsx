@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import type { CommitEntry } from '@/shared/types';
-import type { CommitMenuAction } from "./types";
-import CommitGraph, { ROW_HEIGHT } from "./CommitGraph";
+import type { CommitEntry, CommitDetail, CommitFileChange } from "@/features/git/types";
+import CommitGraph, { computeLayout, ROW_HEIGHT, BRANCH_SPACING, NODE_RADIUS } from "./CommitGraph";
 import {
   Copy,
   MoreHorizontal,
@@ -10,15 +9,27 @@ import {
   GitBranchPlus,
   Tag,
   SquareArrowOutUpRight,
-  Check,
+  Plus,
+  Minus,
+  FilePlus,
+  Pencil,
+  Trash2,
+  FileText,
+  GitCommitHorizontal,
 } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 
 interface CommitListProps {
   commits: CommitEntry[];
   selectedHash: string | null;
+  selectedExpanded: boolean;
+  detail: CommitDetail | null;
+  files: CommitFileChange[];
+  detailLoading: boolean;
+  detailError: string | null;
   onSelectCommit: (hash: string) => void;
-  onAction: (hash: string, action: CommitMenuAction, value?: string) => void;
+  onOpenDiff: (filePath: string) => void;
+  onPinFile: (filePath: string) => void;
   loading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
@@ -26,12 +37,24 @@ interface CommitListProps {
   searchQuery: string;
 }
 
+const STATUS_ICONS: Record<string, { icon: React.ReactNode; color: string }> = {
+  M: { icon: <Pencil size={10} />, color: "text-accent-blue" },
+  A: { icon: <FilePlus size={10} />, color: "text-accent-green" },
+  D: { icon: <Trash2 size={10} />, color: "text-accent-red" },
+  R: { icon: <FileText size={10} />, color: "text-accent-orange" },
+};
 
 const CommitList: React.FC<CommitListProps> = ({
   commits,
   selectedHash,
+  selectedExpanded,
+  detail,
+  files,
+  detailLoading,
+  detailError,
   onSelectCommit,
-  onAction,
+  onOpenDiff,
+  onPinFile,
   loading,
   hasMore,
   onLoadMore,
@@ -39,15 +62,11 @@ const CommitList: React.FC<CommitListProps> = ({
   searchQuery,
 }) => {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
-  const [actionState, setActionState] = useState<{
-    hash: string;
-    action: "create-branch" | "create-tag";
-  } | null>(null);
-  const [inputValue, setInputValue] = useState("");
+  const [hoveredHash, setHoveredHash] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
-  // 无限滚动
+  // Infinite scroll
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || loadingMore) return;
     const observer = new IntersectionObserver(
@@ -60,7 +79,7 @@ const CommitList: React.FC<CommitListProps> = ({
     return () => observer.disconnect();
   }, [hasMore, loadingMore, onLoadMore]);
 
-  // 点击外部关闭菜单
+  // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -83,25 +102,24 @@ const CommitList: React.FC<CommitListProps> = ({
     );
   }, [commits, searchQuery]);
 
-  const handleActionClick = useCallback(
-    (hash: string, action: CommitMenuAction) => {
-      setMenuOpen(null);
-      if (action === "create-branch" || action === "create-tag") {
-        setActionState({ hash, action });
-        setInputValue("");
-        return;
-      }
-      onAction(hash, action);
-    },
-    [onAction],
-  );
+  const { maxColUsed, dotXByRow } = useMemo(() => {
+    const layout = computeLayout(filteredCommits);
+    return {
+      maxColUsed: layout.maxColUsed,
+      dotXByRow: layout.nodes.map((n) => n.x * BRANCH_SPACING + NODE_RADIUS * 2),
+    };
+  }, [filteredCommits]);
 
-  const handleInputConfirm = useCallback(() => {
-    if (!actionState || !inputValue.trim()) return;
-    onAction(actionState.hash, actionState.action, inputValue.trim());
-    setActionState(null);
-    setInputValue("");
-  }, [actionState, inputValue, onAction]);
+  // 每行 SVG 宽度 = 最右列右边缘 + padding
+  const rowGraphWidth = (maxColUsed + 1) * BRANCH_SPACING + NODE_RADIUS * 4 + 2;
+
+  const handleRowClick = useCallback(
+    (hash: string, e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest(".commit-expand")) return;
+      onSelectCommit(hash);
+    },
+    [onSelectCommit],
+  );
 
   if (loading && commits.length === 0) {
     return (
@@ -120,173 +138,183 @@ const CommitList: React.FC<CommitListProps> = ({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-auto">
-      <div className="flex flex-row">
-        {/* Graph �?�?@gitgraph/react 渲染的单�?SVG */}
-        <CommitGraph
-          commits={filteredCommits}
-          selectedHash={selectedHash}
-          onSelectCommit={onSelectCommit}
-        />
-
-        {/* Commit 信息�?�?�?paddingTop，由 CommitGraph �?initCommitOffsetY 精确对齐 */}
-        <div className="flex-1 min-w-0">
-          {filteredCommits.map((commit) => {
+    <div className="h-full overflow-auto">
+      <div className="relative min-w-min">
+        {/* ── 完整 SVG 背景层（线不断裂） ── */}
+        <div className="absolute left-0 top-0 shrink-0 pointer-events-none z-10" style={{ width: rowGraphWidth }}>
+          <CommitGraph
+            commits={filteredCommits}
+            selectedHash={selectedHash}
+            onSelectCommit={onSelectCommit}
+            hoveredHash={hoveredHash}
+          />
+        </div>
+        {/* ── 文字层，每行 paddingLeft = dot 右边缘 + 小间距 ── */}
+        <div>
+          {filteredCommits.map((commit, rowIdx) => {
             const isSelected = commit.hash === selectedHash;
+            const isExpanded = isSelected && selectedExpanded;
+            const dotX = dotXByRow[rowIdx] ?? NODE_RADIUS * 2;
+            const textLeft = dotX + NODE_RADIUS + 4; // 紧跟 dot 右边缘
 
             return (
-              <div key={commit.hash} className="relative">
-                 {/* 每行固定高度 ROW_HEIGHT，与 graph spacing 完全一�?*/}
-                 <div
-                   className={cn(
-                     "flex flex-col justify-center px-1 pr-1 cursor-pointer group transition-colors duration-100",
-                     isSelected ? "bg-bg-selected" : "hover:bg-bg-hover",
-                   )}
-                   style={{ height: ROW_HEIGHT }}
-                   onClick={() => onSelectCommit(commit.hash)}
-                 >
-                   {/* 第一行：type badge + subject + 操作按钮 */}
-                   {(() => {
-                     const { type, subject } = parseCommitMessage(commit.message);
-                     const refs = commit.refs ? refsLabel(commit.refs) : "";
-                     return (
-                       <>
-                         <div className="flex items-center gap-1 min-w-0">
-                           {type && (
-                             <span className={cn(
-                               "shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none",
-                               typeStyle(type),
-                             )}>
-                               {type}
-                             </span>
-                           )}
-                           <span className="flex-1 truncate text-[var(--font-size)] text-text-primary leading-tight">
-                             {subject}
-                           </span>
-                           <button
-                             className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
-                              title="Copy commit hash"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               navigator.clipboard.writeText(commit.hash);
-                             }}
-                           >
-                             <Copy size={10} />
-                           </button>
-                           <button
-                             className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
-                              title="More actions"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               setMenuOpen(menuOpen === commit.hash ? null : commit.hash);
-                             }}
-                           >
-                             <MoreHorizontal size={10} />
-                           </button>
-                         </div>
+              <div key={commit.hash} className="relative"
+                onMouseEnter={() => setHoveredHash(commit.hash)}
+                onMouseLeave={() => setHoveredHash(null)}
+              >
+                <div
+                  className={cn(
+                    "flex flex-col justify-center pr-1 cursor-pointer group transition-colors duration-100",
+                    isExpanded ? "bg-bg-selected" : isSelected ? "bg-bg-selected/70" : "hover:bg-bg-hover",
+                  )}
+                  style={{ height: ROW_HEIGHT, paddingLeft: textLeft }}
+                  onClick={(e) => handleRowClick(commit.hash, e)}
+                >
+                  {(() => {
+                    const { type, subject } = parseCommitMessage(commit.message);
+                    const refs = commit.refs ? refsLabel(commit.refs) : "";
+                    return (
+                      <>
+                        <div className="flex items-center gap-1 min-w-0">
+                          {type && (
+                            <span className={cn(
+                              "shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none",
+                              typeStyle(type),
+                            )}>
+                              {type}
+                            </span>
+                          )}
+                          <span className="flex-1 truncate text-[var(--font-size)] text-text-primary leading-tight">
+                            {subject}
+                          </span>
+                          <button
+                            className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
+                            title="Copy commit hash"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(commit.hash);
+                            }}
+                          >
+                            <Copy size={10} />
+                          </button>
+                          <button
+                            className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover opacity-0 group-hover:opacity-100 shrink-0 transition-opacity duration-100"
+                            title="More actions"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpen(menuOpen === commit.hash ? null : commit.hash);
+                            }}
+                          >
+                            <MoreHorizontal size={10} />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1 min-w-0 mt-0.5">
+                          <span className="text-[calc(var(--font-size)-2px)] text-text-muted truncate leading-tight" style={{ maxWidth: 80 }}>
+                            {commit.author}
+                          </span>
+                          <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">·</span>
+                          <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">
+                            {formatTimestamp(commit.timestamp)}
+                          </span>
+                          {refs && (
+                            <span className="ml-auto shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none bg-accent-yellow/10 text-accent-yellow truncate" style={{ maxWidth: 80 }}>
+                              {refs}
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
 
-                         {/* 第二行：作�?· 时间 + refs badge */}
-                         <div className="flex items-center gap-1 min-w-0 mt-0.5">
-                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted truncate leading-tight" style={{ maxWidth: 80 }}>
-                             {commit.author}
-                           </span>
-                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">·</span>
-                           <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0 leading-tight">
-                             {formatTimestamp(commit.timestamp)}
-                           </span>
-                           {refs && (
-                             <span className="ml-auto shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none bg-accent-yellow/10 text-accent-yellow truncate" style={{ maxWidth: 80 }}>
-                               {refs}
-                             </span>
-                           )}
-                         </div>
-                       </>
-                     );
-                   })()}
-                 </div>
-
-                {/* 右键菜单 */}
-                {menuOpen === commit.hash && (
-                  <div
-                    ref={menuRef}
-                    className="absolute right-2 top-10 z-50 w-36 bg-bg-secondary border border-border rounded-md shadow-lg py-0.5"
-                  >
-                    <MenuItem
-                      icon={<GitFork size={11} />}
-                      label="Cherry Pick"
-                      onClick={() => handleActionClick(commit.hash, "cherry-pick")}
-                    />
-                    <MenuItem
-                      icon={<Undo2 size={11} />}
-                      label="Revert"
-                      onClick={() => handleActionClick(commit.hash, "revert")}
-                    />
-                    <MenuItem
-                      icon={<GitBranchPlus size={11} />}
-                      label="Create Branch"
-                      onClick={() => handleActionClick(commit.hash, "create-branch")}
-                    />
-                    <MenuItem
-                      icon={<Tag size={11} />}
-                      label="Create Tag"
-                      onClick={() => handleActionClick(commit.hash, "create-tag")}
-                    />
-                    <MenuItem
-                      icon={<SquareArrowOutUpRight size={11} />}
-                      label="Checkout Detached"
-                      onClick={() => handleActionClick(commit.hash, "checkout-detached")}
-                    />
+                {/* ── Inline expanded detail ── */}
+                {isExpanded && (
+                  <div className="commit-expand pl-6 pr-2 pb-2 pt-1 border-l-2 border-accent-blue/40 ml-1 bg-bg-tertiary/20">
+                    {detailLoading ? (
+                      <div className="text-[var(--font-size)] text-text-muted py-2">Loading...</div>
+                    ) : detailError ? (
+                      <div className="text-[var(--font-size)] text-accent-red py-2">{detailError}</div>
+                    ) : detail ? (
+                      <>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <GitCommitHorizontal size={12} className="text-text-muted shrink-0" />
+                          <span className="text-[var(--font-size)] font-mono text-accent-blue">{detail.short_hash}</span>
+                          <span className={cn(
+                            "text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none",
+                            typeStyle(parseCommitMessage(detail.message).type),
+                          )}>
+                            {parseCommitMessage(detail.message).type || "commit"}
+                          </span>
+                          {detail.refs && (
+                            <span className="text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded bg-accent-yellow/10 text-accent-yellow truncate max-w-[100px]">
+                              {refsLabel(detail.refs)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[var(--font-size)] font-medium text-text-primary mb-1 leading-snug">
+                          {parseCommitMessage(detail.message).subject || detail.message.split("\n")[0]}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[calc(var(--font-size)-2px)] text-text-muted mb-1">
+                          <span className="font-medium text-text-secondary">{detail.author}</span>
+                          <span>·</span>
+                          <span>{formatTimestamp(detail.timestamp)}</span>
+                          <span>·</span>
+                          <span>parents: {detail.parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span>
+                        </div>
+                        <div className="border-t border-border/50 pt-1 mt-1">
+                          {files.map((f) => {
+                            const statusInfo = STATUS_ICONS[f.status] ?? STATUS_ICONS.M;
+                            return (
+                              <div
+                                key={f.path}
+                                className="flex items-center gap-1.5 px-1 py-0.5 rounded cursor-pointer hover:bg-bg-hover transition-colors duration-100 group"
+                                onClick={(e) => { e.stopPropagation(); onOpenDiff(f.path); }}
+                                onDoubleClick={(e) => { e.stopPropagation(); onPinFile(f.path); }}
+                                title="Click: view diff · Double-click: pin file"
+                              >
+                                <span className={statusInfo.color + " shrink-0"}>{statusInfo.icon}</span>
+                                <span className="flex-1 truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
+                                  {f.path}
+                                </span>
+                                <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                                  <span className="flex items-center gap-px text-accent-green">
+                                    <Plus size={9} />
+                                    <span className="text-[calc(var(--font-size)-2px)]">{f.additions}</span>
+                                  </span>
+                                  <span className="flex items-center gap-px text-accent-red">
+                                    <Minus size={9} />
+                                    <span className="text-[calc(var(--font-size)-2px)]">{f.deletions}</span>
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-[var(--font-size)] text-text-muted py-1">No details</div>
+                    )}
                   </div>
                 )}
 
-                {/* 创建 branch / tag 内联输入�?*/}
-                {actionState?.hash === commit.hash && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-tertiary mx-3 rounded mb-0.5">
-                    <span className="text-[calc(var(--font-size)-2px)] text-text-muted shrink-0">
-                      {actionState.action === "create-branch" ? "Branch:" : "Tag:"}
-                    </span>
-                    <input
-                      type="text"
-                      className="flex-1 bg-transparent border border-border rounded px-1.5 py-0.5 text-[var(--font-size)] text-text-primary outline-none focus:border-accent-blue"
-                      placeholder={
-                        actionState.action === "create-branch" ? "branch-name" : "v1.0.0"
-                      }
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleInputConfirm();
-                        if (e.key === "Escape") {
-                          setActionState(null);
-                          setInputValue("");
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <button
-                      className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
-                      onClick={handleInputConfirm}
-                      disabled={!inputValue.trim()}
-                      title="Confirm"
-                    >
-                      <Check size={11} />
-                    </button>
-                    <button
-                      className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100 text-[calc(var(--font-size)-2px)]"
-                      onClick={() => {
-                        setActionState(null);
-                        setInputValue("");
-                      }}
-                      title="Cancel"
-                    >
-                      ESC
-                    </button>
+                {/* Context menu */}
+                {menuOpen === commit.hash && (
+                  <div
+                    ref={menuRef}
+                    className="absolute right-2 z-50 w-36 bg-bg-secondary border border-border rounded-md shadow-lg py-0.5"
+                    style={{ top: ROW_HEIGHT }}
+                  >
+                    <MenuItem icon={<GitFork size={11} />} label="Cherry Pick" />
+                    <MenuItem icon={<Undo2 size={11} />} label="Revert" />
+                    <MenuItem icon={<GitBranchPlus size={11} />} label="Create Branch" />
+                    <MenuItem icon={<Tag size={11} />} label="Create Tag" />
+                    <MenuItem icon={<SquareArrowOutUpRight size={11} />} label="Checkout Detached" />
                   </div>
                 )}
               </div>
             );
           })}
 
-          {/* 无限滚动哨兵 */}
           {hasMore && (
             <div ref={sentinelRef} className="py-2 text-center text-[var(--font-size)] text-text-muted">
               {loadingMore ? "Loading more..." : ""}
@@ -298,30 +326,15 @@ const CommitList: React.FC<CommitListProps> = ({
   );
 };
 
-function MenuItem({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
+function MenuItem({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <button
-      className="flex items-center gap-1.5 w-full px-2 py-1 text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-100"
-      onClick={onClick}
-    >
+    <button className="flex items-center gap-1.5 w-full px-2 py-1 text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-100">
       <span className="text-text-muted shrink-0">{icon}</span>
       {label}
     </button>
   );
 }
 
-/**
- * 解析 Conventional Commits 格式：type(scope): subject
- * 返回 type（如 feat/fix/refactor）和 subject（第一行去�?type 前缀�?
- */
 function parseCommitMessage(message: string): { type: string; subject: string } {
   const header = message.split("\n")[0].trim();
   const m = header.match(/^(\w+)(?:\([^)]*\))?!?:\s*(.+)/);
@@ -329,42 +342,30 @@ function parseCommitMessage(message: string): { type: string; subject: string } 
   return { type: "", subject: header };
 }
 
-/** type badge 的颜色样式（Tailwind 类） */
 function typeStyle(type: string): string {
   switch (type) {
-    case "feat":
-      return "bg-accent-blue/15 text-accent-blue";
-    case "fix":
-      return "bg-accent-red/15 text-accent-red";
-    case "perf":
-      return "bg-accent-green/15 text-accent-green";
-    default:
-      // refactor / chore / docs / style / test / build / ci / revert / etc.
-      return "bg-bg-tertiary text-text-muted";
+    case "feat": return "bg-accent-blue/15 text-accent-blue";
+    case "fix": return "bg-accent-red/15 text-accent-red";
+    case "perf": return "bg-accent-green/15 text-accent-green";
+    default: return "bg-bg-tertiary text-text-muted";
   }
 }
 
 function refsLabel(refs: string): string {
   const parts = refs.split(",").map((r) => r.trim()).filter(Boolean);
-  // HEAD �?branch 优先
   for (const p of parts) {
     const arrow = p.match(/HEAD\s*->\s*(.+)/);
     if (arrow) return arrow[1].trim();
   }
-  // tag
   const tags = parts.filter((r) => r.startsWith("tag:"));
-  if (tags.length > 0)
-    return tags.map((t) => t.replace("tag:", "").trim()).join(", ");
-  // 其他 branch（排�?origin/...�?
+  if (tags.length > 0) return tags.map((t) => t.replace("tag:", "").trim()).join(", ");
   const local = parts.filter((r) => !r.startsWith("tag:") && !r.includes("/"));
   if (local.length > 0) return local[0];
-  // remote
   const remote = parts.filter((r) => !r.startsWith("tag:"));
   if (remote.length > 0) return remote[0];
   return "";
 }
 
-/** 格式化时间为 YYYY/MM/DD HH:mm */
 function formatTimestamp(ts: string): string {
   try {
     const d = new Date(ts);

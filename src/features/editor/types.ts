@@ -1,9 +1,9 @@
 // ─── Tab Types ──────────────────────────────────────────────────────────────
-import type { DiffSource, ViewMode } from "@/features/git/components/diff/types";
+import type { DiffSource, ViewMode, CommitFileChange } from "@/features/git/components/diff/types";
 import type { FileContent } from "@/features/file/types";
 import type { ConversationMeta } from "@/features/conversation/types";
 
-export type TabKind = "terminal" | "file" | "diff" | "gitLog" | "html-preview" | "conversation" | "prDetail";
+export type TabKind = "terminal" | "file" | "diff" | "html-preview" | "conversation" | "prDetail";
 
 export interface TerminalTabData {
   kind: "terminal";
@@ -29,10 +29,9 @@ export interface DiffTabData {
   fileName: string;
   diffSource: DiffSource;
   initialMode?: ViewMode;
-}
-
-export interface GitLogTabData {
-  kind: "gitLog";
+  combined?: boolean;
+  combinedFiles?: CommitFileChange[];
+  scrollToPath?: string;
 }
 
 export interface HtmlPreviewTabData {
@@ -64,7 +63,7 @@ export interface PRDetailTabData {
   comments?: import('@/features/git/types/comment').PRComment[];
 }
 
-export type TabData = TerminalTabData | FileTabData | DiffTabData | GitLogTabData | HtmlPreviewTabData | ConversationTabData | PRDetailTabData;
+export type TabData = TerminalTabData | FileTabData | DiffTabData | HtmlPreviewTabData | ConversationTabData | PRDetailTabData;
 
 export interface Tab {
   id: string;

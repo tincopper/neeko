@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { revealInFileManager, readDirTree } from '@/features/file/api/fileApi';
 import { listen } from '@tauri-apps/api/event';
 import { useAppContext } from '@/shared/contexts';
@@ -16,6 +16,10 @@ import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import GitCommitPanel from '@/features/git/components/GitCommitPanel';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import ConversationPanel from '@/features/conversation/components/ConversationPanel';
+import GitLogPanel from '@/features/git/components/gitlog/GitLogPanel';
+import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
+import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetail';
+import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
@@ -572,10 +576,188 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
 });
 PullRequestsPanelWrapper.displayName = 'PullRequestsPanelWrapper';
 
+const GitLogPanelWrapper: React.FC = () => {
+  const { project, commands, connectionContext } = useActiveProject();
+
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const [selectedExpanded, setSelectedExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [combined, setCombined] = useState(false);
+  const [currentFileIdx, setCurrentFileIdx] = useState(0);
+
+  const { commits, loading, hasMore, loadMore, refresh, loadingMore } =
+    useGitLog(commands);
+
+  const { detail, files, loading: detailLoading, error: detailError } = useCommitDetail(
+    commands,
+    selectedHash,
+  );
+
+  const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } = useSingletonDiff(
+    project?.id,
+    selectedHash,
+    files,
+    connectionContext,
+  );
+
+  const handleSelectCommit = useCallback(
+    (hash: string) => {
+      if (selectedHash === hash) {
+        setSelectedExpanded((prev) => !prev);
+      } else {
+        setSelectedHash(hash);
+        setSelectedExpanded(true);
+        setCurrentFileIdx(0);
+      }
+    },
+    [selectedHash],
+  );
+
+  // When commit detail files arrive, refresh an already-open Diff singleton.
+  useEffect(() => {
+    if (!selectedHash || files.length === 0) return;
+    if (!hasSingleton()) return;
+    const preferred = files[currentFileIdx]?.path ?? files[0]?.path ?? null;
+    refreshOpenDiff({ combined, preferredPath: preferred });
+    // Only re-run when commit/files identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHash, files]);
+
+  const handleToggleCombined = useCallback(
+    (on: boolean) => {
+      setCombined(on);
+      const preferred = files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
+      if (on) {
+        if (preferred) openCombined(preferred);
+      } else if (preferred) {
+        // Closing combined mode: switch the Diff singleton back to single-file view.
+        openFileInDiff(preferred);
+      }
+    },
+    [files, currentFileIdx, openCombined, openFileInDiff],
+  );
+
+  const handleOpenDiff = useCallback(
+    (filePath: string) => {
+      const idx = files.findIndex((f) => f.path === filePath);
+      if (idx >= 0) setCurrentFileIdx(idx);
+      if (combined) {
+        // Combined mode: keep multi-file view and scroll to the target file.
+        if (hasSingleton()) {
+          scrollToFile(filePath);
+        } else {
+          openCombined(filePath);
+        }
+        return;
+      }
+      openFileInDiff(filePath);
+    },
+    [files, combined, hasSingleton, scrollToFile, openCombined, openFileInDiff],
+  );
+
+  const handlePinFile = useCallback(
+    (filePath: string) => {
+      pinFile(filePath);
+    },
+    [pinFile],
+  );
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      switch (e.key) {
+        case "J": {
+          e.preventDefault();
+          const ci = commits.findIndex((c) => c.hash === selectedHash);
+          if (ci >= 0 && ci < commits.length - 1) {
+            handleSelectCommit(commits[ci + 1].hash);
+          } else if (ci < 0 && commits.length > 0) {
+            handleSelectCommit(commits[0].hash);
+          }
+          break;
+        }
+        case "K": {
+          e.preventDefault();
+          const ci = commits.findIndex((c) => c.hash === selectedHash);
+          if (ci > 0) {
+            const prev = commits[ci - 1];
+            handleSelectCommit(prev.hash);
+          }
+          break;
+        }
+        case "j": {
+          if (files.length === 0) break;
+          e.preventDefault();
+          const nextIdx = Math.min(currentFileIdx + 1, files.length - 1);
+          if (nextIdx !== currentFileIdx) {
+            setCurrentFileIdx(nextIdx);
+            openFileInDiff(files[nextIdx].path);
+          }
+          break;
+        }
+        case "k": {
+          if (files.length === 0) break;
+          e.preventDefault();
+          const nextIdx = Math.max(currentFileIdx - 1, 0);
+          if (nextIdx !== currentFileIdx) {
+            setCurrentFileIdx(nextIdx);
+            openFileInDiff(files[nextIdx].path);
+          }
+          break;
+        }
+        case "c": {
+          e.preventDefault();
+          handleToggleCombined(!combined);
+          break;
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [commits, selectedHash, files, currentFileIdx, combined, handleSelectCommit, openFileInDiff, handleToggleCombined]);
+
+  if (!project) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-[var(--font-size)] text-text-muted">
+        No project selected
+      </div>
+    );
+  }
+
+  return (
+    <GitLogPanel
+      commits={commits}
+      loading={loading}
+      hasMore={hasMore}
+      loadMore={loadMore}
+      loadingMore={loadingMore}
+      refresh={refresh}
+      selectedHash={selectedHash}
+      selectedExpanded={selectedExpanded}
+      searchQuery={searchQuery}
+      combined={combined}
+      detail={detail}
+      files={files}
+      detailLoading={detailLoading}
+      detailError={detailError}
+      onSelectCommit={handleSelectCommit}
+      onOpenDiff={handleOpenDiff}
+      onPinFile={handlePinFile}
+      onSearchChange={setSearchQuery}
+      onRefresh={refresh}
+      onToggleCombined={handleToggleCombined}
+    />
+  );
+};
+GitLogPanelWrapper.displayName = 'GitLogPanelWrapper';
+
 export {
   FilesPanelWrapper,
   GitCommitPanelWrapper,
   SkillsPanelWrapper,
   ConversationsPanelWrapper,
   PullRequestsPanelWrapper,
+  GitLogPanelWrapper,
 };

@@ -59,7 +59,7 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
     }
     case "diff": {
       const p = partial as Record<string, unknown>;
-      if (!("diffSource" in p)) return data;
+      if (!("diffSource" in p) && !("combined" in p) && !("scrollToPath" in p)) return data;
       const d = data as DiffTabData;
       return {
         kind: "diff" as const,
@@ -67,10 +67,10 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
         diffSource: p.diffSource !== undefined ? (p.diffSource as DiffSource) : d.diffSource,
         initialMode: p.initialMode !== undefined ? (p.initialMode as ViewMode | undefined) : d.initialMode,
+        combined: p.combined !== undefined ? (p.combined as boolean) : d.combined,
+        combinedFiles: p.combinedFiles !== undefined ? (p.combinedFiles as import('@/features/git/components/diff/types').CommitFileChange[]) : d.combinedFiles,
+        scrollToPath: p.scrollToPath !== undefined ? (p.scrollToPath as string | undefined) : d.scrollToPath,
       };
-    }
-    case "gitLog": {
-      return { kind: "gitLog" as const };
     }
     case "html-preview": {
       const p = partial as Record<string, unknown>;
@@ -102,6 +102,8 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         prBaseRef: p.prBaseRef !== undefined ? (p.prBaseRef as string) : d.prBaseRef,
       };
     }
+    default:
+      return data;
   }
 }
 

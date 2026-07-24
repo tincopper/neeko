@@ -1,0 +1,183 @@
+import { useCallback } from 'react';
+
+import type { DiffSource } from '@/features/git/components/diff/types';
+import { useProjectStore } from '@/features/project/store';
+import { useEditorStore } from '@/shared/store';
+import type { CommitFileChange, ConnectionContext } from '@/shared/types';
+
+const DIFF_TAB_ID = 'diff_singleton';
+
+function fileNameOf(filePath: string): string {
+  return filePath.split(/[/\\]/).pop() ?? filePath;
+}
+
+function buildDiffSource(connectionContext: ConnectionContext, commitHash: string): DiffSource {
+  switch (connectionContext.type) {
+    case 'local':
+      return { type: 'commit', projectId: connectionContext.projectId, commitHash };
+    case 'wsl':
+      return {
+        type: 'wsl-commit',
+        distro: connectionContext.distro,
+        projectPath: connectionContext.projectPath,
+        commitHash,
+      };
+    case 'remote':
+      return {
+        type: 'remote-commit',
+        host: connectionContext.host,
+        port: connectionContext.port,
+        username: connectionContext.username,
+        auth: connectionContext.auth,
+        projectPath: connectionContext.projectPath,
+        commitHash,
+      };
+  }
+}
+
+export function useSingletonDiff(
+  projectId: string | undefined,
+  commitHash: string | null,
+  files: CommitFileChange[],
+  connectionContext: ConnectionContext | null,
+) {
+  const tabKey = useProjectStore.getState().activeProjectId ?? projectId ?? '';
+
+  const hasSingleton = useCallback(() => {
+    const store = useEditorStore.getState();
+    return Boolean(store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID));
+  }, [tabKey]);
+
+  const openFileInDiff = useCallback(
+    (filePath: string) => {
+      if (!commitHash || !connectionContext) return;
+      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const store = useEditorStore.getState();
+      const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
+      const title = fileNameOf(filePath);
+      const partial = {
+        title,
+        filePath,
+        fileName: title,
+        diffSource,
+        combined: false,
+        combinedFiles: undefined,
+        scrollToPath: undefined,
+      };
+      if (existing) {
+        store.updateTab(tabKey, DIFF_TAB_ID, partial);
+        store.activateTab(tabKey, DIFF_TAB_ID);
+      } else {
+        store.addTab(tabKey, {
+          id: DIFF_TAB_ID,
+          projectId: tabKey,
+          title,
+          order: 200,
+          data: { kind: 'diff', ...partial },
+        });
+        store.activateTab(tabKey, DIFF_TAB_ID);
+      }
+    },
+    [tabKey, commitHash, connectionContext],
+  );
+
+  const openCombined = useCallback(
+    (currentFile?: string) => {
+      if (!commitHash || !connectionContext) return;
+      const targetPath = currentFile ?? files[0]?.path ?? '';
+      if (!targetPath) return;
+      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const title = `Diff \u00b7 ${commitHash.slice(0, 7)} \u00b7 ${files.length} files`;
+      const store = useEditorStore.getState();
+      const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
+      const partial = {
+        title,
+        filePath: targetPath,
+        fileName: fileNameOf(targetPath),
+        diffSource,
+        combined: true,
+        combinedFiles: files,
+        scrollToPath: currentFile ?? undefined,
+      };
+      if (existing) {
+        store.updateTab(tabKey, DIFF_TAB_ID, partial);
+        store.activateTab(tabKey, DIFF_TAB_ID);
+      } else {
+        store.addTab(tabKey, {
+          id: DIFF_TAB_ID,
+          projectId: tabKey,
+          title,
+          order: 200,
+          data: { kind: 'diff', ...partial },
+        });
+        store.activateTab(tabKey, DIFF_TAB_ID);
+      }
+    },
+    [tabKey, commitHash, connectionContext, files],
+  );
+
+  const pinFile = useCallback(
+    (filePath: string) => {
+      if (!commitHash || !connectionContext) return;
+      const diffSource = buildDiffSource(connectionContext, commitHash);
+      const pinnedId = `diff_pinned_${filePath.replace(/[/\\]/g, '_')}`;
+      const store = useEditorStore.getState();
+      const title = fileNameOf(filePath);
+      store.addTab(tabKey, {
+        id: pinnedId,
+        projectId: tabKey,
+        title,
+        order: 200,
+        data: { kind: 'diff', filePath, fileName: title, diffSource },
+      });
+      store.activateTab(tabKey, pinnedId);
+    },
+    [tabKey, commitHash, connectionContext],
+  );
+
+  const scrollToFile = useCallback(
+    (filePath: string) => {
+      const store = useEditorStore.getState();
+      const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
+      if (!existing) return;
+      // Force effect re-run even when clicking the same file twice.
+      store.updateTab(tabKey, DIFF_TAB_ID, {
+        filePath,
+        fileName: fileNameOf(filePath),
+        scrollToPath: undefined,
+      });
+      store.updateTab(tabKey, DIFF_TAB_ID, { scrollToPath: filePath });
+      store.activateTab(tabKey, DIFF_TAB_ID);
+    },
+    [tabKey],
+  );
+
+  /** Refresh singleton Diff tab after commit selection changes (if already open). */
+  const refreshOpenDiff = useCallback(
+    (opts: { combined: boolean; preferredPath?: string | null }) => {
+      if (!commitHash || !connectionContext || !hasSingleton()) return;
+      if (files.length === 0) return;
+
+      const preferred = opts.preferredPath ?? null;
+      const activePath =
+        preferred && files.some((f) => f.path === preferred) ? preferred : files[0].path;
+
+      if (opts.combined) {
+        openCombined(activePath);
+      } else {
+        openFileInDiff(activePath);
+      }
+    },
+    [commitHash, connectionContext, files, hasSingleton, openCombined, openFileInDiff],
+  );
+
+  return {
+    openFileInDiff,
+    openCombined,
+    pinFile,
+    scrollToFile,
+    refreshOpenDiff,
+    hasSingleton,
+    DIFF_TAB_ID,
+  };
+}

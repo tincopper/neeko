@@ -1,18 +1,10 @@
 import React, { useCallback } from 'react';
-import { useShallow } from 'zustand/shallow';
 
 import { dockPanelRegistry, dockPanelIcons } from '@/app/dock/registry';
-import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
-import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
-import type { TabKind } from '@/shared/types/tab';
 import { Badge } from '@/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip';
-
-const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
-  git: 'gitLog',
-};
 
 interface DockBarButtonProps {
   panelId: string;
@@ -21,19 +13,8 @@ interface DockBarButtonProps {
 
 const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = 'right' }) => {
   const def = dockPanelRegistry[panelId];
-  const isTab = def?.openAs === 'tab';
-
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const isTabActive = useEditorStore((s) => {
-    if (!isTab) return false;
-    const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-    const projectId = activeProjectId ?? '__app__';
-    const projectTabs = s.tabs[projectId];
-    return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
-  });
 
   const isDockActive = useDockStore((s) => {
-    if (isTab) return false;
     for (const zone of Object.values(s.zones)) {
       if (zone.panels.includes(panelId) && zone.expanded && zone.activePanelId === panelId)
         return true;
@@ -41,38 +22,13 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = 'right' }
     return false;
   });
 
-  const isActive = isTab ? isTabActive : isDockActive;
+  const isActive = isDockActive;
 
   const togglePanel = useDockStore((s) => s.togglePanel);
-  const addTab = useEditorStore((s) => s.addTab);
-  const closeTab = useEditorStore((s) => s.closeTab);
-  const activateTab = useEditorStore((s) => s.activateTab);
-  const currentProjectId = activeProjectId;
-  const tabs = useEditorStore(useShallow((s) => s.tabs));
 
   const handleClick = useCallback(() => {
-    if (isTab) {
-      const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-      const projectId = currentProjectId ?? '__app__';
-      const projectTabs = tabs[projectId];
-      const existing = projectTabs?.tabs.find((t) => t.data.kind === tabKind);
-      if (existing) {
-        closeTab(projectId, existing.id);
-      } else {
-        const tabId = `${panelId}_tab`;
-        addTab(projectId, {
-          id: tabId,
-          projectId,
-          title: def?.title ?? panelId,
-          order: 100,
-          data: { kind: tabKind } as never,
-        });
-        activateTab(projectId, tabId);
-      }
-    } else {
-      togglePanel(panelId);
-    }
-  }, [isTab, togglePanel, addTab, closeTab, activateTab, currentProjectId, tabs, panelId, def]);
+    togglePanel(panelId);
+  }, [togglePanel, panelId]);
 
   if (!def) return null;
 

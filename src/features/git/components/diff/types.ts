@@ -47,12 +47,23 @@ export type DiffSource =
       commitHash: string;
     };
 
+export interface CommitFileChange {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface DiffViewProps {
   projectId?: string;
   diffSource?: DiffSource;
   filePath: string;
   initialMode?: ViewMode;
   onBack?: () => void;
+  combined?: boolean;
+  files?: CommitFileChange[];
+  scrollToPath?: string;
+  onScrollToPathChange?: (path: string) => void;
 }
 
 export interface SplitRow {

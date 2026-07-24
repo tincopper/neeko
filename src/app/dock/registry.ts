@@ -68,6 +68,12 @@ const LazyPullRequestsPanelWrapper = lazy(() =>
   })),
 );
 
+const LazyGitLogPanelWrapper = lazy(() =>
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
+    default: m.GitLogPanelWrapper,
+  })),
+);
+
 type UiBinding = Pick<DockPanelViewDef, 'title' | 'icon' | 'component' | 'minPanelSize'>;
 
 const UI_BINDINGS: Record<string, UiBinding> = {
@@ -131,6 +137,14 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
+  },
+  gitLog: {
+    title: 'Git Log',
+    icon: 'GitBranch',
+    component: LazyGitLogPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    minPanelSize: 280,
   },
 };
 

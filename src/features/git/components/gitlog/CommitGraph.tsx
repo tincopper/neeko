@@ -5,12 +5,13 @@ import type { CommitEntry } from '@/shared/types';
  * ROW_HEIGHT 必须与 CommitList.tsx 中保持一致。
  * dot 视觉中心 Y = i * ROW_HEIGHT + ROW_HEIGHT / 2
  */
-export const ROW_HEIGHT = 40;
+export const ROW_HEIGHT = 28;
+export { BRANCH_SPACING, NODE_RADIUS, LINE_W, laneColor };
 
 // ── 布局常量 ───────────────────────────────────────────────────────────────
-const BRANCH_SPACING = 16; // 每列水平宽度
-const NODE_RADIUS    = 4;  // commit dot 半径
-const LINE_W         = 2;  // 线宽
+const BRANCH_SPACING = 4; // 每列水平宽度
+const NODE_RADIUS    = 3;  // commit dot 半径
+const LINE_W         = 1.5;  // 线宽
 
 const LANE_COLORS = [
   "var(--accent-blue)",
@@ -28,10 +29,11 @@ interface CommitGraphProps {
   commits: CommitEntry[];
   selectedHash: string | null;
   onSelectCommit: (hash: string) => void;
+  hoveredHash?: string | null;
 }
 
 /** 一段直线分支路径，列内从 start 行画到 end 行 */
-interface BranchSegment {
+export interface BranchSegment {
   col: number;
   /** 起始行（含） */
   start: number;
@@ -83,12 +85,13 @@ function buildChildrenMap(commits: CommitEntry[]): Map<string, string[]> {
  *   2. 有 branch children（parents[0] === commit 的 child）→ 放到最左侧 branch child 所在列
  *   3. 只有 merge children → 从 maxChildX+1 开始找空位列
  */
-function computeLayout(commits: CommitEntry[]): {
+export function computeLayout(commits: CommitEntry[]): {
   nodes: CommitNode[];
   segments: BranchSegment[];
   totalCols: number;
+  maxColUsed: number;
 } {
-  if (commits.length === 0) return { nodes: [], segments: [], totalCols: 0 };
+  if (commits.length === 0) return { nodes: [], segments: [], totalCols: 0, maxColUsed: 0 };
 
   const childrenMap = buildChildrenMap(commits);
 
@@ -212,10 +215,20 @@ function computeLayout(commits: CommitEntry[]): {
   const segments: BranchSegment[] = columns.flat();
   const totalCols = columns.length || 1;
 
+  // 找到实际使用的最大列号（节点或 segment）
+  let maxColUsed = 0;
+  for (const node of commitsMap.values()) {
+    if (node.x > maxColUsed) maxColUsed = node.x;
+  }
+  for (const seg of segments) {
+    if (seg.col > maxColUsed) maxColUsed = seg.col;
+  }
+
   return {
     nodes: Array.from(commitsMap.values()),
     segments,
     totalCols,
+    maxColUsed,
   };
 }
 
@@ -241,15 +254,16 @@ function curvePath(start: [number, number], end: [number, number]): string {
 
 // ── React 组件 ─────────────────────────────────────────────────────────────
 
-const CommitGraph: React.FC<CommitGraphProps> = ({ commits }) => {
-  const { nodes, segments, totalCols } = useMemo(
+const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
+  const { nodes, segments, maxColUsed } = useMemo(
     () => computeLayout(commits),
     [commits],
   );
 
   if (commits.length === 0) return null;
 
-  const svgWidth  = totalCols * BRANCH_SPACING + NODE_RADIUS * 4 + 2;
+  // 动态宽度：只到实际最右列的右边缘 + 少量 padding
+  const svgWidth  = (maxColUsed + 1) * BRANCH_SPACING + NODE_RADIUS * 4;
   const svgHeight = commits.length * ROW_HEIGHT;
 
   // nodesMap for quick lookup
@@ -335,6 +349,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits }) => {
         {/* ── Commit dot（画在最上层，遮住线端） ── */}
         {nodes.map(node => {
           const [cx, cy] = nodeXY(node.x, node.y);
+          const isHovered = node.hash === hoveredHash;
           return (
             <circle
               key={`dot-${node.hash}`}
@@ -342,6 +357,11 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits }) => {
               cy={cy}
               r={NODE_RADIUS}
               fill={node.color}
+              style={{
+                transition: "transform 0.15s ease-out",
+                transform: isHovered ? `scale(1.4)` : "scale(1)",
+                transformOrigin: `${cx}px ${cy}px`,
+              }}
             />
           );
         })}

@@ -9,7 +9,6 @@ import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout'
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
 import ConversationViewer from "@/features/conversation/components/ConversationViewer";
-import { GitLogPanel } from '@/features/git/components/gitlog';
 import TabBar from "./TabBar";
 import AgentIcon from "@/features/agent/components/AgentIcon";
 import ContextMenu from "@/features/project/components/ContextMenu";
@@ -375,6 +374,9 @@ function EditorGroupPane({
             filePath={activeTab.data.filePath}
             initialMode={config.diffMode}
             onBack={() => handleCloseTab(activeTab.id)}
+            combined={activeTab.data.combined}
+            files={activeTab.data.combinedFiles}
+            scrollToPath={activeTab.data.scrollToPath}
           />
         )}
 
@@ -424,14 +426,7 @@ function EditorGroupPane({
           />
         )}
 
-        <div
-          className={cn(
-            "flex-1 min-h-0",
-            activeTab?.data.kind === "gitLog" ? "flex flex-col" : "hidden",
-          )}
-        >
-          <GitLogPanel />
-        </div>
+        
       </div>
 
       {/* Context Menu */}

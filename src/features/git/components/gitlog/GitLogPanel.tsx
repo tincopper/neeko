@@ -1,233 +1,90 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
-import { useProjectStore } from "@/features/project/store";
-import { useEditorStore } from '@/shared/store';
-import { useAppContext } from "@/shared/contexts/AppContext";
-import { useActiveProject } from "@/features/project/hooks/use-active-project";
-import { useGitLog } from "./useGitLog";
-import { useCommitDetail } from "./useCommitDetail";
+import React from "react";
+import type { CommitEntry, CommitDetail, CommitFileChange } from "@/features/git/types";
 import LogToolbar from "./LogToolbar";
 import CommitList from "./CommitList";
-import CommitDetailPanel from "./CommitDetailPanel";
-import type { CommitMenuAction } from "./types";
-import type { DiffSource } from "../diff/types";
 
-const MIN_LEFT_WIDTH = 300;
-const MAX_LEFT_WIDTH_RATIO = 0.7;
+interface GitLogPanelProps {
+  commits: CommitEntry[];
+  loading: boolean;
+  hasMore: boolean;
+  loadMore: () => void;
+  loadingMore: boolean;
+  refresh: () => void;
+  selectedHash: string | null;
+  selectedExpanded: boolean;
+  searchQuery: string;
+  combined: boolean;
+  detail: CommitDetail | null;
+  files: CommitFileChange[];
+  detailLoading: boolean;
+  detailError: string | null;
+  onSelectCommit: (hash: string) => void;
+  onOpenDiff: (filePath: string) => void;
+  onPinFile: (filePath: string) => void;
+  onSearchChange: (query: string) => void;
+  onRefresh: () => void;
+  onToggleCombined: (combined: boolean) => void;
+}
 
-const GitLogPanel: React.FC = () => {
-  const { project, commands, capabilities, connectionContext } = useActiveProject();
-  const { showToast } = useAppContext();
-
-  const [selectedHash, setSelectedHash] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [leftWidth, setLeftWidth] = useState(0.55); // ratio
-  const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-
-  const { commits, loading, hasMore, loadMore, refresh, loadingMore } =
-    useGitLog(commands);
-
-  const { detail, files, loading: detailLoading, error: detailError } = useCommitDetail(
-    commands,
-    selectedHash,
-  );
-
-  const handleDividerMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const container = containerRef.current;
-      if (!container) return;
-      dragRef.current = {
-        startX: e.clientX,
-        startWidth: leftWidth,
-      };
-
-      const onMouseMove = (ev: MouseEvent) => {
-        if (!dragRef.current || !container) return;
-        const containerWidth = container.offsetWidth;
-        const delta = ev.clientX - dragRef.current.startX;
-        const newRatio = dragRef.current.startWidth + delta / containerWidth;
-        const minRatio = MIN_LEFT_WIDTH / containerWidth;
-        const clamped = Math.max(minRatio, Math.min(MAX_LEFT_WIDTH_RATIO, newRatio));
-        setLeftWidth(clamped);
-      };
-
-      const onMouseUp = () => {
-        dragRef.current = null;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-    },
-    [leftWidth],
-  );
-
-  // Guard against userSelect/cursor leak when this component unmounts while a
-  // divider drag is still in progress.
-  useEffect(() => {
-    return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, []);
-
-  const handleAction = useCallback(
-    async (hash: string, action: CommitMenuAction, value?: string) => {
-      if (!commands) return;
-      try {
-        switch (action) {
-          case "cherry-pick":
-            if (capabilities?.canCherryPick) {
-              await commands.cherryPick(hash);
-              showToast?.("Cherry-picked successfully", "info");
-            }
-            break;
-          case "revert":
-            if (capabilities?.canRevert) {
-              await commands.revert(hash);
-              showToast?.("Reverted successfully", "info");
-            }
-            break;
-          case "checkout-detached":
-            // checkout-detached is not available in ProjectCommands interface.
-            // TODO: add checkoutDetached() to ProjectCommands if needed.
-            showToast?.("Checkout detached HEAD is not supported for this project type", "error");
-            break;
-          case "create-branch":
-            await commands.createBranch(value ?? "", hash);
-            showToast?.(`Branch '${value}' created`, "info");
-            break;
-          case "create-tag":
-            if (capabilities?.canCreateTag) {
-              await commands.createTag(value ?? "");
-              showToast?.(`Tag '${value}' created`, "info");
-            }
-            break;
-        }
-        refresh();
-      } catch (e: unknown) {
-        showToast?.(String(e), "error");
-      }
-    },
-    [commands, capabilities, showToast, refresh],
-  );
-
-  const handleOpenDiff = useCallback(
-    (filePath: string) => {
-      if (!project || !selectedHash || !connectionContext) return;
-
-      let diffSource: DiffSource;
-      switch (connectionContext.type) {
-        case "local":
-          diffSource = {
-            type: "commit",
-            projectId: connectionContext.projectId,
-            commitHash: selectedHash,
-          };
-          break;
-        case "wsl":
-          diffSource = {
-            type: "wsl-commit",
-            distro: connectionContext.distro,
-            projectPath: connectionContext.projectPath,
-            commitHash: selectedHash,
-          };
-          break;
-        case "remote":
-          diffSource = {
-            type: "remote-commit",
-            host: connectionContext.host,
-            port: connectionContext.port,
-            username: connectionContext.username,
-            auth: connectionContext.auth,
-            projectPath: connectionContext.projectPath,
-            commitHash: selectedHash,
-          };
-          break;
-      }
-
-      // 使用 unified store 的 activeProjectId（适用于所有项目类型）
-      const tabKey = useProjectStore.getState().activeProjectId ?? project.id;
-
-      const tabId = `diff_${selectedHash.slice(0, 7)}_${filePath.replace(/[/\\]/g, "_")}`;
-      const editorState = useEditorStore.getState();
-      editorState.addTab(tabKey, {
-        id: tabId,
-        projectId: tabKey,
-        title: filePath.split(/[/\\]/).pop() ?? filePath,
-        order: 200,
-        data: {
-          kind: "diff",
-          filePath,
-          fileName: filePath.split(/[/\\]/).pop() ?? filePath,
-          diffSource,
-        },
-      });
-      editorState.activateTab(tabKey, tabId);
-    },
-    [project, selectedHash, connectionContext],
-  );
-
-  if (!project) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-[var(--font-size)] text-text-muted">
-        No project selected
-      </div>
-    );
-  }
-
+const GitLogPanel: React.FC<GitLogPanelProps> = ({
+  commits,
+  loading,
+  hasMore,
+  loadMore,
+  loadingMore,
+  selectedHash,
+  selectedExpanded,
+  searchQuery,
+  combined,
+  detail,
+  files,
+  detailLoading,
+  detailError,
+  onSelectCommit,
+  onOpenDiff,
+  onPinFile,
+  onSearchChange,
+  onRefresh,
+  onToggleCombined,
+}) => {
   return (
-    <div ref={containerRef} className="flex flex-col h-full p-1.5 gap-0.5">
-      <LogToolbar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onRefresh={refresh}
-        loading={loading}
-      />
-
-      <div className="flex-1 min-h-0 flex flex-row gap-0.5 overflow-hidden">
-        {/* Left: Commit list with graph */}
-        <div
-          className="flex flex-col overflow-hidden bg-bg-tertiary/20 rounded-md"
-          style={{ width: `${leftWidth * 100}%` }}
-        >
-          <CommitList
-            commits={commits}
-            selectedHash={selectedHash}
-            onSelectCommit={setSelectedHash}
-            onAction={handleAction}
-            loading={loading}
-            hasMore={hasMore}
-            onLoadMore={loadMore}
-            loadingMore={loadingMore}
-            searchQuery={searchQuery}
+    <div className="flex flex-col h-full p-1 gap-0.5">
+      <div className="flex items-center gap-1.5 shrink-0 px-1">
+        <LogToolbar
+          searchQuery={searchQuery}
+          onSearchChange={onSearchChange}
+          onRefresh={onRefresh}
+          loading={loading}
+        />
+        <label className="flex items-center gap-1 text-[calc(var(--font-size)-2px)] text-text-muted cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={combined}
+            onChange={(e) => onToggleCombined(e.target.checked)}
+            className="accent-accent-blue"
           />
-        </div>
+          组合
+        </label>
+      </div>
 
-        {/* Divider */}
-        <div
-          className="group w-1 shrink-0 cursor-col-resize flex items-center justify-center"
-          onMouseDown={handleDividerMouseDown}
-        >
-          <div className="h-8 w-[3px] rounded-full bg-border group-hover:bg-accent-blue/50 transition-colors duration-150" />
-        </div>
-
-        {/* Right: Commit detail */}
-        <div className="flex-1 min-w-0 overflow-hidden bg-bg-tertiary/20 rounded-md">
-          <CommitDetailPanel
-            detail={detail}
-            files={files}
-            loading={detailLoading}
-            error={detailError}
-            onOpenDiff={handleOpenDiff}
-          />
-        </div>
+      <div className="flex-1 min-h-0">
+        <CommitList
+          commits={commits}
+          selectedHash={selectedHash}
+          selectedExpanded={selectedExpanded}
+          detail={detail}
+          files={files}
+          detailLoading={detailLoading}
+          detailError={detailError}
+          onSelectCommit={onSelectCommit}
+          onOpenDiff={onOpenDiff}
+          onPinFile={onPinFile}
+          loading={loading}
+          hasMore={hasMore}
+          onLoadMore={loadMore}
+          loadingMore={loadingMore}
+          searchQuery={searchQuery}
+        />
       </div>
     </div>
   );

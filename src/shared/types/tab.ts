@@ -3,7 +3,6 @@ export type {
   TerminalTabData,
   FileTabData,
   DiffTabData,
-  GitLogTabData,
   HtmlPreviewTabData,
   PRDetailTabData,
   TabData,

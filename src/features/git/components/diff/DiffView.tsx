@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useEditorAgentActions } from '@/features/editor/hooks/useEditorAgentActions';
 import { cn } from '@/lib/utils';
@@ -25,11 +25,105 @@ function getProjectIdFromTab(): string | null {
   return null;
 }
 
+interface FileDiffBlockProps {
+  projectId: string;
+  diffSource: NonNullable<DiffViewProps['diffSource']>;
+  filePath: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  viewMode: ViewMode;
+}
+
+const FileDiffBlock: React.FC<FileDiffBlockProps> = React.memo(
+  ({ projectId, diffSource, filePath, status, additions, deletions, viewMode }) => {
+    const {
+      diffResult,
+      loading,
+      error,
+      loadDiff,
+    } = useDiffData({ projectId, diffSource, filePath });
+
+    const language = useMemo(() => detectLanguage(filePath), [filePath]);
+
+    useEffect(() => {
+      void ensureLanguageRegistered(language);
+    }, [language]);
+
+    const blockId = `fileblock-${filePath.replace(/[/\\]/g, "_")}`;
+
+    return (
+      <section id={blockId} className="border-b border-border last:border-b-0">
+        <div className="flex items-center gap-2 px-4 py-2 bg-bg-secondary sticky top-0 z-10">
+          <img
+            src={fileIconSrc(getFileName(filePath))}
+            alt=""
+            width={14}
+            height={14}
+            className="shrink-0"
+          />
+          <span className="text-[var(--font-size)] font-medium">{getFileName(filePath)}</span>
+          <span className="text-text-muted text-xs">{filePath}</span>
+          <span className={cn(
+            "text-xs px-1.5 py-0.5 rounded font-medium",
+            status === 'added' && "text-[#3fb950] bg-[#3fb950]/10",
+            status === 'deleted' && "text-[#f85149] bg-[#f85149]/10",
+            status === 'modified' && "text-accent-blue bg-accent-blue/10",
+          )}>
+            {status}
+          </span>
+          {(additions > 0 || deletions > 0) && (
+            <span className="text-xs flex gap-1 ml-auto">
+              <span className="text-[#3fb950]">+{additions}</span>
+              <span className="text-[#f85149]">-{deletions}</span>
+            </span>
+          )}
+        </div>
+        <div className="px-3 py-2">
+          {loading ? (
+            <div className="text-text-muted text-[var(--font-size)] py-4 text-center">Loading...</div>
+          ) : error ? (
+            <div className="text-[#f85149] text-[var(--font-size)] py-4 text-center">
+              {error}
+              <button
+                className="ml-2 text-accent-blue underline bg-transparent border-none cursor-pointer"
+                onClick={() => loadDiff()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : diffResult && diffResult.hunks.length > 0 ? (
+            viewMode === 'unified' ? (
+              <DiffTable
+                diffResult={diffResult}
+                language={language}
+                selectedLines={new Set()}
+                onToggleLine={() => {}}
+              />
+            ) : (
+              <SplitDiffTable
+                diffResult={diffResult}
+                language={language}
+                selectedLines={new Set()}
+                onToggleLine={() => {}}
+              />
+            )
+          ) : (
+            <div className="text-text-muted text-[var(--font-size)] py-4 text-center">No changes</div>
+          )}
+        </div>
+      </section>
+    );
+  },
+);
+FileDiffBlock.displayName = 'FileDiffBlock';
+
 const DiffView: React.FC<DiffViewProps> = React.memo(
-  ({ projectId, diffSource, filePath, initialMode }) => {
+  ({ projectId, diffSource, filePath, initialMode, combined, files, scrollToPath }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? 'unified');
     const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
     const { sendToAgent, pending, clearPending } = useEditorAgentActions();
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     const {
       diffResult,
@@ -47,6 +141,17 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     useEffect(() => {
       void ensureLanguageRegistered(language);
     }, [language]);
+
+    useEffect(() => {
+      if (scrollToPath && scrollRef.current) {
+        const el = scrollRef.current.querySelector(
+          `#fileblock-${scrollToPath.replace(/[/\\]/g, "_")}`
+        );
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }, [scrollToPath]);
 
     const currentProjectId = projectId || getProjectIdFromTab() || '';
 
@@ -74,7 +179,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         setSelectedLines((prev) => {
           const next = new Set(prev);
           if (lineIdx === -1) {
-            // Toggle entire hunk
             const allLines = diffResult?.hunks[hunkIdx]?.lines;
             if (!allLines) return prev;
             const allIn = allLines.every((_, i) => next.has(`${hunkIdx}:${i}`));
@@ -110,6 +214,57 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       sendToAgent(currentProjectId, message);
       clearSelection();
     }, [filePath, selectedCount, currentProjectId, sendToAgent, clearSelection]);
+
+    if (combined && files && diffSource) {
+      const pid = projectId || '';
+      return (
+        <div className="flex-1 flex flex-col overflow-hidden" ref={scrollRef}>
+          <div className="flex items-center justify-between py-2 px-4 bg-bg-secondary border-b border-border">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-[var(--font-size)]">
+                Combined Diff · {files.length} files
+              </span>
+            </div>
+            <div className="flex border border-border rounded overflow-hidden">
+              <button
+                className={cn(
+                  'bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary border-r border-border [&:last-child]:border-r-0',
+                  viewMode === 'unified' && '!bg-accent-blue !text-white',
+                )}
+                onClick={() => setViewMode('unified')}
+                title="Unified view"
+              >
+                Unified
+              </button>
+              <button
+                className={cn(
+                  'bg-transparent border-none text-text-secondary px-2.5 py-1 cursor-pointer text-[var(--font-size)] transition-all duration-150 hover:bg-bg-hover hover:text-text-primary [&:last-child]:border-r-0',
+                  viewMode === 'split' && '!bg-accent-blue !text-white',
+                )}
+                onClick={() => setViewMode('split')}
+                title="Split view"
+              >
+                Split
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            {files.map((f) => (
+              <FileDiffBlock
+                key={f.path}
+                projectId={pid}
+                diffSource={diffSource}
+                filePath={f.path}
+                status={f.status}
+                additions={f.additions}
+                deletions={f.deletions}
+                viewMode={viewMode}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     if (loading) {
       return (
