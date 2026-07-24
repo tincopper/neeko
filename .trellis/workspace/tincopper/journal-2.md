@@ -1086,3 +1086,37 @@ Completed project tag-group and Skill relation UI, selected-Agent project-local 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 90: Extensible multi-agent history adapters: L0-L3 + Codex/OMP/Grok/Reasonix
+
+**Date**: 2026-07-24
+**Task**: Extensible multi-agent history adapters: L0-L3 + Codex/OMP/Grok/Reasonix
+**Branch**: `main`
+
+### Summary
+
+Hardened nested session scanning (normalize_file_pattern, **/ globstar), rewrote Codex modern JSONL parser, added OMP/Grok/Reasonix adapters with events-backed transcripts, path-aware resume, and supportsResume UI integration.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c21aed5` | (see git log) |
+| `5abc864` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

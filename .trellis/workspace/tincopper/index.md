@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 89
-- **Last Active**: 2026-07-22
+- **Total Sessions**: 90
+- **Last Active**: 2026-07-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1083 | Active |
+| `journal-2.md` | ~1122 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 90 | 2026-07-24 | Extensible multi-agent history adapters: L0-L3 + Codex/OMP/Grok/Reasonix | `c21aed5`, `5abc864` | `main` |
 | 89 | 2026-07-22 | Complete project skill relation management | `9f1b26b` | `main` |
 | 88 | 2026-07-17 | PR list load error friendly UX | `a79a51c`, `3f2ba7e` | `main` |
 | 87 | 2026-07-16 | 07-16-env-scatter-cleanup C1-C5 | `1aa8695` | `main` |
