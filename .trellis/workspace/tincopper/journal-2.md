@@ -1120,3 +1120,36 @@ Hardened nested session scanning (normalize_file_pattern, **/ globstar), rewrote
 ### Next Steps
 
 - None - task complete
+
+
+## Session 91: Layout architecture cleanup
+
+**Date**: 2026-07-24
+**Task**: Layout architecture cleanup
+**Branch**: `main`
+
+### Summary
+
+将 layout/ 中对 features 的协调逻辑迁入 app/：MainContent→ProjectWorkspace、DockPanelWrappers/OpenIdeButton/DockBarButton 下沉，TitleBar/AppLayout/DockBar slot 化，收紧 ESLint layout 边界并同步 frontend specs；验收 type-check/tests/layout lint 通过后归档任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f2e2618` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
