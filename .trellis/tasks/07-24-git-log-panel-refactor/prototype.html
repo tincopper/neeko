@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Git Log 面板 + 单例 Diff Tab 原型</title>
+<style>
+  :root {
+    --bg-0: #0f1013;
+    --bg-1: #15171b;
+    --bg-2: #1b1d22;
+    --bg-3: #22252c;
+    --bg-hover: #2a2e36;
+    --bg-selected: #243447;
+    --text: #eef0f4;
+    --text-2: #b4b8c1;
+    --text-3: #7c818c;
+    --border: #32363f;
+    --blue: #2997ff;
+    --green: #30d158;
+    --red: #ff453a;
+    --yellow: #ffd60a;
+    --orange: #ff9f0a;
+    --purple: #bf5af2;
+    --diff-add: #30d15822;
+    --diff-del: #ff453a22;
+    --font: "SF Pro Text", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    --dock-w: 42px;
+    --panel-w: 360px;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg-0);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .page {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0;
+  }
+
+  /* ── Design notes strip ── */
+  .notes {
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #1a2533, var(--bg-1));
+    padding: 10px 14px;
+  }
+  .notes h1 { margin: 0 0 4px; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .notes p { margin: 0; color: var(--text-2); font-size: 12px; max-width: 140ch; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--bg-2);
+  }
+  .chip.on { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+  .chip.green { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+  .chip.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); }
+
+  /* ── App shell ── */
+  .app {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 34px minmax(0, 1fr);
+    margin: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-1);
+    box-shadow: 0 20px 60px #0008;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12px;
+    user-select: none;
+  }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .dots i:nth-child(1) { background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; }
+  .dots i:nth-child(3) { background: #28c840; }
+  .titlebar .proj { color: var(--text); font-weight: 600; }
+  .titlebar .sep { color: var(--text-3); }
+  .titlebar .muted { color: var(--text-3); margin-left: auto; }
+
+  .shell {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--dock-w) minmax(0, 1fr) auto;
+  }
+
+  /* Dock bar */
+  .dock {
+    background: var(--bg-0);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 0; gap: 4px;
+  }
+  .dock-btn {
+    width: 30px; height: 30px; border-radius: 8px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--text-3); display: grid; place-items: center;
+    position: relative;
+  }
+  .dock-btn:hover { background: var(--bg-hover); color: var(--text-2); }
+  .dock-btn.active {
+    color: var(--blue);
+    background: color-mix(in srgb, var(--blue) 14%, transparent);
+    border-color: color-mix(in srgb, var(--blue) 35%, transparent);
+  }
+  .dock-btn.active::before {
+    content: ""; position: absolute; left: -7px; top: 8px; bottom: 8px; width: 2px;
+    border-radius: 2px; background: var(--blue);
+  }
+  .dock-btn svg { width: 15px; height: 15px; }
+  .dock-spacer { flex: 1; }
+
+  /* Right-side toggle for panel */
+  .shell { position: relative; }
+  .right-toggle-btn {
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 22px; border: none; background: transparent;
+    color: var(--text-3); display: grid; place-items: center;
+    cursor: pointer; z-index: 10;
+    border-left: 1px solid var(--border);
+    transition: color .15s, background .15s;
+  }
+  .right-toggle-btn:hover { background: var(--bg-hover); color: var(--text-2); }
+  .right-toggle-btn.active { color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); }
+  .right-toggle-btn.active::before {
+    content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px;
+    border-radius: 2px; background: var(--blue);
+  }
+
+  /* Center editor */
+  .center {
+    min-width: 0; min-height: 0;
+    display: grid;
+    grid-template-rows: 34px minmax(0, 1fr);
+    background: var(--bg-1);
+  }
+  .tabs {
+    display: flex; align-items: stretch; gap: 2px;
+    padding: 4px 6px 0;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab {
+    display: inline-flex; align-items: center; gap: 6px;
+    max-width: 220px;
+    padding: 0 10px;
+    height: 28px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: transparent;
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+  .tab:hover { background: var(--bg-hover); color: var(--text-2); }
+  .tab.active {
+    background: var(--bg-1);
+    color: var(--text);
+    border-color: var(--border);
+    box-shadow: inset 0 -1px 0 var(--bg-1);
+  }
+  .tab .kind {
+    font-size: 10px; padding: 1px 5px; border-radius: 999px;
+    background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue);
+  }
+  .tab .kind.file { background: color-mix(in srgb, var(--text-3) 18%, transparent); color: var(--text-2); }
+  .tab .kind.combo { background: color-mix(in srgb, var(--purple) 18%, transparent); color: var(--purple); }
+  .tab .x {
+    border: none; background: transparent; color: var(--text-3);
+    width: 16px; height: 16px; border-radius: 4px; padding: 0; line-height: 1;
+  }
+  .tab .x:hover { background: var(--bg-3); color: var(--text); }
+  .tab .title { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+
+  .editor {
+    min-height: 0; overflow: auto;
+    position: relative;
+  }
+  .empty-editor {
+    height: 100%;
+    display: grid; place-items: center;
+    color: var(--text-3);
+    text-align: center;
+    padding: 24px;
+  }
+  .empty-editor strong { color: var(--text-2); display: block; margin-bottom: 6px; }
+
+  /* Diff view */
+  .diff-shell { min-height: 100%; display: flex; flex-direction: column; }
+  .diff-toolbar {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: color-mix(in srgb, var(--bg-1) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-toolbar .path { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .diff-toolbar .meta { color: var(--text-3); font-size: 11px; }
+  .diff-toolbar .grow { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--bg-2);
+  }
+  .pill b { color: var(--text); font-weight: 600; }
+  .pill .a { color: var(--green); }
+  .pill .d { color: var(--red); }
+  .seg {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .seg button {
+    border: none; background: transparent; color: var(--text-3);
+    padding: 4px 10px; font-size: 11px;
+  }
+  .seg button.active { background: var(--bg-3); color: var(--text); }
+  .btn {
+    border: 1px solid var(--border); background: var(--bg-2); color: var(--text-2);
+    border-radius: 8px; padding: 4px 10px; font-size: 11px;
+  }
+  .btn:hover { background: var(--bg-hover); color: var(--text); }
+  .btn.primary { border-color: color-mix(in srgb, var(--blue) 40%, var(--border)); color: var(--blue); }
+
+  .diff-body { padding: 0 0 24px; }
+  .file-block {
+    border-bottom: 1px solid var(--border);
+  }
+  .file-block-head {
+    position: sticky; top: 41px; z-index: 4;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px;
+  }
+  .file-block-head .status {
+    width: 16px; text-align: center; font-weight: 700;
+  }
+  .file-block-head .status.M { color: var(--blue); }
+  .file-block-head .status.A { color: var(--green); }
+  .file-block-head .status.D { color: var(--red); }
+  .file-block-head .status.R { color: var(--orange); }
+  .file-block-head .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hunk { font-family: var(--mono); font-size: 12px; }
+  .hunk-head {
+    padding: 4px 12px; color: var(--purple);
+    background: color-mix(in srgb, var(--purple) 8%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
+  .line {
+    display: grid;
+    grid-template-columns: 44px 44px minmax(0, 1fr);
+    white-space: pre;
+  }
+  .line .ln { color: var(--text-3); text-align: right; padding: 0 8px; user-select: none; }
+  .line .code { padding: 0 12px 0 8px; overflow: hidden; }
+  .line.add { background: var(--diff-add); }
+  .line.add .code { color: #b7f0c5; }
+  .line.del { background: var(--diff-del); }
+  .line.del .code { color: #ffc1bd; }
+  .line.ctx .code { color: var(--text-2); }
+  .word-a { background: #30d15855; border-radius: 2px; }
+  .word-d { background: #ff453a55; border-radius: 2px; }
+
+  /* Right Git Log panel */
+  .panel-host {
+    width: var(--panel-w);
+    min-width: 280px;
+    max-width: 520px;
+    border-left: 1px solid var(--border);
+    background: var(--bg-1);
+    display: none;
+    grid-template-rows: 36px minmax(0, 1fr);
+    min-height: 0;
+  }
+  .panel-host.open { display: grid; }
+  .panel-host.resizing { transition: none; }
+  .panel-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-2);
+  }
+  .panel-head .title { font-weight: 600; font-size: 12px; }
+  .panel-head .grow { flex: 1; }
+  .panel-head .close {
+    border: none; background: transparent; color: var(--text-3);
+    width: 22px; height: 22px; border-radius: 6px;
+  }
+  .panel-head .close:hover { background: var(--bg-hover); color: var(--text); }
+  .panel-zone-tabs {
+    display: flex; gap: 2px; align-items: center;
+  }
+  .panel-zone-tabs .ptab {
+    border: none; background: transparent; color: var(--text-3);
+    font-size: 11px; padding: 4px 8px; border-radius: 6px;
+  }
+  .panel-zone-tabs .ptab.active {
+    background: var(--bg-3); color: var(--text);
+  }
+
+  .gitlog {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .gitlog-tools {
+    display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border);
+  }
+  .gitlog-tools input {
+    flex: 1; min-width: 0;
+    border: 1px solid var(--border); background: var(--bg-0);
+    border-radius: 8px; padding: 6px 8px; color: var(--text); outline: none;
+  }
+  .gitlog-tools input:focus { border-color: color-mix(in srgb, var(--blue) 50%, var(--border)); }
+  .gitlog-tools .icon {
+    border: 1px solid var(--border); background: var(--bg-2); color: var(--text-2);
+    border-radius: 8px; width: 30px;
+  }
+
+  .commit-scroll { min-height: 0; overflow: auto; }
+  .commit-flex { display: flex; min-width: min-content; }
+  .graph-wrap { flex-shrink: 0; position: sticky; left: 0; background: linear-gradient(90deg, var(--bg-1) 80%, transparent); }
+  .graph-wrap svg { display: block; }
+  .commit-rows { flex: 1; min-width: 0; }
+  .commit-row {
+    padding: 0;
+    display: flex; flex-direction: column;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    cursor: pointer;
+  }
+  .commit-row:hover { background: var(--bg-hover); }
+  .commit-row.active { background: var(--bg-selected); }
+  .commit-row .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 6px 8px 0 4px; flex-shrink: 0; }
+  .commit-row .l2 { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px 6px 4px; flex-shrink: 0; }
+  .commit-row .subject {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .commit-row .l2 { color: var(--text-3); font-size: 11px; }
+  .hash { font-family: var(--mono); color: var(--blue); font-size: 11px; }
+  .badge {
+    font-size: 10px; padding: 1px 5px; border-radius: 4px; flex-shrink: 0;
+    background: var(--bg-3); color: var(--text-2);
+  }
+  .badge.feat { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+  .badge.fix { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+  .badge.refactor { color: var(--purple); background: color-mix(in srgb, var(--purple) 12%, transparent); }
+  .badge.merge { color: var(--orange); background: color-mix(in srgb, var(--orange) 12%, transparent); }
+  .badge.chore { color: var(--text-3); }
+  .refs {
+    font-size: 10px; padding: 1px 6px; border-radius: 999px; flex-shrink: 0;
+    max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    background: color-mix(in srgb, var(--yellow) 14%, transparent); color: var(--yellow);
+  }
+  .refs.head { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue); }
+  .refs.remote { background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+
+  /* Inline expanded commit detail + files */
+  .commit-expand {
+    padding: 10px 12px 12px 20px;
+    background: var(--bg-2);
+    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--blue) 35%, var(--border));
+    margin: 3px 6px 2px;
+    border-radius: 0 0 0 8px;
+    position: relative;
+  }
+  .commit-expand::before {
+    content: "";
+    position: absolute;
+    left: -2px;
+    top: -6px;
+    width: 2px;
+    height: 8px;
+    background: color-mix(in srgb, var(--blue) 35%, var(--border));
+  }
+  .active .commit-expand {
+    background: color-mix(in srgb, var(--bg-2) 85%, var(--blue) 4%);
+    border-left-color: color-mix(in srgb, var(--blue) 55%, var(--border));
+  }
+  .active .commit-expand::before {
+    background: color-mix(in srgb, var(--blue) 55%, var(--border));
+  }
+  .commit-expand .efile.active { background: var(--bg-selected); border-radius: 6px; }
+  .commit-expand .erow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-3); font-size: 11px; margin: 2px 0; }
+  .commit-expand .esubj { font-weight: 600; font-size: 13px; margin: 4px 0; }
+  .commit-expand .efiles { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+  .commit-expand .efile { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; cursor: pointer; border-radius: 6px; }
+  .commit-expand .efile:hover { background: var(--bg-hover); }
+  .commit-expand .efile .status { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: center; }
+  .commit-expand .efile .status.M { color: var(--blue); }
+  .commit-expand .efile .status.A { color: var(--green); }
+  .commit-expand .efile .status.D { color: var(--red); }
+  .commit-expand .efile .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .commit-expand .efile .name .dir { color: var(--text-3); }
+  .commit-expand .efile .stat { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  .commit-expand .efile .stat .a { color: var(--green); }
+  .commit-expand .efile .stat .d { color: var(--red); }
+
+  .detail {
+    border-top: 1px solid var(--border);
+    background: var(--bg-2);
+    padding: 8px 10px;
+    min-height: 0;
+  }
+  .detail .subject { font-weight: 600; margin: 4px 0; }
+  .detail .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-3); font-size: 11px; }
+  .detail .row .hash { font-size: 11px; }
+
+  .files {
+    min-height: 0;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .files-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px 4px;
+  }
+  .files-head .title { font-weight: 600; font-size: 12px; }
+  .files-head .grow { flex: 1; }
+  .files-head .stat { font-size: 11px; color: var(--text-3); }
+  .files-head .stat .a { color: var(--green); }
+  .files-head .stat .d { color: var(--red); }
+  .mode-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-2); user-select: none; cursor: pointer;
+  }
+  .toggle input { accent-color: var(--blue); }
+  .toggle .hint { color: var(--text-3); }
+  .files-body { min-height: 0; overflow: auto; }
+  .file-row {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    gap: 8px; align-items: center;
+    padding: 7px 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    cursor: pointer;
+  }
+  .file-row:hover { background: var(--bg-hover); }
+  .file-row.active { background: var(--bg-selected); }
+  .file-row .status { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: center; }
+  .file-row .status.M { color: var(--blue); }
+  .file-row .status.A { color: var(--green); }
+  .file-row .status.D { color: var(--red); }
+  .file-row .status.R { color: var(--orange); }
+  .file-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .file-row .name .dir { color: var(--text-3); }
+  .file-row .stat { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+  .file-row .stat .a { color: var(--green); }
+  .file-row .stat .d { color: var(--red); }
+
+  .toast {
+    position: fixed; right: 18px; bottom: 18px;
+    background: var(--bg-3); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 12px; border-radius: 10px;
+    opacity: 0; transform: translateY(8px); transition: .2s ease;
+    pointer-events: none; z-index: 50; font-size: 12px;
+    max-width: min(420px, calc(100vw - 36px));
+  }
+  .toast.show { opacity: 1; transform: none; }
+
+  .flow {
+    margin: 0 10px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-1);
+    padding: 10px 12px;
+    color: var(--text-2);
+    font-size: 12px;
+  }
+  .flow h2 { margin: 0 0 6px; font-size: 13px; color: var(--text); }
+  .flow ol { margin: 0; padding-left: 18px; }
+  .flow li { margin: 3px 0; }
+  .flow code {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--bg-3); padding: 1px 5px; border-radius: 4px;
+  }
+  .kbd {
+    font-family: var(--mono); font-size: 10px;
+    border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; color: var(--text-2); background: var(--bg-2);
+  }
+
+  @media (max-width: 960px) {
+    :root { --panel-w: 300px; }
+  }
+  @media (max-width: 720px) {
+    .shell { grid-template-columns: var(--dock-w) minmax(0, 1fr); }
+    .panel-host.open {
+      position: absolute; right: 10px; top: 44px; bottom: 10px;
+      width: min(92vw, 380px); z-index: 20;
+      border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 16px 50px #000a;
+    }
+    .app { position: relative; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="notes">
+    <h1>Git Log = Dock 面板 · Diff = 单例中心 Tab</h1>
+    <p>
+      打开 Git Log 不再创建中心 <b>gitLog tab</b>，而是像 Commit 一样打开右侧（可左右停靠）面板。
+      在面板里浏览 graph / 选择 commit / 点文件时，中心只维护 <b>一个 Diff tab</b> 并原地复用；
+      打开「组合查看」后，同一个 Diff tab 改为纵向滚动展示该 commit 的全部文件改动。
+    </p>
+    <div class="chips">
+      <span class="chip on">Git Log → Dock Panel（非 tab）</span>
+      <span class="chip on">Diff tab 单例复用</span>
+      <span class="chip green">可选 Combined multi-file scroll</span>
+      <span class="chip">Commit Graph 多泳道</span>
+      <span class="chip warn">双击文件仍可「钉住」为独立文件 tab（可选逃生舱）</span>
+    </div>
+  </div>
+
+  <div class="app" id="app">
+    <div class="titlebar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <span class="proj">neeko</span>
+      <span class="sep">/</span>
+      <span>main</span>
+      <span class="muted" id="shellHint">点击右侧 Git Log 图标打开面板</span>
+    </div>
+    <div class="shell">
+      <aside class="dock" id="dock">
+        <button class="dock-btn" data-panel="files" title="Files">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        </button>
+        <button class="dock-btn" data-panel="gitCommit" title="Commit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6"/></svg>
+        </button>
+        <button class="dock-btn" data-panel="pullRequests" title="Pull Requests">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 9v6"/><path d="M18 9v3a3 3 0 0 1-3 3H9"/></svg>
+        </button>
+        <div class="dock-spacer"></div>
+      </aside>
+
+      <main class="center">
+        <div class="tabs" id="tabs"></div>
+        <div class="editor" id="editor"></div>
+      </main>
+
+      <aside class="panel-host open" id="panelHost">
+        <div class="panel-head">
+          <div class="panel-zone-tabs">
+            <button class="ptab">Commit</button>
+            <button class="ptab active">Git Log</button>
+            <button class="ptab">PRs</button>
+          </div>
+          <label class="toggle" style="font-size:11px;display:flex;align-items:center;gap:4px;color:var(--text-2)">
+            <input type="checkbox" id="combinedToggle" style="accent-color:var(--blue);margin:0" />
+            <span style="white-space:nowrap">组合</span>
+          </label>
+          <button class="btn primary" id="openDiffBtn" style="font-size:11px;padding:2px 8px">Diff</button>
+          <div class="grow"></div>
+          <button class="close" id="closePanel" title="Close panel">✕</button>
+        </div>
+        <div class="gitlog" id="gitlog"></div>
+      </aside>
+      <!-- Right-side Git Log panel toggle -->
+      <button class="right-toggle-btn active" id="panelToggleBtn" title="Git Log 面板">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><path d="M18 6a3 3 0 1 0-3 3h-6"/><circle cx="18" cy="18" r="3"/><path d="M18 9v6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="flow">
+    <h2>交互契约（本原型可点）</h2>
+    <ol>
+      <li>点 Dock 的 <b>Git Log</b>：打开/关闭右侧面板；<b>不</b>在中心创建 gitLog tab。</li>
+      <li>在面板 graph 中点 commit：更新面板详情与文件列表；若 Diff tab 已打开，则刷新其 commit 上下文。</li>
+      <li>点文件（单击）：打开或复用中心唯一 <code>Diff</code> tab，内容切换到该文件。</li>
+      <li>勾选 <b>组合查看</b>：同一 Diff tab 改为「commit 全部文件纵向滚动」；再点文件会滚动定位，而不是新开 tab。</li>
+      <li>双击文件：可选逃生舱——钉一个普通文件预览 tab（不占用 Diff 单例）。</li>
+      <li>快捷键：<span class="kbd">J</span>/<span class="kbd">K</span> 切换 commit，<span class="kbd">j</span>/<span class="kbd">k</span> 切换文件，<span class="kbd">c</span> 切换组合查看，<span class="kbd">g</span> 开关 Git Log 面板。</li>
+    </ol>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ───────────────── Sample data ───────────────── */
+const COMMITS = [
+  {
+    hash: "a1b2c3d4e5f67890", short: "a1b2c3d", type: "feat", scope: "git",
+    subject: "commit review workspace", author: "tincopper", time: "Jul 24",
+    parents: ["c0ffee12merge0001"], refs: "HEAD -> main, origin/main",
+    files: [
+      { path: "src/features/git/components/diff/DiffView.tsx", status: "M", a: 48, d: 21 },
+      { path: "src/features/git/components/gitlog/CommitDetailPanel.tsx", status: "M", a: 36, d: 12 },
+      { path: "src/features/git/components/gitlog/GitLogPanel.tsx", status: "M", a: 18, d: 9 },
+      { path: "src/features/git/components/diff/CommitDiffReview.tsx", status: "A", a: 220, d: 0 },
+      { path: "src/features/editor/types.ts", status: "M", a: 14, d: 2 },
+      { path: "docs/prototypes/git-log-panel.html", status: "A", a: 900, d: 0 },
+    ],
+  },
+  {
+    hash: "c0ffee12merge0001", short: "c0ffee1", type: "merge", scope: "",
+    subject: "Merge branch 'feature/diff-review' into main", author: "tincopper", time: "Jul 24",
+    parents: ["98fe12ab34cd56ef", "b7a11e55feature01"], refs: "",
+    files: [
+      { path: "src/features/git/components/diff/DiffView.tsx", status: "M", a: 12, d: 4 },
+      { path: "src/features/git/components/diff/CommitDiffReview.tsx", status: "A", a: 80, d: 0 },
+    ],
+  },
+  {
+    hash: "b7a11e55feature01", short: "b7a11e5", type: "feat", scope: "diff",
+    subject: "inline file navigator for commit review", author: "tincopper", time: "Jul 23",
+    parents: ["d4ad000feature00"], refs: "origin/feature/diff-review",
+    files: [
+      { path: "src/features/git/components/diff/FileNavigator.tsx", status: "A", a: 160, d: 0 },
+      { path: "src/features/git/components/diff/DiffView.tsx", status: "M", a: 20, d: 6 },
+    ],
+  },
+  {
+    hash: "d4ad000feature00", short: "d4ad000", type: "feat", scope: "diff",
+    subject: "scaffold commit diff review shell", author: "tincopper", time: "Jul 23",
+    parents: ["98fe12ab34cd56ef"], refs: "",
+    files: [
+      { path: "src/features/git/components/diff/CommitDiffReview.tsx", status: "A", a: 40, d: 0 },
+    ],
+  },
+  {
+    hash: "98fe12ab34cd56ef", short: "98fe12a", type: "fix", scope: "diff",
+    subject: "word highlight edge case on empty lines", author: "tincopper", time: "Jul 23",
+    parents: ["44aa901122334455"], refs: "",
+    files: [
+      { path: "src/features/git/components/diff/highlight.ts", status: "M", a: 22, d: 8 },
+      { path: "src/features/git/components/diff/DiffTable.tsx", status: "M", a: 9, d: 3 },
+    ],
+  },
+  {
+    hash: "hotf1x0panel00001", short: "hotf1x0", type: "fix", scope: "panel",
+    subject: "prevent history panel remount flicker", author: "tincopper", time: "Jul 23",
+    parents: ["hotf0x0panel00000"], refs: "origin/hotfix/panel-flicker",
+    files: [
+      { path: "src/features/git/components/gitlog/GitLogPanel.tsx", status: "M", a: 18, d: 7 },
+      { path: "src/layout/DockHost.tsx", status: "M", a: 6, d: 2 },
+    ],
+  },
+  {
+    hash: "hotf0x0panel00000", short: "hotf0x0", type: "fix", scope: "panel",
+    subject: "stabilize selected commit during reload", author: "tincopper", time: "Jul 23",
+    parents: ["44aa901122334455"], refs: "",
+    files: [
+      { path: "src/features/git/hooks/useGitLog.ts", status: "M", a: 14, d: 5 },
+    ],
+  },
+  {
+    hash: "44aa901122334455", short: "44aa901", type: "refactor", scope: "dock",
+    subject: "split panel registry to break shared/layout cycle", author: "tincopper", time: "Jul 22",
+    parents: ["60d53b8123456789"], refs: "tag: dock-v1",
+    files: [
+      { path: "src/layout/panelRegistry.ts", status: "A", a: 140, d: 0 },
+      { path: "src/layout/DockHost.tsx", status: "M", a: 55, d: 80 },
+    ],
+  },
+  {
+    hash: "60d53b8123456789", short: "60d53b8", type: "chore", scope: "",
+    subject: "archive layout architecture cleanup", author: "tincopper", time: "Jul 22",
+    parents: ["1e6a150998877665"], refs: "",
+    files: [
+      { path: ".trellis/tasks/archive/layout-cleanup.md", status: "A", a: 80, d: 0 },
+    ],
+  },
+  {
+    hash: "1e6a150998877665", short: "1e6a150", type: "feat", scope: "editor",
+    subject: "sticky tab activation and pin affordance", author: "tincopper", time: "Jul 21",
+    parents: ["0abc123root000001"], refs: "",
+    files: [
+      { path: "src/features/editor/components/TabItem.tsx", status: "M", a: 28, d: 10 },
+    ],
+  },
+  {
+    hash: "0abc123root000001", short: "0abc123", type: "chore", scope: "",
+    subject: "initial history workspace spike", author: "tincopper", time: "Jul 20",
+    parents: [], refs: "",
+    files: [
+      { path: "README.md", status: "M", a: 3, d: 1 },
+    ],
+  },
+];
+
+const DIFF_SNIPPETS = {
+  default: [
+    { k: "hunk", t: "@@ -10,8 +10,14 @@" },
+    { k: "ctx", o: 10, n: 10, c: "export function reviewCommit(hash: string) {" },
+    { k: "del", o: 11, n: null, c: "  openManyDiffTabs(hash)" },
+    { k: "add", o: null, n: 11, c: "  // singleton diff tab — reuse across files" },
+    { k: "add", o: null, n: 12, c: "  openOrReuseDiffTab({ hash, mode: 'single' })" },
+    { k: "ctx", o: 12, n: 13, c: "  focusPanel('gitLog')" },
+    { k: "ctx", o: 13, n: 14, c: "}" },
+  ],
+  "src/features/git/components/diff/DiffView.tsx": [
+    { k: "hunk", t: "@@ -120,12 +120,20 @@" },
+    { k: "ctx", o: 120, n: 120, c: "  return (" },
+    { k: "ctx", o: 121, n: 121, c: "    <div className=\"flex-1 flex flex-col overflow-hidden\">" },
+    { k: "del", o: 122, n: null, c: "      <CrowdedToolbar filePath={filePath} />" },
+    { k: "add", o: null, n: 122, c: "      <DiffToolbar" },
+    { k: "add", o: null, n: 123, c: "        commitMeta={commitMeta}" },
+    { k: "add", o: null, n: 124, c: "        combined={combined}" },
+    { k: "add", o: null, n: 125, c: "        onToggleCombined={setCombined}" },
+    { k: "add", o: null, n: 126, c: "      />" },
+    { k: "ctx", o: 123, n: 127, c: "      {combined ? <CombinedDiff files={files} /> : <FileDiff path={activePath} />}" },
+  ],
+  "src/features/git/components/gitlog/GitLogPanel.tsx": [
+    { k: "hunk", t: "@@ -1,10 +1,16 @@" },
+    { k: "del", o: 1, n: null, c: "// was: center editor tab kind: 'gitLog'" },
+    { k: "add", o: null, n: 1, c: "// now: dock panel id: 'gitLog' (same as Commit)" },
+    { k: "ctx", o: 2, n: 2, c: "export function GitLogPanel() {" },
+    { k: "add", o: null, n: 3, c: "  // panel owns graph + detail + file list" },
+    { k: "add", o: null, n: 4, c: "  // center only hosts singleton Diff tab" },
+    { k: "ctx", o: 3, n: 5, c: "  return <HistoryPanelBody />" },
+    { k: "ctx", o: 4, n: 6, c: "}" },
+  ],
+};
+
+/* ───────────────── State ───────────────── */
+const DIFF_TAB_ID = "diff_singleton";
+
+const state = {
+  panelOpen: true,
+  activeDock: "gitLog",
+  commitQuery: "",
+  selectedHash: COMMITS[0].hash,
+  selectedExpanded: true,
+  selectedExpanded: true,
+  activePath: COMMITS[0].files[0].path,
+  combined: false,          // 组合查看
+  viewMode: "unified",
+  // center tabs: file tabs + at most one diff tab
+  tabs: [
+    { id: "file_app", kind: "file", title: "App.tsx", path: "src/App.tsx" },
+  ],
+  activeTabId: "file_app",
+  scrollToPath: null,
+};
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function selectedCommit() {
+  return COMMITS.find((c) => c.hash === state.selectedHash) || COMMITS[0];
+}
+
+function filteredCommits() {
+  const q = state.commitQuery.trim().toLowerCase();
+  if (!q) return COMMITS;
+  return COMMITS.filter((c) =>
+    [c.subject, c.short, c.hash, c.author, c.refs, c.type].join(" ").toLowerCase().includes(q)
+  );
+}
+
+function fileName(p) { return p.split("/").pop(); }
+function dirName(p) {
+  const i = p.lastIndexOf("/");
+  return i >= 0 ? p.slice(0, i + 1) : "";
+}
+function badgeClass(t) { return t || "chore"; }
+function totalStats(files) {
+  return files.reduce((acc, f) => ({ a: acc.a + f.a, d: acc.d + f.d }), { a: 0, d: 0 });
+}
+function escapeHtml(s) {
+  return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+/* ───────────────── Diff tab singleton API ───────────────── */
+function ensureDiffTab({ activate = true } = {}) {
+  let tab = state.tabs.find((t) => t.id === DIFF_TAB_ID);
+  const commit = selectedCommit();
+  const title = state.combined
+    ? `Diff · ${commit.short} · ${commit.files.length} files`
+    : `Diff · ${fileName(state.activePath)}`;
+  if (!tab) {
+    tab = {
+      id: DIFF_TAB_ID,
+      kind: "diff",
+      title,
+      hash: commit.hash,
+      path: state.activePath,
+      combined: state.combined,
+    };
+    state.tabs.push(tab);
+  } else {
+    tab.title = title;
+    tab.hash = commit.hash;
+    tab.path = state.activePath;
+    tab.combined = state.combined;
+  }
+  if (activate) state.activeTabId = DIFF_TAB_ID;
+  return tab;
+}
+
+function openFileInDiff(path, { fromCombinedClick = false } = {}) {
+  state.activePath = path;
+  if (state.combined) {
+    ensureDiffTab({ activate: true });
+    state.scrollToPath = path;
+    toast(`组合查看：滚动到 ${fileName(path)}`);
+  } else {
+    ensureDiffTab({ activate: true });
+    state.scrollToPath = null;
+    if (!fromCombinedClick) toast(`复用 Diff tab → ${fileName(path)}`);
+  }
+  render();
+}
+
+function pinFileTab(path) {
+  const id = `file_${path.replace(/[/\\]/g, "_")}`;
+  if (!state.tabs.find((t) => t.id === id)) {
+    state.tabs.push({ id, kind: "file", title: fileName(path), path });
+  }
+  state.activeTabId = id;
+  toast(`钉住文件 tab（逃生舱）：${fileName(path)}`);
+  render();
+}
+
+function closeTab(id) {
+  const idx = state.tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  state.tabs.splice(idx, 1);
+  if (state.activeTabId === id) {
+    state.activeTabId = state.tabs[Math.max(0, idx - 1)]?.id || null;
+  }
+  render();
+}
+
+function selectCommit(hash) {
+  if (state.selectedHash === hash) {
+    state.selectedExpanded = !state.selectedExpanded;
+    render();
+    return;
+  }
+  state.selectedExpanded = true;
+  state.selectedHash = hash;
+  const c = selectedCommit();
+  if (!c.files.find((f) => f.path === state.activePath)) {
+    state.activePath = c.files[0]?.path || null;
+  }
+  // 若 Diff tab 已存在，刷新其上下文（仍单例）
+  const diffOpen = state.tabs.some((t) => t.id === DIFF_TAB_ID);
+  if (diffOpen) ensureDiffTab({ activate: state.activeTabId === DIFF_TAB_ID });
+  render();
+}
+
+function setCombined(on) {
+  state.combined = on;
+  const diffOpen = state.tabs.some((t) => t.id === DIFF_TAB_ID);
+  if (diffOpen || on) {
+    ensureDiffTab({ activate: true });
+  }
+  toast(on ? "组合查看：一个 Diff tab 滚动浏览全部文件" : "单文件模式：Diff tab 仍单例复用");
+  render();
+}
+
+/* ───────────────── Graph (DoltHub / production-aligned) ───────────────── */
+const ROW_H = 40, BRANCH_SPACING = 16, NODE_R = 4, LINE_W = 2;
+const LANE_COLORS = ["#2997ff", "#30d158", "#ffd60a", "#ff453a", "#bf5af2", "#64d2ff"];
+function laneColor(i) { return LANE_COLORS[i % LANE_COLORS.length]; }
+
+function buildChildrenMap(commits) {
+  const map = new Map();
+  for (const c of commits) {
+    for (const p of c.parents || []) {
+      const list = map.get(p) ?? [];
+      list.push(c.hash);
+      map.set(p, list);
+    }
+  }
+  return map;
+}
+
+function computeGraphLayout(commits) {
+  if (!commits.length) return { nodes: [], segments: [], totalCols: 1, nodesMap: new Map() };
+  const childrenMap = buildChildrenMap(commits);
+  const commitsMap = new Map();
+  commits.forEach((c, i) => {
+    commitsMap.set(c.hash, {
+      hash: c.hash, parents: c.parents || [], children: childrenMap.get(c.hash) ?? [],
+      x: -1, y: i, color: "",
+    });
+  });
+  const columns = [];
+  const commitCols = new Map();
+  let branchOrder = 0;
+  function updateSegmentEnd(col, end) {
+    const segs = columns[col];
+    if (segs?.length) segs[segs.length - 1].end = end;
+  }
+  commits.forEach((commit, index) => {
+    const node = commitsMap.get(commit.hash);
+    const hasVisibleParent = node.parents.some((p) => commitsMap.has(p));
+    const isRoot = node.parents.length === 0;
+    const end = (isRoot || !hasVisibleParent) ? index : Infinity;
+    const branchChildren = node.children.filter((ch) => {
+      const child = commitsMap.get(ch);
+      return child && child.parents[0] === commit.hash;
+    });
+    const isHead = node.children.length === 0;
+    let commitX;
+    if (isHead) {
+      commitX = columns.length;
+      columns.push([{ col: commitX, start: index, end, branchOrder }]);
+      branchOrder++;
+    } else if (branchChildren.length) {
+      const cols = branchChildren.map((h) => commitCols.get(h)).filter((c) => c !== undefined);
+      commitX = Math.min(...cols);
+      updateSegmentEnd(commitX, end);
+      cols.filter((cx) => cx !== commitX).forEach((cx) => updateSegmentEnd(cx, index - 1));
+    } else {
+      let minChildY = Infinity, maxChildX = -1;
+      node.children.forEach((ch) => {
+        const child = commitsMap.get(ch);
+        if (child.y < minChildY) minChildY = child.y;
+        const cx = commitCols.get(ch) ?? -1;
+        if (cx > maxChildX) maxChildX = cx;
+      });
+      const startSearch = maxChildX + 1;
+      const slotIdx = columns.slice(startSearch).findIndex((segs) => minChildY >= segs[segs.length - 1].end);
+      if (slotIdx === -1) {
+        commitX = columns.length;
+        columns.push([{ col: commitX, start: minChildY + 1, end, branchOrder }]);
+        branchOrder++;
+      } else {
+        commitX = startSearch + slotIdx;
+        columns[commitX].push({ col: commitX, start: minChildY + 1, end, branchOrder });
+        branchOrder++;
+      }
+    }
+    commitCols.set(commit.hash, commitX);
+    node.x = commitX;
+  });
+  for (const node of commitsMap.values()) {
+    const segs = columns[node.x] || [];
+    const seg = segs.find((s) => s.start <= node.y && (s.end === Infinity || node.y <= s.end))
+      || segs.filter((s) => s.start <= node.y).pop();
+    node.color = laneColor(seg?.branchOrder ?? 0);
+  }
+  return { nodes: [...commitsMap.values()], segments: columns.flat(), totalCols: columns.length || 1, nodesMap: commitsMap };
+}
+
+function nodeXY(col, row) {
+  return [col * BRANCH_SPACING + NODE_R * 2, row * ROW_H + ROW_H / 2];
+}
+function curvePath(start, end) {
+  const cx1 = start[0] * 0.1 + end[0] * 0.9;
+  const cy1 = start[1] * 0.6 + end[1] * 0.4;
+  const cx2 = start[0] * 0.03 + end[0] * 0.97;
+  const cy2 = start[1] * 0.4 + end[1] * 0.6;
+  return `M ${start[0]} ${start[1]} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${end[0]} ${end[1]}`;
+}
+
+function renderGraphSvg(commits, layout) {
+  const { nodes, segments, totalCols, nodesMap } = layout;
+  const w = totalCols * BRANCH_SPACING + NODE_R * 4 + 2;
+  const h = commits.length * ROW_H;
+  const parts = [];
+  segments.forEach((seg) => {
+    const endRow = seg.end === Infinity ? commits.length - 1 : seg.end;
+    if (seg.start === endRow) return;
+    const [x1, y1] = nodeXY(seg.col, seg.start);
+    const [x2, y2] = nodeXY(seg.col, endRow);
+    parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${laneColor(seg.branchOrder)}" stroke-width="${LINE_W}" />`);
+  });
+  nodes.forEach((node) => {
+    for (let p = 1; p < node.parents.length; p++) {
+      const parent = nodesMap.get(node.parents[p]);
+      if (!parent) continue;
+      const start = nodeXY(node.x, node.y);
+      const endRow = node.y + 1 > parent.y ? parent.y : node.y + 1;
+      parts.push(`<path d="${curvePath(start, nodeXY(parent.x, endRow))}" stroke="${parent.color}" stroke-width="${LINE_W}" fill="none" />`);
+    }
+    node.children.forEach((ch) => {
+      const child = nodesMap.get(ch);
+      if (!child || child.parents[0] !== node.hash || child.x === node.x) return;
+      const start = nodeXY(node.x, node.y);
+      const endRow = node.y - 1 > child.y ? node.y - 1 : child.y;
+      const end = nodeXY(child.x, endRow);
+      parts.push(`<path d="${curvePath(start, [end[0], end[1] + NODE_R * 2])}" stroke="${child.color}" stroke-width="${LINE_W}" fill="none" />`);
+    });
+  });
+  nodes.forEach((node) => {
+    const [cx, cy] = nodeXY(node.x, node.y);
+    const selected = node.hash === state.selectedHash;
+    const merge = node.parents.length > 1;
+    if (selected) parts.push(`<circle cx="${cx}" cy="${cy}" r="${NODE_R + 4}" fill="none" stroke="${node.color}" stroke-opacity="0.35" stroke-width="2" />`);
+    if (merge) {
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${NODE_R + 1}" fill="var(--bg-1)" stroke="${node.color}" stroke-width="2" />`);
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="2.2" fill="${node.color}" />`);
+    } else {
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${selected ? NODE_R + 1.2 : NODE_R}" fill="${node.color}" />`);
+    }
+  });
+  return { svg: `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${parts.join("")}</svg>`, width: w };
+}
+
+/* ───────────────── Renderers ───────────────── */
+function renderDiffLines(path) {
+  const lines = DIFF_SNIPPETS[path] || DIFF_SNIPPETS.default;
+  return lines.map((l) => {
+    if (l.k === "hunk") return `<div class="hunk-head">${escapeHtml(l.t)}</div>`;
+    const cls = l.k === "add" ? "add" : l.k === "del" ? "del" : "ctx";
+    const o = l.o ?? "";
+    const n = l.n ?? "";
+    let code = escapeHtml(l.c);
+    if (l.k === "add" && code.includes("singleton")) code = code.replace("singleton", '<span class="word-a">singleton</span>');
+    if (l.k === "del" && code.includes("openMany")) code = code.replace("openManyDiffTabs", '<span class="word-d">openManyDiffTabs</span>');
+    return `<div class="line ${cls}"><div class="ln">${o}</div><div class="ln">${n}</div><div class="code">${code}</div></div>`;
+  }).join("");
+}
+
+function renderDiffEditor() {
+  const commit = selectedCommit();
+  const stats = totalStats(state.combined ? commit.files : commit.files.filter((f) => f.path === state.activePath));
+  const modeLabel = state.combined ? "组合查看" : "单文件 · 单例复用";
+
+  let body = "";
+  if (state.combined) {
+    body = commit.files.map((f) => `
+      <section class="file-block" data-file-block="${escapeHtml(f.path)}" id="fileblock-${escapeHtml(f.path).replaceAll("/", "_")}">
+        <div class="file-block-head">
+          <span class="status ${f.status}">${f.status}</span>
+          <span class="path">${escapeHtml(f.path)}</span>
+          <span class="pill"><span class="a">+${f.a}</span> <span class="d">-${f.d}</span></span>
+        </div>
+        <div class="hunk">${renderDiffLines(f.path)}</div>
+      </section>
+    `).join("");
+  } else {
+    const f = commit.files.find((x) => x.path === state.activePath) || commit.files[0];
+    body = `
+      <section class="file-block">
+        <div class="file-block-head">
+          <span class="status ${f.status}">${f.status}</span>
+          <span class="path">${escapeHtml(f.path)}</span>
+          <span class="pill"><span class="a">+${f.a}</span> <span class="d">-${f.d}</span></span>
+        </div>
+        <div class="hunk">${renderDiffLines(f.path)}</div>
+      </section>
+    `;
+  }
+
+  return `
+    <div class="diff-shell">
+      <div class="diff-toolbar">
+        <span class="pill"><b>${commit.short}</b></span>
+        <span class="meta">${escapeHtml(commit.subject)}</span>
+        <span class="pill">${modeLabel}</span>
+        <span class="pill"><span class="a">+${stats.a}</span> <span class="d">-${stats.d}</span></span>
+        <div class="grow"></div>
+        <div class="seg" id="viewSeg">
+          <button data-view="unified" class="${state.viewMode === "unified" ? "active" : ""}">Unified</button>
+          <button data-view="split" class="${state.viewMode === "split" ? "active" : ""}">Split</button>
+        </div>
+        <button class="btn" id="toggleCombinedBtn">${state.combined ? "退出组合" : "组合查看"}</button>
+      </div>
+      <div class="diff-body" id="diffBody">${body}</div>
+    </div>
+  `;
+}
+
+function renderFileEditor(tab) {
+  return `
+    <div class="empty-editor">
+      <div>
+        <strong>${escapeHtml(tab.title)}</strong>
+        <div>普通文件 tab 预览占位</div>
+        <div style="margin-top:8px;color:var(--text-3)">Diff 审查请用单例 Diff tab（点 Git Log 面板中的文件）</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTabs() {
+  const root = document.getElementById("tabs");
+  if (!state.tabs.length) {
+    root.innerHTML = `<div style="padding:8px 10px;color:var(--text-3);font-size:12px">No tabs — 从 Git Log 面板打开 Diff</div>`;
+    return;
+  }
+  root.innerHTML = state.tabs.map((t) => {
+    const kind = t.kind === "diff"
+      ? (t.combined || state.combined ? "combo" : "diff")
+      : "file";
+    const kindLabel = t.kind === "diff" ? (state.combined ? "DIFF×N" : "DIFF") : "FILE";
+    return `
+      <div class="tab ${t.id === state.activeTabId ? "active" : ""}" data-tab="${t.id}">
+        <span class="kind ${kind}">${kindLabel}</span>
+        <span class="title">${escapeHtml(t.title)}</span>
+        <button class="x" data-close="${t.id}" title="Close">×</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderEditor() {
+  const root = document.getElementById("editor");
+  const tab = state.tabs.find((t) => t.id === state.activeTabId);
+  if (!tab) {
+    root.innerHTML = `<div class="empty-editor"><div><strong>中心编辑区</strong><div>Git Log 是右侧面板；点文件后这里只会出现一个 Diff tab</div></div></div>`;
+    return;
+  }
+  root.innerHTML = tab.kind === "diff" ? renderDiffEditor() : renderFileEditor(tab);
+
+  // combined scroll-to-file
+  if (tab.kind === "diff" && state.combined && state.scrollToPath) {
+    requestAnimationFrame(() => {
+      const id = "fileblock-" + state.scrollToPath.replaceAll("/", "_");
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      state.scrollToPath = null;
+    });
+  }
+}
+
+function renderGitLog() {
+  const list = filteredCommits();
+  const layout = computeGraphLayout(list);
+  const { svg, width } = renderGraphSvg(list, layout);
+  const commit = selectedCommit();
+  const stats = totalStats(commit.files);
+  const diffOpen = state.tabs.some((t) => t.id === DIFF_TAB_ID);
+
+  document.getElementById("gitlog").innerHTML = `
+    <div class="gitlog-tools">
+      <input id="commitQuery" placeholder="Search commits\u2026" value="${escapeHtml(state.commitQuery)}" />
+      <button class="icon" id="refreshBtn" title="Refresh">\u21bb</button>
+    </div>
+    <div class="commit-scroll">
+      <div class="commit-flex">
+        <div class="graph-wrap" style="width:${width}px;min-width:${width}px">${svg}</div>
+        <div class="commit-rows">
+          ${list.map((c) => {
+            const refs = c.refs || "";
+            let refHtml = "";
+            if (refs) {
+              const label = refs.replace("HEAD -> ", "").replaceAll("origin/", "\u2197 ");
+              const cls = refs.includes("HEAD") ? "head" : refs.includes("origin/") ? "remote" : "";
+              refHtml = `<span class="refs ${cls}">${escapeHtml(label)}</span>`;
+            }
+            const type = c.type === "merge" ? "merge" : `${c.type}${c.scope ? `(${c.scope})` : ""}`;
+            const isSelected = c.hash === state.selectedHash && state.selectedExpanded;
+            return `
+              <div class="commit-row ${isSelected ? "active" : ""}" data-hash="${c.hash}">
+                <div class="l1">
+                  <span class="badge ${badgeClass(c.type)}">${type}</span>
+                  <span class="subject">${escapeHtml(c.subject)}</span>
+                  ${refHtml}
+                </div>
+                <div class="l2">
+                  <span class="hash">${c.short}</span>
+                  <span>${escapeHtml(c.author)}</span>
+                  <span>\u00b7</span>
+                  <span>${escapeHtml(c.time)}</span>
+                </div>
+                ${isSelected ? `
+                <div class="commit-expand">
+                  <div class="erow">
+                    <span class="hash">${c.short}</span>
+                    <span class="badge ${badgeClass(c.type)}">${type}</span>
+                    ${c.refs ? `<span class="refs ${c.refs.includes("HEAD") ? "head" : ""}">${escapeHtml(c.refs.replace("HEAD -> ", ""))}</span>` : ""}
+                  </div>
+                  <div class="esubj">${escapeHtml(c.subject)}</div>
+                  <div class="erow">
+                    <span>${escapeHtml(c.author)}</span>
+                    <span>\u00b7</span>
+                    <span>parents: ${c.parents.map((p) => p.slice(0, 7)).join(", ") || "\u2014"}</span>
+                    <span>\u00b7</span>
+                    <span>${diffOpen ? "Diff tab: live" : "Diff tab: closed"}</span>
+                  </div>
+                  <div class="efiles">
+                    ${c.files.map((f) => {
+                      return `
+                        <div class="efile ${f.path === state.activePath ? 'active' : ''}" data-path="${escapeHtml(f.path)}">
+                          <span class="status ${f.status}">${f.status}</span>
+                          <div class="name" title="${escapeHtml(f.path)}"><span class="dir">${escapeHtml(dirName(f.path))}</span><b>${escapeHtml(fileName(f.path))}</b></div>
+                          <span class="stat"><span class="a">+${f.a}</span> <span class="d">-${f.d}</span></span>
+                        </div>
+                      `;
+                    }).join("")}
+                  </div>
+                </div>` : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+
+function renderShellChrome() {
+  document.getElementById("panelHost").classList.toggle("open", state.panelOpen);
+  document.getElementById("panelToggleBtn").classList.toggle("active", state.panelOpen);
+  document.querySelectorAll(".dock-btn").forEach((b) => {
+    b.classList.toggle("active", state.panelOpen && b.dataset.panel === state.activeDock);
+  });
+  document.getElementById("shellHint").textContent = state.panelOpen
+    ? `Git Log 面板已打开 · Diff ${state.combined ? "组合" : "单文件"} · tabs=${state.tabs.length}`
+    : "点击右侧 Git Log 图标打开面板";
+  // Sync panel head checkbox
+  const cb = document.getElementById("combinedToggle");
+  if (cb) cb.checked = state.combined;
+}
+
+function bind() {
+  // Right-side toggle button
+  document.getElementById("panelToggleBtn").onclick = () => {
+    state.panelOpen = !state.panelOpen;
+    if (state.panelOpen) { state.activeDock = "gitLog"; }
+    toast(state.panelOpen ? "打开 Git Log 面板" : "关闭 Git Log 面板");
+    render();
+  };
+
+  document.querySelectorAll(".dock-btn").forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.panel;
+      if (id === "gitCommit") {
+        if (!state.panelOpen || state.activeDock !== "gitCommit") {
+          state.panelOpen = true;
+          state.activeDock = "gitCommit";
+        }
+        toast("示意：Commit 面板。本原型主体仍展示 Git Log 内容");
+      } else {
+        toast(`示意：${id} 面板（原型未展开）`);
+      }
+      render();
+    };
+  });
+
+  document.getElementById("closePanel").onclick = () => {
+    state.panelOpen = false;
+    render();
+  };
+
+  // Zone tabs inside panel head
+  document.querySelectorAll(".ptab").forEach((tab) => {
+    tab.onclick = () => {
+      const text = tab.textContent.trim();
+      if (text === "Git Log") {
+        if (!state.panelOpen) { state.panelOpen = true; state.activeDock = "gitLog"; render(); }
+      } else {
+        toast(`示意：${text} 面板（原型未展开）`);
+      }
+    };
+  });
+
+  document.querySelectorAll("[data-tab]").forEach((el) => {
+    el.onclick = (e) => {
+      if (e.target.closest("[data-close]")) return;
+      state.activeTabId = el.dataset.tab;
+      render();
+    };
+  });
+  document.querySelectorAll("[data-close]").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      closeTab(btn.dataset.close);
+    };
+  });
+
+  const cq = document.getElementById("commitQuery");
+  if (cq) cq.oninput = (e) => { state.commitQuery = e.target.value; render(); };
+
+  document.querySelectorAll(".commit-row").forEach((row) => {
+    row.onclick = (e) => {
+      if (e.target.closest(".commit-expand")) return;
+      selectCommit(row.dataset.hash);
+    };
+  });
+
+  document.querySelectorAll(".file-row, .efile").forEach((row) => {
+    row.onclick = () => openFileInDiff(row.dataset.path);
+    row.ondblclick = (e) => {
+      e.preventDefault();
+      pinFileTab(row.dataset.path);
+    };
+  });
+
+  const combined = document.getElementById("combinedToggle");
+  if (combined) combined.onchange = (e) => setCombined(e.target.checked);
+
+  const openDiffBtn = document.getElementById("openDiffBtn");
+  if (openDiffBtn) openDiffBtn.onclick = () => {
+    if (!state.activePath) state.activePath = selectedCommit().files[0]?.path;
+    openFileInDiff(state.activePath);
+  };
+
+  const toggleCombinedBtn = document.getElementById("toggleCombinedBtn");
+  if (toggleCombinedBtn) toggleCombinedBtn.onclick = () => setCombined(!state.combined);
+
+  document.querySelectorAll("#viewSeg button").forEach((b) => {
+    b.onclick = () => {
+      state.viewMode = b.dataset.view;
+      toast(`Diff view: ${state.viewMode}（原型示意）`);
+      render();
+    };
+  });
+}
+
+function render() {
+  renderShellChrome();
+  // keep diff tab title in sync if open
+  if (state.tabs.some((t) => t.id === DIFF_TAB_ID)) ensureDiffTab({ activate: false });
+  renderTabs();
+  renderEditor();
+  if (state.panelOpen) renderGitLog();
+  bind();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+    if (e.key === "Escape") document.activeElement.blur();
+    return;
+  }
+  const list = filteredCommits();
+  const ci = list.findIndex((c) => c.hash === state.selectedHash);
+  const commit = selectedCommit();
+  const fi = commit.files.findIndex((f) => f.path === state.activePath);
+
+  if (e.key === "g") { e.preventDefault(); state.panelOpen = !state.panelOpen; state.activeDock = "gitLog"; render(); }
+  if (e.key === "c") { e.preventDefault(); setCombined(!state.combined); }
+  if (e.key === "J") { e.preventDefault(); if (ci < list.length - 1) selectCommit(list[ci + 1].hash); }
+  if (e.key === "K") { e.preventDefault(); if (ci > 0) selectCommit(list[ci - 1].hash); }
+  if (e.key === "j") { e.preventDefault(); if (fi < commit.files.length - 1) openFileInDiff(commit.files[fi + 1].path); }
+  if (e.key === "k") { e.preventDefault(); if (fi > 0) openFileInDiff(commit.files[fi - 1].path); }
+  if (e.key === "Enter") { e.preventDefault(); if (state.activePath) openFileInDiff(state.activePath); }
+});
+
+// boot: panel open, no diff yet
+render();
+toast("原型已就绪：Git Log 是面板；点文件才会出现唯一 Diff tab");
+</script>
+</body>
+</html>
