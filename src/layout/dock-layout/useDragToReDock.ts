@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback } from "react";
-import { useDockStore } from "@/shared/store/dockStore";
+import { useState, useRef, useCallback } from 'react';
+
+import { useDockStore } from '@/shared/store/dockStore';
 
 /**
  * Hook: drag-to-re-dock handlers for DockZone components.
@@ -17,14 +18,14 @@ export function useDragToReDock(zoneId: string) {
   const movePanel = useDockStore((s) => s.movePanel);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/neeko-panel-id")) {
+    if (e.dataTransfer.types.includes('application/neeko-panel-id')) {
       e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
+      e.dataTransfer.dropEffect = 'move';
     }
   }, []);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/neeko-panel-id")) {
+    if (e.dataTransfer.types.includes('application/neeko-panel-id')) {
       e.preventDefault();
       dragOverCounter.current += 1;
       setIsDragOver(true);
@@ -32,7 +33,7 @@ export function useDragToReDock(zoneId: string) {
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/neeko-panel-id")) {
+    if (e.dataTransfer.types.includes('application/neeko-panel-id')) {
       dragOverCounter.current -= 1;
       if (dragOverCounter.current <= 0) {
         dragOverCounter.current = 0;
@@ -46,7 +47,7 @@ export function useDragToReDock(zoneId: string) {
       e.preventDefault();
       setIsDragOver(false);
       dragOverCounter.current = 0;
-      const panelId = e.dataTransfer.getData("application/neeko-panel-id");
+      const panelId = e.dataTransfer.getData('application/neeko-panel-id');
       if (panelId) {
         movePanel(panelId, zoneId);
       }

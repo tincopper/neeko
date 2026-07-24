@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useWslProjects } from '@/features/connection/hooks/useWslProjects';
 import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
 import type { WSLEntrySession } from '@/shared/types';
 
 vi.mock('@/features/terminal/components/terminalCache', () => ({
@@ -16,9 +17,36 @@ function makeWslEntry(overrides: Partial<WSLEntrySession> = {}): WSLEntrySession
     id: 'e1',
     distro: 'Ubuntu',
     projects: [
-      { id: 'p1', name: 'proj-p1', path: '/home/user/p1', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
-      { id: 'p2', name: 'proj-p2', path: '/home/user/p2', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
-      { id: 'p3', name: 'proj-p3', path: '/home/user/p3', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+      {
+        id: 'p1',
+        name: 'proj-p1',
+        path: '/home/user/p1',
+        entry_id: 'e1',
+        selected_agents: [],
+        selected_ide: null,
+        git_info: null,
+        avatar_color: null,
+      },
+      {
+        id: 'p2',
+        name: 'proj-p2',
+        path: '/home/user/p2',
+        entry_id: 'e1',
+        selected_agents: [],
+        selected_ide: null,
+        git_info: null,
+        avatar_color: null,
+      },
+      {
+        id: 'p3',
+        name: 'proj-p3',
+        path: '/home/user/p3',
+        entry_id: 'e1',
+        selected_agents: [],
+        selected_ide: null,
+        git_info: null,
+        avatar_color: null,
+      },
     ],
     ...overrides,
   };
@@ -30,6 +58,12 @@ describe('useWslProjects', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useProjectStore.setState({ activeProjectId: null, activeProject: null });
+    useConnectionStore.setState({
+      wslEntries: [],
+      remoteEntries: [],
+      remoteAuthStore: new Map(),
+      pendingAuthEntry: null,
+    });
   });
 
   // The old wrapper useWslProjects now calls new useConnectionProjects which
@@ -116,10 +150,7 @@ describe('useWslProjects', () => {
     const { result } = renderHook(() => useWslProjects(mockSaveSession));
 
     act(() => {
-      result.current.setEntries([
-        makeWslEntry({ id: 'e1' }),
-        makeWslEntry({ id: 'e2' }),
-      ]);
+      result.current.setEntries([makeWslEntry({ id: 'e1' }), makeWslEntry({ id: 'e2' })]);
     });
 
     await act(async () => {
@@ -161,9 +192,36 @@ describe('useWslProjects', () => {
       const entry = makeWslEntry({
         id: 'e1',
         projects: [
-          { id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
-          { id: 'p2', name: 'B', path: '/b', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
-          { id: 'p3', name: 'C', path: '/c', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null },
+          {
+            id: 'p1',
+            name: 'A',
+            path: '/a',
+            entry_id: 'e1',
+            selected_agents: [],
+            selected_ide: null,
+            git_info: null,
+            avatar_color: null,
+          },
+          {
+            id: 'p2',
+            name: 'B',
+            path: '/b',
+            entry_id: 'e1',
+            selected_agents: [],
+            selected_ide: null,
+            git_info: null,
+            avatar_color: null,
+          },
+          {
+            id: 'p3',
+            name: 'C',
+            path: '/c',
+            entry_id: 'e1',
+            selected_agents: [],
+            selected_ide: null,
+            git_info: null,
+            avatar_color: null,
+          },
         ],
       });
 
@@ -197,8 +255,36 @@ describe('useWslProjects', () => {
     it('跨 entry 拖拽被忽略', () => {
       const { result } = renderHook(() => useWslProjects(mockSaveSession));
       const entries = [
-        makeWslEntry({ id: 'e1', projects: [{ id: 'p1', name: 'A', path: '/a', entry_id: 'e1', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null }] }),
-        makeWslEntry({ id: 'e2', projects: [{ id: 'p2', name: 'B', path: '/b', entry_id: 'e2', selected_agents: [], selected_ide: null, git_info: null, avatar_color: null }] }),
+        makeWslEntry({
+          id: 'e1',
+          projects: [
+            {
+              id: 'p1',
+              name: 'A',
+              path: '/a',
+              entry_id: 'e1',
+              selected_agents: [],
+              selected_ide: null,
+              git_info: null,
+              avatar_color: null,
+            },
+          ],
+        }),
+        makeWslEntry({
+          id: 'e2',
+          projects: [
+            {
+              id: 'p2',
+              name: 'B',
+              path: '/b',
+              entry_id: 'e2',
+              selected_agents: [],
+              selected_ide: null,
+              git_info: null,
+              avatar_color: null,
+            },
+          ],
+        }),
       ];
 
       act(() => {

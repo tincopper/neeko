@@ -32,9 +32,9 @@ describe('getThemeColors', () => {
 
   it('returns fallback values when CSS variables are not set', () => {
     const colors = getThemeColors();
-    expect(colors.bgSecondary).toBe('#252528');
-    expect(colors.textPrimary).toBe('#ededed');
-    expect(colors.accentBlue).toBe('#61afef');
+    expect(colors.bgSecondary).toBe('#181A1C');
+    expect(colors.textPrimary).toBe('#ffffff');
+    expect(colors.accentBlue).toBe('#2997ff');
   });
 
   it('reads CSS variables from :root when available', () => {
@@ -48,7 +48,12 @@ describe('getThemeColors', () => {
   it('returns all expected keys', () => {
     const colors = getThemeColors();
     expect(Object.keys(colors).sort()).toEqual([
-      'accentBlue', 'bgSecondary', 'bgTertiary', 'borderColor', 'textMuted', 'textPrimary',
+      'accentBlue',
+      'bgSecondary',
+      'bgTertiary',
+      'borderColor',
+      'textMuted',
+      'textPrimary',
     ]);
   });
 });
@@ -76,7 +81,13 @@ describe('isAgentCliTab', () => {
     const tabs = makeProjectTabs([
       makeTab({
         id: 'tab-1',
-        data: { kind: 'file', filePath: '/a.ts', fileName: 'a.ts', content: { text: '' }, isDirty: false },
+        data: {
+          kind: 'file',
+          filePath: '/a.ts',
+          fileName: 'a.ts',
+          content: { text: '' },
+          isDirty: false,
+        },
       }),
     ]);
     expect(isAgentCliTab(tabs, 'tab-1')).toBe(false);

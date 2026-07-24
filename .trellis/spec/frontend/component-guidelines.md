@@ -434,7 +434,7 @@ const handleSave = useCallback(async () => {
       />
 
 // After（直接读取 Context/Store）
-// MainContent 不再传递 agents/config/showToast
+// ProjectWorkspace 不再传递 agents/config/showToast
 <EditorGroupLayout ... />
   └─ <EditorGroupPane ... />  // 内部调用 useEditorContext() / useAppContext()
 
@@ -458,7 +458,7 @@ store.activateTab(tabKey, tabId);  // 代替 onActivateTab prop
 |-------------|--------|-----------|
 | 30+ | ~13 | `tabKey`, `tabs`, `activeTabId`, `pinnedTabId`, `isFocused`, `onActivateTab`, `onCloseTab`, `agents`, `compactMode`, `showAgentBar`, `hiddenAgentIds`, `onToggleHiddenAgent`, `onAgentClick`, `config`, `showToast` |
 
-删除路径：`EditorGroupPaneProps` → `EditorGroupLayoutProps` → `sharedPaneProps` → `MainContent` JSX。每一层都同步删除。
+删除路径：`EditorGroupPaneProps` → `EditorGroupLayoutProps` → `sharedPaneProps` → `ProjectWorkspace` JSX。每一层都同步删除。
 
 
 

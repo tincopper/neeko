@@ -1,4 +1,5 @@
-import React from "react";
+import React from 'react';
+
 import { cn } from '@/lib/utils';
 
 export interface RightPanelTab {
@@ -17,18 +18,31 @@ interface RightPanelProps {
   className?: string;
 }
 
-function RightPanel({ tabs, activeTabId, onTabChange, onClose, width, onResizeStart, className }: RightPanelProps) {
+function RightPanel({
+  tabs,
+  activeTabId,
+  onTabChange,
+  onClose,
+  width,
+  onResizeStart,
+  className,
+}: RightPanelProps) {
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
   if (tabs.length === 0) return null;
 
   return (
     <div
-      className={cn("relative flex flex-col shrink-0 border-l border-border overflow-hidden", className)}
+      className={cn(
+        'relative flex flex-col shrink-0 border-l border-border overflow-hidden',
+        className,
+      )}
       style={{ width }}
     >
       {/* Left resize handle */}
-      <div
-        className="absolute top-0 left-[-3px] w-1.5 h-full cursor-col-resize z-10 hover:bg-accent-blue/50 active:bg-accent-blue/50"
+      <button
+        type="button"
+        aria-label="Resize panel"
+        className="absolute top-0 left-[-3px] w-1.5 h-full cursor-col-resize z-10 hover:bg-accent-blue/50 active:bg-accent-blue/50 border-0 p-0 bg-transparent"
         onMouseDown={onResizeStart}
       />
       {/* Tab bar */}
@@ -37,8 +51,10 @@ function RightPanel({ tabs, activeTabId, onTabChange, onClose, width, onResizeSt
           <button
             key={tab.id}
             className={cn(
-              "px-3 py-1.5 text-xs text-text-secondary transition-colors duration-100 hover:text-text-primary border-b-2",
-              activeTab?.id === tab.id ? "border-accent-blue text-text-primary" : "border-transparent"
+              'px-3 py-1.5 text-xs text-text-secondary transition-colors duration-100 hover:text-text-primary border-b-2',
+              activeTab?.id === tab.id
+                ? 'border-accent-blue text-text-primary'
+                : 'border-transparent',
             )}
             onClick={() => onTabChange?.(tab.id)}
           >

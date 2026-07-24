@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useEffect, useState } from 'react';
 
 /**
  * Tracks whether the Tauri window is currently in fullscreen mode.
@@ -28,7 +28,10 @@ export function useFullscreen(): boolean {
       // re-query the fullscreen flag on every resize.
       appWindow
         .onResized(() => {
-          appWindow.isFullscreen().then(setIsFullscreen).catch(() => {});
+          appWindow
+            .isFullscreen()
+            .then(setIsFullscreen)
+            .catch(() => {});
         })
         .then((fn) => {
           unlistenFn = fn;

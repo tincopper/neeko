@@ -1,17 +1,19 @@
-import React, { Suspense, useCallback } from "react";
-import { X } from "@/shared/components/icons"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/ui/tabs";
+import React, { Suspense, useCallback } from 'react';
+
+import { cn } from '@/lib/utils';
+import { X } from '@/shared/components/icons';
+import { useDockStore } from '@/shared/store/dockStore';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "@/ui/ContextMenu";
-import { ScrollArea } from "@/ui/ScrollArea";
-import { useDockStore } from "@/shared/store/dockStore";
-import { dockPanelRegistry } from "../dockPanels";
-import { cn } from "@/lib/utils";
+} from '@/ui/ContextMenu';
+import { ScrollArea } from '@/ui/ScrollArea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui/tabs';
+
+import { dockPanelRegistry } from '../dockPanels';
 
 interface DockZoneTabsProps {
   zoneId: string;
@@ -24,16 +26,7 @@ const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
   const activatePanel = useDockStore((s) => s.activatePanel);
   const closePanel = useDockStore((s) => s.closePanel);
   const movePanel = useDockStore((s) => s.movePanel);
-
-  if (!zone || zone.panels.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center text-xs text-text-muted">
-        No panels
-      </div>
-    );
-  }
-
-  const activeValue = zone.activePanelId ?? zone.panels[0];
+  const zones = useDockStore((s) => s.zones);
 
   const handleValueChange = useCallback(
     (panelId: string) => {
@@ -57,15 +50,12 @@ const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
    * migrate to Pointer Events approach (see useProjectItemDrag pattern).
    * TODO: Test in `pnpm tauri dev` and verify no window-drag interference.
    */
-  const handleDragStart = useCallback(
-    (e: React.DragEvent, panelId: string) => {
-      e.dataTransfer.setData("application/neeko-panel-id", panelId);
-      e.dataTransfer.effectAllowed = "move";
-      // Prevent the tab text/image from being dragged
-      e.dataTransfer.setDragImage(new Image(), 0, 0);
-    },
-    [],
-  );
+  const handleDragStart = useCallback((e: React.DragEvent, panelId: string) => {
+    e.dataTransfer.setData('application/neeko-panel-id', panelId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Prevent the tab text/image from being dragged
+    e.dataTransfer.setDragImage(new Image(), 0, 0);
+  }, []);
 
   /** Handle panel move from right-click context menu */
   const handleMoveToZone = useCallback(
@@ -75,18 +65,23 @@ const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
     [movePanel],
   );
 
-  const zones = useDockStore((s) => s.zones);
   const availableZones = React.useMemo(
     () => Object.keys(zones).filter((zid) => zid !== zoneId),
     [zones, zoneId],
   );
 
+  if (!zone || zone.panels.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-xs text-text-muted">
+        No panels
+      </div>
+    );
+  }
+
+  const activeValue = zone.activePanelId ?? zone.panels[0];
+
   return (
-    <Tabs
-      value={activeValue}
-      onValueChange={handleValueChange}
-      className="flex h-full flex-col"
-    >
+    <Tabs value={activeValue} onValueChange={handleValueChange} className="flex h-full flex-col">
       {/* Tab bar header */}
       <div className="flex shrink-0 items-center border-b border-border bg-bg-secondary">
         <TabsList className="h-8 flex-1 justify-start rounded-none bg-transparent p-0">
@@ -102,11 +97,11 @@ const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
                     draggable
                     onDragStart={(e) => handleDragStart(e, panelId)}
                     className={cn(
-                      "h-8 rounded-none px-3 text-xs",
-                      "text-text-secondary data-[state=active]:text-text-primary data-[state=active]:bg-bg-primary",
-                      "hover:bg-bg-hover",
-                      "cursor-grab active:cursor-grabbing",
-                      "border-r border-border",
+                      'h-8 rounded-none px-3 text-xs',
+                      'text-text-secondary data-[state=active]:text-text-primary data-[state=active]:bg-bg-primary',
+                      'hover:bg-bg-hover',
+                      'cursor-grab active:cursor-grabbing',
+                      'border-r border-border',
                     )}
                   >
                     {def.title}

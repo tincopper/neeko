@@ -1,49 +1,48 @@
-﻿import { useEffect, useRef, useState } from "react";
-import React from "react";
-import { getCurrentWindow, type Window } from "@tauri-apps/api/window";
-import { Minus, Square, Copy, X } from "@/shared/components/icons"
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import React, { useEffect, useMemo, useState } from 'react';
+
+import { Minus, Square, Copy, X } from '@/shared/components/icons';
 
 function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
-  const [ready, setReady] = useState(false);
-  const appWindowRef = useRef<Window | null>(null);
-
-  useEffect(() => {
+  const appWindow = useMemo(() => {
     try {
-      const appWindow = getCurrentWindow();
-      appWindowRef.current = appWindow;
-
-      appWindow.isMaximized().then(setIsMaximized);
-      const unlisten = appWindow.onResized(() => {
-        appWindow.isMaximized().then(setIsMaximized);
-      });
-      setReady(true);
-
-      return () => {
-        unlisten.then((fn) => fn());
-      };
+      return getCurrentWindow();
     } catch {
-      setReady(false);
+      return null;
     }
   }, []);
 
-  if (!ready) return null;
+  useEffect(() => {
+    if (!appWindow) return;
 
-  const appWindow = appWindowRef.current!;
+    let cancelled = false;
+    appWindow.isMaximized().then((value) => {
+      if (!cancelled) setIsMaximized(value);
+    });
+    const unlisten = appWindow.onResized(() => {
+      appWindow.isMaximized().then((value) => {
+        if (!cancelled) setIsMaximized(value);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten.then((fn) => fn());
+    };
+  }, [appWindow]);
+
+  if (!appWindow) return null;
 
   return (
     <div className="flex items-stretch shrink-0">
-      <button
-        className="wc-btn"
-        onClick={() => appWindow.minimize()}
-        title="Minimize"
-      >
+      <button className="wc-btn" onClick={() => appWindow.minimize()} title="Minimize">
         <Minus size={14} strokeWidth={1.5} />
       </button>
       <button
         className="wc-btn"
-        onClick={() => isMaximized ? appWindow.unmaximize() : appWindow.maximize()}
-        title={isMaximized ? "Restore" : "Maximize"}
+        onClick={() => (isMaximized ? appWindow.unmaximize() : appWindow.maximize())}
+        title={isMaximized ? 'Restore' : 'Maximize'}
       >
         {isMaximized ? (
           <Copy size={14} strokeWidth={1.2} />
@@ -51,11 +50,7 @@ function WindowControls() {
           <Square size={14} strokeWidth={1.2} />
         )}
       </button>
-      <button
-        className="wc-btn wc-close"
-        onClick={() => appWindow.destroy()}
-        title="Close"
-      >
+      <button className="wc-btn wc-close" onClick={() => appWindow.destroy()} title="Close">
         <X size={14} strokeWidth={1.5} />
       </button>
     </div>

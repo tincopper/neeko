@@ -1,13 +1,17 @@
-import React from "react";
-import WindowControls from "./WindowControls";
-import TaskRunButton from "@/features/task/components/TaskRunButton";
-import { DebugRunButton } from "@/features/debug";
-import OpenIdeButton from "./OpenIdeButton";
-import { IS_MACOS } from "@/shared/utils/platform";
-import { useFullscreen } from "./useFullscreen";
-import neekoIcon from "../assets/neeko-icon.png";
+import React from 'react';
 
-function TitleBar() {
+import { IS_MACOS } from '@/shared/utils/platform';
+
+import neekoIcon from '../assets/neeko-icon.png';
+
+import { useFullscreen } from './useFullscreen';
+import WindowControls from './WindowControls';
+
+interface TitleBarProps {
+  actions?: React.ReactNode;
+}
+
+function TitleBar({ actions }: TitleBarProps) {
   const isFullscreen = useFullscreen();
 
   return (
@@ -18,18 +22,21 @@ function TitleBar() {
       {/* Left: Neeko icon (visual anchor for the drag region) */}
       <div className="flex items-center px-2" data-tauri-drag-region>
         <div className="relative shrink-0 px-2 py-1 flex items-center gap-1" data-tauri-drag-region>
-          <img src={neekoIcon} className="w-5 h-5 object-contain mx-1" alt="Neeko" data-tauri-drag-region />
+          <img
+            src={neekoIcon}
+            className="w-5 h-5 object-contain mx-1"
+            alt="Neeko"
+            data-tauri-drag-region
+          />
         </div>
       </div>
 
       {/* Center spacer (draggable) */}
       <div className="flex-1" data-tauri-drag-region />
 
-      {/* Right: OpenIde + Task + Debug + WindowControls */}
+      {/* Right: actions + WindowControls */}
       <div className="flex items-center gap-2 shrink-0 px-2">
-        <OpenIdeButton />
-        <TaskRunButton />
-        <DebugRunButton />
+        {actions}
         {!IS_MACOS && <WindowControls />}
       </div>
     </div>

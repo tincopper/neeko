@@ -127,7 +127,10 @@ describe('useRemoteProjects', () => {
   it('handleCloseProject 关闭活跃项目', () => {
     useProjectStore.setState({
       activeProjectId: 'rp1',
-      activeProject: { id: 'rp1' } as any,
+      activeProject: {
+        id: 'rp1',
+        environment: { type: 'Remote', host: '10.0.0.1', user: 'u', port: 22 },
+      } as any,
     });
 
     const { result } = renderHook(() => useRemoteProjects(mockSaveSession, mockShowToast));
@@ -228,11 +231,7 @@ describe('useRemoteProjects', () => {
     function createSortableEntry() {
       return makeRemoteEntry({
         id: 'e1',
-        projects: [
-          makeRemoteProject('p1'),
-          makeRemoteProject('p2'),
-          makeRemoteProject('p3'),
-        ],
+        projects: [makeRemoteProject('p1'), makeRemoteProject('p2'), makeRemoteProject('p3')],
       });
     }
 

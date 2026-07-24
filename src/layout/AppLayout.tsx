@@ -1,22 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-import SettingsView from '@/features/settings/components/SettingsView';
-import SkillContent from '@/features/skill/components/SkillContent';
 import { cn } from '@/lib/utils';
 import { Plus, Settings } from '@/shared/components/icons';
-import { useAppViewStore } from '@/shared/store/appViewStore';
-import { useDockStore } from '@/shared/store/dockStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip';
 
 import AddProjectMenu from './AddProjectMenu';
 import { DockLayout } from './dock-layout';
-import MainContent from './MainContent';
 
 interface AppLayoutProps {
   onAddProject: () => void;
   onAddWsl: () => void;
   onAddRemote: () => void;
   onOpenSettings: () => void;
+  /** Whether Settings view is active (highlights the settings toolbar button). */
+  isSettingsOpen?: boolean;
+  children?: React.ReactNode;
+  leftButtons?: React.ReactNode[];
+  rightButtons?: React.ReactNode[];
 }
 
 /**
@@ -102,49 +102,22 @@ const ToolbarFooter: React.FC<{
 ToolbarFooter.displayName = 'ToolbarFooter';
 
 /**
- * Top-level layout container.
+ * Top-level layout skeleton.
  *
- * Replaces the old flex-based ActivityBar + PanelArea + MainContent + RightPanel
- * layout with the new DockLayout framework. Panel toggling is driven by dockStore
- * (via DockBar + DockZone). Special modes (Settings full-page, Skills two-column)
- * take over the center area via conditional rendering.
+ * Owns the DockLayout chrome (bars, zones, toolbar footer) and renders center
+ * content via `children`. App-layer coordination (settings/skills routing,
+ * feature-aware dock buttons) is injected by `App.tsx`.
  */
-function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppLayoutProps) {
-  const appView = useAppViewStore((s) => s.appView);
-  const skillsActive = useDockStore((s) => s.zones.left?.activePanelId === 'skills');
-
-  const isSettingsOpen = appView === 'settings';
-
-  // Center content:
-  // Settings — full-page view, independent of dock layout.
-  // Normal mode — MainContent 和 SkillContent 始终挂载，通过 CSS hidden 切换。
-  // 避免 mount/unmount 触发的闪烁和 layout 重计算。
-  const centerContent: React.ReactNode =
-    appView === 'settings' ? (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <SettingsView />
-      </div>
-    ) : (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div
-          className={cn(
-            'flex flex-col flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
-            skillsActive && 'hidden',
-          )}
-        >
-          <MainContent />
-        </div>
-        <div
-          className={cn(
-            'flex flex-col flex-1 h-full min-h-0 overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
-            !skillsActive && 'hidden',
-          )}
-        >
-          <SkillContent />
-        </div>
-      </div>
-    );
-
+function AppLayout({
+  onAddProject,
+  onAddWsl,
+  onAddRemote,
+  onOpenSettings,
+  isSettingsOpen = false,
+  children,
+  leftButtons,
+  rightButtons,
+}: AppLayoutProps) {
   return (
     <>
       <DockLayout
@@ -157,8 +130,10 @@ function AppLayout({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }: AppL
             isSettingsOpen={isSettingsOpen}
           />
         }
+        leftButtons={leftButtons}
+        rightButtons={rightButtons}
       >
-        {centerContent}
+        {children}
       </DockLayout>
     </>
   );

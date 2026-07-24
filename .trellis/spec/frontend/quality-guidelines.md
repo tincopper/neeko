@@ -23,7 +23,7 @@ CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmi
 | 规则 | 级别 | 用途 |
 |------|------|------|
 | `import/no-restricted-paths` | error | 禁止跨 feature 引用，强制单向依赖流 |
-| `import/no-cycle` | warn | 检测循环依赖 |
+| `import/no-cycle` | error | 检测循环依赖 |
 | `import/order` | warn | import 语句分组排序 |
 | `check-file/filename-naming-convention` | warn | `.tsx` 使用 PascalCase，`.ts` 使用 camelCase |
 | `check-file/folder-naming-convention` | error | 目录使用 kebab-case（`__tests__` 除外） |
@@ -31,6 +31,45 @@ CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmi
 | `prettier/prettier` | error | 代码格式统一 |
 
 注意：ESLint 10+ 移除了 `.eslintrc.*` 支持，仅支持 flat config。本项目使用 ESLint 8 以兼容插件生态。
+
+
+### Layout 边界规则（2026-07-24）
+
+`layout/` 是**纯窗口骨架**，不得 import `@/features/*` 或 `@/app/*`。
+
+| 允许 | 禁止 |
+|------|------|
+| `layout` 内部互引、`@/shared/*`、`@/ui/*`、`@/lib/*` | `import ... from '@/features/...'` |
+| 通过 props/slots 接收业务 UI（`children`、`actions`、`buttons`） | 在 layout 内读取 feature store / 调用 feature API |
+| `dockPanels.ts` 声明式 `lazy(() => import(...))`（ESLint 例外） | 在 `DockBar`/`TitleBar`/`AppLayout` 硬编码业务按钮 |
+
+ESLint 强制：
+
+```js
+// .eslintrc.cjs — import/no-restricted-paths
+{
+  target: './src/layout',
+  from: ['./src/features', './src/app'],
+  message:
+    'layout/ must not import from features/ or app/. Move coordination logic to src/app/.',
+}
+
+// 唯一例外：面板注册表
+// files: ['src/layout/dockPanels.ts']
+// rules: { 'import/no-restricted-paths': 'off', 'import/no-cycle': 'off' }
+```
+
+协调逻辑归属：
+
+| 职责 | 位置 |
+|------|------|
+| 项目工作区 / agent 检测 / remote auth 组装 | `app/components/ProjectWorkspace.tsx` |
+| Dock panel feature 注入 | `app/dock/DockPanelWrappers.tsx` |
+| TitleBar / DockBar 业务按钮 | `app/App.tsx` 注入 `actions` / `leftButtons` / `rightButtons` |
+| settings / skills 视图切换 | `app/App.tsx` 的 `children` 路由 |
+
+已知遗留（不在 layout 清理范围内）：`shared/store/dockStore.ts` 仍 import `layout/dockPanels`，形成 shared ↔ layout 环；后续应将 registry 注入改为 app 组装。
+
 
 ---
 
@@ -75,10 +114,10 @@ const data = await invoke<SessionData>("load_session");
 
 ```tsx
 // 错误
-import TitleBar from "../components/layout/TitleBar";
+import TitleBar from "@/layout/TitleBar";
 
 // 正确
-import { TitleBar } from "../components/layout";
+import { TitleBar } from "@/layout";
 ```
 
 ### 5. 在 API wrapper 目录外直接使用 `invoke`

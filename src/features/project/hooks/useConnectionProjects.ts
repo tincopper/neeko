@@ -1,28 +1,24 @@
-import { useState, useCallback, useEffect } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useState, useCallback, useEffect } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import {
   wslCacheKey,
   destroyWslCachesByPrefix,
   remoteCacheKey,
   destroyRemoteCachesByPrefix,
-} from "@/features/terminal/components/terminalCache";
-import type {
-  AuthMethod,
-  RemoteEntrySession,
-  WSLEntrySession,
-} from "@/shared/types";
-import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
-import { useShallow } from "zustand/shallow";
-import { applyStateAction, upsertEntryById } from "@/shared/utils/entryUpdates";
+} from '@/features/terminal/components/terminalCache';
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useShallow } from 'zustand/shallow';
+import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
 export type SaveSessionFn = (...args: unknown[]) => Promise<void>;
-export type ProjectEnvironment = "wsl" | "remote";
+export type ProjectEnvironment = 'wsl' | 'remote';
 
 interface UseConnectionProjectsParams {
   environment: ProjectEnvironment;
   saveSession: SaveSessionFn;
-  showToast?: (message: string, type?: "info" | "error") => void;
+  showToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 /**
@@ -36,7 +32,7 @@ export function useConnectionProjects({
   saveSession,
   showToast,
 }: UseConnectionProjectsParams) {
-  const isWsl = environment === "wsl";
+  const isWsl = environment === 'wsl';
 
   // ── Store selectors ──────────────────────────────────────────────────────
   const wslEntries = useConnectionStore((state) => state.wslEntries);
@@ -44,15 +40,13 @@ export function useConnectionProjects({
   const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
   const pendingAuthEntry = useConnectionStore((state) => state.pendingAuthEntry);
 
-  const entries: (WSLEntrySession | RemoteEntrySession)[] = isWsl
-    ? wslEntries
-    : remoteEntries;
+  const entries: (WSLEntrySession | RemoteEntrySession)[] = isWsl ? wslEntries : remoteEntries;
 
   // ── Store setters ────────────────────────────────────────────────────────
 
   const setEntries: Dispatch<SetStateAction<any[]>> = useCallback(
     (updater) => {
-      const key = isWsl ? "wslEntries" as const : "remoteEntries" as const;
+      const key = isWsl ? ('wslEntries' as const) : ('remoteEntries' as const);
       useConnectionStore.setState((state) => ({
         [key]: applyStateAction(isWsl ? state.wslEntries : state.remoteEntries, updater),
       }));
@@ -94,13 +88,11 @@ export function useConnectionProjects({
       return;
     }
     const env = activeProject.environment;
-    if (env.type !== "Remote") {
+    if (!env || env.type !== 'Remote') {
       setPendingAuthEntry(null);
       return;
     }
-    const entry = (remoteEntries as RemoteEntrySession[]).find(
-      (e) => e.host === (env as any).host,
-    );
+    const entry = (remoteEntries as RemoteEntrySession[]).find((e) => e.host === (env as any).host);
     if (!entry) {
       setPendingAuthEntry(null);
       return;
@@ -133,7 +125,7 @@ export function useConnectionProjects({
           }
         }
       } catch (error) {
-        console.error(`[App] Failed to save ${isWsl ? "WSL" : "remote"} entry:`, error);
+        console.error(`[App] Failed to save ${isWsl ? 'WSL' : 'remote'} entry:`, error);
       }
     },
     [isWsl, entries, setEntries, saveSession, setRemoteAuthStore],
@@ -308,13 +300,10 @@ export function useConnectionProjects({
             const auth: AuthMethod = JSON.parse(atob(entry.saved_auth));
             restored.set(entry.id, auth);
           } catch (e) {
-            console.warn(
-              `[Remote] Failed to parse saved_auth for entry ${entry.id}:`,
-              e,
-            );
+            console.warn(`[Remote] Failed to parse saved_auth for entry ${entry.id}:`, e);
             showToast?.(
               `Failed to restore credentials for ${entry.host}:${entry.port}. Please re-enter.`,
-              "error",
+              'error',
             );
           }
         }

@@ -13,6 +13,10 @@ interface DockLayoutProps {
   children: React.ReactNode;
   /** Left toolbar footer slot for app-level actions */
   toolbarFooterLeft?: React.ReactNode;
+  /** Left dock bar buttons */
+  leftButtons?: React.ReactNode[];
+  /** Right dock bar buttons */
+  rightButtons?: React.ReactNode[];
 }
 
 /**
@@ -33,8 +37,12 @@ interface DockLayoutProps {
  * This fixes the bug where pinning a tab then opening a side panel caused
  * unresponsive drag handles.
  */
-const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) => {
-
+const DockLayout: React.FC<DockLayoutProps> = ({
+  children,
+  toolbarFooterLeft,
+  leftButtons = [],
+  rightButtons = [],
+}) => {
   const leftExpanded = useDockStore((s) => s.zones.left?.expanded ?? true);
 
   const rightExpanded = useDockStore((s) => s.zones.right?.expanded ?? false);
@@ -185,7 +193,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
     <div className="flex flex-1 min-h-0 bg-bg-primary">
       {/* Left toolbar column: icon bar + optional footer */}
       <div className="flex flex-col shrink-0">
-        <DockBar side="left" />
+        <DockBar side="left" buttons={leftButtons} />
         {toolbarFooterLeft && (
           <>
             <div className="flex justify-center py-1.5">
@@ -252,7 +260,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({ children, toolbarFooterLeft }) 
 
       {/* Right toolbar column */}
       <div className="flex flex-col shrink-0">
-        <DockBar side="right" />
+        <DockBar side="right" buttons={rightButtons} />
       </div>
     </div>
   );

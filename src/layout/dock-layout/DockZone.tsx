@@ -1,8 +1,11 @@
-import React, { Suspense } from "react";
-import { useDockStore } from "@/shared/store/dockStore";
-import { dockPanelRegistry } from "../dockPanels";
-import { useDragToReDock } from "./useDragToReDock";
-import { cn } from "@/lib/utils";
+import React, { Suspense } from 'react';
+
+import { cn } from '@/lib/utils';
+import { useDockStore } from '@/shared/store/dockStore';
+
+import { dockPanelRegistry } from '../dockPanels';
+
+import { useDragToReDock } from './useDragToReDock';
 
 interface DockZoneProps {
   zoneId: string;
@@ -32,12 +35,12 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
     return (
       <div
         className={cn(
-          "flex h-full items-center justify-center text-xs text-text-muted",
-          isDragOver && "ring-2 ring-inset ring-accent-blue/50",
+          'flex h-full items-center justify-center text-xs text-text-muted',
+          isDragOver && 'ring-2 ring-inset ring-accent-blue/50',
         )}
         {...dragHandlers}
       >
-        {isDragOver ? "Drop panel here" : ""}
+        {isDragOver ? 'Drop panel here' : ''}
       </div>
     );
   }
@@ -49,8 +52,8 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   return (
     <div
       className={cn(
-        "flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary",
-        isDragOver && "ring-2 ring-inset ring-accent-blue/50",
+        'flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
+        isDragOver && 'ring-2 ring-inset ring-accent-blue/50',
       )}
       {...dragHandlers}
     >
@@ -61,10 +64,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
         const isActive = panelId === activePanelId;
 
         return (
-          <div
-            key={panelId}
-            className={cn("h-full w-full", !isActive && "hidden")}
-          >
+          <div key={panelId} className={cn('h-full w-full', !isActive && 'hidden')}>
             <Suspense
               fallback={
                 <div className="flex h-full items-center justify-center text-sm text-text-muted">

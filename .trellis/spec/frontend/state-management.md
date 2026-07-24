@@ -47,13 +47,13 @@ export function useAppContainer() {
 
 | Context | 作用范围 | 典型消费者 |
 |--------|---------|-----------|
-| `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`MainContent` |
+| `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`ProjectWorkspace` |
 | `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
-| `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`MainContent` |
+| `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`ProjectWorkspace` |
 | `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作 | `AppLayout`、`FileViewer` |
-| `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`MainContent` |
-| `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`MainContent` |
-| `EditorContext` | 终端 tabs 与 agent bar | `MainContent` |
+| `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
+| `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
+| `EditorContext` | 终端 tabs 与 agent bar | `ProjectWorkspace` |
 | `SkillContext` | skill 面板领域状态 | `SkillsPanel`、`SkillContent` |
 
 ### 3. 组件本地状态

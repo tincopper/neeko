@@ -52,7 +52,11 @@ module.exports = {
             zones: [
               { target: './src/features/agent', from: './src/features', except: ['./agent'] },
               { target: './src/features/browser', from: './src/features', except: ['./browser'] },
-              { target: './src/features/connection', from: './src/features', except: ['./connection'] },
+              {
+                target: './src/features/connection',
+                from: './src/features',
+                except: ['./connection'],
+              },
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
               { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
@@ -64,6 +68,12 @@ module.exports = {
               { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
+                target: './src/layout',
+                from: ['./src/features', './src/app'],
+                message:
+                  'layout/ must not import from features/ or app/. Move coordination logic to src/app/.',
+              },
+              {
                 target: [
                   './src/shared/components',
                   './src/shared/hooks',
@@ -74,7 +84,6 @@ module.exports = {
                   './src/lib',
                   './src/types',
                   './src/ui',
-                  './src/layout',
                 ],
                 from: ['./src/features', './src/app'],
               },
@@ -98,13 +107,15 @@ module.exports = {
               {
                 name: '@tauri-apps/api/core',
                 importNames: ['invoke'],
-                message: 'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
+                message:
+                  'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
               },
             ],
             patterns: [
               {
                 group: ['@tauri-apps/api/core'],
-                message: 'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
+                message:
+                  'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
               },
             ],
           },
@@ -167,7 +178,11 @@ module.exports = {
             zones: [
               { target: './src/features/agent', from: './src/features', except: ['./agent'] },
               { target: './src/features/browser', from: './src/features', except: ['./browser'] },
-              { target: './src/features/connection', from: './src/features', except: ['./connection'] },
+              {
+                target: './src/features/connection',
+                from: './src/features',
+                except: ['./connection'],
+              },
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features/file', from: './src/features', except: ['./file'] },
               { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
@@ -179,6 +194,12 @@ module.exports = {
               { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
+                target: './src/layout',
+                from: ['./src/features', './src/app'],
+                message:
+                  'layout/ must not import from features/ or app/. Move coordination logic to src/app/.',
+              },
+              {
                 target: [
                   './src/shared/components',
                   './src/shared/hooks',
@@ -189,7 +210,6 @@ module.exports = {
                   './src/lib',
                   './src/types',
                   './src/ui',
-                  './src/layout',
                 ],
                 from: ['./src/features', './src/app'],
               },
@@ -213,13 +233,15 @@ module.exports = {
               {
                 name: '@tauri-apps/api/core',
                 importNames: ['invoke'],
-                message: 'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
+                message:
+                  'Use the feature-specific API wrapper (e.g. projectApi.openIde) instead of invoke directly.',
               },
             ],
             patterns: [
               {
                 group: ['@tauri-apps/api/core'],
-                message: 'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
+                message:
+                  'Use the feature-specific API wrapper instead of importing from @tauri-apps/api/core directly.',
               },
             ],
           },
@@ -229,7 +251,7 @@ module.exports = {
           'error',
           {
             '**/*.ts': 'CAMEL_CASE',
-            'src/app/vite-env.d.ts': 'KEBAB_CASE',
+            '**/vite-env.d.ts': 'KEBAB_CASE',
           },
           { ignoreMiddleExtensions: true },
         ],
@@ -252,6 +274,16 @@ module.exports = {
       files: ['src/features/*/api/*.ts', 'src/app/*/api/*.ts'],
       rules: {
         'no-restricted-imports': 'off',
+      },
+    },
+    // ── dockPanels.ts: allow declarative feature/app lazy imports ────────────
+    // Also suppress the known shared/store/dockStore ↔ layout/dockPanels cycle
+    // (registry lives in layout; store still imports it — tracked separately).
+    {
+      files: ['src/layout/dockPanels.ts'],
+      rules: {
+        'import/no-restricted-paths': 'off',
+        'import/no-cycle': 'off',
       },
     },
     // ── directory naming: kebab-case ───────────────────────────────────────

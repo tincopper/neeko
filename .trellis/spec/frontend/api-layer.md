@@ -103,12 +103,14 @@ import { listAgents } from "../../agent/api/agentApi";
 import { getWorktreeChangedFiles } from "../../git/api/gitApi";
 ```
 
-### 在 Layout 层消费（使用 `@/` 别名）
+### 在 App 协调层消费（使用 `@/` 别名）
 
 ```typescript
-// src/layout/MainContent.tsx
+// src/app/components/ProjectWorkspace.tsx
 import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 ```
+
+> `layout/` 不得直接 import `@/features/*/api`。协调与 API 消费放在 `app/`。
 
 ### 错误处理
 
@@ -204,8 +206,8 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/session/hooks/useSessionPersistence.ts` | `sessionApi` |
 | `features/connection/hooks/useWslActions.ts` | `projectApi`、`gitApi` |
 | `features/connection/hooks/useRemoteActions.ts` | `projectApi` |
-| `app/editor/hooks/useFileView.ts` | `fileApi` |
-| `app/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `features/editor/hooks/useFileView.ts` | `fileApi` |
+| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
 | `features/agent/hooks/useAgentActions.ts` | `projectApi` |
 | `features/agent/hooks/useAgentClickHandler.ts` | `agentApi` |
 | `features/browser/hooks/useBrowserPicker.ts` | `browserApi` |
@@ -240,23 +242,23 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/project/components/ProjectSettingsDialog.tsx` | `projectApi`、`agentApi` |
 | `features/project/components/ProjectItem.tsx` | `projectApi` |
 | `features/project/components/WorktreeList.tsx` | `gitApi`、`terminalApi` |
-| `app/editor/components/FileViewer.tsx` | `fileApi` |
-| `app/editor/components/HtmlPreview.tsx` | `fileApi` |
-| `app/editor/components/EditorGroupPane.tsx` | `agentApi` |
+| `features/editor/components/FileViewer.tsx` | `fileApi` |
+| `features/editor/components/HtmlPreview.tsx` | `fileApi` |
+| `features/editor/components/EditorGroupPane.tsx` | `agentApi` |
 | `features/agent/components/AgentBar.tsx` | `agentApi` |
 | `features/agent/components/AgentSelector.tsx` | `agentApi`、`sessionApi` |
-| `app/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
+| `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
 | `features/task/store.ts` | `taskApi`、`terminalApi` |
 | `features/skill/store.ts` | `skillApi`、`fileApi` |
 | `features/terminal/components/terminalLinks.ts` | `fileApi` |
 
-### Layout 层使用的 API
+### App 协调层使用的 API
 
 | 组件 | 使用的 API |
 |---|---|
-| `layout/MainContent.tsx` | `agentApi` |
-| `layout/OpenIdeButton.tsx` | `sessionApi` |
-| `layout/DockLayout/DockPanelWrappers.tsx` | `fileApi` |
+| `app/components/ProjectWorkspace.tsx` | `agentApi` |
+| `app/components/OpenIdeButton.tsx` | `sessionApi` |
+| `app/dock/DockPanelWrappers.tsx` | `fileApi` |
 
 ---
 
@@ -490,7 +492,7 @@ useEffect(() => {
 - `src/components/terminal/TerminalView.tsx`
 - `src/components/terminal/WSLTerminalView.tsx`
 - `src/components/terminal/RemoteTerminalView.tsx`
-- `src/components/MainContent.tsx`
+- `src/app/components/ProjectWorkspace.tsx`
 - `src/components/RemoteProjectView.tsx`
 - `src/types.ts`
 

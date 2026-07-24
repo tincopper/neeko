@@ -1,7 +1,9 @@
-import { useCallback } from "react";
-import { useAppViewStore } from "@/shared/store/appViewStore";
-import { IS_WINDOWS } from "@/shared/utils/platform";
-import type AppLayout from "../AppLayout";
+import { useCallback } from 'react';
+
+import { useAppViewStore } from '@/shared/store/appViewStore';
+import { IS_WINDOWS } from '@/shared/utils/platform';
+
+import type AppLayout from '../AppLayout';
 
 const noop = () => {};
 
@@ -12,9 +14,7 @@ export function useAppLayoutProps(opts: {
 }): React.ComponentProps<typeof AppLayout> {
   const handleToggleSettings = useCallback(() => {
     const currentView = useAppViewStore.getState().appView;
-    useAppViewStore.getState().setAppView(
-      currentView === "settings" ? "normal" : "settings"
-    );
+    useAppViewStore.getState().setAppView(currentView === 'settings' ? 'normal' : 'settings');
   }, []);
 
   return {

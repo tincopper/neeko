@@ -287,7 +287,7 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
       : project;
 
   const handleSelectFile = (filePath: string) => {
-    // tabKey 需要与 MainContent 对齐：使用 store 中的原始项目 ID，
+    // tabKey 需要与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID，
     // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
     const projectState = useProjectStore.getState();
     const editorState = useEditorStore.getState();

@@ -13,29 +13,23 @@ import { useEditorStore } from '@/shared/store';
 import {
   dockPanelRegistry,
   dockPanelIcons,
-} from "../dockPanels";
+} from "@/layout/dockPanels";
 import { cn } from "@/lib/utils";
 import type { TabKind } from '@/shared/types/tab';
 
-/** Map panel IDs to TabKind values for panels that open as tabs */
 const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
   git: "gitLog",
 };
 
 interface DockBarButtonProps {
   panelId: string;
-  /** Toolbar side — controls tooltip placement away from the icon rail */
   side?: "left" | "right";
 }
 
-/** Individual icon button on the DockBar (tool window bar).
- *  Subscribes directly to dockStore — no parent props needed for state. */
 const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }) => {
   const def = dockPanelRegistry[panelId];
   const isTab = def?.openAs === "tab";
 
-  // For tab-mode buttons, track if the tab is open in the active project
-  // Use currentProjectId (covers local/WSL/remote) to match MainContent's tabKey
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const isTabActive = useEditorStore((s) => {
     if (!isTab) return false;
@@ -45,7 +39,6 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
     return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
   });
 
-  // For dock-mode buttons, track if the dock panel is active
   const isDockActive = useDockStore((s) => {
     if (isTab) return false;
     for (const zone of Object.values(s.zones)) {
@@ -60,7 +53,6 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
   const addTab = useEditorStore((s) => s.addTab);
   const closeTab = useEditorStore((s) => s.closeTab);
   const activateTab = useEditorStore((s) => s.activateTab);
-  // Use currentProjectId that covers local/WSL/remote — matches MainContent's tabKey
   const currentProjectId = activeProjectId;
   const tabs = useEditorStore(useShallow((s) => s.tabs));
 
@@ -113,7 +105,6 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
           >
             {Icon ? <Icon className="h-5 w-5" /> : <span>{def.title[0]}</span>}
           </span>
-          {/* Badge slot (hidden for now) */}
           <Badge
             variant="secondary"
             className={cn(

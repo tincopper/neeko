@@ -1,4 +1,3 @@
-import { lazy } from 'react';
 import {
   Blocks,
   FolderOpen,
@@ -10,6 +9,7 @@ import {
   MessagesSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { lazy } from 'react';
 
 // ���� DockPanelDef type ����
 
@@ -54,19 +54,19 @@ const ProjectsPanel = lazy(() => import('@/features/project/components/ProjectsP
  */
 
 const LazyFilesPanelWrapper = lazy(() =>
-  import('./dock-layout/DockPanelWrappers').then((m) => ({
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.FilesPanelWrapper,
   })),
 );
 
 const LazySkillsPanelWrapper = lazy(() =>
-  import('./dock-layout/DockPanelWrappers').then((m) => ({
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.SkillsPanelWrapper,
   })),
 );
 
 const LazyGitCommitPanelWrapper = lazy(() =>
-  import('./dock-layout/DockPanelWrappers').then((m) => ({
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.GitCommitPanelWrapper,
   })),
 );
@@ -74,13 +74,13 @@ const LazyGitCommitPanelWrapper = lazy(() =>
 const LazyBrowserPanel = lazy(() => import('@/features/browser/components/BrowserPanel'));
 
 const LazyConversationsPanelWrapper = lazy(() =>
-  import('./dock-layout/DockPanelWrappers').then((m) => ({
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.ConversationsPanelWrapper,
   })),
 );
 
 const LazyPullRequestsPanelWrapper = lazy(() =>
-  import('./dock-layout/DockPanelWrappers').then((m) => ({
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.PullRequestsPanelWrapper,
   })),
 );

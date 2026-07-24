@@ -29,7 +29,7 @@ export function setDragFile(path: string, projectId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Hook — mount once at the top of the component tree (MainContent)
+// Hook — mount once at the top of the component tree (ProjectWorkspace)
 // ---------------------------------------------------------------------------
 
 export function useFileDrop(): void {

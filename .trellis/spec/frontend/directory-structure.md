@@ -14,24 +14,21 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 
 ```
 src/
-├── app/                     # 应用壳层与组合层
-│   ├── App.tsx              # 根组件壳层（TitleBar + AppProviders + AppLayout + AppModals）
+├── app/                     # 应用壳层与组合层（组装 layout slots + 协调 features）
+│   ├── App.tsx              # 根组件：TitleBar.actions / AppLayout children&buttons / 视图路由
 │   ├── AppProviders.tsx     # Provider 组合层
 │   ├── AppModals.tsx        # 模态框组合层
-│   ├── main.tsx             # 入口文件（ReactDOM.createRoot）
-│   ├── vite-env.d.ts        # 资源模块声明
-│   ├── components/          # app 级复用组件
-│   ├── hooks/               # app 级共享 hooks
-│   └── editor/              # 编辑器域（原 features/editor，后迁至 app 层）
-│       ├── components/
-│       ├── hooks/
-│       ├── context.tsx
-│       ├── FileActionsContext.tsx
-│       ├── store.ts
-│       └── types.ts
+│   ├── components/          # app 级协调组件（可 import features）
+│   │   ├── ProjectWorkspace.tsx  # 项目工作区协调器（原 layout/MainContent）
+│   │   ├── DockBarButton.tsx     # Dock 栏按钮（读 feature store）
+│   │   ├── OpenIdeButton.tsx     # IDE 打开按钮
+│   │   └── SplashScreen.tsx
+│   ├── dock/                # Dock 面板胶水
+│   │   └── DockPanelWrappers.tsx # feature store/context → panel 注入（原 layout/dock-layout）
+│   └── hooks/               # app 级共享 hooks（useAppShell 等）
 │
-├── tailwind.css             # Tailwind CSS v4 入口 + @theme + @layer components
-├── types.ts                 # 共享 TypeScript 接口
+├── main.tsx                 # 入口文件（ReactDOM.createRoot）
+├── vite-env.d.ts            # 资源模块声明
 │
 ├── features/                # Feature 域（每个域独立状态、组件、逻辑、IPC 封装）
 │   ├── agent/               # Agent 管理域
@@ -41,6 +38,11 @@ src/
 │   │   └── types.ts         # Agent 类型定义
 │   ├── browser/
 │   │   └── api/browserApi.ts
+│   ├── editor/              # 编辑器域（文件 Tab / split layout / FileActionsContext）
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   ├── FileActionsContext.tsx
+│   │   └── types.ts
 │   ├── connection/
 │   │   ├── api/connectionApi.ts
 │   │   ├── components/          # Remote/WSL 连接对话框（ConnectionProjectCard, RemoteDialog, WSLDialog 等）
@@ -86,23 +88,25 @@ src/
 │   └── theme/
 │       └── api/themeApi.ts
 │
-├── layout/                  # 窗口边框 & 导航（top-level domain）
+├── layout/                  # 窗口边框 & 导航（纯骨架：不 import features/ 或 app/）
 │   ├── ActivityBar.tsx      # 左侧活动栏（projects/files/skills 切换）
-│   ├── AppLayout.tsx        # 顶层布局编排（ActivityBar + PanelArea + MainContent）
-│   ├── MainContent.tsx
+│   ├── AppLayout.tsx        # 纯骨架：children + leftButtons/rightButtons + isSettingsOpen
+│   ├── TitleBar.tsx         # 标题栏（actions slot，由 app 注入业务按钮）
 │   ├── PanelArea.tsx
-│   ├── dockPanels.ts
-│   ├── dock-layout/         # Dock 布局系统（原 DockLayout/，kebab-case 对齐）
+│   ├── RightPanel.tsx
+│   ├── WindowControls.tsx
+│   ├── AddProjectMenu.tsx
+│   ├── useFullscreen.ts
+│   ├── dockPanels.ts        # 面板注册表（例外：允许 lazy import features/app）
+│   ├── dock-layout/         # Dock 布局系统（纯框架）
 │   │   ├── index.ts
-│   │   ├── DockBar.tsx
-│   │   ├── DockBarButton.tsx
+│   │   ├── DockBar.tsx      # 工具栏（buttons: ReactNode[] prop）
 │   │   ├── DockLayout.tsx
-│   │   ├── DockPanelWrappers.tsx
 │   │   ├── DockZone.tsx
 │   │   ├── DockZoneTabs.tsx
 │   │   └── useDragToReDock.ts
-│   ├── hooks/               # Layout hooks
-│   └── __tests__/
+│   ├── hooks/               # Layout hooks（useAppLayoutProps 等）
+│   └── index.ts
 │
 ├── ui/                      # UI 基元组件（shadcn-styled）
 │   ├── index.ts
@@ -135,10 +139,10 @@ src/
 │       └── terminal.ts
 │
 ├── styles/                  # 样式入口（Tailwind CSS v4）
-│   └── tailwind.css
+│   └── tailwind.css         # @theme + @layer components
 │
 ├── lib/                     # 库包装
-├── types.ts                 # 共享 TypeScript 接口
+├── types.ts                 # 共享 TypeScript 接口（顶层兼容导出）
 │
 ├── testing/                 # 测试配置
 │   ├── setup.ts             # Vitest 全局配置
@@ -166,11 +170,36 @@ src-tauri/
 
 ## 模块组织
 
-### 目录变更 2026-04-21 / 2026-05-31
+### 目录变更 2026-04-21 / 2026-05-31 / 2026-07-24
 
 2026-04-21：`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。
 
 2026-05-31 (Phase B)：重构目录布局、文件命名合规化、去除 `src/components/` 中间层。
+
+2026-07-24（layout-architecture-cleanup）：将 `layout/` 中对 `@/features/` 的协调逻辑迁入 `app/`，`layout/` 降为纯骨架 + slot。
+
+| 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
+|------|------|------|
+| `layout/MainContent.tsx` | `app/components/ProjectWorkspace.tsx` | app 层项目工作区协调器 |
+| `layout/dock-layout/DockPanelWrappers.tsx` | `app/dock/DockPanelWrappers.tsx` | feature store/context 注入到 panel |
+| `layout/OpenIdeButton.tsx` | `app/components/OpenIdeButton.tsx` | 业务按钮 |
+| `layout/dock-layout/DockBarButton.tsx` | `app/components/DockBarButton.tsx` | 依赖 feature store 的 Dock 按钮 |
+| `AppLayout` 直接 import settings/skill | `AppLayout` 仅 `children` + slots | 视图路由上移到 `app/App.tsx` |
+| `TitleBar` 硬编码 Task/Debug 按钮 | `TitleBar.actions` slot | 由 `app/App.tsx` 注入 |
+| `DockBar` 内部构造按钮 | `DockBar.buttons` prop | 由 `app/App.tsx` 注入 `DockBarButton` 列表 |
+
+依赖方向（目标）：
+
+```
+ui/          ← layout/     (纯骨架：DockLayout、TitleBar slot、ActivityBar)
+shared/      ← features/   (各自独立业务域)
+features/    ← app/        (协调层：ProjectWorkspace、DockPanelWrappers、slot 填充)
+layout/      ← app/        (app 组装骨架并填充 slot)
+```
+
+允许例外：
+- `layout/dockPanels.ts` 可 `lazy(() => import('@/features/*'))` / `@/app/dock/*`（声明式注册）
+- `shared/store/dockStore.ts` → `layout/dockPanels` 循环属已存在问题，单独跟踪，不在本清理范围内
 
 | 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
 |------|------|------|
@@ -178,8 +207,8 @@ src-tauri/
 | `components/DockLayout/` | `layout/dock-layout/` | Docker 布局 → kebab-case dir |
 | `context/app-context.tsx` | `shared/contexts/AppContext.tsx` | Context 统一到 shared |
 | `context/sidebar-context.tsx` | `shared/contexts/SidebarContext.tsx` | PascalCase 文件名 |
-| `hooks/useFileView.ts` | `app/editor/hooks/useFileView.ts` | Hook 下沉到 editor 域 |
-| `contexts/file-actions-context.tsx` | `app/editor/FileActionsContext.tsx` | PascalCase 文件名 |
+| `hooks/useFileView.ts` | `features/editor/hooks/useFileView.ts` | Hook 下沉到 editor 域 |
+| `contexts/file-actions-context.tsx` | `features/editor/FileActionsContext.tsx` | PascalCase 文件名 |
 | `stores/appStore.ts` | `shared/store/appStore.ts` | 统一到 shared |
 | `utils/` | `shared/utils/` | 统一到 shared |
 | `components/panels/` | 分散到 `features/*/components/` | 按 feature 域分布 |
@@ -192,8 +221,10 @@ src-tauri/
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
-| `layout/` | 窗口边框 | ActivityBar、AppLayout、PanelArea、MainContent |
-| `layout/dock-layout/` | Docker 布局 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
+| `layout/` | 窗口边框（纯骨架） | ActivityBar、AppLayout、TitleBar、PanelArea、dockPanels |
+| `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
+| `app/components/` | app 协调组件 | ProjectWorkspace、DockBarButton、OpenIdeButton、SplashScreen |
+| `app/dock/` | Dock 面板胶水 | DockPanelWrappers |
 | `ui/` | UI 基元 | ContextMenu、DropdownMenu、ResizablePanel、ScrollArea、ToggleGroup |
 | `features/project/components/` | 项目管理 | 项目卡片壳层 + Git 区段 + 拖拽/菜单 Hook |
 | `features/terminal/components/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
@@ -235,7 +266,7 @@ export { createTerminalForProject } from "./terminalFactory";
 | IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个；或 `app/<domain>/api/<domain>Api.ts`（如 editor 域） |
 | 共享类型 | `types.ts`，或 `features/<domain>/types.ts`，或 `app/<domain>/types.ts` |
 | Feature 域入口 | `features/<domain>/` 域目录结构参考 features/agent/ |
-| App 域入口 | `app/<domain>/` 域目录结构参考 app/editor/ |
+| App 协调组件 | `app/components/<Name>.tsx` / `app/dock/`；业务域仍在 `features/<domain>/` |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
 | 静态资源 | `assets/<category>` |
 
@@ -317,7 +348,7 @@ const tabs = useAppStore((s) => s.fileTabs);
 | 组件文件 | PascalCase | `TitleBar.tsx`、`AgentIcon.tsx` |
 | Hook 文件 | camelCase 带 `use` 前缀 | `useAppConfig.ts`、`useToast.ts` |
 | 工具文件 | camelCase | `platform.ts`、`fileIcons.ts` |
-| 桶文件 | `index.ts` 或 `index.tsx` | `components/layout/index.ts` |
+| 桶文件 | `index.ts` 或 `index.tsx` | `layout/index.ts` |
 | 资源目录 | 小写复数 | `agents/`、`distros/`、`icons/` |
 | CSS 类名 | BEM-lite，kebab-case | `titlebar-left`、`app-toast--error` |
 
@@ -325,6 +356,7 @@ const tabs = useAppStore((s) => s.fileTabs);
 
 ## 示例
 
-- 组织良好的领域模块：`src/components/layout/` —— 4 个相关组件配合桶文件导出
-- Hook 模式：`src/hooks/useToast.ts` —— 简洁、专注的 Hook
-- 工具模式：`src/utils/platform.ts` —— 简单的常量导出
+- 纯布局骨架：`src/layout/` —— AppLayout/TitleBar/DockLayout 只暴露 slots，不 import features
+- app 协调层：`src/app/components/ProjectWorkspace.tsx` + `src/app/dock/DockPanelWrappers.tsx`
+- Hook 模式：`src/shared/hooks/` 与 `src/app/hooks/useAppShell.ts`
+- 工具模式：`src/shared/utils/platform.ts`
