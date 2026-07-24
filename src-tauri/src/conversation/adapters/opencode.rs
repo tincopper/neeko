@@ -9,6 +9,10 @@ use crate::conversation::types::MessageBlock;
 
 /// Maximum number of preview messages to load from the database.
 const PREVIEW_LIMIT: u32 = 5;
+/// Only the N most recently updated sessions get COUNT + preview joins.
+/// Older sessions stay light (title/time only) so list scan stays responsive
+/// even when `opencode.db` is multi-GB.
+const PREVIEW_ENRICH_LIMIT: usize = 80;
 /// Separator between DB path and session ID in synthetic file paths
 const SYNTHETIC_SEP: char = '#';
 /// Pattern for OpenCode SQLite database filenames
@@ -281,16 +285,11 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
         return Ok(Vec::new());
     }
 
-    // Query all valid sessions
+    // Light discovery: session row only (no correlated COUNT, no part JOIN).
+    // Enrichment for preview/count is deferred to the most recent N sessions.
     let mut stmt = conn
         .prepare(
-            "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated,
-                    s.model, COALESCE(s.tokens_input, 0), COALESCE(s.tokens_output, 0),
-                    COALESCE(s.tokens_reasoning, 0),
-                    (SELECT COUNT(*) FROM message m
-                     WHERE m.session_id = s.id
-                       AND json_extract(m.data, '$.role') IN ('user','assistant')
-                    ) AS msg_count
+            "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, s.model
              FROM session s
              WHERE s.parent_id IS NULL
                AND s.time_archived IS NULL
@@ -306,47 +305,27 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
             let time_created: i64 = row.get(3)?;
             let time_updated: i64 = row.get(4)?;
             let model_json: Option<String> = row.get(5)?;
-            let tokens_input: i64 = row.get(6)?;
-            let tokens_output: i64 = row.get(7)?;
-            let tokens_reasoning: i64 = row.get(8)?;
-            let msg_count: i64 = row.get(9)?;
-            Ok((
-                id,
-                title,
-                directory,
-                time_created,
-                time_updated,
-                model_json,
-                tokens_input,
-                tokens_output,
-                tokens_reasoning,
-                msg_count,
-            ))
+            Ok((id, title, directory, time_created, time_updated, model_json))
         })
         .context("Failed to query sessions")?;
 
     let mut results = Vec::new();
-    for row in rows {
-        let (
-            id,
-            title,
-            directory,
-            time_created,
-            time_updated,
-            model_json,
-            _tokens_input,
-            _tokens_output,
-            _tokens_reasoning,
-            msg_count,
-        ) = row?;
+    for (index, row) in rows.enumerate() {
+        let (id, title, directory, time_created, time_updated, model_json) = row?;
 
         let synthetic_path = PathBuf::from(format!("{}{}{}", db_path.display(), SYNTHETIC_SEP, id));
-
         let started_at = normalize_timestamp(time_created);
         let updated_at = normalize_timestamp(time_updated);
         let model = model_json.as_deref().and_then(extract_model_id_from_json);
 
-        let recent_messages = build_preview_messages(&conn, &id);
+        // Rib: only enrich recent sessions; list spine only needs title + times.
+        let (message_count, recent_messages) = if index < PREVIEW_ENRICH_LIMIT {
+            let msg_count = count_user_assistant_messages(&conn, &id);
+            let recent = build_preview_messages(&conn, &id);
+            (msg_count, recent)
+        } else {
+            (0_u32, Vec::new())
+        };
 
         let first_user_raw = recent_messages
             .iter()
@@ -361,8 +340,7 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
             model,
             started_at,
             updated_at,
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            message_count: msg_count.clamp(0, i64::from(u32::MAX)) as u32,
+            message_count,
             project_path: directory,
         };
 
@@ -370,6 +348,21 @@ fn parse_opencode_db(db_path: &Path) -> Result<Vec<(ParsedMeta, PathBuf)>> {
     }
 
     Ok(results)
+}
+
+/// COUNT user/assistant messages for one session (list enrich path only).
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn count_user_assistant_messages(conn: &rusqlite::Connection, session_id: &str) -> u32 {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM message m
+             WHERE m.session_id = ?1
+               AND json_extract(m.data, '$.role') IN ('user','assistant')",
+            [session_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    count.clamp(0, i64::from(u32::MAX)) as u32
 }
 
 /// Build preview messages for a given session.

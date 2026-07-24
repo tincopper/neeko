@@ -4,19 +4,26 @@ use crate::AppStateWrapper;
 use tauri::State;
 
 /// Scan all registered agents for conversations, updating the cache.
+///
+/// Async + `block_in_place` so heavy WalkDir / SQLite work yields the async
+/// worker's cooperative duties instead of looking like a hung IPC handler.
+/// The frontend fishbone path hydrates via `list_conversations` first, so scan
+/// is always on the background rib.
 #[tauri::command]
-pub fn scan_conversations(
+pub async fn scan_conversations(
     agent_id: Option<String>,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<ScanReport>, AppError> {
-    let manager = &state.conversation_manager;
-    match agent_id {
+    tokio::task::block_in_place(|| match agent_id {
         Some(aid) => {
-            let report = manager.scan_agent(&aid).map_err(AppError::from)?;
+            let report = state
+                .conversation_manager
+                .scan_agent(&aid)
+                .map_err(AppError::from)?;
             Ok(vec![report])
         }
-        None => manager.scan_all().map_err(AppError::from),
-    }
+        None => state.conversation_manager.scan_all().map_err(AppError::from),
+    })
 }
 
 /// List cached conversations, optionally filtered by project or agent.

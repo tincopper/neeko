@@ -53,14 +53,60 @@ impl ConversationManager {
         }
     }
 
-    /// 扫描所有已注册 Agent 的会话文件，更新内存缓存
+    /// 扫描所有已注册 Agent 的会话文件，更新内存缓存。
+    ///
+    /// Agents are scanned in parallel (scoped threads). Each agent writes into the
+    /// shared cache under a short critical section so discovery I/O stays concurrent.
     pub fn scan_all(&self) -> Result<Vec<ScanReport>> {
-        let mut reports = Vec::new();
-        for (agent_id, adapter) in &self.adapters {
-            let report = self.scan_agent_inner(agent_id, adapter.as_ref())?;
-            reports.push(report);
-        }
-        Ok(reports)
+        use std::thread;
+
+        // Materialize (id, adapter pointer) so we can share `&self` across scoped threads.
+        let agent_ids: Vec<String> = self.adapters.keys().cloned().collect();
+
+        thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(agent_ids.len());
+            for agent_id in &agent_ids {
+                handles.push(scope.spawn(move || -> Result<ScanReport> {
+                    let adapter = self.adapters.get(agent_id).ok_or_else(|| {
+                        anyhow::anyhow!("Adapter missing for agent id that was just listed: {agent_id}")
+                    })?;
+                    self.scan_agent_inner(agent_id, adapter.as_ref())
+                }));
+            }
+
+            let mut reports = Vec::with_capacity(handles.len());
+            let mut first_err: Option<anyhow::Error> = None;
+            for handle in handles {
+                match handle.join() {
+                    Ok(Ok(report)) => reports.push(report),
+                    Ok(Err(e)) => {
+                        if first_err.is_none() {
+                            first_err = Some(e);
+                        } else {
+                            log::error!("scan_all agent error: {e:#}");
+                        }
+                    }
+                    Err(panic_payload) => {
+                        let msg = format!("scan_all worker panicked: {panic_payload:?}");
+                        log::error!("{msg}");
+                        if first_err.is_none() {
+                            first_err = Some(anyhow::anyhow!(msg));
+                        }
+                    }
+                }
+            }
+            if let Some(e) = first_err {
+                // Prefer returning partial success when any reports exist so one bad
+                // adapter cannot blank the entire history list.
+                if reports.is_empty() {
+                    return Err(e);
+                }
+                log::error!("scan_all completed with partial errors: {e:#}");
+            }
+            // Stable-ish order by agent_id for tests / logs
+            reports.sort_by(|a, b| a.agent_id.cmp(&b.agent_id));
+            Ok(reports)
+        })
     }
 
     /// 扫描指定 Agent 的会话文件，更新内存缓存

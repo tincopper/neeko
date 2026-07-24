@@ -37,7 +37,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   onOpenConversationTab,
   onResumeConversation,
 }) => {
-  const { conversations, loading, refresh } = useConversationList(projectPath, isActive);
+  const { conversations, loading, refreshing, forceRefresh } = useConversationList(projectPath, isActive);
   const { isResuming } = useConversationResume(projectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
@@ -47,8 +47,8 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
   const filterRowRef = useRef<HTMLDivElement | null>(null);
 
   const handleRefresh = useCallback(() => {
-    refresh();
-  }, [refresh]);
+    void forceRefresh();
+  }, [forceRefresh]);
 
   const handleView = useCallback((meta: ConversationMeta) => {
     setActiveId(meta.id);
@@ -62,12 +62,12 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
       await onResumeConversation(meta);
       showToast('Resuming conversation...', 'info');
       // 延迟刷新，等 Agent 更新完 session 文件
-      setTimeout(() => refresh(), 2000);
+      setTimeout(() => { void forceRefresh(); }, 2000);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to resume conversation';
       showToast(msg, 'error');
     }
-  }, [isResuming, showToast, onResumeConversation, refresh]);
+  }, [isResuming, showToast, onResumeConversation, forceRefresh]);
 
   // Agents that appear in the current project conversation list (stable order by name)
   const agentOptions = useMemo(() => {
@@ -157,10 +157,10 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
           size="icon"
           className="w-7 h-7"
           onClick={handleRefresh}
-          disabled={loading}
+          disabled={refreshing}
           title="Refresh conversations"
         >
-          <RefreshCw className={cn('w-4 h-4', loading ? 'animate-spin' : '')} />
+          <RefreshCw className={cn('w-4 h-4', refreshing ? 'animate-spin' : '')} />
         </Button>
       </div>
 
@@ -276,7 +276,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {!loading && hasActiveFilters && filteredConversations.length === 0 && conversations.length > 0 ? (
+        {!(loading && conversations.length === 0) && hasActiveFilters && filteredConversations.length === 0 && conversations.length > 0 ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2 px-4">
             <p className="text-xs text-text-secondary/60">No matching conversations</p>
             <button
@@ -295,6 +295,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(({
             conversations={filteredConversations}
             agents={agents}
             loading={loading}
+            refreshing={refreshing}
             activeId={activeId}
             onView={handleView}
             onResume={handleResume}

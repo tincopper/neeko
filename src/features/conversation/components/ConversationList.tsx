@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import ConversationItem from './ConversationItem';
+import ConversationListSkeleton from './ConversationListSkeleton';
 import { groupConversationsByDate } from '../utils/groupByDate';
 import type { ConversationMeta } from '../types';
 import type { AgentConfig } from '@/features/agent/types';
@@ -7,7 +8,10 @@ import type { AgentConfig } from '@/features/agent/types';
 interface ConversationListProps {
   conversations: ConversationMeta[];
   agents: AgentConfig[];
+  /** Hard loading: no rows yet (first hydrate / first scan). */
   loading: boolean;
+  /** Soft background refresh; list stays visible. */
+  refreshing?: boolean;
   activeId?: string | null;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
@@ -17,6 +21,7 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   conversations,
   agents,
   loading,
+  refreshing = false,
   activeId,
   onView,
   onResume,
@@ -34,12 +39,9 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
     [conversations],
   );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-xs text-text-secondary/60">
-        Loading conversations...
-      </div>
-    );
+  // Fishbone: empty + still loading/refreshing → skeleton, never flash empty state early.
+  if (loading || (conversations.length === 0 && refreshing)) {
+    return <ConversationListSkeleton />;
   }
 
   if (conversations.length === 0) {
@@ -54,7 +56,14 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(({
   }
 
   return (
-    <div className="flex flex-col py-1">
+    <div className="flex flex-col py-1 relative">
+      {refreshing ? (
+        <div className="sticky top-0 z-20 flex justify-center pointer-events-none">
+          <span className="text-[10px] text-text-muted bg-bg-primary/90 px-2 py-0.5 rounded-b-md border border-border/60 border-t-0">
+            Updating…
+          </span>
+        </div>
+      ) : null}
       {groups.map((group) => (
         <section key={group.key} className="flex flex-col">
           <h4

@@ -35,33 +35,98 @@ describe('useConversationList', () => {
 
     expect(result.current.conversations).toEqual([]);
     expect(result.current.loading).toBe(false);
+    expect(result.current.refreshing).toBe(false);
   });
 
-  it('calls scan and list on mount when isActive and projectPath are provided', async () => {
+  it('starts in loading when active with a project (skeleton spine)', () => {
+    mockInvoke.mockImplementation(async () => new Promise(() => {}));
+    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('hydrates list before scan completes (fishbone)', async () => {
     const mockList: ConversationMeta[] = [
       createMeta('claude-code:1', { startedAt: 1000 }),
       createMeta('gemini:2', { startedAt: 2000 }),
     ];
 
+    let resolveScan: (v: unknown) => void = () => {};
+    const scanPromise = new Promise((resolve) => {
+      resolveScan = resolve;
+    });
+
+    let listCalls = 0;
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'scan_conversations') return [{ agent_id: 'claude-code', sessions_found: 1, errors: [] }];
-      if (cmd === 'list_conversations') return mockList;
+      if (cmd === 'list_conversations') {
+        listCalls += 1;
+        return mockList;
+      }
+      if (cmd === 'scan_conversations') {
+        await scanPromise;
+        return [{ agent_id: 'claude-code', sessions_found: 1, errors: [] }];
+      }
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+
+    // After first list (hydrate), rows are visible while scan still pending.
+    await waitFor(() => {
+      expect(result.current.conversations).toHaveLength(2);
+    });
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.loading).toBe(false);
+    expect(listCalls).toBeGreaterThanOrEqual(1);
+
+    // Order: list first, then scan (not scan-then-list).
+    const cmds = mockInvoke.mock.calls.map(([c]) => c);
+    const firstList = cmds.indexOf('list_conversations');
+    const firstScan = cmds.indexOf('scan_conversations');
+    expect(firstList).toBeGreaterThanOrEqual(0);
+    expect(firstScan).toBeGreaterThan(firstList);
+
+    resolveScan([{ agent_id: 'claude-code', sessions_found: 1, errors: [] }]);
+
+    await waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+    });
+    expect(result.current.conversations).toHaveLength(2);
+  });
+
+  it('keeps loading true when hydrate is empty until scan finishes', async () => {
+    let resolveScan: (v: unknown) => void = () => {};
+    const scanPromise = new Promise((resolve) => {
+      resolveScan = resolve;
+    });
+
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_conversations') return [];
+      if (cmd === 'scan_conversations') {
+        await scanPromise;
+        return [];
+      }
       return undefined;
     });
 
     const { result } = renderHook(() => useConversationList('/tmp/project', true));
 
     await waitFor(() => {
+      expect(result.current.refreshing).toBe(true);
+    });
+    // Empty cache: stay in hard-loading so UI shows skeleton, not "No conversations yet".
+    expect(result.current.conversations).toEqual([]);
+    expect(result.current.loading).toBe(true);
+
+    resolveScan([]);
+
+    await waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
       expect(result.current.loading).toBe(false);
     });
-
-    expect(result.current.conversations).toHaveLength(2);
-    expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', { agentId: undefined });
-    expect(mockInvoke).toHaveBeenCalledWith('list_conversations', { projectPath: '/tmp/project', agentId: undefined });
   });
 
   it('filters by agentId when provided', async () => {
-    mockInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'scan_conversations') return [];
       if (cmd === 'list_conversations') return [];
       return undefined;
@@ -71,11 +136,14 @@ describe('useConversationList', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('scan_conversations', { agentId: 'claude-code' });
-      expect(mockInvoke).toHaveBeenCalledWith('list_conversations', { projectPath: '/tmp/project', agentId: 'claude-code' });
+      expect(mockInvoke).toHaveBeenCalledWith('list_conversations', {
+        projectPath: '/tmp/project',
+        agentId: 'claude-code',
+      });
     });
   });
 
-  it('refresh function re-fetches conversations', async () => {
+  it('forceRefresh re-scans even within throttle window', async () => {
     const firstList: ConversationMeta[] = [createMeta('claude-code:1')];
     const secondList: ConversationMeta[] = [
       createMeta('claude-code:1'),
@@ -85,9 +153,8 @@ describe('useConversationList', () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'scan_conversations') return [];
       if (cmd === 'list_conversations') {
-        // Return different data on subsequent calls
         const calls = mockInvoke.mock.calls.filter(([c]) => c === 'list_conversations').length;
-        return calls <= 1 ? firstList : secondList;
+        return calls <= 2 ? firstList : secondList;
       }
       return undefined;
     });
@@ -95,26 +162,55 @@ describe('useConversationList', () => {
     const { result } = renderHook(() => useConversationList('/tmp/project', true));
 
     await waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
       expect(result.current.conversations).toHaveLength(1);
     });
 
     await act(async () => {
-      await result.current.refresh();
+      await result.current.forceRefresh();
     });
 
     expect(result.current.conversations).toHaveLength(2);
   });
 
-  it('handles invoke errors gracefully', async () => {
+  it('keeps previous rows when scan fails after hydrate', async () => {
+    const mockList: ConversationMeta[] = [createMeta('claude-code:1')];
+    let listCalls = 0;
+
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'list_conversations') {
+        listCalls += 1;
+        return mockList;
+      }
+      if (cmd === 'scan_conversations') {
+        throw new Error('scan boom');
+      }
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useConversationList('/tmp/project', true));
+
+    await waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+    });
+
+    expect(result.current.conversations).toHaveLength(1);
+    expect(result.current.error).toMatch(/scan boom/);
+    expect(listCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  it('handles total invoke failure with empty list when no prior rows', async () => {
     mockInvoke.mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useConversationList('/tmp/project', true));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+      expect(result.current.refreshing).toBe(false);
     });
 
     expect(result.current.conversations).toEqual([]);
+    expect(result.current.error).toBeTruthy();
   });
 
   it('does not load when isActive is false', () => {
