@@ -1,17 +1,15 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
-import linuxIcon from '@/assets/linux.svg';
-import serverIcon from '@/assets/server.svg';
 import SettingsView from '@/features/settings/components/SettingsView';
 import SkillContent from '@/features/skill/components/SkillContent';
 import { cn } from '@/lib/utils';
 import { Plus, Settings } from '@/shared/components/icons';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
-import { IS_WINDOWS } from '@/shared/utils/platform';
 
 import { DockLayout } from './dock-layout';
 import MainContent from './MainContent';
+import AddProjectMenu from './AddProjectMenu';
 import {
   Tooltip,
   TooltipContent,
@@ -50,11 +48,6 @@ const ToolbarFooter: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, [showAddMenu]);
 
-  const closeAndCall = useCallback((fn: () => void) => {
-    setShowAddMenu(false);
-    fn();
-  }, []);
-
   return (
     <TooltipProvider delayDuration={300}>
       {/* Add Project menu */}
@@ -64,6 +57,8 @@ const ToolbarFooter: React.FC<{
             <button
               className="relative w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors duration-150 focus:outline-none"
               onClick={() => setShowAddMenu((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={showAddMenu}
             >
               <span className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-bg-hover">
                 <Plus size={20} strokeWidth={1.8} />
@@ -75,31 +70,12 @@ const ToolbarFooter: React.FC<{
           </TooltipContent>
         </Tooltip>
         {showAddMenu && (
-          <div className="absolute left-12 bottom-0 z-50 w-48 rounded-md border border-border bg-bg-tertiary shadow-lg overflow-hidden">
-            <div
-              className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-              onClick={() => closeAndCall(onAddProject)}
-            >
-              <span className="mr-2">📁</span>
-              <span>Add Local Project</span>
-            </div>
-            {IS_WINDOWS && (
-              <div
-                className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-                onClick={() => closeAndCall(onAddWsl)}
-              >
-                <img src={linuxIcon} className="w-3.5 h-3.5 mr-2" alt="" />
-                <span>Add WSL Distro</span>
-              </div>
-            )}
-            <div
-              className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-              onClick={() => closeAndCall(onAddRemote)}
-            >
-              <img src={serverIcon} className="w-3.5 h-3.5 mr-2" alt="" />
-              <span>Add Remote Server</span>
-            </div>
-          </div>
+          <AddProjectMenu
+            onClose={() => setShowAddMenu(false)}
+            onAddProject={onAddProject}
+            onAddWsl={onAddWsl}
+            onAddRemote={onAddRemote}
+          />
         )}
       </div>
 

@@ -3,9 +3,7 @@ import { LibraryBig, Settings, Plus, ListTree } from "@/shared/components/icons"
 import { useSidebar, type ActivityPanel } from "@/shared/contexts/SidebarContext";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/ui/sidebar";
 import { TooltipProvider } from "@/ui/tooltip";
-import { IS_WINDOWS } from "@/shared/utils/platform";
-import linuxIcon from "../assets/linux.svg";
-import serverIcon from "../assets/server.svg";
+import AddProjectMenu from "./AddProjectMenu";
 
 function FolderIcon({ size = 22 }: { size?: number }) {
    return (
@@ -74,36 +72,22 @@ function ActivityBar({ onOpenSettings, onAddProject, onAddWsl, onAddRemote, isSe
             <SidebarMenu>
                <SidebarMenuItem>
                   <div className="relative flex flex-col items-center w-full" ref={addMenuRef}>
-                     <SidebarMenuButton tooltip="Add Project" onClick={() => setShowAddMenu((v) => !v)}>
+                     <SidebarMenuButton
+                        tooltip="Add Project"
+                        onClick={() => setShowAddMenu((v) => !v)}
+                        aria-haspopup="menu"
+                        aria-expanded={showAddMenu}
+                     >
                         <Plus size={24} strokeWidth={1.8} />
                      </SidebarMenuButton>
 
                      {showAddMenu && (
-                        <div className="absolute left-12 bottom-0 z-50 w-48 rounded-md border border-border bg-bg-tertiary shadow-lg overflow-hidden">
-                           <div
-                              className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-                              onClick={() => { setShowAddMenu(false); onAddProject(); }}
-                           >
-                              <span className="mr-2">📁</span>
-                              <span>Add Local Project</span>
-                           </div>
-                           {IS_WINDOWS && (
-                              <div
-                                 className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-                                 onClick={() => { setShowAddMenu(false); onAddWsl(); }}
-                              >
-                                 <img src={linuxIcon} className="w-3.5 h-3.5 mr-2" alt="" />
-                                 <span>Add WSL Distro</span>
-                              </div>
-                           )}
-                           <div
-                              className="px-3 py-2 text-sm text-text-primary hover:bg-bg-hover cursor-pointer flex items-center"
-                              onClick={() => { setShowAddMenu(false); onAddRemote(); }}
-                           >
-                              <img src={serverIcon} className="w-3.5 h-3.5 mr-2" alt="" />
-                              <span>Add Remote Server</span>
-                           </div>
-                        </div>
+                        <AddProjectMenu
+                           onClose={() => setShowAddMenu(false)}
+                           onAddProject={onAddProject}
+                           onAddWsl={onAddWsl}
+                           onAddRemote={onAddRemote}
+                        />
                      )}
                   </div>
                </SidebarMenuItem>
