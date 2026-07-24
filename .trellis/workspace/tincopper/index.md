@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 91
+- **Total Sessions**: 92
 - **Last Active**: 2026-07-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1155 | Active |
+| `journal-2.md` | ~1188 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 92 | 2026-07-24 | Dock registry architecture | `60d53b8` | `main` |
 | 91 | 2026-07-24 | Layout architecture cleanup | `f2e2618` | `main` |
 | 90 | 2026-07-24 | Extensible multi-agent history adapters: L0-L3 + Codex/OMP/Grok/Reasonix | `c21aed5`, `5abc864` | `main` |
 | 89 | 2026-07-22 | Complete project skill relation management | `9f1b26b` | `main` |

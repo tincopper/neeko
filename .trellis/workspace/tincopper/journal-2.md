@@ -1153,3 +1153,36 @@ Hardened nested session scanning (normalize_file_pattern, **/ globstar), rewrote
 ### Next Steps
 
 - None - task complete
+
+
+## Session 92: Dock registry architecture
+
+**Date**: 2026-07-24
+**Task**: Dock registry architecture
+**Branch**: `main`
+
+### Summary
+
+拆分 dock 注册表：shared/dock meta 供 dockStore；app/dock/registry 持 lazy UI 绑定；layout 经 DockRegistryContext 注入消费。删除 layout/dockPanels 与 ESLint 例外，消除 shared↔layout 环；type-check/tests/eslint 通过后归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60d53b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
