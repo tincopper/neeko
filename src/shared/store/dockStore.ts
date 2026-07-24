@@ -1,6 +1,7 @@
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { dockPanelRegistry } from "../../layout/dockPanels";
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+import { DOCK_PANEL_META } from '../dock/panelMeta';
 
 // -- Types --
 
@@ -13,7 +14,7 @@ export interface DockZoneState {
 
 export interface DockBarItem {
   panelId: string;
-  side: "left" | "right";
+  side: 'left' | 'right';
   order: number;
   visible: boolean;
 }
@@ -39,17 +40,17 @@ export interface DockStore {
 
 // -- Defaults --
 
-const DEFAULT_ZONES: Record<string, Omit<DockZoneState, "panels" | "activePanelId">> = {
-  left: { id: "left", expanded: true },
-  right: { id: "right", expanded: false },
+const DEFAULT_ZONES: Record<string, Omit<DockZoneState, 'panels' | 'activePanelId'>> = {
+  left: { id: 'left', expanded: true },
+  right: { id: 'right', expanded: false },
 };
 
 // -- Helpers --
 
 function buildDefaultPanels(): Record<string, string[]> {
   const zones: Record<string, { panelId: string; order: number }[]> = {};
-  for (const [panelId, def] of Object.entries(dockPanelRegistry)) {
-    if (def.openAs === "tab") continue; // tab-mode panels are not dock panels
+  for (const [panelId, def] of Object.entries(DOCK_PANEL_META)) {
+    if (def.openAs === 'tab') continue; // tab-mode panels are not dock panels
     const zoneId = def.defaultZone;
     if (!zones[zoneId]) zones[zoneId] = [];
     zones[zoneId].push({ panelId, order: def.defaultOrder });
@@ -64,8 +65,8 @@ function buildDefaultPanels(): Record<string, string[]> {
 
 function buildDefaultBarItems(): DockBarItem[] {
   const items: DockBarItem[] = [];
-  for (const [panelId, def] of Object.entries(dockPanelRegistry)) {
-    if (def.defaultZone === "left" || def.defaultZone === "right") {
+  for (const [panelId, def] of Object.entries(DOCK_PANEL_META)) {
+    if (def.defaultZone === 'left' || def.defaultZone === 'right') {
       items.push({
         panelId,
         side: def.defaultZone,
@@ -89,7 +90,7 @@ function createInitialState() {
       activePanelId: panels.length > 0 ? panels[0] : null,
     };
   }
-  for (const zoneId of ["left", "right"] as const) {
+  for (const zoneId of ['left', 'right'] as const) {
     if (!zones[zoneId]) {
       zones[zoneId] = {
         id: zoneId,
@@ -157,7 +158,7 @@ export const useDockStore = create<DockStore>()(
             }
           } else {
             // Panel is not in any zone → add to its default zone alongside existing panels
-            const def = dockPanelRegistry[panelId];
+            const def = DOCK_PANEL_META[panelId];
             if (!def) return;
             const targetZoneId = def.defaultZone;
             set((state) => {
@@ -237,8 +238,9 @@ export const useDockStore = create<DockStore>()(
 
             const barItems = state.barItems.map((item) => {
               if (item.panelId !== panelId) return item;
-              const newSide = targetZoneId === "left" || targetZoneId === "right" ? targetZoneId : item.side;
-              return { ...item, side: newSide as "left" | "right" };
+              const newSide =
+                targetZoneId === 'left' || targetZoneId === 'right' ? targetZoneId : item.side;
+              return { ...item, side: newSide as 'left' | 'right' };
             });
 
             return { zones, barItems };
@@ -251,10 +253,7 @@ export const useDockStore = create<DockStore>()(
             if (!currentZoneId) return state;
             const zone = state.zones[currentZoneId];
             const nextPanels = zone.panels.filter((p) => p !== panelId);
-            const nextActive =
-              zone.activePanelId === panelId
-                ? null
-                : zone.activePanelId;
+            const nextActive = zone.activePanelId === panelId ? null : zone.activePanelId;
             return {
               zones: {
                 ...state.zones,
@@ -282,7 +281,7 @@ export const useDockStore = create<DockStore>()(
       };
     },
     {
-      name: "neeko-dock-layout",
+      name: 'neeko-dock-layout',
       version: 5,
       partialize: (state) => ({
         zones: state.zones,
@@ -292,7 +291,12 @@ export const useDockStore = create<DockStore>()(
       }),
       merge: (persisted: unknown, current: DockStore) => {
         const saved = persisted as
-          | { zones?: Record<string, DockZoneState>; barItems?: DockBarItem[]; rightPanelSizes?: Record<string, number>; leftPanelSize?: number }
+          | {
+              zones?: Record<string, DockZoneState>;
+              barItems?: DockBarItem[];
+              rightPanelSizes?: Record<string, number>;
+              leftPanelSize?: number;
+            }
           | undefined;
         const defaults = createInitialState();
         // Rebuild zone panels from registry defaultZone, then restore
@@ -304,16 +308,14 @@ export const useDockStore = create<DockStore>()(
           const restoredActivePanelId = panels.length > 0 ? panels[0] : null;
           zones[zoneId] = {
             ...defaultZone,
-            expanded: zoneId === "left" ? true : (savedZone?.expanded ?? defaultZone.expanded),
+            expanded: zoneId === 'left' ? true : (savedZone?.expanded ?? defaultZone.expanded),
             activePanelId: restoredActivePanelId,
           };
         }
         // Rebuild barItems from registry to pick up side/order changes
         const barItems = defaults.barItems.map((defaultItem) => {
           const savedItem = saved?.barItems?.find((b) => b.panelId === defaultItem.panelId);
-          return savedItem
-            ? { ...defaultItem, visible: savedItem.visible }
-            : defaultItem;
+          return savedItem ? { ...defaultItem, visible: savedItem.visible } : defaultItem;
         });
         const rightPanelSizes = saved?.rightPanelSizes ?? { browser: 50 };
         const leftPanelSize = saved?.leftPanelSize ?? 18;
@@ -326,5 +328,5 @@ export const useDockStore = create<DockStore>()(
         };
       },
     },
-  )
+  ),
 );

@@ -13,7 +13,7 @@ import {
 import { ScrollArea } from '@/ui/ScrollArea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui/tabs';
 
-import { dockPanelRegistry } from '../dockPanels';
+import { useDockRegistry } from '../DockRegistryContext';
 
 interface DockZoneTabsProps {
   zoneId: string;
@@ -22,6 +22,7 @@ interface DockZoneTabsProps {
 /** Tab bar + content for a DockZone.
  *  Uses shadcn Tabs for switching, ContextMenu for right-click actions. */
 const DockZoneTabs: React.FC<DockZoneTabsProps> = ({ zoneId }) => {
+  const dockPanelRegistry = useDockRegistry();
   const zone = useDockStore((s) => s.zones[zoneId]);
   const activatePanel = useDockStore((s) => s.activatePanel);
   const closePanel = useDockStore((s) => s.closePanel);

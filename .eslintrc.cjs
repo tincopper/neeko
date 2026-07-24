@@ -276,16 +276,6 @@ module.exports = {
         'no-restricted-imports': 'off',
       },
     },
-    // ── dockPanels.ts: allow declarative feature/app lazy imports ────────────
-    // Also suppress the known shared/store/dockStore ↔ layout/dockPanels cycle
-    // (registry lives in layout; store still imports it — tracked separately).
-    {
-      files: ['src/layout/dockPanels.ts'],
-      rules: {
-        'import/no-restricted-paths': 'off',
-        'import/no-cycle': 'off',
-      },
-    },
     // ── directory naming: kebab-case ───────────────────────────────────────
     {
       plugins: ['check-file'],

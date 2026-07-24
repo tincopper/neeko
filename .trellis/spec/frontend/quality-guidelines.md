@@ -33,42 +33,32 @@ CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmi
 注意：ESLint 10+ 移除了 `.eslintrc.*` 支持，仅支持 flat config。本项目使用 ESLint 8 以兼容插件生态。
 
 
-### Layout 边界规则（2026-07-24）
+### Layout / Dock 边界规则（2026-07-24）
 
-`layout/` 是**纯窗口骨架**，不得 import `@/features/*` 或 `@/app/*`。
+`layout/` 是**纯窗口骨架**，不得 import `@/features/*` 或 `@/app/*`（含 `lazy`）。
 
 | 允许 | 禁止 |
 |------|------|
-| `layout` 内部互引、`@/shared/*`、`@/ui/*`、`@/lib/*` | `import ... from '@/features/...'` |
-| 通过 props/slots 接收业务 UI（`children`、`actions`、`buttons`） | 在 layout 内读取 feature store / 调用 feature API |
-| `dockPanels.ts` 声明式 `lazy(() => import(...))`（ESLint 例外） | 在 `DockBar`/`TitleBar`/`AppLayout` 硬编码业务按钮 |
+| `layout` 内部互引、`@/shared/*`、`@/ui/*`、`@/lib/*` | `import ... from '@/features/...'` / `@/app/...` |
+| 通过 props/slots/Context 接收业务 UI | 在 layout 内持有 feature 组件注册表实现 |
+| `useDockRegistry()` 消费 app 注入的 ViewDef | `layout/dockPanels.ts` 式的 lazy 注册表（已删除） |
 
-ESLint 强制：
+#### Dock 注册表分层（强制）
 
-```js
-// .eslintrc.cjs — import/no-restricted-paths
-{
-  target: './src/layout',
-  from: ['./src/features', './src/app'],
-  message:
-    'layout/ must not import from features/ or app/. Move coordination logic to src/app/.',
-}
-
-// 唯一例外：面板注册表
-// files: ['src/layout/dockPanels.ts']
-// rules: { 'import/no-restricted-paths': 'off', 'import/no-cycle': 'off' }
+```
+shared/dock/panelMeta.ts   ← dockStore 默认 zones / bar / toggle 补区
+app/dock/registry.ts       ← title/icon + lazy(features/app) 绑定
+layout/DockRegistryContext ← app 用 DockRegistryProvider 注入；DockLayout/Zone 只消费
 ```
 
-协调逻辑归属：
+新增 panel checklist：
+1. `shared/dock/panelMeta.ts` 增加 meta
+2. `app/dock/registry.ts` 增加 UI binding（title/icon/lazy/minPanelSize）
+3. 需要 props 胶水时改 `app/dock/DockPanelWrappers.tsx`
+4. **不要**在 `layout/` 增加 feature/app import
 
-| 职责 | 位置 |
-|------|------|
-| 项目工作区 / agent 检测 / remote auth 组装 | `app/components/ProjectWorkspace.tsx` |
-| Dock panel feature 注入 | `app/dock/DockPanelWrappers.tsx` |
-| TitleBar / DockBar 业务按钮 | `app/App.tsx` 注入 `actions` / `leftButtons` / `rightButtons` |
-| settings / skills 视图切换 | `app/App.tsx` 的 `children` 路由 |
-
-已知遗留（不在 layout 清理范围内）：`shared/store/dockStore.ts` 仍 import `layout/dockPanels`，形成 shared ↔ layout 环；后续应将 registry 注入改为 app 组装。
+ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** dockPanels 文件级例外。
+`shared/` 不得 import `layout/`（dockStore 只依赖 `shared/dock`）。
 
 
 ---

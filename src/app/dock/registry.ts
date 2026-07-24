@@ -1,32 +1,20 @@
 import {
   Blocks,
-  FolderOpen,
   FileText,
+  FolderOpen,
+  GitBranch,
   GitCommitHorizontal,
   GitPullRequest,
-  GitBranch,
   Globe,
   MessagesSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { lazy } from 'react';
 
-// ���� DockPanelDef type ����
+import type { DockPanelViewDef } from '@/layout/DockRegistryContext';
+import { DOCK_PANEL_META } from '@/shared/dock';
 
-export interface DockPanelDef {
-  id: string;
-  title: string;
-  icon: string; // key into dockPanelIcons
-  defaultZone: 'left' | 'right';
-  defaultOrder: number;
-  component?: React.LazyExoticComponent<React.ComponentType<Record<string, unknown>>>;
-  minPanelSize?: number; // px, minimum panel size when expanded
-  openAs?: 'tab' | 'panel'; // default "panel"
-  /** Default zone width percentage (0-100) when this panel is active. Fallback: 18. */
-  defaultZoneSize?: number;
-}
-
-// ���� Icon map (static imports for tree-shaking) ����
+// ── Icon map (static imports for tree-shaking) ──────────────────────────────
 
 export const dockPanelIcons: Record<string, LucideIcon> = {
   Blocks,
@@ -39,20 +27,15 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   MessagesSquare,
 };
 
-// ���� Lazy-loaded panel components ����
+// ── Lazy-loaded panel components ────────────────────────────────────────────
 
-// ProjectsPanel takes no props �� render directly
 const ProjectsPanel = lazy(() => import('@/features/project/components/ProjectsPanel'));
 
 /**
  * Wrapper components bridge the gap between dock panel instantiation
  * (which expects zero-props components) and existing panels that require
  * context-derived props.
- *
- * Each wrapper reads from React context / Zustand store and passes
- * the required props to the underlying panel component.
  */
-
 const LazyFilesPanelWrapper = lazy(() =>
   import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.FilesPanelWrapper,
@@ -85,93 +68,83 @@ const LazyPullRequestsPanelWrapper = lazy(() =>
   })),
 );
 
-// ���� Registry ����
+type UiBinding = Pick<DockPanelViewDef, 'title' | 'icon' | 'component' | 'minPanelSize'>;
 
-export const dockPanelRegistry: Record<string, DockPanelDef> = {
+const UI_BINDINGS: Record<string, UiBinding> = {
   projects: {
-    id: 'projects',
     title: 'Projects',
     icon: 'FolderOpen',
-    defaultZone: 'left',
-    defaultOrder: 0,
     component: ProjectsPanel as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 200,
   },
   files: {
-    id: 'files',
     title: 'Files',
     icon: 'FileText',
-    defaultZone: 'right',
-    defaultOrder: 0,
     component: LazyFilesPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 180,
   },
   skills: {
-    id: 'skills',
     title: 'Skills',
     icon: 'Blocks',
-    defaultZone: 'left',
-    defaultOrder: 2,
     component: LazySkillsPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 200,
   },
   gitCommit: {
-    id: 'gitCommit',
     title: 'Commit',
     icon: 'GitCommitHorizontal',
-    defaultZone: 'right',
-    defaultOrder: 1,
     component: LazyGitCommitPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
   },
   pullRequests: {
-    id: 'pullRequests',
     title: 'Pull Requests',
     icon: 'GitPullRequest',
-    defaultZone: 'right',
-    defaultOrder: 2,
     component: LazyPullRequestsPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
   },
   git: {
-    id: 'git',
     title: 'Git Log',
     icon: 'GitBranch',
-    defaultZone: 'right',
-    defaultOrder: 3,
-    openAs: 'tab',
+    // tab-mode: no dock component
   },
   browser: {
-    id: 'browser',
     title: 'Browser',
     icon: 'Globe',
-    defaultZone: 'right',
-    defaultOrder: 4,
     component: LazyBrowserPanel as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 300,
-    defaultZoneSize: 50,
   },
   conversations: {
-    id: 'conversations',
     title: 'History',
     icon: 'MessagesSquare',
-    defaultZone: 'right',
-    defaultOrder: 5,
     component: LazyConversationsPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
-    minPanelSize: 240,
+    minPanelSize: 260,
   },
 };
+
+function buildDockPanelRegistry(): Record<string, DockPanelViewDef> {
+  const registry: Record<string, DockPanelViewDef> = {};
+  for (const [panelId, meta] of Object.entries(DOCK_PANEL_META)) {
+    const ui = UI_BINDINGS[panelId];
+    if (!ui) {
+      throw new Error(`[dock] missing UI binding for panel "${panelId}"`);
+    }
+    registry[panelId] = { ...meta, ...ui };
+  }
+  return registry;
+}
+
+/** Full UI registry: meta (shared) + title/icon/component bindings (app). */
+export const dockPanelRegistry = buildDockPanelRegistry();

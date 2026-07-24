@@ -4,3 +4,6 @@ export { default as TitleBar } from './TitleBar';
 export { default as WindowControls } from './WindowControls';
 export { default as PanelArea } from './PanelArea';
 export { default as RightPanel } from './RightPanel';
+
+export { DockRegistryProvider, useDockRegistry } from './DockRegistryContext';
+export type { DockPanelViewDef, DockPanelRegistry } from './DockRegistryContext';

@@ -1,40 +1,33 @@
-import React, { useCallback } from "react";
-import { useShallow } from "zustand/shallow";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/ui/tooltip";
-import { Badge } from "@/ui/badge";
-import { useDockStore } from "@/shared/store/dockStore";
-import { useProjectStore } from "@/features/project/store";
+import React, { useCallback } from 'react';
+import { useShallow } from 'zustand/shallow';
 
+import { dockPanelRegistry, dockPanelIcons } from '@/app/dock/registry';
+import { useProjectStore } from '@/features/project/store';
+import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/shared/store';
-import {
-  dockPanelRegistry,
-  dockPanelIcons,
-} from "@/layout/dockPanels";
-import { cn } from "@/lib/utils";
+import { useDockStore } from '@/shared/store/dockStore';
 import type { TabKind } from '@/shared/types/tab';
+import { Badge } from '@/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip';
 
 const PANEL_TO_TAB_KIND: Record<string, TabKind> = {
-  git: "gitLog",
+  git: 'gitLog',
 };
 
 interface DockBarButtonProps {
   panelId: string;
-  side?: "left" | "right";
+  side?: 'left' | 'right';
 }
 
-const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }) => {
+const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = 'right' }) => {
   const def = dockPanelRegistry[panelId];
-  const isTab = def?.openAs === "tab";
+  const isTab = def?.openAs === 'tab';
 
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const isTabActive = useEditorStore((s) => {
     if (!isTab) return false;
     const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-    const projectId = activeProjectId ?? "__app__";
+    const projectId = activeProjectId ?? '__app__';
     const projectTabs = s.tabs[projectId];
     return projectTabs?.tabs.some((t) => t.data.kind === tabKind) ?? false;
   });
@@ -42,7 +35,8 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
   const isDockActive = useDockStore((s) => {
     if (isTab) return false;
     for (const zone of Object.values(s.zones)) {
-      if (zone.panels.includes(panelId) && zone.expanded && zone.activePanelId === panelId) return true;
+      if (zone.panels.includes(panelId) && zone.expanded && zone.activePanelId === panelId)
+        return true;
     }
     return false;
   });
@@ -59,7 +53,7 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
   const handleClick = useCallback(() => {
     if (isTab) {
       const tabKind = PANEL_TO_TAB_KIND[panelId] ?? (panelId as TabKind);
-      const projectId = currentProjectId ?? "__app__";
+      const projectId = currentProjectId ?? '__app__';
       const projectTabs = tabs[projectId];
       const existing = projectTabs?.tabs.find((t) => t.data.kind === tabKind);
       if (existing) {
@@ -90,17 +84,17 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
         <button
           onClick={handleClick}
           className={cn(
-             "relative w-11 h-11 flex items-center justify-center",
-            "text-text-secondary hover:text-text-primary transition-colors duration-150",
-            "focus:outline-none",
+            'relative w-11 h-11 flex items-center justify-center',
+            'text-text-secondary hover:text-text-primary transition-colors duration-150',
+            'focus:outline-none',
           )}
           aria-label={def.title}
         >
           <span
             className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-md",
-              "hover:bg-bg-hover",
-              isActive && "bg-bg-selected text-text-primary",
+              'flex items-center justify-center w-8 h-8 rounded-md',
+              'hover:bg-bg-hover',
+              isActive && 'bg-bg-selected text-text-primary',
             )}
           >
             {Icon ? <Icon className="h-5 w-5" /> : <span>{def.title[0]}</span>}
@@ -108,15 +102,15 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = "right" }
           <Badge
             variant="secondary"
             className={cn(
-              "absolute -right-0.5 -top-0.5 h-4 min-w-4 px-1 text-[10px] leading-none",
-              "hidden",
+              'absolute -right-0.5 -top-0.5 h-4 min-w-4 px-1 text-[10px] leading-none',
+              'hidden',
             )}
           >
             0
           </Badge>
         </button>
       </TooltipTrigger>
-      <TooltipContent side={side === "left" ? "right" : "left"} sideOffset={8}>
+      <TooltipContent side={side === 'left' ? 'right' : 'left'} sideOffset={8}>
         <p>{def.title}</p>
       </TooltipContent>
     </Tooltip>

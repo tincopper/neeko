@@ -1,23 +1,26 @@
 import { useEffect, useMemo } from 'react';
-import { AppLayout, TitleBar } from '@/layout';
+
+import DockBarButton from '@/app/components/DockBarButton';
+import OpenIdeButton from '@/app/components/OpenIdeButton';
+import ProjectWorkspace from '@/app/components/ProjectWorkspace';
+import { SplashScreen } from '@/app/components/SplashScreen';
+import { dockPanelRegistry } from '@/app/dock/registry';
+import { useAppShell } from '@/app/hooks';
+import { DebugPanel, DebugRunButton } from '@/features/debug';
+import { QuickOpenPalette, startQuickOpenActivityTracking } from '@/features/quick-open';
 import SettingsView from '@/features/settings/components/SettingsView';
 import SkillContent from '@/features/skill/components/SkillContent';
 import { StatusBar } from '@/features/status-bar';
-import { DebugPanel, DebugRunButton } from '@/features/debug';
+import { SymbolNavPalette } from '@/features/symbol-nav';
 import { TaskConsolePanel } from '@/features/task';
 import TaskRunButton from '@/features/task/components/TaskRunButton';
-import OpenIdeButton from '@/app/components/OpenIdeButton';
-import { QuickOpenPalette, startQuickOpenActivityTracking } from '@/features/quick-open';
-import { SymbolNavPalette } from '@/features/symbol-nav';
-import { SplashScreen } from '@/app/components/SplashScreen';
-import ProjectWorkspace from '@/app/components/ProjectWorkspace';
-import DockBarButton from '@/app/components/DockBarButton';
-import AppProviders from './AppProviders';
-import AppModals from './AppModals';
-import { useAppShell } from '@/app/hooks';
+import { AppLayout, DockRegistryProvider, TitleBar } from '@/layout';
+import { cn } from '@/lib/utils';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
-import { cn } from '@/lib/utils';
+
+import AppModals from './AppModals';
+import AppProviders from './AppProviders';
 
 function App() {
   const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
@@ -93,23 +96,25 @@ function App() {
       />
 
       <AppProviders {...appProvidersProps}>
-        <div className="flex-1 flex flex-col min-h-0 bg-bg-primary">
-          <div className="flex-1 min-h-0 flex flex-col">
-            <AppLayout
-              {...appLayoutProps}
-              isSettingsOpen={appView === 'settings'}
-              leftButtons={leftButtons}
-              rightButtons={rightButtons}
-            >
-              {centerContent}
-            </AppLayout>
+        <DockRegistryProvider registry={dockPanelRegistry}>
+          <div className="flex-1 flex flex-col min-h-0 bg-bg-primary">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <AppLayout
+                {...appLayoutProps}
+                isSettingsOpen={appView === 'settings'}
+                leftButtons={leftButtons}
+                rightButtons={rightButtons}
+              >
+                {centerContent}
+              </AppLayout>
+            </div>
+            <TaskConsolePanel />
+            <DebugPanel />
           </div>
-          <TaskConsolePanel />
-          <DebugPanel />
-        </div>
-        <AppModals {...appModalsProps} />
-        <QuickOpenPalette />
-        <SymbolNavPalette />
+          <AppModals {...appModalsProps} />
+          <QuickOpenPalette />
+          <SymbolNavPalette />
+        </DockRegistryProvider>
       </AppProviders>
 
       <StatusBar />

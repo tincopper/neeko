@@ -4,7 +4,7 @@ import { usePanelRef, type PanelSize } from 'react-resizable-panels';
 import { useDockStore } from '@/shared/store/dockStore';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
 
-import { dockPanelRegistry } from '../dockPanels';
+import { useDockRegistry } from '../DockRegistryContext';
 
 import DockBar from './DockBar';
 import DockZone from './DockZone';
@@ -55,6 +55,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const setLeftPanelSize = useDockStore((s) => s.setLeftPanelSize);
 
   const rightPanelIds = useDockStore((s) => s.zones.right?.panels ?? []);
+  const dockPanelRegistry = useDockRegistry();
 
   const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
@@ -70,7 +71,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       const def = dockPanelRegistry[panelId];
       return Math.max(def?.defaultZoneSize ?? 18, MIN_RIGHT_ZONE_SIZE);
     },
-    [rightPanelSizes],
+    [rightPanelSizes, dockPanelRegistry],
   );
 
   // -- Panel imperative refs for collapse/expand --

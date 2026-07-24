@@ -3,7 +3,7 @@ import React, { Suspense } from 'react';
 import { cn } from '@/lib/utils';
 import { useDockStore } from '@/shared/store/dockStore';
 
-import { dockPanelRegistry } from '../dockPanels';
+import { useDockRegistry } from '../DockRegistryContext';
 
 import { useDragToReDock } from './useDragToReDock';
 
@@ -14,6 +14,7 @@ interface DockZoneProps {
 /** Docking zone container -- renders active panel as a floating "island".
  *  Islands theme: rounded-lg border, subtle shadow, bg-secondary surface. */
 const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
+  const dockPanelRegistry = useDockRegistry();
   const zone = useDockStore((s) => s.zones[zoneId]);
 
   // Drag-to-re-dock
