@@ -12,6 +12,12 @@ export {
 export { createTerminalForProject } from "./terminalFactory";
 export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./terminalCommands";
 export { worktreeKey } from "./worktreeTerminalKey";
+export {
+  cleanupTerminalsForTab,
+  cleanupTerminalsForTabKey,
+  closeEditorTab,
+  closeAllEditorTabs,
+} from "./terminalTabCleanup";
 
 // Deprecated WSL terminal exports — kept for backward compatibility.
 // Prefer using the unified TerminalView with environment prop instead.

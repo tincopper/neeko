@@ -4,6 +4,7 @@ import DiffView from "@/features/git/components/diff";
 import { PRDetailView } from '@/features/git/components/pr-detail';
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import TerminalView from '@/features/terminal/components/TerminalView';
+import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
 import FileViewer from "./FileViewer";
 import HtmlPreview from "./HtmlPreview";
@@ -112,7 +113,8 @@ function EditorGroupPane({
   const handleCloseTab = useCallback(
     (tabId: string) => {
       if (groupId === "pinned") return; // pinned panel: close is handled via Unpin, not store.closeTab
-      useEditorStore.getState().closeTab(tabKey, tabId);
+      // Recycle terminal PTY caches (local/WSL/remote) when closing any tab.
+      closeEditorTab(tabKey, tabId);
     },
     [tabKey, groupId],
   );

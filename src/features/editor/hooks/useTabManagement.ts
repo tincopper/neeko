@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { useEditorStore } from '@/shared/store';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 const APP_SETTINGS_PROJECT_ID = "__app__";
@@ -57,7 +58,8 @@ export function useTabManagement(options: UseTabManagementOptions) {
       const state = useEditorStore.getState();
       for (const [projectId, pt] of Object.entries(state.tabs)) {
         if (pt.tabs.some((t) => t.id === tabId)) {
-          state.closeTab(projectId, tabId);
+          // Recycle PTY before removing the editor tab (Cmd+W / shell close).
+          closeEditorTab(projectId, tabId);
           return;
         }
       }

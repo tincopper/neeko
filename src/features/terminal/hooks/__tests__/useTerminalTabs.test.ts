@@ -3,9 +3,19 @@ import { renderHook, act } from "@testing-library/react";
 import { useTerminalTabs } from "@/features/terminal/hooks/useTerminalTabs";
 import { useEditorStore } from '@/shared/store';
 
-vi.mock("@/features/terminal/components/terminalCache", () => ({
-  destroyTerminalCachesByPrefix: vi.fn(),
-}));
+vi.mock("@/features/terminal/components/terminalTabCleanup", async () => {
+  const { useEditorStore } = await import("@/shared/store");
+  return {
+    closeEditorTab: vi.fn((projectId: string, tabId: string) => {
+      useEditorStore.getState().closeTab(projectId, tabId);
+    }),
+    closeAllEditorTabs: vi.fn((projectId: string) => {
+      useEditorStore.getState().clearProjectTabs(projectId);
+    }),
+    cleanupTerminalsForTab: vi.fn(),
+    cleanupTerminalsForTabKey: vi.fn(),
+  };
+});
 
 describe("useTerminalTabs", () => {
   const PROJECT_ID = "test-project";

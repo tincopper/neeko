@@ -11,6 +11,7 @@ import { useShallow } from "zustand/shallow";
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
+import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 
 /**
  * useFileView �?文件视图 hook
@@ -245,7 +246,8 @@ export function useFileView(
     const tk = tabKeyRef.current;
     if (!tk) return;
     clearViewSnapshot(tk, tabId);
-    useEditorStore.getState().closeTab(tk, tabId);
+    // Recycle any terminal PTY if this tab hosted a session.
+    closeEditorTab(tk, tabId);
   }, []);
 
   /**
