@@ -13,19 +13,19 @@ import { useConnectionProjects } from '@/features/project/hooks/useConnectionPro
 import { useCrossTypeSelection } from '@/features/project/hooks/useCrossTypeSelection';
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useProjectActions } from '@/features/project/hooks/useProjectActions';
-import { useSessionBootstrap } from '@/features/session/hooks/useSessionBootstrap';
-import { useSessionPersistence } from '@/features/session/hooks/useSessionPersistence';
+import { useProjectList } from '@/features/project/hooks/useProjectList';
+import { useProjectSelection } from '@/features/project/hooks/useProjectSelection';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
+import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useSessionBootstrap } from '@/features/session/hooks/useSessionBootstrap';
+import { useSessionPersistence } from '@/features/session/hooks/useSessionPersistence';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useApplyProjectSkills } from '@/features/skill/hooks/useApplyProjectSkills';
 import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
-import { useProjectSelection } from '@/features/project/hooks/useProjectSelection';
-import { useProjectList } from '@/features/project/hooks/useProjectList';
-import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 
 import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';

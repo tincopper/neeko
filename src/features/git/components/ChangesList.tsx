@@ -1,8 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon } from '@/shared/components/icons';
-import { Undo2, Plus, ListPlus } from '@/shared/components/icons';
+import { ChevronRightIcon, Undo2, Plus, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { Badge } from '@/ui/badge';

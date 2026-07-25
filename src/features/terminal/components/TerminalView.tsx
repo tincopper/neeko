@@ -1,7 +1,6 @@
 import React, { useCallback } from 'react';
 
-import { useAppContext } from '@/shared/contexts';
-import { useEditorContext } from '@/shared/contexts';
+import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
 import type { AuthMethod } from '@/shared/types';
 

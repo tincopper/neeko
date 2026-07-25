@@ -84,13 +84,10 @@ import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { MarkdownPreview } from '@/ui';
 
 import { useFileActionsContext } from '../FileActionsContext';
-
-
 import { useEditorAgentActions } from '../hooks/useEditorAgentActions';
 
 import InlineHtmlPreview from './InlineHtmlPreview';
 import SelectionToolbar from './SelectionToolbar';
-
 
 type PreviewMode = 'preview' | 'source';
 

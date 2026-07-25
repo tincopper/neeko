@@ -3,8 +3,7 @@ import React from 'react';
 import { FileActionsProvider } from '@/features/editor/FileActionsContext';
 import { ProjectActionsProvider } from '@/features/project/context';
 import { ConnectionProjectProvider } from '@/features/project/contexts/ConnectionProjectContext';
-import { AppProvider, SidebarProvider } from '@/shared/contexts';
-import { EditorProvider } from '@/shared/contexts';
+import { AppProvider, SidebarProvider, EditorProvider } from '@/shared/contexts';
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>['value'];
 type ProjectActionsProviderValue = React.ComponentProps<typeof ProjectActionsProvider>['value'];

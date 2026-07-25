@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 import BranchDropdownContent from '@/shared/components/BranchDropdownContent';
-import { BranchIcon, PlusIcon } from '@/shared/components/icons';
 import {
+  BranchIcon,
+  PlusIcon,
   GitBranch,
   ArrowDown,
   ArrowUp,

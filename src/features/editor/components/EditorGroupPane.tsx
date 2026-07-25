@@ -3,7 +3,6 @@ import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react'
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import ConversationViewer from '@/features/conversation/components/ConversationViewer';
-
 import DiffView from '@/features/git/components/diff';
 import { PRDetailView } from '@/features/git/components/pr-detail';
 import ContextMenu from '@/features/project/components/ContextMenu';
