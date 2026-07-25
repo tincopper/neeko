@@ -55,7 +55,7 @@ export function useSingletonDiff(
       const store = useEditorStore.getState();
       const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
       const fileName = fileNameOf(filePath);
-      const title = `History Commit \u00b7 ${fileName}`;
+      const title = `History Diff \u00b7 ${fileName}`;
       const partial = {
         title,
         filePath,
@@ -124,7 +124,7 @@ export function useSingletonDiff(
       const pinnedId = `diff_pinned_${filePath.replace(/[/\\]/g, '_')}`;
       const store = useEditorStore.getState();
       const fileName = fileNameOf(filePath);
-      const title = `History Commit \u00b7 ${fileName}`;
+      const title = `History Diff \u00b7 ${fileName}`;
       store.addTab(tabKey, {
         id: pinnedId,
         projectId: tabKey,
