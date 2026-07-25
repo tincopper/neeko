@@ -16,7 +16,7 @@ import AgentIcon from '@/features/agent/components/AgentIcon';
 import type { AgentConfig } from '@/features/agent/types';
 import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
-import { Button } from '@/ui/button';
+import { Button } from '@/ui/Button';
 
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
 import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
@@ -380,7 +380,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                         }}
                       >
                         <MessageBubble
-                          role="assistant"
+                          kind="assistant"
                           label={agent?.name ?? agentId ?? 'Assistant'}
                           icon={agent ? <AgentIcon icon={agent.icon} size={14} /> : undefined}
                           timestamp={firstMsg.timestamp}

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import AgentBar from '@/features/agent/components/AgentBar';
@@ -48,10 +48,8 @@ describe('AgentBar', () => {
     });
   });
 
-  it('should render agent buttons', async () => {
-    await act(async () => {
-      render(<AgentBar agents={mockAgents} selectedAgentId={null} onSelectAgent={vi.fn()} />);
-    });
+  it('should render agent buttons', () => {
+    render(<AgentBar agents={mockAgents} selectedAgentId={null} onSelectAgent={vi.fn()} />);
 
     // Should show enabled agents
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
@@ -64,9 +62,7 @@ describe('AgentBar', () => {
   it('should call onSelectAgent when clicking an agent button', async () => {
     const handleSelect = vi.fn();
 
-    await act(async () => {
-      render(<AgentBar agents={mockAgents} selectedAgentId={null} onSelectAgent={handleSelect} />);
-    });
+    render(<AgentBar agents={mockAgents} selectedAgentId={null} onSelectAgent={handleSelect} />);
 
     // Click on an agent button
     fireEvent.click(screen.getByText('Claude Code'));
@@ -76,26 +72,22 @@ describe('AgentBar', () => {
     });
   });
 
-  it('should show selected agent as selected', async () => {
-    await act(async () => {
-      render(<AgentBar agents={mockAgents} selectedAgentId="claude" onSelectAgent={vi.fn()} />);
-    });
+  it('should show selected agent as selected', () => {
+    render(<AgentBar agents={mockAgents} selectedAgentId="claude" onSelectAgent={vi.fn()} />);
 
-    const selectedButton = screen.getByText('Claude Code').closest('button');
+    const selectedButton = screen.getByRole('button', { name: 'Claude Code' });
     expect(selectedButton).toHaveClass('selected');
   });
 
-  it('should render in compact mode', async () => {
-    await act(async () => {
-      render(
-        <AgentBar
-          agents={mockAgents}
-          selectedAgentId={null}
-          compactMode={true}
-          onSelectAgent={vi.fn()}
-        />,
-      );
-    });
+  it('should render in compact mode', () => {
+    render(
+      <AgentBar
+        agents={mockAgents}
+        selectedAgentId={null}
+        compactMode={true}
+        onSelectAgent={vi.fn()}
+      />,
+    );
 
     // In compact mode, buttons should have 'compact' class
     const buttons = screen.getAllByRole('button');
@@ -104,10 +96,8 @@ describe('AgentBar', () => {
     });
   });
 
-  it('should show empty state when no enabled agents', async () => {
-    await act(async () => {
-      render(<AgentBar agents={[]} selectedAgentId={null} onSelectAgent={vi.fn()} />);
-    });
+  it('should show empty state when no enabled agents', () => {
+    render(<AgentBar agents={[]} selectedAgentId={null} onSelectAgent={vi.fn()} />);
 
     expect(screen.getByText('No enabled agents')).toBeInTheDocument();
   });
@@ -121,20 +111,18 @@ describe('AgentBar', () => {
       codex: true,
     });
 
-    await act(async () => {
-      render(
-        <AgentBar
-          agents={mockAgents}
-          selectedAgentId={null}
-          onSelectAgent={vi.fn()}
-          onShowToast={showToast}
-        />,
-      );
-    });
+    render(
+      <AgentBar
+        agents={mockAgents}
+        selectedAgentId={null}
+        onSelectAgent={vi.fn()}
+        onShowToast={showToast}
+      />,
+    );
 
     // Wait for installation status to be loaded
     await waitFor(() => {
-      const claudeButton = screen.getByText('Claude Code').closest('button');
+      const claudeButton = screen.getByRole('button', { name: 'Claude Code' });
       expect(claudeButton).toHaveClass('not-installed');
     });
 

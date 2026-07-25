@@ -1,5 +1,5 @@
-export { Button, buttonVariants } from './button';
-export { Input, Textarea } from './input';
+export { Button, buttonVariants } from './Button';
+export { Input, Textarea } from './Input';
 export {
   Dialog,
   DialogTrigger,
@@ -11,7 +11,7 @@ export {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from './dialog';
+} from './Dialog';
 export {
   Select,
   SelectTrigger,
@@ -19,7 +19,7 @@ export {
   SelectItem,
   SelectValue,
   SelectSeparator,
-} from './select';
+} from './Select';
 export {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -37,8 +37,8 @@ export {
   DropdownMenuSubTrigger,
   DropdownMenuRadioGroup,
 } from './DropdownMenu';
-export { Checkbox } from './checkbox';
-export { Badge, badgeVariants } from './badge';
+export { Checkbox } from './Checkbox';
+export { Badge, badgeVariants } from './Badge';
 export {
   Sidebar,
   SidebarHeader,
@@ -47,7 +47,7 @@ export {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-} from './sidebar';
+} from './Sidebar';
 export { MarkdownPreview } from './MarkdownPreview';
 export {
   Card,
@@ -57,14 +57,14 @@ export {
   CardContent,
   CardFooter,
   cardVariants,
-} from './card';
-export { Separator } from './separator';
-export { Switch } from './switch';
+} from './Card';
+export { Separator } from './Separator';
+export { Switch } from './Switch';
 export { ToggleGroup, ToggleGroupItem } from './ToggleGroup';
-export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './resizable';
+export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './Resizable';
 export { ScrollArea, ScrollBar } from './ScrollArea';
-export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs';
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './tooltip';
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip';
 export {
   ContextMenu,
   ContextMenuTrigger,

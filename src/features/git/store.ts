@@ -14,7 +14,7 @@ export const useGitStore = create<GitStoreState>((set) => ({
     set((state) => {
       if (info === null) {
         if (!(key in state.aheadBehind)) return state;
-        const { [key]: _, ...rest } = state.aheadBehind;
+        const { [key]: _, ...rest } = state.aheadBehind; // eslint-disable-line @typescript-eslint/no-unused-vars
         return { aheadBehind: rest };
       }
       const current = state.aheadBehind[key];

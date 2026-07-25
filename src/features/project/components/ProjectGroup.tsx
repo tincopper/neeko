@@ -67,6 +67,12 @@ const HeaderActionButton: React.FC<HeaderActionButtonProps> = ({
       e.stopPropagation();
       onClick?.(e);
     }}
+    onFocus={(e) => {
+      if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
+    }}
+    onBlur={(e) => {
+      (e.currentTarget as HTMLElement).style.color = '';
+    }}
     onMouseOver={(e) => {
       if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
     }}
@@ -83,7 +89,6 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   avatarColor,
   sessionCount,
   expanded,
-  isActive: _isActive = false,
   isLast = false,
   actions,
   ideIconSrc,
@@ -97,14 +102,23 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   return (
     <div className={cn('group/proj', !isLast && 'border-b border-white/[0.04]')}>
       <div
+        role="button"
+        tabIndex={0}
         className={cn(
           'flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover relative',
         )}
         onClick={actions.onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            actions.onToggle();
+          }
+        }}
         onContextMenu={actions.onContextMenu}
         data-testid="project-group-header"
       >
         <span
+          data-testid="project-group-avatar"
           className="w-7 h-7 rounded-md flex items-center justify-center text-[0.95em] font-bold shrink-0 uppercase"
           style={{
             color: avatarStyle.color,
@@ -124,6 +138,7 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
 
         {/* 按钮 overlay：hover 时出现，不消耗 flex 空间 */}
         <div
+          role="presentation"
           className={cn(
             'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity',
             forceShowActions

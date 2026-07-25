@@ -139,7 +139,12 @@ function OpenIdeButton() {
           title={ideLaunchCommand ? `Open in IDE (${ideLabel})` : 'No IDE configured'}
         >
           {ideStored ? (
-            <img src={ideIconSrc} className="w-3.5 h-3.5 object-contain shrink-0" alt="" />
+            <img
+              data-testid="ide-icon"
+              src={ideIconSrc}
+              className="w-3.5 h-3.5 object-contain shrink-0"
+              alt=""
+            />
           ) : null}
           <span className="text-[var(--font-size)] text-text-secondary max-w-[80px] truncate">
             {ideLabel}
@@ -172,6 +177,9 @@ function OpenIdeButton() {
             return (
               <div
                 key={option.id}
+                role="option"
+                tabIndex={0}
+                aria-selected={isCurrent}
                 className={
                   'group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ' +
                   (isCurrent
@@ -179,6 +187,12 @@ function OpenIdeButton() {
                     : 'hover:bg-bg-hover text-text-primary')
                 }
                 onClick={() => handleSelectIde(option.command)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelectIde(option.command);
+                  }
+                }}
                 title="Set as default IDE for this project"
               >
                 {option.icon ? (

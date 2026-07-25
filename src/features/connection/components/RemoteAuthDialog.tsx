@@ -1,10 +1,10 @@
 import { useState } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
-import { Button } from '@/ui/button';
-import { Checkbox } from '@/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
+import { Button } from '@/ui/Button';
+import { Checkbox } from '@/ui/Checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+import { Input } from '@/ui/Input';
 
 import { testRemoteConnection } from '../api/connectionApi';
 
@@ -80,9 +80,9 @@ export function RemoteAuthDialog({
           </p>
         )}
 
-        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+        <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
           Auth Type
-        </label>
+        </span>
         <div className="flex gap-5 mb-4">
           <label className="custom-radio">
             <input
@@ -102,30 +102,36 @@ export function RemoteAuthDialog({
 
         {authType === 'password' ? (
           <>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+            <label
+              htmlFor="remote-auth-password"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+            >
               Password
             </label>
             <Input
+              id="remote-auth-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !connecting && handleConnect()}
               placeholder="••••••••"
-              autoFocus
             />
           </>
         ) : (
           <>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+            <label
+              htmlFor="remote-auth-key-path"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+            >
               Key File Path
             </label>
             <Input
+              id="remote-auth-key-path"
               type="text"
               value={keyPath}
               onChange={(e) => setKeyPath(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !connecting && handleConnect()}
               placeholder="~/.ssh/id_rsa"
-              autoFocus
             />
           </>
         )}

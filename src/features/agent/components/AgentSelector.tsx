@@ -61,6 +61,7 @@ const AgentBarButton: React.FC<{
     </button>
   );
 });
+AgentBarButton.displayName = 'AgentBarButton';
 
 // Agent Bar Component
 const AgentBar: React.FC<AgentBarProps> = React.memo(
@@ -95,6 +96,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
     );
   },
 );
+AgentBar.displayName = 'AgentBar';
 
 // Checkbox Item Component for menu toggles
 const MenuCheckboxItem: React.FC<{
@@ -107,15 +109,27 @@ const MenuCheckboxItem: React.FC<{
   }, [checked, onChange]);
 
   return (
-    <div className="add-menu-item menu-checkbox-item" onClick={handleClick}>
-      <label className="custom-checkbox">
+    <div
+      className="add-menu-item menu-checkbox-item"
+      onClick={handleClick}
+      role="menuitem"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+    >
+      <span className="custom-checkbox">
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
         <span className="checkbox-mark" />
-      </label>
-      <span>{label}</span>
+      </span>
+      <label>{label}</label>
     </div>
   );
 });
+MenuCheckboxItem.displayName = 'MenuCheckboxItem';
 
 const AgentSelector: React.FC<AgentSelectorProps> = ({
   projectId,
@@ -327,8 +341,16 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
         <div className="agent-add-menu" ref={addMenuRef}>
           {/* Terminal Option */}
           <div
+            role="menuitem"
+            tabIndex={0}
             className={`add-menu-item ${activeMode === 'terminal' ? 'active' : ''}`}
             onClick={() => handleSelectMode('terminal')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSelectMode('terminal');
+              }
+            }}
           >
             <span className="add-menu-icon">?</span>
             <span>Terminal</span>
@@ -336,8 +358,16 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
           {/* Chat Option (Reserved) */}
           <div
+            role="menuitem"
+            tabIndex={0}
             className={`add-menu-item ${activeMode === 'chat' ? 'active' : ''}`}
             onClick={() => handleSelectMode('chat')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSelectMode('chat');
+              }
+            }}
           >
             <span className="add-menu-icon">??</span>
             <span>Chat</span>
@@ -346,8 +376,16 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
           {/* Browser Option (Reserved) */}
           <div
+            role="menuitem"
+            tabIndex={0}
             className={`add-menu-item ${activeMode === 'browser' ? 'active' : ''}`}
             onClick={() => handleSelectMode('browser')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSelectMode('browser');
+              }
+            }}
           >
             <span className="add-menu-icon">??</span>
             <span>Browser</span>

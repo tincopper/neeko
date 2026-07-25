@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from '@/ui/badge';
+import { Badge } from '@/ui/Badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -182,9 +182,18 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
       return (
         <div>
           <div
+            role="treeitem"
+            tabIndex={-1}
+            aria-selected={false}
             className="flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
             style={{ paddingLeft: indent }}
             onClick={handleClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleClick();
+              }
+            }}
             title={node.path}
           >
             <img
@@ -223,12 +232,21 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
 
     return (
       <div
+        role="treeitem"
+        tabIndex={-1}
+        aria-selected={isSelected}
         className={cn(
           'flex items-center gap-1.5 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 group',
           isSelected ? 'bg-accent-blue/10' : 'hover:bg-bg-hover',
         )}
         style={{ paddingLeft: indent }}
         onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
         title={file.path}
       >
         <img
@@ -241,7 +259,12 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
         <span className={`flex-1 truncate group-hover:text-text-primary ${textColor}`}>
           {node.name}
         </span>
-        {showStatusDot && <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColor)} />}
+        {showStatusDot && (
+          <span
+            data-testid="status-dot"
+            className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColor)}
+          />
+        )}
         {showBadge && <Badge variant={badge.variant}>{badge.label}</Badge>}
       </div>
     );

@@ -188,7 +188,9 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
         </div>
       )}
 
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
+        role="region"
         className="space-y-5"
         onKeyDown={handleKeyDown}
         tabIndex={-1}
@@ -216,6 +218,9 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                   return (
                     <div
                       key={action.id}
+                      role="option"
+                      tabIndex={0}
+                      aria-selected={selectedId === action.id}
                       className={`flex items-center justify-between py-2.5 px-2 rounded-md cursor-pointer transition-colors group ${
                         conflicting
                           ? 'bg-red-500/5 hover:bg-red-500/10'
@@ -227,6 +232,12 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                       }`}
                       onClick={() => handleSelectRow(action.id)}
                       onDoubleClick={() => recordable && handleStartRecording(action.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelectRow(action.id);
+                        }
+                      }}
                       ref={isRecording ? recordingRef : undefined}
                     >
                       <div className="flex-1 min-w-0">

@@ -71,10 +71,19 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   // Footer: "New Branch" action injected via composition
   const dropdownFooter = (
     <div
+      role="menuitem"
+      tabIndex={0}
       className="flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
       onClick={() => {
         setBranchDropdownOpen(false);
         onNewBranch();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setBranchDropdownOpen(false);
+          onNewBranch();
+        }
       }}
     >
       <PlusIcon size={11} />
@@ -89,9 +98,17 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
           <div className="relative min-w-0" ref={branchDropdownRef}>
             {/* Trigger: styled pill badge */}
             <span
+              role="button"
+              tabIndex={0}
               className="flex items-center gap-1 text-[var(--font-size)] text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-2 py-0.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
               title={currentBranch}
               onClick={() => setBranchDropdownOpen((v) => !v)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setBranchDropdownOpen((v) => !v);
+                }
+              }}
             >
               <BranchIcon size={11} />
               {currentBranch}

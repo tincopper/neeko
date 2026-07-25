@@ -79,12 +79,21 @@ function BranchDropdownContent({
             return (
               <div
                 key={branch}
+                role="option"
+                tabIndex={0}
+                aria-selected={isCurrent}
                 className={`flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] font-mono cursor-pointer transition-colors duration-100 hover:bg-bg-hover ${
                   isCurrent
                     ? 'text-accent-blue cursor-default'
                     : 'text-text-secondary hover:text-text-primary'
                 }`}
                 onClick={() => handleSelect(branch)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSelect(branch);
+                  }
+                }}
                 title={isCurrent ? 'Current branch' : `Switch to ${branch}`}
               >
                 <GitBranch size={11} className="shrink-0" />

@@ -66,9 +66,9 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
         </div>
       </div>
 
-      <label className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+      <span className="text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
         Theme
-      </label>
+      </span>
       <div className="flex gap-3 flex-wrap">
         {BUILTIN_THEME_SWATCHES.map((s) => (
           <button
@@ -94,9 +94,9 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
 
       {customThemes.length > 0 && (
         <>
-          <label className="text-xs font-medium text-text-secondary mt-4 mb-1.5 uppercase tracking-wide">
+          <span className="text-xs font-medium text-text-secondary mt-4 mb-1.5 uppercase tracking-wide">
             Custom Themes
-          </label>
+          </span>
           <div className="flex gap-3 flex-wrap">
             {customThemes.map((ct) => (
               <button

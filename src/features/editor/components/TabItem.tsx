@@ -123,6 +123,10 @@ const TabItem: React.FC<TabItemProps> = React.memo(
       <div
         ref={reorderable ? setNodeRef : undefined}
         style={reorderable ? style : undefined}
+        {...(reorderable ? attributes : {})}
+        role="tab"
+        tabIndex={isActive ? 0 : -1}
+        aria-selected={isActive}
         className={cn(
           'flex items-center gap-1 h-6 px-2 rounded-md min-w-0 max-w-[10rem] transition-colors',
           isActive
@@ -132,13 +136,25 @@ const TabItem: React.FC<TabItemProps> = React.memo(
         )}
         onClick={handleClick}
         onAuxClick={handleAuxClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
         onContextMenu={handleContextMenu}
-        {...(reorderable ? attributes : {})}
         {...(reorderable ? listeners : {})}
         title={tab.title}
       >
         {agentIconSrc ? (
-          <img src={agentIconSrc} width={12} height={12} className="shrink-0 opacity-70" alt="" />
+          <img
+            data-testid="agent-icon"
+            src={agentIconSrc}
+            width={12}
+            height={12}
+            className="shrink-0 opacity-70"
+            alt=""
+          />
         ) : fileIcon ? (
           <img src={fileIcon} width={12} height={12} className="shrink-0 opacity-70" alt="" />
         ) : (

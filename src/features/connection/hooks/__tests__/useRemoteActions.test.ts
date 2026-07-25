@@ -57,7 +57,6 @@ function seedStore(
   } = {},
 ) {
   const entry = makeRemoteEntry();
-  const project = makeRemoteProject('rp1');
   const unifiedProject = {
     id: 'rp1',
     name: 'proj-rp1',

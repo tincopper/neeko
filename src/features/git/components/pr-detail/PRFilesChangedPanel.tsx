@@ -485,7 +485,6 @@ const DiffBody: React.FC<DiffBodyProps> = ({
                 placeholder="Leave a comment on this line..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                autoFocus
               />
               <div className="flex gap-2 justify-end">
                 <button

@@ -49,6 +49,7 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
     );
   },
 );
+AgentBarButton.displayName = 'AgentBarButton';
 
 const AgentBar: React.FC<AgentBarProps> = React.memo(
   ({
@@ -111,5 +112,6 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
     );
   },
 );
+AgentBar.displayName = 'AgentBar';
 
 export default AgentBar;

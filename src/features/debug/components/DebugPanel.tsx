@@ -241,11 +241,18 @@ function DebugPanel() {
         style={{ height: panelHeight }}
       >
         {/* Top edge resize handle — full-width strip like SplitLayout */}
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
+          role="separator"
+          tabIndex={0}
           className="absolute top-0 left-0 right-0 h-3 z-20 cursor-row-resize group"
           onMouseDown={startPanelResize}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+            }
+          }}
           title="Drag to resize debug panel"
-          role="separator"
           aria-orientation="horizontal"
           aria-label="Resize debug panel"
         >
@@ -390,11 +397,18 @@ function DebugPanel() {
               </div>
 
               {/* Frames width resize handle — RightPanel style */}
+              {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
               <div
+                role="separator"
+                tabIndex={0}
                 className="absolute top-0 right-0 bottom-0 w-3 translate-x-1/2 z-10 cursor-col-resize group"
                 onMouseDown={startFramesResize}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                  }
+                }}
                 title="Drag to resize frames"
-                role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize frames column"
               >

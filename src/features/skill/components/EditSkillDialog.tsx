@@ -87,7 +87,7 @@ const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
 
         {/* Name input */}
         <div className="px-4 py-3 border-b border-border">
-          <label className="text-xs font-medium text-text-secondary block mb-1.5">Skill Name</label>
+          <span className="text-xs font-medium text-text-secondary block mb-1.5">Skill Name</span>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -100,7 +100,7 @@ const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
         {/* Markdown editor */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-4 py-2 border-b border-border">
-            <label className="text-xs font-medium text-text-secondary">SKILL.md</label>
+            <span className="text-xs font-medium text-text-secondary">SKILL.md</span>
             {loading && <span className="text-xs text-text-muted ml-2">Loading...</span>}
           </div>
           <div className="flex-1 min-h-0">

@@ -287,7 +287,6 @@ const SkillsPanel: React.FC = React.memo(() => {
               {creating && (
                 <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
                   <input
-                    autoFocus
                     className={cn(
                       'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
                       'bg-bg-hover/60 border border-border text-text-primary',
@@ -339,7 +338,6 @@ const SkillsPanel: React.FC = React.memo(() => {
                     <LayoutGrid className="h-3.5 w-3.5 shrink-0 opacity-50" />
                     {renamingId === tg.id ? (
                       <input
-                        autoFocus
                         className={cn(
                           'flex-1 min-w-0 h-6 px-1.5 text-[var(--font-size)] rounded',
                           'bg-bg-hover/60 border border-border text-text-primary outline-none',

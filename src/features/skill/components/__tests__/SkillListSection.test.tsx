@@ -25,8 +25,7 @@ describe('SkillListSection', () => {
         actions={makeActions()}
       />,
     );
-    const skeletons = document.querySelectorAll('.animate-pulse');
-    expect(skeletons.length).toBeGreaterThan(0);
+    expect(screen.getByTestId('skill-list-section-skeleton')).toBeInTheDocument();
   });
 
   it('有 skills 时渲染 skill 名称', () => {
@@ -46,7 +45,7 @@ describe('SkillListSection', () => {
   });
 
   it('使用卡片网格布局', () => {
-    const { container } = render(
+    render(
       <SkillListSection
         skills={[createManagedSkill({ id: 's1', name: 'Alpha' })]}
         loading={false}
@@ -54,7 +53,7 @@ describe('SkillListSection', () => {
         actions={makeActions()}
       />,
     );
-    expect(container.querySelector('.grid')).toBeTruthy();
+    expect(screen.getByRole('list')).toBeInTheDocument();
   });
 
   it('skills 为空时显示 empty state', () => {

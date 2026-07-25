@@ -11,7 +11,7 @@ import {
   ContextMenuTrigger,
 } from '@/ui/ContextMenu';
 import { ScrollArea } from '@/ui/ScrollArea';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/ui/Tabs';
 
 import { useDockRegistry } from '../DockRegistryContext';
 

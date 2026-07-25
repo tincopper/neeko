@@ -91,13 +91,18 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
 
         {/* Name input */}
         <div className="px-4 py-3 border-b border-border">
-          <label className="text-xs font-medium text-text-secondary block mb-1.5">Skill Name</label>
+          <label
+            htmlFor="create-skill-name"
+            className="text-xs font-medium text-text-secondary block mb-1.5"
+          >
+            Skill Name
+          </label>
           <Input
+            id="create-skill-name"
             value={name}
             onChange={handleNameChange}
             placeholder="my-skill"
             className="h-8 text-xs"
-            autoFocus
           />
           <p className="text-[10px] text-text-muted mt-1">
             SKILL.md will be saved to ~/.neeko/skills/{name || '{name}'}/
@@ -107,7 +112,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
         {/* Markdown editor */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-4 py-2 border-b border-border">
-            <label className="text-xs font-medium text-text-secondary">SKILL.md</label>
+            <span className="text-xs font-medium text-text-secondary">SKILL.md</span>
           </div>
           <div className="flex-1 min-h-0">
             <MarkdownEditor

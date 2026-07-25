@@ -4,7 +4,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from '
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
-import { Button } from '@/ui/button';
+import { Button } from '@/ui/Button';
 
 import { useConversationList } from '../hooks/useConversationList';
 import { useConversationResume } from '../hooks/useConversationResume';

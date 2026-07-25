@@ -3,8 +3,8 @@ import React, { useCallback } from 'react';
 import { dockPanelRegistry, dockPanelIcons } from '@/app/dock/registry';
 import { cn } from '@/lib/utils';
 import { useDockStore } from '@/shared/store/dockStore';
-import { Badge } from '@/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip';
+import { Badge } from '@/ui/Badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/Tooltip';
 
 interface DockBarButtonProps {
   panelId: string;

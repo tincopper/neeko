@@ -23,6 +23,12 @@ const SectionActionButton: React.FC<SectionActionButtonProps> = ({
       e.stopPropagation();
       onClick();
     }}
+    onFocus={(e) => {
+      if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
+    }}
+    onBlur={(e) => {
+      (e.currentTarget as HTMLElement).style.color = '';
+    }}
     onMouseOver={(e) => {
       if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
     }}

@@ -89,6 +89,7 @@ function LaunchConfigDialog({
   return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50"
+      role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -116,20 +117,31 @@ function LaunchConfigDialog({
           </p>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">Name</label>
+            <label
+              htmlFor="launch-name"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
+              Name
+            </label>
             <input
+              id="launch-name"
               type="text"
               placeholder="e.g. Debug main binary"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2.5 text-[var(--font-size)] rounded-md bg-bg-primary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue transition-colors"
-              autoFocus
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">Type</label>
+            <label
+              htmlFor="launch-type"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
+              Type
+            </label>
             <select
+              id="launch-type"
               value={type}
               onChange={(e) => handleTypeChange(e.target.value)}
               className="w-full px-3 py-2.5 text-[var(--font-size)] rounded-md bg-bg-primary border border-border text-text-primary focus:outline-none focus:border-accent-blue transition-colors cursor-pointer"
@@ -143,10 +155,14 @@ function LaunchConfigDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">
+            <label
+              htmlFor="launch-program"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
               Program {type === 'lldb' ? '(binary path)' : '(package with main)'}
             </label>
             <input
+              id="launch-program"
               type="text"
               placeholder={
                 type === 'go'
@@ -168,10 +184,14 @@ function LaunchConfigDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">
+            <label
+              htmlFor="launch-cwd"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
               Working directory
             </label>
             <input
+              id="launch-cwd"
               type="text"
               placeholder="${workspaceFolder}"
               value={cwd}
@@ -181,10 +201,14 @@ function LaunchConfigDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">
+            <label
+              htmlFor="launch-args"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
               Arguments (space-separated)
             </label>
             <input
+              id="launch-args"
               type="text"
               placeholder="--flag value"
               value={argsText}
@@ -198,10 +222,14 @@ function LaunchConfigDialog({
 
           {type === 'go' && (
             <div className="flex flex-col gap-1.5">
-              <label className="text-[var(--font-size)] font-medium text-text-secondary">
+              <label
+                htmlFor="launch-mode"
+                className="text-[var(--font-size)] font-medium text-text-secondary"
+              >
                 Mode
               </label>
               <select
+                id="launch-mode"
                 value={mode}
                 onChange={(e) => setMode(e.target.value)}
                 className="w-full px-3 py-2.5 text-[var(--font-size)] rounded-md bg-bg-primary border border-border text-text-primary focus:outline-none focus:border-accent-blue transition-colors cursor-pointer"
@@ -214,10 +242,14 @@ function LaunchConfigDialog({
           )}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">
+            <label
+              htmlFor="launch-prelaunch"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
               preLaunchTask (optional shell command)
             </label>
             <input
+              id="launch-prelaunch"
               type="text"
               placeholder="e.g. cargo build"
               value={preLaunchTask}

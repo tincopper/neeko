@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
 import { Plus, Settings } from '@/shared/components/icons';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/Tooltip';
 
 import AddProjectMenu from './AddProjectMenu';
 import { DockLayout } from './dock-layout';

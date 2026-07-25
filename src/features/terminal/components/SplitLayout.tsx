@@ -117,23 +117,33 @@ function SplitLayout({
         const isActive = state.activePaneId === node.paneId;
 
         return (
-          <div
-            key={node.paneId}
-            ref={(el) => {
-              if (el) paneRefs.current.set(node.paneId, el);
-              else paneRefs.current.delete(node.paneId);
-            }}
-            className={`relative min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden transition-shadow duration-150 ${
-              state.paneCount > 1
-                ? isActive
-                  ? 'border-2 border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset'
-                  : 'border-2 border-transparent'
-                : 'border-0'
-            }`}
-            onMouseDown={() => setActivePaneId(node.paneId)}
-          >
-            {renderPane(node.paneId)}
-          </div>
+          <>
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-static-element-interactions */}
+            <div
+              key={node.paneId}
+              ref={(el) => {
+                if (el) paneRefs.current.set(node.paneId, el);
+                else paneRefs.current.delete(node.paneId);
+              }}
+              tabIndex={-1}
+              className={`relative min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden transition-shadow duration-150 ${
+                state.paneCount > 1
+                  ? isActive
+                    ? 'border-2 border-[var(--border-color)] ring-1 ring-[var(--border-color)]/50 ring-inset'
+                    : 'border-2 border-transparent'
+                  : 'border-0'
+              }`}
+              onMouseDown={() => setActivePaneId(node.paneId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setActivePaneId(node.paneId);
+                }
+              }}
+            >
+              {renderPane(node.paneId)}
+            </div>
+          </>
         );
       }
 
@@ -159,9 +169,26 @@ function SplitLayout({
             {renderTree({ node: node.first, path: [...path, 'first'] })}
           </div>
 
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
           <div
+            role="separator"
+            tabIndex={0}
+            aria-orientation={direction === 'horizontal' ? 'vertical' : 'horizontal'}
             className={`group relative z-10 shrink-0 ${direction === 'horizontal' ? 'w-3 cursor-col-resize' : 'h-3 cursor-row-resize'}`}
             onMouseDown={(e) => startDrag(e, path, direction, containerRef.current)}
+            onKeyDown={(e) => {
+              if (
+                e.key === 'ArrowLeft' ||
+                e.key === 'ArrowRight' ||
+                e.key === 'ArrowUp' ||
+                e.key === 'ArrowDown'
+              ) {
+                e.preventDefault();
+                const step = 0.05;
+                const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? step : -step;
+                setRatio(path, node.ratio + delta);
+              }
+            }}
           >
             <div
               className={`absolute bg-transparent transition-colors group-hover:bg-accent-blue/50 ${

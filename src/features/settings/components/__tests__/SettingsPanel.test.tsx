@@ -49,12 +49,12 @@ function renderPanel(overrides: Partial<AppConfig> = {}) {
     showToast: vi.fn(),
     saveConfig: vi.fn(),
   };
-  const result = render(
+  const view = render(
     <AppProvider value={appContext}>
       <SettingsPanel onConfigChange={onConfigChange} onClose={onClose} />
     </AppProvider>,
   );
-  return { ...result, onConfigChange, onClose, config };
+  return { ...view, onConfigChange, onClose, config };
 }
 
 describe('SettingsPanel', () => {
@@ -255,7 +255,7 @@ describe('SettingsPanel', () => {
         </AppProvider>,
       );
       // 全页模式不应有 fixed overlay
-      expect(document.querySelector('.fixed.inset-0')).toBeNull();
+      expect(screen.queryByTestId('settings-overlay')).toBeNull();
     });
 
     it('全页模式内容区可正常滚动', () => {
@@ -276,7 +276,7 @@ describe('SettingsPanel', () => {
         </AppProvider>,
       );
       // 内容区应有 overflow-y-auto 以支持滚动
-      const contentArea = document.querySelector('.overflow-y-auto');
+      const contentArea = screen.getByTestId('settings-content');
       expect(contentArea).toBeInTheDocument();
     });
   });

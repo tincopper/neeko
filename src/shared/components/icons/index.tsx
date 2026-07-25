@@ -1,3 +1,5 @@
+/* eslint-disable check-file/filename-naming-convention */
+/* eslint-disable import/export */
 import React from 'react';
 
 // ─── Lucide aliases (semantic names for commonly used icons) ─────────────

@@ -29,8 +29,8 @@ beforeEach(() => {
 // ─── 辅助 ────────────────────────────────────────────────────────────────────
 
 function renderComponent(setDialog = vi.fn<[SkillDialogState], void>()) {
-  const result = render(<LocalSkillContent setDialog={setDialog} />);
-  return { ...result, setDialog };
+  const view = render(<LocalSkillContent setDialog={setDialog} />);
+  return { ...view, setDialog };
 }
 
 // ─── 测试 ────────────────────────────────────────────────────────────────────

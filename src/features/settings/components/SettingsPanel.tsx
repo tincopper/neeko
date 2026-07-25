@@ -216,7 +216,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
               ))}
             </nav>
 
-            <div className="flex-1 p-6 px-7 overflow-y-auto">{renderPanel()}</div>
+            <div data-testid="settings-content" className="flex-1 p-6 px-7 overflow-y-auto">
+              {renderPanel()}
+            </div>
           </div>
         </div>
       );
@@ -225,11 +227,17 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
     return (
       <div
         className="fixed inset-0 bg-black/55 flex items-center justify-center z-[2000]"
+        role="presentation"
+        data-testid="settings-overlay"
         data-modal="true"
         onClick={onClose}
       >
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */}
         <div
           className="w-[720px] h-[480px] bg-bg-secondary border border-border rounded-[10px] shadow-[0_24px_64px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Settings"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between p-3.5 px-5 pb-3 border-b border-border shrink-0">
@@ -268,12 +276,15 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
               ))}
             </nav>
 
-            <div className="flex-1 p-6 px-7 overflow-y-auto">{renderPanel()}</div>
+            <div data-testid="settings-content" className="flex-1 p-6 px-7 overflow-y-auto">
+              {renderPanel()}
+            </div>
           </div>
         </div>
       </div>
     );
   },
 );
+SettingsPanel.displayName = 'SettingsPanel';
 
 export default SettingsPanel;

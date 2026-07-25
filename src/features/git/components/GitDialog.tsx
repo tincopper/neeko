@@ -2,10 +2,10 @@ import { homeDir } from '@tauri-apps/api/path';
 import React, { useState, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
-import { Button } from '@/ui/button';
-import { Checkbox } from '@/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
+import { Button } from '@/ui/Button';
+import { Checkbox } from '@/ui/Checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+import { Input } from '@/ui/Input';
 
 import { getWslHomeDir } from '../../connection/api/connectionApi';
 import { createBranch, createWorktree } from '../api/gitApi';
@@ -170,7 +170,6 @@ const GitDialog: React.FC<GitDialogProps> = ({
               value={branchName}
               onChange={(e) => setBranchName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreateBranch()}
-              autoFocus
             />
             {error && <ErrorMessage>{error}</ErrorMessage>}
             <DialogFooter>
@@ -226,19 +225,26 @@ const GitDialog: React.FC<GitDialogProps> = ({
             )}
             {customMode || !dialog.projectId || dialog.source ? (
               <>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+                <label
+                  htmlFor="worktree-path"
+                  className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+                >
                   Worktree path
                 </label>
                 <Input
+                  id="worktree-path"
                   placeholder="../my-feature"
                   value={worktreePath}
                   onChange={(e) => setWorktreePath(e.target.value)}
-                  autoFocus
                 />
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 mt-3 uppercase tracking-wide">
+                <label
+                  htmlFor="worktree-branch"
+                  className="block text-xs font-medium text-text-secondary mb-1.5 mt-3 uppercase tracking-wide"
+                >
                   Branch
                 </label>
                 <Input
+                  id="worktree-branch"
                   placeholder="Branch name"
                   value={worktreeBranch}
                   onChange={(e) => setWorktreeBranch(e.target.value)}
@@ -272,17 +278,20 @@ const GitDialog: React.FC<GitDialogProps> = ({
               </>
             ) : (
               <>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+                <label
+                  htmlFor="worktree-name"
+                  className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+                >
                   Worktree name
                 </label>
                 <Input
+                  id="worktree-name"
                   placeholder="feature-x"
                   value={quickName}
                   onChange={(e) => setQuickName(e.target.value)}
                   onKeyDown={(e) =>
                     e.key === 'Enter' && quickName.trim() && handleCreateQuickWorktree()
                   }
-                  autoFocus
                 />
                 <div className="mt-1.5 text-[11px] text-text-muted font-mono break-all leading-[1.4]">
                   {homeDirPath && quickName.trim()

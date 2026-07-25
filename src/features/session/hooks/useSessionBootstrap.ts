@@ -85,7 +85,9 @@ export function useSessionBootstrap(deps: {
               .catch(() => {});
           }
         }
-      } catch {}
+      } catch {
+        // Ignore — best-effort branch metadata fetch
+      }
     });
 
     loadSession()

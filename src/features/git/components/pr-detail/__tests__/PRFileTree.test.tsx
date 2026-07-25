@@ -38,21 +38,21 @@ describe('PRFileTree', () => {
   });
 
   it('highlights selected file', () => {
-    const { container } = render(<PRFileTree files={files} selectedPath="README.md" />);
-    const rows = container.querySelectorAll('[title="README.md"]');
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows[0].className).toContain('bg-accent-blue/10');
+    render(<PRFileTree files={files} selectedPath="README.md" />);
+    const row = screen.getByTitle('README.md');
+    expect(row).toBeInTheDocument();
+    expect(row.className).toContain('bg-accent-blue/10');
   });
 
   it('does not highlight non-selected files', () => {
-    const { container } = render(<PRFileTree files={files} selectedPath="README.md" />);
-    const mainRow = container.querySelector('[title="src/main.ts"]');
-    expect(mainRow?.className).not.toContain('bg-accent-blue/10');
+    render(<PRFileTree files={files} selectedPath="README.md" />);
+    const mainRow = screen.getByTitle('src/main.ts');
+    expect(mainRow.className).not.toContain('bg-accent-blue/10');
   });
 
   it('shows loading skeleton when loading', () => {
-    const { container } = render(<PRFileTree files={[]} loading />);
-    const skeleton = container.querySelector('.animate-pulse');
+    render(<PRFileTree files={[]} loading />);
+    const skeleton = screen.getByTestId('file-tree-skeleton');
     expect(skeleton).toBeInTheDocument();
   });
 

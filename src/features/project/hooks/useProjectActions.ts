@@ -104,11 +104,7 @@ export function useProjectActions({
   // ── Git refresh ─────────────────────────────────────────────────────────
 
   const refreshGit = useMemo(() => {
-    const handler = async (
-      _connectionId: string,
-      projectId: string,
-      _projectPath: string,
-    ): Promise<void> => {
+    const handler = async (_connectionId: string, projectId: string): Promise<void> => {
       const gitInfo = await getGitInfo(projectId).catch((e) => {
         console.error(`[${isWsl ? 'WSL' : 'SSH'}] Failed to refresh git info:`, e);
         return null;
@@ -137,8 +133,8 @@ export function useProjectActions({
   }, [isWsl]);
 
   const handleRefreshGit = useCallback(
-    async (connectionId: string, projectId: string, projectPath: string) => {
-      await refreshGit(connectionId, projectId, projectPath);
+    async (connectionId: string, projectId: string) => {
+      await refreshGit(connectionId, projectId);
     },
     [refreshGit],
   );

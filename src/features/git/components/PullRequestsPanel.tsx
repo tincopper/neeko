@@ -506,7 +506,6 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                       placeholder="Search authors..."
                       value={authorSearchQuery}
                       onChange={(e) => setAuthorSearchQuery(e.target.value)}
-                      autoFocus
                     />
                   </div>
                   <div className="overflow-y-auto flex-1">
@@ -584,7 +583,6 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                       placeholder="Search labels..."
                       value={labelSearchQuery}
                       onChange={(e) => setLabelSearchQuery(e.target.value)}
-                      autoFocus
                     />
                   </div>
                   <div className="overflow-y-auto flex-1">
@@ -662,7 +660,6 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                       placeholder="Search assignees..."
                       value={assigneeSearchQuery}
                       onChange={(e) => setAssigneeSearchQuery(e.target.value)}
-                      autoFocus
                     />
                   </div>
                   <div className="overflow-y-auto flex-1">
@@ -750,8 +747,16 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               filteredPrList.map((pr) => (
                 <div
                   key={pr.number}
+                  role="button"
+                  tabIndex={0}
                   className="flex items-center gap-3 px-3 py-2.5 border-b border-border hover:bg-bg-hover transition-colors duration-100 cursor-pointer group"
                   onClick={() => handleOpenPr(pr)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenPr(pr);
+                    }
+                  }}
                 >
                   {/* Author Avatar */}
                   <div className="flex-shrink-0">

@@ -65,6 +65,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
         ) : (
           <div
             key={idx}
+            role="menuitem"
+            tabIndex={-1}
             className={cn(
               'flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover',
               item.danger && 'text-[#e06c75] hover:bg-accent-red/15',
@@ -74,6 +76,15 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
               if (!item.disabled) {
                 item.action();
                 onClose();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (!item.disabled) {
+                  item.action();
+                  onClose();
+                }
               }
             }}
           >

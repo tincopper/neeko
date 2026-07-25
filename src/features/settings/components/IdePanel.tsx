@@ -78,7 +78,6 @@ const IdePanel: React.FC<IdePanelProps> = ({
                   <Input
                     className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]"
                     value={editingValue}
-                    autoFocus
                     spellCheck={false}
                     onChange={(e) => onEditingValueChange(e.target.value)}
                     onBlur={() => onSavePresetOverride(ide.id)}

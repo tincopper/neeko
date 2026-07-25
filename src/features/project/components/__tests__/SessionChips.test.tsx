@@ -28,10 +28,10 @@ describe('SessionChips.Changes', () => {
   });
 
   it('add 与 del 上下左对齐（flex-col items-start），不放同一行', () => {
-    const { container } = render(<SessionChips.Changes add={10} del={3} />);
-    const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toMatch(/flex-col/);
-    expect(root.className).toMatch(/items-start/);
+    render(<SessionChips.Changes add={10} del={3} />);
+    const root = screen.getByTestId('session-chips-changes');
+    expect(root).toHaveClass('flex-col');
+    expect(root).toHaveClass('items-start');
   });
 
   it('仅 add > 0 时只渲染 +A', () => {

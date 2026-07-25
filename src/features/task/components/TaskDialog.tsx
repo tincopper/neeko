@@ -31,6 +31,7 @@ function TaskDialog({ onClose, onSubmit, editConfig }: TaskDialogProps) {
   return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50"
+      role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -55,22 +56,31 @@ function TaskDialog({ onClose, onSubmit, editConfig }: TaskDialogProps) {
           </p>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">Name</label>
+            <label
+              htmlFor="task-dialog-name"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
+              Name
+            </label>
             <input
+              id="task-dialog-name"
               type="text"
               placeholder="Enter a name for this task (optional)"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-3 py-2.5 text-[var(--font-size)] rounded-md bg-bg-primary border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-blue transition-colors"
-              autoFocus
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[var(--font-size)] font-medium text-text-secondary">
+            <label
+              htmlFor="task-dialog-command"
+              className="text-[var(--font-size)] font-medium text-text-secondary"
+            >
               Command
             </label>
             <input
+              id="task-dialog-command"
               type="text"
               placeholder="Enter command (for example, npm run dev)"
               value={command}

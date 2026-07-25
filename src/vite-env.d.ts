@@ -1,3 +1,4 @@
+/* eslint-disable check-file/filename-naming-convention */
 declare module '*.png' {
   const src: string;
   export default src;

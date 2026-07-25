@@ -26,7 +26,7 @@ const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, selectedPat
 
   if (loading) {
     return (
-      <div className="p-3 space-y-1.5">
+      <div data-testid="file-tree-skeleton" className="p-3 space-y-1.5">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-bg-tertiary animate-pulse shrink-0" />

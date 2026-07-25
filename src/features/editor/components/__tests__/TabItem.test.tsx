@@ -46,15 +46,15 @@ describe('TabItem agent icon', () => {
 
     renderTabItem(terminalTab, agents);
 
-    const img = document.querySelector('img');
+    const img = screen.getByTestId('agent-icon');
     expect(img).toBeTruthy();
-    expect(img?.getAttribute('src')).toBe(`asset://localhost/${customPath}`);
+    expect(img.getAttribute('src')).toBe(`asset://localhost/${customPath}`);
   });
 
   it('should_fall_back_to_kind_icon_when_agent_missing', () => {
     renderTabItem(terminalTab, []);
 
-    expect(document.querySelector('img')).toBeNull();
+    expect(screen.queryByTestId('agent-icon')).toBeNull();
     expect(screen.getByText('claude session')).toBeInTheDocument();
   });
 });

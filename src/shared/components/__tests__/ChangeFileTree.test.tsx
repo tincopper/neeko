@@ -25,9 +25,10 @@ describe('buildChangeTree', () => {
     expect(tree).toHaveLength(1);
     expect(tree[0].name).toBe('src');
     expect(tree[0].isDir).toBe(true);
-    expect(tree[0].children).toHaveLength(2);
+    const srcChildren = tree[0]['children'];
+    expect(srcChildren).toHaveLength(2);
 
-    const childNames = tree[0].children.map((c) => c.name);
+    const childNames = srcChildren.map((c: { name: string }) => c.name);
     expect(childNames).toContain('main.ts');
     expect(childNames).toContain('utils');
   });
@@ -89,7 +90,7 @@ describe('buildChangeTree', () => {
     ];
     const tree = buildChangeTree(files);
     expect(tree).toHaveLength(1);
-    expect(tree[0].children).toHaveLength(3);
+    expect(tree[0]['children']).toHaveLength(3);
   });
 });
 
@@ -129,26 +130,19 @@ describe('ChangeFileTree rendering', () => {
   });
 
   it('renders status dots by default', () => {
-    const { container } = render(<ChangeFileTree files={[files[0]]} />);
-    const dots = container.querySelectorAll('.w-1\\.5.h-1\\.5');
-    expect(dots.length).toBeGreaterThan(0);
+    render(<ChangeFileTree files={[files[0]]} />);
+    expect(screen.getAllByTestId('status-dot').length).toBeGreaterThan(0);
   });
 
   it('hides status dots when showStatusDot is false', () => {
-    const { container } = render(<ChangeFileTree files={[files[0]]} showStatusDot={false} />);
-    const dots = container.querySelectorAll('.w-1\\.5.h-1\\.5');
-    expect(dots.length).toBe(0);
+    render(<ChangeFileTree files={[files[0]]} showStatusDot={false} />);
+    expect(screen.queryByTestId('status-dot')).toBeNull();
   });
 
   it('adds selected class for selected file', () => {
-    const { container } = render(<ChangeFileTree files={files} selectedPath="src/main.ts" />);
-    const rows = container.querySelectorAll('.flex.items-center.gap-1\\.5');
-    let found = false;
-    rows.forEach((row) => {
-      if (row.className.includes('bg-accent-blue/10')) {
-        found = true;
-      }
-    });
+    render(<ChangeFileTree files={files} selectedPath="src/main.ts" />);
+    const items = screen.getAllByRole('treeitem');
+    const found = items.some((item) => item.className.includes('bg-accent-blue/10'));
     expect(found).toBe(true);
   });
 });

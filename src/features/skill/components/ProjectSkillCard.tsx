@@ -88,7 +88,6 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
     agents = [],
     tagGroups = [],
     targetAgentId = null,
-    selectedAgentIds: _selectedAgentIds,
     isSelected = false,
     onView,
     onRemove,
@@ -358,8 +357,16 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
             })}
             {overflow > 0 && (
               <span
+                role="button"
+                tabIndex={0}
                 className="text-[10px] text-text-muted tabular-nums pl-0.5 cursor-pointer hover:text-text-primary transition-colors"
                 onClick={() => setExpanded(!expanded)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setExpanded((v) => !v);
+                  }
+                }}
               >
                 {expanded ? '▲' : `+${overflow}...`}
               </span>

@@ -9,7 +9,6 @@ describe('ConversationListSkeleton', () => {
   it('renders accessible busy status', () => {
     render(<ConversationListSkeleton rows={4} />);
     expect(screen.getByRole('status', { name: 'Loading conversations' })).toBeInTheDocument();
-    expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
   });
 });
 

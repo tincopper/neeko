@@ -109,7 +109,7 @@ describe('ViewSkillDialog', () => {
   it('calls onClose when Close clicked', async () => {
     const onClose = vi.fn();
     render(<ViewSkillDialog open skill={localSkill} onClose={onClose} />);
-    await waitFor(() => screen.getByText('Close'));
+    await screen.findByText('Close');
     fireEvent.click(screen.getByText('Close'));
     expect(onClose).toHaveBeenCalled();
   });
@@ -118,7 +118,7 @@ describe('ViewSkillDialog', () => {
     it('shows source_ref with reveal button', async () => {
       render(<ViewSkillDialog open skill={localSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('/Users/user/original/skill-dir')).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('ViewSkillDialog', () => {
     it('shows Created in Neeko label in source section', async () => {
       render(<ViewSkillDialog open skill={createdSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       const labels = screen.getAllByText('Created in Neeko');
@@ -141,7 +141,7 @@ describe('ViewSkillDialog', () => {
     it('shows repository URL with open button', async () => {
       render(<ViewSkillDialog open skill={gitSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('https://github.com/user/repo.git')).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe('ViewSkillDialog', () => {
     it('shows branch name', async () => {
       render(<ViewSkillDialog open skill={gitSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('main')).toBeInTheDocument();
@@ -159,7 +159,7 @@ describe('ViewSkillDialog', () => {
     it('shows subpath', async () => {
       render(<ViewSkillDialog open skill={gitSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('skills/my-skill')).toBeInTheDocument();
@@ -168,7 +168,7 @@ describe('ViewSkillDialog', () => {
     it('shows last checked time', async () => {
       render(<ViewSkillDialog open skill={gitSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('1h ago')).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe('ViewSkillDialog', () => {
     it('shows repository URL with open button', async () => {
       render(<ViewSkillDialog open skill={skillsshSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('https://github.com/market/react.git')).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe('ViewSkillDialog', () => {
     it('shows last checked time', async () => {
       render(<ViewSkillDialog open skill={skillsshSkill} onClose={vi.fn()} />);
 
-      await waitFor(() => screen.getByRole('button', { name: /source/i }));
+      await screen.findByRole('button', { name: /source/i });
       fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
       expect(screen.getByText('1d ago')).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('ViewSkillDialog', () => {
   it('shows central path with reveal button for all skill types', async () => {
     render(<ViewSkillDialog open skill={localSkill} onClose={vi.fn()} />);
 
-    await waitFor(() => screen.getByRole('button', { name: /source/i }));
+    await screen.findByRole('button', { name: /source/i });
     fireEvent.click(screen.getByRole('button', { name: /source/i }));
 
     expect(screen.getByText('/path/to/skill')).toBeInTheDocument();

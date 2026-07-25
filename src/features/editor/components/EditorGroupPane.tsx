@@ -269,12 +269,21 @@ function EditorGroupPane({
 
   return (
     <EditorProvider value={localEditorCtx}>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
+        role="region"
+        tabIndex={-1}
         className={cn(
           'flex-1 flex flex-col overflow-hidden min-h-0',
           activeGroupId === groupId ? 'ring-1 ring-[var(--border-color)]/30' : '',
         )}
         onClick={onFocusGroup}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onFocusGroup();
+          }
+        }}
       >
         {/* Tab Bar */}
         {tabs.length > 0 && (

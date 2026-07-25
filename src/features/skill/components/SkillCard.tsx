@@ -139,7 +139,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     const displayDesc = resolvedDesc || 'No description';
 
     return (
-      <article
+      <div
         role="button"
         tabIndex={0}
         onClick={onSelect}
@@ -431,7 +431,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </span>
           )}
         </div>
-      </article>
+      </div>
     );
   },
 );

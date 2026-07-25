@@ -24,7 +24,6 @@ const SkillSearchInput: React.FC<SkillSearchInputProps> = ({
         <Search className="absolute left-2.5 h-3.5 w-3.5 text-text-muted pointer-events-none" />
         <input
           type="text"
-          role="textbox"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}

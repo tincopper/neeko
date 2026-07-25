@@ -447,12 +447,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   }, []);
 
   // GitDialog onRefreshGit shim: local dialogs pass projectId, but we use onRefreshGit() directly
-  const handleDialogRefreshGit = useCallback(
-    (_projectId: string) => {
-      onRefreshGit().catch(console.error);
-    },
-    [onRefreshGit],
-  );
+  const handleDialogRefreshGit = useCallback(() => {
+    onRefreshGit().catch(console.error);
+  }, [onRefreshGit]);
 
   return (
     <div className="flex flex-col h-full gap-0.5 p-1.5">
@@ -507,9 +504,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       </div>
 
       {/* Draggable divider */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div
+        role="separator"
+        tabIndex={0}
         className="group h-1.5 shrink-0 cursor-row-resize flex items-center justify-center"
+        aria-orientation="horizontal"
+        aria-label="Resize commit area"
         onMouseDown={handleDividerMouseDown}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+          }
+        }}
       >
         <div className="w-8 h-[3px] rounded-full bg-border group-hover:bg-accent-blue/50 transition-colors duration-150" />
       </div>

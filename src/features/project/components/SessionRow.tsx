@@ -36,11 +36,19 @@ const SessionRow: React.FC<SessionRowProps> = ({
   const Icon = kind === 'worktree' ? FolderGitIcon : TerminalIcon;
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={cn(
         'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors',
         isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
       )}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (onClick) onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+        }
+      }}
       title={title}
     >
       <span

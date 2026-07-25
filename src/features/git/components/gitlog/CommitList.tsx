@@ -254,6 +254,8 @@ const CommitList: React.FC<CommitListProps> = ({
             return (
               <div key={commit.hash} className="relative min-w-0">
                 <div
+                  role="button"
+                  tabIndex={0}
                   className={cn(
                     'relative z-10 flex flex-col justify-center pr-2 cursor-pointer group transition-colors duration-100 min-w-0',
                     // Hover/selection only on the commit row — not the expand panel below.
@@ -269,6 +271,12 @@ const CommitList: React.FC<CommitListProps> = ({
                   onMouseEnter={() => setHoveredHash(commit.hash)}
                   onMouseLeave={() => setHoveredHash(null)}
                   onClick={(e) => handleRowClick(commit.hash, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectCommit(commit.hash);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-1 min-w-0">
                     {type ? (
@@ -402,6 +410,8 @@ const CommitList: React.FC<CommitListProps> = ({
                             return (
                               <div
                                 key={f.path}
+                                role="button"
+                                tabIndex={-1}
                                 className={cn(
                                   'flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden',
                                   // Keyboard focus only — no hover wash on file rows.
@@ -414,6 +424,12 @@ const CommitList: React.FC<CommitListProps> = ({
                                 onDoubleClick={(e) => {
                                   e.stopPropagation();
                                   onPinFile(f.path);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    onOpenDiff(f.path);
+                                  }
                                 }}
                                 title={`${f.path}  +${f.additions} −${f.deletions}\nClick: open diff · Double-click: pin tab`}
                               >

@@ -171,6 +171,8 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
         return (
           <div
             key={wt.path}
+            role="button"
+            tabIndex={0}
             className={cn(
               'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors',
               isDeleting && 'wt-deleting',
@@ -180,6 +182,14 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
               e.stopPropagation();
               if (isRenaming || isDeleting) return;
               onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (!isRenaming && !isDeleting) {
+                  onOpenWorktreeTerminal?.(projectId, wt.path, wt.branch);
+                }
+              }
             }}
             title={`${wt.path}\nClick to open terminal`}
           >

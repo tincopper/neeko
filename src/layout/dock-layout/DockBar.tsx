@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { TooltipProvider } from '@/ui/tooltip';
+import { TooltipProvider } from '@/ui/Tooltip';
 
 interface DockBarProps {
   side: 'left' | 'right';

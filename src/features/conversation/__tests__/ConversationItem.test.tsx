@@ -64,12 +64,12 @@ describe('ConversationItem', () => {
   it('applies active left-border styling when active', () => {
     const meta = createMeta();
     const agents = [createAgent()];
-    const { container } = render(
+    render(
       <ConversationItem meta={meta} agents={agents} active onView={vi.fn()} onResume={vi.fn()} />,
     );
 
-    const row = container.querySelector('[role="button"]');
-    expect(row?.className).toContain('border-l-accent-blue');
+    const row = screen.getByRole('button', { name: /Refactoring/ });
+    expect(row.className).toContain('border-l-accent-blue');
   });
 
   it('opens View when the whole row is clicked', () => {
@@ -77,11 +77,9 @@ describe('ConversationItem', () => {
     const agents = [createAgent()];
     const onView = vi.fn();
 
-    const { container } = render(
-      <ConversationItem meta={meta} agents={agents} onView={onView} onResume={vi.fn()} />,
-    );
+    render(<ConversationItem meta={meta} agents={agents} onView={onView} onResume={vi.fn()} />);
 
-    fireEvent.click(container.querySelector('[role="button"]')!);
+    fireEvent.click(screen.getByRole('button', { name: /Refactoring/ }));
     expect(onView).toHaveBeenCalledWith(meta);
   });
 

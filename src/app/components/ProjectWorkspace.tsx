@@ -7,7 +7,7 @@ import { useConnectionStore } from '@/features/connection/store';
 import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
 import { useFileDrop } from '@/features/file/hooks/useFileDrop';
 import ProjectGuidePage from '@/features/project/components/ProjectGuidePage';
-import { useProjectActionsContext } from '@/features/project/context';
+import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { FolderIcon, KeyRound } from '@/shared/components/icons';
@@ -16,7 +16,7 @@ import { useEditorStore } from '@/shared/store';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import type { AgentConfig, Tab } from '@/shared/types';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
-import { Button } from '@/ui/button';
+import { Button } from '@/ui/Button';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';
 

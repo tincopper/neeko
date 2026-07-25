@@ -914,5 +914,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     );
   },
 );
+DiffView.displayName = 'DiffView';
 
 export default DiffView;

@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 
 import { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from '@/ui/badge';
+import { Badge } from '@/ui/Badge';
 
 export interface TreeNode {
   name: string;
@@ -137,11 +137,20 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
           return (
             <React.Fragment key={node.path}>
               <div
+                role="treeitem"
+                tabIndex={-1}
+                aria-selected={false}
                 className="flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
                 style={{ paddingLeft: indent }}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggle(node.path);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle(node.path);
+                  }
                 }}
                 title={node.path}
               >
@@ -171,11 +180,20 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
         return (
           <div
             key={node.path}
+            role="treeitem"
+            tabIndex={-1}
+            aria-selected={false}
             className="flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover group"
             style={{ paddingLeft: indent }}
             onClick={(e) => {
               e.stopPropagation();
               onSelectFile(projectId, file.path);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectFile(projectId, file.path);
+              }
             }}
             title={file.path}
           >

@@ -159,12 +159,19 @@ function ImageBlock({ src, alt, basePath }: ImageBlockProps) {
 
   return (
     <>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <img
         src={resolvedSrc}
         alt={alt || ''}
         className="max-w-full rounded cursor-pointer transition-opacity hover:opacity-80"
         style={isSvg ? { width: '100%' } : undefined}
         onClick={() => setOverlay(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOverlay(true);
+          }
+        }}
         onError={() => setLoadError(true)}
       />
       {overlay && (

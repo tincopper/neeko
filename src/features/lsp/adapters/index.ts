@@ -7,4 +7,4 @@
 // This directory is kept for future custom adapters that extend
 // @codemirror/lsp-client's built-in capabilities.
 
-export { TauriLspTransport } from '../transport/TauriLspTransport';
+export { TauriLspTransport } from '../transport/tauriLspTransport';

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { usePanelRef, type PanelSize } from 'react-resizable-panels';
 
 import { useDockStore } from '@/shared/store/dockStore';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
 import { useDockRegistry } from '../DockRegistryContext';
 

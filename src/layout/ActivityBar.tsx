@@ -9,8 +9,8 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-} from '@/ui/sidebar';
-import { TooltipProvider } from '@/ui/tooltip';
+} from '@/ui/Sidebar';
+import { TooltipProvider } from '@/ui/Tooltip';
 
 import AddProjectMenu from './AddProjectMenu';
 

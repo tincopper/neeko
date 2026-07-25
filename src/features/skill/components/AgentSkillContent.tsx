@@ -405,7 +405,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
         className="flex items-center justify-center h-32 text-text-muted"
         data-testid="agent-skill-loading"
       >
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <Loader2 data-testid="loading-spinner" className="h-5 w-5 animate-spin" />
       </div>
     );
   }

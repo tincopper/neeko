@@ -18,13 +18,13 @@ describe('SplitPane', () => {
   });
 
   it('renders drag handle', () => {
-    const { container } = render(<SplitPane left={<div>Left</div>} right={<div>Right</div>} />);
-    const handle = container.querySelector('.cursor-col-resize');
+    render(<SplitPane left={<div>Left</div>} right={<div>Right</div>} />);
+    const handle = screen.getByRole('separator');
     expect(handle).toBeInTheDocument();
   });
 
   it('applies custom min widths', () => {
-    const { container } = render(
+    render(
       <SplitPane
         left={<div>Left</div>}
         right={<div>Right</div>}
@@ -33,7 +33,7 @@ describe('SplitPane', () => {
         minRightWidth={150}
       />,
     );
-    const leftPane = container.querySelector('.shrink-0');
-    expect(leftPane).toBeInTheDocument();
+    expect(screen.getByText('Left')).toBeInTheDocument();
+    expect(screen.getByText('Right')).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
   /** Drives the accent color of the left strip and role label. */
-  role: 'user' | 'assistant';
+  kind: 'user' | 'assistant';
   /** Role label text, e.g. "You", an agent name, or "Assistant". */
   label: string;
   /** Optional leading icon (agent logo / project avatar). */
@@ -29,11 +29,12 @@ function formatTime(ts: number): string {
  * from the flat assistant blocks.
  */
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ role, label, icon, timestamp, model, dense = false, children }) => {
-    const isUser = role === 'user';
+  ({ kind, label, icon, timestamp, model, dense = false, children }) => {
+    const isUser = kind === 'user';
     return (
       <div className={cn('px-4', dense ? 'py-3' : 'py-4')}>
         <div
+          data-testid="message-strip"
           className={cn(
             'border-l-2 pl-3 text-text-primary',
             isUser

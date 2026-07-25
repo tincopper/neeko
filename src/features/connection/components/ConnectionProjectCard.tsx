@@ -94,7 +94,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     );
 
     const handleRemoveWorktree = useCallback(
-      (wtPath: string, _branch: string) => {
+      (wtPath: string) => {
         removeWorktree(project.id, wtPath).catch((e: unknown) => {
           console.error(`${logTag} Failed to remove worktree:`, e);
         });

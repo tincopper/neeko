@@ -92,6 +92,7 @@ function TaskConsolePanel() {
         className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
         style={{ height: panelHeight }}
       >
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
         <div
           className="absolute top-0 left-0 right-0 h-3 z-20 cursor-row-resize group"
           onMouseDown={startPanelResize}
@@ -124,6 +125,8 @@ function TaskConsolePanel() {
                 return (
                   <div
                     key={s.id}
+                    role="tab"
+                    tabIndex={0}
                     className={cn(
                       'group flex items-center gap-1.5 h-full px-2 max-w-[160px] cursor-pointer border-b-2 shrink-0',
                       isActive
@@ -131,6 +134,12 @@ function TaskConsolePanel() {
                         : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-hover/30',
                     )}
                     onClick={() => setActiveConsoleId(s.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActiveConsoleId(s.id);
+                      }
+                    }}
                     title={`${s.name}\n${s.command}`}
                     data-testid={`task-console-tab-${s.id}`}
                   >

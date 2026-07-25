@@ -19,7 +19,7 @@ import GitDialog, { DialogState } from '@/features/git/components/GitDialog';
 import { useAheadBehindSync } from '@/features/git/hooks/useAheadBehindSync';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
-import { useProjectActionsContext } from '@/features/project/context';
+import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';

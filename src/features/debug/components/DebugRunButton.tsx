@@ -291,8 +291,17 @@ function DebugRunButton() {
                   {configs.map((config) => (
                     <div
                       key={config.name}
+                      role="option"
+                      tabIndex={0}
+                      aria-selected={false}
                       className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-hover"
                       onClick={() => handleSelect(config.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelect(config.name);
+                        }
+                      }}
                     >
                       <Bug size={12} className="shrink-0 text-accent-blue" />
                       <div className="flex-1 min-w-0">

@@ -248,8 +248,17 @@ function TaskRunButton() {
                   {configs.map((config) => (
                     <div
                       key={config.id}
+                      role="option"
+                      tabIndex={0}
+                      aria-selected={selectedConfigId === config.id}
                       className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-hover"
                       onClick={() => handleSelectAndRunSaved(config)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleSelectAndRunSaved(config);
+                        }
+                      }}
                     >
                       <Play
                         size={12}
@@ -308,8 +317,17 @@ function TaskRunButton() {
                       {tasks.map((task) => (
                         <div
                           key={task.id}
+                          role="option"
+                          tabIndex={0}
+                          aria-selected={selectedConfigId === task.id}
                           className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-hover"
                           onClick={() => handleSelectAndRunDiscovered(task)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSelectAndRunDiscovered(task);
+                            }
+                          }}
                         >
                           <Play
                             size={12}

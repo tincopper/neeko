@@ -7,9 +7,9 @@ import { WSLProject, WSLEntrySession } from '@/shared/types';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import { Button } from '@/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
+import { Button } from '@/ui/Button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+import { Input } from '@/ui/Input';
 
 import { getWslDistros, getWslDirectories, getWslHomeDir } from '../api/connectionApi';
 
@@ -276,8 +276,16 @@ export function WSLDialog({
                 {distros.map((distro) => (
                   <div
                     key={distro}
+                    role="button"
+                    tabIndex={0}
                     className="flex items-center gap-2.5 py-3 px-3.5 rounded-md cursor-pointer border border-border bg-bg-tertiary transition-all duration-150 hover:bg-bg-hover hover:border-accent-blue"
                     onClick={() => handleSelectDistro(distro)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectDistro(distro);
+                      }
+                    }}
                   >
                     <img
                       className="text-[18px] text-text-secondary"
@@ -306,7 +314,10 @@ export function WSLDialog({
               <span className="text-sm font-medium text-text-primary">{selectedDistro}</span>
             </div>
 
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+            <label
+              htmlFor="wsl-project-path"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+            >
               Project Path
             </label>
             <div className="relative w-full" ref={wrapperRef}>
@@ -332,11 +343,20 @@ export function WSLDialog({
                       return (
                         <div
                           key={s}
+                          role="option"
+                          tabIndex={0}
+                          aria-selected={i === activeSuggestion}
                           className={cn(
                             'flex items-center gap-2 py-[7px] px-3 cursor-pointer border-b border-white/[0.04] transition-[background-color] duration-100 last:border-b-none hover:bg-[rgba(97,175,239,0.15)]',
                             i === activeSuggestion && 'bg-[rgba(97,175,239,0.15)]',
                           )}
                           onMouseDown={() => handleSelectSuggestion(s)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSelectSuggestion(s);
+                            }
+                          }}
                         >
                           <span className="text-[13px] shrink-0 text-text-muted">&#128193;</span>
                           <span className="font-mono text-[13px] text-text-primary font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">
@@ -363,12 +383,12 @@ export function WSLDialog({
             )}
 
             {/* Agent 选择 */}
-            <label
+            <span
               className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
               style={{ marginTop: 14 }}
             >
               Agent
-            </label>
+            </span>
             <div className="relative w-full mt-1" ref={agentDropdownRef}>
               <button
                 className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -392,6 +412,9 @@ export function WSLDialog({
               {agentDropdownOpen && (
                 <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={!selectedAgentId}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       !selectedAgentId && 'bg-accent-blue text-white',
@@ -399,6 +422,13 @@ export function WSLDialog({
                     onClick={() => {
                       setSelectedAgentId(null);
                       setAgentDropdownOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedAgentId(null);
+                        setAgentDropdownOpen(false);
+                      }
                     }}
                   >
                     <AgentIcon icon={null} fallback="&#9889;" />
@@ -409,6 +439,9 @@ export function WSLDialog({
                     .map((agent) => (
                       <div
                         key={agent.id}
+                        role="option"
+                        tabIndex={0}
+                        aria-selected={selectedAgentId === agent.id}
                         className={cn(
                           'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                           selectedAgentId === agent.id && 'bg-accent-blue text-white',
@@ -416,6 +449,13 @@ export function WSLDialog({
                         onClick={() => {
                           setSelectedAgentId(agent.id);
                           setAgentDropdownOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedAgentId(agent.id);
+                            setAgentDropdownOpen(false);
+                          }
                         }}
                       >
                         <AgentIcon icon={agent.icon} />
@@ -428,12 +468,12 @@ export function WSLDialog({
             </div>
 
             {/* IDE 选择 */}
-            <label
+            <span
               className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
               style={{ marginTop: 14 }}
             >
               IDE
-            </label>
+            </span>
             <div className="relative w-full mt-1" ref={ideDropdownRef}>
               <button
                 className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -479,6 +519,9 @@ export function WSLDialog({
               {ideDropdownOpen && (
                 <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={!selectedIdeId}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       !selectedIdeId && 'bg-accent-blue text-white',
@@ -486,6 +529,13 @@ export function WSLDialog({
                     onClick={() => {
                       setSelectedIdeId(null);
                       setIdeDropdownOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedIdeId(null);
+                        setIdeDropdownOpen(false);
+                      }
                     }}
                   >
                     <span className="font-medium">None</span>
@@ -495,6 +545,9 @@ export function WSLDialog({
                     (preset) => (
                       <div
                         key={preset.id}
+                        role="option"
+                        tabIndex={0}
+                        aria-selected={selectedIdeId === preset.id}
                         className={cn(
                           'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                           selectedIdeId === preset.id && 'bg-accent-blue text-white',
@@ -502,6 +555,13 @@ export function WSLDialog({
                         onClick={() => {
                           setSelectedIdeId(preset.id);
                           setIdeDropdownOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedIdeId(preset.id);
+                            setIdeDropdownOpen(false);
+                          }
                         }}
                       >
                         <img

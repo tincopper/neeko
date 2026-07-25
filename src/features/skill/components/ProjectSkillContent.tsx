@@ -907,7 +907,11 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                     )}
                   >
                     {agentChipsExpanded ? (
-                      <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                      <ChevronUp
+                        data-testid="chevron-up-icon"
+                        className="h-3.5 w-3.5"
+                        aria-hidden
+                      />
                     ) : (
                       <>
                         <span className="px-0.5">+{hiddenAgentChipCount}</span>

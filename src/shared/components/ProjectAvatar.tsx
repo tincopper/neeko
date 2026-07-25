@@ -44,6 +44,7 @@ const ProjectAvatar: React.FC<ProjectAvatarProps> = React.memo(
 
     return (
       <span
+        data-testid="project-avatar-initials"
         className={cn(
           'inline-flex items-center justify-center shrink-0 rounded-md font-bold uppercase select-none',
           className,

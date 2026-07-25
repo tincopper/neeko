@@ -38,13 +38,15 @@ CardHeader.displayName = 'CardHeader';
 interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {}
 
 const CardTitle = React.forwardRef<HTMLHeadingElement, CardTitleProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, children, ...props }, ref) => {
     return (
       <h3
         ref={ref}
         className={cn('text-base font-semibold leading-none tracking-tight', className)}
         {...props}
-      />
+      >
+        {children}
+      </h3>
     );
   },
 );

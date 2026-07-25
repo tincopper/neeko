@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useProjectStore } from '@/features/project/store';
@@ -36,9 +36,9 @@ describe('ProjectPanel — Appearance section', () => {
 
   it('渲染一行 10 个 swatch（使用 AVATAR_COLORS）', () => {
     render(<ProjectPanel projectId="p1" customIdes={[]} onProjectRemoved={vi.fn()} />);
-    const swatches = screen
-      .getByTestId('appearance-swatches')
-      .querySelectorAll("button[aria-label^='Select avatar color']");
+    const swatches = within(screen.getByTestId('appearance-swatches')).queryAllByRole('button', {
+      name: /Select avatar color/,
+    });
     expect(swatches.length).toBe(AVATAR_COLORS.length);
   });
 

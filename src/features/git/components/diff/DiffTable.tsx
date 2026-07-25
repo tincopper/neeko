@@ -78,18 +78,18 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     inBlock = false;
                   }
 
-                  let cellHtml = renderHighlightedHtml(content, language);
+                  let view = renderHighlightedHtml(content, language);
                   if (lineType === 'removed') {
                     const nextLine = hunk.lines[lineIndex + 1];
                     if (nextLine?.Added !== undefined) {
                       const { oldParts } = computeWordDiff(content, nextLine.Added);
-                      cellHtml = renderWordDiffHtml(oldParts, 'old', language);
+                      view = renderWordDiffHtml(oldParts, 'old', language);
                     }
                   } else if (lineType === 'added') {
                     const prevLine = hunk.lines[lineIndex - 1];
                     if (prevLine?.Removed !== undefined) {
                       const { newParts } = computeWordDiff(prevLine.Removed, content);
-                      cellHtml = renderWordDiffHtml(newParts, 'new', language);
+                      view = renderWordDiffHtml(newParts, 'new', language);
                     }
                   }
 
@@ -98,7 +98,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                   const canComment =
                     onCommentLine && (lineType === 'added' || lineType === 'context');
                   const commentCount = commentCounts?.get(curNew) ?? 0;
-                  const commentArea = renderCommentArea?.(curNew);
+                  const utils = renderCommentArea?.(curNew);
 
                   return (
                     <React.Fragment key={`${hunkIndex}-${lineIndex}`}>
@@ -155,16 +155,16 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           className="whitespace-pre-wrap break-all cursor-pointer"
                           onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
                           title={isSelected ? 'Deselect line' : 'Select line for AI review'}
-                          dangerouslySetInnerHTML={{ __html: cellHtml }}
+                          dangerouslySetInnerHTML={{ __html: view }}
                         />
                       </tr>
-                      {commentArea && (
+                      {utils && (
                         <tr>
                           <td
                             colSpan={4}
                             className="py-2 px-4 bg-bg-secondary border-t border-border"
                           >
-                            {commentArea}
+                            {utils}
                           </td>
                         </tr>
                       )}

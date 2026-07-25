@@ -132,6 +132,9 @@ function FileTreeNode({
   return (
     <>
       <div
+        role="treeitem"
+        tabIndex={-1}
+        aria-selected={isActive}
         className={`flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded select-none min-w-0 ${
           isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover'
         }`}
@@ -139,6 +142,12 @@ function FileTreeNode({
         draggable={!node.is_dir}
         onDragStart={handleDragStart}
         onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
+        }}
         onContextMenu={handleContextMenu}
         title={node.path}
       >

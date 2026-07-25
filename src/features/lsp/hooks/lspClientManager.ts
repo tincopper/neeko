@@ -2,7 +2,7 @@ import { LSPClient, serverCompletion, serverDiagnostics } from '@codemirror/lsp-
 import type { Extension } from '@codemirror/state';
 
 import { IdleRefCountedCache } from '../idleRefCountedCache';
-import { TauriLspTransport } from '../transport/TauriLspTransport';
+import { TauriLspTransport } from '../transport/tauriLspTransport';
 
 import { createLspHoverTooltips } from './lspHoverExtension';
 

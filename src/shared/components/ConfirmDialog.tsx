@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { Button } from '@/ui/button';
+import { Button } from '@/ui/Button';
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/ui/dialog';
+} from '@/ui/Dialog';
 
 import { CloseIcon, TrashIcon } from './icons';
 

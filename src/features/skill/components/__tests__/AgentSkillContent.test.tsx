@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
+
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -89,8 +90,8 @@ describe('AgentSkillContent', () => {
   it('loading 时显示 spinner', () => {
     mockGetAgentSkills.mockImplementation(() => new Promise(() => {}));
     render(<AgentSkillContent setDialog={vi.fn()} />);
-    const container = screen.getByTestId('agent-skill-loading');
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    const loadingContainer = screen.getByTestId('agent-skill-loading');
+    expect(within(loadingContainer).getByTestId('loading-spinner')).toBeInTheDocument();
   });
 
   it('activeAgentId 为 null 时显示空状态提示', async () => {

@@ -6,10 +6,10 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import { Button } from '@/ui/button';
-import { Checkbox } from '@/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
+import { Button } from '@/ui/Button';
+import { Checkbox } from '@/ui/Checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+import { Input } from '@/ui/Input';
 
 import serverIcon from '../../../assets/server.svg';
 import { testRemoteConnection, listRemoteDirectories } from '../api/connectionApi';
@@ -321,39 +321,51 @@ export function RemoteDialog({
 
         {step === 'server-config' ? (
           <>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+            <label
+              htmlFor="remote-host"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
+            >
               Host
             </label>
             <Input
+              id="remote-host"
               type="text"
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="192.168.1.100 or example.com"
             />
 
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+            <label
+              htmlFor="remote-port"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3"
+            >
               Port
             </label>
             <Input
+              id="remote-port"
               type="number"
               value={port}
               onChange={(e) => setPort(e.target.value)}
               placeholder="22"
             />
 
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+            <label
+              htmlFor="remote-username"
+              className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3"
+            >
               Username
             </label>
             <Input
+              id="remote-username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="root"
             />
 
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+            <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
               Auth Type
-            </label>
+            </span>
             <div className="flex gap-5 mb-4">
               <label className="custom-radio">
                 <input
@@ -377,10 +389,14 @@ export function RemoteDialog({
 
             {authType === 'password' ? (
               <>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+                <label
+                  htmlFor="remote-password"
+                  className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3"
+                >
                   Password
                 </label>
                 <Input
+                  id="remote-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -389,10 +405,14 @@ export function RemoteDialog({
               </>
             ) : (
               <>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+                <label
+                  htmlFor="remote-key-path"
+                  className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3"
+                >
                   Key File Path
                 </label>
                 <Input
+                  id="remote-key-path"
                   type="text"
                   value={keyPath}
                   onChange={(e) => setKeyPath(e.target.value)}
@@ -411,9 +431,9 @@ export function RemoteDialog({
         ) : (
           <>
             {/* 服务器信息 */}
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+            <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
               Server
-            </label>
+            </span>
             <div className="flex items-center gap-2.5 px-3 py-2.5 bg-bg-tertiary border border-border rounded-md mb-4">
               <img
                 className="text-[16px] text-text-secondary"
@@ -426,9 +446,9 @@ export function RemoteDialog({
             </div>
 
             {/* 路径输入 + 自动补全 */}
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
+            <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3">
               Project Path (on server)
-            </label>
+            </span>
             <div className="relative w-full" ref={pathWrapperRef}>
               <input
                 ref={pathInputRef}
@@ -454,11 +474,20 @@ export function RemoteDialog({
                       return (
                         <div
                           key={s}
+                          role="option"
+                          tabIndex={0}
+                          aria-selected={i === activeSuggestion}
                           className={cn(
                             'flex items-center gap-2 py-[7px] px-3 cursor-pointer border-b border-white/[0.04] transition-[background-color] duration-100 last:border-b-none hover:bg-[rgba(97,175,239,0.15)]',
                             i === activeSuggestion && 'bg-[rgba(97,175,239,0.15)]',
                           )}
                           onMouseDown={() => handleSelectSuggestion(s)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleSelectSuggestion(s);
+                            }
+                          }}
                         >
                           <span className="text-[13px] shrink-0 text-text-muted">&#128193;</span>
                           <span className="font-mono text-[13px] text-text-primary font-medium whitespace-nowrap overflow-hidden text-ellipsis flex-1 min-w-0">
@@ -486,9 +515,9 @@ export function RemoteDialog({
             )}
 
             {/* Agent 选择 */}
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">
+            <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">
               Agent
-            </label>
+            </span>
             <div className="relative w-full mt-1" ref={agentDropdownRef}>
               <button
                 className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -515,6 +544,9 @@ export function RemoteDialog({
               {agentDropdownOpen && (
                 <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={!selectedAgentId}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       !selectedAgentId && 'bg-accent-blue text-white',
@@ -522,6 +554,13 @@ export function RemoteDialog({
                     onClick={() => {
                       setSelectedAgentId(null);
                       setAgentDropdownOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedAgentId(null);
+                        setAgentDropdownOpen(false);
+                      }
                     }}
                   >
                     <AgentIcon icon={null} fallback="&#9889;" />
@@ -532,6 +571,9 @@ export function RemoteDialog({
                     .map((agent) => (
                       <div
                         key={agent.id}
+                        role="option"
+                        tabIndex={0}
+                        aria-selected={selectedAgentId === agent.id}
                         className={cn(
                           'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                           selectedAgentId === agent.id && 'bg-accent-blue text-white',
@@ -539,6 +581,13 @@ export function RemoteDialog({
                         onClick={() => {
                           setSelectedAgentId(agent.id);
                           setAgentDropdownOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedAgentId(agent.id);
+                            setAgentDropdownOpen(false);
+                          }
                         }}
                       >
                         <AgentIcon icon={agent.icon} />
@@ -551,9 +600,9 @@ export function RemoteDialog({
             </div>
 
             {/* IDE 选择 */}
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">
+            <span className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide mt-3.5">
               IDE
-            </label>
+            </span>
             <div className="relative w-full mt-1" ref={ideDropdownRef}>
               <button
                 className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -590,6 +639,9 @@ export function RemoteDialog({
               {ideDropdownOpen && (
                 <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
                   <div
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={!selectedIdeId}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       !selectedIdeId && 'bg-accent-blue text-white',
@@ -598,6 +650,13 @@ export function RemoteDialog({
                       setSelectedIdeId(null);
                       setIdeDropdownOpen(false);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedIdeId(null);
+                        setIdeDropdownOpen(false);
+                      }
+                    }}
                   >
                     <span className="font-medium">None</span>
                   </div>
@@ -605,6 +664,9 @@ export function RemoteDialog({
                     (preset) => (
                       <div
                         key={preset.id}
+                        role="option"
+                        tabIndex={0}
+                        aria-selected={selectedIdeId === preset.id}
                         className={cn(
                           'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                           selectedIdeId === preset.id && 'bg-accent-blue text-white',
@@ -612,6 +674,13 @@ export function RemoteDialog({
                         onClick={() => {
                           setSelectedIdeId(preset.id);
                           setIdeDropdownOpen(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedIdeId(preset.id);
+                            setIdeDropdownOpen(false);
+                          }
                         }}
                       >
                         <img src={getIdeIconSrc(preset.icon)} alt="" className="w-4 h-4" />

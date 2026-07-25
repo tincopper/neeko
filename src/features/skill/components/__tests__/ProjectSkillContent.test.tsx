@@ -209,7 +209,7 @@ describe('ProjectSkillContent', () => {
     expect(screen.getAllByText(/In library/i).length).toBeGreaterThan(0);
     // no file-count badge next to title
     const card = screen.getByTestId('project-skill-card-code-review');
-    expect(card.querySelector('.lucide-file-text')).toBeNull();
+    expect(within(card).queryByTestId('file-text-icon')).toBeNull();
   });
 
   it('filters skills by agent', async () => {
@@ -1051,7 +1051,7 @@ describe('ProjectSkillContent', () => {
     const toggle = screen.getByTestId('project-agent-chips-toggle');
     expect(toggle).toHaveAttribute('aria-label', 'Collapse agent list');
     expect(toggle).not.toHaveTextContent(/Less/i);
-    expect(toggle.querySelector('.lucide-chevron-up')).toBeTruthy();
+    expect(within(toggle).getByTestId('chevron-up-icon')).toBeTruthy();
 
     await user.click(toggle);
     expect(chips).toHaveAttribute('data-expanded', 'false');

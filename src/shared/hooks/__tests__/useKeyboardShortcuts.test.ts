@@ -4,10 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useConnectionStore } from '@/features/connection/store';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import {
-  useKeyboardShortcuts,
-  isEditableKeyboardTarget,
-} from '@/shared/hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useEditorStore } from '@/shared/store';
 import { createProject } from '@/testing/factories';
 

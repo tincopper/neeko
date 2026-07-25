@@ -104,9 +104,16 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
                 <span
                   className="text-text-muted cursor-pointer text-[0.79em] leading-none py-px px-[3px] rounded-[3px] hover:text-text-primary hover:bg-bg-hover"
                   role="button"
+                  tabIndex={0}
                   onClick={(e) => {
                     e.stopPropagation();
                     onApplyFont('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onApplyFont('');
+                    }
                   }}
                   title="Reset to default"
                 >
@@ -126,7 +133,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
                   placeholder="Search fonts..."
                   value={fontSearch}
                   onChange={(e) => onFontSearchChange(e.target.value)}
-                  autoFocus
                   spellCheck={false}
                 />
               </div>

@@ -5,7 +5,7 @@ import { SplitPane } from '@/shared/components';
 import { FileDiff, GitCommitHorizontal, MessageSquare } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { ScrollArea } from '@/ui/ScrollArea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/Tabs';
 
 import {
   listPrComments,

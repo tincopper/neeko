@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
 interface GitCredentialDialogProps {
   open: boolean;
@@ -40,9 +40,9 @@ const GitCredentialDialog: React.FC<GitCredentialDialogProps> = ({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
+            <span style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
               Host
-            </label>
+            </span>
             <div
               style={{
                 padding: '8px 12px',
@@ -56,10 +56,14 @@ const GitCredentialDialog: React.FC<GitCredentialDialogProps> = ({
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
+            <label
+              htmlFor="git-cred-username"
+              style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}
+            >
               Username
             </label>
             <input
+              id="git-cred-username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -77,10 +81,14 @@ const GitCredentialDialog: React.FC<GitCredentialDialogProps> = ({
             />
           </div>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
+            <label
+              htmlFor="git-cred-password"
+              style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}
+            >
               Password / Personal Access Token
             </label>
             <input
+              id="git-cred-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -94,7 +102,7 @@ const GitCredentialDialog: React.FC<GitCredentialDialogProps> = ({
                 fontSize: 13,
                 outline: 'none',
               }}
-              placeholder="ghp_xxx or git password"
+              placeholder="e.g. your GitHub PAT"
             />
           </div>
           <DialogFooter>

@@ -164,9 +164,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
 
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           <div>
-            <label className="text-xs font-medium text-text-secondary block mb-1.5">
-              Repository
-            </label>
+            <span className="text-xs font-medium text-text-secondary block mb-1.5">Repository</span>
             <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -181,9 +179,9 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-medium text-text-secondary block mb-1.5">
+              <span className="text-xs font-medium text-text-secondary block mb-1.5">
                 Branch (optional)
-              </label>
+              </span>
               <Input
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
@@ -193,9 +191,9 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-text-secondary block mb-1.5">
+              <span className="text-xs font-medium text-text-secondary block mb-1.5">
                 Subpath (optional)
-              </label>
+              </span>
               <Input
                 value={subpath}
                 onChange={(e) => setSubpath(e.target.value)}
@@ -215,9 +213,9 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
           {(phase === 'preview' || phase === 'installing') && skills.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-medium text-text-secondary">
+                <span className="text-xs font-medium text-text-secondary">
                   Skills found ({skills.length})
-                </label>
+                </span>
                 <button
                   type="button"
                   className="text-[11px] text-text-secondary hover:text-text-primary hover:underline"

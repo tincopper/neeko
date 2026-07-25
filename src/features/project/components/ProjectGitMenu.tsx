@@ -73,7 +73,7 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
   const hasBranchActions = Boolean(gitInfo);
 
   return (
-    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+    <div className="relative shrink-0" role="presentation" onClick={(e) => e.stopPropagation()}>
       <DropdownMenu
         open={open}
         onOpenChange={(next) => {

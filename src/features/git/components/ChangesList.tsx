@@ -4,8 +4,8 @@ import { cn } from '@/lib/utils';
 import { ChevronRightIcon, Undo2, Plus, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from '@/ui/badge';
-import { Checkbox } from '@/ui/checkbox';
+import { Badge } from '@/ui/Badge';
+import { Checkbox } from '@/ui/Checkbox';
 
 interface ChangesListProps {
   files: FileChange[];
@@ -216,8 +216,16 @@ const Section: React.FC<SectionProps> = ({
         />
         <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
         <span
+          role="button"
+          tabIndex={0}
           className="text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer hover:text-text-secondary"
           onClick={onToggle}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onToggle();
+            }
+          }}
         >
           {title} ({count})
         </span>
@@ -243,6 +251,9 @@ const Section: React.FC<SectionProps> = ({
             return (
               <div
                 key={file.path}
+                role="option"
+                tabIndex={-1}
+                aria-selected={isSelected}
                 className={cn(
                   'flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer',
                   isSelected
@@ -250,6 +261,12 @@ const Section: React.FC<SectionProps> = ({
                     : 'text-text-secondary hover:bg-bg-hover',
                 )}
                 onClick={() => onFileSelect?.(file.path)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onFileSelect?.(file.path);
+                  }
+                }}
               >
                 <Checkbox
                   checked={isSelected}

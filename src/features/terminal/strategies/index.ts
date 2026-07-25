@@ -83,7 +83,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
 
     // ---- Remote ----
     if (env.type === 'Remote') {
-      return buildRemoteStrategy(env);
+      return buildRemoteStrategy();
     }
 
     return null;
@@ -190,13 +190,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     }
 
     // ---- Remote ----
-    function buildRemoteStrategy(_env: {
-      type: 'Remote';
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-    }): TerminalStrategy | null {
+    function buildRemoteStrategy(): TerminalStrategy | null {
       if (!options.remoteConfig) return null;
       const { remoteConfig } = options;
       const projectId = activeProject!.id;

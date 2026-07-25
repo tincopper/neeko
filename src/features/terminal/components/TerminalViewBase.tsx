@@ -26,7 +26,6 @@ interface TerminalViewBaseProps {
 export default React.memo(function TerminalViewBase({
   strategy,
   tabAgentId,
-  activeTabId: _activeTabId,
   taskCommand,
   taskConfigId,
   taskRebuildKey = 0,

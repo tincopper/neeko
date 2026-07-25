@@ -7,31 +7,31 @@ describe('MessageBubble', () => {
   const TS = new Date(2026, 6, 24, 9, 5, 0).getTime();
 
   it('uses the blue accent strip and wash for user messages', () => {
-    const { container } = render(
-      <MessageBubble role="user" label="You" timestamp={TS}>
+    render(
+      <MessageBubble kind="user" label="You" timestamp={TS}>
         <p>hello</p>
       </MessageBubble>,
     );
-    const strip = container.querySelector('.border-l-2');
-    expect(strip?.className).toContain('border-l-accent-blue');
-    expect(strip?.className).toMatch(/bg-accent-blue/);
+    const strip = screen.getByTestId('message-strip');
+    expect(strip.className).toContain('border-l-accent-blue');
+    expect(strip.className).toMatch(/bg-accent-blue/);
     expect(screen.getByText('You')).toHaveClass('text-accent-blue');
   });
 
   it('uses the green accent strip for assistant messages', () => {
-    const { container } = render(
-      <MessageBubble role="assistant" label="Claude Code" timestamp={TS}>
+    render(
+      <MessageBubble kind="assistant" label="Claude Code" timestamp={TS}>
         <p>hi</p>
       </MessageBubble>,
     );
-    const strip = container.querySelector('.border-l-2');
-    expect(strip?.className).toContain('border-l-accent-green');
+    const strip = screen.getByTestId('message-strip');
+    expect(strip.className).toContain('border-l-accent-green');
     expect(screen.getByText('Claude Code')).toHaveClass('text-accent-green');
   });
 
   it('renders the model tag when provided', () => {
     render(
-      <MessageBubble role="assistant" label="Assistant" timestamp={TS} model="opus-4.8">
+      <MessageBubble kind="assistant" label="Assistant" timestamp={TS} model="opus-4.8">
         <p>body</p>
       </MessageBubble>,
     );
@@ -40,7 +40,7 @@ describe('MessageBubble', () => {
 
   it('renders children as the body', () => {
     render(
-      <MessageBubble role="user" label="You" timestamp={TS}>
+      <MessageBubble kind="user" label="You" timestamp={TS}>
         <span>body content</span>
       </MessageBubble>,
     );

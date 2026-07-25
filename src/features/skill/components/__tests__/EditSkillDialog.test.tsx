@@ -54,7 +54,7 @@ describe('EditSkillDialog', () => {
     mockInvoke.mockResolvedValue({ content: '# content' });
     const onClose = vi.fn();
     render(<EditSkillDialog open skill={skill} onClose={onClose} onConfirm={vi.fn()} />);
-    await waitFor(() => screen.getByText('Cancel'));
+    await screen.findByText('Cancel');
     fireEvent.click(screen.getByText('Cancel'));
     expect(onClose).toHaveBeenCalled();
   });
@@ -64,7 +64,7 @@ describe('EditSkillDialog', () => {
     const onConfirm = vi.fn().mockResolvedValue(undefined);
     render(<EditSkillDialog open skill={skill} onClose={vi.fn()} onConfirm={onConfirm} />);
 
-    await waitFor(() => screen.getByText('Save'));
+    await screen.findByText('Save');
     fireEvent.click(screen.getByText('Save'));
 
     await waitFor(() => {

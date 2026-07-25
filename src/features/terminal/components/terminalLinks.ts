@@ -148,7 +148,7 @@ export function setupTerminalLinks(term: Terminal, options: FilePathLinkOptions)
 
   try {
     (term as any).options.linkHandler = {
-      activate(_event: MouseEvent, text: string, _range: any) {
+      activate(_event: MouseEvent, text: string) {
         if (
           text.startsWith('http://') ||
           text.startsWith('https://') ||

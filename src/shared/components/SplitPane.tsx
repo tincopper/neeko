@@ -64,9 +64,27 @@ const SplitPane: React.FC<SplitPaneProps> = ({
       <div className="overflow-auto shrink-0" style={{ width: leftWidth }}>
         {left}
       </div>
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
         className="w-[4px] cursor-col-resize shrink-0 hover:bg-accent-blue active:bg-accent-blue transition-colors duration-100"
         onMouseDown={handleMouseDown}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            const step = 10;
+            const dir = e.key === 'ArrowRight' ? 1 : -1;
+            const newWidth = leftWidth + dir * step;
+            const containerWidth = containerRef.current?.getBoundingClientRect().width ?? 0;
+            const clamped = Math.max(
+              minLeftWidth,
+              Math.min(newWidth, containerWidth - minRightWidth),
+            );
+            setLeftWidth(clamped);
+          }
+        }}
       />
       <div className="flex-1 overflow-hidden min-w-0">{right}</div>
     </div>

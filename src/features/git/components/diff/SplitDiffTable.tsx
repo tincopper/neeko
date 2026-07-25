@@ -65,9 +65,9 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
               let newCellHtml = '';
 
               if (row.type === 'context') {
-                const highlighted = renderHighlightedHtml(row.oldContent || '', language);
-                oldCellHtml = highlighted;
-                newCellHtml = highlighted;
+                const view = renderHighlightedHtml(row.oldContent || '', language);
+                oldCellHtml = view;
+                newCellHtml = view;
               } else if (row.type === 'change') {
                 if (
                   row.oldType === 'removed' &&
@@ -92,7 +92,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
               const newLineNum = row.newLineNum;
               const canComment = onCommentLine && row.newType === 'added';
               const commentCount = commentCounts?.get(newLineNum ?? 0) ?? 0;
-              const commentArea = renderCommentArea?.(newLineNum ?? 0);
+              const utils = renderCommentArea?.(newLineNum ?? 0);
 
               return (
                 <React.Fragment key={`${hunkIndex}-${rowIndex}`}>
@@ -164,10 +164,10 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       }}
                     />
                   </tr>
-                  {commentArea && (
+                  {utils && (
                     <tr>
                       <td colSpan={4} className="py-2 px-4 bg-bg-secondary border-t border-border">
-                        {commentArea}
+                        {utils}
                       </td>
                     </tr>
                   )}

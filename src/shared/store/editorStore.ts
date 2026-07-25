@@ -469,8 +469,10 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         ? null
         : state.activeTabId;
 
-      const { [projectId]: _, ...rest } = state.tabs;
-      const { [projectId]: __, ...restLayouts } = state.editorLayout;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [projectId]: _tmp, ...rest } = state.tabs;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [projectId]: _tmp2, ...restLayouts } = state.editorLayout;
       return { tabs: rest, activeTabId: globalActiveId, editorLayout: restLayouts };
     }),
 

@@ -4,8 +4,8 @@ import AgentIcon from '@/features/agent/components/AgentIcon';
 import { cn } from '@/lib/utils';
 import type { AppConfig, AgentConfig } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
-import { Button } from '@/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Button } from '@/ui/Button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
 import { setProjectAgents } from '../../agent/api/agentApi';
 import { setProjectIde } from '../api/projectApi';
@@ -132,12 +132,12 @@ function ProjectSettingsDialog({
         </DialogHeader>
         <p className="font-mono text-sm text-text-muted break-all mb-4">{projectName}</p>
 
-        <label
+        <span
           className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
           style={{ marginTop: 12 }}
         >
           Agent
-        </label>
+        </span>
         <div className="relative" ref={agentRef} style={{ width: '100%', marginTop: 4 }}>
           <button
             className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -156,6 +156,9 @@ function ProjectSettingsDialog({
           {agentOpen && (
             <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
               <div
+                role="option"
+                tabIndex={0}
+                aria-selected={!selectedAgentId}
                 className={cn(
                   'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                   !selectedAgentId && 'bg-accent-blue text-white',
@@ -163,6 +166,13 @@ function ProjectSettingsDialog({
                 onClick={() => {
                   setSelectedAgentId(null);
                   setAgentOpen(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedAgentId(null);
+                    setAgentOpen(false);
+                  }
                 }}
               >
                 <AgentIcon icon={null} size={16} fallback="&#9889;" />
@@ -173,6 +183,9 @@ function ProjectSettingsDialog({
                 .map((agent) => (
                   <div
                     key={agent.id}
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={selectedAgentId === agent.id}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       selectedAgentId === agent.id && 'bg-accent-blue text-white',
@@ -180,6 +193,13 @@ function ProjectSettingsDialog({
                     onClick={() => {
                       setSelectedAgentId(agent.id);
                       setAgentOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedAgentId(agent.id);
+                        setAgentOpen(false);
+                      }
                     }}
                   >
                     <AgentIcon icon={agent.icon} size={16} />
@@ -191,12 +211,12 @@ function ProjectSettingsDialog({
           )}
         </div>
 
-        <label
+        <span
           className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide"
           style={{ marginTop: 12 }}
         >
           IDE
-        </label>
+        </span>
         <div className="relative" ref={ideRef} style={{ width: '100%', marginTop: 4 }}>
           <button
             className="flex items-center gap-2 p-1.5 px-3 bg-bg-tertiary border border-border rounded-md cursor-pointer text-text-primary text-sm transition-all duration-200 hover:bg-bg-hover hover:border-accent-blue w-full"
@@ -222,6 +242,9 @@ function ProjectSettingsDialog({
           {ideOpen && (
             <div className="absolute top-full mt-1 bg-bg-secondary border border-border rounded-md shadow-lg z-[100] overflow-hidden left-0 right-0 min-w-[unset]">
               <div
+                role="option"
+                tabIndex={0}
+                aria-selected={!selectedIdeId}
                 className={cn(
                   'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                   !selectedIdeId && 'bg-accent-blue text-white',
@@ -230,6 +253,13 @@ function ProjectSettingsDialog({
                   setSelectedIdeId(null);
                   setIdeOpen(false);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedIdeId(null);
+                    setIdeOpen(false);
+                  }
+                }}
               >
                 <span style={{ fontSize: 16 }}>&#128187;</span>
                 <span className="font-medium">None</span>
@@ -237,6 +267,9 @@ function ProjectSettingsDialog({
               {IDE_PRESETS.map((ide) => (
                 <div
                   key={ide.id}
+                  role="option"
+                  tabIndex={0}
+                  aria-selected={selectedIdeId === ide.id}
                   className={cn(
                     'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                     selectedIdeId === ide.id && 'bg-accent-blue text-white',
@@ -244,6 +277,13 @@ function ProjectSettingsDialog({
                   onClick={() => {
                     setSelectedIdeId(ide.id);
                     setIdeOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedIdeId(ide.id);
+                      setIdeOpen(false);
+                    }
                   }}
                 >
                   <img
@@ -262,6 +302,9 @@ function ProjectSettingsDialog({
                 return (
                   <div
                     key={customId}
+                    role="option"
+                    tabIndex={0}
+                    aria-selected={selectedIdeId === customId}
                     className={cn(
                       'flex items-center gap-2.5 p-2.5 px-3 cursor-pointer transition-colors duration-150 hover:bg-bg-hover',
                       selectedIdeId === customId && 'bg-accent-blue text-white',
@@ -269,6 +312,13 @@ function ProjectSettingsDialog({
                     onClick={() => {
                       setSelectedIdeId(customId);
                       setIdeOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelectedIdeId(customId);
+                        setIdeOpen(false);
+                      }
                     }}
                   >
                     <span style={{ fontSize: 16 }}>&#128187;</span>

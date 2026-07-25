@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 

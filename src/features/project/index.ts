@@ -51,4 +51,4 @@ export {
   ProjectActionsProvider,
   useProjectActionsContext,
   type ProjectActionsContextValue,
-} from './context';
+} from './ProjectContext';

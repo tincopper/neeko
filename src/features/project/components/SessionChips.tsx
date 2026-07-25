@@ -24,7 +24,10 @@ interface ChangesChipProps {
 const ChangesChip: React.FC<ChangesChipProps> = ({ add, del }) => {
   if (add <= 0 && del <= 0) return null;
   return (
-    <span className="flex flex-col items-start text-[0.92em] font-mono leading-tight">
+    <span
+      data-testid="session-chips-changes"
+      className="flex flex-col items-start text-[0.92em] font-mono leading-tight"
+    >
       {add > 0 && <span className="text-[#3fb950]">+{add}</span>}
       {del > 0 && <span className="text-[#f85149]">-{del}</span>}
     </span>

@@ -85,8 +85,6 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                 {isEditing ? (
                   <Input
                     className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]"
-                    value={editingValue}
-                    autoFocus
                     spellCheck={false}
                     onChange={(e) => onEditingValueChange(e.target.value)}
                     onBlur={() => onSaveAgentOverride(agent.id)}
@@ -143,7 +141,6 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   <Input
                     className="flex-1 min-w-0 py-0.5 px-1.5 text-[0.82em]"
                     value={skillPathInputValue}
-                    autoFocus
                     spellCheck={false}
                     onChange={(e) => onSkillPathInputValueChange(e.target.value)}
                     onBlur={() => onSaveSkillPath(agent)}
@@ -158,12 +155,20 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   />
                 ) : (
                   <span
+                    role="button"
+                    tabIndex={0}
                     className={cn(
                       'text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover',
                       !hasSkillPath && 'italic',
                     )}
                     title="Click to edit"
                     onClick={() => onStartEditSkillPath(agent.id, skillPathValue || '')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onStartEditSkillPath(agent.id, skillPathValue || '');
+                      }
+                    }}
                   >
                     {hasSkillPath ? skillPathValue : agent.skill_path || 'Not set'}
                   </span>

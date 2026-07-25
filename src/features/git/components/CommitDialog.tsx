@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 import type { FileChange } from '@/shared/types';
 import { withTimeout } from '@/shared/utils/withTimeout';
-import { Button } from '@/ui/button';
-import { Checkbox } from '@/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Button } from '@/ui/Button';
+import { Checkbox } from '@/ui/Checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
 import {
   commitFiles,
@@ -197,7 +197,6 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
               handleCommit(false);
             }
           }}
-          autoFocus
         />
 
         {error && (

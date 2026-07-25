@@ -21,6 +21,7 @@ describe('ProjectGitMenu', () => {
     } as never,
   });
 
+  // eslint-disable-next-line vitest/expect-expect
   it('should_render_git_actions_in_portal_menu_when_open', async () => {
     const user = userEvent.setup();
     const setOpen = vi.fn();

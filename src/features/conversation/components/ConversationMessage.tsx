@@ -34,7 +34,7 @@ const ConversationMessage: React.FC<ConversationMessageProps> = React.memo(
 
     return (
       <MessageBubble
-        role={isUser ? 'user' : 'assistant'}
+        kind={isUser ? 'user' : 'assistant'}
         label={isUser ? 'You' : 'Assistant'}
         icon={
           isUser ? <ProjectAvatar name={projectName} color={projectColor} size={16} /> : undefined

@@ -88,7 +88,7 @@ export function ResizablePanel({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" role="presentation" onClick={onClose} />
 
       <div
         ref={panelRef}
@@ -98,9 +98,21 @@ export function ResizablePanel({
         )}
         style={{ width: `${effectiveWidth}px` }}
       >
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
           className="absolute top-0 left-[-5px] w-[10px] h-full cursor-col-resize z-10 hover:bg-accent/30 active:bg-accent/50 transition-colors"
           onMouseDown={handleResizeStart}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              e.preventDefault();
+              const step = 20;
+              const dir = e.key === 'ArrowRight' ? 1 : -1;
+              setWidth((w) => Math.min(maxWidth, Math.max(minWidth, w - dir * step)));
+            }
+          }}
         />
 
         {onToggleExpand && (
