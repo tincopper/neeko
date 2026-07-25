@@ -1,6 +1,8 @@
 //! Auto-install language servers in a project [`ExecTarget`].
 //!
 //! Binary names and install recipes come from [`LspPlugin`] — this module does
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! not maintain a second language → command map.
 
 use std::sync::Mutex;

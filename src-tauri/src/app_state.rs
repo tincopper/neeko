@@ -344,6 +344,7 @@ impl AppStateWrapper {
     }
 
     /// Create `AppStateWrapper` with an external shared `SkillStore`.
+    #[allow(clippy::expect_used)]
     pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
         let storage_manager = StorageManager::new().expect("Failed to create storage manager");
 
@@ -382,6 +383,7 @@ impl AppStateWrapper {
     }
 
     /// Create `AppStateWrapper` with an auto-initialized `SkillStore`.
+    #[allow(clippy::expect_used)]
     pub fn new() -> Self {
         skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
         let store = Arc::new(

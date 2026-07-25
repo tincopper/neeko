@@ -1,5 +1,7 @@
 //! Skill installation from local paths, git repositories, and archives.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 

@@ -1,6 +1,8 @@
 //! Reasonix session adapter.
 //!
 //! Layout: `~/.reasonix/projects/<sanitized-cwd>/sessions/<id>.jsonl`
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Companion: `<id>.jsonl.meta`, `<id>.events.jsonl` (full history log)
 //!
 //! **Full transcript source:** For multi-turn sessions the main `*.jsonl` is often

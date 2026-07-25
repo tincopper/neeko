@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 /// Base directory for the skill management system: ~/.neeko/
+#[allow(clippy::expect_used)]
 pub fn base_dir() -> PathBuf {
     dirs::home_dir()
         .expect("Cannot determine home directory")

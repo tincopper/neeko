@@ -1,5 +1,7 @@
 //! LSP client request plumbing: single-flight cancel + request/response wait.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};

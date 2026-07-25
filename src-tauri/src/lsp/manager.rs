@@ -1,5 +1,7 @@
 //! LSP session manager: lifecycle, plugin discovery, diagnostics, and auto-start policies.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use crate::common::runtime::AppRuntime;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

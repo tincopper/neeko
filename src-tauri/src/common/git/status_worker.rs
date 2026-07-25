@@ -1,5 +1,7 @@
 //! Background worker for periodically polling git status changes.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use crate::common::utils::command::local;
 use std::collections::HashMap;
 #[cfg(unix)]

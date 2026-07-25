@@ -1,5 +1,7 @@
 //! File-system watcher service for detecting changes and emitting events.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{

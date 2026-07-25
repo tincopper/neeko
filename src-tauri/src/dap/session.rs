@@ -581,9 +581,9 @@ impl DapSession {
             "context": "repl",
         });
         if let Some(fid) = frame_id {
-            args.as_object_mut()
-                .unwrap()
-                .insert("frameId".into(), json!(fid));
+            if let Some(obj) = args.as_object_mut() {
+                obj.insert("frameId".into(), json!(fid));
+            }
         }
         let body = self.client.request("evaluate", args).await?;
         Ok(body

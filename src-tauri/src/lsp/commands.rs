@@ -391,12 +391,12 @@ pub async fn lsp_transport(
             .lsp_manager
             .get_capabilities(&project_path, &language_id)
             .unwrap_or_else(|| serde_json::json!({}));
-        return Ok(serde_json::to_string(&serde_json::json!({
+        return serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": caps,
         }))
-        .unwrap());
+        .map_err(AppError::from);
     }
 
     // ── initialized: already sent by Rust, no-op ──────────────────────
@@ -406,12 +406,12 @@ pub async fn lsp_transport(
 
     // ── shutdown / exit: handled gracefully ──────────────────────────
     if method == "shutdown" {
-        return Ok(serde_json::to_string(&serde_json::json!({
+        return serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": null,
         }))
-        .unwrap());
+        .map_err(AppError::from);
     }
 
     // ── Request (has id): forward to LSP server, return response ─────
@@ -420,12 +420,12 @@ pub async fn lsp_transport(
             .lsp_manager
             .send_request_async(&project_path, &language_id, method, params)
             .await?;
-        return Ok(serde_json::to_string(&serde_json::json!({
+        return serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": result,
         }))
-        .unwrap());
+        .map_err(AppError::from);
     }
 
     // ── Notification (no id): track document lifecycle, then forward ──

@@ -1,5 +1,7 @@
 //! Tool adapter definitions for agent platforms (Cursor, Claude Code, etc.).
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

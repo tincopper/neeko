@@ -1,6 +1,8 @@
 //! Handling of server → client LSP requests.
 //!
 //! Language servers (especially gopls) send requests that the client must
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! answer. Silently ignoring them can stall the server (e.g. gopls waits on
 //! `window/workDoneProgress/create` and never answers hover/definition).
 

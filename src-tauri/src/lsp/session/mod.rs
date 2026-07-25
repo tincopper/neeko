@@ -2,6 +2,8 @@
 //!
 //! Multi-session orchestration lives in [`super::manager`].
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 mod notify;
 mod request;
 

@@ -10,6 +10,7 @@ use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
 
 /// Run the Tauri application.
+#[allow(clippy::expect_used)]
 pub fn run() {
     crate::common::logger::init_logger();
     log::info!("Neeko starting");

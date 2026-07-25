@@ -5,6 +5,8 @@
 //! - `picker-cancelled` — 用户取消元素选取
 //! - `element-picked`   — 元素选中，复制 outerHTML 到剪贴板
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;

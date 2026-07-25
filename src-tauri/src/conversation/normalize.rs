@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use regex::Regex;
 
 use crate::conversation::adapters::strip_ansi;
